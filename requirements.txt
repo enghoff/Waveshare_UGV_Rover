@@ -1,0 +1,8 @@
+# depthai 3.x crashes this camera's left mono sensor -- see
+# docs/depthai-version-pin.md. Do not relax this pin without re-testing CAM_B
+# and stereo depth.
+depthai>=2.32,<3
+opencv-python>=4.10
+numpy>=1.26
+# lidar/lidar_view.py only
+pyserial>=3.5
