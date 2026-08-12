@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 captures/
+oak_camera/crash_dumps/
 *.mp4
 *.npy
 calibration_backup_*.json
