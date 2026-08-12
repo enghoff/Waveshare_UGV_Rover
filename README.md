@@ -74,7 +74,8 @@ Every script opens an OpenCV window and prints what it found on stdout. `q` quit
 python oak_camera\probe_device.py         # boots the device, reports what it is
 python oak_camera\inspect_calibration.py  # stored calibration, user vs factory
 python oak_camera\read_crash_dump.py      # last firmware crash, then clears it
-python oak_camera\preview_depth.py        # mono pair + stereo engine
+python oak_camera\preview_depth.py          # mono pair + stereo engine
+python oak_camera\preview_depth.py --fade 0 # ...without the 1 s depth hold
 python oak_camera\preview_rgb.py          # colour only
 python oak_camera\preview_rgb.py --depth  # colour + aligned depth, all 3 sensors
 

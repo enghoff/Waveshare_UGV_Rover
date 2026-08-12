@@ -77,6 +77,15 @@ pixels black and the distance under the cursor printed. Unaligned, so its origin
 is the right mono camera rather than the colour camera. Exercises CAM_B, CAM_C and
 the stereo engine and nothing else.
 
+By default each pixel holds its last valid depth and darkens to black over 1 s
+rather than going black the frame the device stops reporting it; `--fade SECONDS`
+resizes that window and `--fade 0` turns it off. On weak texture the valid pixels
+flicker in and out frame to frame and an unheld view strobes; holding them smooths
+that out while still letting a genuinely lost pixel disappear. Ageing is by wall
+clock, not frame count, so a stalled link fades out rather than freezing the last
+frame, and the cursor readout appends the age of a held value so stale depth never
+reads as fresh.
+
 ### `preview_rgb.py`
 
 Live 960×540 colour from CAM_A at 30 fps. With `--depth` it also builds the stereo
