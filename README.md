@@ -32,7 +32,7 @@ oak_camera/
     read_crash_dump.py       whole device   read out and clear the firmware crash dump
     preview_depth.py         CAM_B + CAM_C  stereo depth with a distance readout
     preview_rgb.py           CAM_A          colour, and with --depth all three sensors
-    crash_dumps/             JSON dumps written by read_crash_dump.py, kept
+    crash_dumps/             JSON dumps written by read_crash_dump.py, not tracked
 lidar/
     lidar_view.py            whole sensor   top-down view of the point cloud
 usb_cameras/
@@ -46,7 +46,9 @@ A component's directory holds everything belonging to it, output included — wh
 is why `crash_dumps/` sits under `oak_camera/` rather than at the top level.
 `.cache/` is depthai's, created relative to the working directory, so it appears
 wherever you run from. `.gitignore` excludes `.venv/`, `__pycache__/`, `*.pyc`,
-`captures/`, `*.mp4`, `*.npy` and `calibration_backup_*.json`; saved lidar PNGs
+`captures/`, `oak_camera/crash_dumps/`, `*.mp4`, `*.npy` and
+`calibration_backup_*.json` — a crash dump describes one device's one crash, so
+it is local evidence, not something to carry in the repo; saved lidar PNGs
 (`lidar-<timestamp>.png`) are *not* ignored.
 
 ## Setup
