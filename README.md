@@ -6,22 +6,27 @@ for Robots* board, with a Raspberry Pi as host and an ESP32 on the driver board 
 **one at a time, in isolation**. Each script drives exactly one thing — one camera
 socket, one sensor, one stored blob — so that when something is wrong you can
 establish which component is at fault before any of them are combined into a robot
-that does something. There is no integrated application here and no
-autonomy: these are bring-up, bench-test and triage instruments.
+that does something. These are bring-up, bench-test and triage instruments, and
+they remain the right thing to reach for first when a component misbehaves.
 
-Three families of hardware are covered, one directory each:
+[`vm/`](vm) is the other half, and the opposite in kind: the sensors combined,
+in ROS 2, building a map. It runs in a Linux VM rather than on the Windows host
+and does not share a line of code with the rest — but it depends on the same
+measurements, which is why the two live together.
 
 | Directory | Component | Needs |
 |---|---|---|
 | [`oak_camera/`](oak_camera) | Luxonis OAK-D-Lite depth camera, over USB | depthai |
 | [`lidar/`](lidar) | D500 lidar, over serial via the rover's driver board | pyserial |
 | [`usb_cameras/`](usb_cameras) | the host machine's own UVC webcams | OpenCV only |
+| [`vm/`](vm) | both sensors together: ROS 2, SLAM, sensor fusion | a Linux VM |
 
-The three groups are independent: any of them can be run with the other components
+The first three are independent: any can be run with the other components
 unplugged or unpowered, so a result from one never needs the others to be working.
-Nothing here talks to the rover's motors or its ESP32 — this is sensing only. Every
-script is standalone, needs no arguments, shares no state, imports nothing from the
-others, and quits on `q`.
+
+Nothing here talks to the rover's motors or its ESP32 — this is sensing only, and
+the rover is moved by hand. Every host-side script is standalone, needs no
+arguments, shares no state, imports nothing from the others, and quits on `q`.
 
 ## Repository layout
 
@@ -37,6 +42,11 @@ lidar/
     lidar_view.py            whole sensor   top-down view of the point cloud
 usb_cameras/
     preview_usb_cameras.py   one at a time  cycle through the host's USB cameras
+vm/                        both sensors in ROS 2; deploys to ~/ugv in the guest
+    bin/                   operate: start, stop, record, screenshot
+    checks/                measure and verify; run when hardware moves
+    setup/                 one-shot provisioning, to rebuild the VM
+    launch/  config/  nodes/
 docs/                      the detail: hardware facts, measurements, failure modes
 requirements.txt           four pins; the depthai one is deliberate, see docs
 .cache/depthai/            depthai's own crash-dump cache, written by the library
@@ -101,6 +111,29 @@ Window keys, beyond `q`:
 The first three OAK scripts open no streams, which is what makes them useful for
 separating a device fault from a pipeline fault. `preview_rgb.py --depth` is the
 heaviest load in the suite.
+
+## The integrated stack (`vm/`)
+
+Both sensors at once, in ROS 2 Humble, building a 2D map while the rover is pushed
+by hand. It runs in a VMware guest because the OAK's depthai stack and the ROS 2
+packages need Linux; the sensors reach it over USB passthrough. The tree deploys
+to `~/ugv` in the guest, and [`vm/README.md`](vm/README.md) covers running it.
+
+    bash ~/ugv/bin/start_slam.sh rviz     # lidar + camera + SLAM + RViz
+    bash ~/ugv/checks/slam.sh             # confirm it is really mapping
+
+What is established, all measured rather than assumed: both sensors run at their
+native rates (depth 15.1 Hz, scan 10.000 Hz, IMU ~200 Hz), and they agree about
+where objects are to **−14.9 mm median, 17.7 mm RMS over 0.3–1.0 m**. The rover
+has no wheel encoders, so odometry comes from `rf2o` scan matching — which is
+adequate at translation and poor at rotation, inventing about 5°/min of heading
+while completely stationary. An EKF fusing rf2o's translation with the OAK's
+de-biased gyro brings that to **0.02 °/min**, a factor of 260.
+
+That gyro needs continuous bias correction, not a single calibration: its offset
+measured −0.044, −0.150 and −0.154 °/s on three consecutive startups and keeps
+moving as the device warms. `vm/nodes/fusion_prep.py` re-learns it whenever the
+rover can be shown to be standing still.
 
 ## Documentation
 

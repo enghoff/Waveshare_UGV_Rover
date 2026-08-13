@@ -1,0 +1,73 @@
+/oak:
+  ros__parameters:
+    camera:
+      # "Depth", not "Stereo": in this driver Stereo means the two mono streams
+      # and produces no depth map at all -- it published /oak/left and /oak/right
+      # raw and nothing else. Depth runs the stereo engine.
+      # CAM_A stays unused either way: colour is not needed for RGB-D SLAM here,
+      # and leaving it off keeps the USB2 link far below the ~40 MB/s ceiling
+      # measured in docs/oak-usb-link.md.
+      i_pipeline_type: Depth
+      i_nn_type: none
+      i_enable_imu: true
+      # Non-negotiable on this link. Letting depthai default to USB3 uploads a
+      # firmware build that often fails to re-appear on the bus after boot,
+      # leaving errorId=9001 and a device that looks broken and is not.
+      i_usb_speed: HIGH
+
+    # 480P is the OV7251's native 640x480; asking for more would only upscale.
+    # 15 fps is the plan's operating point and halves the host-side load against
+    # the driver's 25 fps default.
+    left:
+      i_resolution: '480P'
+      i_fps: 15.0
+    right:
+      i_resolution: '480P'
+      i_fps: 15.0
+
+    # The IMU is timestamped from the OAK's own clock, converted to ROS time
+    # against a base offset captured once at startup. That offset does not hold
+    # here: VMware's tools.syncTime steps the guest clock, so the two clocks
+    # separate and the converted stamps drift into the FUTURE -- measured at
+    # +0.49 s on average, +0.91 s at worst, against rf2o's -0.06 s.
+    #
+    # That silently breaks fusion rather than the stream. The topic looks
+    # perfectly healthy at 200 Hz, but robot_localization will not fuse a
+    # measurement dated after the filter's own clock, so it drops every one
+    # without a word and the EKF reports exactly zero rotation -- which on a
+    # stationary rover is indistinguishable from success. See checks/ekf_response.py.
+    #
+    # Re-deriving the base time on each message keeps it pinned to ROS time.
+    imu:
+      i_update_ros_base_time_on_ros_msg: true
+      i_get_base_device_timestamp: false
+
+    stereo:
+      i_subpixel: true
+      i_lr_check: true
+      # Unaligned: depth then originates at the right mono camera, which is
+      # exactly where rectified right originates too, so the two are the same
+      # ray with no host-side remapping.
+      i_align_depth: false
+      i_right_rect_publish_topic: true
+      i_right_rect_synced: false
+
+    # Publish raw only. By default image_transport also republishes every frame
+    # as compressed, compressedDepth and theora; encoding 0.61 MB depth frames
+    # on 4 vCPUs starved the depth stream to ~3 Hz in bursts while rectified
+    # right, which is a third the size, held a steady 25 Hz.
+    oak:
+      stereo:
+        image_raw:
+          enable_pub_plugins: ["image_transport/raw"]
+      right:
+        image_rect:
+          enable_pub_plugins: ["image_transport/raw"]
+        image_raw:
+          enable_pub_plugins: ["image_transport/raw"]
+      left:
+        image_raw:
+          enable_pub_plugins: ["image_transport/raw"]
+      rgb:
+        image_raw:
+          enable_pub_plugins: ["image_transport/raw"]
