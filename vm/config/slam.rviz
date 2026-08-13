@@ -119,22 +119,43 @@ Visualization Manager:
       Class: rviz_default_plugins/TF
   Value: true
   Views:
+    # ThirdPersonFollower, not TopDownOrtho, and the distinction is the whole
+    # point. TopDownOrtho derives from RViz's frame-POSITION-tracking controller:
+    # it centres the target frame and ignores its heading entirely, so setting
+    # Target Frame to base_link keeps the rover in the middle while the world
+    # stays aligned to the map. ThirdPersonFollower applies the target frame's
+    # yaw, which is what makes the view turn with the rover.
+    #
+    # Pitched just short of straight down: at exactly pi/2 the camera's up vector
+    # is degenerate and the view can flip. Perspective rather than orthographic is
+    # the price of following heading -- distances off to the edges are slightly
+    # foreshortened, so read geometry from the map, not from this projection.
+    #
+    # For judging whether the estimate is any good, put TopDownOrtho back with
+    # Target Frame "map". Rover-locked, a drifting heading looks like the whole
+    # world rotating, and the scan cannot be seen sliding against the map it is
+    # meant to match -- which is what made the phantom spin so hard to read.
     Current:
-      Angle: 0
-      Class: rviz_default_plugins/TopDownOrtho
+      Class: rviz_default_plugins/ThirdPersonFollower
+      Distance: 25
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 60
+      Pitch: 1.5697963
       Target Frame: base_link
-      Value: TopDownOrtho (rviz_default_plugins)
-      X: 0
-      Y: 0
+      Value: ThirdPersonFollower (rviz_default_plugins)
+      Yaw: 3.1415927
     Saved: ~
 Window Geometry:
   Height: 800

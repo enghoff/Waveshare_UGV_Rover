@@ -96,6 +96,11 @@ class FusionPrep(Node):
         # about 0.2 m/s, so this sits clear of both.
         self.declare_parameter("still_speed", 0.06)          # m/s, from rf2o
         self.declare_parameter("min_dwell_s", 1.0)
+        # 0.3 deg/s. Above genuine bias wander (~0.05 deg/s over minutes), far
+        # below any hand rotation (tens of deg/s).
+        self.declare_parameter("still_offset", 0.0052)       # rad/s
+        # 0.6 deg/s of total excursion from the startup measurement.
+        self.declare_parameter("max_bias_drift", 0.0105)     # rad/s
 
         self.cal_s = self.get_parameter("calibration_s").value
         self.gyro_var = self.get_parameter("gyro_variance").value
@@ -105,6 +110,10 @@ class FusionPrep(Node):
         self.track = self.get_parameter("track_bias").value
         self.still_gyro_sd = self.get_parameter("still_gyro_sd").value
         self.still_speed = self.get_parameter("still_speed").value
+        self.still_offset = self.get_parameter("still_offset").value
+        self.max_bias_drift = self.get_parameter("max_bias_drift").value
+        self.initial_bias = None
+        self.last_clamp_warn = 0.0
 
         self.samples = []
         self.bias = None
@@ -184,6 +193,10 @@ class FusionPrep(Node):
         worst = max(sds)
         if worst > self.max_cal_sd:
             self.bias = (0.0, 0.0, 0.0)
+            # Still needs a reference for the clamp, and zero is the honest one:
+            # nothing was established, so tracking is allowed to find the offset
+            # from scratch within the usual excursion limit.
+            self.initial_bias = (0.0, 0.0, 0.0)
             self.get_logger().error(
                 f"NOT still during calibration (worst sd {math.degrees(worst):.3f} deg/s > "
                 f"{math.degrees(self.max_cal_sd):.3f}). Publishing UNCORRECTED gyro -- "
@@ -191,6 +204,7 @@ class FusionPrep(Node):
             )
             return
         self.bias = tuple(means)
+        self.initial_bias = tuple(means)
         self.get_logger().info(
             "gyro bias removed (deg/s): "
             + "  ".join(f"{a} {math.degrees(m):+.4f}" for a, m in zip("xyz", means))
@@ -213,13 +227,33 @@ class FusionPrep(Node):
             sd.append(math.sqrt(sum((s[i] - m) ** 2 for s in self.recent) / n))
 
         quiet = max(sd) < self.still_gyro_sd
-        # rf2o is the second opinion, and the necessary one: it is the only signal
-        # here that sees the room rather than the chassis, so a slow constant turn
-        # -- invisible to the test above -- still moves it. Averaged over ~1 s, or
-        # its own noise would decide the gate.
+
+        # The decisive test, and the one whose absence made this unusable: how far
+        # the current reading sits from the bias we already believe.
+        #
+        # Spread alone cannot see a turn. Rotate the rover steadily by hand and
+        # the gyro reads a large CONSTANT value -- low spread, so "quiet" -- while
+        # turning on the spot produces almost no translation, so rf2o's linear
+        # speed says "slow" too. Both gates opened, the bias absorbed the turn
+        # rate, and when the rover stopped the corrected gyro read minus that
+        # rate: a phantom spin in the opposite direction, decaying only as fast as
+        # bias_tau_s. That is what "it keeps spinning after I stop" was.
+        #
+        # Offset from the established bias catches it, because the two quantities
+        # live on completely different scales. Genuine bias wanders by about
+        # 0.05 deg/s over minutes; hand rotation is tens of deg/s. Anything in
+        # between is slow enough that absorbing it costs little.
+        means = [sum(s[i] for s in self.recent) / n for i in range(3)]
+        offset = max(abs(m - b) for m, b in zip(means, self.bias))
+        settled = offset < self.still_offset
+
+        # rf2o is a third opinion and still worth having: it is the only signal
+        # here that watches the room rather than the chassis, so it catches
+        # translation the gyro cannot see at all. Averaged over ~1 s, or its own
+        # noise would decide the gate.
         speed = sum(self.speeds) / len(self.speeds) if self.speeds else 0.0
         slow = (not self.rf2o_seen) or speed < self.still_speed
-        candidate = quiet and slow
+        candidate = quiet and settled and slow
 
         # Require the new state to hold before acting on it, so a single noisy
         # window neither freezes tracking nor resumes it mid-push.
@@ -241,8 +275,28 @@ class FusionPrep(Node):
         # One-pole toward the current mean of the window.
         tau = self.get_parameter("bias_tau_s").value
         alpha = min(1.0, (n / 200.0) / max(tau, 1e-3))
-        means = [sum(s[i] for s in self.recent) / n for i in range(3)]
-        self.bias = tuple(b + alpha * (m - b) for b, m in zip(self.bias, means))
+        moved = [b + alpha * (m - b) for b, m in zip(self.bias, means)]
+
+        # Backstop. However the gates are tuned, the tracked bias may never wander
+        # far from what was measured at startup with the rover verifiably still.
+        # Real offset drift is a fraction of a deg/s; anything approaching this
+        # limit is rotation that got past the gates, and clamping caps the size of
+        # the phantom spin that would follow rather than letting it grow without
+        # bound. Hitting the clamp is a fault, so it is reported as one.
+        clamped = []
+        for i, (v, ref) in enumerate(zip(moved, self.initial_bias)):
+            lo, hi = ref - self.max_bias_drift, ref + self.max_bias_drift
+            if v < lo or v > hi:
+                v = min(max(v, lo), hi)
+                if now - self.last_clamp_warn > 10.0:
+                    self.last_clamp_warn = now
+                    self.get_logger().warning(
+                        f"bias on {'xyz'[i]} hit its clamp "
+                        f"({math.degrees(self.max_bias_drift):.2f} deg/s from startup) -- "
+                        "rotation is leaking past the stillness gate"
+                    )
+            clamped.append(v)
+        self.bias = tuple(clamped)
 
         if now - self.last_report > 60.0:
             self.last_report = now

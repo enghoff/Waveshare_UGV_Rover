@@ -62,10 +62,27 @@ The gyro cannot simply be calibrated once. Its offset came out −0.044, −0.15
 holding a single value gave a filter that drifted *worse* than the rf2o it
 replaced — 3.5 °/min, and smoothly rather than noisily, which is harder to spot.
 `nodes/fusion_prep.py` therefore re-learns the bias continuously, but only while
-both the gyro's own spread and rf2o's speed agree the rover is standing still.
+the rover can be shown to be standing still.
 
-Still open: all of the above is stationary. How the fusion behaves while the rover
-is actually being pushed is unmeasured, and is the next thing to do.
+Establishing that is subtler than it looks, and getting it wrong produced the
+worst bug in this thing so far: **phantom spin**, where the map kept rotating in
+RViz long after the rover was set down, sometimes apparently forever. The first
+gate asked whether the gyro's *spread* was small and whether rf2o's *linear* speed
+was low. A steady turn by hand passes both — a constant rate has almost no spread,
+and turning on the spot barely translates. So the bias absorbed the turn, and the
+moment the rover stopped, the corrected gyro read minus that rate.
+
+What catches it is the distance between the current reading and the bias already
+believed. The two live on different scales: genuine offset drift is around
+0.05 °/s over minutes, hand rotation is tens of °/s. A hard clamp backs that up —
+the tracked bias may never move more than 0.6 °/s from the startup measurement, so
+even a leak is bounded, and hitting the clamp logs a warning because it means the
+gate let something through.
+
+Still open: the stationary numbers above are solid, but the moving case has only
+been confirmed by eye. `checks/spin_watch.py` puts a number on it — turn the rover
+by hand, set it down, and it reports how long the estimate took to settle and how
+much heading leaked away afterwards.
 
 ## Gotchas that cost real time
 
@@ -104,3 +121,15 @@ here is built to fail loudly instead — `checks/ekf_response.py` compares the
 filter's output noise against its input, `checks/odom_drift.py` reports the swept
 range alongside the net and uses the gyro as an independent witness that the rover
 really was still, and `checks/slam.sh` flags any node running more than once.
+`checks/spin_watch.py` covers the case none of those could reach, being the only
+one that requires the rover to actually move.
+
+RViz's view controllers divide on a detail that matters here. `TopDownOrtho`
+derives from RViz's frame-*position*-tracking controller: it centres its target
+frame and ignores the frame's heading entirely, so pointing it at `base_link`
+keeps the rover in the middle of a world that never turns. Only
+`ThirdPersonFollower` applies the target's yaw, which is what `config/slam.rviz`
+now uses. Rover-locked is the better view for driving; swap back to `TopDownOrtho`
+on `map` when judging the estimate, because rover-locked turns a heading error
+into an apparently rotating world — which is precisely what made the phantom spin
+so hard to read.
