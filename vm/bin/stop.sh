@@ -14,7 +14,13 @@ set -eo pipefail
 # /odometry/filtered. The consumer sees the five filters' outputs interleaved,
 # which reads as one filter behaving erratically: the same measurement gave
 # 0.00 deg/min of drift on one run and -5.45 deg/min on the next.
-for pattern in component_container ldlidar_stl_ros2_node 'ros2 launch' robot_state_publisher \
+#
+# lidar_watchdog comes first on purpose. It exists to restart the lidar node
+# whenever the node's serial port moves, and it cannot tell a deliberate
+# shutdown from a device that vanished -- left running through this loop it
+# would answer the kill below by asking launch to respawn what was just stopped.
+for pattern in lidar_watchdog component_container ldlidar_stl_ros2_node 'ros2 launch' \
+               robot_state_publisher \
                rectify static_transform_publisher rf2o slam_toolbox imu_filter \
                ekf_node fusion_prep; do
     pkill -f "$pattern" 2>/dev/null && echo "killed: $pattern" || true

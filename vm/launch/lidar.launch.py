@@ -16,12 +16,19 @@ Differs from the vendor's ld19.launch.py in three ways:
   * angle_crop is wired up but left disabled. Enable it before a hand-pushed
     mapping run: whoever pushes the rover sits inside a 360 degree scan at a
     fixed bearing, which is exactly what a scan matcher will latch onto.
+
+A watchdog runs alongside the node, because the vendor node cannot survive its
+device re-enumerating; see bin/lidar_watchdog.sh for what it watches and why.
 """
 
+import os
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+WATCHDOG = os.path.expanduser("~/ugv/bin/lidar_watchdog.sh")
 
 
 def generate_launch_description():
@@ -34,11 +41,18 @@ def generate_launch_description():
     crop_min = DeclareLaunchArgument("crop_min", default_value="135.0")
     crop_max = DeclareLaunchArgument("crop_max", default_value="225.0")
 
+    # respawn is what makes the watchdog's kill a repair rather than an outage.
+    # The node itself never exits -- not on a lost device, not on a port that
+    # cannot be opened -- so respawn on its own would never fire; the two only
+    # work as a pair. respawn_delay gives udev time to publish the new symlink
+    # before the replacement tries to open it.
     ldlidar = Node(
         package="ldlidar_stl_ros2",
         executable="ldlidar_stl_ros2_node",
         name="ldlidar",
         output="screen",
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[
             {"product_name": "LDLiDAR_LD19"},
             {"topic_name": "scan"},
@@ -52,4 +66,10 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription([port, crop, crop_min, crop_max, ldlidar])
+    watchdog = ExecuteProcess(
+        cmd=["bash", WATCHDOG, LaunchConfiguration("port")],
+        name="lidar_watchdog",
+        output="screen",
+    )
+
+    return LaunchDescription([port, crop, crop_min, crop_max, ldlidar, watchdog])

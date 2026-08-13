@@ -18,7 +18,7 @@ source /opt/ros/humble/setup.bash
 source "$HOME/ros2_ws/install/setup.bash"
 
 bash "$HOME/ugv/bin/stop.sh" > /dev/null 2>&1 || true
-for p in rviz2 slam_toolbox rf2o ekf_node fusion_prep; do
+for p in rviz2 slam_toolbox rf2o ekf_node fusion_prep lidar_watchdog; do
     pkill -9 -f "$p" 2>/dev/null || true
 done
 sleep 2
