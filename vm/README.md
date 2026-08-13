@@ -12,6 +12,12 @@ moved by hand.
     bash ~/ugv/bin/record.sh 300 hallway     # optional: record 5 minutes
     bash ~/ugv/bin/stop.sh                   # release the sensors
 
+The first of those is also a desktop icon in the guest, *Start SLAM (RViz)*, put
+there by `setup/install_launcher.sh` — re-run that after editing the entry. It
+goes through `bin/start_slam_gui.sh` rather than calling `start_slam.sh`
+directly, so that the minute spent waiting for the first scan is narrated and a
+refusal stays on screen instead of vanishing with the terminal.
+
 **Keep the rover still for the first 15 seconds of a run.** That window is where
 the gyro's bias is measured, and moving through it poisons the correction for the
 whole session. The node checks and complains rather than trusting it blindly.
