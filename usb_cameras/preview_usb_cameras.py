@@ -11,6 +11,12 @@ have left it pinned to manual. The overlay reports what each driver actually
 accepted; `a` re-applies it and `s` opens the driver's own settings dialog for
 controls OpenCV cannot reach.
 
+Asking for auto is not always enough. A camera can offer a resolution in a format
+whose auto-exposure its firmware never runs, and then no amount of re-applying
+lifts the picture off the floor -- so open_camera() also asks for MJPG, and the
+caption carries the format that was actually negotiated. A black frame with a
+plausible-looking `exposure set` beside it is that failure, not a dead sensor.
+
 The rover's OAK-D-Lite is not a UVC device and will not show up here -- use
 oak_camera/preview_rgb.py for that one.
 """
@@ -25,6 +31,10 @@ WINDOW = "USB camera preview"
 MAX_PROBE = 8
 PROBE_READS = 3  # some webcams hand back nothing until the stream warms up
 REQUEST_SIZE = (1280, 720)
+# Ask for MJPG, and ask *after* the size -- see open_camera() for both halves of
+# why. A webcam that offers a resolution in several formats usually reserves its
+# full frame rate for the compressed one, uncompressed being too wide for USB2.
+PREFERRED_FOURCC = cv2.VideoWriter_fourcc(*"MJPG")
 # A camera that vanishes mid-stream (unplugged, or grabbed by another app)
 # returns failed reads forever rather than erroring, so give up after a second.
 MAX_READ_FAILURES = 30
@@ -56,12 +66,23 @@ def silence_opencv():
 
 
 def device_names():
-    """Friendly camera names in Windows' enumeration order, best effort."""
+    """Friendly camera names in DirectShow's enumeration order, best effort.
+
+    The sort is the whole point. DirectShow builds its list from the registry's
+    capture interface class, whose subkeys are named after the device path and
+    so come back lexicographically -- Get-CimInstance does not, and returned
+    Integrated Camera, Brio 500, USB Camera here against DirectShow's Brio 500,
+    USB Camera, Integrated Camera. Every label was then wrong by a place, which
+    reads as a camera misbehaving rather than as a naming fault. Sorting by
+    PNPDeviceID reproduces DirectShow's order, that field being the same device
+    path the interface keys are named after.
+    """
     if sys.platform != "win32":
         return []
     query = (
         "Get-CimInstance Win32_PnPEntity "
         "-Filter \"PNPClass='Camera' or PNPClass='Image'\" "
+        "| Sort-Object PNPDeviceID "
         "| Select-Object -ExpandProperty Name"
     )
     try:
@@ -123,12 +144,38 @@ def enable_auto(cap):
     return report
 
 
+def fourcc_name(value):
+    """The four characters behind CAP_PROP_FOURCC's packed integer."""
+    packed = int(value)
+    if packed <= 0:
+        return "?"
+    name = "".join(chr((packed >> (8 * i)) & 0xFF) for i in range(4))
+    return name if name.isprintable() else "?"
+
+
 def open_camera(index, backend):
+    """Open one camera at the size and format that keep its automatics working.
+
+    The format request is not cosmetic, and neither is its position. The rover's
+    USB camera offers 1280x720 as both MJPG at 30 fps and YUY2 at 10 fps, and it
+    runs no auto-exposure at all in the YUY2 one: measured here, that mode gives
+    a frame of mean brightness 1.1 out of 255 -- black, with the exposure pinned
+    at 1/64 s however often auto is re-applied -- against 81.8 at 20 fps through
+    MJPG, same camera, same light, seconds apart. DirectShow prefers uncompressed
+    formats, so asking only for the size lands squarely in the broken mode, and
+    the failure looks like a camera losing exposure rather than a format choice.
+
+    Asking must come *after* the size: CAP_PROP_FOURCC set first is silently
+    ignored and the stream stays YUY2. The request is best effort either way --
+    at 640x480 this camera keeps YUY2 and is perfectly well exposed -- so a
+    camera with nothing to switch to simply carries on.
+    """
     cap = cv2.VideoCapture(index, backend)
     if not cap.isOpened():
         return None, []
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, REQUEST_SIZE[0])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, REQUEST_SIZE[1])
+    cap.set(cv2.CAP_PROP_FOURCC, PREFERRED_FOURCC)
     # Some drivers only accept control changes once the stream is live, so warm
     # it up before asking for auto -- and discard that first frame, which was
     # exposed under whatever settings the previous user of the camera left.
@@ -139,7 +186,13 @@ def open_camera(index, backend):
 def describe(cap, index, label, position, total):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    return f"[{position + 1}/{total}] index {index} {label} {width}x{height}"
+    # The format is on the caption because it decides whether the automatics
+    # work at all on some cameras, and because it is otherwise invisible.
+    fourcc = fourcc_name(cap.get(cv2.CAP_PROP_FOURCC))
+    return (
+        f"[{position + 1}/{total}] index {index} {label} "
+        f"{width}x{height} {fourcc}"
+    )
 
 
 def annotate(frame, lines):
@@ -168,11 +221,12 @@ def main():
         print("No USB cameras found.", file=sys.stderr)
         return 1
 
-    # OpenCV exposes no device names, so borrow Windows' list positionally.
-    # DirectShow enumerates in the same order, including devices that refuse to
-    # stream (IR sensors), which is why we index by capture index rather than by
-    # our own position -- but any oddity in the PnP list shifts every label, so
-    # treat these as a hint, not an identity.
+    # OpenCV exposes no device names, so borrow Windows' list positionally --
+    # sorted to DirectShow's order, see device_names(). The list still includes
+    # devices that refuse to stream (IR sensors), which is why we index by
+    # capture index rather than by our own position. Any oddity in the PnP list
+    # shifts every label, so treat these as a hint, not an identity: check the
+    # picture against the name before believing a camera is at fault.
     names = device_names()
     labels = [names[i] if i < len(names) else "" for i in cameras]
     print(f"{len(cameras)} camera(s) via {backend_name}: {cameras}")
