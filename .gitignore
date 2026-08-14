@@ -6,4 +6,5 @@ captures/
 oak_camera/crash_dumps/
 *.mp4
 *.npy
+*.onnx
 calibration_backup_*.json

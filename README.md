@@ -20,10 +20,15 @@ measurements, which is why the two live together.
 | [`lidar/`](lidar) | D500 lidar, over serial via the rover's driver board | pyserial |
 | [`usb_cameras/`](usb_cameras) | the host machine's own UVC webcams | OpenCV only |
 | [`driver_board/`](driver_board) | the ESP32 that drives the motors, over WiFi or USB | nothing |
+| [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | OpenCV |
 | [`vm/`](vm) | both sensors together: ROS 2, SLAM, sensor fusion | a Linux VM |
 
 The first four are independent: any can be run with the other components
 unplugged or unpowered, so a result from one never needs the others to be working.
+[`face_tracking/`](face_tracking) is the exception among the host-side scripts —
+it is the one that closes a loop between two components rather than exercising
+one — so reach for it after both halves have been checked on their own, not
+instead of checking them.
 
 Only [`driver_board/`](driver_board) makes the rover move; everything else is
 sensing, with the rover pushed by hand. Every host-side script is standalone,
@@ -47,6 +52,8 @@ usb_cameras/
     preview_usb_cameras.py   one at a time  cycle through the host's USB cameras
 driver_board/
     drive_gamepad.py         the ESP32     teleop from a game pad, no Pi involved
+face_tracking/
+    track_face.py            camera+servos scan for a face, then follow it
 vm/                        both sensors in ROS 2; deploys to ~/ugv in the guest
     bin/                   operate: start, stop, record, screenshot
     checks/                measure and verify; run when hardware moves
@@ -61,14 +68,15 @@ A component's directory holds everything belonging to it, output included — wh
 is why `crash_dumps/` sits under `oak_camera/` rather than at the top level.
 `.cache/` is depthai's, created relative to the working directory, so it appears
 wherever you run from. `.gitignore` excludes `.venv/`, `__pycache__/`, `*.pyc`,
-`captures/`, `oak_camera/crash_dumps/`, `*.mp4`, `*.npy` and
-`calibration_backup_*.json` — a crash dump describes one device's one crash, so
-it is local evidence, not something to carry in the repo; saved lidar PNGs
+`captures/`, `oak_camera/crash_dumps/`, `*.mp4`, `*.npy`, `*.onnx` and
+`calibration_backup_*.json` — a downloaded model is a dependency rather than
+source, and re-fetching it costs one run; a crash dump describes one device's one
+crash, so it is local evidence, not something to carry in the repo; saved lidar PNGs
 (`lidar-<timestamp>.png`) are *not* ignored.
 
 ## Setup
 
-One environment covers all four components. Run the scripts from the repository
+One environment covers every component. Run the scripts from the repository
 root, by path:
 
 ```powershell
@@ -81,9 +89,11 @@ Requirements are `depthai>=2.32,<3`, `opencv-python>=4.10`, `numpy>=1.26` and
 `pyserial>=3.5`. Only `lidar/` needs pyserial, only `oak_camera/` needs depthai,
 and `usb_cameras/` needs neither — so a missing dependency stops one component, not
 the suite. `driver_board/` needs nothing from the file at all over WiFi, and
-pyserial only for its `--serial` path. The OAK camera needs no driver install on
-Windows, and a game controller needs none either: any pad Windows presents as
-XInput will do, and XInput is a DLL Windows already has.
+pyserial only for its `--serial` path; `face_tracking/` is the same but wants
+OpenCV as well, plus one 230 kB model file it downloads for itself on first run.
+The OAK camera needs no driver install on Windows, and a game controller needs none
+either: any pad Windows presents as XInput will do, and XInput is a DLL Windows
+already has.
 
 ## Usage
 
@@ -111,6 +121,11 @@ python usb_cameras\preview_usb_cameras.py
 python driver_board\drive_gamepad.py         # over WiFi: the rover's AP, else this LAN
 python driver_board\drive_gamepad.py --host 192.168.1.22   # straight to a known address
 python driver_board\drive_gamepad.py --serial   # over USB, port auto-detected
+
+# track a face with the pan/tilt -- rover powered on, its camera plugged in
+python face_tracking\track_face.py             # finds the board and the camera itself
+python face_tracking\track_face.py --no-move   # detect and draw, command nothing
+python face_tracking\track_face.py --no-scan   # stay put when no one is in shot
 ```
 
 Window keys, beyond `q`:
@@ -121,6 +136,7 @@ Window keys, beyond `q`:
 | `preview_rgb.py --depth` | `m` cycles blend / depth / colour, `[` `]` blend weight, mouse reads distance |
 | `lidar_view.py` | `[` `]` range, `c` colour by intensity or distance, `s` save a PNG |
 | `preview_usb_cameras.py` | click or `n`/`p` to change camera, `a` re-apply auto, `s` driver settings |
+| `track_face.py` | `c` recentre, space re-target the largest face, `h` hold position |
 
 The first three OAK scripts open no streams, which is what makes them useful for
 separating a device fault from a pipeline fault. `preview_rgb.py --depth` is the
@@ -145,6 +161,118 @@ lease with nothing to look up. `--host` skips it once you know the address.
 It stops the motors on the way out, and sets the firmware's heartbeat to 500 ms
 first, so the rover also stops itself if the script dies or the link drops. That
 failsafe is not the power switch.
+
+## Face tracking (`face_tracking/`)
+
+`track_face.py` is the one host-side script that runs two components against each
+other: the rover's USB camera module supplies the picture, OpenCV's YuNet detector
+finds a face in it, and the pan/tilt's two servos are steered to keep that face in
+the middle of the frame. It never touches the wheels — the only command it sends
+that moves anything is `{"T":134,...}`, which reaches the camera servos and nothing
+else — and it leaves the firmware's heartbeat at its default, since that timer
+exists to stop the base and this never starts it.
+
+It finds both halves itself: the driver board as `drive_gamepad.py` does, and the
+camera by its USB id (`0abd:8050`) among the machine's other webcams, with
+`--camera` to name one. The detector's model is a 230 kB ONNX file OpenCV does not
+ship, fetched once on the first run to sit beside the script — Haar cascades would
+need no download, but OpenCV 5 dropped them from the wheel entirely.
+
+Aiming is calibrated rather than assumed. Taking a patch of the scene, commanding a
+known move and finding that patch again by template matching gives **9.65 px of
+image shift per commanded degree in pan and 9.5 in tilt** at 1280×720, symmetric in
+both directions, from which `+X` pans right and `+Y` tilts up. A half frame is
+640 px, so 66 of those degrees. That first suggested the firmware's "degrees" were
+about half a real one, on the grounds that no sane lens is 132° wide — but the
+[firmware source](https://github.com/waveshareteam/ugv_base_general/blob/main/General_Driver/gimbal_module.h)
+maps them `×11.375` into the ST3215's 4096 counts per turn, so a commanded degree
+*is* a real degree and the lens really is that wide. The barrel distortion in any
+frame it takes confirms it. The controller works in the measured units either way,
+and never needs the lens FOV — which is how the wrong inference survived so long.
+
+### Dead time is what makes this hard
+
+The loop is closed through the world but open around the servos, which report
+nothing back, so the angles are a model kept true by centring at startup and on
+exit. The number that governs everything else is the delay between a command going
+out and the picture showing any sign of it: **266 ms**, measured over five 50°
+steps, which at 30 fps is **eight frames**. Everything commanded inside that window
+is still in flight and invisible.
+
+A controller that simply corrects what it can see therefore issues the same
+correction eight times over, and the result is not sluggishness but divergence —
+the camera sails past the face, corrects harder the other way, and pins itself
+against a limit. From outside it looks precisely like a camera avoiding people, and
+that is what this did before the compensation went in. The fix is to correct from
+where the camera *was when the frame was exposed*, so motion already in flight is
+subtracted instead of commanded again. Measured against a fixed target at a −55°
+offset:
+
+| | error, start → settled |
+|---|---|
+| correcting against the current angle | 0.80 → 0.67, swinging the full frame, ended pinned at pan +180 |
+| correcting against the angle at exposure | **0.80 → −0.01**, no overshoot |
+
+On a live subject it now reaches centre in under a second and holds a lock for ten
+seconds at a stretch, with nothing pinned at a limit. A sign error looks the same
+from the outside as too much gain, so tell them apart by watching one correction
+from a standstill: the wrong sign moves away immediately, too much gain moves the
+right way first and overshoots.
+
+### Scanning, and how fast it may sweep
+
+With nobody in shot it sweeps its whole range — pan end to end, then a step of tilt
+and back the other way — and follows the moment a face appears. Two tilt levels
+cover the range because the frame takes in 76° of the 120° available, so levels a
+half-frame inside each end reach both limits and overlap.
+
+The sweep rate is the pacing question, and it is answered with measurements rather
+than taste. Motion smear was calibrated by blurring a still frame until its
+sharpness matched what the moving camera produced: **~2 px at 25°/s**, against a
+detector that still finds a 50 px face (someone across a room) under 9 px of smear
+and a 100 px face under 27. Faster detects perfectly well — 90°/s still finds faces
+— but smear grows with exposure time and a dim room lengthens it, and the sweep is
+visibly rougher above about this speed: at 25°/s the picture moves 8.0 px a frame
+against the 7.5 expected with 1–4% of frames not moving at all, while at 45°/s it
+delivers 11 px of an expected 13 and stalls on nearly a fifth. Slower is smoother
+and sees no less. `--scan-rate` moves it; `--no-scan` stops it sweeping.
+
+One trap worth recording: `dt` multiplies the sweep step, so a single slow frame
+commands a large jump, the board takes longer to answer a large jump, and the next
+frame is slower still. That spiral took the loop from 25 commands a second to 0.9.
+Clamping `dt` breaks it, after which every rate tried held 25 fps with nothing lost.
+
+Detection uses two thresholds, not one, because a false positive here is not
+cosmetic — the camera locks onto the wrong thing and, unlike a person, a sofa never
+walks away. In this room the arm of a black sofa against a yellow wall scored
+**0.79**, while real faces scored 0.88–0.91 and a distant half-profile one 0.73. No
+single threshold separates those, so acquiring a target needs 0.85 while keeping one
+needs only 0.60 — and the low bar is safe because a weak detection is accepted only
+close to where the face already was.
+
+### Why the camera used to step from pose to pose
+
+Both gimbal commands carry a speed, and the firmware passes it to the servo in the
+servo's own units — `map(spd, 0, 360, 0, 4095)`, which is plain degrees per second.
+Sending `SPD: 0` means *unlimited*, so every correction was "get there as fast as
+you can": a 1° lunge at the servo's full 130°/s, over in 8 ms, followed by 25 ms of
+standing still, thirty times a second. Naming the speed the motion actually wants
+fixes it, and `T:134` is used rather than `T:133` because it takes the two axes
+separately — otherwise a barely-moving tilt is dragged along at whatever pan needed.
+Measured, to calibrate the units: `SPD` 20 gave 20.4°/s, 40 gave 40.2, 80 gave 75.3
+and 150 gave 114.6, against a ceiling of about 130.
+
+Two limits of the mechanism remain, and no amount of commanding gets around either.
+The firmware truncates angles to whole degrees, so **the smallest possible move is
+9.65 px** of picture — fractional angles are silently rounded, and half-degree steps
+produce one jump per *pair* of commands. And there is **about 2° of backlash**: after
+a change of direction the first two commanded degrees produce no motion at all, then
+it tracks linearly again. The deadband sits just outside that, which is what stops
+the camera dithering across it.
+
+`--no-move` runs everything and commands nothing, which is the way to check the
+picture and the detections before letting it move the camera; rejected detections
+are drawn thin with their scores, so it shows what was seen and passed over.
 
 ## The integrated stack (`vm/`)
 
