@@ -1,13 +1,13 @@
-"""Drive the Waveshare UGV Rover from an Xbox controller, over WiFi or USB.
+"""Drive the Waveshare UGV Rover from a game controller, over WiFi or USB.
 
 Talks to the ESP32 on the rover's General Driver board -- the only thing on the
 robot wired to the motors -- by sending it the same JSON commands its own web UI
 sends. No Raspberry Pi, no ROS, nothing else on the rover need be running.
 
-    python drive_xbox.py                 # over WiFi, to the rover's own AP
-    python drive_xbox.py --host 192.168.1.9   # ...or wherever it joined your LAN
-    python drive_xbox.py --serial        # over USB, auto-detecting the port
-    python drive_xbox.py --serial COM7
+    python drive_gamepad.py              # over WiFi: the rover's own AP, else this LAN
+    python drive_gamepad.py --host 192.168.1.22  # ...straight to a known address
+    python drive_gamepad.py --serial     # over USB, auto-detecting the port
+    python drive_gamepad.py --serial COM7
 
 The triggers drive and the right stick steers: right trigger forward, left trigger
 back, both proportional, and the stick's left/right is the turn. Left stick aims
@@ -32,6 +32,9 @@ offers no way to read back where the servos are pointing.
 Unlike the rest of the suite this opens no window: it reads the pad through
 XInput, which does not need focus, so you can watch the rover instead of the
 screen. It is therefore Windows-only, and the status line is the terminal's.
+Any pad Windows presents as XInput will do -- an Xbox controller, and most of
+the third-party ones, which imitate it. The buttons are named for that pad above
+because those are the names XInput itself uses, whatever is printed on yours.
 
 The command is CMD_PWM_INPUT (`{"T":11,"L":..,"R":..}`), open-loop PWM in
 +-255, because this rover has no wheel encoders -- `{"T":1,...}` and the ROS
@@ -54,6 +57,16 @@ import time
 
 DEFAULT_HOST = "192.168.4.1"  # the ESP32's own AP: SSID "UGV", password "12345678"
 BAUD = 115200
+
+# What a board is asked to prove it is one, on a serial port or an address: the
+# firmware answers CMD_BASE_FEEDBACK with a {"T":1001,...} line, and nothing else
+# on the network answers like that.
+PROBE_COMMAND = {"T": 130}
+PROBE_REPLY = b'"T":1001'
+# Long enough for an ESP32 already busy serving its own web UI, short enough that
+# a whole /24 finishes in a couple of seconds at this many at once.
+PROBE_TIMEOUT = 0.4
+PROBE_WORKERS = 64
 
 # The firmware stops the base if it hears nothing for this long. Its own default
 # is 3000 ms, restored on a clean exit -- and by a reboot in any case, since the
@@ -152,7 +165,7 @@ class XInputState(ctypes.Structure):
 
 
 class Pad:
-    """One XInput controller, polled. Nothing to install: an Xbox pad is XInput.
+    """One XInput controller, polled. Nothing to install: a PC pad is XInput.
 
     xinput1_4 ships with Windows 8 and later; the older names are there for a
     machine carrying only the DirectX redistributable's copy.
@@ -343,6 +356,13 @@ class Gimbal:
         return {"T": 133, "X": round(self.pan), "Y": round(self.tilt), "SPD": 0, "ACC": 0}
 
 
+def js_path(command):
+    """A command as the board wants it: JSON in the query string of `/js`."""
+    from urllib.parse import quote
+
+    return "/js?json=" + quote(json.dumps(command, separators=(",", ":")), safe="")
+
+
 class HttpLink:
     """JSON commands over the ESP32's own `/js` endpoint.
 
@@ -363,14 +383,12 @@ class HttpLink:
         return f"http://{self.host}/js"
 
     def send(self, command):
-        from urllib.parse import quote
-
-        payload = quote(json.dumps(command, separators=(",", ":")), safe="")
+        path = js_path(command)
         for attempt in (1, 2):  # a stale keep-alive costs one retry, not a command
             if self.connection is None:
                 self.connection = self._client.HTTPConnection(self.host, timeout=self.timeout)
             try:
-                self.connection.request("GET", f"/js?json={payload}")
+                self.connection.request("GET", path)
                 self.connection.getresponse().read()
                 return True
             except Exception:
@@ -451,9 +469,95 @@ def find_serial_port():
     return None
 
 
+def probe_host(host):
+    """True if the driver board answers at this address.
+
+    A connection alone proves nothing -- plenty of things on a home LAN have a
+    web server on port 80 -- so this reads the reply and insists on the
+    firmware's own feedback line.
+    """
+    import http.client
+
+    try:
+        connection = http.client.HTTPConnection(host, timeout=PROBE_TIMEOUT)
+        try:
+            connection.request("GET", js_path(PROBE_COMMAND))
+            return PROBE_REPLY in connection.getresponse().read()
+        finally:
+            connection.close()
+    except Exception:  # unreachable, refused, or answering with something else
+        return False
+
+
+def local_network():
+    """Every address on this machine's own /24, minus this machine.
+
+    The interface is chosen by opening a UDP socket towards the rover. Nothing
+    is sent -- connect() on UDP only picks a route -- but it names the interface
+    rover traffic would leave by, which is the one worth sweeping on a machine
+    that also carries VM and VPN adapters.
+    """
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect((DEFAULT_HOST, 80))
+        address = probe.getsockname()[0]
+    except OSError:  # no route anywhere: nothing to sweep
+        return []
+    finally:
+        probe.close()
+    prefix, _, own = address.rpartition(".")
+    if not prefix or address.startswith("0."):
+        return []
+    return [f"{prefix}.{octet}" for octet in range(1, 255) if str(octet) != own]
+
+
+def find_host():
+    """The board's address: its own AP first, then a sweep of this LAN.
+
+    The firmware publishes no mDNS name and sets no DHCP hostname, so there is
+    nothing to look up -- once the rover joins a home network it is just another
+    anonymous lease. What it does have is an answer nothing else gives, so every
+    address on the subnet is asked for base feedback and whoever replies is the
+    rover: the same trick find_serial_port() plays on the COM ports.
+
+    The AP is tried first because it is where the rover is when it has been
+    reset or taken somewhere without a network, and because a hit there costs
+    one probe instead of a sweep.
+    """
+    from concurrent import futures
+
+    if probe_host(DEFAULT_HOST):
+        return DEFAULT_HOST
+    candidates = local_network()
+    if not candidates:
+        return None
+
+    print(f"searching {candidates[0].rsplit('.', 1)[0]}.0/24 for the driver board...")
+    with futures.ThreadPoolExecutor(PROBE_WORKERS) as pool:
+        pending = {pool.submit(probe_host, host): host for host in candidates}
+        try:
+            for done in futures.as_completed(pending):
+                if done.result():
+                    host = pending[done]
+                    print(f"found it at {host} -- pass --host {host} to skip this next time")
+                    return host
+        finally:
+            # Queued probes are dropped; the ones already in flight are left to
+            # time out, which is PROBE_TIMEOUT at worst.
+            for future in pending:
+                future.cancel()
+    return None
+
+
 def open_link(args):
     if args.serial is None:
-        return HttpLink(args.host)
+        host = args.host or find_host()
+        if host is None:
+            sys.exit("No driver board found on its own AP or this network. "
+                     "Name it, e.g. --host 192.168.1.22")
+        return HttpLink(host)
     port = args.serial if args.serial != "auto" else find_serial_port()
     if port is None:
         sys.exit("No driver board found on any serial port. Name it, e.g. --serial COM7")
@@ -464,8 +568,11 @@ def open_link(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Drive the UGV Rover with an Xbox controller.")
-    parser.add_argument("--host", default=DEFAULT_HOST, help="the ESP32's address over WiFi")
+    parser = argparse.ArgumentParser(description="Drive the UGV Rover with a game controller.")
+    parser.add_argument(
+        "--host", default=None, metavar="ADDRESS",
+        help="the ESP32's address over WiFi; by default its own AP, then a search of this LAN",
+    )
     parser.add_argument(
         "--serial", nargs="?", const="auto", default=None, metavar="PORT",
         help="drive over USB instead; bare, or with a port such as COM7",
@@ -479,7 +586,7 @@ def main():
 
     pad = Pad()
     if pad.find() is None:
-        sys.exit("No controller found. Plug in the Xbox pad, or wake it with its Guide button.")
+        sys.exit("No controller found. Plug the pad in, or wake it with its Guide button.")
 
     link = open_link(args)
     top_pwm = min(max(args.top, MIN_PWM + 1), 255)

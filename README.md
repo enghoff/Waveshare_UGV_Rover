@@ -46,7 +46,7 @@ lidar/
 usb_cameras/
     preview_usb_cameras.py   one at a time  cycle through the host's USB cameras
 driver_board/
-    drive_xbox.py            the ESP32     teleop from an Xbox pad, no Pi involved
+    drive_gamepad.py         the ESP32     teleop from a game pad, no Pi involved
 vm/                        both sensors in ROS 2; deploys to ~/ugv in the guest
     bin/                   operate: start, stop, record, screenshot
     checks/                measure and verify; run when hardware moves
@@ -82,13 +82,13 @@ Requirements are `depthai>=2.32,<3`, `opencv-python>=4.10`, `numpy>=1.26` and
 and `usb_cameras/` needs neither — so a missing dependency stops one component, not
 the suite. `driver_board/` needs nothing from the file at all over WiFi, and
 pyserial only for its `--serial` path. The OAK camera needs no driver install on
-Windows, and an Xbox controller needs none either: it is an XInput device, which
-is a DLL Windows already has.
+Windows, and a game controller needs none either: any pad Windows presents as
+XInput will do, and XInput is a DLL Windows already has.
 
 ## Usage
 
-Every script prints what it found on stdout, and all but `drive_xbox.py` open an
-OpenCV window that `q` quits.
+Every script prints what it found on stdout, and all but `drive_gamepad.py` open
+an OpenCV window that `q` quits.
 
 ```powershell
 # OAK-D-Lite, in triage order: each step assumes the previous one worked
@@ -107,9 +107,10 @@ python lidar\lidar_view.py COM14          # or name it
 # the host's USB cameras
 python usb_cameras\preview_usb_cameras.py
 
-# drive it -- rover powered on, Xbox pad plugged in
-python driver_board\drive_xbox.py            # over WiFi, on the rover's own AP
-python driver_board\drive_xbox.py --serial   # over USB, port auto-detected
+# drive it -- rover powered on, pad plugged in
+python driver_board\drive_gamepad.py         # over WiFi: the rover's AP, else this LAN
+python driver_board\drive_gamepad.py --host 192.168.1.22   # straight to a known address
+python driver_board\drive_gamepad.py --serial   # over USB, port auto-detected
 ```
 
 Window keys, beyond `q`:
@@ -125,7 +126,7 @@ The first three OAK scripts open no streams, which is what makes them useful for
 separating a device fault from a pipeline fault. `preview_rgb.py --depth` is the
 heaviest load in the suite.
 
-`drive_xbox.py` has no window, so it reads the pad through XInput and does not
+`drive_gamepad.py` has no window, so it reads the pad through XInput and does not
 need focus — you can watch the rover rather than the screen. The triggers drive —
 right forward, left back — and the right stick steers; the left stick aims the
 pan/tilt camera and it stays where you leave it, with a click of the stick to
@@ -134,6 +135,12 @@ notch and a hold to fade — they are PWM, not a switch. RB is full speed, LB a
 crawl, D-pad up/down moves the speed cap, and Back quits. Triggers and sticks are
 all proportional, through a deadzone and an expo curve, so a small push is a slow
 crawl rather than a lurch. `--no-gimbal` for a rover with no camera fitted.
+
+Over WiFi it finds the board itself: the ESP32's own AP first, at 192.168.4.1,
+and failing that every address on the LAN, asking each for base feedback until
+one answers. That search exists because the firmware publishes no mDNS name and
+sets no DHCP hostname, so a rover that has joined a home network is an anonymous
+lease with nothing to look up. `--host` skips it once you know the address.
 
 It stops the motors on the way out, and sets the firmware's heartbeat to 500 ms
 first, so the rover also stops itself if the script dies or the link drops. That
