@@ -12,11 +12,12 @@ and no OAK camera, which is not a UVC device and is not the one on the gimbal.
     python track_face.py --no-move            # detect and draw, command nothing
     python track_face.py --no-scan            # stay put when there is nobody about
 
-With nobody in shot it sweeps the mechanism's whole range looking for someone --
-pan end to end, then a step of tilt and back the other way -- and switches to
-following the moment a face appears anywhere in the frame. How fast it may sweep
-and still see anything is a measured question, not a matter of taste; SCAN_RATE
-carries the numbers.
+With nobody in shot it sweeps from side to side looking for someone -- pan end to
+end and back, held at the one height faces are found at rather than rastering over
+a range that is mostly floor and ceiling -- and switches to following the moment a
+face appears anywhere in the frame. How fast it may sweep and still see anything is
+a measured question, not a matter of taste; SCAN_RATE carries the numbers, and
+SCAN_TILT the height.
 
 **It never drives the wheels.** The only command it sends that moves anything is
 CMD_GIMBAL_CTRL_SIMPLE (`{"T":133,...}`), which reaches the two camera servos and
@@ -224,16 +225,18 @@ LOST_GRACE_S = 0.7
 
 # --- scanning -------------------------------------------------------------
 
-# With no face in sight the camera sweeps its pan range end to end, reverses, steps
-# tilt and sweeps back -- a serpentine over the whole field of regard, which is
-# 360 degrees of pan by 120 of tilt.
+# With no face in sight the camera sweeps its pan range end to end and reverses,
+# at one fixed height. Not a raster over the whole field of regard: the mechanism
+# can look anywhere from 30 degrees below the horizontal to 90 above, but almost
+# none of that is anywhere a face will be. The rover sits on the floor, so a person
+# standing or seated in front of it is always well above the camera, and time spent
+# sweeping the floor is time not spent looking at people.
 #
-# Two tilt levels, and the number is derived rather than chosen: the frame is 720 px
-# tall at the measured 9.5 px per degree, so it takes in 76 degrees at once against
-# a tilt range of 120. One level cannot cover that and three would re-scan ground
-# already seen. Levels set a frame's half-height inside each end therefore reach
-# both limits and overlap in the middle.
-SCAN_TILTS = (8, 52)
+# The frame is 720 px tall at the measured 9.5 px per degree, so it takes in 76
+# degrees at once: from here it sees roughly 7 to 83 degrees up, which covers
+# anybody upright at conversational distance in one pass. Below about 7 degrees is
+# given up deliberately -- that is the floor immediately in front of the rover.
+SCAN_TILT = 45
 # Degrees per second -- the whole pacing question, and measured rather than guessed.
 # At this rate the picture carries about 2 px of motion smear, against a detector
 # that still finds a 50 px face (someone across a room) under 9 px of it and a
@@ -565,47 +568,43 @@ def counts(degrees_per_second):
 
 
 class Scan:
-    """The serpentine sweep run when there is no face to follow.
+    """The sweep run when there is no face to follow.
 
-    Pan crosses its whole range, reverses at the limit, steps tilt to the other
-    level and crosses back, so everything the mechanism can see is looked at in
-    turn. It is one state machine with two states, panning and tilting, rather
-    than both at once: moving the two together would sweep a diagonal and leave
-    wedges of the range unseen at each end.
+    Pan crosses its whole range and reverses at each end, at the one height where
+    faces are: SCAN_TILT, and never anywhere else. Tilt is not swept at all, which
+    is the difference between looking for people and surveying a room.
 
-    The tilt step is paced at the same rate as the pan sweep instead of being
-    taken at the servo's own speed, because the transition is a second of looking
-    at a part of the range like any other -- there is no reason to blur through it.
+    Two states rather than both axes at once, still: the camera settles onto the
+    scanning height first and only then starts across. Moving both together would
+    sweep a diagonal, and the corner it cut would be the part of the first pass
+    most likely to hold somebody standing in front of the rover.
+
+    That settling move is paced at the same rate as the pan sweep rather than
+    taken at the servo's own speed, because it is a second of looking at the room
+    like any other -- there is no reason to blur through it.
     """
 
     def __init__(self, gimbal):
-        # Start by continuing the way it is already facing and from the level it is
-        # already nearest, so switching from tracking to scanning does not begin
-        # with the camera swinging back across ground it can already see.
+        # Carry on the way it is already facing, so switching from tracking back to
+        # scanning does not begin by swinging across ground it can already see.
         self.direction = 1 if gimbal.pan <= 0 else -1
-        self.level = min(
-            range(len(SCAN_TILTS)),
-            key=lambda i: abs(SCAN_TILTS[i] - gimbal.tilt),
-        )
-        self.tilting = True  # settle onto a level before sweeping along it
+        self.levelling = abs(gimbal.tilt - SCAN_TILT) > 1.0
 
     def step(self, gimbal, rate, dt):
-        if self.tilting:
-            remaining = SCAN_TILTS[self.level] - gimbal.tilt
+        if self.levelling:
+            remaining = SCAN_TILT - gimbal.tilt
             if abs(remaining) <= rate * dt:
                 gimbal.move(0, remaining, dt)
-                self.tilting = False
+                self.levelling = False
             else:
                 gimbal.move(0, math.copysign(rate * dt, remaining), dt)
             return
         gimbal.move(self.direction * rate * dt, 0, dt)
         if abs(gimbal.pan) >= PAN_LIMIT:
             self.direction = -self.direction
-            self.level = (self.level + 1) % len(SCAN_TILTS)
-            self.tilting = True
 
     def state(self):
-        return "scanning, tilting" if self.tilting else "scanning"
+        return "scanning, levelling" if self.levelling else "scanning"
 
 
 # --- camera ---------------------------------------------------------------
