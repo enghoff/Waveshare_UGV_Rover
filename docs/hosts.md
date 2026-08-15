@@ -11,12 +11,33 @@ machine physically wired to the rover, and `media` is the only one with a GPU.
 | CPU / RAM | BCM2835 armv6l, 1 core, 474 MB | Ryzen 7 5700G, 8 threads, 21 GB |
 | storage | 115 GB SD card, 4.7 GB used | 1 TB rootfs, 45 GB used |
 | OS | Raspbian 13 (trixie), 6.18.34+rpt-rpi-v6 | Ubuntu 22.04.5, 6.18.33.2-microsoft-standard-WSL2 |
-| address | `192.168.1.4` (eth0) / `192.168.1.47` (wlan0) | `192.168.1.3`, `MEDIA.local` |
+| address | `rpi.local` — `192.168.1.4` (eth0) / `192.168.1.47` (wlan0) | `media.local` — `192.168.1.3` |
 | key | `~/.ssh/id_ed25519_rpi` | `~/.ssh/id_ed25519` (the default one) |
 
 Both are on the same 192.168.1.0/24 home LAN as the rover's ESP32
 (`192.168.1.22`). The SLAM VM is *not* — it lives on VMware's NAT segment at
 192.168.80.x and reaches nothing here directly.
+
+**Address them by name, not by number.** `rpi.local` and `media.local` both
+resolve by mDNS from the workstation, from the Pi and from MEDIA, and the name is
+the only identifier that is right in every state the rover can be in: the Pi has
+two addresses, `eth0` is primary at metric 100 while it is docked, a rover that
+has driven off has no `eth0` at all, and `rpi.local` follows whichever interface
+is up. Hardcoding `192.168.1.4` cost exactly that bug once — the rover daemon
+serving happily on wlan0 while a client reported no rover at all.
+
+Measured, so the cost is known rather than assumed:
+
+| lookup | from the workstation | from the Pi |
+|---|---|---|
+| `rpi.local` | 147 ms | 16 ms |
+| `media.local` | 99 ms | 387 ms |
+| a name that does not exist | **7.3 s** | — |
+
+That last row is why code that falls back keeps names *first* and addresses
+after: a name that works is cheap, a name that does not is not, and an address
+that is not there refuses in milliseconds. The ESP32 is the exception and stays a
+number — it advertises no mDNS name.
 
 ## `rpi` — the machine on the rover
 

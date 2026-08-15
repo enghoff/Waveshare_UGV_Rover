@@ -139,6 +139,13 @@ STAMP_BACKLOG = 16
 
 # --- the detector ---------------------------------------------------------
 
+# By address, not by name. The rover is reached by name because it has two
+# addresses and which one is live varies; MEDIA has one fixed address, so a
+# name buys no agility here and costs mDNS. Measured from the Pi, three
+# lookups of `media.local` in a row: 344 ms, **5193 ms**, 194 ms. This sits
+# in a control loop with a 1 s service timeout, so that outlier is a stall,
+# and a transient resolver failure is a frame nobody looked at. Pass
+# --service media.local:8768 if the address ever moves.
 DEFAULT_SERVICE = "192.168.1.3:8768"  # face-detect.service on MEDIA
 # One round trip is ~15 ms of network and detection. This is long enough that a
 # service busy with another client is waited for and short enough that a dead one

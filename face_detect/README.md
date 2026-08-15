@@ -121,8 +121,8 @@ Until that exists, the rover can still reach the service through SSH, since it
 already has a key on MEDIA:
 
 ```bash
-ssh 192.168.1.47 'ssh -f -N -L 8768:127.0.0.1:8768 media'
-ssh 192.168.1.47 'cd ~/ugv/face_tracking && python3 track_face_pi.py --service 127.0.0.1:8768'
+ssh rpi 'ssh -f -N -L 8768:127.0.0.1:8768 media'
+ssh rpi 'cd ~/ugv && python3 track_face_pi.py --service 127.0.0.1:8768'
 ```
 
 That works, and it costs about **50 ms of round trip** — measured, and not the
@@ -140,12 +140,12 @@ is worth re-taking once the port is open.
 
 ```bash
 # from anywhere that can reach it
-curl -s http://192.168.1.3:8768/health
+curl -s http://media.local:8768/health
 
 # a photograph with a known face in it
 curl -sSLo /tmp/lena.jpg https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg
 curl -s -X POST --data-binary @/tmp/lena.jpg -H 'Content-Type: image/jpeg' \
-  'http://192.168.1.3:8768/detect?ts=1234.5&score=0.6'
+  'http://media.local:8768/detect?ts=1234.5&score=0.6'
 # -> {"ts": "1234.5", "w": 512, "h": 512, "faces": [[207.8, 182.5, 145.9, 206.9, 0.909]], ...}
 ```
 
