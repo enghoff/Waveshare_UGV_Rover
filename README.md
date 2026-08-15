@@ -21,6 +21,8 @@ measurements, which is why the two live together.
 | [`usb_cameras/`](usb_cameras) | the host machine's own UVC webcams | OpenCV only |
 | [`driver_board/`](driver_board) | the ESP32 that drives the motors, over WiFi or USB | nothing |
 | [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | OpenCV |
+| [`face_detect/`](face_detect) | that loop's detector, as a service on the GPU host's CPU | `root@media` |
+| [`voice_chat/`](voice_chat) | speech in, speech out; models on the GPU host | `root@media` |
 | [`vm/`](vm) | both sensors together: ROS 2, SLAM, sensor fusion | a Linux VM |
 
 The first four are independent: any can be run with the other components
@@ -53,7 +55,19 @@ usb_cameras/
 driver_board/
     drive_gamepad.py         the ESP32     teleop from a game pad, no Pi involved
 face_tracking/
-    track_face.py            camera+servos scan for a face, then follow it
+    aiming.py                the control law alone: thresholds, gains, the sweep
+    track_face.py            camera+servos scan for a face, then follow it, here
+    track_face_pi.py         the same loop run from the rover; deploys to ~/ugv
+face_detect/                 YuNet as a service; deploys to /opt on root@media
+    server.py                JPEG in, boxes out, on the CPU
+    face-detect.service      systemd unit; enabled at boot, outside the interlock
+voice_chat/                  Whisper + Qwen3 + Kokoro on root@media; two clients
+    server.py                the whole turn in one process, on the card
+    endpointing.py           when a turn has ended -- shared, so it cannot drift
+    talk.py                  a desktop's mic and speakers, via sounddevice
+    talk_pi.py               the rover's bluetooth headset and speaker, via PipeWire
+    wsclient.py              RFC 6455 in the stdlib, because the Pi cannot apt-get
+    selftest.py              splitter, endpointer and framing; no GPU, no mic
 vm/                        both sensors in ROS 2; deploys to ~/ugv in the guest
     bin/                   operate: start, stop, record, screenshot
     checks/                measure and verify; run when hardware moves
@@ -126,6 +140,15 @@ python driver_board\drive_gamepad.py --serial   # over USB, port auto-detected
 python face_tracking\track_face.py             # finds the board and the camera itself
 python face_tracking\track_face.py --no-move   # detect and draw, command nothing
 python face_tracking\track_face.py --no-scan   # stay put when no one is in shot
+```
+
+The same loop, run from the rover instead of the workstation — camera on the Pi,
+detector on MEDIA, servos down the GPIO UART:
+
+```bash
+ssh root@media systemctl status face-detect             # the detector must be up
+ssh rpi 'cd ~/ugv/face_tracking && python3 track_face_pi.py'
+ssh rpi 'cd ~/ugv/face_tracking && python3 track_face_pi.py --no-move'
 ```
 
 Window keys, beyond `q`:
@@ -219,6 +242,42 @@ from the outside as too much gain, so tell them apart by watching one correction
 from a standstill: the wrong sign moves away immediately, too much gain moves the
 right way first and overshoots.
 
+### Running it from the rover instead
+
+`track_face_pi.py` closes the same loop with the pieces in different places: the
+camera and the control law on the Pi, the detector on `media`, the servos down the
+GPIO UART rather than over WiFi. It shares every constant with `track_face.py`
+through `aiming.py`, because two copies of a calibrated control law are two
+different robots.
+
+The Pi cannot detect anything itself — an ARM1176 with no NEON measures
+0.039 GFLOP/s on conv-shaped work, so YuNet would cost it about a second a frame
+against 6.5 ms on `media`'s CPU. It never even decodes the picture: one 640×480
+JPEG costs it 93 ms to decode, and forwarding those exact bytes untouched costs
+30% of the core at 30 fps.
+
+Two things change for the better in the move. The dead time stops being a
+constant: V4L2 stamps every buffer at start of exposure, the stamp rides out to
+the detector and comes back attached to the boxes, and the controller is told
+exactly which moment it is answering rather than assuming 266 ms. And the loop
+gets shorter — measured end to end through an SSH tunnel it runs at 11 fps with
+boxes in hand ~145 ms after the light, and the direct path should roughly halve
+the round-trip half of that, against 266 ms of dead time with the camera on the
+workstation's own USB.
+
+One measurement in that chain is worth knowing about, because it was wrong here
+for a while. Exposure to a complete frame in hand looked like 98 ms, and 25 ms of
+that was `v4l2-ctl`'s own stdio: its stdout is a pipe, so libc buffers it and the
+tail of each frame waits for the next one to push it out. Under `stdbuf -o0` it
+is 41 ms, barely varying between 320×240 and 720p — which is what identifies the
+rest as the camera's own pipeline. The number the control law is most sensitive
+to was being set by a buffering default.
+
+Frames are dropped on purpose: the camera runs at 30 fps, a round trip does not,
+and only the newest frame is ever sent. A queue here would not be slowness, it
+would be a rover aiming where somebody used to be. The count is displayed, since
+a silently decimated stream looks identical to a healthy one.
+
 ### Scanning, and how fast it may sweep
 
 With nobody in shot it sweeps its whole range — pan end to end, then a step of tilt
@@ -300,7 +359,8 @@ rover can be shown to be standing still.
 ## Documentation
 
 The measurements, hardware facts and failure modes live in [`docs/`](docs), one
-document per component plus two for the OAK camera's constraints:
+document per component, plus two for the OAK camera's constraints and one for the
+machines the rover shares work with:
 
 | Document | Covers |
 |---|---|
@@ -309,6 +369,7 @@ document per component plus two for the OAK camera's constraints:
 | [depthai-version-pin.md](docs/depthai-version-pin.md) | why depthai is pinned `<3`, the evidence, upstream issues |
 | [d500-lidar.md](docs/d500-lidar.md) | power, data path, packet protocol, view orientation |
 | [usb-cameras.md](docs/usb-cameras.md) | how cameras are probed and named, why a black frame is usually the pixel format, forcing auto controls |
+| [hosts.md](docs/hosts.md) | the two machines outside this workstation — `admin@rpi` on the rover, `root@media` for the GPU |
 
 Read the relevant one before concluding a component is dead. Several documented
 failures look exactly like broken hardware and are not: a camera that will not open
