@@ -1,0 +1,39 @@
+[Unit]
+Description=Voice chat service (Whisper + Qwen3-4B + Kokoro)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/voice_chat
+# Bound to the LAN, not to loopback: the microphone now lives on the rover, and
+# an SSH tunnel from a Pi 1 is a process and a reconnect loop we would rather not
+# have between us and the conversation. The Hyper-V inbound rule opens 8765-8774
+# for exactly this. There is no authentication on this port -- it is a trusted
+# home LAN, and the same is already true of the face-detect service beside it.
+Environment=VOICE_HOST=0.0.0.0
+Environment=VOICE_PORT=8767
+Environment=VOICE_DEVICE=cuda
+# faster-whisper's CTranslate2 backend dlopens CUDA 12 at import, while torch
+# 2.13 brings its own CUDA 13 -- so the card has the right driver but the wrong
+# soname on the path, and STT fails with "libcublas.so.12 is not found" while
+# the LLM and TTS are perfectly happy. The cu12 runtime wheels are installed
+# alongside for this; the loader needs the path before the process starts, so it
+# cannot be set from inside server.py.
+Environment=LD_LIBRARY_PATH=/opt/voice_chat/.venv/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/voice_chat/.venv/lib/python3.11/site-packages/nvidia/cudnn/lib
+Environment=VOICE_STT_MODEL=Systran/faster-distil-whisper-large-v3
+Environment=VOICE_LLM_MODEL=Qwen/Qwen3-4B-Instruct-2507
+Environment=VOICE_TTS_VOICE=af_heart
+# Same int4 + static-cache + CUDA-graph recipe as qwen3-vl.service; see the
+# comments in that unit and in server.py for the measurements. Compilation costs
+# ~20s on top of the load, during which /health reports loaded:false. Unlike the
+# vision service this one degrades to eager if compilation fails rather than
+# refusing to start -- a slow assistant is still an assistant.
+Environment=VOICE_LLM_QUANT=int4
+Environment=VOICE_CACHE_LEN=2048
+Environment=VOICE_COMPILE=1
+ExecStart=/opt/voice_chat/.venv/bin/python /opt/voice_chat/server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

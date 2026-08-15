@@ -1,0 +1,4 @@
+# Client side -- the machine with the microphone. Deliberately no torch.
+sounddevice>=0.4.6
+numpy>=1.26
+websockets>=12

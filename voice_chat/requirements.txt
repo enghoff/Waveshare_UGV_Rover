@@ -1,0 +1,35 @@
+# Server side -- installed into /opt/voice_chat/.venv on the MEDIA GPU host.
+# The client needs only the three packages at the bottom; see client-requirements.txt.
+torch
+transformers
+accelerate
+# int4 weight-only quantization (VOICE_LLM_QUANT=int4, the default). Same
+# backend as /opt/qwen3-vl for the same reason: it is the only 4-bit path
+# transformers will compile.
+torchao
+# STT. Pulls ctranslate2, which keeps its own CUDA context alongside torch's.
+faster-whisper
+# ...and its own CUDA *version*: ctranslate2 dlopens CUDA 12 while torch 2.13
+# ships CUDA 13, so both runtimes have to be present. See the LD_LIBRARY_PATH
+# note in voice-chat.service -- installing these is only half the fix.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+# TTS. misaki is Kokoro's G2P; the [en] extra is what makes it read numbers and
+# abbreviations correctly. Needs the espeak-ng *binary* for words outside its
+# dictionary -- apt install espeak-ng.
+kokoro>=0.9
+misaki[en]
+# misaki loads spaCy's en_core_web_sm at startup and, if it is missing, shells
+# out to `spacy download` -- which fails under systemd in a uv-built venv,
+# because that venv has no pip and spaCy looks for one ("No package installer
+# found"). Pinning the model as an ordinary wheel is the fix and the better
+# property regardless: a service should not be downloading anything on start.
+# Keep the version in step with spacy's minor (3.8.x model for spacy 3.8.x).
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+soundfile
+fastapi
+uvicorn[standard]
+# WebSocket support for uvicorn is in the [standard] extra above; websockets is
+# listed explicitly because the protocol is the service's interface, not an
+# implementation detail of the server it happens to run on.
+websockets
