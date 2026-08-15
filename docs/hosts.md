@@ -74,71 +74,42 @@ for ~30% of it.
 
 **Peripherals.** A CSR Bluetooth dongle (`0a12:0001`) as `hci0`, with an Xbox
 Wireless Controller paired and trusted at `/dev/input/js0`. That pairing needs
-L2CAP ERTM disabled, persisted in `/etc/modprobe.d/xbox-controller.conf`. Also
-paired and trusted: a **JBL Flip** (`20:18:5B:7C:2E:44`) for output over A2DP and
-a **Sony WI-XB400** (`30:53:C1:A4:66:86`) for the microphone over HFP, which
-WirePlumber negotiates as mSBC — 16kHz mono, the rate Whisper wants, with no
-resampling in between. PipeWire and WirePlumber run as `admin`'s user services;
-the node names are what scripts should address, since ids change on reconnect.
+L2CAP ERTM disabled, persisted in `/etc/modprobe.d/xbox-controller.conf`. A **JBL Flip** and a **Sony WI-XB400** are also paired and trusted, from a voice
+client that ran on this box and was removed on 2026-08-15 — the Pi never held a
+reliable conversation, and speech now happens on a desk instead. Two facts from
+that work are still true of this machine and worth keeping:
 
-The adapter came up `off-blocked` after a reboot: an rfkill soft block that
-`systemd-rfkill` restores from `/var/lib/systemd/rfkill/` at every boot. It looks
-like broken hardware — `bluetoothctl power on` answers `org.bluez.Error.Failed`
-and the log says `Failed to set mode: Failed (0x03)`, which is *hardware
-failure*. `rfkill` is not installed and `sudo` wants a password, but a udev ACL
-leaves `/dev/rfkill` writable by `admin`, so the block can be cleared by writing
-the 8-byte `struct rfkill_event` to it directly.
+- **PipeWire here is realtime, and was not before.** `admin` had to be added to
+  the `pipewire` group for the `rtprio 95` in
+  `/etc/security/limits.d/25-pw-rlimits.conf` to apply — `usermod -aG pipewire
+  admin` plus a **reboot**, since group membership is only read at login.
+  Verify on the right thread; it is called `data-loop.0`, so
+  `ps -eLo cls,rtprio,comm | grep pipewire` misses it and reports `TS` for the
+  idle main threads:
 
-Two things about this dongle are worth knowing before believing a measurement:
+  ```bash
+  for t in /proc/$(pgrep -u admin -x pipewire | head -1)/task/*; do
+      echo "$(cat $t/comm): $(chrt -p $(basename $t) | tr '
+' ' ')"
+  done   # want data-loop.0 -> SCHED_FIFO, priority 88
+  ```
 
-- It floods `Bluetooth: hci0: corrupted SCO packet` whenever the HFP microphone
-  is streaming. Audio still arrives intact, and A2DP to the JBL still completes
-  alongside it — 2s of audio took 2.85s with the mic shut and 3.51s with it open,
-  slower but not stalled. `ACL MTU: 310:10` is only ten buffers, so there is not
-  much headroom for both.
-- `pw-play --raw` **hangs forever on a file argument** and must be fed on stdin
-  instead. This is a `pw-cat` quirk, not a fault of the dongle or the speaker,
-  and it imitates a wedged Bluetooth stack convincingly enough to waste an hour.
-- `pw-top -b -n 1` reports **all zeros and state `C`**, because it prints deltas
-  and the first sample has nothing to difference against. Use `-n 3` and read the
-  last block, or conclude that nothing is playing when it is.
-- After `bluetoothctl connect` returns *Connection successful*, WirePlumber still
-  takes **10-20s** to build the card. A script that checks for the node right
-  away decides the device is absent.
-
-**Audio is realtime here since 2026-08-15, and was not before.** `admin` had to
-be added to the `pipewire` group for the `rtprio 95` in
-`/etc/security/limits.d/25-pw-rlimits.conf` to apply — `usermod -aG pipewire
-admin` plus a **reboot**, since group membership is only read at login and
-`systemctl --user restart` will not pick it up. `rtkit` was installed and running
-the whole time; the rlimit was what it lacked. Verify on the right thread:
-
-```bash
-for t in /proc/$(pgrep -u admin -x pipewire | head -1)/task/*; do
-    echo "$(cat $t/comm): $(chrt -p $(basename $t) | tr '\n' ' ')"
-done   # want data-loop.0 -> SCHED_FIFO, priority 88
-```
-
-`ps -eLo cls,rtprio,comm | grep pipewire` does **not** answer this: the realtime
-thread is named `data-loop.0`, so that pattern misses it and reports `TS` for the
-idle main threads.
-
-Without that, the failure is counter-intuitive and cost hours. A deliberate CPU
-hog does *not* break playback (0-2 dropouts) — it competes for throughput, which
-the scheduler handles. A process waking 50 times a second does (36 dropouts in
-15s, 11.7% of the audio) — it competes for latency, which it does not. So "the Pi
-is not busy" says nothing about whether audio will be clean, and pipes feeding
-audio should be read in bulk regardless.
-
-Two more traps when measuring any of this: `pw-record --target <sink>` silently
-records a *source*, not that sink's monitor — use
-`-P "stream.capture.sink=true"` — and xrun counters are meaningless against a
-client that holds a stream open while idle, since it underruns every quantum by
-design. See [voice_chat/README.md](../voice_chat/README.md).
+- **A process waking 50 times a second breaks audio here; a CPU hog does not.**
+  A deliberate spin loop cost 0–2 dropouts in 15s, a 20 ms read loop cost 36
+  (11.7% of the audio). Throughput the scheduler handles, latency it does not. So
+  "the Pi is not busy" says nothing about whether anything realtime will survive,
+  and anything reading a pipe here should read it in bulk.
 
 The dongle, the wifi dongle and the camera all share one weakly fused USB bus,
 which is the first thing to suspect if the wifi drops during a run that is also
 streaming audio and video.
+
+**What runs here.** `rover_daemon.py` (from `rover_daemon/` in this repo) is
+the one process that may own the UART and the camera, and everything that
+commands the rover goes through it: headlights, gimbal, face tracking, exposed as
+tools on TCP 8769. `drive_gamepad_pi.py` and `track_face_pi.py` are still
+standalone and still take the UART directly, so do not run them at the same time
+as the daemon.
 
 **Access.** `ssh rpi` (a `~/.ssh/config` alias for `rpi.local`, user `admin`,
 key `id_ed25519_rpi`). Key-only since 2026-08-13; `sudo` still prompts for the
@@ -193,9 +164,10 @@ it is enabled at boot for the same reason. Do not add it to
 `~/switch_service.sh`. See [face_detect/README.md](../face_detect/README.md).
 
 It is no longer the only one on the rover's control path. It closes the
-face-tracking loop for `face_tracking/track_face_pi.py`, and `voice-chat` now
-does the same for `voice_chat/talk_pi.py` — the rover's microphone and speaker,
-the models here. Both therefore bind `0.0.0.0` and neither is tunnelled.
+face-tracking loop for both `face_tracking/track_face_pi.py` and the same loop
+run under `rover_daemon.py`, so it binds `0.0.0.0` and is not tunnelled.
+`voice-chat` binds the LAN for the same kind of reason — its client is on a desk,
+not on this box — though nothing on the rover talks to it any more.
 
 The two vision services are still reached from whatever machine has a person at
 it, over a tunnel:

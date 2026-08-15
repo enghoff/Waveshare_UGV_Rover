@@ -17,6 +17,13 @@ The latency-critical decision here is sentence chunking (see :func:`_sentences`)
 audio starts playing after the model's FIRST sentence, not its last. On a
 three-sentence reply that is the difference between ~0.9s and ~3s before the
 user hears anything, and it costs nothing but a splitter.
+
+Tools are executed by the *client*, not here. The rover's hardware hangs off an
+ESP32 that only the Pi is wired to, so this service knows nothing about it: a
+client announces what it can do when it connects, those schemas go into the
+prompt, and a call the model makes goes back down the same socket to be
+performed. `talk.py` on a desktop announces nothing and gets a plain
+conversation, with no mention of rover hardware in its context at all.
 """
 
 from __future__ import annotations
@@ -75,7 +82,21 @@ COMPILE = os.environ.get("VOICE_COMPILE", "1") not in ("0", "false", "False")
 # turns, static-shape compilation spent 54s, 76s, 71s and 68s; dynamic pays once.
 COMPILE_DYNAMIC = os.environ.get("VOICE_COMPILE_DYNAMIC", "1") not in ("0", "false", "False")
 MAX_NEW_TOKENS = int(os.environ.get("VOICE_MAX_NEW_TOKENS", "160"))
-TEMPERATURE = float(os.environ.get("VOICE_TEMPERATURE", "0.7"))
+# 0.2, not the 0.7 this started at, because whether the model *acts* turned out
+# to be a sampled decision. Measured over six samples a cell through /chat, with
+# the tool prompt below and the rover's nine schemas:
+#
+#     request                             t=0.7   t=0.3   t=0.2   t=0.0
+#     "Hello, can you switch lights off?"   6/6     6/6     6/6     6/6
+#     "Can you look to your left?"          6/6     5/6     6/6     6/6
+#     "Start following me."                 3/6     6/6     6/6     6/6
+#     "What is your name?"                  0/6     0/6     0/6     0/6   (want 0)
+#
+# Half the time at 0.7 the rover simply did not do what it was told, and said it
+# had. Nothing over-calls at any of these, so the cost of turning it down is only
+# variety -- which is worth very little in a one-to-three-sentence spoken reply,
+# and much less than doing as it is asked.
+TEMPERATURE = float(os.environ.get("VOICE_TEMPERATURE", "0.2"))
 
 # Spoken replies, not written ones. Without this the model reaches for bullets,
 # headings and code fences, and Kokoro reads the punctuation out loud.
@@ -98,6 +119,35 @@ TTS_RATE = 24000
 # Whisper's input rate. Fixed by the model, not a preference -- the client
 # resamples to this before sending.
 STT_RATE = 16000
+
+# --- Tools -------------------------------------------------------------------
+# How long the client gets to perform a call. Most are a JSON line down a UART
+# and answer in milliseconds, but not all: a rover asked how many people it can
+# see has to start its camera and wait for a first buffer, which is seconds. So
+# this is sized for the slowest tool rather than the typical one -- the point of
+# it is only to stop a conversation hanging on a rover that has gone away.
+TOOL_TIMEOUT_S = float(os.environ.get("VOICE_TOOL_TIMEOUT", "12"))
+# Calls the model may make before it has to answer in words. The last decode of
+# a turn is offered no tools at all (see :func:`_run_turn`), so a model that has
+# decided everything is a tool call still ends the turn having said something.
+MAX_TOOL_CALLS = int(os.environ.get("VOICE_MAX_TOOL_CALLS", "2"))
+# A cap on what a client may announce, so a broken or hostile client cannot push
+# the prompt past the cache window before anyone has spoken.
+MAX_TOOLS = 16
+
+# Appended to the system prompt only when a client has actually announced tools.
+# Without it the "if you do not know something, say so" line above wins and the
+# model explains that it has no way to reach the hardware it is holding.
+TOOL_PROMPT = os.environ.get(
+    "VOICE_TOOL_PROMPT",
+    " You control this rover through the tools you have been given. Call a tool "
+    "whenever you are asked to do something one of them covers, including when "
+    "the request is phrased as a question such as 'can you turn the lights off'. "
+    "You have done something only if you have called a tool for it: never say "
+    "you have switched, moved, started or stopped anything unless the call was "
+    "made and answered. Then say what you did in one short sentence, without "
+    "reading the tool call or its result out loud.",
+)
 
 _stt = None
 _llm = None
@@ -257,25 +307,189 @@ def _sentences(stream: Iterator[str]) -> Iterator[str]:
         yield buf.strip()
 
 
-def _trim(history: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Drop whole turns off the front until the prompt fits the static cache.
+_TOOL_OPEN = "<tool_call>"
+_TOOL_CLOSE = "</tool_call>"
 
-    Whole turns, not tokens: half a turn in the history reads to the model as
+
+class _ToolSniffer:
+    """Passes prose through; swallows a tool call and everything after it.
+
+    This sits between the token stream and the sentence splitter for one
+    reason: a tool call is *text*, and the splitter would hand it to Kokoro,
+    which would read the JSON out loud, brace by brace. Nothing may be spoken
+    until it is known not to be a call.
+
+    It watches for two shapes, because which one arrives depends on the
+    tokenizer rather than on the model. Qwen wraps a call in `<tool_call>`
+    markers, but those markers are added tokens, and a streamer built with
+    `skip_special_tokens=True` may well eat them before this ever sees them --
+    leaving a bare JSON object as the whole reply. So: a `<tool_call>` marker
+    anywhere, *or* a reply that opens with a brace. Spoken English does neither.
+    """
+
+    def __init__(self) -> None:
+        self.tail = ""  # the call, and anything the model wrote after it
+        self._pending = ""  # a part-written marker, held back until it can be judged
+        self._opened = False  # has the reply's first real character been seen?
+
+    def feed(self, piece: str) -> str:
+        """One chunk of decoded text in, the part of it that is prose out."""
+        if self.tail:
+            self.tail += piece
+            return ""
+        text = self._pending + piece
+        self._pending = ""
+
+        if not self._opened:
+            head = text.lstrip()
+            if not head:
+                self._pending = text  # nothing but whitespace so far
+                return ""
+            if head.startswith("{"):
+                self.tail = head
+                return ""
+            self._opened = True
+
+        cut = text.find(_TOOL_OPEN)
+        if cut >= 0:
+            self.tail = text[cut:]
+            return text[:cut]
+        # Hold back a trailing fragment that could still become the marker --
+        # the stream arrives in sub-word pieces, so "<tool" and "_call>" is a
+        # perfectly ordinary way for one to turn up.
+        for n in range(min(len(_TOOL_OPEN) - 1, len(text)), 0, -1):
+            if text.endswith(_TOOL_OPEN[:n]):
+                self._pending = text[-n:]
+                return text[:-n]
+        return text
+
+    def flush(self) -> str:
+        """Whatever was held back and turned out to be ordinary text."""
+        text, self._pending = self._pending, ""
+        return text
+
+
+def _parse_tool_call(text: str) -> dict[str, Any] | None:
+    """The first call in a swallowed block, or None if it will not parse."""
+    body = text.strip()
+    if body.startswith(_TOOL_OPEN):
+        body = body[len(_TOOL_OPEN):]
+    body = body.split(_TOOL_CLOSE, 1)[0].strip()
+    # A second call in the same reply is dropped rather than queued: the tools
+    # here are cheap and idempotent, and honouring only the first keeps the turn
+    # to one round trip.
+    body = body.split(_TOOL_OPEN, 1)[0].strip()
+    try:
+        call = json.loads(body)
+    except ValueError:
+        return None
+    if not isinstance(call, dict):
+        return None
+    name = call.get("name")
+    arguments = call.get("arguments", {})
+    # Some templates emit the arguments as a JSON *string* rather than an
+    # object. Both are common enough to accept.
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            return None
+    if not isinstance(name, str) or not isinstance(arguments, dict):
+        return None
+    return {"name": name, "arguments": arguments}
+
+
+def _reply_stream(
+    history: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    system: str | None = None,
+    temperature: float | None = None,
+) -> Iterator[tuple[str, Any]]:
+    """One decode as ("sentence", str) items, then at most one ("tool", call).
+
+    The ordering is what makes a mid-reply call work: prose the model wrote
+    before reaching for a tool is still spoken, and spoken while the call is
+    still decoding, exactly as an ordinary sentence would be.
+    """
+    raw = _generate(history, tools, system=system, temperature=temperature)
+    sniffer = _ToolSniffer()
+
+    def prose() -> Iterator[str]:
+        for piece in raw:
+            if text := sniffer.feed(piece):
+                yield text
+        if text := sniffer.flush():
+            yield text
+
+    for sentence in _sentences(prose()):
+        yield "sentence", sentence
+
+    if sniffer.tail:
+        if (call := _parse_tool_call(sniffer.tail)) is not None:
+            yield "tool", call
+        else:
+            # It looked like a call and was not one. Say it rather than swallow
+            # it -- a silent turn is a worse failure than an odd-sounding one.
+            for sentence in _sentences(iter([sniffer.tail])):
+                yield "sentence", sentence
+
+
+def _prompt_len(history: list[dict[str, Any]], tools: list[dict[str, Any]] = ()) -> int:
+    """How many tokens this history would become, tool schemas included.
+
+    The unwrapping is not defensive style, it is the fix for a bug that made
+    :func:`_trim` inert for the life of this service. `apply_chat_template` with
+    `tokenize=True` returns a **BatchEncoding** on transformers 5, not a list of
+    ids -- so `len()` of it is 2, the number of keys, and every "does this fit
+    the cache" test read `2 <= 1856` and said yes. Nothing was ever trimmed, and
+    a long conversation instead quietly fell through to the dynamic cache in
+    :func:`_generate`, losing the compiled decode path and getting slower rather
+    than failing. Older versions did return a flat list, so both are handled.
+    """
+    encoded = _tokenizer.apply_chat_template(
+        [{"role": "system", "content": SYSTEM_PROMPT}] + history,
+        tools=list(tools) or None,
+        tokenize=True,
+        add_generation_prompt=True,
+    )
+    ids = encoded["input_ids"] if hasattr(encoded, "keys") else encoded
+    # A batch of one, if it was asked to return tensors rather than a flat list.
+    if ids and isinstance(ids[0], (list, tuple)):
+        ids = ids[0]
+    return len(ids)
+
+
+def _trim(
+    history: list[dict[str, Any]], tools: list[dict[str, Any]] = ()
+) -> list[dict[str, Any]]:
+    """Drop whole exchanges off the front until the prompt fits the static cache.
+
+    Whole exchanges, not tokens: half a turn in the history reads to the model as
     the user being interrupted, and it starts apologising for things it did not
     do. Leaves room for the reply as well as the prompt, since both share the
     window.
+
+    An exchange is a user message and everything answering it, which is no
+    longer always one assistant message -- a turn that called a tool holds the
+    call and its result too. Cutting a fixed two entries would strand a call
+    with no result, or a result with no call, and a model shown either starts
+    narrating tool plumbing out loud.
     """
     budget = CACHE_LEN - MAX_NEW_TOKENS - 32
-    while len(history) > 1:
-        text = _tokenizer.apply_chat_template(
-            [{"role": "system", "content": SYSTEM_PROMPT}] + history,
-            tokenize=True,
-            add_generation_prompt=True,
-        )
-        if len(text) <= budget:
+    while history:
+        if _prompt_len(history, tools) <= budget:
             break
-        # Two at a time keeps user/assistant pairing intact.
-        history = history[2:]
+        # Where the next exchange starts. If there is not another one then this
+        # is the last, and it is left alone however long it is: trimming it away
+        # would erase the utterance being answered and hand the model an empty
+        # conversation. _generate falls back to the dynamic cache for that case,
+        # which is slower but correct.
+        cut = 1
+        while cut < len(history) and history[cut].get("role") != "user":
+            cut += 1
+        if cut >= len(history):
+            break
+        history = history[cut:]
     return history
 
 
@@ -292,12 +506,29 @@ def _transcribe(pcm: np.ndarray) -> str:
     return "".join(seg.text for seg in segments).strip()
 
 
-def _generate(history: list[dict[str, str]]) -> Iterator[str]:
-    """Yield the reply as it decodes, one token-chunk at a time."""
+def _generate(
+    history: list[dict[str, Any]],
+    tools: list[dict[str, Any]] = (),
+    system: str | None = None,
+    temperature: float | None = None,
+) -> Iterator[str]:
+    """Yield the reply as it decodes, one token-chunk at a time.
+
+    `system` and `temperature` are overridable only so that /chat can sweep
+    wordings without a restart; the voice path always passes neither.
+    """
     from transformers import TextIteratorStreamer
 
+    if system is None:
+        system = SYSTEM_PROMPT + (TOOL_PROMPT if tools else "")
+    if temperature is None:
+        temperature = TEMPERATURE
     prompt = _tokenizer.apply_chat_template(
-        [{"role": "system", "content": SYSTEM_PROMPT}] + history,
+        [{"role": "system", "content": system}] + history,
+        # The chat template writes the tool instructions and the call format
+        # into the prompt itself; there is nothing to hand-roll here, and
+        # hand-rolling it would only disagree with what the model was tuned on.
+        tools=list(tools) or None,
         tokenize=False,
         add_generation_prompt=True,
     )
@@ -314,8 +545,8 @@ def _generate(history: list[dict[str, str]]) -> Iterator[str]:
         **inputs,
         streamer=streamer,
         max_new_tokens=MAX_NEW_TOKENS,
-        do_sample=TEMPERATURE > 0,
-        temperature=TEMPERATURE or None,
+        do_sample=temperature > 0,
+        temperature=temperature or None,
         top_p=0.9,
         pad_token_id=_tokenizer.eos_token_id,
     )
@@ -387,7 +618,49 @@ def health() -> dict[str, Any]:
         "compiled": _compiled,
         "in_rate": STT_RATE,
         "out_rate": TTS_RATE,
+        # Tools are per-connection, announced by each client -- this is only the
+        # ceiling on what one may announce.
+        "max_tools": MAX_TOOLS,
+        "max_tool_calls": MAX_TOOL_CALLS,
     }
+
+
+@app.post("/chat")
+async def chat(request: dict[str, Any]) -> Any:
+    """Text in, text out, for checking what the model *decides* -- never spoken.
+
+    This exists because the interesting failure is not audible. A model that
+    narrates an action it never took sounds exactly like one that took it, and
+    finding that out through the microphone costs a TTS round trip, a decode and
+    a playback per attempt -- nine seconds to learn one bit. Here it is one
+    request, nothing is synthesised, and no tool is performed: the call the model
+    *wanted* to make is reported instead, so this can be pointed at the real
+    schemas without touching the rover.
+
+    `system` and `temperature` may be overridden per request, which is the whole
+    point of the endpoint: prompt wording is the thing most likely to need
+    twenty attempts, and restarting this service to try one costs ~150s.
+
+        {"text": "can you turn the lights off", "tools": [...],
+         "system": "...", "temperature": 0.2}
+     -> {"reply": "...", "tool_calls": [{"name": ..., "arguments": {...}}]}
+    """
+    text = request.get("text") or ""
+    tools = [t for t in (request.get("tools") or [])[:MAX_TOOLS]
+             if isinstance(t, dict) and isinstance(t.get("function"), dict)]
+    history = list(request.get("history") or []) + [{"role": "user", "content": text}]
+    system = request.get("system")
+    temperature = request.get("temperature")
+
+    def run() -> dict[str, Any]:
+        spoken, calls = [], []
+        for kind, value in _reply_stream(history, tools, system=system,
+                                         temperature=temperature):
+            (spoken if kind == "sentence" else calls).append(value)
+        return {"reply": " ".join(spoken), "tool_calls": calls}
+
+    async with _gpu_lock:
+        return await asyncio.to_thread(run)
 
 
 @app.post("/say")
@@ -400,8 +673,100 @@ async def say(text: str) -> Any:
     return Response(content=_to_pcm16(audio), media_type="application/octet-stream")
 
 
-async def _run_turn(ws: WebSocket, history: list[dict[str, str]], pcm: np.ndarray) -> None:
-    """One utterance in, one spoken reply out."""
+async def _run_tool(ws: WebSocket, call: dict[str, Any], index: int) -> dict[str, Any]:
+    """Ask the client to perform one call and wait for its answer.
+
+    Deliberately inside the GPU lock. Holding a card idle across a LAN round
+    trip looks wasteful, but this is a single-user assistant and the alternative
+    is worse: releasing the lock mid-turn lets another turn interleave into the
+    same conversation, between a tool call and its result.
+    """
+    ident = f"{index}"
+    await ws.send_json(
+        {"type": "tool", "id": ident, "name": call["name"], "arguments": call["arguments"]}
+    )
+    deadline = time.monotonic() + TOOL_TIMEOUT_S
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            msg = await asyncio.wait_for(ws.receive(), remaining)
+        except asyncio.TimeoutError:
+            break
+        if msg["type"] == "websocket.disconnect":
+            raise WebSocketDisconnect(msg.get("code", 1005))
+        if (text := msg.get("text")) is None:
+            # Audio arriving mid-turn is the microphone running ahead of the
+            # reply; it belongs to no utterance and is dropped.
+            continue
+        event = json.loads(text)
+        if event.get("type") == "tool_result" and event.get("id") == ident:
+            result = event.get("result")
+            return result if isinstance(result, dict) else {"ok": False, "error": "no result"}
+    # A tool that never answers is reported to the model rather than failing the
+    # turn: it can say the rover did not respond, which is what the user needs
+    # to hear, and the conversation carries on.
+    return {"ok": False, "error": f"the rover did not answer within {TOOL_TIMEOUT_S:.0f} seconds"}
+
+
+async def _decode_and_speak(
+    ws: WebSocket,
+    history: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    spoken: list[str],
+) -> tuple[dict[str, Any] | None, float | None]:
+    """One decode: speak what it says, and return any tool call it made.
+
+    Decoding runs on a worker thread and hands sentences to the event loop as
+    they complete, rather than collecting them into a list first. This is the
+    whole point of the splitter: sentence 1 is being spoken and sent while
+    sentence 2 is still decoding. Materialising the generator would put the
+    entire reply's decode time in front of the first audio frame.
+    """
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[tuple[str, Any] | None | Exception] = asyncio.Queue()
+
+    def produce() -> None:
+        try:
+            for item in _reply_stream(history, tools):
+                loop.call_soon_threadsafe(queue.put_nowait, item)
+        except Exception as exc:
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    Thread(target=produce, daemon=True).start()
+
+    call: dict[str, Any] | None = None
+    first_audio: float | None = None
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        if isinstance(item, Exception):
+            raise item
+        kind, value = item
+        if kind == "tool":
+            call = value
+            continue
+        spoken.append(value)
+        await ws.send_json({"type": "text", "text": value})
+        audio = await asyncio.to_thread(_speak, value)
+        if audio.size:
+            if first_audio is None:
+                first_audio = time.perf_counter()
+            await ws.send_bytes(_to_pcm16(audio))
+    return call, first_audio
+
+
+async def _run_turn(
+    ws: WebSocket,
+    history: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    pcm: np.ndarray,
+) -> None:
+    """One utterance in, one spoken reply out, with any tool calls in between."""
     t0 = time.perf_counter()
     async with _gpu_lock:
         heard = await asyncio.to_thread(_transcribe, pcm)
@@ -413,46 +778,41 @@ async def _run_turn(ws: WebSocket, history: list[dict[str, str]], pcm: np.ndarra
 
         await ws.send_json({"type": "stt", "text": heard})
         history.append({"role": "user", "content": heard})
-        history[:] = _trim(history)
+        history[:] = _trim(history, tools)
 
         await ws.send_json({"type": "start", "rate": TTS_RATE})
-        reply_parts: list[str] = []
+        spoken: list[str] = []
         first_audio: float | None = None
+        used = 0
 
-        # Decode on a worker thread and hand sentences to the event loop as they
-        # complete, rather than collecting them into a list first. This is the
-        # whole point of the splitter: sentence 1 is being spoken and sent while
-        # sentence 2 is still decoding. Materialising the generator would put the
-        # entire reply's decode time in front of the first audio frame.
-        loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[str | None | Exception] = asyncio.Queue()
-
-        def produce() -> None:
-            try:
-                for sentence in _sentences(_generate(history)):
-                    loop.call_soon_threadsafe(queue.put_nowait, sentence)
-            except Exception as exc:
-                loop.call_soon_threadsafe(queue.put_nowait, exc)
-            finally:
-                loop.call_soon_threadsafe(queue.put_nowait, None)
-
-        Thread(target=produce, daemon=True).start()
-
-        while True:
-            item = await queue.get()
-            if item is None:
+        for round_index in range(MAX_TOOL_CALLS + 1):
+            # The last pass is offered no tools, so the model has to answer in
+            # words. Without that a model that has decided everything needs a
+            # tool call can spend the whole turn calling them, and the user hears
+            # nothing at all -- which is indistinguishable from a crash.
+            offered = tools if round_index < MAX_TOOL_CALLS else []
+            call, audio_at = await _decode_and_speak(ws, history, offered, spoken)
+            if first_audio is None:
+                first_audio = audio_at
+            if call is None:
                 break
-            if isinstance(item, Exception):
-                raise item
-            reply_parts.append(item)
-            await ws.send_json({"type": "text", "text": item})
-            audio = await asyncio.to_thread(_speak, item)
-            if audio.size:
-                if first_audio is None:
-                    first_audio = time.perf_counter()
-                await ws.send_bytes(_to_pcm16(audio))
 
-    reply = " ".join(reply_parts)
+            used += 1
+            result = await _run_tool(ws, call, used)
+            # Recorded as a call and a result rather than as prose, so the model
+            # sees its own action in the form it was trained on -- and so the
+            # next turn can answer "are they on?" from the history.
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"type": "function", "function": call}],
+                }
+            )
+            history.append({"role": "tool", "content": json.dumps(result)})
+            history[:] = _trim(history, tools)
+
+    reply = " ".join(spoken)
     history.append({"role": "assistant", "content": reply})
     await ws.send_json(
         {
@@ -462,6 +822,7 @@ async def _run_turn(ws: WebSocket, history: list[dict[str, str]], pcm: np.ndarra
                 "stt_ms": int((t_stt - t0) * 1000),
                 "first_audio_ms": int(((first_audio or time.perf_counter()) - t0) * 1000),
                 "total_ms": int((time.perf_counter() - t0) * 1000),
+                "tools": used,
             },
         }
     )
@@ -472,12 +833,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
     """Conversation loop.
 
     Client -> server: binary frames of 16kHz mono s16le, then {"type":"end"} to
-    close the utterance. {"type":"reset"} clears the history.
+    close the utterance. {"type":"reset"} clears the history, and an opening
+    {"type":"hello","tools":[...]} announces what this client can perform.
     Server -> client: JSON events, with each {"type":"text"} followed by one
-    binary frame of 24kHz mono s16le holding that sentence.
+    binary frame of 24kHz mono s16le holding that sentence, plus {"type":"tool"}
+    for a call the client is to make and answer with {"type":"tool_result"}.
     """
     await ws.accept()
-    history: list[dict[str, str]] = []
+    history: list[dict[str, Any]] = []
+    tools: list[dict[str, Any]] = []
     buf = bytearray()
     try:
         while True:
@@ -492,7 +856,27 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
             event = json.loads(text)
             kind = event.get("type")
-            if kind == "reset":
+            if kind == "hello":
+                # The client is the authority on what it can do, so its schemas
+                # are taken as given rather than matched against a catalogue
+                # here -- this service has no business knowing what a rover is.
+                # Checked only for shape, and capped, so that a broken client
+                # cannot fill the context window before anyone has spoken.
+                tools = [
+                    tool
+                    for tool in (event.get("tools") or [])[:MAX_TOOLS]
+                    if isinstance(tool, dict)
+                    and isinstance(tool.get("function"), dict)
+                    and isinstance(tool["function"].get("name"), str)
+                ]
+                # History is cleared with them: the tools available are part of
+                # what the model was told, so a conversation cannot straddle a
+                # change to the set without the earlier half becoming a lie.
+                history.clear()
+                await ws.send_json(
+                    {"type": "hello", "tools": [t["function"]["name"] for t in tools]}
+                )
+            elif kind == "reset":
                 history.clear()
                 buf.clear()
                 await ws.send_json({"type": "reset"})
@@ -505,7 +889,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await ws.send_json({"type": "stt", "text": "", "empty": True})
                     await ws.send_json({"type": "done", "stats": {}})
                     continue
-                await _run_turn(ws, history, pcm)
+                await _run_turn(ws, history, tools, pcm)
     except WebSocketDisconnect:
         pass
     except Exception as exc:  # keep the socket's failure off the service's logs as a crash

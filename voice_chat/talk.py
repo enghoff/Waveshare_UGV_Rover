@@ -7,11 +7,21 @@ model, and doing it locally means silence is never sent over the wire.
 
 The service now binds the LAN, so no tunnel is needed:
 
-    python voice_chat/talk.py --url ws://192.168.1.3:8767/ws
+    python voice_chat/talk.py --url ws://media.local:8767/ws
 
-Ctrl-C to quit. On the rover use [talk_pi.py](talk_pi.py) instead -- same
-protocol and the same endpointer, but it drives PipeWire directly because the Pi
-has no PortAudio.
+Ctrl-C to quit. This is the only chat client: an earlier one ran on the rover
+itself, over Bluetooth, and was removed because the Pi's audio never became
+reliable enough to hold a conversation through.
+
+It also carries the rover's tools -- headlights, camera, face tracking. It
+performs none of them: `rover_daemon.py` on the Pi owns the board and the camera,
+and this asks it what it can do and passes calls along. The daemon is probed once
+at startup and the tools are offered only if it answers, since tools that cannot
+reach the rover are worse than none -- the model says out loud that it has
+switched the lights on, and nothing happens.
+
+    python voice_chat/talk.py --rover rpi.local:8769      # name it explicitly
+    python voice_chat/talk.py --rover none                # conversation only
 
 Dependencies are deliberately thin -- sounddevice, numpy, websockets. No torch,
 no onnxruntime: a neural VAD would be better at rejecting a television playing
@@ -32,10 +42,20 @@ import numpy as np
 import sounddevice as sd
 import websockets
 
+import rover_tools
 from endpointing import BLOCK, IN_RATE, Endpointer
 
+# The service answers a hello immediately -- there is no model behind it -- so
+# this only has to outlast a hiccup on the LAN.
+HELLO_TIMEOUT_S = 5.0
 
-async def converse(url: str, device: int | None, out_device: int | None) -> None:
+
+async def converse(
+    url: str,
+    device: int | None,
+    out_device: int | None,
+    rover: rover_tools.RoverClient | None,
+) -> None:
     blocks: queue.Queue[np.ndarray] = queue.Queue()
 
     def on_audio(indata, _frames, _t, status) -> None:
@@ -45,6 +65,22 @@ async def converse(url: str, device: int | None, out_device: int | None) -> None
 
     async with websockets.connect(url, max_size=None) as ws:
         print(f"connected to {url}")
+        # What this client can perform, announced before anything is said. The
+        # service holds no catalogue of its own -- it puts whatever it is given
+        # into the prompt -- so a service that is too old to understand this
+        # never answers, and the wait is what notices.
+        if rover is not None:
+            # Asked for afresh on every connection rather than cached: the daemon
+            # is the authority on what this rover can do, and it may have been
+            # restarted with more tools since the last time anybody looked.
+            tools = await asyncio.to_thread(rover.tools)
+            await ws.send(json.dumps({"type": "hello", "tools": tools}))
+            try:
+                ack = json.loads(await asyncio.wait_for(ws.recv(), HELLO_TIMEOUT_S))
+                print(f"tools: {', '.join(ack.get('tools') or []) or 'none accepted'}")
+            except (asyncio.TimeoutError, ValueError):
+                print("  the service did not take the tools; carrying on without them",
+                      file=sys.stderr)
         # The service loads ~5GB of weights on first start; say so rather than
         # looking hung.
         print("listening -- just talk. Ctrl-C to quit.\n")
@@ -114,6 +150,20 @@ async def converse(url: str, device: int | None, out_device: int | None) -> None
                             player.start()
                     elif kind == "text":
                         print(f"bot: {event['text']}")
+                    elif kind == "tool":
+                        name = event.get("name")
+                        arguments = event.get("arguments") or {}
+                        # On a thread: a call can take seconds -- count_faces has
+                        # to start the camera -- and this loop is also the one
+                        # writing to the speaker.
+                        result = (
+                            {"ok": False, "error": "no rover attached"}
+                            if rover is None
+                            else await asyncio.to_thread(rover.call, name, arguments)
+                        )
+                        print(f"  [{name}{json.dumps(arguments)} -> {json.dumps(result)}]")
+                        await ws.send(json.dumps(
+                            {"type": "tool_result", "id": event.get("id"), "result": result}))
                     elif kind == "error":
                         print(f"  error: {event['message']}", file=sys.stderr)
                         break
@@ -132,9 +182,11 @@ async def converse(url: str, device: int | None, out_device: int | None) -> None
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default="ws://192.168.1.3:8767/ws")
+    parser.add_argument("--url", default="ws://media.local:8767/ws")
     parser.add_argument("--input-device", type=int, default=None)
     parser.add_argument("--output-device", type=int, default=None)
+    parser.add_argument("--rover", default="auto", metavar="HOST:PORT",
+                        help='the rover daemon; "auto" looks for it, "none" for no tools')
     parser.add_argument("--list-devices", action="store_true")
     args = parser.parse_args()
 
@@ -142,10 +194,36 @@ def main() -> None:
         print(sd.query_devices())
         return
 
+    rover = None
+    if args.rover != "none":
+        # Probed rather than assumed, and searched for rather than probed at one
+        # address: the rover answers on wlan0 or eth0 depending on whether it is
+        # plugged in, and picking the wrong one looks exactly like a rover that
+        # is not there. Offering tools that cannot reach it is worse than
+        # offering none, so a miss means a plain conversation and a printed line.
+        if args.rover == "auto":
+            rover = rover_tools.discover()
+        else:
+            rover = rover_tools.RoverClient(args.rover)
+            if not rover.probe():
+                rover.close()
+                rover = None
+        if rover is not None:
+            print(f"rover daemon at {rover.describe()}")
+        else:
+            where = ("any of " + ", ".join(rover_tools.DEFAULT_CANDIDATES)
+                     if args.rover == "auto" else args.rover)
+            print(f"  no rover daemon on {where}; no tools.\n"
+                  f"  Start it with: ssh rpi 'cd ugv && python3 rover_daemon.py'",
+                  file=sys.stderr)
+
     try:
-        asyncio.run(converse(args.url, args.input_device, args.output_device))
+        asyncio.run(converse(args.url, args.input_device, args.output_device, rover))
     except KeyboardInterrupt:
         print("\nbye")
+    finally:
+        if rover is not None:
+            rover.close()
 
 
 if __name__ == "__main__":

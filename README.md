@@ -61,13 +61,15 @@ face_tracking/
 face_detect/                 YuNet as a service; deploys to /opt on root@media
     server.py                JPEG in, boxes out, on the CPU
     face-detect.service      systemd unit; enabled at boot, outside the interlock
-voice_chat/                  Whisper + Qwen3 + Kokoro on root@media; two clients
+voice_chat/                  Whisper + Qwen3 + Kokoro on root@media
     server.py                the whole turn in one process, on the card
-    endpointing.py           when a turn has ended -- shared, so it cannot drift
+    endpointing.py           when a turn has ended; the one decision kept local
     talk.py                  a desktop's mic and speakers, via sounddevice
-    talk_pi.py               the rover's bluetooth headset and speaker, via PipeWire
-    wsclient.py              RFC 6455 in the stdlib, because the Pi cannot apt-get
-    selftest.py              splitter, endpointer and framing; no GPU, no mic
+    rover_tools.py           the line to the rover daemon, so the model can act
+    selftest.py              splitter, sniffer, trimming, endpointer; no GPU, no mic
+rover_daemon/                one owner of the board and the camera; deploys to ~/ugv
+    rover_daemon.py          lights, gimbal, face tracking, as tools over TCP 8769
+    selftest.py              dispatch, limits and schemas; no board, no camera
 vm/                        both sensors in ROS 2; deploys to ~/ugv in the guest
     bin/                   operate: start, stop, record, screenshot
     checks/                measure and verify; run when hardware moves

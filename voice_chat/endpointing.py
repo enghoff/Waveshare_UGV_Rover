@@ -1,14 +1,15 @@
-"""Deciding when the speaker has stopped -- shared by every client.
+"""Deciding when the speaker has stopped.
 
-This is the one piece of real logic on the client side, and there are now two
-clients: [talk.py](talk.py) on a desktop with sounddevice, and
-[talk_pi.py](talk_pi.py) on the rover, which has neither PortAudio nor an
-ALSA bridge and drives PipeWire directly instead. They capture audio in
-completely different ways and must still end a turn at the same moment, so the
-decision lives here rather than in either of them.
+This is the one piece of real logic on the client side, and it is kept apart
+from [talk.py](talk.py) for two reasons. It is the decision that belongs on the
+client rather than the GPU -- it needs no model, and making it locally means
+silence never crosses the network -- and it is the part worth testing, which is
+only possible because nothing in this module touches an audio device.
+[selftest.py](selftest.py) exercises it on a machine with no microphone at all.
 
-Nothing in this module touches an audio device, which is also what lets
-[selftest.py](selftest.py) exercise it on a machine with no microphone at all.
+It was shared with a second client on the rover until that was removed; the
+interface is still the one that suited two callers, which costs nothing and
+would matter again if another turned up.
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ class Endpointer:
         whole batch of blocks at once. On the rover that matters: doing it here,
         one block at a time, is one numpy call per 20ms, and that rate of small
         allocations is enough to make PipeWire miss its deadline and chop the
-        audio. The value must be the plain RMS of `block` -- see talk_pi.py.
+        audio. The value must be the plain RMS of `block`.
         """
         if rms is None:
             rms = float(np.sqrt(np.mean(block.astype(np.float32) ** 2)))

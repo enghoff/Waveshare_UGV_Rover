@@ -4,8 +4,8 @@ Speech in, speech out. The models run on the MEDIA GPU host; the microphone and
 speakers stay on whatever machine you are sitting at.
 
 ```
-  this machine, or the rover            root@media  (RTX 3070, 8GB)
-  --------------------------            ---------------------------
+  the machine you are sitting at        root@media  (RTX 3070, 8GB)
+  ------------------------------        ---------------------------
   mic -> VAD/endpointing --16k s16le-->  faster-whisper distil-large-v3
                                               |  text
                                          Qwen3-4B-Instruct (int4)
@@ -13,10 +13,14 @@ speakers stay on whatever machine you are sitting at.
   speakers <-- playback <--24k s16le---  Kokoro-82M
 ```
 
-Two clients, because the audio hardware has nothing in common: [talk.py](talk.py)
-on a desktop with sounddevice, and [talk_pi.py](talk_pi.py) on the rover, which
-drives PipeWire through pipes. The decision they must agree on — when a turn has
-ended — is in [endpointing.py](endpointing.py) so it cannot drift between them.
+One client, [talk.py](talk.py), wherever there is a microphone. Endpointing —
+deciding the speaker has stopped — is in [endpointing.py](endpointing.py) beside
+it rather than on the GPU; see below for why.
+
+It also carries **tools**: the model can switch the headlights, aim the camera,
+count the people it can see and start or stop face tracking. None of that happens
+here or on the desk — it is performed by [rover_daemon/](../rover_daemon/) on the
+rover, which owns the hardware. See [Tools](#tools).
 
 ## Why it is split here
 
@@ -81,201 +85,167 @@ Just talk; it endpoints on its own. `Ctrl-C` to quit. `--list-devices` and
 
 Client dependencies: `pip install -r voice_chat/client-requirements.txt`.
 
-The service binds `0.0.0.0` rather than loopback, so there is no tunnel any
-more. That is a deliberate trade: the microphone now lives on a Pi 1, and an
-SSH tunnel from it is a process and a reconnect loop sitting between us and the
-conversation. The port is open on the LAN with no authentication in front of
-it, the same as `face-detect` beside it; the Hyper-V inbound rule covers
-8765-8774. Do not do this on a network you do not own.
+The service binds `0.0.0.0` rather than loopback, so there is no tunnel. The
+microphone is on a different machine from the card and a tunnel between them is a
+process and a reconnect loop sitting in the middle of a conversation. The port is
+open on the LAN with no authentication in front of it, the same as `face-detect`
+beside it; the Hyper-V inbound rule covers 8765-8774. Do not do this on a network
+you do not own.
 
-## From the rover
+## The rover client, and why there is not one
 
-The rover talks and listens over Bluetooth, with the models still on MEDIA:
+There was a second client on the rover itself — Bluetooth headset in, JBL Flip
+out, PipeWire driven through `pw-record`/`pw-play` pipes because the Pi has no
+PortAudio, and a hand-rolled RFC 6455 WebSocket because `apt` there needs a
+password we do not have from a script. It worked, and it was never reliable
+enough to hold a conversation through: the Pi 1 runs its Bluetooth dongle, its
+wifi dongle and the camera off one weakly fused USB bus, and an always-open SCO
+microphone alongside A2DP is more than that radio comfortably does.
+
+It was removed on 2026-08-15 along with `wsclient.py`. Speech now happens only
+where there is a desk and a real microphone; what the rover still does is
+everything in [rover_daemon/](../rover_daemon/), which needs no audio at all.
+
+Two findings from that work outlive the client and are kept, because they are
+properties of the machine rather than of the code that went:
+
+- **PipeWire on the Pi had no realtime priority**, because `admin` was not in the
+  `pipewire` group and so the `rtprio 95` in
+  `/etc/security/limits.d/25-pw-rlimits.conf` never applied. Fixed with
+  `usermod -aG pipewire admin` and a reboot. See [docs/hosts.md](../docs/hosts.md).
+- **A process waking 50 times a second breaks audio on that box, and a CPU hog
+  does not.** A deliberate spin loop cost 0–2 dropouts; a 20 ms read loop cost 36
+  in 15 seconds. Throughput the scheduler handles, latency it does not — so
+  anything on that Pi that reads a pipe should read it in bulk. That is why
+  `track_face_pi.py` forwarding whole frames is fine and why its 4 kB read chunk
+  would not have been.
+
+## Tools
+
+The rover can be asked to do things, not just talked to: *turn the lights on*,
+*dim them a bit*, *look to your left*, *how many people can you see*, *follow
+that person*, *find somebody else*, *stop following*.
+
+**Nothing here performs them.** The rover's hardware is a single UART and a
+single camera, so exactly one process may own it, and that process is
+[rover_daemon.py](../rover_daemon/rover_daemon.py) on the Pi. A call travels
+from the model, back down this WebSocket to `talk.py`, and on to the daemon:
 
 ```
-  WI-XB400  --HFP/mSBC 16k-->  Pi  --wifi-->  MEDIA
-  JBL Flip  <---A2DP SBC-----  Pi  <--------
+  you --speech--> MEDIA: model decides ---{"type":"tool"}--> talk.py
+                         model answers <-{"type":"tool_result"}-  |
+  speakers <--audio--                                             | TCP 8769
+                                              rover_daemon.py <---+
+                                              UART -> ESP32,  camera -> MEDIA
 ```
 
-```bash
-ssh admin@rpi 'cd ugv && python3 talk_pi.py'
-```
+**Nobody but the daemon knows what the tools are.** `talk.py` asks it with
+`list_tools` on connect and passes the schemas straight up in a `hello`; this
+service puts whatever it is given into the prompt. So `server.py` contains no
+mention of lights, cameras or serial ports, `rover_tools.py` is ~120 lines of
+socket and no schemas at all, and adding a tool is a change to the daemon alone
+— nothing else is redeployed. A client that announces nothing gets a plain
+conversation with no rover in its context, which is what `--rover none` is for.
 
-`--list` shows the PipeWire nodes, `--mic` / `--speaker` take a node name, and
-`--mic auto` falls back to whatever `wpctl set-default` points at.
+The daemon is probed once at startup and the tools are offered only if it
+answers. Tools that cannot reach the rover are worse than no tools: the model
+says out loud that it has switched the lights on, and nothing happens.
 
-Four things about that client are not obvious:
+Measured over the LAN, answering with a stub board rather than the rover, so
+these are the model's costs with no serial time in them:
 
-- **It has no `sounddevice` and no `websockets`.** `apt` on the rover needs a
-  password we do not have from a script, so both are avoided rather than
-  installed: audio goes through `pw-record`/`pw-play` pipes, and
-  [wsclient.py](wsclient.py) is ~180 lines of RFC 6455. PortAudio would not have
-  helped anyway — there is no ALSA-to-PipeWire bridge on the box, so it would be
-  talking to raw ALSA and would not see the Bluetooth devices at all.
-- **Client frames are masked with one big-integer XOR.** Masking a 15-second
-  utterance byte-at-a-time is seconds of bytecode on a 700MHz ARM11.
-- **A thread sits in `recv` the whole time, not just during a turn.** uvicorn
-  pings every 20s and hangs up if nothing answers, and a conversation is idle
-  between turns — so reading only while a turn was in flight got the connection
-  closed and the next utterance died with `Broken pipe` about half a minute in.
-  The `websockets` library does this for `talk.py` invisibly; here it is a
-  thread. It is also why a dropped link is noticed while waiting for speech
-  rather than only when there is something to send.
-- **The mic is muted while the assistant speaks**, for the queued audio plus
-  `PLAY_LATENCY_S + MUTE_TAIL_S`, and everything captured during that window is
-  thrown away on unmute. Without it the reply endpoints itself and the two talk
-  over each other forever.
-
-### Measured, on the rover
-
-A turn from the Pi, with the models warm on MEDIA:
-
-| stage | time |
-|---|---|
-| STT | 0.39–0.47s |
-| first audio out | 1.10–1.37s |
-| whole turn | 1.43–1.71s |
-
-Queue-to-heard for the JBL, measured by putting a burst through it and finding
-it in the headset mic:
-
-| | |
-|---|---|
-| stream already running | **151 ms** |
-| stream never played before | **2057 ms** |
-
-That second number is why the speaker is built at startup rather than on the
-first `start` event. Built lazily, the first reply's mute window was short by
-~1.7s, the last sentence was still coming out of the JBL when the mic reopened,
-and the assistant transcribed itself and answered its own question — turn two of
-the first live run was literally `you: What do you need?`.
-
-A2DP also gets slower while the HFP mic is open, which is expected on one radio:
-2s of audio took **2.85s** with the mic shut and **3.51s** with it open. Slower,
-but it does not stall.
-
-### Why playback was choppy
-
-Playback broke up while the Pi looked idle. The cause was **this client reading
-the microphone one 20ms block at a time** — 50 wakeups a second, each with its
-own small numpy allocations. That is enough to make PipeWire, which gets no
-realtime priority on this box, miss its deadline; every miss is one quantum of
-silence spliced into whatever is playing.
-
-How to measure it, since almost every obvious approach here lies:
-
-- **Capture the sink monitor, not a microphone.** `pw-record --target <sink>`
-  silently records a *source* instead. Proved with a known-amplitude tone: peak
-  4356 against the tone's exact 9000. The real thing is
-  `pw-record -P "stream.capture.sink=true" --target <sink>`. An underrun on the
-  monitor is unambiguous — the gap is literal zeros.
-- **Ignore xrun counters.** This client holds `pw-play` open for the whole
-  conversation, so between turns it underruns every quantum by design. A 3s gap
-  scores 3.0 / 0.0213 = 141 "xruns" at every buffer size. It measures silence,
-  not damage.
-- **Play the probe tone with `cat`.** `cat` cannot starve `pw-play`, so any hole
-  in the monitor is caused by whatever else is running.
-
-That harness gives a clean bisection — 15s of `cat`-fed tone, varying only what
-runs alongside it. **Two independent faults, and it took both fixes:**
-
-| running alongside | before | after |
+| said | tool | first audio |
 |---|---|---|
-| nothing | 0 (0.00%) | 0 (0.00%) |
-| an idle `pw-play` stream on the same sink | 0 (0.00%) | — |
-| `pw-record` on the USB mic | 1 (0.27%) | — |
-| `pw-record` on the Bluetooth mic (SCO) | 3 (0.82%) | — |
-| the old 640-byte-at-a-time read loop | 36 (11.72%) | 6 (1.64%) |
-| the whole client | 54 (39.59%) | **0 (0.00%)** |
+| "Please switch the lights on." | `set_lights{"level":255}` | 2.90s |
+| "Are the lights on right now?" | none — answered from history | 1.60s |
+| "Dim them to about half." | `set_lights{"level":128}` | 3.24s |
 
-And on a real spoken turn, measuring the reply the client feeds itself:
+So a tool turn costs about **1.3–1.6s more** than a plain one — a whole second
+decode, not the round trip, which is milliseconds. The card is held across that
+round trip rather than released, because letting another turn interleave between
+a call and its result is worse than leaving the GPU idle for a moment.
 
-| | holes per sentence | longest hole |
+Note the middle row: it answered "are they on?" from the previous exchange
+instead of calling `get_lights`, which is sensible and also means `get_lights` is
+rarely reached. A conversation will therefore keep asserting whatever it last
+set, so if the gamepad has moved the lights since, the answer is confidently
+wrong. That is the same staleness as the tool's own, one step further removed.
+
+### Getting it to actually call them
+
+The first version of this shipped a rover that lied. Asked *"can you switch the
+lights off?"* it answered *"I'm turning the lights off. The headlights are now
+off."* and called nothing — which is indistinguishable from working, right up
+until you look at the rover. Two independent causes, and it took both fixes.
+
+**The wording of the tool prompt.** The original said to use the tools "when you
+are asked to do something they cover", and the model read a question as a
+question. Measured over six samples a cell:
+
+| request | original prompt | current prompt |
 |---|---|---|
-| before | 6.49%, 8.00%, 11.66% | 41-100ms |
-| after | 0.66%, 0.79%, 1.51% | **9ms** |
+| "Hello, can you switch lights off?" | **0/6** | 6/6 |
+| "Can you look to your left?" | **0/6** | 6/6 |
+| "Start following me." | 3/6 | 6/6 |
+| "What is your name?" | 0/6 | 0/6 *(want 0)* |
 
-41ms is one quantum and plainly audible; 9ms is under one and is not. Measure
-the *reply*, not a tone played into the room while the client is listening —
-nothing plays over the speaker while someone is talking to it, so that case is a
-property of the test rig rather than of the rover.
+Zero out of six, at every temperature. What fixed it was saying two things
+explicitly: that a request phrased as a question is still a request, and that it
+has done something *only* if it called a tool — never to claim it switched, moved
+or started anything otherwise.
 
-**Fault one, in this client: it woke too often, and in bursts.** Three separate
-places, all of which had to go:
+**And the temperature.** Whether the model acts turned out to be a sampled
+decision, not a determined one: at 0.7, *"Start following me"* called 3/6. See
+`VOICE_TEMPERATURE` in [server.py](server.py) for the table; the default is now
+0.2. Nothing over-calls at any temperature, so this costs only variety.
 
-- `Recorder._read` asked for one 20ms block at a time — 50 wakeups a second,
-  each with its own small numpy allocations. It now takes whatever `pw-record`
-  offers (~100ms at a time, so no added latency), converts the batch in one
-  numpy call, and hands the endpointer a precomputed RMS so it does none itself.
-- The utterance went out as **one** WebSocket frame, and masking is a single
-  big-integer XOR — a ~500KB integer operation holding the GIL for hundreds of
-  milliseconds, right where the reply is about to play. Split into 32KB frames;
-  the service buffers binary frames until `{"type":"end"}` so it sees no
-  difference. This alone took the holes in a reply from 41-100ms down to 9ms.
-- `Speaker._pump` treated `write()` returning `None` as a broken pipe. On a raw
-  stream `None` means "would block, retry" — so a reply could stop dead partway
-  and every later one be silently dropped, which looked like the speaker cutting
-  out mid-sentence. It retries now, and says so on a real failure rather than
-  dying quietly.
-
-**Fault two, on the box.** PipeWire's `data-loop.0` was not realtime, so it had
-no way to defend that 21ms deadline. `admin` was not in the `pipewire` group, so
-the `rtprio 95` in `/etc/security/limits.d/25-pw-rlimits.conf` never applied.
-Fixed permanently with `usermod -aG pipewire admin` and a reboot — group
-membership is only read at login, and `systemctl --user restart` will not pick it
-up. Check it with `chrt -p` on the *right* thread:
+Both of those were found through `/chat`, which exists for exactly this: text in,
+the *decision* out, no speech synthesised and no tool performed. A spoken attempt
+costs a TTS round trip, a decode and a playback — nine seconds to learn one bit,
+and a bit that is noisy enough that three samples will mislead you. It did:
+mid-investigation a 3-sample spoken test said the new prompt had made things
+worse, and 6-sample text runs said it had taken two cases from 0/6 to 6/6. Do not
+draw conclusions here from single attempts.
 
 ```bash
-for t in /proc/$(pgrep -u admin -x pipewire | head -1)/task/*; do
-    echo "$(cat $t/comm): $(chrt -p $(basename $t) | tr '\n' ' ')"
-done
-# want: data-loop.0: ... SCHED_FIFO ... priority 88
+curl -s -X POST http://media.local:8767/chat -H 'Content-Type: application/json'   -d '{"text": "can you turn the lights off", "tools": [...], "temperature": 0.2}'
+# -> {"reply": "...", "tool_calls": [{"name": "set_lights", "arguments": {"level": 0}}]}
 ```
 
-`ps -eLo cls,rtprio,comm | grep pipewire` does **not** answer this — the thread
-is called `data-loop.0`, so that pattern greps straight past the only one that
-matters, and reports `TS` for the idle main threads instead.
+`system` and `temperature` are overridable per request, which is the point — a
+restart to try one wording costs ~150s, and this way a four-prompt sweep is one
+script.
 
-Blind alleys, recorded so they are not re-run: it is **not** CPU load (a
-deliberate spin loop costs 0–2 holes — a hog competes for throughput, which the
-scheduler handles, while waking 50 times a second competes for latency, which it
-does not); **not** the SCO link, cleared three times over; **not** the pipe size
-(200ms/500ms/1s/2s identical, and widening the pipe to 1MB changed nothing on its
-own); and **not** a missing `rtkit`, which was installed and running throughout,
-so `apt install rtkit` is a no-op — the rlimit was the thing it lacked.
+Four things about this end are not obvious:
 
-### Getting the Bluetooth up
-
-The adapter came up `off-blocked` — an rfkill soft block that `systemd-rfkill`
-had been restoring at every boot. `rfkill` is not installed and `sudo` wants a
-password, but a udev ACL leaves `/dev/rfkill` writable by `admin`, so the block
-can be cleared by writing the 8-byte `struct rfkill_event` directly. After that:
-
-```bash
-bluetoothctl power on
-bluetoothctl connect 20:18:5B:7C:2E:44   # JBL Flip
-bluetoothctl connect 30:53:C1:A4:66:86   # WI-XB400
-```
-
-Both are trusted, so they reconnect on their own when switched on. WirePlumber
-picks `headset-head-unit` with **mSBC** for the WI-XB400, which is 16kHz mono —
-exactly the rate Whisper wants, with no resampling in between. Node names, which
-is what the client addresses:
-
-| device | PipeWire node |
-|---|---|
-| WI-XB400 mic | `bluez_input.30_53_C1_A4_66_86.0` |
-| JBL Flip | `bluez_output.20_18_5B_7C_2E_44.1` |
-
-The Pi 1 runs the CSR dongle, the wifi dongle and the camera off one weakly
-fused USB bus, and an always-open SCO mic keeps the Bluetooth radio busy
-alongside A2DP. If audio breaks up or the wifi drops during a run, that is the
-first thing to suspect — see [docs/hosts.md](../docs/hosts.md).
+- **A tool call is text, and Kokoro will read it out loud.** It has to be caught
+  before the sentence splitter, which is what `_ToolSniffer` in
+  [server.py](server.py) does. It watches for two shapes, because which one
+  arrives depends on the *tokenizer*, not the model: Qwen wraps a call in
+  `<tool_call>` markers, and a streamer built with `skip_special_tokens=True`
+  could eat them before this ever sees them, leaving a bare JSON object as the
+  whole reply. Measured on the deployed tokenizer, the markers **do** survive —
+  they are not special tokens in Qwen3-4B-Instruct-2507 — but both are handled,
+  since that is a property of a model file rather than of this code.
+- **The markers arrive in sub-word pieces.** `<tool` and `_call>` is an ordinary
+  way for one to turn up, so the sniffer holds back any trailing fragment that
+  could still become a marker. Getting this wrong speaks the word "tool" and
+  swallows the rest of the reply.
+- **The last decode of a turn is offered no tools.** Otherwise a model that has
+  decided everything is a tool call spends the whole turn calling them and the
+  user hears nothing, which is indistinguishable from a crash.
+- **`_trim` cuts whole exchanges**, since a turn that called a tool is four
+  messages rather than two, and a call stranded without its result makes the
+  model start narrating plumbing.
 
 ## Protocol
 
 WebSocket at `/ws`. Client → server: binary frames of 16kHz mono s16le, then
 `{"type":"end"}` to close the utterance; `{"type":"reset"}` clears history.
+Optionally `{"type":"hello","tools":[…]}` first, with OpenAI-style function
+schemas, announcing what this client can perform; it is answered with the names
+that were accepted and clears any history, since the tools on offer are part of
+what the model was told.
 
 Server → client, all JSON except the audio:
 
@@ -284,7 +254,14 @@ Server → client, all JSON except the audio:
 | `{"type":"stt","text":…}` | what it heard (`"empty":true` if nothing) |
 | `{"type":"start","rate":24000}` | reply beginning, at this sample rate |
 | `{"type":"text","text":…}` | one sentence, followed by **one binary frame** of its audio |
-| `{"type":"done","stats":{…}}` | turn over, with `stt_ms` / `first_audio_ms` / `total_ms` |
+| `{"type":"tool","id":…,"name":…,"arguments":{…}}` | perform this and answer |
+| `{"type":"done","stats":{…}}` | turn over, with `stt_ms` / `first_audio_ms` / `total_ms` / `tools` |
+
+A tool call is answered with `{"type":"tool_result","id":…,"result":{…}}`, the
+result being whatever JSON object the model should see — including a failure, as
+`{"ok":false,"error":…}`, which it will paraphrase out loud. A client that does
+not answer within `VOICE_TOOL_TIMEOUT` (5s) gets that reported to the model as a
+rover that did not respond, rather than the turn failing.
 
 `GET /health` is what the switcher polls. `POST /say?text=…` returns raw PCM for
 checking a voice without holding a conversation.
@@ -306,19 +283,33 @@ the comments in [server.py](server.py). The ones worth knowing:
   this off costs a ~60s recompile on *every* turn of a conversation, since the
   prompt grows each time. Only worth it if the prompt length is somehow fixed.
 - `VOICE_CACHE_LEN=2048` — the static-cache window, ~12 spoken turns. History is
-  trimmed a whole turn at a time to fit it.
+  trimmed a whole exchange at a time to fit it.
+
+  **This did nothing at all until 2026-08-15.** `apply_chat_template(tokenize=True)`
+  returns a `BatchEncoding` on transformers 5, not a list of ids, so `len()` of it
+  is **2** — the number of keys — and every "does this fit the cache" test read
+  `2 <= 1856` and said yes. No history was ever trimmed. Nothing failed, which is
+  why it went unnoticed: an overlong prompt falls through to the dynamic cache in
+  `_generate` instead, so a long conversation got quietly slower and lost the
+  compiled decode path rather than erroring. `_prompt_len` now unwraps the
+  encoding, and `selftest.py` checks the token count itself rather than only the
+  trimming built on top of it. Anything that measures a prompt should assume this
+  return type has changed under it.
 - `VOICE_TTS_VOICE=af_heart` — any Kokoro voice. The first letter picks the
   language pack, so keep it consistent with the language you are speaking.
 - `VOICE_SYSTEM_PROMPT` — constrains replies to short spoken English. Without it
   the model emits markdown and Kokoro reads the punctuation aloud.
+- `VOICE_TOOL_PROMPT` — appended to that, but only when a client has announced
+  tools. Without it the "if you do not know something, say so" line wins and the
+  model explains that it cannot reach hardware it is in fact holding.
+- `VOICE_MAX_TOOL_CALLS=2` / `VOICE_TOOL_TIMEOUT=5` — how many calls a turn may
+  make before it has to answer in words, and how long the rover gets to perform
+  one. The timeout is not a work budget — a call is a JSON line down a UART — it
+  is how long to wait before telling the model the rover is not answering.
 
-Client knobs are constants at the top of [endpointing.py](endpointing.py), shared
-by both clients: `SPEECH_FACTOR` and `SPEECH_FLOOR` for sensitivity, `HANG_MS`
-for how much silence ends a turn. The rover client adds `PLAY_LATENCY_S` and
-`MUTE_TAIL_S` in [talk_pi.py](talk_pi.py) — how long after the last sample is
-queued the JBL is still audible. Both are deliberately generous: too short and
-the assistant hears itself and answers in a loop, too long only costs a moment
-of responsiveness.
+Client knobs are constants at the top of [endpointing.py](endpointing.py):
+`SPEECH_FACTOR` and `SPEECH_FLOOR` for sensitivity, `HANG_MS` for how much
+silence ends a turn.
 
 Endpointer timing is counted in 20ms blocks rather than wall-clock seconds —
 `sounddevice` delivers in bursts after a scheduling hiccup, and a clock reads
@@ -326,20 +317,19 @@ that burst as a long silence and ends the turn mid-sentence.
 
 ## Checks
 
-`selftest.py` covers the three pieces where a bug is silent rather than loud: the
-sentence splitter, the endpointer, and the WebSocket framing. It has no GPU or
-microphone dependency, and each part skips where its dependencies are absent, so
-run it anywhere:
+`selftest.py` covers the pieces where a bug is silent rather than loud: the
+sentence splitter, the endpointer, history trimming, the sniffer that keeps a
+tool call from being spoken aloud, and the line to the rover daemon. What the
+daemon *does* with a call has its own checks, in
+[rover_daemon/selftest.py](../rover_daemon/selftest.py), which run on the rover.
+It has no GPU or microphone dependency, and each part skips where its
+dependencies are absent, so run it anywhere:
 
 ```bash
-python voice_chat/selftest.py                                        # endpointer + framing
-ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py   # splitter
-ssh admin@rpi 'cd ugv && python3 selftest.py'                        # what the rover runs
+python voice_chat/selftest.py               # endpointer + the rover client
+ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py
+ssh rpi 'cd ugv && python3 selftest.py'     # the daemon's own, on the rover
 ```
-
-The framing checks matter more than they look: a client frame that is not masked,
-or a length field one byte out, makes the server hang up without a word, which
-reads as a network fault rather than a bug.
 
 ## Deploying
 
@@ -350,11 +340,13 @@ scp voice_chat/{server.py,requirements.txt,selftest.py} root@media:/opt/voice_ch
 scp voice_chat/voice-chat.service root@media:/etc/systemd/system/
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 
-scp voice_chat/{endpointing.py,wsclient.py,talk_pi.py,selftest.py} admin@rpi:~/ugv/
+scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/
 ```
 
-The rover copy is flat in `~/ugv/` alongside the face-tracking scripts, which is
-the layout already there; nothing on the Pi needs installing.
+`talk.py`, `endpointing.py` and `rover_tools.py` are not deployed anywhere —
+they run from this repo on whichever desk has the microphone. The rover copy is
+flat in `~/ugv/` alongside the face-tracking scripts, which is the layout already
+there; nothing on the Pi needs installing.
 
 First start downloads ~10GB of weights. Unauthenticated HF Hub requests are rate
 limited to roughly one file per five minutes — set `HF_TOKEN` in the unit if you
