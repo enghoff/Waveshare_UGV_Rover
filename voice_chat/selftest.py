@@ -85,6 +85,40 @@ def test_sentences() -> None:
     check("splits on newlines too", split("One line here.\nAnother line here."),
           ["One line here.", "Another line here."])
 
+    # The first chunk may break at a clause, because it is the only one that
+    # gates first-audio. Here there is no sentence end to be had yet, and
+    # waiting for one would hold the speaker silent for the rest of the reply.
+    check(
+        "first chunk breaks at a clause",
+        split("I can see a desk and a lamp, ", "and a chair behind them."),
+        ["I can see a desk and a lamp,", "and a chair behind them."],
+    )
+    # ...and only the first. Later chunks are already waiting on the speaker
+    # rather than the card, so a clause break there costs prosody for nothing.
+    check(
+        "later chunks do not break at a clause",
+        split("One thing here. Then, later, more text follows here."),
+        ["One thing here.", "Then, later, more text follows here."],
+    )
+    # Too short to speak alone, clause or not.
+    check(
+        "short first clause waits",
+        split("Yes, ", "it is on."),
+        ["Yes, it is on."],
+    )
+    # The same trick _SENTENCE_END uses, for the same reason: a comma inside a
+    # number has no space after it, so it is not a clause boundary.
+    check(
+        "keeps thousands separators intact",
+        split("It is 1,234 metres away"),
+        ["It is 1,234 metres away"],
+    )
+    check(
+        "keeps clock times intact",
+        split("Set the alarm for 3:30 and wait"),
+        ["Set the alarm for 3:30 and wait"],
+    )
+
 
 def test_tool_sniffer() -> None:
     """What keeps a tool call from being read out loud, brace by brace."""
@@ -722,6 +756,73 @@ def test_endpointer() -> None:
     check("adapts to a noisy room", heard, True)
 
 
+def test_speculation() -> None:
+    """Handing the utterance over early, while the hang window still runs.
+
+    The property that makes this safe is the last check here: what is sent
+    early must be a *prefix* of what is confirmed. If that holds, the transcript
+    of the early clip is a transcript of the real utterance and reusing it is
+    not a guess.
+    """
+    try:
+        import numpy as np
+
+        from endpointing import BLOCK, Endpointer
+    except Exception as exc:
+        SKIP.append(f"speculation ({type(exc).__name__}: needs numpy)")
+        return
+
+    rng = np.random.default_rng(1)
+    quiet = lambda: rng.normal(0, 0.001, BLOCK).astype(np.float32)
+    loud = lambda: rng.normal(0, 0.20, BLOCK).astype(np.float32)
+
+    def run(script):
+        """Drive the endpointer exactly as talk.py does; report what it emitted."""
+        ep = Endpointer()
+        utts, guesses, voids, early = [], [], [], []
+        for kind, n in script:
+            for _ in range(n):
+                got = ep.push(quiet() if kind == "q" else loud())
+                if got is not None:
+                    utts.append(got)
+                    early.append(ep.spoke_early)
+                    continue
+                if ep.take_void():
+                    voids.append(True)
+                elif (guess := ep.pending()) is not None:
+                    guesses.append(guess)
+        return utts, guesses, voids, early
+
+    utts, guesses, voids, early = run([("q", 30), ("l", 50), ("q", 40)])
+    check("speaks once per utterance", (len(utts), len(guesses)), (1, 1))
+    check("nothing voided on a clean turn", voids, [])
+    check("confirmed utterance is marked early", early, [True])
+    # The whole point: the early clip is sent before the hang window is out, so
+    # it is shorter than the utterance that follows it.
+    check("early clip is shorter than the confirmed one",
+          len(guesses[0]) < len(utts[0]), True)
+    check("early clip is a prefix of the confirmed one",
+          bool(np.array_equal(guesses[0], utts[0][:len(guesses[0])])), True)
+
+    # A pause mid-sentence. The first speculation is taken back when the speaker
+    # carries on -- and then, once they stop for real, a second one goes out
+    # covering the whole utterance and *that* is the one confirmed. So a pause
+    # costs one wasted transcription, not the benefit: the turn is still early.
+    utts, guesses, voids, early = run(
+        [("q", 30), ("l", 30), ("q", 10), ("l", 30), ("q", 40)])
+    check("a resumed sentence voids the first speculation",
+          (len(utts), len(guesses), voids, early), (1, 2, [True], [True]))
+    check("the second speculation covers the whole utterance",
+          len(guesses[1]) > len(guesses[0]), True)
+    check("...and is still a prefix of what was confirmed",
+          bool(np.array_equal(guesses[1], utts[0][:len(guesses[1])])), True)
+
+    # Below the speech minimum nothing is sent early either -- a keyboard should
+    # not cost a transcription.
+    _utts, guesses, _voids, _early = run([("q", 30), ("l", 4), ("q", 40)])
+    check("a too-short burst is not sent early", len(guesses), 0)
+
+
 def main() -> int:
     test_sentences()
     test_tool_sniffer()
@@ -731,6 +832,7 @@ def main() -> int:
     test_connect_errors()
     test_indicator()
     test_endpointer()
+    test_speculation()
 
     for name in PASS:
         print(f"  ok   {name}")

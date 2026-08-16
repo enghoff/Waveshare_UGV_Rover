@@ -199,11 +199,17 @@ async def _open(url: str):
         raise ServiceUnreachable(f"cannot reach {where}: {error}.\n{start}") from None
 
 
+def _to_pcm16(audio: np.ndarray) -> bytes:
+    """Float samples as the 16kHz mono s16le the service reads."""
+    return (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+
+
 async def converse(
     url: str,
     device: int | None,
     out_device: int | None,
     rover: rover_tools.RoverClient | None,
+    early: bool = True,
 ) -> None:
     blocks: queue.Queue[np.ndarray] = queue.Queue()
     indicator = Indicator()
@@ -222,16 +228,33 @@ async def converse(
         # service holds no catalogue of its own -- it puts whatever it is given
         # into the prompt -- so a service that is too old to understand this
         # never answers, and the wait is what notices.
-        if rover is not None:
-            # Asked for afresh on every connection rather than cached: the daemon
-            # is the authority on what this rover can do, and it may have been
-            # restarted with more tools since the last time anybody looked.
-            tools = await asyncio.to_thread(rover.tools)
-            await ws.send(json.dumps({"type": "hello", "tools": tools}))
-            try:
-                ack = json.loads(await asyncio.wait_for(ws.recv(), HELLO_TIMEOUT_S))
+        #
+        # Sent even when there is no rover and so no tools to declare, because
+        # the ack carries the other half of the negotiation: whether this
+        # service will take an utterance early. Guessing that wrong is not a
+        # missing feature but a corrupt one -- a service that ignores
+        # "speculate" keeps the audio buffered, and the real utterance then
+        # arrives appended to it, so the model is asked a question with its
+        # first half said twice.
+        #
+        # Asked for afresh on every connection rather than cached: the daemon is
+        # the authority on what this rover can do, and it may have been
+        # restarted with more tools since the last time anybody looked.
+        tools = await asyncio.to_thread(rover.tools) if rover is not None else []
+        early_ok = False
+        await ws.send(json.dumps({"type": "hello", "tools": tools}))
+        try:
+            ack = json.loads(await asyncio.wait_for(ws.recv(), HELLO_TIMEOUT_S))
+            # Both ends have to want it. --no-early is the client's half, and it
+            # is here rather than behind an environment variable on the service
+            # because the question it answers -- is speculation costing us
+            # transcripts? -- can only be asked of a real microphone, and the
+            # microphone is on this machine.
+            early_ok = early and bool(ack.get("early"))
+            if tools:
                 print(f"tools: {', '.join(ack.get('tools') or []) or 'none accepted'}")
-            except (asyncio.TimeoutError, ValueError):
+        except (asyncio.TimeoutError, ValueError):
+            if tools:
                 print("  the service did not take the tools; carrying on without them",
                       file=sys.stderr)
         print("just talk. Ctrl-C to quit.\n")
@@ -273,12 +296,27 @@ async def converse(
                 # between a microphone that is on and one that can hear you.
                 indicator.set("hearing" if endpointer.speaking else "listening")
                 if utterance is None:
+                    if early_ok:
+                        # Still inside the hang window. Hand the utterance over
+                        # now so Whisper runs while this loop is counting out
+                        # the rest of it, or take it back if the speaker turned
+                        # out to be pausing rather than finishing.
+                        if endpointer.take_void():
+                            await ws.send(json.dumps({"type": "cancel"}))
+                        elif (guess := endpointer.pending()) is not None:
+                            await ws.send(_to_pcm16(guess))
+                            await ws.send(json.dumps({"type": "speculate"}))
                     continue
 
                 indicator.set("thinking")
-                pcm = (np.clip(utterance, -1.0, 1.0) * 32767).astype("<i2").tobytes()
-                await ws.send(pcm)
-                await ws.send(json.dumps({"type": "end"}))
+                if endpointer.spoke_early:
+                    # Already sent, and already transcribed. The confirmed
+                    # utterance differs only by the trailing silence, so there
+                    # is nothing worth sending again.
+                    await ws.send(json.dumps({"type": "end", "early": True}))
+                else:
+                    await ws.send(_to_pcm16(utterance))
+                    await ws.send(json.dumps({"type": "end"}))
 
                 # Drain one turn's worth of events.
                 while True:
@@ -331,6 +369,13 @@ async def converse(
                             f"  [{name}{json.dumps(arguments)} -> {json.dumps(result)}]")
                         await ws.send(json.dumps(
                             {"type": "tool_result", "id": event.get("id"), "result": result}))
+                    elif kind == "resend":
+                        # The service took this utterance early and no longer
+                        # has the transcript -- cancelled in between, or a
+                        # restart under us. Say it again the ordinary way; the
+                        # audio is still in hand.
+                        await ws.send(_to_pcm16(utterance))
+                        await ws.send(json.dumps({"type": "end"}))
                     elif kind == "error":
                         indicator.say(f"  error: {event['message']}", err=True)
                         break
@@ -354,6 +399,10 @@ def main() -> int:
     parser.add_argument("--output-device", type=int, default=None)
     parser.add_argument("--rover", default="auto", metavar="HOST:PORT",
                         help='the rover daemon; "auto" looks for it, "none" for no tools')
+    parser.add_argument("--no-early", action="store_true",
+                        help="transcribe only after the turn ends, not during the "
+                             "hang window; slower, and the comparison to make if "
+                             "transcripts look wrong")
     parser.add_argument("--list-devices", action="store_true")
     args = parser.parse_args()
 
@@ -385,7 +434,8 @@ def main() -> int:
                   file=sys.stderr)
 
     try:
-        asyncio.run(converse(args.url, args.input_device, args.output_device, rover))
+        asyncio.run(converse(args.url, args.input_device, args.output_device, rover,
+                             not args.no_early))
     except KeyboardInterrupt:
         print("\nbye")
     except ServiceUnreachable as error:

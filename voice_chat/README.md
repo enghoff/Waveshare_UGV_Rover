@@ -65,6 +65,47 @@ rebuilding for every new prompt length, and a conversation's prompt grows every
 turn. `VOICE_COMPILE_DYNAMIC=1` compiles once for a range of lengths instead, and
 `_load()` spends that cost at startup rather than on the first question.
 
+### The table above is the *no tools* case
+
+Measured 2026-08-16 through `/chat`, temperature 0, so the reply — and therefore
+the token count — is identical between runs and a wall-clock difference is a real
+difference. Ten synthetic tool schemas, sized like the rover's:
+
+| tools offered | time to answer |
+|---|---|
+| 0 | 0.24s |
+| 5 | 1.30s |
+| 10 | 1.97s |
+
+The 5- and 10-tool rows return a byte-identical 98-character reply, so the 0.67s
+between them is not decoding — it is prompt processing, about **134ms of prefill
+per tool schema**. Attach the rover's ten and roughly 1.4s of every question is
+spent re-reading schemas that have not changed since the service started. Prefill
+is where int4 hurts, for the reason already written down under `VOICE_INT4_SKIP`:
+weight-only int4 unpacks for the wide GEMMs prefill is made of.
+
+Which is to say the headline number above was measured on the configuration
+nobody runs. A desk with a rover attached was paying ~1.4s a turn that no amount
+of faster decoding would have recovered.
+
+### Where it is now
+
+Same conversation, five referential turns with ten tools attached, `/chat` at
+temperature 0. The answers are **identical** in both columns — that is the check
+that matters, not the timings; a cache that kept the wrong prefix would show up
+as a wrong answer, so the two were diffed rather than eyeballed.
+
+| turn | `VOICE_PREFIX_CACHE=0` | `=1` (default) |
+|---|---|---|
+| 1 (nothing cached yet) | 1.42s | 1.57s |
+| 2 | 1.07s | **0.28s** |
+| 3 | 1.07s | **0.28s** |
+| 4 | 1.15s | **0.34s** |
+| 5 | 1.23s | **0.43s** |
+
+Steady-state turns are ~3.8x faster, and the whole exchange 2x. The first turn is
+*slower* by 0.15s, which is the trade documented under `VOICE_CUDAGRAPHS` below.
+
 ## Running it
 
 The service shares the card with `grounding-dino` and `qwen3-vl` and is not meant
@@ -635,9 +676,61 @@ the comments in [server.py](server.py). The ones worth knowing:
   for Whisper's context to grow; try it only with the vision services stopped.
 - `VOICE_COMPILE=1` — compiled decode, ~46 tok/s against ~12 uncompiled. Falls
   back to eager if compilation fails rather than refusing to start; `/health`
-  reports which it got. Note this service does *not* ask for `reduce-overhead`
-  the way `qwen3-vl.service` does: inductor skips CUDA graphs here anyway
-  ("mutated inputs"), because the static cache is written in place.
+  reports which it got.
+- `VOICE_PREFIX_CACHE=1` — keep the K/V cache between turns and re-prefill only
+  what changed. This is the big one; see [Where it is now](#where-it-is-now) for
+  the numbers and [The table above is the *no tools*
+  case](#the-table-above-is-the-no-tools-case) for why it is the big one.
+
+  Nothing is *assumed* stable. The kept tokens are compared against the new
+  prompt token for token and only the matching head is reused, so a changed
+  system prompt, a different tool set or a history `_trim` has just trimmed all
+  reuse less rather than reusing something wrong. The ids are recorded **after**
+  `generate` returns, never before: a call that dies partway leaves a cache
+  holding some prefix nobody can name, and the honest record for that is
+  "empty".
+
+  Rewinding is `cumulative_length.fill_(keep)` on each layer, not
+  `StaticCache.crop()` — `crop` looks like the API for this and raises, because
+  it delegates to a per-layer crop `StaticLayer` does not implement. `fill_`
+  also keeps the tensor's identity, which matters once a CUDA graph has captured
+  its address.
+- `VOICE_CUDAGRAPHS=1` — capture the decode step as a graph instead of paying
+  several hundred kernel launches a token. This service used to say it could not
+  have these: inductor reports *"skipping cudagraphs due to mutated inputs"*
+  because the static cache is written in place, which is exactly the aliasing a
+  graph cannot normally tolerate. It is safe **here** because the cache is
+  static — the buffers are allocated once and stay at the same addresses — and
+  `torch._inductor.config.triton.cudagraph_support_input_mutation` is how that
+  is asserted. Measured on a 378-character reply with no tools: **1.95s → 1.56s,
+  20% faster.**
+
+  But it is worth nothing while `VOICE_PREFIX_CACHE=1`, measured: 2.481s with
+  graphs against 2.498s without. Passing our own cache loses the compiled decode
+  path, and decode drops from ~60 to ~38 tok/s. That is the trade, and for this
+  service it is not close — a turn with the rover's tools attached goes 1.97s →
+  0.74s, which is far more than the 0.39s the graphs were worth. Turn the prefix
+  cache off and the 20% comes back. **Getting both is unfinished work**, and it
+  is the highest-value thing left here: `_valid_auto_compile_criteria` in
+  transformers accepts any `is_compileable` cache, so there is no obvious reason
+  a kept `StaticCache` should not compile.
+
+  Kept a switch because the failure mode is not a crash. If replies start
+  referring to the previous question, turn this off first.
+- `VOICE_LLM_QUANT=int4` — also takes `nf4`, `none`, or one of `awq` / `gptq` /
+  `checkpoint`, which mean "this checkpoint is already quantized; do not
+  quantize it again" and leave the packing and the kernels to whatever it
+  shipped with.
+
+  That path exists for a speedup this service **cannot currently have**. The
+  fastest 4-bit kernels on sm86 are Marlin's, and they come with an AWQ or GPTQ
+  checkpoint rather than from torchao — but as of 2026-08-16 nobody has
+  published either for `Qwen3-VL-4B-Instruct`. The one official quantization,
+  [`Qwen3-VL-4B-Instruct-FP8`](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-FP8),
+  is no use here: Ampere has no FP8 tensor cores, so it would dequantize to
+  ~8GB of bf16 and not fit. Quantizing one locally with AutoAWQ or
+  llm-compressor is the open route, and worth measuring before assuming it
+  beats tinygemm. Until then this knob is plumbing, not a setting.
 - `VOICE_COMPILE_DYNAMIC=1` — compile once for a range of prompt lengths. Turning
   this off costs a ~60s recompile on *every* turn of a conversation, since the
   prompt grows each time. Only worth it if the prompt length is somehow fixed.
@@ -671,9 +764,48 @@ the comments in [server.py](server.py). The ones worth knowing:
   one. The timeout is not a work budget — a call is a JSON line down a UART — it
   is how long to wait before telling the model the rover is not answering.
 
+- `VOICE_FIRST_CLAUSE=1` / `VOICE_MIN_FIRST=24` — let the **first** chunk of a
+  reply break at a comma rather than waiting for a full stop, above that many
+  characters. Only the first, and the asymmetry is the point: it is the only
+  chunk that gates first-audio, because every later one is already waiting on
+  the speaker rather than on the card. Breaking later chunks early would buy no
+  latency and cost prosody — Kokoro reads a comma-terminated fragment with the
+  wrong intonation, and doing that all reply long is audible. Doing it once is
+  not. The same whitespace lookahead `VOICE_MIN_SENTENCE` uses keeps "1,234"
+  and "3:30" whole.
+
 Client knobs are constants at the top of [endpointing.py](endpointing.py):
 `SPEECH_FACTOR` and `SPEECH_FLOOR` for sensitivity, `HANG_MS` for how much
-silence ends a turn.
+silence ends a turn, and `SPECULATE_AFTER_MS` for the one below.
+
+### Transcribing before the turn is over
+
+`HANG_MS` is 700ms in which the speaker has stopped, the client has not yet
+decided the turn is over, and the card has nothing to do. STT costs 0.18s of
+that, so it is done there instead and the cost disappears behind a wait that was
+happening anyway.
+
+The client sends the utterance-so-far with `{"type":"speculate"}` once
+`SPECULATE_AFTER_MS` of silence has passed, and the server transcribes it and
+holds the text. Then either `{"type":"end","early":true}` — with no audio,
+because the confirmed utterance differs from the one already transcribed only by
+trailing silence — or `{"type":"cancel"}` if the speaker turned out to be
+pausing for thought. A pause therefore costs one wasted transcription, not the
+benefit: a second speculation goes out when they stop for real.
+
+`SPECULATE_AFTER_MS` is 120ms rather than 0 because the endpointer judges
+silence on RMS, and the tail of a trailing fricative can fall under that
+threshold while still being audible. A few blocks of margin keep the "s" on the
+end of a word. It still leaves ~580ms to work in.
+
+Two things keep this from being a way to answer questions nobody asked. The
+property the whole scheme rests on — that what is sent early is a **prefix** of
+what is confirmed — is asserted in [selftest.py](selftest.py) rather than
+assumed. And a client only speculates if the service said `"early": true` in its
+`hello` ack: a service that ignores `speculate` would leave the audio buffered
+and then receive the real utterance appended to it, so the model would be asked
+a question with its first half said twice. That is worse than a missing feature,
+so it is negotiated rather than assumed.
 
 Endpointer timing is counted in 20ms blocks rather than wall-clock seconds —
 `sounddevice` delivers in bursts after a scheduling hiccup, and a clock reads

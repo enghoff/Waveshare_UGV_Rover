@@ -37,6 +37,17 @@ MIN_SPEECH_MS = 250
 # Keep this much audio from before the trigger. Without it the VAD eats the
 # first consonant, and "start" arrives at Whisper as "art".
 PREROLL_MS = 300
+# How far into the hang window to hand the utterance over speculatively, so the
+# GPU can transcribe it while the client is still deciding whether the turn is
+# over. The whole HANG_MS is dead time on the card today, and STT costs 0.18s of
+# it, so this hides the transcription entirely behind a wait that was happening
+# anyway.
+#
+# Not zero: the endpointer decides a block is silence on RMS, and the tail of a
+# trailing fricative can fall below that threshold while still being audible. A
+# few blocks of margin keeps the "s" on the end of a word that Whisper would
+# otherwise have to guess at. It still leaves ~580ms of the window to work in.
+SPECULATE_AFTER_MS = 120
 
 
 class Endpointer:
@@ -62,6 +73,14 @@ class Endpointer:
         self.speech_blocks = 0
         self.hang_blocks = max(1, HANG_MS // BLOCK_MS)
         self.min_speech_blocks = max(1, MIN_SPEECH_MS // BLOCK_MS)
+        self.speculate_blocks = max(1, SPECULATE_AFTER_MS // BLOCK_MS)
+        # A speculation is outstanding: audio has been handed out for an
+        # utterance that has not yet ended.
+        self.speculated = False
+        # The utterance `push` just returned was already sent speculatively, so
+        # whatever was transcribed from it still stands.
+        self.spoke_early = False
+        self._void = False
 
     def push(self, block: np.ndarray, rms: float | None = None) -> np.ndarray | None:
         """Feed one block; returns the utterance when the speaker stops.
@@ -95,6 +114,12 @@ class Endpointer:
         if is_speech:
             self.speech_blocks += 1
             self.silence_blocks = 0
+            if self.speculated:
+                # The speaker paused for thought and carried on, so whatever was
+                # sent ahead is half an utterance. Void it; the caller tells the
+                # server to throw the transcript away.
+                self.speculated = False
+                self._void = True
             return None
 
         self.silence_blocks += 1
@@ -104,18 +129,53 @@ class Endpointer:
         self.speaking = False
         audio = np.concatenate(self.voiced)
         voiced_blocks = self.speech_blocks
+        # Only meaningful for the utterance being returned right now, and read
+        # by the caller immediately after this call.
+        self.spoke_early = self.speculated
+        self.speculated = False
         self.voiced = []
         self.speech_blocks = 0
         self.silence_blocks = 0
         # Count voiced blocks, not elapsed ones: a short word followed by a long
         # think should not qualify as an utterance just because it took a while.
         if voiced_blocks < self.min_speech_blocks:
+            # Unreachable while `pending` refuses to speculate below the same
+            # threshold, since speech_blocks only grows -- but an orphaned
+            # transcript on the server is a silent bug, so do not lean on that.
+            if self.spoke_early:
+                self.spoke_early = False
+                self._void = True
             return None
         return audio
 
+    def pending(self) -> np.ndarray | None:
+        """The utterance so far, once, while the hang window is still running.
+
+        Returns audio exactly once per utterance and only when it already
+        qualifies as speech, so anything handed out here is something the
+        endpointer would go on to confirm unless the speaker resumes.
+        """
+        if self.speculated or not self.speaking or not self.voiced:
+            return None
+        if self.silence_blocks < self.speculate_blocks:
+            return None
+        if self.speech_blocks < self.min_speech_blocks:
+            return None
+        self.speculated = True
+        return np.concatenate(self.voiced)
+
+    def take_void(self) -> bool:
+        """Whether an outstanding speculation has just been invalidated."""
+        void, self._void = self._void, False
+        return void
+
     def reset(self) -> None:
         """Drop any half-heard utterance -- used after the assistant speaks."""
+        if self.speculated:
+            self._void = True
         self.speaking = False
+        self.speculated = False
+        self.spoke_early = False
         self.voiced = []
         self.speech_blocks = 0
         self.silence_blocks = 0

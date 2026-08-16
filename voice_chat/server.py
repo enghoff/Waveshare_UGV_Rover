@@ -102,6 +102,42 @@ COMPILE = os.environ.get("VOICE_COMPILE", "1") not in ("0", "false", "False")
 # static shapes each new length is a fresh ~50s compile. Measured over four
 # turns, static-shape compilation spent 54s, 76s, 71s and 68s; dynamic pays once.
 COMPILE_DYNAMIC = os.environ.get("VOICE_COMPILE_DYNAMIC", "1") not in ("0", "false", "False")
+# Capture the decode step as a CUDA graph, so a token costs one graph launch
+# instead of several hundred kernel launches.
+#
+# Worth it because the card is not the constraint yet: 46 tok/s is 21.7ms a
+# token, while 448 GB/s against 2.5GB of int4 weights is a 5.6ms roofline. The
+# other 16ms is launch latency, and this host pays more of it than most -- media
+# is Ubuntu under WSL2 (see docs/hosts.md), so every launch goes through the
+# Windows WDDM scheduler.
+#
+# Inductor refuses this by default here, reporting "skipping cudagraphs due to
+# mutated inputs (108 instances)": the static cache is written in place, which
+# is exactly the aliasing a graph cannot normally tolerate. It is safe in this
+# one case *because* the cache is static -- the buffers are allocated once and
+# live at the same addresses for the life of the process, which is the property
+# a graph needs. `cudagraph_support_input_mutation` is how that is asserted.
+#
+# Kept a switch because the failure mode is not a crash. Two turns can share a
+# graph and quietly share K/V with it; if replies start referring to the
+# previous question, turn this off first.
+CUDAGRAPHS = os.environ.get("VOICE_CUDAGRAPHS", "1") not in ("0", "false", "False")
+# Keep the K/V cache between turns and re-prefill only what actually changed.
+#
+# Every turn currently re-processes the whole prompt from the first token, and
+# almost all of that prompt is identical to last turn's: the system prompt, the
+# tool schemas, and every exchange before this one. Only the newest user message
+# is new. Measured on this box, that waste is the single largest cost in a turn
+# once a rover is attached -- ~134ms of prefill per tool schema, so ~1.4s for the
+# rover's ten, paid again on every question. Prefill is where int4 hurts (see
+# INT4_SKIP: weight-only int4 has to unpack for the wide GEMMs prefill is made
+# of), which is why the number is that big.
+#
+# The mechanism is a longest-common-prefix compare against the tokens the cache
+# already holds, then StaticCache.crop() down to that point. Nothing is assumed
+# to be stable: what is reused is what is *verified* identical, token for token,
+# so a changed system prompt or a trimmed history simply reuses less.
+PREFIX_CACHE = os.environ.get("VOICE_PREFIX_CACHE", "1") not in ("0", "false", "False")
 MAX_NEW_TOKENS = int(os.environ.get("VOICE_MAX_NEW_TOKENS", "160"))
 # How long a turn may produce nothing before it is called a failure. This is not
 # a budget for slow decoding -- tokens arrive every ~25ms once they start -- it
@@ -235,7 +271,14 @@ _tts = None
 _cache = None
 _quantization = "none"
 _compiled = False
+_graphs = False  # whether the compiled decode step is captured as a CUDA graph
 _image_tokens = IMAGE_TOKENS
+# The K/V cache carried between turns, and the exact tokens it was filled from.
+# The two are only ever written together: a cache whose contents are not
+# described by _kv_ids is worse than no cache at all, because the reuse test
+# would then be comparing against a claim rather than a fact.
+_kv = None
+_kv_ids: list[int] = []
 # Frames posted by whoever holds the camera, waiting to be claimed by the tool
 # result that names them. Small and short-lived by construction -- see /frame.
 _frames: dict[str, tuple[Any, float]] = {}
@@ -250,6 +293,14 @@ def _quant_config():
     """The 4-bit backend to load with, plus the label /health reports."""
     if LLM_QUANT in ("0", "none", ""):
         return None, "none"
+    if LLM_QUANT in ("checkpoint", "awq", "gptq"):
+        # A checkpoint that arrives already quantized carries its own config and
+        # its own kernels, and the only thing this service has to do is not
+        # quantize it a second time. Worth having as a path because the fastest
+        # 4-bit kernels on sm86 are Marlin's, which come with an AWQ or GPTQ
+        # checkpoint rather than from torchao -- see the README for why none of
+        # them is loadable here yet.
+        return None, f"{LLM_QUANT} (from the checkpoint)"
     if LLM_QUANT == "int4":
         from torchao.quantization import Int4WeightOnlyConfig
         from transformers import TorchAoConfig
@@ -274,7 +325,8 @@ def _quant_config():
 
 def _load() -> None:
     global _stt, _llm, _tokenizer, _processor, _tts, _cache
-    global _quantization, _compiled, _image_tokens
+    global _quantization, _compiled, _graphs, _image_tokens
+    global _kv
     if _llm is not None:
         return
 
@@ -339,25 +391,54 @@ def _load() -> None:
         # max_length is what sizes that cache, so pinning it keeps the window
         # fixed at CACHE_LEN instead of being re-derived per prompt, which would
         # recompile on every new input length.
-        _llm.generation_config.cache_implementation = "static"
         _llm.generation_config.max_length = CACHE_LEN
-        _cache = "static"
+        if PREFIX_CACHE:
+            # Owning the cache is the whole point: one that transformers
+            # allocates per call cannot outlive the call, and outliving the call
+            # is what makes the next turn cheap. The cost of taking it over is
+            # that `cache_implementation` may no longer be set -- generate()
+            # rejects being given both -- so this is either/or, not both.
+            from transformers import StaticCache
+
+            _kv = StaticCache(
+                # A vision model's top-level config has no attention shape on
+                # it; the text tower's does.
+                config=_llm.config.get_text_config(),
+                max_cache_len=CACHE_LEN,
+            )
+            _llm.generation_config.cache_implementation = None
+            _cache = "static (kept between turns)"
+        else:
+            _llm.generation_config.cache_implementation = "static"
+            _cache = "static"
         if COMPILE:
             # transformers wraps only the decode step; prefill stays eager, so a
             # variable-length prompt does not trigger a recompile every turn.
             # Compilation is an optimization, so a failure here degrades to eager
             # rather than taking the service down -- /health reports which it got.
             try:
-                # No mode="reduce-overhead": it asks for CUDA graphs, and this
-                # model does not get them anyway -- inductor reports "skipping
-                # cudagraphs due to mutated inputs (108 instances)" because the
-                # static cache is written in place. Asking for them costs capture
-                # attempts and buys nothing; the 46 tok/s comes from the fused
-                # inductor kernels, which the default mode also gives.
+                # "reduce-overhead" is what asks for CUDA graphs. On its own it
+                # gets none -- inductor skips them because the static cache is
+                # written in place -- so the flag below is the half that makes
+                # the mode mean anything. See CUDAGRAPHS for why that is sound
+                # here and what it looks like when it is not.
+                mode = None
+                if CUDAGRAPHS:
+                    from torch._inductor import config as inductor_config
+
+                    try:
+                        inductor_config.triton.cudagraph_support_input_mutation = True
+                        mode = "reduce-overhead"
+                    except AttributeError:
+                        # Older inductor without the knob. Fused kernels only,
+                        # which is what this service ran on before.
+                        print("[voice] no cudagraph_support_input_mutation; "
+                              "staying with fused kernels only", flush=True)
                 _llm.generation_config.compile_config = CompileConfig(
-                    fullgraph=True, dynamic=COMPILE_DYNAMIC
+                    fullgraph=True, dynamic=COMPILE_DYNAMIC, mode=mode
                 )
                 _compiled = True
+                _graphs = mode is not None
             except Exception as exc:
                 print(f"[voice] compile unavailable, staying eager: {exc}", flush=True)
 
@@ -367,7 +448,8 @@ def _load() -> None:
     print(
         f"[voice] loaded in {t_tts - t0:.1f}s "
         f"(stt {t_stt - t0:.1f}s, llm {t_llm - t_stt:.1f}s, tts {t_tts - t_llm:.1f}s) "
-        f"quant={_quantization} compile={_compiled} dynamic={COMPILE_DYNAMIC}"
+        f"quant={_quantization} compile={_compiled} dynamic={COMPILE_DYNAMIC} "
+        f"cudagraphs={_graphs}"
         + (f" vision={LLM_MODEL} image={_image_tokens} tokens" if VISION else ""),
         flush=True,
     )
@@ -635,22 +717,51 @@ _SENTENCE_END = re.compile(r"(?<=[.!?…\n])(?=\s|$)")
 # keep buffering.
 _MIN_SENTENCE = int(os.environ.get("VOICE_MIN_SENTENCE", "12"))
 
+# A clause ends at , ; or : followed by whitespace. Requiring the whitespace is
+# what keeps "1,234" and "at 3:30" whole, the same trick _SENTENCE_END uses.
+_CLAUSE_END = re.compile(r"(?<=[,;:])(?=\s)")
+# Only the *first* chunk of a reply is allowed to break at a clause, and only
+# above this length. The reasoning is asymmetric on purpose: the first chunk is
+# the only one that gates first-audio, because every later one is spoken while
+# the model is still decoding and is already waiting on the speaker, not the
+# card. So splitting later chunks early buys no latency and costs prosody --
+# Kokoro reads a comma-terminated fragment with the wrong intonation, and doing
+# that throughout a reply is audible. Doing it once, at the head, is not.
+_MIN_FIRST = int(os.environ.get("VOICE_MIN_FIRST", "24"))
+FIRST_CLAUSE = os.environ.get("VOICE_FIRST_CLAUSE", "1") not in ("0", "false", "")
+
+
+def _split_once(buf: str, first: bool) -> tuple[str | None, str]:
+    """Take one speakable chunk off the front of `buf`, or report there is none.
+
+    Returns `(head, rest)`, with `head` None when nothing may be spoken yet.
+    """
+    parts = _SENTENCE_END.split(buf, maxsplit=1)
+    if len(parts) == 2 and len(parts[0].strip()) >= _MIN_SENTENCE:
+        return parts[0].strip(), parts[1]
+    # A sentence end that was too short to speak alone falls through to here
+    # rather than ending the search: on the first chunk a later comma may still
+    # give something long enough, and "Yes. I can see a chair," is both speakable
+    # and half a second earlier than waiting for the sentence after it.
+    if first and FIRST_CLAUSE:
+        parts = _CLAUSE_END.split(buf, maxsplit=1)
+        if len(parts) == 2 and len(parts[0].strip()) >= _MIN_FIRST:
+            return parts[0].strip(), parts[1]
+    return None, buf
+
 
 def _sentences(stream: Iterator[str]) -> Iterator[str]:
     """Regroup a token stream into speakable sentences as they complete."""
     buf = ""
+    first = True
     for piece in stream:
         buf += piece
         while True:
-            parts = _SENTENCE_END.split(buf, maxsplit=1)
-            if len(parts) < 2:
+            head, buf = _split_once(buf, first)
+            if head is None:
                 break
-            head, buf = parts[0], parts[1]
-            if len(head.strip()) < _MIN_SENTENCE:
-                # Too short to speak alone -- glue it back onto what follows.
-                buf = head + buf
-                break
-            yield head.strip()
+            yield head
+            first = False
     if buf.strip():
         yield buf.strip()
 
@@ -850,6 +961,11 @@ def _trim(
     return history
 
 
+def _pcm(buf: bytearray) -> np.ndarray:
+    """The client's 16kHz mono s16le buffer as float32 in [-1, 1]."""
+    return np.frombuffer(bytes(buf), dtype="<i2").astype(np.float32) / 32768.0
+
+
 def _transcribe(pcm: np.ndarray) -> str:
     segments, _info = _stt.transcribe(
         pcm,
@@ -861,6 +977,43 @@ def _transcribe(pcm: np.ndarray) -> str:
         condition_on_previous_text=False,
     )
     return "".join(seg.text for seg in segments).strip()
+
+
+def _reuse_prefix(ids: list[int], kwargs: dict[str, Any]) -> None:
+    """Point this call at the kept cache, keeping whatever prefix still matches.
+
+    The comparison is token for token against what the cache is *known* to hold,
+    so a changed system prompt, a trimmed history or a different tool set is not
+    a special case -- each simply reuses less.
+    """
+    global _kv_ids
+
+    keep = 0
+    for held, wanted in zip(_kv_ids, ids):
+        if held != wanted:
+            break
+        keep += 1
+    # Leave generate at least one token to forward: a prompt served entirely
+    # from cache has nothing to run the first decode step from.
+    keep = min(keep, len(ids) - 1)
+    # Rewinding is done by writing the length back, not by dropping anything:
+    # a static cache's buffers are allocated once and the first `keep` positions
+    # still hold what was written there, so moving the write cursor back is the
+    # whole operation. StaticCache.crop() looks like the API for this and is
+    # not -- it delegates to a per-layer crop that StaticLayer does not
+    # implement, and raises. In-place `fill_` also keeps the tensor's identity,
+    # which matters once CUDA graphs have captured its address.
+    for layer in _kv.layers:
+        # Untouched on the first turn, when nothing has been written yet and
+        # `keep` is 0 in any case.
+        if layer.is_initialized:
+            layer.cumulative_length.fill_(keep)
+    kwargs["past_key_values"] = _kv
+    # Claim nothing until the call has actually written it. generate() is about
+    # to fill this cache, and if it raises partway the contents describe some
+    # prefix nobody can name -- so the honest record until it returns is "empty",
+    # which costs the next turn a full prefill and cannot corrupt it.
+    _kv_ids = []
 
 
 def _generate(
@@ -920,11 +1073,21 @@ def _generate(
         top_p=0.9,
         pad_token_id=_tokenizer.eos_token_id,
     )
-    # A prompt that would overrun the static window falls back to the dynamic
-    # cache -- correct, just slower -- rather than truncating the conversation.
-    # _trim keeps this rare, but a single very long first utterance can still
-    # reach it.
-    if _cache is not None and inputs["input_ids"].shape[-1] + MAX_NEW_TOKENS > CACHE_LEN:
+    prompt_ids: list[int] = []
+    overlong = inputs["input_ids"].shape[-1] + MAX_NEW_TOKENS > CACHE_LEN
+    if PREFIX_CACHE and _kv is not None:
+        # A prompt that would overrun the window is handed no cache at all, and
+        # transformers falls back to a dynamic one for that call. The kept cache
+        # is left untouched rather than reset, so the *next* turn -- which _trim
+        # will have brought back under the limit -- still reuses its prefix.
+        if not overlong:
+            prompt_ids = inputs["input_ids"][0].tolist()
+            _reuse_prefix(prompt_ids, kwargs)
+    elif _cache is not None and overlong:
+        # A prompt that would overrun the static window falls back to the
+        # dynamic cache -- correct, just slower -- rather than truncating the
+        # conversation. _trim keeps this rare, but a single very long first
+        # utterance can still reach it.
         kwargs["cache_implementation"] = None
 
     # generate() runs on a worker so its tokens can be consumed as they land, but
@@ -934,8 +1097,15 @@ def _generate(
     failure: list[BaseException] = []
 
     def run() -> None:
+        global _kv_ids
         try:
             _llm.generate(**kwargs)
+            if kwargs.get("past_key_values") is not None:
+                # Written, so now it can be claimed -- and only the prompt is
+                # claimed, though the cache also holds the reply that followed
+                # it. Describing less than is there is always safe; describing
+                # more is the bug this ordering exists to prevent.
+                _kv_ids = prompt_ids
         except BaseException as exc:  # noqa: BLE001 -- re-raised below
             failure.append(exc)
             streamer.end()
@@ -998,9 +1168,10 @@ def health() -> dict[str, Any]:
         "quantization": _quantization,
         # As with the vision services, `compile` and `cache` report what is
         # actually in force, not what was requested.
-        "cache": "static" if _cache is not None else "dynamic",
+        "cache": _cache or "dynamic",
         "cache_len": CACHE_LEN if _cache is not None else None,
         "compiled": _compiled,
+        "cudagraphs": _graphs,
         "in_rate": STT_RATE,
         "out_rate": TTS_RATE,
         # What a client has to know before it offers a tool that takes a
@@ -1226,12 +1397,20 @@ async def _run_turn(
     ws: WebSocket,
     history: list[dict[str, Any]],
     tools: list[dict[str, Any]],
-    pcm: np.ndarray,
+    pcm: np.ndarray | None,
+    heard: str | None = None,
 ) -> None:
-    """One utterance in, one spoken reply out, with any tool calls in between."""
+    """One utterance in, one spoken reply out, with any tool calls in between.
+
+    `heard` short-circuits the transcription: the client sent this utterance
+    ahead during its hang window and the text is already known. `pcm` is then
+    None, because there is nothing left to do with the audio.
+    """
     t0 = time.perf_counter()
     async with _gpu_lock:
-        heard = await asyncio.to_thread(_transcribe, pcm)
+        early = heard is not None
+        if not early:
+            heard = await asyncio.to_thread(_transcribe, pcm)
         t_stt = time.perf_counter()
         if not heard:
             await ws.send_json({"type": "stt", "text": "", "empty": True})
@@ -1312,7 +1491,12 @@ async def _run_turn(
             "type": "done",
             "text": reply,
             "stats": {
+                # Zero when the client sent the utterance ahead: the cost was
+                # real, it was just paid during the hang window. Reported as a
+                # flag rather than folded into the number, so a turn that got
+                # STT for free is not confused with one where Whisper was fast.
                 "stt_ms": int((t_stt - t0) * 1000),
+                "stt_early": early,
                 "first_audio_ms": int(((first_audio or time.perf_counter()) - t0) * 1000),
                 "total_ms": int((time.perf_counter() - t0) * 1000),
                 "tools": used,
@@ -1331,11 +1515,25 @@ async def ws_endpoint(ws: WebSocket) -> None:
     Server -> client: JSON events, with each {"type":"text"} followed by one
     binary frame of 24kHz mono s16le holding that sentence, plus {"type":"tool"}
     for a call the client is to make and answer with {"type":"tool_result"}.
+
+    A client may also send the utterance *early*, while it is still counting out
+    its hang window, so that transcription happens on a card that would be idle
+    anyway: binary frames then {"type":"speculate"}, followed by either
+    {"type":"cancel"} if the speaker turned out to be mid-sentence, or
+    {"type":"end","early":true} with no audio to confirm it. If the held
+    transcript is gone by then the server answers {"type":"resend"} and the
+    client falls back to the ordinary road. A client that does none of this is
+    unaffected -- the plain path is untouched.
     """
     await ws.accept()
     history: list[dict[str, Any]] = []
     tools: list[dict[str, Any]] = []
     buf = bytearray()
+    # The transcript of an utterance the client sent ahead, held until it says
+    # whether the turn really ended. None means nothing is held; "" means
+    # something was transcribed and it came to nothing, which is a different
+    # answer and must not be confused with the first.
+    held: str | None = None
     try:
         while True:
             msg = await ws.receive()
@@ -1366,16 +1564,60 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 # what the model was told, so a conversation cannot straddle a
                 # change to the set without the earlier half becoming a lie.
                 history.clear()
+                held = None
                 await ws.send_json(
-                    {"type": "hello", "tools": [t["function"]["name"] for t in tools]}
+                    {
+                        "type": "hello",
+                        "tools": [t["function"]["name"] for t in tools],
+                        # How a client knows it may send an utterance early. A
+                        # service without this key is one that would buffer the
+                        # speculation and then answer it twice over.
+                        "early": True,
+                    }
                 )
             elif kind == "reset":
                 history.clear()
                 buf.clear()
+                held = None
                 await ws.send_json({"type": "reset"})
-            elif kind == "end":
-                pcm = np.frombuffer(bytes(buf), dtype="<i2").astype(np.float32) / 32768.0
+            elif kind == "speculate":
+                # The speaker has stopped, but the client has not yet decided
+                # the turn is over -- it is counting out the hang window. That
+                # window is dead time on a card with nothing else to do, so
+                # transcribe now and hold the text until the client either
+                # confirms the turn or takes it back.
+                #
+                # Under the GPU lock like any other work: nothing else can be
+                # running, since the person is mid-utterance, but the lock is
+                # what makes that a fact rather than an assumption.
+                pcm = _pcm(buf)
                 buf.clear()
+                held = None
+                if pcm.size >= STT_RATE * 0.3:
+                    async with _gpu_lock:
+                        held = await asyncio.to_thread(_transcribe, pcm)
+            elif kind == "cancel":
+                # The speaker paused and carried on, so what arrived early was
+                # half a sentence. Nothing to say about it; the full utterance
+                # will arrive by the ordinary road.
+                held = None
+            elif kind == "end":
+                if event.get("early"):
+                    # Confirming a speculation, so no audio came with this and
+                    # none is wanted: the confirmed utterance differs from the
+                    # one already transcribed only by trailing silence.
+                    if held is None:
+                        # Cancelled in between, or this connection never saw the
+                        # speculation at all. Ask for the audio rather than
+                        # answering an utterance nobody made.
+                        await ws.send_json({"type": "resend"})
+                        continue
+                    heard, held = held, None
+                    await _run_turn(ws, history, tools, None, heard=heard)
+                    continue
+                pcm = _pcm(buf)
+                buf.clear()
+                held = None
                 # Under ~0.3s is a door slam or a cough, not speech; Whisper
                 # hallucinates fluent sentences out of clips that short.
                 if pcm.size < STT_RATE * 0.3:
