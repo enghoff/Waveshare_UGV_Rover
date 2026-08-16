@@ -24,6 +24,18 @@ client announces what it can do when it connects, those schemas go into the
 prompt, and a call the model makes goes back down the same socket to be
 performed. `talk.py` on a desktop announces nothing and gets a plain
 conversation, with no mention of rover hardware in its context at all.
+
+With VOICE_VISION=1 the reply model is a vision-language one and the
+conversation can hold pictures. The picture does **not** arrive through the
+client. A tool the client performs makes whoever holds the camera POST a JPEG
+to `/frame` here, and the tool result names it; the image then enters the
+history on this side, having gone straight from the camera to this card. That
+is the same path `face-detect` already takes, and it keeps a 35kB frame off the
+desk that only has a microphone on it -- see :func:`frame`.
+
+Vision is a switch, not a rewrite: with it off, this is the text service it has
+always been, down to the model that is loaded. The rollback is
+`VOICE_VISION=0` plus the text model in the unit, and a restart.
 """
 
 from __future__ import annotations
@@ -39,7 +51,7 @@ from typing import Any, Iterator
 
 import numpy as np
 import torch
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 HOST = os.environ.get("VOICE_HOST", "127.0.0.1")
@@ -69,6 +81,14 @@ LLM_MODEL = os.environ.get("VOICE_LLM_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
 LLM_QUANT = os.environ.get("VOICE_LLM_QUANT", "int4")
 INT4_GROUP = int(os.environ.get("VOICE_INT4_GROUP", "128"))
 INT4_PACKING = os.environ.get("VOICE_INT4_PACKING", "tile_packed_to_4d")
+# Modules left in bf16, comma-separated, and only meaningful for a vision model.
+# Straight from /opt/qwen3-vl, where it was measured: int4 is a decode
+# optimization and a prefill pessimization -- weight-only int4 has to unpack for
+# the wide GEMMs prefill is made of -- so quantizing the vision tower costs
+# 0.45s -> 0.90s on a frame to speed up a token loop it takes no part in.
+# Excluding it buys that back for ~0.6GB, and that 0.6GB is the first thing to
+# give back if this does not fit beside Whisper and Kokoro.
+INT4_SKIP = [m for m in os.environ.get("VOICE_INT4_SKIP", "visual").split(",") if m]
 # Attention runs over the whole static window every step whether or not it holds
 # real tokens, so this is sized for a conversation, not for a context record:
 # 2048 is ~12 turns of speech at this verbosity. History is trimmed to fit
@@ -106,6 +126,40 @@ SYSTEM_PROMPT = os.environ.get(
     "reply in one to three short sentences of plain spoken English. Never use "
     "markdown, bullet points, headings, emoji or code. Write numbers and units "
     "as you would say them aloud. If you do not know something, say so briefly.",
+)
+
+# --- Vision ------------------------------------------------------------------
+# Off by default, and off is the text service exactly as it was: nothing below
+# is reached, no processor is loaded, /frame refuses, and no message in a
+# conversation can hold an image. Turning it on means loading a model that can
+# take one -- the two settings go together, and _load says so rather than
+# failing somewhere less obvious.
+VISION = os.environ.get("VOICE_VISION", "0") not in ("0", "false", "False", "")
+# The rover's camera is 640x480 and a frame is ~35kB, so this is a ceiling for
+# anything else that posts, not a resize of the usual case. Vision tokens go as
+# the area, and they are spent out of the same window the conversation lives in.
+VISION_MAX_SIDE = int(os.environ.get("VOICE_VISION_MAX_SIDE", "640"))
+# A posted frame is held only long enough for the turn that asked for it to
+# reach the model. Held by token rather than "the latest one" because two
+# clients could be talking to this at once, and the wrong picture answered
+# confidently is the failure this whole path exists to avoid.
+FRAME_TTL_S = float(os.environ.get("VOICE_FRAME_TTL", "60"))
+MAX_FRAMES = 4
+# What one picture costs in the context window. Measured at load against a frame
+# of the configured size (see :func:`_measure_image_tokens`); this is only the
+# fallback for when that measurement cannot be taken.
+IMAGE_TOKENS = int(os.environ.get("VOICE_IMAGE_TOKENS", "400"))
+# Appended to the system prompt when vision is on and the client announced
+# tools. The model otherwise answers "what can you see" from the conversation,
+# or from nothing, with complete confidence -- the same failure as the rover
+# that said it had switched the lights on.
+VISION_PROMPT = os.environ.get(
+    "VOICE_VISION_PROMPT",
+    " You have no eyes of your own. You can see only a picture that a tool has "
+    "just given you, so if you are asked what you can see, or what something "
+    "looks like, or to read or describe anything in front of you, call the tool "
+    "that takes a picture first and answer from the picture. Describe only what "
+    "is actually in it.",
 )
 
 # --- TTS ---------------------------------------------------------------------
@@ -152,10 +206,16 @@ TOOL_PROMPT = os.environ.get(
 _stt = None
 _llm = None
 _tokenizer = None
+_processor = None  # only with VISION; None keeps every image path unreachable
 _tts = None
 _cache = None
 _quantization = "none"
 _compiled = False
+_image_tokens = IMAGE_TOKENS
+# Frames posted by whoever holds the camera, waiting to be claimed by the tool
+# result that names them. Small and short-lived by construction -- see /frame.
+_frames: dict[str, tuple[Any, float]] = {}
+_frame_seq = 0
 # One turn at a time. The three models share a card and a CUDA stream, and two
 # concurrent turns would interleave into thrash rather than throughput; this is
 # a single-user assistant, so serialising is honest rather than limiting.
@@ -171,7 +231,9 @@ def _quant_config():
         from transformers import TorchAoConfig
 
         cfg = Int4WeightOnlyConfig(group_size=INT4_GROUP, int4_packing_format=INT4_PACKING)
-        return TorchAoConfig(quant_type=cfg), f"int4/{INT4_PACKING}"
+        skip = INT4_SKIP if VISION else []
+        label = f"int4/{INT4_PACKING}" + (f" (bf16: {','.join(skip)})" if skip else "")
+        return TorchAoConfig(quant_type=cfg, modules_to_not_convert=skip or None), label
     if LLM_QUANT == "nf4":
         from transformers import BitsAndBytesConfig
 
@@ -187,13 +249,14 @@ def _quant_config():
 
 
 def _load() -> None:
-    global _stt, _llm, _tokenizer, _tts, _cache, _quantization, _compiled
+    global _stt, _llm, _tokenizer, _processor, _tts, _cache
+    global _quantization, _compiled, _image_tokens
     if _llm is not None:
         return
 
     from faster_whisper import WhisperModel
     from kokoro import KPipeline
-    from transformers import AutoModelForCausalLM, AutoTokenizer, CompileConfig
+    from transformers import AutoConfig, AutoTokenizer, CompileConfig
 
     t0 = time.perf_counter()
     _stt = WhisperModel(STT_MODEL, device=DEVICE, compute_type=STT_COMPUTE)
@@ -201,12 +264,37 @@ def _load() -> None:
 
     quant, _quantization = _quant_config()
     _tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
-    _llm = AutoModelForCausalLM.from_pretrained(
-        LLM_MODEL,
-        dtype=torch.bfloat16,
-        device_map=DEVICE,
-        quantization_config=quant,
-    )
+    if VISION:
+        # Refused here rather than left to fail somewhere less legible: a text
+        # model loaded under VOICE_VISION=1 would start, serve, and then answer
+        # questions about a picture it was never shown -- which is exactly the
+        # confident-and-wrong failure this path is meant to remove.
+        config = AutoConfig.from_pretrained(LLM_MODEL)
+        if not (hasattr(config, "vision_config") or hasattr(config, "vision_encoder")):
+            raise SystemExit(
+                f"VOICE_VISION=1 but {LLM_MODEL} has no vision tower. Set "
+                "VOICE_LLM_MODEL to a vision-language model (Qwen/Qwen3-VL-4B-Instruct) "
+                "or set VOICE_VISION=0.")
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+
+        # The generic class rather than Qwen3VLForConditionalGeneration, so that
+        # trying a different VLM is an environment variable rather than an edit.
+        _processor = AutoProcessor.from_pretrained(LLM_MODEL)
+        _llm = AutoModelForImageTextToText.from_pretrained(
+            LLM_MODEL,
+            dtype=torch.bfloat16,
+            device_map=DEVICE,
+            quantization_config=quant,
+        )
+    else:
+        from transformers import AutoModelForCausalLM
+
+        _llm = AutoModelForCausalLM.from_pretrained(
+            LLM_MODEL,
+            dtype=torch.bfloat16,
+            device_map=DEVICE,
+            quantization_config=quant,
+        )
     _llm.eval()
     t_llm = time.perf_counter()
 
@@ -249,10 +337,14 @@ def _load() -> None:
             except Exception as exc:
                 print(f"[voice] compile unavailable, staying eager: {exc}", flush=True)
 
+    if VISION:
+        _image_tokens = _measure_image_tokens()
+
     print(
         f"[voice] loaded in {t_tts - t0:.1f}s "
         f"(stt {t_stt - t0:.1f}s, llm {t_llm - t_stt:.1f}s, tts {t_tts - t_llm:.1f}s) "
-        f"quant={_quantization} compile={_compiled} dynamic={COMPILE_DYNAMIC}",
+        f"quant={_quantization} compile={_compiled} dynamic={COMPILE_DYNAMIC}"
+        + (f" vision={LLM_MODEL} image={_image_tokens} tokens" if VISION else ""),
         flush=True,
     )
 
@@ -276,6 +368,113 @@ def _load() -> None:
             # A failed warmup is not a failed service -- the real request will
             # raise its own error, and that one has somewhere to be reported to.
             print(f"[voice] warmup failed ({exc}); first turn will be slow", flush=True)
+
+
+def _template():
+    """Whatever owns the chat template: the processor when there is one.
+
+    Multimodal models keep their template on the processor rather than the
+    tokenizer, and the two do not always both have one -- so everything that
+    renders a conversation goes through this rather than reaching for
+    `_tokenizer` and working by luck.
+    """
+    return _processor if _processor is not None else _tokenizer
+
+
+def _image_message(image: Any) -> dict[str, Any]:
+    """The picture, as a turn in the conversation.
+
+    A user turn rather than the tool result it came from: a tool message holds a
+    string, and the templates that would render an image inside one do not
+    agree with each other. This says out loud whose picture it is, because the
+    model is about to be asked what *it* can see.
+    """
+    return {
+        "role": "user",
+        "content": [
+            {"type": "image", "image": image},
+            {"type": "text", "text": "This is the picture your camera has just taken."},
+        ],
+    }
+
+
+def _images(history: list[dict[str, Any]]) -> list[Any]:
+    """Every image in the conversation, in the order the template will want them."""
+    found = []
+    for message in history:
+        content = message.get("content")
+        # Only a list can hold one. Iterating a string here would walk it a
+        # character at a time, on every prompt measurement, for nothing.
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "image" and part.get("image"):
+                found.append(part["image"])
+    return found
+
+
+def _textual(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The same conversation with every picture reduced to the fact that it existed.
+
+    For counting and for trimming, both of which have to render the prompt and
+    neither of which should pay for an image to do it.
+    """
+    plain = []
+    for message in history:
+        content = message.get("content")
+        if not isinstance(content, list):
+            plain.append(message)
+            continue
+        text = " ".join(
+            part.get("text", "") for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+        plain.append({**message, "content": text})
+    return plain
+
+
+def _forget_old_images(history: list[dict[str, Any]]) -> None:
+    """Keep the newest picture and drop the rest, in place.
+
+    A picture costs a few hundred tokens of a window that holds about a dozen
+    spoken turns, so a conversation that looked four times would be mostly
+    photographs of a room nobody is asking about any more. What is left behind
+    is a sentence saying there was one, so the model does not claim to still be
+    looking at something it can no longer see.
+    """
+    keep = max((i for i, m in enumerate(history) if _images([m])), default=None)
+    if keep is None:
+        return
+    for index, message in enumerate(history):
+        if index == keep or not _images([message]):
+            continue
+        history[index] = {
+            "role": message["role"],
+            "content": "(a picture the camera took earlier, which you can no longer see)",
+        }
+
+
+def _measure_image_tokens() -> int:
+    """What one frame of the configured size actually costs in the window.
+
+    Measured rather than assumed, because it decides when history is trimmed and
+    a wrong constant there is the quiet kind of wrong: too low and the prompt
+    overruns the static cache and silently falls back to the dynamic one, too
+    high and a conversation is cut short for room nobody needed.
+    """
+    try:
+        from PIL import Image
+
+        probe = Image.new("RGB", (VISION_MAX_SIDE, VISION_MAX_SIDE * 3 // 4), (128, 128, 128))
+        message = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": "x"}]}]
+        text = _template().apply_chat_template(
+            message, tokenize=False, add_generation_prompt=True)
+        with_image = _processor(text=[text], images=[probe], return_tensors="pt")
+        return max(int(with_image["input_ids"].shape[-1]) - len(_tokenizer(text)["input_ids"]), 1)
+    except Exception as exc:
+        print(f"[voice] cannot measure an image's token cost ({exc}); "
+              f"assuming {IMAGE_TOKENS}", flush=True)
+        return IMAGE_TOKENS
 
 
 # A sentence ends at .?!… or a newline, but only when the next character is
@@ -446,8 +645,8 @@ def _prompt_len(history: list[dict[str, Any]], tools: list[dict[str, Any]] = ())
     :func:`_generate`, losing the compiled decode path and getting slower rather
     than failing. Older versions did return a flat list, so both are handled.
     """
-    encoded = _tokenizer.apply_chat_template(
-        [{"role": "system", "content": SYSTEM_PROMPT}] + history,
+    encoded = _template().apply_chat_template(
+        [{"role": "system", "content": SYSTEM_PROMPT}] + _textual(history),
         tools=list(tools) or None,
         tokenize=True,
         add_generation_prompt=True,
@@ -456,7 +655,11 @@ def _prompt_len(history: list[dict[str, Any]], tools: list[dict[str, Any]] = ())
     # A batch of one, if it was asked to return tensors rather than a flat list.
     if ids and isinstance(ids[0], (list, tuple)):
         ids = ids[0]
-    return len(ids)
+    # Images are counted rather than rendered. A placeholder is one token in the
+    # prompt and several hundred by the time the processor has expanded it, so a
+    # history holding a picture measures nearly empty if this is left out -- and
+    # the whole point of measuring is to know when the window is full.
+    return len(ids) + _image_tokens * len(_images(history))
 
 
 def _trim(
@@ -476,6 +679,11 @@ def _trim(
     narrating tool plumbing out loud.
     """
     budget = CACHE_LEN - MAX_NEW_TOKENS - 32
+    history = list(history)
+    # Before dropping any turn, drop every picture but the newest: a photograph
+    # of a room from four turns ago is worth less than the sentences it would
+    # cost, and this is the cheaper cut of the two.
+    _forget_old_images(history)
     while history:
         if _prompt_len(history, tools) <= budget:
             break
@@ -520,10 +728,14 @@ def _generate(
     from transformers import TextIteratorStreamer
 
     if system is None:
-        system = SYSTEM_PROMPT + (TOOL_PROMPT if tools else "")
+        # The vision line only with tools, since seeing is a tool: a client that
+        # announced none has no way to take a picture, and telling that model it
+        # has a camera is how it starts describing rooms it has never seen.
+        system = SYSTEM_PROMPT + (TOOL_PROMPT + (VISION_PROMPT if VISION else "")
+                                  if tools else "")
     if temperature is None:
         temperature = TEMPERATURE
-    prompt = _tokenizer.apply_chat_template(
+    prompt = _template().apply_chat_template(
         [{"role": "system", "content": system}] + history,
         # The chat template writes the tool instructions and the call format
         # into the prompt itself; there is nothing to hand-roll here, and
@@ -532,7 +744,15 @@ def _generate(
         tokenize=False,
         add_generation_prompt=True,
     )
-    inputs = _tokenizer(prompt, return_tensors="pt").to(_llm.device)
+    images = _images(history) if VISION else []
+    if _processor is not None:
+        # One call for both, because the pictures are not independent of the
+        # text: the processor expands each placeholder in the prompt into as
+        # many tokens as that image actually takes, and the two must agree.
+        inputs = _processor(
+            text=[prompt], images=images or None, return_tensors="pt").to(_llm.device)
+    else:
+        inputs = _tokenizer(prompt, return_tensors="pt").to(_llm.device)
     # The timeout is the backstop for the failure below: if the worker dies in a
     # way that never reaches our handler, the iterator gives up rather than
     # holding the WebSocket open forever. Generous, because a cold compile of the
@@ -618,6 +838,11 @@ def health() -> dict[str, Any]:
         "compiled": _compiled,
         "in_rate": STT_RATE,
         "out_rate": TTS_RATE,
+        # What a client has to know before it offers a tool that takes a
+        # picture: with vision off, /frame refuses and such a tool can only fail.
+        "vision": VISION,
+        "image_tokens": _image_tokens if VISION else None,
+        "frames_held": len(_frames),
         # Tools are per-connection, announced by each client -- this is only the
         # ceiling on what one may announce.
         "max_tools": MAX_TOOLS,
@@ -661,6 +886,78 @@ async def chat(request: dict[str, Any]) -> Any:
 
     async with _gpu_lock:
         return await asyncio.to_thread(run)
+
+
+def _stash(image: Any) -> str:
+    """Hold one frame under a name, and forget the stale ones. Returns the name."""
+    global _frame_seq
+    now = time.monotonic()
+    for token, (_image, at) in list(_frames.items()):
+        if now - at > FRAME_TTL_S:
+            del _frames[token]
+    while len(_frames) >= MAX_FRAMES:
+        del _frames[min(_frames, key=lambda t: _frames[t][1])]
+    _frame_seq += 1
+    token = f"frame-{_frame_seq}"
+    _frames[token] = (image, now)
+    return token
+
+
+def _decode_frame(data: bytes) -> Any:
+    """JPEG bytes -> an image the model can be shown, downscaled if it is huge."""
+    import io
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(data))
+    image.load()  # decode here, so a truncated frame fails here and not mid-turn
+    image = image.convert("RGB")
+    if max(image.size) > VISION_MAX_SIDE:
+        scale = VISION_MAX_SIDE / max(image.size)
+        image = image.resize((max(int(image.width * scale), 1),
+                              max(int(image.height * scale), 1)))
+    return image
+
+
+@app.post("/frame")
+async def frame(request: Request) -> Any:
+    """One JPEG from whoever holds a camera, kept until a tool result claims it.
+
+    This is the whole reason a picture can reach the model at all. The camera is
+    on the rover, the microphone is on a desk, and the conversation is here --
+    so the frame goes straight from the rover to this card, exactly as it
+    already does to `face-detect`, rather than being carried through the client
+    that only ever wanted to talk. What crosses the client is the *name* the
+    frame was given, in an ordinary tool result.
+
+        POST /frame   body: one JPEG
+          -> {"ok": true, "image": "frame-7", "w": 640, "h": 480}
+
+    Decoded here rather than at the point of use, so that a truncated frame --
+    which is what a camera that has only just been opened produces -- is
+    reported to the rover, which can take another one, instead of failing in
+    the middle of somebody's sentence.
+    """
+    if not VISION:
+        return JSONResponse(
+            {"ok": False,
+             "error": "this service is not running a vision model; "
+                      "set VOICE_VISION=1 and a vision-language VOICE_LLM_MODEL"},
+            status_code=409,
+        )
+    data = await request.body()
+    if not data:
+        return JSONResponse({"ok": False, "error": "empty body; expected one JPEG"},
+                            status_code=400)
+    try:
+        image = await asyncio.to_thread(_decode_frame, data)
+    except Exception as exc:
+        return JSONResponse(
+            {"ok": False, "error": f"not a decodable image: {type(exc).__name__}"},
+            status_code=400)
+    token = _stash(image)
+    return {"ok": True, "image": token, "w": image.width, "h": image.height,
+            "bytes": len(data)}
 
 
 @app.post("/say")
@@ -799,6 +1096,21 @@ async def _run_turn(
 
             used += 1
             result = await _run_tool(ws, call, used)
+            # A result naming a frame is a picture that arrived by the other
+            # road: the rover posted it to /frame while this call was in
+            # flight, and the name is how the two are tied together. Claimed
+            # rather than copied, so the same frame cannot be shown twice.
+            picture = _frames.pop(result["image"], (None, 0))[0] if (
+                VISION and isinstance(result.get("image"), str)) else None
+            if picture is not None:
+                result = {k: v for k, v in result.items() if k != "image"}
+            elif isinstance(result.get("image"), str):
+                # The rover believes it sent one and this service does not have
+                # it. Say so in the result: the model then tells the user it
+                # could not see rather than inventing what was in front of it.
+                result = {**{k: v for k, v in result.items() if k != "image"},
+                          "ok": False,
+                          "error": "the picture did not arrive; nothing was seen"}
             # Recorded as a call and a result rather than as prose, so the model
             # sees its own action in the form it was trained on -- and so the
             # next turn can answer "are they on?" from the history.
@@ -810,6 +1122,8 @@ async def _run_turn(
                 }
             )
             history.append({"role": "tool", "content": json.dumps(result)})
+            if picture is not None:
+                history.append(_image_message(picture))
             history[:] = _trim(history, tools)
 
     reply = " ".join(spoken)

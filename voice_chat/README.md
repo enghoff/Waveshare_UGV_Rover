@@ -8,9 +8,12 @@ speakers stay on whatever machine you are sitting at.
   ------------------------------        ---------------------------
   mic -> VAD/endpointing --16k s16le-->  faster-whisper distil-large-v3
                                               |  text
-                                         Qwen3-4B-Instruct (int4)
+                                         Qwen3-VL-4B-Instruct (int4)
                                               |  sentences, streamed
   speakers <-- playback <--24k s16le---  Kokoro-82M
+
+  the rover ------------ one JPEG, POST /frame -----------^
+     (only when the model asks to look; never via the desk)
 ```
 
 One client, [talk.py](talk.py), wherever there is a microphone. Endpointing —
@@ -18,9 +21,10 @@ deciding the speaker has stopped — is in [endpointing.py](endpointing.py) besi
 it rather than on the GPU; see below for why.
 
 It also carries **tools**: the model can switch the headlights, aim the camera,
-count the people it can see and start or stop face tracking. None of that happens
-here or on the desk — it is performed by [rover_daemon/](../rover_daemon/) on the
-rover, which owns the hardware. See [Tools](#tools).
+look through it, count the people it can see and start or stop face tracking.
+None of that happens here or on the desk — it is performed by
+[rover_daemon/](../rover_daemon/) on the rover, which owns the hardware. See
+[Tools](#tools) and [Seeing](#seeing).
 
 ## Why it is split here
 
@@ -264,6 +268,79 @@ Four things about this end are not obvious:
   messages rather than two, and a call stranded without its result makes the
   model start narrating plumbing.
 
+## Seeing
+
+With `VOICE_VISION=1` the reply model is `Qwen3-VL-4B-Instruct` and the rover can
+be asked what it can see. The interesting part is not the model, it is where the
+picture goes:
+
+```
+  rpi (the camera)                desk (talk.py)              media (this)
+  ----------------                --------------              ------------
+                       <--{"call":"look"}--  tool call  <--{"type":"tool"}--
+  one MJPEG frame ------------ POST /frame ------------------------> held as
+       (~35 kB)                                                     "frame-7"
+                       --{"ok":true,"image":"frame-7"}--> tool_result -->  |
+                                                        claimed by the turn |
+  speakers  <--------- "A desk with two monitors on it." <-----------------+
+```
+
+**The image never touches the client.** It goes straight from the rover to this
+card, the same road [face_detect](../face_detect/) frames already take, and what
+crosses the desk is the *name* it was filed under, in an ordinary tool result.
+That is why the machine with the microphone needs no new code at all: `talk.py`
+is unchanged, because to it `look` is a tool like `set_lights`.
+
+Frames are decoded at `POST /frame` rather than at the point of use, so the
+half-frame a just-opened camera gives is reported to the rover — which can take
+another one — instead of failing in the middle of somebody's sentence. A frame
+is held under its name for 60s and at most four at a time; a name is claimed
+once, so the same picture cannot be shown twice.
+
+Only the newest picture stays in the conversation. Each one costs a few hundred
+tokens of a window that holds about a dozen spoken turns, so older ones become
+the sentence *"(a picture the camera took earlier, which you can no longer
+see)"* — enough that the model knows it looked and does not claim to still be
+looking. What one costs is measured at startup against a frame of the configured
+size rather than assumed, because that number is what decides when history is
+trimmed, and a wrong constant there fails silently: too low and the prompt
+overruns the static cache and quietly falls back to the dynamic one.
+
+`look` is offered by the rover, not by this service — as with every other tool,
+nothing here knows what a rover is. The daemon adds it only when started with
+`--vision`, since a picture with nowhere to go is a tool that can only fail.
+
+### Rolling it back
+
+Two independent switches, and neither needs a deploy:
+
+```bash
+# the model: text again, on the box
+ssh root@media 'sed -i "s/^Environment=VOICE_LLM_MODEL=.*/Environment=VOICE_LLM_MODEL=Qwen\/Qwen3-4B-Instruct-2507/; s/^Environment=VOICE_VISION=.*/Environment=VOICE_VISION=0/" /etc/systemd/system/voice-chat.service'
+ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
+
+# the tool: drop --vision from the rover's crontab line, then
+ssh rpi 'pkill -f ugv/rover_daemon.py'      # run_daemon.sh restarts it
+```
+
+With `VOICE_VISION=0` this is the text service it always was: no processor is
+loaded, `/frame` answers 409 with a sentence saying why, and no message in a
+conversation can hold an image. Both models stay in the HF cache on the box, so
+the swap either way costs a restart (~150s) and no download. `curl
+media.local:8767/health` reports `vision`, and the model it is actually running.
+
+If it starts but does not fit — the card has ~2.1GB free with the text model
+loaded and the vision one wants most of that — the order to give ground in is
+`VOICE_INT4_SKIP=` (quantize the vision tower too, ~0.6GB, and prefill on a
+frame goes 0.45s → 0.90s), then `VOICE_CACHE_LEN=2048`, then a smaller
+`VOICE_STT_MODEL`.
+
+**The tool-calling measurements below were taken on Qwen3-4B-Instruct-2507 and do
+not transfer for free.** Whether a model acts on "can you turn the lights off"
+was a sampled decision on that one, and the prompt wording that fixed it was
+found through `/chat`. Re-run that sweep against the vision model before
+trusting it — six samples a cell, not three.
+
 ## Protocol
 
 WebSocket at `/ws`. Client → server: binary frames of 16kHz mono s16le, then
@@ -290,7 +367,9 @@ not answer within `VOICE_TOOL_TIMEOUT` (5s) gets that reported to the model as a
 rover that did not respond, rather than the turn failing.
 
 `GET /health` is what the switcher polls. `POST /say?text=…` returns raw PCM for
-checking a voice without holding a conversation.
+checking a voice without holding a conversation. `POST /frame` takes one JPEG
+from whoever holds a camera and answers with the name it is held under, which is
+what a `look`-shaped tool result carries back — see [Seeing](#seeing).
 
 ## Tuning
 
@@ -298,7 +377,10 @@ Server knobs are environment variables in
 [voice-chat.service](voice-chat.service); the reasoning behind each default is in
 the comments in [server.py](server.py). The ones worth knowing:
 
-- `VOICE_LLM_MODEL` — 4B by default. 8B at int4 fits (~5GB) but leaves no room
+- `VOICE_LLM_MODEL` / `VOICE_VISION` — which model answers, and whether it can be
+  shown a picture. They go together: vision on with a text model refuses to
+  start rather than serving a rover that describes rooms it never saw. See
+  [Seeing](#seeing) for the rollback. 8B at int4 fits (~5GB) but leaves no room
   for Whisper's context to grow; try it only with the vision services stopped.
 - `VOICE_COMPILE=1` — compiled decode, ~46 tok/s against ~12 uncompiled. Falls
   back to eager if compilation fails rather than refusing to start; `/health`
@@ -364,6 +446,8 @@ Source of truth is this directory; the guest copy is not authoritative.
 ```bash
 scp voice_chat/{server.py,requirements.txt,selftest.py} root@media:/opt/voice_chat/
 scp voice_chat/voice-chat.service root@media:/etc/systemd/system/
+# pillow is new with vision; the rest of the venv is unchanged.
+ssh root@media 'VIRTUAL_ENV=/opt/voice_chat/.venv /root/.local/bin/uv pip install pillow'
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 
 scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/

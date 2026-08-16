@@ -12,6 +12,7 @@ corrupting each other.
   voice-chat  <--speech--  talk.py  --TCP 8769-->  rover_daemon.py
   face-detect <---------------- JPEG ------------- | camera
                               boxes -------------> | UART -> ESP32
+  voice-chat  <------- JPEG, POST /frame ---------- | (only with --vision)
 ```
 
 That was not a hypothetical. `talk_pi.py` held the UART for the headlights while
@@ -27,6 +28,7 @@ JSON on one wire and two processes fighting for one camera.
 | `look_at(pan, tilt)` | aim the camera in degrees; stops tracking first |
 | `center_camera()` | straight ahead and level; stops tracking |
 | `count_faces()` | one look: how many people, and roughly where each is |
+| `look()` | take a picture and show it to the model — only with `--vision` |
 | `start_tracking()` | follow a face, sweeping to find one |
 | `stop_tracking()` | stop, and return the camera to centre |
 | `track_next()` | let go of this person and take the next face |
@@ -36,6 +38,39 @@ JSON on one wire and two processes fighting for one camera.
 carries a copy, so adding a tool is a change to this file and nothing else is
 redeployed. [voice_chat/talk.py](../voice_chat/talk.py) asks on connect and hands
 the answer straight to the model.
+
+That list is built rather than constant, which is how `look` can come and go:
+started without `--vision` there is nowhere to send a picture, so the tool is not
+offered at all — a tool that can only fail is worse than a missing one, and the
+model is not told about a camera it cannot look through. Adding or dropping the
+flag and restarting the daemon is the whole of it; nothing is redeployed and no
+client is restarted, because every client asks again on every connection.
+
+### Looking
+
+`look` takes one frame and POSTs it to the voice service's `/frame`, which holds
+it for the turn that asked. **The picture goes straight to the model's host** —
+it does not travel back through the client holding the conversation, which is on
+a desk and has no use for it. What crosses that desk is the name the frame was
+filed under, in an ordinary tool result. It is the road
+[face_detect](../face_detect/README.md) frames already take, thirty times a
+second, so there is nothing new about it but the port.
+
+Nothing here decodes the picture; decoding one 640×480 JPEG costs 93 ms on this
+machine and the picture is not for us. The one thing it does check is the two
+bytes at the front: a frame read from a stream that was joined mid-picture ends
+at an end-of-image marker without starting at a start-of-image one, and sending
+that fragment would cost a round trip to be told it is not an image.
+
+While tracking is running the loop owns the camera, so `look` sends the loop's
+newest frame — which is the one the camera is actually pointing at — and refuses
+if that frame is more than two seconds old rather than passing off something
+stale as now.
+
+```bash
+ssh rpi 'cd ugv && python3 rover_daemon.py --vision'              # 192.168.1.3:8767
+ssh rpi 'cd ugv && python3 rover_daemon.py --vision media.local:8767'
+```
 
 ## What it cannot do, and will not pretend to
 
@@ -118,7 +153,7 @@ obvious, and a 4B model at int4 produces all of them.
 ## Checks
 
 ```bash
-ssh rpi 'cd ugv && python3 selftest.py'    # 60 checks, no board and no camera
+ssh rpi 'cd ugv && python3 selftest.py'    # 76 checks, no board and no camera
 python rover_daemon/selftest.py            # the same, from the repo
 ```
 

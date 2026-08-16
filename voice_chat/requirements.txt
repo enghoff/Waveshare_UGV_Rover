@@ -27,6 +27,10 @@ misaki[en]
 # Keep the version in step with spacy's minor (3.8.x model for spacy 3.8.x).
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 soundfile
+# Decoding a posted frame, for VOICE_VISION=1. Only the vision path uses it, and
+# it is listed unconditionally rather than as an extra because a service that
+# refuses to start on the switch being flipped is worse than a 3MB wheel.
+pillow
 fastapi
 uvicorn[standard]
 # WebSocket support for uvicorn is in the [standard] extra above; websockets is

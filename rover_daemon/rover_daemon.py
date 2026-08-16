@@ -11,6 +11,17 @@ JSON on one wire, and nothing at all could then also want the camera.
     python3 rover_daemon.py                    # ttyAMA0, camera, detector on MEDIA
     python3 rover_daemon.py --host 192.168.1.22    # board over WiFi instead
     python3 rover_daemon.py --no-camera        # lights and gimbal only
+    python3 rover_daemon.py --vision 192.168.1.3:8767   # ...and it can be looked through
+
+`--vision` adds one tool, `look`, which takes a picture and posts it to the
+voice service's `/frame` so that a vision-language model can be asked about it.
+The frame goes straight from here to that card -- the same road the detector's
+frames already take -- and never through the client holding the conversation.
+It is a flag rather than a default because it only works against a service
+running a model that can take an image: without one, `look` is a tool that can
+only fail, and offering it is worse than not having it. Dropping the flag is
+therefore the whole rollback on this side, since clients ask `list_tools` afresh
+every time they connect.
 
 Clients speak newline-delimited JSON over TCP -- one request, one reply:
 
@@ -65,6 +76,10 @@ DEFAULT_BOARD_HOST = "192.168.1.22"
 # and a transient resolver failure is a frame nobody looked at. Pass
 # --service media.local:8768 if the address ever moves.
 DEFAULT_SERVICE = "192.168.1.3:8768"  # face-detect.service on MEDIA
+# Where a picture goes to be looked at, when --vision is given. By address for
+# the same reason as the detector above: this is on a control path, and a 5s
+# mDNS outlier is a tool call that times out.
+DEFAULT_VISION = "192.168.1.3:8767"  # voice-chat.service on MEDIA
 DEFAULT_DEVICE = "/dev/video0"
 BAUD = 115200
 
@@ -83,6 +98,16 @@ LIGHT_MAX = 255
 # camera off the person it was on, short enough that they are not banished.
 SKIP_FOR_S = 6.0
 SKIP_RADIUS = 1.5
+
+# How long the picture-taking service gets. A frame is ~35kB and the POST is
+# milliseconds on this LAN, but the model host is also the one holding a
+# conversation, so this is sized to outlast a busy moment rather than to be
+# tight. The voice service's own patience for a tool is 12s and includes this.
+VISION_TIMEOUT_S = 6.0
+# A frame this old is not what the camera is looking at any more. Only reached
+# while the tracking loop owns the camera, where the loop's newest frame is used
+# rather than opening a second one -- which is impossible anyway.
+FRAME_STALE_S = 2.0
 
 # The camera is closed this long after the last thing that needed it. Held open
 # briefly because a conversation asking "how many people can you see" twice
@@ -210,6 +235,73 @@ class HttpLink:
     def close(self) -> None:
         with self._lock:
             self._close()
+
+
+class VisionLink:
+    """The voice service's `/frame`, over one kept-open connection.
+
+    Modelled on `track_face_pi.Detector` rather than on anything new: the same
+    machine already POSTs JPEGs to MEDIA thirty times a second, and this is the
+    same POST to a different port. One request at a time, a stale keep-alive
+    costs a retry rather than a picture, and a service that is not there comes
+    back as a failure to report rather than an exception to raise -- the model
+    has to be told it could not see, in words it can repeat.
+    """
+
+    def __init__(self, address: str, timeout: float = VISION_TIMEOUT_S) -> None:
+        import http.client
+
+        self._client = http.client
+        host, _, port = address.partition(":")
+        self.host = host
+        self.port = int(port) if port else 8767
+        self.timeout = timeout
+        self.connection = None
+        self._lock = threading.Lock()
+
+    def describe(self) -> str:
+        return f"http://{self.host}:{self.port}/frame"
+
+    def post(self, jpeg: bytes) -> dict[str, Any]:
+        """Send one frame. Returns the service's answer, or {"ok": false, ...}."""
+        with self._lock:
+            for attempt in (1, 2):
+                try:
+                    if self.connection is None:
+                        self.connection = self._client.HTTPConnection(
+                            self.host, self.port, timeout=self.timeout)
+                        self.connection.connect()
+                        # As in Detector: headers and body are two writes, and
+                        # Nagle can hold the second until the first is acked.
+                        self.connection.sock.setsockopt(
+                            socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    self.connection.request(
+                        "POST", "/frame", body=jpeg,
+                        headers={"Content-Type": "image/jpeg",
+                                 "Content-Length": str(len(jpeg))})
+                    payload = json.loads(self.connection.getresponse().read())
+                except Exception as error:
+                    self.close()
+                    if attempt == 2:
+                        return {"ok": False,
+                                "error": f"could not send the picture to {self.describe()}: "
+                                         f"{type(error).__name__}: {error}"}
+                    continue
+                if not isinstance(payload, dict) or not payload.get("image"):
+                    return {"ok": False,
+                            "error": str(payload.get("error") if isinstance(payload, dict)
+                                         else "the vision service gave no answer")}
+                return {"ok": True, "image": payload["image"],
+                        "w": payload.get("w"), "h": payload.get("h")}
+        return {"ok": False, "error": "unreachable"}
+
+    def close(self) -> None:
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            except Exception:
+                pass
+            self.connection = None
 
 
 def open_link(serial_port: str | None, host: str | None):
@@ -348,6 +440,29 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+# Offered only when --vision is given, since without somewhere to send the
+# picture this can do nothing but fail. Worded for a model that will otherwise
+# answer from its imagination: the failure being designed against is a rover
+# that describes a room it has never looked at, which sounds exactly like one
+# that has.
+LOOK_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "look",
+        "description": (
+            "Take a photograph through the rover's camera and look at it. Call "
+            "this whenever you are asked what you can see, what something is or "
+            "looks like, what is written on something, how many of something "
+            "there are, or to describe your surroundings. It shows you what the "
+            "camera is pointing at right now; it does not move the camera, so "
+            "aim it first if you have been asked to look in a direction. You "
+            "cannot see anything you have not taken a picture of."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+
+
 def _where(face, width: int, height: int) -> dict[str, Any]:
     """One box described the way a person would say it, not in pixels.
 
@@ -375,11 +490,13 @@ class Rover:
     ordered against it rather than interleaved with it.
     """
 
-    def __init__(self, link, service: str, device: str | None, size=(640, 480)) -> None:
+    def __init__(self, link, service: str, device: str | None, size=(640, 480),
+                 vision: str | None = None) -> None:
         self.link = link
         self.service = service
         self.device = device
         self.size = size
+        self.vision = VisionLink(vision) if vision and device else None
 
         self._lock = threading.RLock()
         self.level = 0
@@ -389,6 +506,9 @@ class Rover:
         self._camera = None
         self._camera_used = 0.0
         self._detector = None
+        # The tracking loop's newest frame, kept so that `look` has something to
+        # send while the loop owns the camera. One 35kB JPEG, replaced in place.
+        self._frame: tuple[bytes, float] | None = None
 
         self._tracking = threading.Event()
         self._thread: threading.Thread | None = None
@@ -399,6 +519,17 @@ class Rover:
         self._seen = {"faces": 0, "locked": False, "at": 0.0, "where": []}
 
     # --- the board ----------------------------------------------------------
+
+    def tools(self) -> list[dict[str, Any]]:
+        """What this rover can do, as this rover is currently configured.
+
+        Built rather than constant, because `look` exists only when there is
+        somewhere to send a picture. A tool that cannot reach the hardware it
+        describes is worse than a missing one -- the model says it has done the
+        thing, and nothing happens -- and the same is true of one that cannot
+        reach the model's own host.
+        """
+        return TOOLS + ([LOOK_TOOL] if self.vision is not None else [])
 
     def describe(self) -> str:
         return self.link.describe()
@@ -543,6 +674,56 @@ class Rover:
         where = [_where(face, width, height) for face in faces]
         return {"ok": True, "count": len(faces), "faces": where}
 
+    def _whole_jpeg(self) -> tuple[bytes | None, str]:
+        """One complete frame from the camera, or (None, why).
+
+        Complete is checked rather than assumed. The reader begins mid-stream,
+        so the first end-of-image marker it finds can terminate a *fragment* --
+        which is why `count_faces` tries three times. Here the same fragment is
+        caught two bytes earlier and for free: a whole JPEG starts with the
+        start-of-image marker, and a piece of one does not. Nothing is decoded
+        on this machine; that costs 93 ms here and the picture is not for us.
+        """
+        if self._tracking.is_set():
+            # The loop has the camera. Nothing else can open it, so the honest
+            # answer is the newest frame the loop has seen -- which is also the
+            # frame the camera is actually pointing at.
+            frame = self._frame
+            if frame is None:
+                return None, "tracking is running but has not seen a frame yet"
+            jpeg, at = frame
+            if time.monotonic() - at > FRAME_STALE_S:
+                return None, "tracking is running but its last frame is stale"
+            return jpeg, ""
+        with self._lock:
+            try:
+                camera = self._open_camera()
+            except Exception as error:
+                return None, f"cannot open the camera: {error}"
+            for attempt in range(3):
+                got = camera.latest(timeout=FIRST_FRAME_S if not attempt else 2.0)
+                if got is None:
+                    why = "; ".join(camera.complaints) or "no frame arrived"
+                    return None, f"the camera gave nothing: {why}"
+                if got[0].startswith(b"\xff\xd8"):
+                    return got[0], ""
+        return None, "the camera gave three frames running that were not whole pictures"
+
+    def _tool_look(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.vision is None:
+            return {"ok": False, "error": "this rover cannot show you a picture"}
+        jpeg, why = self._whole_jpeg()
+        if jpeg is None:
+            return {"ok": False, "error": why}
+        # The picture goes straight to the model's host; what comes back is the
+        # name it was filed under, and that name is the whole of this result.
+        # The client between here and there never sees the frame.
+        sent = self.vision.post(jpeg)
+        if not sent.get("ok"):
+            return {"ok": False, "error": sent.get("error", "the picture was not accepted")}
+        return {"ok": True, "image": sent["image"],
+                "note": "the picture is in front of you; describe what is actually in it"}
+
     def _tool_start_tracking(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.device is None:
             return {"ok": False, "error": "this rover has no camera attached"}
@@ -642,6 +823,10 @@ class Rover:
                         break
                     continue
                 frame, exposed_at = got
+                # Kept before the detector is consulted rather than after, so
+                # that `look` still has a picture during the seconds when the
+                # detector is not answering and this loop is only holding still.
+                self._frame = (frame, now)
                 # Clamped: a frame that took a second to arrive must not be
                 # answered with a second's worth of sweep.
                 dt, last_tick = min(now - last_tick, MAX_DT), now
@@ -706,6 +891,7 @@ class Rover:
         finally:
             self._tracking.clear()
             self._seen = {"faces": 0, "locked": False, "at": 0.0, "where": []}
+            self._frame = None
             with self._lock:
                 self._close_camera()
 
@@ -722,6 +908,8 @@ class Rover:
             self._close_camera()
             if self._detector is not None:
                 self._detector.close()
+            if self.vision is not None:
+                self.vision.close()
             self.link.close()
 
 
@@ -742,7 +930,7 @@ class Handler(socketserver.StreamRequestHandler):
             else:
                 name = request.get("call")
                 if name == "list_tools":
-                    reply = {"ok": True, "tools": TOOLS}
+                    reply = {"ok": True, "tools": rover.tools()}
                 elif not isinstance(name, str):
                     reply = {"ok": False, "error": "every request needs a 'call'"}
                 else:
@@ -769,6 +957,10 @@ def main() -> int | str:
                         help=f"the face detector (default {DEFAULT_SERVICE})")
     parser.add_argument("--device", default=DEFAULT_DEVICE, metavar="PATH",
                         help=f"the camera (default {DEFAULT_DEVICE})")
+    parser.add_argument("--vision", nargs="?", default=None, const=DEFAULT_VISION,
+                        metavar="HOST[:PORT]",
+                        help="offer the 'look' tool, posting frames to this vision "
+                             f"service (bare --vision means {DEFAULT_VISION})")
     parser.add_argument("--no-camera", dest="camera", action="store_false",
                         help="lights and gimbal only, for a rover with no camera fitted")
     parser.add_argument("--bind", default=HOST)
@@ -780,7 +972,8 @@ def main() -> int | str:
     except Exception as error:
         return f"Cannot reach the driver board: {error}"
 
-    rover = Rover(link, args.service, args.device if args.camera else None)
+    rover = Rover(link, args.service, args.device if args.camera else None,
+                  vision=args.vision)
     if not rover.probe():
         link.close()
         return f"No answer from the driver board on {link.describe()}. Is it powered?"
@@ -791,7 +984,9 @@ def main() -> int | str:
     server = Server((args.bind, args.port), Handler)
     server.rover = rover
     print(f"rover daemon on {args.bind}:{args.port} -- board {rover.describe()}, "
-          f"camera {args.device if args.camera else 'none'}, detector {args.service}",
+          f"camera {args.device if args.camera else 'none'}, detector {args.service}, "
+          f"vision {rover.vision.describe() if rover.vision else 'off'} "
+          f"({len(rover.tools())} tools)",
           flush=True)
 
     def release_idle_camera() -> None:

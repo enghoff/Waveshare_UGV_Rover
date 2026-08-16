@@ -73,10 +73,14 @@ def test_levels():
 def test_schemas():
     import rover_daemon
 
+    # Every schema this rover could ever offer, whatever it is configured with.
+    # `look` is conditional -- see test_look -- but it is still a schema that has
+    # to have a handler, and the point of this test is that none of them lie.
+    every = rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
     # The schemas cross a network and go into a prompt, so they have to be JSON.
-    json.dumps(rover_daemon.TOOLS)
-    names = [t["function"]["name"] for t in rover_daemon.TOOLS]
-    check("every schema is a function", {t["type"] for t in rover_daemon.TOOLS}, {"function"})
+    json.dumps(every)
+    names = [t["function"]["name"] for t in every]
+    check("every schema is a function", {t["type"] for t in every}, {"function"})
     check("no tool is listed twice", len(set(names)), len(names))
     # The check this file exists for: a schema whose handler is missing fails as
     # "no such tool" mid-conversation rather than here.
@@ -86,7 +90,7 @@ def test_schemas():
     handlers = sorted(m[len("_tool_"):] for m in dir(rover_daemon.Rover)
                       if m.startswith("_tool_"))
     check("every handler is offered", sorted(names), handlers)
-    for tool in rover_daemon.TOOLS:
+    for tool in every:
         function = tool["function"]
         check(f"{function['name']} describes itself", bool(function.get("description")), True)
         check(f"{function['name']} has a parameter object",
@@ -160,6 +164,115 @@ def test_no_camera():
           rover.call("stop_tracking", {}), {"ok": True, "tracking": False, "was_tracking": False})
 
 
+def test_look():
+    """The picture path: what is offered, what is sent, and what is refused.
+
+    None of it decodes an image -- that is the design, not an omission -- so all
+    of it is checkable here against a stub standing in for the model's host.
+    """
+    import http.server
+    import threading
+
+    import rover_daemon
+
+    posted = []
+
+    class Vision(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            posted.append(body)
+            reply = json.dumps({"ok": True, "image": f"frame-{len(posted)}",
+                                "w": 640, "h": 480}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(reply)))
+            self.end_headers()
+            self.wfile.write(reply)
+
+        def log_message(self, *args):
+            pass
+
+    class FakeCamera:
+        """Frames on demand, including the half-frame a cold camera really gives."""
+
+        def __init__(self, frames):
+            self.frames = list(frames)
+            self.complaints = []
+
+        def latest(self, timeout=None):
+            return (self.frames.pop(0), 1.0) if self.frames else None
+
+    whole = b"\xff\xd8" + b"jpeg bytes" + b"\xff\xd9"
+    fragment = b"middle of a picture" + b"\xff\xd9"
+
+    # Offered only when there is somewhere to send a picture. This is the
+    # rollback lever: no --vision, no tool, and no client has to be redeployed.
+    plain = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
+    check("look is not offered without --vision",
+          [t["function"]["name"] for t in plain.tools()].count("look"), 0)
+    check("...and calling it anyway is refused", plain.call("look", {})["ok"], False)
+    blind = rover_daemon.Rover(FakeLink(), "unused", device=None, vision="127.0.0.1:1")
+    check("a rover with no camera offers no look either",
+          [t["function"]["name"] for t in blind.tools()].count("look"), 0)
+
+    # Threading, and daemon threads: the client keeps its connection open on
+    # purpose -- that is what makes a call cost one round trip and not two -- so
+    # a single-threaded stub sits in that connection and never reaches shutdown.
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Vision)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    address = f"127.0.0.1:{server.server_address[1]}"
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0", vision=address)
+    try:
+        check("look is offered with --vision",
+              [t["function"]["name"] for t in rover.tools()].count("look"), 1)
+
+        # The half-frame is the one that matters: the reader starts mid-stream,
+        # so the first end-of-image marker can end a fragment. Caught by the
+        # two bytes at the front rather than by decoding anything.
+        rover._open_camera = lambda: FakeCamera([fragment, whole])
+        got = rover.call("look", {})
+        check("a picture is sent and named", got.get("image"), "frame-1")
+        check("...and it is the whole frame, not the fragment", posted[-1], whole)
+        check("...with nothing else for the model to read out",
+              set(got) - {"ok", "image", "note"}, set())
+
+        # Three fragments running is a camera that is not producing pictures.
+        rover._open_camera = lambda: FakeCamera([fragment, fragment, fragment])
+        got = rover.call("look", {})
+        check("nothing but fragments is a failure", got["ok"], False)
+        check("...that says what happened", "whole pictures" in got["error"], True)
+
+        # A camera that gives nothing at all, which is what an unplugged one does.
+        rover._open_camera = lambda: FakeCamera([])
+        check("no frame at all is a failure", rover.call("look", {})["ok"], False)
+
+        # While tracking owns the camera, the loop's newest frame is what there
+        # is -- and a stale one is refused rather than passed off as now.
+        rover._tracking.set()
+        rover._frame = (whole, 1.0)  # monotonic 1.0 is long ago
+        got = rover.call("look", {})
+        check("a stale tracking frame is refused", got["ok"], False)
+        import time as _time
+        rover._frame = (whole, _time.monotonic())
+        check("a fresh tracking frame is used", rover.call("look", {}).get("image"), "frame-2")
+        rover._tracking.clear()
+    finally:
+        rover.vision.close()  # let go of the kept-open connection first
+        server.shutdown()
+        server.server_close()
+
+    # And the service being away: a failure the model can say out loud, not an
+    # exception in the middle of a turn.
+    rover._open_camera = lambda: FakeCamera([whole])
+    got = rover.call("look", {})
+    check("a vision service that has gone is reported", got["ok"], False)
+    check("...naming where it tried", "/frame" in got["error"], True)
+    rover.close()
+
+
 def test_where():
     import rover_daemon
 
@@ -180,7 +293,7 @@ def test_where():
 
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_where):
+                 test_no_camera, test_look, test_where):
         try:
             test()
         except Exception as exc:

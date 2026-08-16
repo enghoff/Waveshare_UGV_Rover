@@ -142,7 +142,11 @@ def test_tool_sniffer() -> None:
     original = server._generate
     try:
         def fake(pieces):
-            server._generate = lambda history, tools=(): iter(pieces)
+            # The stub takes /chat's overrides too. _reply_stream passes them
+            # through whether or not they were given, so a stub that predates
+            # them fails as a TypeError inside the thing under test.
+            server._generate = lambda history, tools=(), system=None, temperature=None: \
+                iter(pieces)
             return list(server._reply_stream([], []))
 
         check(
@@ -206,6 +210,19 @@ def test_trim() -> None:
     check("...keeping the most recent turn", trimmed[-1], history[-1])
     check("...and opening on a user turn", trimmed[0]["role"], "user")
 
+    # A picture is one token in the rendered prompt and several hundred once the
+    # processor has expanded it. If that is not added on, a history holding a
+    # frame measures nearly empty, nothing is ever trimmed for it, and the
+    # prompt overruns the static cache -- which does not fail, it just quietly
+    # gets slower. The same shape of bug as the BatchEncoding one above.
+    with_picture = [{"role": "user",
+                     "content": [{"type": "image", "image": object()},
+                                 {"type": "text", "text": "what is this"}]}]
+    without = [{"role": "user", "content": "what is this"}]
+    check("a picture is counted at what it costs",
+          server._prompt_len(with_picture) - server._prompt_len(without),
+          server._image_tokens)
+
     # A turn that called a tool is four messages, not two. Cutting a fixed pair
     # strands a call without its result, or a result with no call, and a model
     # shown either starts narrating tool plumbing out loud.
@@ -231,6 +248,96 @@ def test_trim() -> None:
         )
     finally:
         server.CACHE_LEN = original
+
+
+def test_vision() -> None:
+    """The picture path on this side: what is held, counted and forgotten.
+
+    None of it needs the card or a vision model -- the images here are ordinary
+    objects standing in for decoded frames, since nothing under test looks
+    inside one. What is under test is the bookkeeping, which is where this can
+    go wrong quietly: a picture that is counted as one token overruns the cache
+    window, and one that is never forgotten fills it.
+    """
+    try:
+        import server
+    except Exception as exc:
+        SKIP.append(f"vision plumbing ({type(exc).__name__}: needs the server venv)")
+        return
+
+    picture, older = object(), object()
+    history = [
+        {"role": "user", "content": "what can you see"},
+        {"role": "tool", "content": '{"ok": true}'},
+        {"role": "user", "content": [{"type": "image", "image": older},
+                                     {"type": "text", "text": "the picture"}]},
+        {"role": "assistant", "content": "A desk."},
+        {"role": "user", "content": "and now"},
+        {"role": "user", "content": [{"type": "image", "image": picture},
+                                     {"type": "text", "text": "the picture"}]},
+    ]
+
+    check("images are found in the order the template wants them",
+          server._images(history), [older, picture])
+    check("a conversation with no pictures has none", server._images(history[:2]), [])
+    # For counting and trimming, an image reduces to the text beside it rather
+    # than being rendered -- neither of those should pay for a picture.
+    check("counting sees text, not pictures",
+          [m["content"] for m in server._textual(history)][2], "the picture")
+
+    # Only the newest survives, and what is left says a picture was there. A
+    # model shown nothing at all starts claiming it can still see the last one.
+    kept = list(history)
+    server._forget_old_images(kept)
+    check("only the newest picture is kept", server._images(kept), [picture])
+    check("...and the older one leaves a note", "no longer see" in kept[2]["content"], True)
+    check("...without disturbing anything else",
+          [m["content"] for m in kept if isinstance(m["content"], str)][:2],
+          ["what can you see", '{"ok": true}'])
+    untouched = [{"role": "user", "content": "hello"}]
+    server._forget_old_images(untouched)
+    check("a conversation with no pictures is left alone",
+          untouched, [{"role": "user", "content": "hello"}])
+
+    # The stash. Bounded two ways, because it is fed by whatever holds a camera
+    # and a frame nobody claims must not become a leak.
+    server._frames.clear()
+    tokens = [server._stash(object()) for _ in range(server.MAX_FRAMES + 2)]
+    check("the stash is bounded", len(server._frames), server.MAX_FRAMES)
+    check("...dropping the oldest first", tokens[0] in server._frames, False)
+    check("...and keeping the newest", tokens[-1] in server._frames, True)
+    check("every frame gets its own name", len(set(tokens)), len(tokens))
+    # A frame nobody claimed inside the window is gone, whether or not the stash
+    # is full: the picture it holds stopped being true minutes ago.
+    stale = server._stash(object())
+    server._frames[stale] = (server._frames[stale][0],
+                             server._frames[stale][1] - server.FRAME_TTL_S - 1)
+    server._stash(object())
+    check("a frame nobody claimed expires", stale in server._frames, False)
+    server._frames.clear()
+
+    try:
+        import io
+
+        from PIL import Image
+    except Exception as exc:
+        SKIP.append(f"frame decoding ({type(exc).__name__}: needs pillow)")
+        return
+
+    buf = io.BytesIO()
+    Image.new("RGB", (1920, 1080), (20, 40, 60)).save(buf, format="JPEG")
+    decoded = server._decode_frame(buf.getvalue())
+    check("an oversized frame is brought down to the ceiling",
+          max(decoded.size), server.VISION_MAX_SIDE)
+    check("...keeping its shape", round(decoded.width / decoded.height, 2), 1.78)
+    # A truncated frame is what a camera that has only just been opened gives.
+    # It has to fail where it can be answered -- at the POST, which the rover can
+    # retry -- rather than in the middle of somebody's sentence.
+    try:
+        server._decode_frame(buf.getvalue()[: len(buf.getvalue()) // 3])
+        FAIL.append("a truncated frame should not decode")
+    except Exception:
+        PASS.append("a truncated frame is refused where the rover can hear about it")
 
 
 def test_rover_client() -> None:
@@ -543,6 +650,7 @@ def main() -> int:
     test_sentences()
     test_tool_sniffer()
     test_trim()
+    test_vision()
     test_rover_client()
     test_connect_errors()
     test_indicator()

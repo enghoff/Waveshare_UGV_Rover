@@ -107,9 +107,11 @@ streaming audio and video.
 **What runs here.** `rover_daemon.py` (from `rover_daemon/` in this repo) is
 the one process that may own the UART and the camera, and everything that
 commands the rover goes through it: headlights, gimbal, face tracking, exposed as
-tools on TCP 8769. `drive_gamepad_pi.py` and `track_face_pi.py` are still
-standalone and still take the UART directly, so do not run them at the same time
-as the daemon.
+tools on TCP 8769. Started with `--vision` it offers one more, `look`, which
+POSTs a frame to `voice-chat` on MEDIA so the model can be asked what it sees;
+without the flag the tool is not offered at all. `drive_gamepad_pi.py` and
+`track_face_pi.py` are still standalone and still take the UART directly, so do
+not run them at the same time as the daemon.
 
 **Access.** `ssh rpi` (a `~/.ssh/config` alias for `rpi.local`, user `admin`,
 key `id_ed25519_rpi`). Key-only since 2026-08-13; `sudo` still prompts for the
@@ -136,7 +138,7 @@ exclusive:
 
 | service | port | what it is | source |
 |---|---|---|---|
-| `voice-chat` | 8767 | Whisper distil-large-v3 + Qwen3-4B int4 + Kokoro-82M | `voice_chat/` in this repo |
+| `voice-chat` | 8767 | Whisper distil-large-v3 + Qwen3-VL-4B int4 + Kokoro-82M | `voice_chat/` in this repo |
 | `qwen3-vl` | 8766 | Qwen3-VL-4B-Instruct vision-language | the **mt4** repo |
 | `grounding-dino` | 8765 | open-vocabulary detection | the **mt4** repo |
 
@@ -151,6 +153,13 @@ restarted comes back on vision, not voice — expect to switch after any reboot 
 the Windows host. `voice-chat` is the slow one to start: it loads three models
 and then compiles and warms decode before binding, ~150s measured, and `/health`
 answering is the signal that it is warm.
+
+Its reply model is now the same `Qwen3-VL-4B-Instruct` weights `qwen3-vl` uses,
+so the rover can be asked what it can see; the rover POSTs a frame straight to
+8767 when the model asks to look. Which model `voice-chat` loads is two lines in
+its unit — `VOICE_LLM_MODEL` and `VOICE_VISION` — and both models are in the HF
+cache here, so going back to the text one costs a restart and no download. See
+[voice_chat/README.md](../voice_chat/README.md#seeing).
 
 A fourth service does **not** share the card and is not part of that trade:
 
