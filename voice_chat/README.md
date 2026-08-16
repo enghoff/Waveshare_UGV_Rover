@@ -341,6 +341,36 @@ was a sampled decision on that one, and the prompt wording that fixed it was
 found through `/chat`. Re-run that sweep against the vision model before
 trusting it — six samples a cell, not three.
 
+### Open: it does not call `look`
+
+Measured on 2026-08-16, six samples a cell at temperature 0.2, against the
+rover's ten real schemas:
+
+| request | `look` called |
+|---|---|
+| "What can you see right now?" | **0/6** |
+| "Can you describe what is in front of you?" | **0/6** |
+| "Is there anybody there?" | 6/6 — but `count_faces`, which is right |
+| "Please switch the lights on." | 6/6 `set_lights` |
+| "What is your name?" | 0/6 *(want 0)* |
+
+So the model calls tools, and calls the *right* ones; it will not call this one.
+It answers instead with a sentence it appears to be reading off the prompt —
+*"I can't see anything right now because I haven't taken a picture. I need to
+look through the camera"* — which is the deployed wording (*"You have no eyes of
+your own. You can see only a picture that a tool has just given you"*) handed
+back as a refusal. Three wordings were tried and all three scored 0/6, including
+two that forbid saying it needs to look, so **the wording is not the variable
+those three changed**. The next thing to isolate is whether the framing has to
+stop mentioning not-seeing at all, and whether the name `look` is the problem —
+it sits next to `look_at`, which aims the camera, and "I need to look" is the
+model using the word as prose. `/chat` takes the schemas per request, so a
+rename is measurable without touching the rover.
+
+Everything under that is working: `look` fetches a frame and posts it in **0.8s
+cold, 0.1s warm**, `/frame` holds it, and the turn claims it by name. What is
+missing is the model deciding to ask.
+
 ## Protocol
 
 WebSocket at `/ws`. Client → server: binary frames of 16kHz mono s16le, then
