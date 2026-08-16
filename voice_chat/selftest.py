@@ -266,16 +266,22 @@ def test_vision() -> None:
         return
 
     picture, older = object(), object()
-    history = [
-        {"role": "user", "content": "what can you see"},
-        {"role": "tool", "content": '{"ok": true}'},
-        {"role": "user", "content": [{"type": "image", "image": older},
-                                     {"type": "text", "text": "the picture"}]},
-        {"role": "assistant", "content": "A desk."},
-        {"role": "user", "content": "and now"},
-        {"role": "user", "content": [{"type": "image", "image": picture},
-                                     {"type": "text", "text": "the picture"}]},
-    ]
+
+    def took(image):
+        """The three messages a look leaves behind, in the order _run_turn adds them."""
+        return [
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"type": "function", "function": {"name": "look", "arguments": {}}}]},
+            {"role": "tool", "content": '{"ok": true}'},
+            {"role": "user", "content": [{"type": "image", "image": image},
+                                         {"type": "text", "text": "the picture"}]},
+        ]
+
+    history = ([{"role": "user", "content": "what can you see"}]
+               + took(older)
+               + [{"role": "assistant", "content": "A desk."},
+                  {"role": "user", "content": "and now"}]
+               + took(picture))
 
     check("images are found in the order the template wants them",
           server._images(history), [older, picture])
@@ -283,19 +289,35 @@ def test_vision() -> None:
     # For counting and trimming, an image reduces to the text beside it rather
     # than being rendered -- neither of those should pay for a picture.
     check("counting sees text, not pictures",
-          [m["content"] for m in server._textual(history)][2], "the picture")
+          [m["content"] for m, original in zip(server._textual(history), history)
+           if isinstance(original["content"], list)], ["the picture", "the picture"])
 
     # Only the newest survives, and what is left says a picture was there. A
     # model shown nothing at all starts claiming it can still see the last one.
     kept = list(history)
-    server._forget_old_images(kept)
+    server._forget_pictures(kept)
     check("only the newest picture is kept", server._images(kept), [picture])
-    check("...and the older one leaves a note", "no longer see" in kept[2]["content"], True)
-    check("...without disturbing anything else",
-          [m["content"] for m in kept if isinstance(m["content"], str)][:2],
-          ["what can you see", '{"ok": true}'])
+    check("...and the older one's call goes with it",
+          sum(1 for m in kept if m.get("tool_calls")), 1)
+    check("...leaving the spoken turns alone",
+          [m["content"] for m in kept if isinstance(m.get("content"), str) and m["content"]],
+          ["what can you see", "A desk.", "and now", '{"ok": true}'])
+    # ...and at the start of a turn, none of them survive: the camera has moved
+    # since, so the newest is a picture of somewhere else, and a model holding
+    # one does not take another.
+    gone = list(history)
+    server._forget_pictures(gone, keep_newest=False)
+    check("a new turn starts with no picture at all", server._images(gone), [])
+    # The call that fetched it goes too. Left behind, the model reads it as
+    # having already looked and refuses to look again -- measured 0/3, twice,
+    # under two wordings of what replaced the picture.
+    check("...and no stranded look call is left to read",
+          [m for m in gone if m.get("tool_calls") or m.get("role") == "tool"], [])
+    check("...leaving what was actually said",
+          [m["content"] for m in gone],
+          ["what can you see", "A desk.", "and now"])
     untouched = [{"role": "user", "content": "hello"}]
-    server._forget_old_images(untouched)
+    server._forget_pictures(untouched, keep_newest=False)
     check("a conversation with no pictures is left alone",
           untouched, [{"role": "user", "content": "hello"}])
 

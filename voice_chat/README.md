@@ -297,14 +297,13 @@ another one — instead of failing in the middle of somebody's sentence. A frame
 is held under its name for 60s and at most four at a time; a name is claimed
 once, so the same picture cannot be shown twice.
 
-Only the newest picture stays in the conversation. Each one costs a few hundred
-tokens of a window that holds about a dozen spoken turns, so older ones become
-the sentence *"(a picture the camera took earlier, which you can no longer
-see)"* — enough that the model knows it looked and does not claim to still be
-looking. What one costs is measured at startup against a frame of the configured
-size rather than assumed, because that number is what decides when history is
-trimmed, and a wrong constant there fails silently: too low and the prompt
-overruns the static cache and quietly falls back to the dynamic one.
+No picture outlives the turn that took it — see [A picture does not outlive the
+turn that took it](#a-picture-does-not-outlive-the-turn-that-took-it), which is
+also where a frame lives and for how long. What one costs in the context window
+is measured at startup against a frame of the configured size rather than
+assumed, because that number decides when history is trimmed, and a wrong
+constant there fails silently: too low and the prompt overruns the static cache
+and quietly falls back to the dynamic one.
 
 `look` is offered by the rover, not by this service — as with every other tool,
 nothing here knows what a rover is. The daemon adds it only when started with
@@ -423,6 +422,50 @@ Under all of it the plumbing was never the problem: `look` posts a frame in
 **0.8s cold, 0.1s warm**, and end to end through the rover's own camera a turn
 runs **~8.3s** — *"I see a living room with two black leather sofas, a glass
 table, and a dining area in the background."*
+
+### A picture does not outlive the turn that took it
+
+The camera is on a gimbal that sweeps while face tracking runs — mid-test it sat
+at `pan: -49, tilt: 44` and two consecutive photographs showed a balcony and
+then a living room. A picture from the previous turn is therefore a picture of
+somewhere the rover is no longer pointing, and answering from it is answering
+about the past in the present tense. So each new utterance drops every picture
+before the model sees it (`VOICE_FRESH_PICTURE=1`, the default), and a turn that
+needs to see takes its own frame. It costs ~2s a turn; set it to `0` to let one
+picture answer follow-ups instead.
+
+Dropping the picture is not enough on its own, and the two ways that fail are
+worth knowing, because both leave the model *narrating* the tool instead of
+calling it:
+
+| what is left where the picture was | "what colour is the floor?" |
+|---|---|
+| "(a picture… which you can no longer see)" | 0/3 — *"I can't, I don't have a picture of it"* |
+| "(…it is gone, so take another if you need to see)" | 0/3 — *"I need to take a picture first"* |
+| nothing, and the `look` call removed with it | **3/3 — takes one** |
+
+A `look` call whose picture has been taken away is a **stranded call**, and the
+model reads it as having already looked. `_trim` has always cut whole exchanges
+for exactly this reason; the same rule now applies to a picture that is
+withdrawn. What is left in the history is the transcript of what was said aloud,
+which is all a later turn needs.
+
+Measured over three fresh conversations, every visual follow-up now takes its
+own photograph: *"what colour is the floor?"* 3/3, *"is there anything on the
+table?"* 3/3, after a first *"what's in the picture?"* at 3/3.
+
+**Where a picture actually lives.** Posted to `/frame` it sits in a stash of at
+most four, for at most 60s, until the turn claims it by name — and a name is
+claimed once. From there it is one decoded image in that conversation's history,
+in memory, dropped at the start of the next turn. `hello`, `reset` and a closed
+socket drop it too. **Nothing is written to disk at any point**, on either host.
+
+Two warts, measured and left in rather than smoothed over. A question about
+something that is not in front of the camera — "describe the person" with nobody
+there — is answered with a refusal rather than a look, and those refusals then
+make the *next* few turns refuse as well: the model reads its own "I can't" back.
+And a late "what can you see now?" is sometimes answered from the transcript,
+repeating an earlier description word for word, 0/3.
 
 ### The first picture compiles
 
