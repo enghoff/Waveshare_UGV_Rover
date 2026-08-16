@@ -362,8 +362,9 @@ rover can be shown to be standing still.
 
 The measurements, hardware facts and failure modes live in [`docs/`](docs), one
 document per component, plus two for the OAK camera's constraints, one for the
-machines the rover shares work with, and one on what a bigger card and a bigger
-model would buy:
+machines the rover shares work with, and three on where the conversational side
+goes next — what a bigger card would buy, what it would look like if it were
+designed again, and what building that would actually take:
 
 | Document | Covers |
 |---|---|
@@ -374,6 +375,8 @@ model would buy:
 | [usb-cameras.md](docs/usb-cameras.md) | how cameras are probed and named, why a black frame is usually the pixel format, forcing auto controls |
 | [hosts.md](docs/hosts.md) | the two machines outside this workstation — `admin@rpi` on the rover, `root@media` for the GPU |
 | [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which EC2 GPU instances are worth it, what an omni model would change, rent vs buy |
+| [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in truncation, vision as a budget, the safety supervisor |
+| [omni-build.md](docs/omni-build.md) | the costed version of that design: what survives, what to write, which model and card, and what to do first |
 
 Read the relevant one before concluding a component is dead. Several documented
 failures look exactly like broken hardware and are not: a camera that will not open
