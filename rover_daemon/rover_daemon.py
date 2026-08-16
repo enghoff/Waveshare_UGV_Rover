@@ -383,9 +383,15 @@ TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "count_faces",
             "description": (
-                "Look through the camera once and report how many people can be "
-                "seen and roughly where each is: left, centre or right, and near "
-                "or far. Does not move the camera."
+                # Reworded 2026-08-16 and measured: the old wording opened "Look "
+                # through the camera once", and beside a tool that actually looks
+                # it stopped being called at all -- "how many people can you see"
+                # called nothing, 0/6. Naming what it is *not* for is what fixed
+                # it. See voice_chat/README.md.
+                "Count the people in front of the rover and say roughly where "
+                "each one is: left, centre or right, and near or far. Use this "
+                "only for counting people, not for seeing what something is. "
+                "Does not move the camera."
             ),
             "parameters": {"type": "object", "properties": {}},
         },
@@ -445,18 +451,25 @@ TOOLS: list[dict[str, Any]] = [
 # answer from its imagination: the failure being designed against is a rover
 # that describes a room it has never looked at, which sounds exactly like one
 # that has.
+#
+# Every word of this description was measured, because the first one was not
+# called at all -- 0/6 on "what can you see right now" beside the other nine
+# schemas, while the same tool alone scored 6/6. A tool is not read on its own:
+# it is read against its neighbours, and "take a photograph and look at it" lost
+# to a list already full of looking. Naming it as the *only* way to see, and
+# pointing the counting question at the tool that counts, took it to 6/6. The
+# table is in voice_chat/README.md; change this wording only with numbers.
 LOOK_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "look",
         "description": (
-            "Take a photograph through the rover's camera and look at it. Call "
-            "this whenever you are asked what you can see, what something is or "
-            "looks like, what is written on something, how many of something "
-            "there are, or to describe your surroundings. It shows you what the "
-            "camera is pointing at right now; it does not move the camera, so "
-            "aim it first if you have been asked to look in a direction. You "
-            "cannot see anything you have not taken a picture of."
+            "See what is in front of the rover. This is the only way you can see "
+            "anything at all: it takes a photograph through the camera and shows "
+            "it to you. Use it for every question about what is there, what "
+            "something is, what it looks like, what it says, or what the rover "
+            "can see. To count how many people are there, use the counting tool "
+            "instead. It does not move the camera."
         ),
         "parameters": {"type": "object", "properties": {}},
     },

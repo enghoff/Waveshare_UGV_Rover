@@ -341,35 +341,63 @@ was a sampled decision on that one, and the prompt wording that fixed it was
 found through `/chat`. Re-run that sweep against the vision model before
 trusting it — six samples a cell, not three.
 
-### Open: it does not call `look`
+### Getting it to call `look` — a tool is read against its neighbours
 
-Measured on 2026-08-16, six samples a cell at temperature 0.2, against the
-rover's ten real schemas:
+The first version of this shipped a rover that would not look. Asked *"what can
+you see right now?"* it answered **0/6** with the tool sitting right there, and
+said instead that it could not see anything because it had not taken a picture —
+which is the failure this whole path exists to remove, arriving one step later
+than before. Six samples a cell at temperature 0.2, through `/chat`:
 
-| request | `look` called |
-|---|---|
-| "What can you see right now?" | **0/6** |
-| "Can you describe what is in front of you?" | **0/6** |
-| "Is there anybody there?" | 6/6 — but `count_faces`, which is right |
-| "Please switch the lights on." | 6/6 `set_lights` |
-| "What is your name?" | 0/6 *(want 0)* |
+| request | as first written | `look` reworded | + `count_faces` reworded |
+|---|---|---|---|
+| "What can you see right now?" | **0/6** | 6/6 | **6/6** |
+| "Can you describe what is in front of you?" | **0/6** | 5/6 | 3/6 |
+| "How many people can you see?" | **nothing at all** | nothing at all | **6/6** `count_faces` |
+| "Is there anybody there?" | 6/6 `count_faces` | 6/6 | 6/6 `count_faces` |
+| "Please switch the lights on." | 6/6 `set_lights` | 6/6 | 6/6 `set_lights` |
 
-So the model calls tools, and calls the *right* ones; it will not call this one.
-It answers instead with a sentence it appears to be reading off the prompt —
-*"I can't see anything right now because I haven't taken a picture. I need to
-look through the camera"* — which is the deployed wording (*"You have no eyes of
-your own. You can see only a picture that a tool has just given you"*) handed
-back as a refusal. Three wordings were tried and all three scored 0/6, including
-two that forbid saying it needs to look, so **the wording is not the variable
-those three changed**. The next thing to isolate is whether the framing has to
-stop mentioning not-seeing at all, and whether the name `look` is the problem —
-it sits next to `look_at`, which aims the camera, and "I need to look" is the
-model using the word as prose. `/chat` takes the schemas per request, so a
-rename is measurable without touching the rover.
+Three system-prompt wordings were tried first and all three scored 0/6, which is
+what makes the finding worth writing down: **the prompt was not the variable.**
+The same schema *alone* scored 6/6 on every phrasing. It was the other nine that
+suppressed it — a model does not read a tool on its own, it reads it against its
+neighbours, and "take a photograph through the camera and look at it" lost to a
+list already full of looking. Dropping `look_at` recovered one phrasing and not
+the others, so the name is part of it and not the whole of it.
 
-Everything under that is working: `look` fetches a frame and posts it in **0.8s
-cold, 0.1s warm**, `/frame` holds it, and the turn claims it by name. What is
-missing is the model deciding to ask.
+What fixed it was saying what the tool *is* rather than what it does — "this is
+the only way you can see anything at all" — and, for the same reason, pointing
+the counting question at the tool that counts. That third column also fixes a
+bug that predates any of this: `count_faces` opened with *"Look through the
+camera once…"*, and beside a tool that actually looks it stopped being called at
+all, so **"how many people can you see" called nothing**. It had presumably been
+answering that question by luck for as long as the wording had a monopoly on the
+word "look".
+
+One weak cell is left, honestly: *"can you describe what is in front of you"* is
+3/6, and the wording that made it 5/6 is the one that costs the people question.
+Do not tune it on a single attempt — that is the lesson recorded above.
+
+Under all of it the plumbing was never the problem: `look` posts a frame in
+**0.8s cold, 0.1s warm**, and end to end through the rover's own camera a turn
+runs **~8.3s** — *"I see a living room with two black leather sofas, a glass
+table, and a dining area in the background."*
+
+### The first picture compiles
+
+A turn carrying an image is a different compile from a text one, not a warmer
+version of the same one — Qwen3-VL positions image tokens with 3D rope, so the
+decode step is a new graph. The first such turn therefore recompiles, and that
+is not a few seconds: measured, one turn sat there writing **2450 inductor
+artifacts** with the GPU at 1% and the streamer gave up at 180s before it
+finished, in the middle of somebody asking what the rover could see.
+
+So `_load` warms **both** shapes, the same argument as everything else it warms:
+the only choice is whether the person waiting for a compile is a person. It
+costs ~52s on top of the text warm, and the service still does not bind its port
+until it is done. A turn that produces nothing for `VOICE_STREAM_TIMEOUT` now
+says so in those terms rather than raising `queue.Empty` from inside
+transformers.
 
 ## Protocol
 
@@ -420,8 +448,13 @@ the comments in [server.py](server.py). The ones worth knowing:
 - `VOICE_COMPILE_DYNAMIC=1` — compile once for a range of prompt lengths. Turning
   this off costs a ~60s recompile on *every* turn of a conversation, since the
   prompt grows each time. Only worth it if the prompt length is somehow fixed.
-- `VOICE_CACHE_LEN=2048` — the static-cache window, ~12 spoken turns. History is
-  trimmed a whole exchange at a time to fit it.
+- `VOICE_STREAM_TIMEOUT=180` — how long a turn may produce *nothing* before it is
+  called a failure. Not a budget for slow decoding: tokens arrive every ~25ms
+  once they start, and the only thing that takes minutes before the first one is
+  a compile, which `_load` is meant to have paid for both shapes already.
+- `VOICE_CACHE_LEN=2048` — the static-cache window, ~12 spoken turns (3072 with
+  vision, where a picture takes ~300 of them). History is trimmed a whole
+  exchange at a time to fit it.
 
   **This did nothing at all until 2026-08-15.** `apply_chat_template(tokenize=True)`
   returns a `BatchEncoding` on transformers 5, not a list of ids, so `len()` of it

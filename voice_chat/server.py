@@ -46,6 +46,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
+from queue import Empty
 from threading import Thread
 from typing import Any, Iterator
 
@@ -102,6 +103,11 @@ COMPILE = os.environ.get("VOICE_COMPILE", "1") not in ("0", "false", "False")
 # turns, static-shape compilation spent 54s, 76s, 71s and 68s; dynamic pays once.
 COMPILE_DYNAMIC = os.environ.get("VOICE_COMPILE_DYNAMIC", "1") not in ("0", "false", "False")
 MAX_NEW_TOKENS = int(os.environ.get("VOICE_MAX_NEW_TOKENS", "160"))
+# How long a turn may produce nothing before it is called a failure. This is not
+# a budget for slow decoding -- tokens arrive every ~25ms once they start -- it
+# is how long to wait for the *first* one, and the only thing that takes minutes
+# there is a compile that _load should already have paid for.
+STREAM_TIMEOUT_S = float(os.environ.get("VOICE_STREAM_TIMEOUT", "180"))
 # 0.2, not the 0.7 this started at, because whether the model *acts* turned out
 # to be a sampled decision. Measured over six samples a cell through /chat, with
 # the tool prompt below and the rover's nine schemas:
@@ -363,7 +369,27 @@ def _load() -> None:
             _transcribe(np.zeros(STT_RATE, dtype=np.float32))
             for _ in _generate([{"role": "user", "content": "Say ready."}]):
                 pass
-            print(f"[voice] warmed in {time.perf_counter() - t_warm:.1f}s", flush=True)
+            t_text = time.perf_counter()
+            print(f"[voice] warmed in {t_text - t_warm:.1f}s", flush=True)
+            # And again with a picture in front of it, which is a *different*
+            # compile and not an optimisation of the same one. A conversation
+            # holding an image takes another path through the model -- Qwen3-VL
+            # positions image tokens with 3D rope -- so the first turn that
+            # looks at anything recompiles the decode step from scratch. That
+            # was measured the hard way: 2450 inductor artifacts written while
+            # one turn sat there, and the streamer gave up at 180s before it
+            # finished. Nobody should meet that mid-conversation, having just
+            # asked what the rover can see.
+            if VISION:
+                from PIL import Image
+
+                probe = Image.new(
+                    "RGB", (VISION_MAX_SIDE, VISION_MAX_SIDE * 3 // 4), (128, 128, 128))
+                for _ in _generate([_image_message(probe),
+                                    {"role": "user", "content": "Say ready."}]):
+                    pass
+                print(f"[voice] warmed the picture path in "
+                      f"{time.perf_counter() - t_text:.1f}s", flush=True)
         except Exception as exc:
             # A failed warmup is not a failed service -- the real request will
             # raise its own error, and that one has somewhere to be reported to.
@@ -755,10 +781,11 @@ def _generate(
         inputs = _tokenizer(prompt, return_tensors="pt").to(_llm.device)
     # The timeout is the backstop for the failure below: if the worker dies in a
     # way that never reaches our handler, the iterator gives up rather than
-    # holding the WebSocket open forever. Generous, because a cold compile of the
-    # decode step lands on the first token of the first turn.
+    # holding the WebSocket open forever. Generous, because a compile of the
+    # decode step lands on the first token of a turn whose shape is new -- which
+    # _load now pays for both shapes, so reaching this means something else.
     streamer = TextIteratorStreamer(
-        _tokenizer, skip_prompt=True, skip_special_tokens=True, timeout=180
+        _tokenizer, skip_prompt=True, skip_special_tokens=True, timeout=STREAM_TIMEOUT_S
     )
 
     kwargs: dict[str, Any] = dict(
@@ -792,10 +819,25 @@ def _generate(
 
     thread = Thread(target=run, daemon=True)
     thread.start()
-    yield from streamer
-    thread.join()
+    # A silent worker and a dead one arrive here identically -- as `queue.Empty`
+    # raised from inside transformers, which says nothing about this service and
+    # nothing a user could act on. Both are named instead.
+    quiet = False
+    try:
+        yield from streamer
+    except Empty:
+        quiet = True
+    # Not waited on when it is still running: a worker that has spent the whole
+    # timeout compiling will keep compiling, and blocking on it here would hold
+    # the socket for as long again.
+    thread.join(timeout=1.0)
     if failure:
         raise failure[0]
+    if quiet:
+        raise TimeoutError(
+            f"the model produced nothing for {STREAM_TIMEOUT_S:.0f}s. If this is the first "
+            "turn of a shape it has not seen -- the first one with a picture, say -- it is "
+            "compiling, and _load is meant to have paid that already.")
 
 
 def _speak(text: str) -> np.ndarray:
