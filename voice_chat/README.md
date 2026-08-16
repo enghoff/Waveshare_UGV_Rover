@@ -384,8 +384,125 @@ frame goes 0.45s → 0.90s), then `VOICE_CACHE_LEN=2048`, then a smaller
 **The tool-calling measurements below were taken on Qwen3-4B-Instruct-2507 and do
 not transfer for free.** Whether a model acts on "can you turn the lights off"
 was a sampled decision on that one, and the prompt wording that fixed it was
-found through `/chat`. Re-run that sweep against the vision model before
-trusting it — six samples a cell, not three.
+found through `/chat`. That warning stood unanswered for four commits; the
+re-run is [below](#the-re-run-it-does-not-refuse-it-promises), and it was right.
+
+### The re-run: it does not refuse, it promises
+
+Reported from a real conversation on 2026-08-16 — *"nothing is happening, the
+camera might be correctly capturing but it's not scanning or tracking and lights
+are off"* — against a transcript in which the rover sounded perfect:
+
+```
+  you: Well, can you switch the lights on?
+  bot: I turned the lights on.            <- no call, and the lights are off
+```
+
+The first turn had called `look` and every turn after it called nothing, which
+looks exactly like a caching bug and is not one. It reproduces with an **empty
+history**, and with `VOICE_PREFIX_CACHE=0 VOICE_CUDAGRAPHS=0` it reproduces
+byte for byte, so none of the performance work above is involved. What it is:
+the wording inherited from the text model, never re-measured after the switch.
+
+The vision model does not refuse and it does not pick the wrong tool. It
+**promises** — *"I will switch the lights on for you"* — and calls nothing. That
+is the same "announcing instead of acting" already noted for *"Follow me."*,
+except it reaches the plainest requests there are. Six samples a cell at
+temperature 0.2, through `/chat`, on the real daemon schemas:
+
+| request | current | + "do not say 'I will'" | …the same sentence, first |
+|---|---|---|---|
+| "Well, can you switch the lights on?" | **0/6** | **6/6** | 0/6 |
+| "Can you switch the lights on?" | 4/6 | **6/6** | 0/6 |
+| "Follow me." | 2/6 | 3/6 | 0/6 |
+| "Can you switch the lights off?" | 6/6 | 6/6 | **0/6** |
+| "Would you stop following me?" | 6/6 | 6/6 | **0/6** |
+| "Start following me." | 6/6 | 6/6 | **0/6** |
+| "Switch the lights on." | 6/6 | 6/6 | 6/6 |
+| "What do you see?" | 6/6 | 6/6 | 6/6 |
+| "What is your name?" *(want 0)* | 6/6 | 6/6 | 6/6 |
+| **total, 15 cases** | **66/90** | **75/90** | **42/90** |
+
+Naming the words it actually says beats arguing that a question is a request —
+which this prompt already did, two sentences earlier, and which was not enough.
+An earlier run over a different case list agreed: 40/60 → 51/60.
+
+**Position is worth more than the sentence, and the wrong way round.** For the
+vision line, front was what worked. Here the front is catastrophic: 42/90, worse
+than saying nothing, and it changes the failure from a missing call into a
+**lie** — *"I switched the lights off"*, no call, on requests that pass 6/6 at
+either of the other two settings. Move it and measure both ends.
+
+**Rewording the schemas is not the lever here, and it backfires.** The `look`
+fix below worked by naming the questions at the front of a description, so the
+same was tried on `set_lights` and `start_tracking`. It bought *"Follow me."*
+0/6 → 6/6 and cost `set_lights` **6/6 → 0/6 on every phrasing** — a tool whose
+description was not touched, with the model reporting lights it had not
+switched. That is the neighbour effect below, in the direction that costs
+something: a description assertive enough to win its own requests wins some of
+its neighbours' too, and the answer is still spoken as though the call was made.
+
+Two things this did **not** fix, both still 0/6 and both worth knowing:
+
+* **"Then start tracking people."** — 0/6 under every wording tried, while
+  *"Start tracking people."* is 6/6. One leading word. It is not politeness and
+  not questions generally: *"Well, can you switch the lights off?"* is 6/6 and
+  so is *"So, what do you see?"*, so a marker only tips a phrasing that was
+  already marginal. This one is not marginal, and nothing here explains it.
+* **"Could you dim the lights a bit?"** — 0/6, and it lies rather than stalls:
+  *"I adjusted the lights to a lower brightness level"*, *"I set the lights to
+  128"*. Both the plain request and the tool exist; it is the dimming that is
+  not reached.
+
+#### And one promise poisons everything after it
+
+The prompt above stops most promises being made. It does nothing about the ones
+that still are, and the second reported session is what that costs:
+
+```
+  you: Can each other lights on?          <- STT mangled it
+  bot: I will turn the lights on.         <- no call, and now it is in the history
+  you: Are the lights on.
+  bot: I will check the lights status.    <- no call
+```
+
+Every one of those questions is **6/6 on its own**. Asked with that first
+exchange in front of them they collapse, and the control says it is the promise
+rather than the subject — the identical request, actually carried out, costs
+nothing:
+
+| the transcript entering the turn | "Can you switch the lights off?" |
+|---|---|
+| nothing | 6/6 |
+| `I will turn the lights on.` | **0/6** |
+| the same request, call and result in the history | 6/6 |
+
+So this is the law this file keeps rediscovering — *whatever this model said
+last, it says again* — arriving a third time, after the pictures and the
+refusals, and this time it reaches requests that have nothing to do with the
+camera. `_forget_promises` drops those exchanges the way `_forget_refusals`
+drops the blind ones: whole, and only when the exchange called nothing, so
+"I'll keep following him" beside its own `start_tracking` is left alone.
+
+**It is a floor, not a fix.** The user still hears one lie before the rule takes
+effect — the promise is spoken, and only the *next* turn is protected. Removing
+that means re-asking the model inside the turn when a round produces a promise
+and no call, which the round loop in `_run_turn` has the budget for and does not
+do. That is the piece still missing.
+
+One thing worth noticing about how this one arrived: the first turn failed
+because **STT** garbled it, and everything after failed because the model had
+been handed its own bad answer. A transcript that reads as a run of tool-calling
+failures can be one STT failure and then arithmetic. `--no-early` on
+[talk.py](talk.py) turns off speculative transcription, which is the first thing
+to rule out when the words on screen are not the words that were said.
+
+The sweeps are `/chat` scripts, which is the whole point of that endpoint — a
+wording costs a request instead of a ~150s restart, `system` and `tools` both
+come from the caller, and no rover is touched. Keep six samples a cell. Note
+that `/chat` applies none of the history rules above: it answers the
+conversation it is given, which is what makes it the right instrument for
+measuring them and the wrong one for testing that they ran.
 
 ### Getting it to call `look` — a tool is read against its neighbours
 

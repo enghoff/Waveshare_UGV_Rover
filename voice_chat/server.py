@@ -252,6 +252,25 @@ MAX_TOOLS = 16
 # Appended to the system prompt only when a client has actually announced tools.
 # Without it the "if you do not know something, say so" line above wins and the
 # model explains that it has no way to reach the hardware it is holding.
+#
+# The last sentence is aimed at one failure and was measured on the vision
+# model, which the rest of this wording never was -- it was tuned on
+# Qwen3-4B-Instruct-2507 and inherited unexamined. What Qwen3-VL does instead of
+# calling is *promise*: "I will switch the lights on for you", no call, and a
+# user who hears it standing next to a rover that did not move. Naming the words
+# it uses beats arguing that a question is a request, which this prompt already
+# does two sentences earlier and which is not enough on its own. Two independent
+# six-sample runs, 66/90 -> 75/90 and 40/60 -> 51/60, nothing regressed:
+#
+#   "Well, can you switch the lights on?"  0/6 -> 6/6
+#   "Can you switch the lights on?"        4/6 -> 6/6
+#   "Follow me."                           2/6 -> 3/6
+#
+# Its **position is worth more than the sentence**, and the opposite way round
+# from the vision line, where front was what worked: moved to the front of this
+# prompt it scores 42/90, below saying nothing at all, and it stops being a
+# missing call and starts being a lie -- "I switched the lights off" with no
+# call made, on requests that pass 6/6 today. Re-measure both ends if it moves.
 TOOL_PROMPT = os.environ.get(
     "VOICE_TOOL_PROMPT",
     " You control this rover through the tools you have been given. Call a tool "
@@ -260,7 +279,9 @@ TOOL_PROMPT = os.environ.get(
     "You have done something only if you have called a tool for it: never say "
     "you have switched, moved, started or stopped anything unless the call was "
     "made and answered. Then say what you did in one short sentence, without "
-    "reading the tool call or its result out loud.",
+    "reading the tool call or its result out loud."
+    " Do not say 'I will', 'I'll' or 'I am going to' about anything a tool "
+    "does. Call the tool instead, and say what you did afterwards.",
 )
 
 _stt = None
@@ -680,6 +701,72 @@ def _forget_refusals(history: list[dict[str, Any]]) -> None:
             continue
         if any(m.get("role") == "assistant" and isinstance(m.get("content"), str)
                and _blind_refusal(m["content"]) for m in group):
+            continue
+        kept.extend(group)
+    history[:] = kept
+
+
+# Two lists again, and for the same reason: what these sentences share is a
+# first person about to act, and a verb belonging to something a tool does. It
+# takes both, so "I will be here when you get back" and "I am not sure what you
+# mean by late time" are left alone. The present progressive is in the first
+# list because the model says "I am starting to follow the person in front of
+# me" as readily as "I will" -- with no call made, that is the same sentence.
+_PROMISING = re.compile(
+    r"\bi(?:'ll|\s+will|\s+am\s+going\s+to|'m\s+going\s+to|\s+am\s+about\s+to|"
+    r"\s+am\s+\w+ing)\b")
+_DOING = re.compile(
+    r"\b(?:turn|turning|switch|switching|set|setting|dim|dimming|brighten|"
+    r"start|starting|stop|stopping|follow|following|track|tracking|point|"
+    r"pointing|aim|aiming|centre|center|check|checking|take|taking|move|"
+    r"moving|look|looking)\b")
+
+
+def _promised(reply: str) -> bool:
+    """Is this the rover saying it is *about to* act, rather than acting?"""
+    said = reply.lower()
+    return bool(_PROMISING.search(said) and _DOING.search(said))
+
+
+def _forget_promises(history: list[dict[str, Any]]) -> None:
+    """Drop the exchanges where the rover promised an action it never took.
+
+    The third instance of the same law, and the one that reaches the plainest
+    requests there are: **whatever this model said last, it says again.** The
+    reported session is the whole argument. STT garbled "can you switch the
+    lights on" into "can each other lights on", the model answered *"I will turn
+    the lights on."* and called nothing -- and from there the conversation was
+    over, because every later turn copied the shape instead of acting. Measured
+    on the same question with three transcripts in front of it:
+
+        clean history                            6/6
+        after "I will turn the lights on."       0/6
+        after the same request actually carried
+        out, call and result in the history      6/6
+
+    So it is the promise and not the subject. One sentence, and a request that
+    is 6/6 on its own becomes one the rover will never perform, however many
+    times it is asked -- which is exactly what "nothing is happening" looks like
+    from the other end.
+
+    Not gated on vision, unlike the two rules above: a promise is about tools,
+    and the rover has had those since before it had a camera.
+
+    Only exchanges that called nothing, for the reason `_forget_refusals` gives:
+    a turn that acted is a turn worth keeping, and "I'll keep following him" is
+    an honest sentence when `start_tracking` is sitting in the same exchange.
+
+    This does not stop the promise being *spoken* -- the user still hears one
+    lie before the rule takes effect, and that would want re-asking the model
+    within the turn instead. See the README; it is the piece still missing.
+    """
+    kept: list[dict[str, Any]] = []
+    for group in _exchanges(history):
+        if any(m.get("tool_calls") or m.get("role") == "tool" for m in group):
+            kept.extend(group)
+            continue
+        if any(m.get("role") == "assistant" and isinstance(m.get("content"), str)
+               and _promised(m["content"]) for m in group):
             continue
         kept.extend(group)
     history[:] = kept
@@ -1432,6 +1519,13 @@ async def _run_turn(
             # And the turns that refused to see, for the same reason: they are
             # the other thing the model reads back to itself instead of looking.
             _forget_refusals(history)
+        # And the turns that promised and did not act, which is the same rule
+        # again pointed at the tools rather than at the camera. Only with tools
+        # attached: "I'll be here" is not a promise about hardware when there is
+        # no hardware to reach, and a client that announced nothing cannot act
+        # whatever it says.
+        if tools:
+            _forget_promises(history)
         history.append({"role": "user", "content": heard})
         history[:] = _trim(history, tools)
 

@@ -409,6 +409,48 @@ def test_vision() -> None:
     server._forget_refusals(kept_acted)
     check("an exchange that called a tool is left alone", kept_acted, acted)
 
+    # A promise is the same law a third time. All four of these were said by the
+    # rover with no call behind them, and one of them was enough to take a 6/6
+    # request to 0/6 for the rest of the conversation.
+    promises = [
+        "I will turn the lights on.",
+        "I'll start tracking you as you move. I'll keep you centered in my view.",
+        "I am going to switch the lights off for you.",
+        "I am starting to follow the person in front of me.",
+        "I will check the lights status.",
+    ]
+    innocent = [
+        "I am the rover. I don't have a name.",
+        "I am not sure what you mean by late time. Please say that again.",
+        "I don't have a sense of time. I can't tell if it's late or not.",
+        # A promise about nothing a tool does is a promise this must not eat.
+        "I'll be here when you get back.",
+        # Said *after* a call, which is the case the exchange rule protects.
+        "I turned the lights on.",
+        "The lights are on.",
+    ]
+    check("a promise to act is recognised",
+          [server._promised(p) for p in promises], [True] * len(promises))
+    check("...and an ordinary answer is not",
+          [r for r in innocent if server._promised(r)], [])
+    promised = ([{"role": "user", "content": "can each other lights on"},
+                 {"role": "assistant", "content": promises[0]}]
+                + spoke
+                + [{"role": "user", "content": "are the lights on"},
+                   {"role": "assistant", "content": innocent[-1]}])
+    server._forget_promises(promised)
+    check("the exchange that promised is dropped whole",
+          [m["content"] for m in promised if isinstance(m.get("content"), str)],
+          ["lights on", "", '{"ok": true}', "They are on.", "are the lights on",
+           innocent[-1]])
+    # "I'll keep following him" is honest when the call is in the same exchange.
+    kept_promise = list(spoke)
+    kept_promise[-1] = {"role": "assistant", "content": promises[1]}
+    unchanged = list(kept_promise)
+    server._forget_promises(kept_promise)
+    check("a promise beside its own tool call is left alone",
+          kept_promise, unchanged)
+
     # The stash. Bounded two ways, because it is fed by whatever holds a camera
     # and a frame nobody claims must not become a leak.
     server._frames.clear()
