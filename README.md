@@ -361,8 +361,9 @@ rover can be shown to be standing still.
 ## Documentation
 
 The measurements, hardware facts and failure modes live in [`docs/`](docs), one
-document per component, plus two for the OAK camera's constraints and one for the
-machines the rover shares work with:
+document per component, plus two for the OAK camera's constraints, one for the
+machines the rover shares work with, and one on what a bigger card and a bigger
+model would buy:
 
 | Document | Covers |
 |---|---|
@@ -372,6 +373,7 @@ machines the rover shares work with:
 | [d500-lidar.md](docs/d500-lidar.md) | power, data path, packet protocol, view orientation |
 | [usb-cameras.md](docs/usb-cameras.md) | how cameras are probed and named, why a black frame is usually the pixel format, forcing auto controls |
 | [hosts.md](docs/hosts.md) | the two machines outside this workstation — `admin@rpi` on the rover, `root@media` for the GPU |
+| [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which EC2 GPU instances are worth it, what an omni model would change, rent vs buy |
 
 Read the relevant one before concluding a component is dead. Several documented
 failures look exactly like broken hardware and are not: a camera that will not open
