@@ -168,10 +168,6 @@ FRESH_PICTURE = os.environ.get("VOICE_FRESH_PICTURE", "1") not in ("0", "false",
 # tools. The model otherwise answers "what can you see" from the conversation,
 # or from nothing, with complete confidence -- the same failure as the rover
 # that said it had switched the lights on.
-# Appended to the system prompt when vision is on and the client announced
-# tools. The model otherwise answers "what can you see" from the conversation,
-# or from nothing, with complete confidence -- the same failure as the rover
-# that said it had switched the lights on.
 #
 # This wording is what measured best, not what reads best, and it has one known
 # wart: asked to describe something in a picture it is already holding, it
@@ -488,8 +484,24 @@ def _textual(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return plain
 
 
+def _exchanges(history: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """The conversation grouped into exchanges: a spoken turn and everything answering it.
+
+    A picture is a user message too -- that is the only role the templates will
+    render one in -- so the split is on user messages holding a *string*, which
+    is what an utterance is. Anything else joins the exchange it arrived in.
+    """
+    groups: list[list[dict[str, Any]]] = []
+    for message in history:
+        spoken = message.get("role") == "user" and isinstance(message.get("content"), str)
+        if spoken or not groups:
+            groups.append([])
+        groups[-1].append(message)
+    return groups
+
+
 def _forget_pictures(history: list[dict[str, Any]], keep_newest: bool = True) -> None:
-    """Drop pictures out of the conversation, in place, leaving a note that one existed.
+    """Drop the exchanges that held a picture, in place. Whole exchanges, not pictures.
 
     Two reasons, and they stack. A picture costs a few hundred tokens of a
     window that holds about a dozen spoken turns, so a conversation that looked
@@ -498,34 +510,36 @@ def _forget_pictures(history: list[dict[str, Any]], keep_newest: bool = True) ->
     the camera moves between them -- it is how the rover is stopped from
     answering today's question with yesterday's view.
 
-    What is left behind is a sentence saying there was a picture, so the model
-    knows it looked and does not claim to still be looking at something that is
-    no longer in front of it.
+    Whole exchanges because everything else was measured and failed. What a
+    looking turn leaves behind is not only the photograph: it is the `look` call,
+    its result, and then the reply the model spoke from the picture -- and that
+    reply is the one that does the damage. Take the picture away and leave the
+    sentence "I see a room with two black sofas and yellow walls" in the
+    transcript, and the next four questions about what is in front of the rover
+    are answered from that sentence, word for word, with no call made: 0/6 on
+    "what do you see now", "check your camera", "what can you see" and "take
+    another photo and describe what you see". Replacing the description with a
+    note that a picture was taken measures exactly the same 0/6, and the model
+    then reads the note out loud -- it copies its last answer whatever the answer
+    was. Leaving the question but not the reply is worse still, because a
+    question the model can see it did not answer gets answered with "I took a
+    picture to see what's in front of me", by a model that took none.
+
+    With the exchange gone the same four questions take a fresh picture. The cost
+    is that a looking turn leaves no trace at all, so a turn that both looked and
+    did something else loses the record of the something else; `get_lights` and
+    `tracking_status` exist for the state that actually matters.
     """
-    newest = max((i for i, m in enumerate(history) if _images([m])), default=None)
+    groups = _exchanges(history)
+    newest = max((i for i, group in enumerate(groups) if _images(group)), default=None)
     if newest is None:
         return
-    # The call that fetched it goes with it. Leaving the call and its result
-    # behind was measured twice and failed twice, under two different wordings
-    # of what was left in the picture's place: the model reads its own earlier
-    # `look` as having already looked, and then answers "I can't describe them,
-    # I don't have a picture" -- or, worse, "I need to take a picture to see"
-    # while taking none. 0/3 both times. A call whose result has been taken away
-    # is a stranded call, which this service already knows better than to keep;
-    # _trim cuts whole exchanges for the same reason. What is left is the
-    # transcript of what was actually said, which is all a later turn needs.
-    keep: list[dict[str, Any]] = []
-    for index, message in enumerate(history):
-        if _images([message]) and not (keep_newest and index == newest):
-            # ...and the two messages in front of it, which are the call and
-            # its result, appended together with the picture in _run_turn.
-            if keep and keep[-1].get("role") == "tool":
-                keep.pop()
-                if keep and keep[-1].get("tool_calls"):
-                    keep.pop()
-            continue
-        keep.append(message)
-    history[:] = keep
+    history[:] = [
+        message
+        for index, group in enumerate(groups)
+        if not _images(group) or (keep_newest and index == newest)
+        for message in group
+    ]
 
 
 def _measure_image_tokens() -> int:
@@ -754,9 +768,9 @@ def _trim(
     """
     budget = CACHE_LEN - MAX_NEW_TOKENS - 32
     history = list(history)
-    # Before dropping any turn, drop every picture but the newest: a photograph
-    # of a room from four turns ago is worth less than the sentences it would
-    # cost, and this is the cheaper cut of the two.
+    # Before dropping any turn off the front, drop the exchanges that looked,
+    # bar the newest: a photograph of a room from four turns ago is worth less
+    # than the sentences it would cost, and this is the cheaper cut of the two.
     _forget_pictures(history)
     while history:
         if _prompt_len(history, tools) <= budget:
@@ -1168,7 +1182,9 @@ async def _run_turn(
         # gimbal that sweeps while tracking runs, so the picture from the last
         # turn shows somewhere the rover is no longer pointing -- and a model
         # holding one does not take another, so it would answer about the past
-        # in the present tense. Dropped here rather than after the last turn so
+        # in the present tense. The whole exchange goes, not just the picture:
+        # the answer spoken from a picture is read back as an answer about now
+        # (see _forget_pictures). Dropped here rather than after the last turn so
         # that the turn which took the picture keeps it for as long as it is
         # answering from it, including across its own tool calls.
         if VISION and FRESH_PICTURE:

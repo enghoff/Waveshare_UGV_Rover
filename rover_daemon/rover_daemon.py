@@ -459,11 +459,23 @@ TOOLS: list[dict[str, Any]] = [
 # to a list already full of looking. Naming it as the *only* way to see, and
 # pointing the counting question at the tool that counts, took it to 6/6. The
 # table is in voice_chat/README.md; change this wording only with numbers.
+#
+# The opening sentence was measured too, and so was its position. Without it the
+# model answers the plainest questions there are -- "what can you see", "check
+# your camera", "can you describe what is in front of you" -- with "I'll take a
+# picture to see what's in front of me" and takes none: 0/6 each. Naming those
+# questions takes them to 6/6, and naming them *first* is worth the last of it
+# ("check your camera" is 0/6 with the same sentence at the end). Renaming the
+# tool to take_picture, which is the model's own phrase for it, was tried and is
+# much worse -- it collides with look_at, so "look around" aims the camera
+# instead of photographing, and "what do you see now" falls 6/6 -> 0/6.
 LOOK_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "look",
         "description": (
+            "Call it when you are asked what you can see, what is in front of "
+            "you, to check your camera, or to describe or read anything. "
             "See what is in front of the rover. This is the only way you can see "
             "anything at all: it takes a photograph through the camera and shows "
             "it to you. Use it for every question about what is there, what "

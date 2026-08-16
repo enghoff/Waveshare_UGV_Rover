@@ -292,30 +292,42 @@ def test_vision() -> None:
           [m["content"] for m, original in zip(server._textual(history), history)
            if isinstance(original["content"], list)], ["the picture", "the picture"])
 
-    # Only the newest survives, and what is left says a picture was there. A
-    # model shown nothing at all starts claiming it can still see the last one.
+    # A picture is a user message, so it must not be read as the start of a new
+    # exchange -- it belongs to the question that took it.
+    check("an exchange is a spoken turn and everything answering it",
+          [len(group) for group in server._exchanges(history)], [5, 4])
+
+    # Only the newest exchange that looked survives, and it survives whole.
     kept = list(history)
     server._forget_pictures(kept)
     check("only the newest picture is kept", server._images(kept), [picture])
     check("...and the older one's call goes with it",
           sum(1 for m in kept if m.get("tool_calls")), 1)
-    check("...leaving the spoken turns alone",
+    check("...along with the answer spoken from it",
           [m["content"] for m in kept if isinstance(m.get("content"), str) and m["content"]],
-          ["what can you see", "A desk.", "and now", '{"ok": true}'])
+          ["and now", '{"ok": true}'])
     # ...and at the start of a turn, none of them survive: the camera has moved
     # since, so the newest is a picture of somewhere else, and a model holding
     # one does not take another.
     gone = list(history)
     server._forget_pictures(gone, keep_newest=False)
     check("a new turn starts with no picture at all", server._images(gone), [])
-    # The call that fetched it goes too. Left behind, the model reads it as
-    # having already looked and refuses to look again -- measured 0/3, twice,
-    # under two wordings of what replaced the picture.
-    check("...and no stranded look call is left to read",
-          [m for m in gone if m.get("tool_calls") or m.get("role") == "tool"], [])
-    check("...leaving what was actually said",
-          [m["content"] for m in gone],
-          ["what can you see", "A desk.", "and now"])
+    # The call that fetched it goes too, and so does the reply spoken from it:
+    # the model answers the next four questions about what is in front of it out
+    # of its own last answer, word for word, with no call made. 0/6 measured on
+    # every phrasing tried, and the same 0/6 with a note in the answer's place.
+    check("...and nothing derived from it is left to copy", gone, [])
+    # A turn that used some other tool is not a turn that looked, and keeps
+    # everything: this cut is about the camera, not about tools.
+    spoke = [{"role": "user", "content": "lights on"},
+             {"role": "assistant", "content": "",
+              "tool_calls": [{"type": "function",
+                              "function": {"name": "set_lights", "arguments": {}}}]},
+             {"role": "tool", "content": '{"ok": true}'},
+             {"role": "assistant", "content": "They are on."}]
+    mixed = spoke + history
+    server._forget_pictures(mixed, keep_newest=False)
+    check("an exchange that did not look is left alone", mixed, spoke)
     untouched = [{"role": "user", "content": "hello"}]
     server._forget_pictures(untouched, keep_newest=False)
     check("a conversation with no pictures is left alone",

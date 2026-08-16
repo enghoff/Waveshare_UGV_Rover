@@ -297,9 +297,10 @@ another one — instead of failing in the middle of somebody's sentence. A frame
 is held under its name for 60s and at most four at a time; a name is claimed
 once, so the same picture cannot be shown twice.
 
-No picture outlives the turn that took it — see [A picture does not outlive the
-turn that took it](#a-picture-does-not-outlive-the-turn-that-took-it), which is
-also where a frame lives and for how long. What one costs in the context window
+No picture outlives the turn that took it, and neither does the answer spoken
+from one — see [A picture does not outlive the turn that took
+it](#a-picture-does-not-outlive-the-turn-that-took-it), which is also where a
+frame lives and for how long. What one costs in the context window
 is measured at startup against a frame of the configured size rather than
 assumed, because that number decides when history is trimmed, and a wrong
 constant there fails silently: too low and the prompt overruns the static cache
@@ -319,8 +320,13 @@ ssh root@media 'sed -i "s/^Environment=VOICE_LLM_MODEL=.*/Environment=VOICE_LLM_
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 
 # the tool: drop --vision from the rover's crontab line, then
-ssh rpi 'pkill -f ugv/rover_daemon.py'      # run_daemon.sh restarts it
+ssh rpi ~/ugv/restart.sh                    # reloads the daemon, keeping its flags
 ```
+
+`restart.sh` kills the daemon and lets `run_daemon.sh` bring it back, because the
+supervisor is what holds `--vision`; relaunching the supervisor by hand is how a
+reload silently turns the camera off. The startup line in `rover_daemon.log` says
+which it is — `(10 tools)` with vision, `(9 tools)` without.
 
 With `VOICE_VISION=0` this is the text service it always was: no processor is
 loaded, `/frame` answers 409 with a sentence saying why, and no message in a
@@ -373,9 +379,42 @@ all, so **"how many people can you see" called nothing**. It had presumably been
 answering that question by luck for as long as the wording had a monopoly on the
 word "look".
 
-One weak cell is left, honestly: *"can you describe what is in front of you"* is
-3/6, and the wording that made it 5/6 is the one that costs the people question.
-Do not tune it on a single attempt — that is the lesson recorded above.
+**Then name the questions, first.** That wording still lost the plainest requests
+there are, and lost them completely — not by choosing another tool but by
+*announcing* the picture and taking none, which is the failure this whole
+document keeps circling back to:
+
+| request | as above | + "call it when you are asked…" at the end | …at the front |
+|---|---|---|---|
+| "What can you see?" | **0/6** — *"I'll take a picture to see what's in front of me"* | 6/6 | **6/6** |
+| "Check your camera." | **0/6** — *"I checked my camera. I can't see anything right now"* | **0/6** | **6/6** |
+| "Can you describe what is in front of you?" | **0/6** | 6/6 | 4–5/6 |
+| "What do you see now?" | 6/6 | 6/6 | 6/6 |
+| "Read that sign for me." | — | — | 6/6 |
+| "Turn the lights on." | 0/6, `set_lights` 6/6 | same | same |
+| "How many people are there?" | 0/6, `count_faces` 6/6 | same | same |
+
+The sentence is *"Call it when you are asked what you can see, what is in front
+of you, to check your camera, or to describe or read anything."* Its **position
+is worth a cell**: at the end of the description "check your camera" stays 0/6,
+at the front it is 6/6. Nothing else moved, so this buys the visual questions
+without costing the tools they might have stolen from.
+
+Two things that did **not** work, both tried because they sound obvious:
+
+- **Renaming it `take_picture`** — the model's own phrase for it, which is what
+  made it worth a try. Much worse: it collides with `look_at`, so *"look around"*
+  aims the camera instead of photographing it, and *"what do you see now"* falls
+  6/6 → 0/6. The name is read against the neighbours too.
+- **Two more system-prompt wordings** (a "never say you took a picture unless you
+  called the tool" clause in the vision line, and adding *looked at* to the list
+  of verbs in the tool prompt): both identical to no change at all, 12/24 on the
+  same four questions. The prompt has never once been the variable here.
+
+*"Follow me."* fails the same way — *"I'll start tracking you as you move"*, no
+call, 0/6 — with and without any of this, while *"start following me"* is 6/6.
+Announcing instead of acting is this model's failure mode generally, not
+something vision introduced.
 
 ### A tool result is context, and an instruction in it is an order
 
@@ -447,11 +486,38 @@ calling it:
 A `look` call whose picture has been taken away is a **stranded call**, and the
 model reads it as having already looked. `_trim` has always cut whole exchanges
 for exactly this reason; the same rule now applies to a picture that is
-withdrawn. What is left in the history is the transcript of what was said aloud,
-which is all a later turn needs.
+withdrawn.
 
-Measured over three fresh conversations, every visual follow-up now takes its
-own photograph: *"what colour is the floor?"* 3/3, *"is there anything on the
+**And the answer spoken from it must go too.** That is the whole exchange, not
+the picture and its plumbing, and getting it wrong looks exactly like a camera
+that has stopped working. Three turns in a real session, three identical replies
+— *"I see a room with two black sofas, a dining table with chairs, and yellow
+walls"*, word for word, no photograph taken. The model was not reading a stale
+*picture*; it was reading its own stale *sentence*. Six samples a cell, on the
+history that session left behind:
+
+| the transcript entering the turn | "take another photo…" | "what do you see now?" | "check your camera" | "what can you see?" |
+|---|---|---|---|---|
+| the picture gone, the reply kept | **0/6** | **0/6** | **0/6** | **0/6** |
+| the reply replaced by "I took a picture and described it" | **0/6** | **0/6** | **0/6** | **0/6** |
+| the whole exchange gone | **6/6** | **6/6** | 6/6 † | 6/6 † |
+
+The middle row is the useful one: it repeats the *note* out loud, verbatim, in
+place of an answer. The model copies its last reply whatever the last reply was,
+so there is nothing to put there — which is why `_forget_pictures` now drops
+exchanges rather than messages. († those two cells needed the schema fix above as
+well; on their own they announced a picture and took none.) Leaving the question
+but not the reply is worse than either: a question the model can see it did not
+answer gets *"I took a picture to see what's in front of me"* from a model that
+took none.
+
+The cost is that a looking turn leaves no trace at all, so a turn that both
+looked and did something else loses the record of the something else. `get_lights`
+and `tracking_status` exist for the state that actually matters, and asking the
+rover what it said two turns ago was never the point of it.
+
+Measured over three fresh conversations, every visual follow-up takes its own
+photograph: *"what colour is the floor?"* 3/3, *"is there anything on the
 table?"* 3/3, after a first *"what's in the picture?"* at 3/3.
 
 **Where a picture actually lives.** Posted to `/frame` it sits in a stash of at
@@ -460,12 +526,14 @@ claimed once. From there it is one decoded image in that conversation's history,
 in memory, dropped at the start of the next turn. `hello`, `reset` and a closed
 socket drop it too. **Nothing is written to disk at any point**, on either host.
 
-Two warts, measured and left in rather than smoothed over. A question about
+One wart, measured and left in rather than smoothed over. A question about
 something that is not in front of the camera — "describe the person" with nobody
 there — is answered with a refusal rather than a look, and those refusals then
 make the *next* few turns refuse as well: the model reads its own "I can't" back.
-And a late "what can you see now?" is sometimes answered from the transcript,
-repeating an earlier description word for word, 0/3.
+It is the same mechanism as the stale description above, which is worth
+remembering before reaching for a prompt: **whatever this model said last, it
+will say again.** The refusal is not spoken from a picture, so dropping the
+exchange does not reach it.
 
 ### The first picture compiles
 
