@@ -574,6 +574,54 @@ call, 0/6 — with and without any of this, while *"start following me"* is 6/6.
 Announcing instead of acting is this model's failure mode generally, not
 something vision introduced.
 
+#### And then name the questions that come *after* a picture
+
+Dropping the looking exchange fixed the rover answering today's question from
+yesterday's view, and it left a hole nobody measured: a follow-up is now a fresh
+question with no picture behind it, so it has to take its own. It did not.
+
+```
+  you: Describe what you see.
+    [look{} -> frame-4]
+  bot: I see a person sitting on a couch, a coffee table with a green box on it…
+  you: What else is on the table?
+  bot: I don't see anything on the table. Let me check what's in front of me.
+```
+
+No call, and the last sentence is a promise it does not keep. Measured with an
+empty history, which is what a follow-up really gets, `look` was **0/6** on all
+three of *"what else is on the table?"*, *"what else is there?"* and *"is there
+anything else?"* — the answer being some form of *"I can't see what's on the
+table without taking a picture"*, from a rover holding the tool that takes one.
+The tool prompt is not the variable, as ever: the wording from earlier today and
+the one before it score the same 0/6 on every one of them.
+
+What moved it was naming those questions in `look`, in their own sentence, put
+**second** — after the opening trigger list rather than in front of it:
+
+| request | as before | + follow-ups, second | …in front |
+|---|---|---|---|
+| "What else is on the table?" | 0/6 | 3/6 | 4/6 |
+| "What else is there?" | 0/6 | 3/6 | 6/6 |
+| "Is there anything else?" | 0/6 | 5/6 | 6/6 |
+| "How many people can you see?" | 4/6 | 6/6 | 6/6 |
+| "Check your camera." | 6/6 | 6/6 | **3/6** |
+| "What colour is the box?" | 6/6 | 6/6 | **3/6** |
+| **total, 12 cases** | **52/72** | **65/72** | 64/72 |
+
+The front column scores about the same in total and is the wrong answer: it
+displaces the opening list, which was itself put first because *"check your
+camera"* is 0/6 anywhere else. Second is the only placement measured that costs
+no cell. Folding both lists into one longer sentence is worse than either
+(**55/72**) — the follow-ups need their own sentence, not a longer list.
+
+**It is a partial fix and the two weakest cells stay weak.** Re-measured against
+the deployed daemon they came back 2/6 and 1/6 rather than 3/6 and 3/6, so
+*"what else is on the table?"* is still a question this rover will usually
+answer without looking. 62/72 against 52/72 overall, no cell worse. The thing
+that would actually settle it is the re-ask inside the turn, which is the same
+missing piece the promises want.
+
 ### A tool result is context, and an instruction in it is an order
 
 The result of `look` came back as `{"ok": true, "image": …, "note": "the picture

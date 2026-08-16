@@ -469,6 +469,26 @@ TOOLS: list[dict[str, Any]] = [
 # tool to take_picture, which is the model's own phrase for it, was tried and is
 # much worse -- it collides with look_at, so "look around" aims the camera
 # instead of photographing, and "what do you see now" falls 6/6 -> 0/6.
+#
+# The second sentence is about the questions that come *after* a picture, and it
+# is here because the picture stopped outliving its turn. Once the looking
+# exchange is dropped, "what else is on the table?" is a fresh question with no
+# view behind it -- and it was answered "I can't see what's on the table without
+# taking a picture" by a rover that could have taken one, 0/6. Naming those
+# questions too, at 6 samples a cell:
+#
+#   "What else is on the table?"   0/6 -> 3/6
+#   "What else is there?"          0/6 -> 3/6
+#   "Is there anything else?"      0/6 -> 5/6
+#   "How many people can you see?" 4/6 -> 6/6
+#
+# Position again, and again not the obvious one: in *front* of the opening
+# sentence it totals higher still but takes "check your camera" 6/6 -> 3/6 and
+# "what colour is the box" 6/6 -> 3/6, because it displaces the list that was
+# put first for exactly that reason. Second is the only placement measured that
+# costs no cell. Folding both lists into one sentence is worse than either
+# (55/72 against 65/72) -- the follow-ups need their own sentence, not a longer
+# list. Still only a partial fix: two of those cells are 3/6, not 6/6.
 LOOK_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -476,6 +496,10 @@ LOOK_TOOL: dict[str, Any] = {
         "description": (
             "Call it when you are asked what you can see, what is in front of "
             "you, to check your camera, or to describe or read anything. "
+            "Call it again for a follow-up about the same view -- what else is "
+            "there, what else is on something, whether there is anything else, "
+            "or what colour or shape something is. You keep no picture between "
+            "questions, so answering one of those means taking a new one. "
             "See what is in front of the rover. This is the only way you can see "
             "anything at all: it takes a photograph through the camera and shows "
             "it to you. Use it for every question about what is there, what "
