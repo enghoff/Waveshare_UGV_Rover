@@ -378,6 +378,47 @@ One weak cell is left, honestly: *"can you describe what is in front of you"* is
 3/6, and the wording that made it 5/6 is the one that costs the people question.
 Do not tune it on a single attempt — that is the lesson recorded above.
 
+### A tool result is context, and an instruction in it is an order
+
+The result of `look` came back as `{"ok": true, "image": …, "note": "the picture
+is in front of you; describe what is actually in it"}`. That note was written as
+a comment. It is not a comment — it is a sentence handed to the model
+immediately before the picture, on **every** look, and the model read it as the
+instruction for the turn. So every follow-up got a fresh photograph and a
+description of the whole scene, whatever had been asked:
+
+| turn | with the note | without it |
+|---|---|---|
+| "What's in the picture?" | looks 3/3 | looks 3/3 |
+| "Describe the shapes." | **looks 3/3** | 0/3 — answers from the picture it has |
+| "What colour is the one on the left?" | **looks 3/3** | 0/3 |
+| "Look again and tell me what is there." | looks 3/3 | looks 3/3 |
+
+Removing it fixes all of that and costs nothing: it still looks when it has no
+picture, and still looks again when asked to. What the model should *do* with a
+picture belongs in the system prompt, where it is said once — the tool result
+should carry facts and nothing else.
+
+Two attempts to also fix the remaining wart — asked to describe something in a
+picture it is holding, it sometimes answered "I need to take a picture to see" —
+are worth recording because both were worse:
+
+- **Putting the missing fact in the result instead** (*"this picture stays in
+  front of you"*): identical numbers, no improvement to the wart. Not kept.
+- **Rewriting the system prompt** to say a picture stays and that saying you
+  will look is not looking: took the first look from **3/3 to 1/3** and produced
+  *"I took a picture to show what's in front of me"* from a model that had taken
+  none. A prompt that talks about the act of looking gets the act narrated
+  instead of performed — the same failure as the rover that said it had switched
+  the lights on, and the reason that clause exists in the tool prompt at all.
+
+What did help was smaller: deleting *"You have no eyes of your own"* from the
+front of the vision prompt, which the model had been reciting verbatim as its
+reason for not answering. Description follow-ups now answer from the picture —
+*"The circle is red and solid, positioned to the left of the square"* — and a
+question about something that is genuinely not there is answered from the
+picture too, rather than with an apology about cameras.
+
 Under all of it the plumbing was never the problem: `look` posts a frame in
 **0.8s cold, 0.1s warm**, and end to end through the rover's own camera a turn
 runs **~8.3s** — *"I see a living room with two black leather sofas, a glass

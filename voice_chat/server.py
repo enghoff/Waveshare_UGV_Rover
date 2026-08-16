@@ -159,13 +159,26 @@ IMAGE_TOKENS = int(os.environ.get("VOICE_IMAGE_TOKENS", "400"))
 # tools. The model otherwise answers "what can you see" from the conversation,
 # or from nothing, with complete confidence -- the same failure as the rover
 # that said it had switched the lights on.
+# Appended to the system prompt when vision is on and the client announced
+# tools. The model otherwise answers "what can you see" from the conversation,
+# or from nothing, with complete confidence -- the same failure as the rover
+# that said it had switched the lights on.
+#
+# This wording is what measured best, not what reads best, and it has one known
+# wart: asked to describe something in a picture it is already holding, it
+# sometimes answers "I need to take a picture to see" and does not take one. The
+# obvious repair makes things worse and was tried -- rewriting this to say a
+# picture stays and that saying you will look is not looking took the first look
+# from 3/3 to 1/3 and produced "I took a picture to show what's in front of me"
+# from a model that had taken none, which is the lie this whole design exists to
+# prevent. A prompt that talks about the act of looking gets the act narrated.
+# Change it with numbers, and check the first call as well as the follow-ups.
 VISION_PROMPT = os.environ.get(
     "VOICE_VISION_PROMPT",
-    " You have no eyes of your own. You can see only a picture that a tool has "
-    "just given you, so if you are asked what you can see, or what something "
-    "looks like, or to read or describe anything in front of you, call the tool "
-    "that takes a picture first and answer from the picture. Describe only what "
-    "is actually in it.",
+    " You see by taking a picture with the tool that takes one, so if you are "
+    "asked what you can see, or what something looks like, or to read or "
+    "describe anything in front of you, take a picture first and answer from "
+    "it. Describe only what is actually in the picture.",
 )
 
 # --- TTS ---------------------------------------------------------------------
@@ -419,7 +432,17 @@ def _image_message(image: Any) -> dict[str, Any]:
         "role": "user",
         "content": [
             {"type": "image", "image": image},
-            {"type": "text", "text": "This is the picture your camera has just taken."},
+            # That it *stays* is said because it is true and because the model
+            # has no other way to know it. Honestly: adding this sentence
+            # changed nothing measurable on its own -- the follow-up failure it
+            # was aimed at survived it, and what actually fixed that was taking
+            # an instruction out of the tool result. It is here rather than in
+            # the result because how a picture behaves in this context is this
+            # service's business, not something every client repeats.
+            {"type": "text", "text":
+                "This is the picture your camera has just taken. It stays in front of you "
+                "for the rest of the conversation, so answer from it. Take another only if "
+                "you are asked to look again or need a newer view."},
         ],
     }
 

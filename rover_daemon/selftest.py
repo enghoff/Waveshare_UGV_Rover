@@ -236,8 +236,11 @@ def test_look():
         got = rover.call("look", {})
         check("a picture is sent and named", got.get("image"), "frame-1")
         check("...and it is the whole frame, not the fragment", posted[-1], whole)
-        check("...with nothing else for the model to read out",
-              set(got) - {"ok", "image", "note"}, set())
+        # The name and nothing else. A sentence in here is not a comment, it is
+        # context handed to a model immediately before a picture, and the one
+        # that used to sit in this result ("describe what is actually in it")
+        # made every follow-up take a fresh photograph and describe the lot.
+        check("...and the result is the name and nothing else", sorted(got), ["image", "ok"])
 
         # Three fragments running is a camera that is not producing pictures.
         rover._open_camera = lambda: FakeCamera([fragment, fragment, fragment])

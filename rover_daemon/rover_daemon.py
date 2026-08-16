@@ -734,8 +734,16 @@ class Rover:
         sent = self.vision.post(jpeg)
         if not sent.get("ok"):
             return {"ok": False, "error": sent.get("error", "the picture was not accepted")}
-        return {"ok": True, "image": sent["image"],
-                "note": "the picture is in front of you; describe what is actually in it"}
+        # Nothing but the name. This result carried a note once -- "the picture
+        # is in front of you; describe what is actually in it" -- and that one
+        # sentence, arriving immediately before the picture on every single
+        # look, was read as an instruction for the turn: the model described the
+        # whole picture whatever it had been asked, and took a fresh one for
+        # every follow-up, 3/3 against 0/3 with the note removed. A tool result
+        # is context, and context that reads like an order is an order. What the
+        # model should do with a picture belongs in the system prompt, where it
+        # is said once. See voice_chat/README.md.
+        return {"ok": True, "image": sent["image"]}
 
     def _tool_start_tracking(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.device is None:
