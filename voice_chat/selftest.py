@@ -280,6 +280,26 @@ def test_trim() -> None:
             <= sum(1 for m in cut if m.get("tool_calls")),
             True,
         )
+        # A picture is a user message, so cutting at every role=user splits a
+        # look in half: the question is dropped and the model answers the
+        # caption. Same grouping _exchanges already uses, for the same reason.
+        picture = object()
+        look_turn = [
+            {"role": "user", "content": "what's in the room"},
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"type": "function",
+                             "function": {"name": "look", "arguments": {}}}]},
+            {"role": "tool", "content": '{"ok": true}'},
+            {"role": "user", "content": [{"type": "image", "image": picture},
+                                         {"type": "text", "text": "what's in the room"}]},
+        ]
+        cut = server._trim(exchange * 6 + look_turn)
+        check("a look is not split off from the question that took it",
+              any(m.get("content") == "what's in the room" for m in cut
+                  if isinstance(m.get("content"), str)),
+              True)
+        check("...and the picture stays with that question",
+              server._images(cut), [picture])
     finally:
         server.CACHE_LEN = original
 
@@ -300,6 +320,10 @@ def test_vision() -> None:
         return
 
     picture, older = object(), object()
+
+    check("the question sits on the picture",
+          server._image_message(picture, "what's in the room")["content"][1]["text"],
+          "what's in the room")
 
     def took(image):
         """The three messages a look leaves behind, in the order _run_turn adds them."""

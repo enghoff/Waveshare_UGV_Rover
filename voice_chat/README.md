@@ -668,6 +668,46 @@ Under all of it the plumbing was never the problem: `look` posts a frame in
 runs **~8.3s** — *"I see a living room with two black leather sofas, a glass
 table, and a dining area in the background."*
 
+#### And a history of acting teaches it to narrate `look`
+
+The caption that replaced that note — *"This is the picture your camera has just
+taken"* — is itself a last user message, and after a few action tools the model
+answers it the way it has been answering those. Reported 2026-08-16, and
+reproduced on the live service with a picture that is obviously not a room (a
+yellow oval on magenta), so this is not the camera:
+
+```
+  you: Can you switch the lights on?
+    [set_lights{"level": 255} -> {"ok": true, "on": true}]
+  bot: I switched the lights on.
+  you: Can you switch the lights off?
+    [set_lights{"level": 0} -> {"ok": true, "on": false}]
+  bot: I switched the lights off.
+  you: Can you look for people?
+    [start_tracking{} -> {"ok": true, "tracking": true}]
+  bot: I started tracking a person.
+  you: see.
+    [look{} -> frame-11]
+  bot: I took a picture of the scene in front of me.
+  you: What's in the room?
+    [look{} -> frame-12]
+  bot: I took a picture of the room.
+  you: Describe the room.
+    [look{} -> frame-13]
+  bot: I took a picture of the room.
+```
+
+The pictures arrived. `_forget_pictures` dropped each looking exchange before
+the next question, so this is not a stale sentence being copied. What survived
+is the three action turns, and the tool prompt that goes with them: *"Then say
+what you did in one short sentence."* `look` is then another action to narrate.
+Same three visual questions, empty history, same magenta oval: it described the
+oval, 3/3, including through the rover's own camera.
+
+The first user message is still the question, but it is no longer the *last*
+one. The text beside the picture is now that question, so the turn the model
+answers is the one that has both.
+
 ### A picture does not outlive the turn that took it
 
 The camera is on a gimbal that sweeps while face tracking runs — mid-test it sat

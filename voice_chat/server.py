@@ -528,26 +528,30 @@ def _template():
     return _processor if _processor is not None else _tokenizer
 
 
-def _image_message(image: Any) -> dict[str, Any]:
+def _image_message(image: Any, text: str | None = None) -> dict[str, Any]:
     """The picture, as a turn in the conversation.
 
     A user turn rather than the tool result it came from: a tool message holds a
     string, and the templates that would render an image inside one do not
-    agree with each other. This says out loud whose picture it is, because the
-    model is about to be asked what *it* can see.
+    agree with each other. The text beside it is the question that took it,
+    because that is now the last user message and so the one the model answers.
+
+    A caption that only named the picture -- "This is the picture your camera
+    has just taken" -- was read as the turn. After a few action tools the model
+    had been saying "I switched the lights on" / "I started tracking", and look
+    got the same treatment: "I took a picture of the room", with a yellow oval
+    on magenta sitting right there. Same picture, empty history: it described
+    the oval. The question has to sit on the picture, not one turn back.
     """
     return {
         "role": "user",
         "content": [
             {"type": "image", "image": image},
-            # Nothing but what it is. This carried a sentence about the picture
-            # staying in front of you and when another might be taken, which
-            # measured no improvement and did come back out of the model's mouth
-            # as a rule it had been given -- "I can't take a picture again
-            # unless you ask me to look again or need a newer view" -- to
-            # somebody who had asked for exactly that. Under FRESH_PICTURE it
-            # would also have been a lie: the picture does not stay.
-            {"type": "text", "text": "This is the picture your camera has just taken."},
+            # The user's own words, not an instruction. A sentence about what
+            # to do with the picture was tried and came back out of the model's
+            # mouth as a rule -- and under FRESH_PICTURE would also have been a
+            # lie, because the picture does not stay.
+            {"type": "text", "text": text or "This is the picture your camera has just taken."},
         ],
     }
 
@@ -1019,11 +1023,14 @@ def _trim(
     do. Leaves room for the reply as well as the prompt, since both share the
     window.
 
-    An exchange is a user message and everything answering it, which is no
-    longer always one assistant message -- a turn that called a tool holds the
-    call and its result too. Cutting a fixed two entries would strand a call
-    with no result, or a result with no call, and a model shown either starts
-    narrating tool plumbing out loud.
+    An exchange is a spoken user message and everything answering it, which is
+    no longer always one assistant message -- a turn that called a tool holds
+    the call and its result too, and a look holds the picture as a second user
+    message. Cutting at every `role=user` splits that picture off as a new
+    turn, drops the question that took it, and leaves the model answering a
+    caption. Cutting a fixed two entries would strand a call with no result, or
+    a result with no call, and a model shown either starts narrating tool
+    plumbing out loud.
     """
     budget = CACHE_LEN - MAX_NEW_TOKENS - 32
     history = list(history)
@@ -1031,21 +1038,17 @@ def _trim(
     # bar the newest: a photograph of a room from four turns ago is worth less
     # than the sentences it would cost, and this is the cheaper cut of the two.
     _forget_pictures(history)
-    while history:
-        if _prompt_len(history, tools) <= budget:
-            break
-        # Where the next exchange starts. If there is not another one then this
-        # is the last, and it is left alone however long it is: trimming it away
-        # would erase the utterance being answered and hand the model an empty
-        # conversation. _generate falls back to the dynamic cache for that case,
-        # which is slower but correct.
-        cut = 1
-        while cut < len(history) and history[cut].get("role") != "user":
-            cut += 1
-        if cut >= len(history):
-            break
-        history = history[cut:]
-    return history
+    groups = _exchanges(history)
+    while len(groups) > 1:
+        flat = [message for group in groups for message in group]
+        if _prompt_len(flat, tools) <= budget:
+            return flat
+        groups = groups[1:]
+    # The last exchange is left alone however long it is: trimming it away
+    # would erase the utterance being answered and hand the model an empty
+    # conversation. _generate falls back to the dynamic cache for that case,
+    # which is slower but correct.
+    return [message for group in groups for message in group]
 
 
 def _pcm(buf: bytearray) -> np.ndarray:
@@ -1575,7 +1578,7 @@ async def _run_turn(
             )
             history.append({"role": "tool", "content": json.dumps(result)})
             if picture is not None:
-                history.append(_image_message(picture))
+                history.append(_image_message(picture, heard))
             history[:] = _trim(history, tools)
 
     reply = " ".join(spoken)
