@@ -83,6 +83,32 @@ python voice_chat/talk.py
 Just talk; it endpoints on its own. `Ctrl-C` to quit. `--list-devices` and
 `--input-device N` / `--output-device N` if it picks the wrong hardware.
 
+One line at the bottom says what the microphone is doing, rewritten in place:
+
+```
+● listening     open, room tone only
+● hearing you   the endpointer has decided a turn is under way
+○ thinking      utterance sent, waiting on the card
+○ speaking      the reply is playing, and the mic is muted so it does not
+                endpoint the assistant's own voice
+```
+
+The filled half is an open microphone and the hollow half a closed one. Both
+closed states are deliberate and neither is visible any other way — a muted
+client looks exactly like a dead one — which is the whole reason the line
+exists. It is drawn only on a terminal: redirected to a file it is silent, and
+where the encoding cannot take the dots (a piped stdout on Windows is cp1252)
+it falls back to `[ listening ]`.
+
+If the service is not up — which is the usual state, since the card is shared —
+the client says which host it tried and how to start it, rather than a `websockets`
+traceback. It distinguishes the four cases that need different answers: a name
+that will not resolve, a port that refuses (which is also what a service still
+loading its weights looks like), a host that answers nothing at all, and
+something on the port that is not this. A connection lost mid-conversation —
+a restart, or the card being switched away — ends the same way, with a line
+rather than a stack trace.
+
 Client dependencies: `pip install -r voice_chat/client-requirements.txt`.
 
 The service binds `0.0.0.0` rather than loopback, so there is no tunnel. The

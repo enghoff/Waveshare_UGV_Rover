@@ -331,6 +331,149 @@ def test_rover_client() -> None:
           rover_tools.DEFAULT_CANDIDATES[0], "rpi.local")
 
 
+def test_connect_errors() -> None:
+    """What the client says when the service is not there.
+
+    This is the most likely thing to go wrong -- the card is shared, so the
+    service is off more often than on -- and it used to be a fifty-line asyncio
+    traceback that named neither the host nor the way to start it. Each way the
+    connection can fail must arrive as one sentence about the right cause.
+    """
+    import asyncio
+    import socket
+    import threading
+
+    try:
+        import talk
+    except Exception as exc:
+        SKIP.append(f"connect errors ({type(exc).__name__}: needs the client venv)")
+        return
+
+    def why(url: str) -> str:
+        try:
+            asyncio.run(talk._open(url))
+            return "connected"
+        except talk.ServiceUnreachable as error:
+            return str(error)
+        except Exception as error:  # the failure this whole thing exists to prevent
+            return f"raw {type(error).__name__}: {error}"
+
+    check("a bad URL is explained, not raised",
+          "is not a WebSocket URL" in why("http://127.0.0.1:8767/ws"), True)
+    check("a name that does not resolve says so",
+          "does not resolve" in why("ws://nx.invalid:8767/ws"), True)
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        dead = probe.getsockname()[1]
+    refused = why(f"ws://127.0.0.1:{dead}/ws")
+    check("a refused port names the port", f"127.0.0.1:{dead}" in refused, True)
+    # A service that is still loading its weights refuses exactly like one that
+    # was never started, so the message has to cover both or it sends somebody
+    # to restart a service that was seconds from being ready.
+    check("...and allows for a service still warming up", "not bind its port" in refused, True)
+    check("...and says how to start it", "switch_service.sh voice" in refused, True)
+
+    # A listening socket nobody accepts from: the TCP handshake completes and the
+    # HTTP one never does. This is the shape the failure took in practice -- a
+    # host that is up with the port filtered looks the same from here.
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    silent = listener.getsockname()[1]
+    original = talk.CONNECT_TIMEOUT_S
+    try:
+        talk.CONNECT_TIMEOUT_S = 0.3
+        check("a silent port times out with an explanation",
+              "did not answer" in why(f"ws://127.0.0.1:{silent}/ws"), True)
+    finally:
+        talk.CONNECT_TIMEOUT_S = original
+        listener.close()
+
+    # Something answering HTTP on the port is nearly always the wrong path: the
+    # service serves /health and /chat beside /ws, and only /ws is a socket.
+    import http.server
+
+    class Plain(http.server.BaseHTTPRequestHandler):
+        # HTTP/1.1 on purpose: websockets refuses a 1.0 response before it ever
+        # looks at the status, and this is meant to exercise the status branch.
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self):
+            self.send_error(404)
+
+        def log_message(self, *args):
+            pass
+
+    http_server = http.server.HTTPServer(("127.0.0.1", 0), Plain)
+    threading.Thread(target=http_server.serve_forever, daemon=True).start()
+    try:
+        wrong = why(f"ws://127.0.0.1:{http_server.server_address[1]}/")
+        check("a plain HTTP answer points at the path", "/ws" in wrong, True)
+        check("...and quotes what it answered", "404" in wrong, True)
+    finally:
+        http_server.shutdown()
+        http_server.server_close()
+
+
+def test_indicator() -> None:
+    """The line that says whether the microphone is open.
+
+    Worth checking because its failure mode is cosmetic and permanent: a status
+    that is not rubbed out before a transcript line leaves "listening" welded to
+    the front of what was heard, and a redirected run that emits carriage
+    returns fills a log with them.
+    """
+    import io
+
+    try:
+        import talk
+    except Exception as exc:
+        SKIP.append(f"indicator ({type(exc).__name__}: needs the client venv)")
+        return
+
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    def run(stream, script):
+        real, sys.stdout = sys.stdout, stream
+        try:
+            with talk.Indicator() as indicator:
+                for step in script:
+                    step(indicator)
+        finally:
+            sys.stdout = real
+        return stream.getvalue()
+
+    blank = "\r" + " " * talk.STATUS_WIDTH + "\r"
+
+    written = run(Tty(), [
+        lambda i: i.set("listening"),
+        lambda i: i.set("listening"),  # the same state again must not redraw
+        lambda i: i.set("hearing"),
+        lambda i: i.say("you: hello there"),
+        lambda i: i.set("listening"),
+    ])
+    check("an unchanged state is not redrawn", written.count(talk.STATUS["listening"]), 2)
+    check("the status is rubbed out before a transcript line",
+          blank + "you: hello there\n" in written, True)
+    check("...and drawn again afterwards",
+          written.split("you: hello there\n")[-1].startswith("\r"), True)
+    # Whatever ends the conversation, the terminal is not left holding a
+    # "listening" that stopped being true when the process did.
+    check("the last thing written is an empty line", written.endswith(blank), True)
+
+    # Redirected to a file, the whole thing goes quiet: a status that changes
+    # fifty times a second would otherwise be most of the log.
+    piped = run(io.StringIO(), [
+        lambda i: i.set("listening"),
+        lambda i: i.say("you: hello there"),
+        lambda i: i.set("speaking"),
+    ])
+    check("a redirected run writes no status at all", piped, "you: hello there\n")
+
+
 def test_endpointer() -> None:
     """The VAD decides when a turn is over -- the client's only real logic."""
     try:
@@ -401,6 +544,8 @@ def main() -> int:
     test_tool_sniffer()
     test_trim()
     test_rover_client()
+    test_connect_errors()
+    test_indicator()
     test_endpointer()
 
     for name in PASS:

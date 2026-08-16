@@ -9,6 +9,11 @@ The service now binds the LAN, so no tunnel is needed:
 
     python voice_chat/talk.py --url ws://media.local:8767/ws
 
+A line at the bottom of the terminal says what the microphone is doing --
+listening, hearing you, thinking, speaking -- because the two states where it is
+deliberately deaf, while the reply decodes and while it plays, are otherwise
+indistinguishable from a client that has died with the stream open.
+
 Ctrl-C to quit. This is the only chat client: an earlier one ran on the rover
 itself, over Bluetooth, and was removed because the Pi's audio never became
 reliable enough to hold a conversation through.
@@ -35,8 +40,10 @@ import argparse
 import asyncio
 import json
 import queue
+import socket
 import sys
 import time
+import urllib.parse
 
 import numpy as np
 import sounddevice as sd
@@ -49,6 +56,148 @@ from endpointing import BLOCK, IN_RATE, Endpointer
 # this only has to outlast a hiccup on the LAN.
 HELLO_TIMEOUT_S = 5.0
 
+# Shorter than the library's 10s default. Nothing here is slow when it is
+# working -- the service is on the LAN and answers a handshake without waking a
+# model -- so a wait this long already means it is not coming, and the sooner
+# that is said the sooner somebody can go and start it.
+CONNECT_TIMEOUT_S = 8.0
+
+
+# What the microphone is doing, in the four states that differ to a person
+# sitting in front of it. "listening" and "hearing you" are both an open
+# microphone; the other two are a closed one, and which of the two it is decides
+# whether waiting or repeating yourself is the right move.
+#
+# The dot is only used where the terminal can encode it: a redirected stdout on
+# Windows is cp1252, and U+25CF would raise UnicodeEncodeError on the first
+# update -- an indicator that kills the conversation it is decorating.
+try:
+    "●○".encode(sys.stdout.encoding or "ascii")
+    STATUS = {
+        "listening": "● listening",
+        "hearing": "● hearing you",
+        "thinking": "○ thinking",
+        "speaking": "○ speaking",
+    }
+except (UnicodeEncodeError, LookupError):
+    STATUS = {
+        "listening": "[ listening ]",
+        "hearing": "[ hearing you ]",
+        "thinking": "[ thinking ]",
+        "speaking": "[ speaking ]",
+    }
+STATUS_WIDTH = max(len(text) for text in STATUS.values())
+
+
+class Indicator:
+    """One line at the bottom of the terminal saying whether the mic is open.
+
+    Rewritten in place and rubbed out before anything else prints, so the
+    transcript above it stays a transcript. Everything the conversation says goes
+    through `say` for that reason.
+
+    Silent when stdout is not a terminal: `\\r` is just a character in a log file,
+    and a status that changes forty times a second would be most of the log.
+    """
+
+    def __init__(self) -> None:
+        self.on = sys.stdout.isatty()
+        self.shown = ""
+
+    def set(self, state: str) -> None:
+        text = STATUS[state]
+        if not self.on or text == self.shown:
+            return
+        sys.stdout.write("\r" + text.ljust(STATUS_WIDTH))
+        sys.stdout.flush()
+        self.shown = text
+
+    def clear(self) -> None:
+        if self.on and self.shown:
+            sys.stdout.write("\r" + " " * STATUS_WIDTH + "\r")
+            sys.stdout.flush()
+        # Forgotten rather than remembered, so the next `set` redraws it below
+        # whatever was just printed instead of deciding nothing has changed.
+        self.shown = ""
+
+    def say(self, text: str, err: bool = False) -> None:
+        self.clear()
+        print(text, file=sys.stderr if err else sys.stdout, flush=True)
+
+    # A context manager so that however the conversation ends -- Ctrl-C, a
+    # dropped service, a raised exception -- the last thing on the terminal is
+    # not a half-drawn "listening" that is no longer true.
+    def __enter__(self) -> "Indicator":
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.clear()
+
+
+class ServiceUnreachable(Exception):
+    """The voice service could not be reached, said in a way somebody can act on.
+
+    A stack trace out of `websockets` names asyncio internals and not the one
+    thing that matters -- which host was not there, and how to start what should
+    have been on it -- so every way the connection can fail is turned into one of
+    these and printed as text.
+    """
+
+
+async def _open(url: str):
+    """Connect to the voice service, or raise `ServiceUnreachable` explaining why not."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or url
+    port = parts.port or (443 if parts.scheme == "wss" else 80)
+    where = f"{host}:{port}"
+    health = f"{'https' if parts.scheme == 'wss' else 'http'}://{where}/health"
+    # The switcher is how the card is handed between this and the vision
+    # services, so "not running" and "running, but it is dino's turn" have the
+    # same fix and it is worth printing either way.
+    start = f"  Start it with: ssh root@media ~/switch_service.sh voice\n  Then: curl {health}"
+
+    try:
+        return await websockets.connect(url, max_size=None, open_timeout=CONNECT_TIMEOUT_S)
+    except websockets.InvalidURI as error:
+        raise ServiceUnreachable(f"{url} is not a WebSocket URL ({error}).\n"
+                                 "  It should look like: ws://media.local:8767/ws") from None
+    except socket.gaierror:
+        # Nearly always mDNS: the name is only resolvable by machines that speak
+        # it, and this client runs on whatever desk has a microphone.
+        raise ServiceUnreachable(
+            f'cannot reach {where}: the name "{host}" does not resolve here.\n'
+            "  mDNS may not be answering on this network; name the host by address:\n"
+            "    python voice_chat/talk.py --url ws://192.168.1.x:8767/ws") from None
+    except ConnectionRefusedError:
+        # Reached the host, found no listener. Note the service binds late, so
+        # this is also what a service that is still warming up looks like.
+        raise ServiceUnreachable(
+            f"nothing is listening on {where}.\n"
+            "  The service does not bind its port until its ~5GB of weights are\n"
+            "  loaded, so a start ~60s ago looks exactly like this too.\n"
+            f"{start}") from None
+    except (TimeoutError, asyncio.TimeoutError):
+        # A dropped SYN rather than a refused one: the host is asleep, or the
+        # port is filtered. Distinguishable from the above only by the silence.
+        raise ServiceUnreachable(
+            f"{where} did not answer within {CONNECT_TIMEOUT_S:.0f}s.\n"
+            f"  The host is down or the port is being dropped rather than refused --\n"
+            f"  check it is up (ping {host}) and that the firewall passes 8765-8774.\n"
+            f"{start}") from None
+    except websockets.InvalidStatus as error:
+        # Something is there and it speaks HTTP, so this is nearly always the
+        # path: the service serves /health and /chat on this same port, and only
+        # /ws is a socket.
+        raise ServiceUnreachable(
+            f"{where} answered HTTP {error.response.status_code} rather than upgrading.\n"
+            f"  Check the path -- only /ws is a WebSocket: ws://{where}/ws") from None
+    except websockets.InvalidHandshake as error:
+        raise ServiceUnreachable(
+            f"{where} answered, but not as a voice service ({error}).\n"
+            f"  Something else may have taken the port; check: curl {health}") from None
+    except OSError as error:
+        raise ServiceUnreachable(f"cannot reach {where}: {error}.\n{start}") from None
+
 
 async def converse(
     url: str,
@@ -57,13 +206,17 @@ async def converse(
     rover: rover_tools.RoverClient | None,
 ) -> None:
     blocks: queue.Queue[np.ndarray] = queue.Queue()
+    indicator = Indicator()
 
     def on_audio(indata, _frames, _t, status) -> None:
         if status:
-            print(f"  (input {status})", file=sys.stderr)
+            # From PortAudio's thread, so it cannot touch the indicator's line;
+            # an overrun report is rare enough that a stray newline is fine.
+            print(f"\n  (input {status})", file=sys.stderr)
         blocks.put(indata[:, 0].copy())
 
-    async with websockets.connect(url, max_size=None) as ws:
+    print(f"connecting to {url} ...", flush=True)
+    async with await _open(url) as ws:
         print(f"connected to {url}")
         # What this client can perform, announced before anything is said. The
         # service holds no catalogue of its own -- it puts whatever it is given
@@ -81,9 +234,7 @@ async def converse(
             except (asyncio.TimeoutError, ValueError):
                 print("  the service did not take the tools; carrying on without them",
                       file=sys.stderr)
-        # The service loads ~5GB of weights on first start; say so rather than
-        # looking hung.
-        print("listening -- just talk. Ctrl-C to quit.\n")
+        print("just talk. Ctrl-C to quit.\n")
 
         stream = sd.InputStream(
             samplerate=IN_RATE,
@@ -100,7 +251,8 @@ async def converse(
         # the reply endpoints itself and the two talk over each other forever.
         muted_until = 0.0
 
-        with stream:
+        with stream, indicator:
+            indicator.set("listening")
             while True:
                 try:
                     block = blocks.get_nowait()
@@ -109,12 +261,21 @@ async def converse(
                     continue
 
                 if time.monotonic() < muted_until:
+                    # Deaf on purpose while the reply plays. Said out loud
+                    # because a microphone that is ignoring you looks exactly
+                    # like one that has stopped working.
+                    indicator.set("speaking")
                     continue
 
                 utterance = endpointer.push(block)
+                # Whether the endpointer has decided speech is under way, which
+                # is the half of "listening" worth seeing: it is the difference
+                # between a microphone that is on and one that can hear you.
+                indicator.set("hearing" if endpointer.speaking else "listening")
                 if utterance is None:
                     continue
 
+                indicator.set("thinking")
                 pcm = (np.clip(utterance, -1.0, 1.0) * 32767).astype("<i2").tobytes()
                 await ws.send(pcm)
                 await ws.send(json.dumps({"type": "end"}))
@@ -129,15 +290,20 @@ async def converse(
                             # Hold the mic closed for as long as this clip lasts,
                             # plus a little for the speakers to stop ringing.
                             muted_until = max(muted_until, time.monotonic()) + len(audio) / rate
+                            # Said here rather than left to the outer loop: the
+                            # reply starts playing while the rest of it is still
+                            # decoding, and "thinking" over the top of the
+                            # assistant's own voice reads as a hang.
+                            indicator.set("speaking")
                         continue
 
                     event = json.loads(message)
                     kind = event.get("type")
                     if kind == "stt":
                         if event.get("empty"):
-                            print("  (nothing heard)")
+                            indicator.say("  (nothing heard)")
                         else:
-                            print(f"you: {event['text']}")
+                            indicator.say(f"you: {event['text']}")
                     elif kind == "start":
                         rate = event["rate"]
                         if player is None:
@@ -149,7 +315,7 @@ async def converse(
                             )
                             player.start()
                     elif kind == "text":
-                        print(f"bot: {event['text']}")
+                        indicator.say(f"bot: {event['text']}")
                     elif kind == "tool":
                         name = event.get("name")
                         arguments = event.get("arguments") or {}
@@ -161,16 +327,17 @@ async def converse(
                             if rover is None
                             else await asyncio.to_thread(rover.call, name, arguments)
                         )
-                        print(f"  [{name}{json.dumps(arguments)} -> {json.dumps(result)}]")
+                        indicator.say(
+                            f"  [{name}{json.dumps(arguments)} -> {json.dumps(result)}]")
                         await ws.send(json.dumps(
                             {"type": "tool_result", "id": event.get("id"), "result": result}))
                     elif kind == "error":
-                        print(f"  error: {event['message']}", file=sys.stderr)
+                        indicator.say(f"  error: {event['message']}", err=True)
                         break
                     elif kind == "done":
                         stats = event.get("stats") or {}
                         if stats.get("first_audio_ms"):
-                            print(
+                            indicator.say(
                                 f"  [stt {stats['stt_ms']}ms, "
                                 f"first audio {stats['first_audio_ms']}ms, "
                                 f"total {stats['total_ms']}ms]\n"
@@ -180,7 +347,7 @@ async def converse(
                         break
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="ws://media.local:8767/ws")
     parser.add_argument("--input-device", type=int, default=None)
@@ -192,7 +359,7 @@ def main() -> None:
 
     if args.list_devices:
         print(sd.query_devices())
-        return
+        return 0
 
     rover = None
     if args.rover != "none":
@@ -221,10 +388,23 @@ def main() -> None:
         asyncio.run(converse(args.url, args.input_device, args.output_device, rover))
     except KeyboardInterrupt:
         print("\nbye")
+    except ServiceUnreachable as error:
+        print(f"\n{error}", file=sys.stderr)
+        return 1
+    except websockets.ConnectionClosed as error:
+        # Caught here rather than around each await: whichever one it died on,
+        # the reason is the same and so is what to do about it. A restart of the
+        # service, or the card being switched to a vision service mid-sentence,
+        # both arrive as this.
+        print(f"\nthe voice service closed the connection ({error}).\n"
+              "  It was probably restarted or switched off the card; run it again"
+              " once it is back.", file=sys.stderr)
+        return 1
     finally:
         if rover is not None:
             rover.close()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
