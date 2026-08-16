@@ -526,14 +526,55 @@ claimed once. From there it is one decoded image in that conversation's history,
 in memory, dropped at the start of the next turn. `hello`, `reset` and a closed
 socket drop it too. **Nothing is written to disk at any point**, on either host.
 
-One wart, measured and left in rather than smoothed over. A question about
-something that is not in front of the camera — "describe the person" with nobody
-there — is answered with a refusal rather than a look, and those refusals then
-make the *next* few turns refuse as well: the model reads its own "I can't" back.
-It is the same mechanism as the stale description above, which is worth
-remembering before reaching for a prompt: **whatever this model said last, it
-will say again.** The refusal is not spoken from a picture, so dropping the
-exchange does not reach it.
+### Nor does a turn that said it could not see
+
+The other half of the same mechanism, and the reason it is worth stating as a
+rule: **whatever this model said last, it says again.** A refusal is not spoken
+from a picture, so the rule above does not reach it — and one refusal in the
+transcript is enough to end the conversation's ability to see:
+
+> you: Do you see anyone now?
+> `[tracking_status{} -> {"tracking": true, "following_someone": true, …}]`
+> bot: I'm following one person now, who's to the right and slightly up.
+> you: Can you describe the person?
+> bot: I can't describe the person because I don't have the ability to read or
+> interpret what they look like. I can only tell you where they are.
+
+From there every question repeats that sentence, with no call made, until the
+user says the word "picture" outright:
+
+| after the refusal, six samples | `look` |
+|---|---|
+| "But what does he look like?" | **0/6** — *"I can only tell you where they are"* |
+| "What colour is his shirt?" | **0/6** |
+| "Describe him for me." | **0/6** |
+| "Can you take a picture and describe the person?" | 6/6 |
+| …the same three, with the refusing exchange dropped | **6/6, 6/6, 6/6** |
+
+Two system prompts were measured against this before the structural fix, because
+a rule is the obvious repair — *"never say you cannot see or describe something,
+take a picture and answer from it"*, and *"if you have said you cannot see
+something, that was wrong"*. Both left all three questions at **0/6**, and both
+cost a control: *"are you still tracking them"* stopped calling
+`tracking_status` and was answered out of the transcript instead. **The prompt has
+never once been the variable in this file.**
+
+So `_forget_refusals` drops those exchanges the way pictures are dropped, and
+only for turns that called nothing — a turn that acted is worth keeping, and a
+refusal *after* a `look` is about a picture already withdrawn. It is a text
+match, honestly: an inability (*can't*, *don't have*, *only tell*) plus a word
+about seeing (*see*, *look*, *describe*, *read*, *eyes*, …). Whole words, not
+substrings — "already" contains "read", which quietly made every negative
+sentence a refusal — and "camera" is deliberately not in the list, since *"I
+can't reach that far, the camera only turns so far"* is a true sentence about the
+gimbal. A false negative costs what the bug already cost; a false positive eats a
+turn of somebody's conversation, so the list is short and the tests hold real
+replies taken off the wire.
+
+The tracking tools were the other suspect and are innocent: telling `count_faces`
+and `tracking_status` to say they cannot see appearance changes nothing, 6/6
+before and after. It was never the face detector's answer that misled the model —
+it was the model's own.
 
 ### The first picture compiles
 

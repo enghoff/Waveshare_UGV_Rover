@@ -333,6 +333,48 @@ def test_vision() -> None:
     check("a conversation with no pictures is left alone",
           untouched, [{"role": "user", "content": "hello"}])
 
+    # A refusal to see is the other thing the model reads back to itself instead
+    # of looking, so it goes the same way. Real replies, taken off the wire: the
+    # first four are what poisoned every question after them, and the rest are
+    # ordinary answers that must survive -- a false positive here eats a turn of
+    # somebody's conversation.
+    refusals = [
+        "I can't describe the person because I don't have the ability to read or "
+        "interpret what they look like. I can only tell you where they are.",
+        "I can't tell the color of the shirt because I can't see it.",
+        "I checked my camera. I can't see anything right now.",
+        "I don't have eyes, so I can't say what it looks like.",
+    ]
+    ordinary = [
+        "I am the rover. I don't have a name.",
+        "They are on.",
+        "I can't turn the lights on because they are already on.",
+        "I see a man in a red shirt sitting at a desk.",
+        "I'm following one person now, who's to the right and slightly up.",
+        "I can't reach that far, the camera only turns so far.",
+    ]
+    check("a refusal to see is recognised",
+          [server._blind_refusal(r) for r in refusals], [True] * len(refusals))
+    check("...and an ordinary answer is not",
+          [r for r in ordinary if server._blind_refusal(r)], [])
+    said_no = ([{"role": "user", "content": "describe the person"},
+                {"role": "assistant", "content": refusals[0]}]
+               + spoke
+               + [{"role": "user", "content": "what is your name"},
+                  {"role": "assistant", "content": ordinary[0]}])
+    server._forget_refusals(said_no)
+    check("the exchange that refused is dropped whole",
+          [m["content"] for m in said_no if isinstance(m.get("content"), str)],
+          ["lights on", "", '{"ok": true}', "They are on.", "what is your name",
+           ordinary[0]])
+    # A turn that acted is kept whatever it then said: a refusal after a `look`
+    # is about a picture the rule above has already taken away.
+    acted = list(spoke)
+    acted[-1] = {"role": "assistant", "content": refusals[1]}
+    kept_acted = list(acted)
+    server._forget_refusals(kept_acted)
+    check("an exchange that called a tool is left alone", kept_acted, acted)
+
     # The stash. Bounded two ways, because it is fed by whatever holds a camera
     # and a frame nobody claims must not become a leak.
     server._frames.clear()

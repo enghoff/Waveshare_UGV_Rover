@@ -542,6 +542,67 @@ def _forget_pictures(history: list[dict[str, Any]], keep_newest: bool = True) ->
     ]
 
 
+# Two lists rather than a phrase book, because the sentence comes out differently
+# every time -- "I don't have the ability to read or interpret what they look
+# like", "I can't tell the colour of the shirt because I can't see it", "I can
+# only tell you where they are". What they share is an inability and a word about
+# seeing, and it takes both, so that "I can't turn the lights on" and "I don't
+# have a name" are left alone. Whole words, not substrings: "already" contains
+# "read", which quietly made every sentence with an inability in it a refusal.
+# "camera" is deliberately not in the second list -- "I can't reach that far, the
+# camera only turns so far" is a true sentence about the gimbal, not a refusal to
+# look, and a false positive here eats a turn of somebody's conversation.
+_UNABLE = re.compile(
+    r"\b(?:can't|cannot|can not|don't have|do not have|unable|not able|only tell)\b")
+_SEEING = re.compile(
+    r"\b(?:see|seen|seeing|look|looks|looking|picture|photo|image|images|"
+    r"describe|describing|read|view|eyes)\b")
+
+
+def _blind_refusal(reply: str) -> bool:
+    """Is this the rover saying it cannot see, rather than looking?"""
+    said = reply.lower()
+    return bool(_UNABLE.search(said) and _SEEING.search(said))
+
+
+def _forget_refusals(history: list[dict[str, Any]]) -> None:
+    """Drop the exchanges where the rover said it could not see, in place.
+
+    The same mechanism as the pictures above, and the reason this is not a prompt:
+    **whatever this model said last, it says again.** One "I can't describe the
+    person, I can only tell you where they are" in the transcript and every
+    question after it repeats that sentence with no call made -- "but what does he
+    look like" 0/6, "what colour is his shirt" 0/6, "describe him for me" 0/6 --
+    until the user gives up and says the word "picture" outright, which is 6/6 and
+    is what the transcript that reported this bug had to resort to. Drop the
+    exchange and the same three questions take a photograph, 6/6, with
+    `tracking_status` and `set_lights` still going to the tools that own them.
+
+    Two system prompts were measured against this first, since a rule is the
+    obvious repair: "never say you cannot see or describe something, take a
+    picture and answer from it" and "if you have said you cannot see something,
+    that was wrong". Both left all three questions at 0/6, and both then cost a
+    control -- "are you still tracking them" stopped calling `tracking_status` and
+    was answered from the transcript instead. The prompt has never once been the
+    variable in this file.
+
+    Only exchanges that called nothing: a turn that acted is a turn worth keeping,
+    and a refusal spoken *after* a look is about a picture that has already been
+    dropped by the rule above. This costs an exchange the user may remember having
+    had -- the same price the pictures pay, and for the same reason.
+    """
+    kept: list[dict[str, Any]] = []
+    for group in _exchanges(history):
+        if any(m.get("tool_calls") or m.get("role") == "tool" for m in group):
+            kept.extend(group)
+            continue
+        if any(m.get("role") == "assistant" and isinstance(m.get("content"), str)
+               and _blind_refusal(m["content"]) for m in group):
+            continue
+        kept.extend(group)
+    history[:] = kept
+
+
 def _measure_image_tokens() -> int:
     """What one frame of the configured size actually costs in the window.
 
@@ -1189,6 +1250,9 @@ async def _run_turn(
         # answering from it, including across its own tool calls.
         if VISION and FRESH_PICTURE:
             _forget_pictures(history, keep_newest=False)
+            # And the turns that refused to see, for the same reason: they are
+            # the other thing the model reads back to itself instead of looking.
+            _forget_refusals(history)
         history.append({"role": "user", "content": heard})
         history[:] = _trim(history, tools)
 
