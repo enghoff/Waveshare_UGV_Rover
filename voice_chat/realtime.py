@@ -67,9 +67,28 @@ import wave
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import sounddevice as sd
-import websockets
+try:
+    import numpy as np
+    import sounddevice as sd
+    import websockets
+except ImportError as _missing:
+    # Nearly always a shell without the virtualenv on it rather than a machine
+    # without the package: `python` outside the venv is whichever interpreter is
+    # first on PATH, and on Windows that is usually the Store one, which has none
+    # of this. Said as a sentence when run directly; re-raised when imported, so
+    # that selftest.py can still skip the parts that need a sound card.
+    if __name__ == "__main__":
+        import sys as _sys
+        print(f"{_missing.name} is not installed for {_sys.executable}.\n"
+              "  This is almost always the wrong interpreter rather than a missing\n"
+              "  package -- activate the virtualenv first:\n"
+              "    .venv\\Scripts\\Activate.ps1        # PowerShell\n"
+              "  or run it with that interpreter directly:\n"
+              "    .venv\\Scripts\\python.exe voice_chat\\realtime.py\n"
+              "  If it really is missing: pip install -r voice_chat/client-requirements.txt",
+              file=_sys.stderr)
+        raise SystemExit(1) from None
+    raise
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -320,8 +339,13 @@ class Speaker:
     def close(self) -> None:
         if self.stream is None:
             return
+        # Dropped and aborted rather than stopped. `stop` waits for what is
+        # queued to finish playing, and the usual reason to be closing is that
+        # somebody pressed Ctrl-C in the middle of a sentence -- which is a
+        # request to stop talking, not to finish the thought first.
+        self.flush()
         try:
-            self.stream.stop()
+            self.stream.abort()
             self.stream.close()
         except Exception:
             pass
@@ -369,7 +393,7 @@ class Speaker:
         return unheard / self.rate
 
 
-class Frames(http.server.HTTPServer):
+class Frames(http.server.ThreadingHTTPServer):
     """`POST /frame` on this machine, because the service that used to serve it is gone.
 
     The rover's `look` does not send the picture through the conversation. It
@@ -383,10 +407,27 @@ class Frames(http.server.HTTPServer):
 
         POST /frame   body: one JPEG
           -> {"ok": true, "image": "frame-7", "w": 640, "h": 480}
+
+    **Threading here is not about throughput.** The rover posts over one
+    kept-open connection, deliberately, and a plain `HTTPServer` handles requests
+    one at a time inside `serve_forever` -- so after a single picture it is
+    parked inside that connection's handler, blocked on a request line that will
+    not arrive until the next `look`. Nothing else can be accepted, and
+    `shutdown()` never returns, because the loop it is waiting on is the one that
+    is blocked. What that looks like from outside is a conversation that ends
+    fine until somebody asks the rover what it can see, after which Ctrl-C hangs
+    the terminal.
     """
 
-    allow_reuse_address = True
-    daemon_threads = True
+    # Not reusable, deliberately, and this is the one place where the usual
+    # advice is backwards. On Windows SO_REUSEADDR does not mean "reclaim a port
+    # left in TIME_WAIT", it means *share*: a second process binds the same port
+    # happily and which of the two a given connection reaches is anyone's guess.
+    # A leftover client from an earlier run therefore steals the rover's
+    # pictures, and the running one is handed a frame name it is not holding.
+    # Refusing to start is the better failure, and `main` prints it.
+    allow_reuse_address = False
+    daemon_threads = True  # inherited, and load-bearing: see above
 
     def __init__(self, port: int = 8767, host: str = "0.0.0.0") -> None:
         super().__init__((host, port), _FrameHandler)
@@ -421,6 +462,12 @@ class Frames(http.server.HTTPServer):
 
 class _FrameHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # An idle kept-open connection costs a parked thread, and a rover that is
+    # restarted a few times over an afternoon leaves one behind each time. On
+    # timeout the handler simply closes the connection, and the rover's next
+    # picture reconnects -- which its VisionLink already expects, since a stale
+    # keep-alive is a retry there rather than a lost frame.
+    timeout = 300
 
     def log_message(self, *_args) -> None:
         pass  # the conversation owns the terminal
@@ -812,37 +859,60 @@ class Session:
                 self.indicator.say(f"  tool failed: {type(error).__name__}: {error}",
                                    err=True)
                 continue
+            # Resolved before the result is sent, not after, because a picture
+            # that cannot be found changes what the result *says*. See _picture.
+            jpeg, result = self._picture(result)
             await self.send({"type": "conversation.item.create",
                              "item": {"type": "function_call_output",
                                       "call_id": call_id,
                                       "output": json.dumps(result)}})
-            await self._show_picture(result)
+            if jpeg is not None:
+                await self._show_picture(jpeg)
         await self.ask()
 
-    async def _show_picture(self, result: dict) -> None:
-        """If the result names a frame this machine is holding, put it in the session.
+    def _picture(self, result: dict) -> tuple[bytes | None, dict]:
+        """The frame a result names, and the result the model should be given.
 
-        The rover gives back nothing but a name. On the deployed path the name
-        was enough, because the picture had already reached the model's host by
-        the other road; here this *is* the model's host, so the name is looked up
-        and the bytes go up the socket.
+        A `look` answers with nothing but a name, because the picture went to the
+        model's host by the other road. If that name is not one this client is
+        holding, the honest thing is not a warning on the terminal -- it is to
+        stop the result saying `"ok": true`. Left alone, the model is told the
+        photograph succeeded, is shown no photograph, and describes the room
+        anyway: a wooden table, a white mug, a small green plant, none of which
+        were ever in front of the rover. A tool that failed has to read as one.
 
-        They go up as a user turn rather than as part of the tool result, because
+        It happens for a dull reason worth naming. Two of these clients can hold
+        the same port on Windows (see :class:`Frames`), so the rover's picture
+        goes to whichever the operating system feels like, and the other one is
+        left with a name and no frame.
+        """
+        if not isinstance(result, dict):
+            return None, result
+        name = result.get("image")
+        if not isinstance(name, str):
+            return None, result
+        if self.frames is None:
+            return None, dict(result, ok=False, image=None,
+                              error="the picture had nowhere to be sent, so there "
+                                    "is nothing to look at")
+        jpeg = self.frames.take(name)
+        if jpeg is None:
+            self.indicator.say(f"  [{name} went to another frame server; "
+                               f"is a second client running?]", err=True)
+            return None, dict(result, ok=False, image=None,
+                              error="the picture was taken but never arrived here, "
+                                    "so there is nothing to look at")
+        return jpeg, result
+
+    async def _show_picture(self, jpeg: bytes) -> None:
+        """Put one frame into the session, as a turn of its own.
+
+        It goes up as a user turn rather than as part of the tool result, because
         that is the only shape this service accepts -- see PICTURE_LEAD_MS. The
         silence in front of the frame is not padding for timing, it is the price
         of admission, and without it the picture is refused and the model answers
         the question from imagination without ever saying it could not see.
         """
-        if self.frames is None or not isinstance(result, dict):
-            return
-        name = result.get("image")
-        if not isinstance(name, str):
-            return
-        jpeg = self.frames.take(name)
-        if jpeg is None:
-            self.indicator.say(f"  [{name} was posted to nobody this client is holding]",
-                               err=True)
-            return
         lead = np.zeros(IN_RATE * PICTURE_LEAD_MS // 1000, dtype=np.float32)
         # A picture needs a turn committed by hand, and a commit by hand is
         # rejected outright while the service is deciding turns for itself --
@@ -876,7 +946,7 @@ class Session:
                 self.hold_mic = False
         width, height = _jpeg_size(jpeg)
         if not self.quiet:
-            self.indicator.say(f"  [sent {name}, {len(jpeg)} bytes"
+            self.indicator.say(f"  [sent {len(jpeg)} bytes of JPEG"
                                f"{f', {width}x{height}' if width else ''}]")
 
     async def drain(self) -> None:
@@ -892,12 +962,18 @@ async def _open(url: str, key: str, model: str):
     try:
         # websockets renamed this in 14.0 and the deployed machines are not all
         # on the same version.
+        # close_timeout is short on purpose. Leaving is nearly always Ctrl-C, and
+        # the library's ten-second default is ten seconds of a terminal that
+        # looks hung while it waits politely for a close frame from a service
+        # that has nothing more to say.
         try:
             return await websockets.connect(uri, additional_headers=headers,
-                                            max_size=None, open_timeout=15)
+                                            max_size=None, open_timeout=15,
+                                            close_timeout=3)
         except TypeError:
             return await websockets.connect(uri, extra_headers=headers,
-                                            max_size=None, open_timeout=15)
+                                            max_size=None, open_timeout=15,
+                                            close_timeout=3)
     except websockets.InvalidStatus as error:
         status = error.response.status_code
         if status in (401, 403):
@@ -1244,6 +1320,7 @@ def main() -> int:
     finally:
         if frames is not None:
             frames.shutdown()
+            frames.server_close()  # or the port stays claimed until the shell dies
         if rover is not None:
             rover.close()
     return 0

@@ -1056,6 +1056,11 @@ python voice_chat/realtime.py --half-duplex        # push to talk, no barge-in
 python voice_chat/realtime.py --rover rpi.local:8769
 ```
 
+Run it with the virtualenv active. `python` outside it is whichever interpreter
+is first on PATH, which on this Windows box is the Microsoft Store one and has
+none of the three packages this needs; the script now says so rather than showing
+a traceback about `sounddevice`.
+
 The key is `secrets/alibaba.key` or `$DASHSCOPE_API_KEY`, and it is never
 printed. The voice is `Jennifer`, which the service describes as a premium
 American English female voice; `Aiden` is American and male, `Mione` is British
@@ -1232,6 +1237,38 @@ checks the detector is reachable first and refuses honestly:
 which the model reads out as a reason rather than saying it has done something it
 has not. That is a better failure, not a fix. Face tracking needs MEDIA up, or a
 detector somewhere else.
+
+### Two ways the frame server bit back
+
+Neither is about the model, and both were found by running it rather than by
+reading it.
+
+**Ctrl-C hung the terminal after any picture.** The rover posts frames over one
+kept-open connection, deliberately — and a plain `HTTPServer` handles requests
+one at a time, inside `serve_forever`. So after a single `look` the server is
+parked in that connection's handler, blocked on a request line that will not
+arrive until the *next* look. Nothing else can be accepted, and `shutdown()`
+never returns, because the loop it waits on is the blocked one. From outside:
+"bye" prints and the shell never comes back. `Frames` is a `ThreadingHTTPServer`
+now, which is what makes the `daemon_threads = True` that was already there mean
+anything, and handlers time out so an idle connection does not leak a thread.
+
+**Two clients could hold port 8767 at once, and quietly.** `SO_REUSEADDR` on
+Windows does not mean "reclaim a port in TIME_WAIT", it means *share*: a second
+bind succeeds and which server a connection reaches is undefined. A leftover
+client therefore steals the rover's pictures, and the running one is handed a
+frame name it is not holding. So the server no longer sets it, and a second
+instance refuses to start and says so.
+
+That second bug is why `look`'s result is now rewritten rather than merely warned
+about. Handed `{"ok": true, "image": "frame-1"}` and shown no picture, the model
+described a wooden table, a white mug and a small green plant, none of which had
+ever been in front of the rover. A tool that failed has to read as one:
+
+```
+{"ok": false, "error": "the picture was taken but never arrived here, so there
+ is nothing to look at"}
+```
 
 ### Flash and plus are not the same model
 

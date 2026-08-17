@@ -1199,6 +1199,26 @@ def test_realtime_session() -> None:
         check("...and it is the frame the rover posted",
               base64.b64decode(image["image"]), picture)
 
+        # A frame this client is not holding. It happens for a dull reason --
+        # two clients can hold the same port on Windows, so the rover's picture
+        # goes to the other one -- and the consequence is not dull at all: told
+        # the photograph succeeded and shown no photograph, the model describes
+        # the room anyway, in confident detail, and none of it was ever there.
+        # So the result the model sees has to stop saying it worked.
+        ws.sent.clear()
+        jpeg, rewritten = session._picture({"ok": True, "image": "frame-does-not-exist"})
+        check("a missing frame yields no picture", jpeg, None)
+        check("...and the result no longer claims to have worked",
+              rewritten["ok"], False)
+        check("...and says so in words the model can repeat",
+              "never arrived" in rewritten["error"], True)
+        check("...without leaving a name behind to describe", rewritten["image"], None)
+
+        # A result that names nothing is left exactly as the rover wrote it.
+        plain = {"ok": True, "level": 255, "on": True}
+        check("a result with no picture in it is untouched",
+              session._picture(plain), (None, plain))
+
         # Nothing is idle until the reply that was asked for has begun.
         check("a reply that was asked for is not idle", session.idle, False)
         await session.handle({"type": "response.created", "response": {}})
