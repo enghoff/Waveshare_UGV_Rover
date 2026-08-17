@@ -30,13 +30,18 @@ Clients speak newline-delimited JSON over TCP -- one request, one reply:
     -> {"call": "list_tools"}
     <- {"ok": true, "tools": [ ...JSON schemas... ]}
 
-Two calls in that protocol are for the client rather than for the model, and
-neither appears in `list_tools`, so no model is ever shown them. `list_tools`
-itself is one. The other is `set_vision`, which says where `look` should post its
-pictures:
+Four calls in that protocol are for the client rather than for the model, and none
+of them appears in `list_tools`, so no model is ever shown them. `list_tools`
+itself is one. `set_vision` says where `look` should post its pictures:
 
     -> {"call": "set_vision", "arguments": {"address": "192.168.1.7:8767"}}
     <- {"ok": true, "vision": "http://192.168.1.7:8767/frame", "tools": [...]}
+
+The last two are for driving the rover by hand rather than by conversation, and
+exist for [voice_chat/drive_console.py](../voice_chat/drive_console.py):
+`nav_status` returns every number the driving loop has, and `map_png` returns the
+map as base64 in the reply instead of posting it away. Both are things a person
+watching a move needs and a model asked to narrate one does not.
 
 `list_tools` is why the clients carry no schemas of their own. The daemon is the
 only thing that knows what this rover can do, so it is the only thing that should
@@ -62,6 +67,7 @@ else running here.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
 import re
@@ -590,9 +596,10 @@ NAV_TOOLS: list[dict[str, Any]] = [
             "description": (
                 "Turn the rover on the spot without going anywhere, by a number of "
                 "degrees: positive turns left, negative turns right. Use this to "
-                "face something before driving to it. Allowed in tighter spaces than "
-                "driving is, because turning does not move the rover, but it will "
-                "refuse if something is close enough to catch a corner."
+                "face something before driving to it, and use it to get out of a "
+                "tight spot: turning is never refused, because rotating is how a "
+                "rover that has got too close to something gets away from it. It "
+                "turns more slowly when something is within about 25 cm, and says so."
             ),
             "parameters": {
                 "type": "object",
@@ -1134,6 +1141,41 @@ class Rover:
             result["note"] = ("the map could not be sent as a picture, so answer "
                               "from the description alone: " + str(sent.get("error")))
         return result
+
+    def _tool_nav_status(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """Every number the driving loop has. A control call, not a model tool.
+
+        Dispatched like a tool because that is the only protocol here, and absent
+        from :meth:`tools` so no model is shown it. What is in this and not in
+        `describe_surroundings` is the machinery rather than the room -- the PWM
+        actually on the motors, the turn rate the matcher measures, how stale the
+        last scan is. That is what tells you why a move went wrong, and it is of no
+        use whatsoever to something that has to say the answer out loud.
+
+        Written for [voice_chat/drive_console.py](../voice_chat/drive_console.py),
+        which polls it a few times a second while somebody drives by hand.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar attached"}
+        return {"ok": True, **self.nav.status()}
+
+    def _tool_map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """The map as base64 PNG in the reply. A control call, not a model tool.
+
+        `show_map` exists for the model and posts the picture to the model's host
+        instead, because a tool result cannot carry an image into a conversation.
+        A GUI has no such problem, and routing a picture through a frame server to
+        get it onto the screen of the machine that asked for it would be silly.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar attached"}
+        half = _number(arguments.get("half_extent_m", MAP_HALF_EXTENT_M),
+                       "half_extent_m")
+        scale = _number(arguments.get("scale", MAP_SCALE), "scale")
+        png, caption = self.nav.map_png(min(10.0, max(0.5, half)),
+                                        int(min(8, max(1, scale))))
+        return {"ok": True, "caption": caption, "bytes": len(png),
+                "png_base64": base64.b64encode(png).decode("ascii")}
 
     # --- the loop -----------------------------------------------------------
 

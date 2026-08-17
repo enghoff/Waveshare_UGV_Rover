@@ -74,9 +74,11 @@ def test_schemas():
     import rover_daemon
 
     # Every schema this rover could ever offer, whatever it is configured with.
-    # `look` is conditional -- see test_look -- but it is still a schema that has
-    # to have a handler, and the point of this test is that none of them lie.
-    every = rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
+    # `look` is conditional -- see test_look -- and so are the driving tools and the
+    # map, which need a lidar; but a conditional schema still has to have a handler,
+    # and the point of this test is that none of them lie.
+    every = (rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
+             + rover_daemon.NAV_TOOLS + [rover_daemon.MAP_TOOL])
     # The schemas cross a network and go into a prompt, so they have to be JSON.
     json.dumps(every)
     names = [t["function"]["name"] for t in every]
@@ -95,7 +97,7 @@ def test_schemas():
     # decision about which of the two kinds it is.
     handlers = sorted(m[len("_tool_"):] for m in dir(rover_daemon.Rover)
                       if m.startswith("_tool_"))
-    control = ["set_vision"]
+    control = ["set_vision", "nav_status", "map_png"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
