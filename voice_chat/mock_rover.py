@@ -290,11 +290,14 @@ class Rover:
                   "legs rather than the top.")
 
     def _map(self, half_extent_m: float, scale: int):
-        """The room as a greyscale PNG, drawn with the rover's own encoder.
+        """The room as a colour PNG, drawn with the rover's own encoder and palette.
 
         `mapimg` is imported from the rover's tree rather than reimplemented: this
         exists to exercise a client's picture path, and a second PNG writer here
-        would be testing this file's encoder instead of the rover's.
+        would be testing this file's encoder instead of the rover's. The palette and
+        the arrow come from there for the same reason -- a console that looks one way
+        against the mock and another against the rover is a console that hides
+        exactly the kind of drawing bug this is here to catch.
         """
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "lidar_slam"))
@@ -303,40 +306,73 @@ class Rover:
         res = 0.05
         half = max(8, int(half_extent_m / res))
         size = half * 2 + 1
-        canvas = mapimg.Canvas(size * scale, size * scale, mapimg.UNKNOWN)
+        canvas = mapimg.Canvas(size * scale, size * scale, mapimg.C_UNKNOWN)
 
         def to_pixels(px: float, py: float):
             # Forward up the page, left to the left, as mapimg.render arranges it.
-            col = int((half - (py - self.y) / res) * scale)
-            row = int((half - (px - self.x) / res) * scale)
+            col = (half - (py - self.y) / res) * scale
+            row = (half - (px - self.x) / res) * scale
             return col, row
 
+        # Filled from the cell indices rather than by rounding to_pixels back to a
+        # block: the two agree to within float error, and that error is enough to
+        # drop a one-pixel line between neighbouring cells, which drew a faint grid
+        # over the whole picture.
+        wall = res * 1.5
         for iy in range(size):
             for ix in range(size):
                 wx = self.x + (ix - half) * res
                 wy = self.y + (iy - half) * res
                 inside = (-ROOM_BACK_M < wx < ROOM_FORWARD_M
                           and -ROOM_RIGHT_M < wy < ROOM_LEFT_M)
+                on_wall = (min(abs(wx + ROOM_BACK_M), abs(wx - ROOM_FORWARD_M),
+                               abs(wy + ROOM_RIGHT_M), abs(wy - ROOM_LEFT_M)) < wall)
                 near_leg = any((wx - lx) ** 2 + (wy - ly) ** 2
                                <= (LEG_RADIUS_M + res) ** 2 for lx, ly in LEGS)
-                value = (mapimg.OCCUPIED if (not inside or near_leg)
-                         else mapimg.FREE)
-                col, row = to_pixels(wx, wy)
+                if near_leg or on_wall:
+                    value = mapimg.C_OCCUPIED
+                elif inside:
+                    value = mapimg.C_FREE
+                else:
+                    # Beyond the walls the lidar has seen nothing, and a mock that
+                    # painted that solid would be inviting the reader to read black
+                    # as "outside" rather than as "something is there".
+                    value = mapimg.C_UNKNOWN
+                col, row = (size - 1 - iy) * scale, (size - 1 - ix) * scale
                 for dy in range(scale):
                     for dx in range(scale):
                         canvas.put(col + dx, row + dy, value)
 
+        prev = None
         for tx, ty in list(self.trail)[-400:]:
-            col, row = to_pixels(tx, ty)
-            canvas.put(col, row, mapimg.TRACK)
+            cur = to_pixels(tx, ty)
+            if prev is not None:
+                canvas.line(prev[0], prev[1], cur[0], cur[1], mapimg.C_TRACK,
+                            thickness=max(1, scale // 2))
+            prev = cur
+
+        # The arrow turns with the heading, which the old dot-and-whisker did not:
+        # it was drawn straight up whatever the rover had done, so every turn looked
+        # like it had not happened.
+        forward = (math.cos(self.heading), math.sin(self.heading))
+        side = (-math.sin(self.heading), math.cos(self.heading))
+
+        def offset(along: float, across: float):
+            return to_pixels(self.x + forward[0] * along + side[0] * across,
+                             self.y + forward[1] * along + side[1] * across)
+
+        canvas.triangle(offset(0.30, 0.0), offset(-0.15, 0.16), offset(-0.15, -0.16),
+                        mapimg.C_ROVER)
         centre = half * scale
-        canvas.disc(centre, centre, max(2, scale), mapimg.ROVER)
-        canvas.line(centre, centre, centre, centre - 6 * scale, mapimg.ROVER)
+        canvas.disc(centre, centre, max(1.0, scale * 0.5), mapimg.C_ANCHOR)
 
         caption = (f"An invented top-down map of roughly {2 * half_extent_m:.0f} by "
                    f"{2 * half_extent_m:.0f} metres. Forward is up the page and the "
-                   f"rover's left is to the left. Nothing in it was measured.")
-        return mapimg.png_grey(canvas.rows), caption
+                   f"rover's left is to the left. The red triangle is the rover and "
+                   f"its tip points the way it is facing, with a yellow dot at its "
+                   f"exact position, and the blue line is the path it has driven. "
+                   f"Nothing in it was measured.")
+        return mapimg.png_rgb(canvas.rows), caption
 
     def set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Where `look` posts its pictures. A control call, as on the real daemon.

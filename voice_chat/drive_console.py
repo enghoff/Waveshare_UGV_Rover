@@ -71,6 +71,34 @@ TURN_ROWS = 40
 TURN_PRESETS_DEG = (15, 45, 90)
 
 
+def _legend():
+    """Swatch colours and labels for the map key, taken from the renderer itself.
+
+    The rover's own `mapimg` is the authority on what colour means what, and a key
+    that has drifted from the picture is worse than no key at all -- so the palette
+    is imported rather than copied, and if it cannot be found the key is simply
+    omitted. It is a label on a picture; it is not worth failing to start over.
+    """
+    import os
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "lidar_slam"))
+    try:
+        import mapimg
+    except ImportError:
+        return ()
+    return tuple(("#%02x%02x%02x" % colour, label) for colour, label in (
+        (mapimg.C_ROVER, "rover"),
+        (mapimg.C_TRACK, "driven"),
+        (mapimg.C_OCCUPIED, "solid"),
+        (mapimg.C_FREE, "empty"),
+        (mapimg.C_DIM, "unsure"),
+        (mapimg.C_UNKNOWN, "unseen")))
+
+
+MAP_LEGEND = _legend()
+
+
 def _f(value, spec="{}"):
     """Format, or a dash. Every number in nav_status may legitimately be absent."""
     return "-" if value is None else spec.format(value)
@@ -327,6 +355,20 @@ class Console:
         picture.grid(row=0, column=1, sticky="nw", padx=(8, 0))
         self.map_label = ttk.Label(picture, text="no map yet", anchor="center")
         self.map_label.pack()
+
+        # A key for the colours. The map itself cannot carry one: there is no font on
+        # the rover and no image library to draw text with, so the picture names its
+        # colours in the caption for the model and here in real widgets for us.
+        legend = ttk.Frame(picture)
+        legend.pack(anchor="w", pady=(6, 0))
+        for column, (colour, label) in enumerate(MAP_LEGEND):
+            swatch = tk.Frame(legend, background=colour, width=13, height=13,
+                              highlightthickness=1, highlightbackground="#999")
+            swatch.grid(row=0, column=2 * column, padx=(0 if column == 0 else 8, 3))
+            swatch.grid_propagate(False)
+            ttk.Label(legend, text=label, foreground="#444").grid(
+                row=0, column=2 * column + 1, sticky="w")
+
         self.caption_var = tk.StringVar(value="")
         ttk.Label(picture, textvariable=self.caption_var, wraplength=400,
                   foreground="#444", justify="left").pack(anchor="w", pady=(4, 0))
@@ -571,9 +613,9 @@ class Console:
             self.map_label.configure(text=str(body.get("error", "no map")), image="")
             return
         try:
-            # Tk 8.6 reads PNG natively and takes base64 directly, so the greyscale
-            # map the rover already renders for the model goes on screen with nothing
-            # decoding it at this end.
+            # Tk 8.6 reads PNG natively, truecolour included, and takes base64
+            # directly, so the map the rover already renders for the model goes on
+            # screen with nothing decoding it at this end.
             image = tk.PhotoImage(data=body["png_base64"])
         except (tk.TclError, KeyError) as error:
             self.map_label.configure(text=f"cannot show the map: {error}", image="")

@@ -302,7 +302,20 @@ its track alone, so the track ran across a corridor instead of down it. Each hal
 looked plausible by itself, and the mock rover draws both halves with one function of
 its own, so only the real map showed it. `python mapimg.py` now asserts that a wall
 straight ahead and a track that drove into it come out as a vertical line meeting a
-horizontal one.
+horizontal one, that a wall to the left is drawn on the left, and that the arrow
+swings counter-clockwise when the heading says left.
+
+The picture is in colour for the same reason. Occupancy wants to be a lightness ramp
+from solid black to empty white, which leaves nothing for the things drawn on top:
+in grey, the track and the rover were both dark pixels over dark obstacles, and the
+two hardest things to find in the picture were where the rover is and where it has
+been. Now hue carries the overlay and lightness carries the occupancy — a red arrow
+for the rover, tip forward, with a yellow dot at the exact pose, and a blue line for
+the path. The arrow replaced a dot with a whisker off it, which at three pixels per
+cell was two pixels wide and left the heading to be guessed. Nothing on the rover can
+draw text, so the caption names the colours for the model and
+[voice_chat/drive_console.py](../voice_chat/drive_console.py) builds its key out of
+this file's palette rather than its own.
 
 ## Files
 
@@ -313,7 +326,7 @@ selftest.c    correctness against a synthetic room and a synthetic table
 build.sh      builds libslam2d.so and selftest, on the machine that runs them
 slam2d.py     ctypes binding, and describe(); checks its struct layout each load
 navigator.py  the drive controller: avoidance, steering, speed, PWM
-mapimg.py     a greyscale PNG encoder and the map rendering, stdlib only
+mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
 run_slam.py   mapping on its own: pose, clearance, a PGM
 dryrun.py     the whole driving stack on live scans, with nothing wired to the motors
 ```
