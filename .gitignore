@@ -1,5 +1,6 @@
 .venv/
 .cache/
+secrets/
 __pycache__/
 *.pyc
 captures/
@@ -8,3 +9,4 @@ oak_camera/crash_dumps/
 *.npy
 *.onnx
 calibration_backup_*.json
+omni_bench/runs/

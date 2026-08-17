@@ -10,6 +10,13 @@ months old, the prices in it will go stale within weeks.
 Like the architecture document, none of this has been built. The difference is
 that this one has been costed.
 
+**This step has since been run.** [omni-step0.md](omni-step0.md) has the numbers,
+and they say proceed: no model lost anything to being spoken to, and two of the
+four gained. Read the rest of this section as the reasoning that led to the
+measurement rather than as a live question — in particular, the fear that speech
+would cost tool reliability was misplaced, and the thing that actually separates
+the candidates is whether they can be persuaded *not* to call a tool.
+
 ## The question that has to be answered first
 
 Whether an omni model calls the rover's tools reliably when spoken to is the
@@ -358,10 +365,16 @@ each priced by what it costs to answer.
   what fraction of frames and seconds a real room admits, and that fraction is
   the running cost of the whole system. Costs step 5 plus a day of logging.
 
-Finally, nothing in this document has been run. The VRAM figures are published
-minimums, the prices are advertised rates, and the tool-calling scores come
-from a benchmark's published tables. All of it should be treated as a shopping
-list, because that is what it is.
+Finally, nothing in this document had been run when it was written. The VRAM
+figures are published minimums, the prices are advertised rates, and the
+tool-calling scores come from a benchmark's published tables. All of it should be
+treated as a shopping list, because that is what it is.
+
+Step 0 is the exception as of 2026-08-17 — see [omni-step0.md](omni-step0.md).
+Three of its claims did not survive contact: MiniCPM-o's tool calling is
+undocumented but present and good, Qwen3-Omni is not the quality ceiling but the
+worst of the four candidates at this task, and the RunPod prices quoted above are
+exactly right to the cent.
 
 ## The order of work
 
