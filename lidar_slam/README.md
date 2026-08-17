@@ -317,14 +317,27 @@ draw text, so the caption names the colours for the model and
 [voice_chat/drive_console.py](../voice_chat/drive_console.py) builds its key out of
 this file's palette rather than its own.
 
-`half_extent_m` and `scale` are both arguments, so a client can zoom: the first
-decides how many metres are in frame, the second how many pixels a 5 cm cell gets.
-They are not equally cheap. Drawing here is interpreted Python — there is no library
-to hand it to — so a picture costs roughly its own area, and the two multiply: 10 m
-at 8 pixels a cell is a 3000 px square and took half a minute on this Pi. `map_png`
-in the daemon therefore caps the total pixels and lets the *detail* give way, since
-the extent was asked for explicitly and decides what you can see while the detail
-only decides how finely it is drawn, and it returns what it actually used.
+A client can zoom, and zooming keeps the picture the size it was. `map_png` in the
+daemon takes how many metres to show and how big a picture to send back, and works
+pixels-per-cell out from the two; `render` still takes it directly, since by then the
+question has been settled. That way round matters. Taking a magnification instead
+means the picture grows every time the view widens, which is rescaling the window
+rather than zooming — asked for a steady 480 px, the console's ladder now comes back
+465–492 px from 1.5 m across to 12 m, where fixing the magnification gave 240 px to
+1200 px over the same range. Sizes are only reachable to within a few percent because
+a cell must be a whole number of pixels, and past 12 m across it is down to two, which
+is why the ladder stops there. Drawing is interpreted Python — there is no library to
+hand it to — so a picture costs roughly its own area, and the total is capped.
+
+`rover_up` picks which way is up: the heading the rover started with, so the room
+holds still and the arrow turns, or the heading it has now, so the arrow holds still
+and the room turns underneath it. The second needs the grid *sampled* through a
+rotation rather than sliced, which incidentally fixed something the slicing got wrong
+— a crop running off the edge of the 20 m grid used to come back as a smaller, and
+sometimes not even square, picture. Off-grid now reads as never-seen, which is what
+it is. A rotation is exactly the sort of thing that looks plausible while being a
+quarter turn or a mirror out, so `python mapimg.py` checks it against a wall whose
+real bearing is known, at each of the four quarter turns.
 
 Most of that cost turned out to be avoidable, and finding it needed measurement
 rather than reading. Colours were being packed from a tuple into `bytes` once per

@@ -153,14 +153,22 @@ DEFAULT_LIDAR = "auto"
 # planning a route home is a picture that will mislead.
 MAP_HALF_EXTENT_M = 3.0
 MAP_SCALE = 3
-# What a hand-driven client may ask for. `map_png` takes both as arguments so the
-# window can zoom; these bound what the Pi will attempt. Measured on this host at
-# 5 cm cells: a 500 px map is about half a second and a 1200 px one about three, and
-# beyond that a caller is holding a connection open for longer than the map stays
-# true. MAP_MAX_PIXELS is the one that matters, because extent and detail multiply.
+# What a hand-driven client may ask for, so the window can zoom.
+#
+# Zooming asks for an extent and a picture size, not an extent and a magnification.
+# Pixels per cell is derived from the two, because that is what zooming means: the
+# picture stays the size it was and what fits inside it changes. Asking for extent
+# and magnification separately -- which is what this did first -- resized the picture
+# every time the view widened, which is not zooming, it is rescaling the window.
+#
+# The bounds are what the Pi will attempt. Measured on this host at 5 cm cells, a
+# 480 px map is about half a second and a 1200 px one about three, and past that the
+# caller holds a connection open for longer than the map stays true.
 MAP_MAX_HALF_EXTENT_M = 10.0
-MAP_MAX_SCALE = 8
+MAP_MAX_SCALE = 16
+MAP_MIN_PIXELS = 200
 MAP_MAX_PIXELS = 1200
+MAP_PIXELS = 480           # the default picture size, and what the console asks for
 
 
 def _level(value: Any) -> int:
@@ -186,22 +194,34 @@ def _level(value: Any) -> int:
     return int(min(max(round(value), 0), LIGHT_MAX))
 
 
-def _map_request(half: float, scale: float, resolution_m: float) -> tuple[float, int]:
-    """What the rover will actually draw, given what was asked for.
+def _map_cells(half_extent_m: float, resolution_m: float) -> int:
+    """How many cells across the crop will be. Mirrors `mapimg.render`, which centres
+    an odd number of cells on the rover's own cell -- rounding rather than truncating,
+    because the resolution is a float32 and three metres over it is 59.999999."""
+    return 2 * max(8, int(round(half_extent_m / resolution_m))) + 1
 
-    Both knobs multiply into pixels, and pixels are what this host cannot afford:
-    drawing the map is interpreted Python, so a picture costs roughly its own area.
-    10 m at 8 pixels a cell is a 3000 px square and took half a minute, during which
-    the caller holds a connection open and learns nothing.
 
-    So the area is capped and the *detail* is what gives way. The extent was asked
-    for explicitly and decides what is in frame; the detail only decides how finely
-    it is drawn, which makes it the one to spend when something has to give.
+def _map_view(half: float, pixels: float, resolution_m: float) -> tuple[float, int]:
+    """What the rover will actually draw: an extent, and pixels per cell for it.
+
+    The caller says how much room it wants in frame and how big a picture it wants
+    back, and this works out the magnification. That is the way round it has to be.
+    Pixels per cell is not a thing anyone wants to choose -- choosing it means the
+    picture changes size whenever the view widens, so a zoom control resizes the
+    window instead of zooming.
+
+    The size is honoured as closely as whole pixels per cell allow, which is within
+    a few percent: the crop is a whole number of cells and each cell is a whole
+    number of pixels, so not every size is reachable exactly. Sizes are bounded
+    because a picture costs roughly its own area here, drawing being interpreted
+    Python, and a 3000 px map took half a minute.
     """
     half = min(MAP_MAX_HALF_EXTENT_M, max(0.5, half))
-    scale = int(min(MAP_MAX_SCALE, max(1, scale)))
-    side = int(2 * half / resolution_m) + 1
-    while scale > 1 and side * scale > MAP_MAX_PIXELS:
+    pixels = min(MAP_MAX_PIXELS, max(MAP_MIN_PIXELS, pixels))
+    cells = _map_cells(half, resolution_m)
+    scale = int(min(MAP_MAX_SCALE, max(1, round(pixels / cells))))
+    # Rounding up can still overshoot the ceiling on a wide view; the ceiling wins.
+    while scale > 1 and cells * scale > MAP_MAX_PIXELS:
         scale -= 1
     return half, scale
 
@@ -213,6 +233,28 @@ def _number(value: Any, what: str) -> float:
         return float(value)
     except (TypeError, ValueError):
         raise ValueError(f"{what} must be a number, not {value!r}")
+
+
+def _flag(value: Any, what: str) -> bool:
+    """Whatever the caller produced -> a yes or a no, or ValueError.
+
+    Loose in the same way `_level` is, and for the same reason: a small quantised
+    model writes "true", "yes" or 1 about as often as it writes a JSON boolean, and
+    refusing those means refusing the tool. Only genuinely ambiguous input raises --
+    silently reading an unrecognised word as False would turn a mistake into a picture
+    that looks fine and faces the wrong way.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("true", "yes", "on", "1"):
+            return True
+        if text in ("false", "no", "off", "0", ""):
+            return False
+    raise ValueError(f"{what} must be true or false, not {value!r}")
 
 
 class SerialLink:
@@ -1195,28 +1237,44 @@ class Rover:
         A GUI has no such problem, and routing a picture through a frame server to
         get it onto the screen of the machine that asked for it would be silly.
 
-        `half_extent_m` and `scale` are the zoom: how many metres are in frame, and
-        how many pixels a 5 cm cell gets. Both are clamped by `_map_request`, which
-        may lower the detail, so the reply says what was actually drawn along with
-        what it cost -- a client that showed the settings it asked for rather than the
-        ones it got would report a picture that does not exist.
+        Zooming is `half_extent_m` -- how much room is in frame -- together with
+        `pixels`, how big a picture to send back. Pixels per cell is worked out from
+        the two by `_map_view` rather than asked for, so widening the view shows more
+        room at the same picture size instead of returning a bigger picture. `scale`
+        is still accepted for a caller that really does want to fix the
+        magnification, which is how `show_map` asks.
+
+        `rover_up` turns the page so that straight up is straight ahead of the rover,
+        instead of the direction it was facing when it started.
+
+        The reply says what was drawn rather than what was asked for -- the extent,
+        the pixels per cell, the size, what it cost -- because whole cells at whole
+        pixels cannot hit every size exactly, and a client that displayed its own
+        request would be describing a picture that does not exist.
         """
         if self.nav is None:
             return {"ok": False, "error": "this rover has no lidar attached"}
         half = _number(arguments.get("half_extent_m", MAP_HALF_EXTENT_M),
                        "half_extent_m")
-        scale = _number(arguments.get("scale", MAP_SCALE), "scale")
         resolution = self.nav.slam.config.resolution_m
-        half, scale = _map_request(half, scale, resolution)
-        side = int(2 * half / resolution) + 1
+        if arguments.get("scale") is not None:
+            half = min(MAP_MAX_HALF_EXTENT_M, max(0.5, half))
+            scale = int(min(MAP_MAX_SCALE, max(
+                1, _number(arguments["scale"], "scale"))))
+        else:
+            half, scale = _map_view(
+                half, _number(arguments.get("pixels", MAP_PIXELS), "pixels"),
+                resolution)
+        rover_up = _flag(arguments.get("rover_up", False), "rover_up")
 
         started = time.monotonic()
-        png, caption = self.nav.map_png(half, scale)
-        # What it actually rendered, not what was asked for, so a caller that had its
-        # detail reduced can say so rather than quietly showing a coarser picture.
+        png, caption = self.nav.map_png(half, scale, rover_up=rover_up)
+        # Read the size out of the PNG rather than working it out again: this is the
+        # number the caller is going to display, and it should be the real one.
+        width = int.from_bytes(png[16:20], "big")
         return {"ok": True, "caption": caption, "bytes": len(png),
-                "half_extent_m": round(half, 2), "scale": scale,
-                "pixels": side * scale,
+                "half_extent_m": round(half, 2), "scale": scale, "pixels": width,
+                "rover_up": rover_up,
                 "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 

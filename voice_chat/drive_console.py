@@ -89,12 +89,19 @@ TURN_PRESETS_DEG = (15, 45, 90)
 
 # How far each way the map covers, as a ladder rather than a zoom multiplier, so the
 # same handful of extents come back and one picture can be compared with an earlier
-# one. The daemon will not go past 10 m, and there is nothing beyond that worth
-# looking at: the pose drifts, so a wide map invites planning a route home that the
-# map cannot support.
-MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0)
-MAP_MAX_SCALE = 8          # the daemon's own ceiling; it lowers this further if the
-                           # extent and the detail together would cost too much
+# one.
+#
+# It stops at 6 m -- twelve metres across -- for two reasons. The pose drifts, so a
+# wider map invites planning a route home that the map cannot support; and past there
+# the picture can no longer be held at a steady size, because a cell must be a whole
+# number of pixels and at 12 m across it is already down to two. The daemon will go
+# to 10 m for a caller that asks, and says how big what it drew came out.
+MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
+
+# How big a picture to ask for. This is a separate control from the zoom, and the
+# separation is the point: widening the view must show more room in the same picture,
+# not send back a bigger picture. The rover works out pixels per cell from the two.
+MAP_SIZES_PX = (320, 480, 640, 800)
 
 
 def _legend():
@@ -214,13 +221,13 @@ class Channel:
 
 
 class Console:
-    """The window, and the three channels behind it."""
+    """The window, and the four channels behind it."""
 
     def __init__(self, root: tk.Tk, address: str | None, half_extent: float,
-                 scale: int) -> None:
+                 map_size: int) -> None:
         self.root = root
         self.half_extent = half_extent
-        self.scale = scale
+        self.map_size = map_size
         self.replies: queue.Queue = queue.Queue()
 
         self.moves: Channel | None = None     # blocking, one bounded move at a time
@@ -345,15 +352,16 @@ class Console:
         ttk.Checkbutton(ask, text=f"map every {MAP_AUTO_S:.0f} s",
                         variable=self.auto_map).pack(anchor="w")
 
-        # How much is in frame, and how finely it is drawn. Two knobs rather than one
-        # because they are different questions: the extent decides what you can see,
-        # the detail only decides how big the picture is, and on this Pi the detail is
-        # the one that costs.
+        # How much is in frame, and how big the picture is. Two knobs rather than one
+        # because they are different questions, and keeping them apart is what makes
+        # the first one a zoom: widening the view shows more room in the same picture
+        # rather than sending back a bigger one. The size is the one that costs the
+        # rover, since a picture costs roughly its own area to draw.
         zoom = ttk.LabelFrame(parent, text="map view", padding=8)
         zoom.pack(fill="x", pady=(10, 0))
         for label, out_text, in_text, handler in (
                 ("across", "wider", "closer", self._zoom),
-                ("detail", "coarser", "finer", self._detail)):
+                ("size", "smaller", "bigger", self._resize)):
             row = ttk.Frame(zoom)
             row.pack(fill="x", pady=1)
             ttk.Label(row, text=label, width=7).pack(side="left")
@@ -361,6 +369,16 @@ class Console:
                        command=lambda h=handler: h(-1)).pack(side="left")
             ttk.Button(row, text=in_text, width=8,
                        command=lambda h=handler: h(1)).pack(side="left", padx=2)
+        # Which way is up. Off, the page keeps the heading the rover started with, so
+        # the room holds still and the arrow turns -- right for watching where the
+        # rover has got to. On, the page turns with the rover, so ahead is always up
+        # and the room swings instead, which is what you want when the question is
+        # whether it will fit through the gap in front of it.
+        self.rover_up = tk.BooleanVar(value=False)
+        ttk.Checkbutton(zoom, text="rover up (ahead is up the page)",
+                        variable=self.rover_up,
+                        command=self._reorient).pack(anchor="w", pady=(4, 0))
+
         self.zoom_var = tk.StringVar(value="")
         ttk.Label(zoom, textvariable=self.zoom_var, foreground="#444").pack(anchor="w")
         self.cost_var = tk.StringVar(value="")
@@ -410,8 +428,15 @@ class Console:
 
         picture = ttk.LabelFrame(top, text="map", padding=8)
         picture.grid(row=0, column=1, sticky="nw", padx=(8, 0))
-        self.map_label = ttk.Label(picture, text="no map yet", anchor="center")
-        self.map_label.pack()
+        # The picture sits in a box of its own fixed size rather than setting the size
+        # of everything around it. Whole cells at whole pixels cannot land on exactly
+        # the size asked for, and without this the few pixels of difference between
+        # one zoom step and the next would shuffle the whole window sideways.
+        self.map_box = tk.Frame(picture, width=self.map_size, height=self.map_size)
+        self.map_box.pack()
+        self.map_box.pack_propagate(False)
+        self.map_label = ttk.Label(self.map_box, text="no map yet", anchor="center")
+        self.map_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # A key for the colours. The map itself cannot carry one: there is no font on
         # the rover and no image library to draw text with, so the picture names its
@@ -587,34 +612,49 @@ class Console:
         # at once and the rover takes a second or more to answer, so without this the
         # settings shown and the picture shown disagree for as long as the draw takes.
         self.cost_var.set("drawing...")
+        # An extent and a size, never a magnification: the rover derives pixels per
+        # cell from the two, which is what keeps the picture the same size when the
+        # view widens. Asking for a magnification instead resized the picture on every
+        # zoom, which is not zooming.
         self.picture.submit("map_png", {"half_extent_m": self.half_extent,
-                                        "scale": self.scale})
+                                        "pixels": self.map_size,
+                                        "rover_up": bool(self.rover_up.get())})
+
+    def _step(self, ladder: tuple, value: float) -> int:
+        """Where `value` sits in a ladder, tolerating its not being on a rung."""
+        try:
+            return ladder.index(value)
+        except ValueError:
+            return min(range(len(ladder)), key=lambda i: abs(ladder[i] - value))
 
     def _zoom(self, step: int) -> None:
-        """Wider or tighter, through a fixed ladder rather than a multiplier, so the
-        same few extents come back and a picture can be compared with an earlier
-        one."""
-        try:
-            index = MAP_EXTENTS_M.index(self.half_extent)
-        except ValueError:
-            index = min(range(len(MAP_EXTENTS_M)),
-                        key=lambda i: abs(MAP_EXTENTS_M[i] - self.half_extent))
-        self.half_extent = MAP_EXTENTS_M[max(0, min(len(MAP_EXTENTS_M) - 1,
-                                                    index + step))]
+        """Wider or closer, through a fixed ladder rather than a multiplier, so the
+        same few extents come back and one picture can be compared with an earlier
+        one. The picture stays the size it was."""
+        index = self._step(MAP_EXTENTS_M, self.half_extent)
+        self.half_extent = MAP_EXTENTS_M[
+            max(0, min(len(MAP_EXTENTS_M) - 1, index + step))]
         self._show_zoom()
         self._refresh_map()
 
-    def _detail(self, step: int) -> None:
-        """Pixels per 5 cm cell. This is the one that costs: the picture's area goes
-        as its square, and the drawing is interpreted Python on a Pi 1. The daemon
-        caps the total and says what it actually used, which is what gets displayed."""
-        self.scale = max(1, min(MAP_MAX_SCALE, self.scale + step))
+    def _resize(self, step: int) -> None:
+        """How big a picture to ask for, which is a different question from what is in
+        it. This is the one that costs the rover: the area goes as its square, and
+        drawing it is interpreted Python on a Pi 1."""
+        index = self._step(MAP_SIZES_PX, self.map_size)
+        self.map_size = MAP_SIZES_PX[max(0, min(len(MAP_SIZES_PX) - 1, index + step))]
+        self.map_box.configure(width=self.map_size, height=self.map_size)
+        self._show_zoom()
+        self._refresh_map()
+
+    def _reorient(self) -> None:
         self._show_zoom()
         self._refresh_map()
 
     def _show_zoom(self) -> None:
+        facing = "rover up" if self.rover_up.get() else "start heading up"
         self.zoom_var.set(f"{2 * self.half_extent:.0f} m across, "
-                          f"{self.scale} px/cell")
+                          f"{self.map_size} px picture, {facing}")
 
     # --- the pump -------------------------------------------------------------
     def _tick(self) -> None:
@@ -735,18 +775,20 @@ class Console:
         self.map_label.configure(image=image, text="")
         self.caption_var.set(body.get("caption", ""))
 
-        # What the rover actually drew, which is not always what was asked for: the
-        # daemon lowers the detail rather than spend half a minute on one picture, and
-        # a console that hid that would leave you wondering why finer changed nothing.
-        got_scale, took = body.get("scale"), body.get("render_s")
+        # What the rover actually drew, which is not always the size asked for: a cell
+        # has to be a whole number of pixels, so most sizes are only reachable to
+        # within a few percent, and a very wide view cannot reach a large one at all.
+        # Worth saying, because otherwise "bigger" appearing to do nothing looks like a
+        # broken button rather than a picture already as big as that view can be drawn.
+        took = body.get("render_s")
         self.map_cost = float(took or 0.0)
-        cost = f"{image.width()} px"
+        cost = f"{image.width()} px at {body.get('scale', '?')} px/cell"
         if body.get("bytes"):
             cost += f", {body['bytes'] / 1000:.0f} kB"
         if took is not None:
             cost += f", {took:.1f} s to draw"
-        if got_scale is not None and got_scale != self.scale:
-            cost += f" -- capped to {got_scale} px/cell"
+        if abs(image.width() - self.map_size) > self.map_size * 0.1:
+            cost += f" -- {self.map_size} px was not reachable here"
         self.cost_var.set(cost)
 
     def _tally_turn(self, reply: Reply) -> None:
@@ -836,17 +878,17 @@ def main(argv=None) -> int | str:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--rover", default=None, metavar="HOST[:PORT]",
                         help="the daemon; omit to look for it (see rover_tools.py)")
-    parser.add_argument("--half-extent", type=float, default=2.5, metavar="M",
+    parser.add_argument("--half-extent", type=float, default=3.0, metavar="M",
                         help="metres each way shown in the map (default: %(default)s)")
-    parser.add_argument("--scale", type=int, default=3, metavar="PX",
-                        help="screen pixels per 5 cm cell (default: %(default)s)")
+    parser.add_argument("--map-size", type=int, default=480, metavar="PX",
+                        help="how big a map to ask for (default: %(default)s)")
     args = parser.parse_args(argv)
 
     try:
         root = tk.Tk()
     except tk.TclError as error:
         return f"cannot open a window: {error}"
-    Console(root, args.rover, args.half_extent, args.scale)
+    Console(root, args.rover, args.half_extent, args.map_size)
     root.mainloop()
     return 0
 

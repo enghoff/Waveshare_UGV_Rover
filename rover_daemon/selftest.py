@@ -307,45 +307,82 @@ def test_where():
     check("a small face is far", far["distance"], "far")
 
 
-def test_map_request():
+def test_map_view():
     import rover_daemon
 
     res = 0.05
-    ask = lambda half, scale: rover_daemon._map_request(half, scale, res)
-    side = lambda half: int(2 * half / res) + 1
 
-    # What is asked for is honoured whenever it fits.
-    check("a modest map is drawn as asked", ask(3.0, 4), (3.0, 4))
-    check("a tight map keeps its detail", ask(0.75, 8), (0.75, 8))
+    def picture(half, pixels):
+        """The size the map comes out, and the extent it covers."""
+        got_half, scale = rover_daemon._map_view(half, pixels, res)
+        return got_half, rover_daemon._map_cells(got_half, res) * scale
 
-    # Nonsense is pulled to the ends rather than refused: this is a view setting,
-    # and a picture at the nearest sane setting beats an error where a map should be.
-    check("a negative extent lands on the floor", ask(-5.0, 3)[0], 0.5)
-    check("a huge extent lands on the ceiling",
-          ask(500.0, 1)[0], rover_daemon.MAP_MAX_HALF_EXTENT_M)
-    check("absurd detail lands on the ceiling extent-permitting",
-          ask(0.75, 99)[1], rover_daemon.MAP_MAX_SCALE)
+    # The whole point of deriving pixels per cell rather than asking for it: zooming
+    # changes what is in frame and leaves the picture the size it was. Whole cells at
+    # whole pixels cannot hit every size exactly, so this allows a few percent -- but
+    # nothing like the five-fold swing you get from fixing the magnification instead.
+    wanted = 480
+    sizes = [picture(half, wanted)[1]
+             for half in (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)]
+    check("every zoom step returns about the size asked for",
+          all(abs(size - wanted) <= wanted * 0.06 for size in sizes), True)
+    check("...so widening the view does not resize the picture",
+          max(sizes) - min(sizes) <= 40, True)
 
-    # The cap: the extent survives and the detail is what gives way, because the
-    # extent decides what you can see and the detail only how finely it is drawn.
-    wide_half, wide_scale = ask(10.0, 8)
-    check("a wide map keeps the extent it was asked for", wide_half, 10.0)
-    check("...and gives up detail instead", wide_scale < 8, True)
-    check("...staying inside the pixel cap",
-          side(wide_half) * wide_scale <= rover_daemon.MAP_MAX_PIXELS, True)
+    # Past that a cell is down to one or two whole pixels and the size cannot be held.
+    # It still has to degrade rather than break: smaller, never bigger than asked.
+    check("wider than the console offers still returns a sane picture",
+          all(0 < picture(half, wanted)[1] <= wanted for half in (8.0, 10.0)), True)
 
-    # Never below 1, however wide: a coarse map is still a map, and returning zero
-    # pixels per cell would be an empty picture rather than a cheap one.
+    # Asking for a bigger picture is the separate control, and it must actually work.
+    small = picture(3.0, 320)[1]
+    large = picture(3.0, 800)[1]
+    check("a bigger picture was asked for and is bigger", large > small * 1.8, True)
+    check("...and covers the same ground",
+          picture(3.0, 320)[0], picture(3.0, 800)[0])
+
+    # Nonsense is pulled to the ends rather than refused: these are view settings, and
+    # a picture at the nearest sane setting beats an error where a map should be.
+    check("a negative extent lands on the floor", rover_daemon._map_view(
+        -5.0, wanted, res)[0], 0.5)
+    check("a huge extent lands on the ceiling", rover_daemon._map_view(
+        500.0, wanted, res)[0], rover_daemon.MAP_MAX_HALF_EXTENT_M)
+    check("an absurd size is capped",
+          picture(3.0, 99999)[1] <= rover_daemon.MAP_MAX_PIXELS, True)
+    check("a tiny size still draws something",
+          picture(3.0, 1)[1] >= rover_daemon._map_cells(3.0, res), True)
+
+    # Never below one pixel a cell, however wide: a coarse map is still a map, and
+    # zero pixels per cell is an empty picture rather than a cheap one.
     for half in sorted({2.0, 6.0, rover_daemon.MAP_MAX_HALF_EXTENT_M}):
-        got_half, got_scale = ask(half, 8)
-        check(f"{half:g} m across still draws at least a pixel a cell",
-              got_scale >= 1, True)
+        got_half, scale = rover_daemon._map_view(half, wanted, res)
+        check(f"{half:g} m across draws at least a pixel a cell", scale >= 1, True)
         check(f"...and {half:g} m is not silently narrowed", got_half, half)
+
+
+def test_flags():
+    import rover_daemon
+
+    # A small quantised model writes booleans loosely, and refusing those means
+    # refusing the tool -- the same reasoning as _level.
+    for value in (True, 1, "true", "True", " yes ", "on", "1"):
+        check(f"{value!r} means yes", rover_daemon._flag(value, "f"), True)
+    for value in (False, 0, "false", "no", "off", "0", ""):
+        check(f"{value!r} means no", rover_daemon._flag(value, "f"), False)
+    # But a word nobody can read is an error, not a silent False: quietly turning a
+    # typo into "no" would hand back a picture facing the wrong way and looking fine.
+    for value in ("maybe", "upwards", None, [], {}):
+        try:
+            rover_daemon._flag(value, "rover_up")
+            check(f"{value!r} is refused", "accepted", "ValueError")
+        except ValueError as error:
+            check(f"{value!r} is refused, saying which argument",
+                  "rover_up" in str(error), True)
 
 
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_look, test_where, test_map_request):
+                 test_no_camera, test_look, test_where, test_map_view, test_flags):
         try:
             test()
         except Exception as exc:

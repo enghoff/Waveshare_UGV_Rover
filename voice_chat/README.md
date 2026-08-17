@@ -915,15 +915,29 @@ second at the default and several at the widest settings, and while it shared th
 watch connection every refresh held up a status poll that is meant to arrive three
 times a second — so the numbers went stale exactly while the picture was being drawn.
 
-**The map zooms, on two knobs.** "Across" is how many metres are in frame and must
-be asked of the rover, since the cropping happens where the grid lives; `-` and `+`
-step it through a fixed ladder from 1.5 m to 20 m so the same extents come back and
-one picture can be compared with an earlier one. "Detail" is pixels per 5 cm cell,
-and that is the expensive one — the area goes as its square, and drawing is
-interpreted Python on a Pi 1. So `map_png` caps the total pixels and reduces the
-detail rather than spend half a minute on one picture, returning what it actually
-used; the console prints that under the buttons, capping included, so a setting the
-rover declined does not look like a setting that did nothing.
+**The map zooms, and zooming does not resize it.** "Across" is how many metres are
+in frame; `-` and `+` step it through a fixed ladder from 1.5 m to 12 m so the same
+extents come back and one picture can be compared with an earlier one. "Size" is how
+big a picture to ask for, which is a different question, and it is the one that costs
+the rover — the area goes as its square and drawing is interpreted Python on a Pi 1.
+
+Keeping those apart is the whole point. `map_png` works pixels-per-cell out from the
+two rather than taking it as an argument, because a client that picks the
+magnification gets a picture that changes size every time the view widens, which is
+rescaling the window rather than zooming. Asked for 480 px, the ladder comes back
+465–492 px from 1.5 m across to 12 m; the same ladder at a fixed magnification ran
+240 px to 1200 px. It stops at 12 m because a cell must be a whole number of pixels
+and by then it is down to two. The line under the buttons says what actually arrived,
+and the picture sits in a box of its own fixed size so the last few pixels of
+difference cannot shuffle the window.
+
+**Which way is up.** Off, the page keeps the heading the rover started with, so the
+room holds still and the arrow turns — right for watching where the rover has got to.
+On, the page turns with the rover, so straight ahead is straight up and the room
+swings instead, which is what you want when the question is whether it will fit
+through the gap in front of it. Neither is more correct and a picture cannot say
+which it is, so the caption does — and the caption used to claim the rover's forward
+was up the page in both, which was only ever true of the heading it started with.
 
 **Two calls that no model is shown.** `nav_status` returns every number the driving
 loop has, and `map_png` returns the map as base64 in the reply instead of posting

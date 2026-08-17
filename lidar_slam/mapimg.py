@@ -236,12 +236,20 @@ def _draw_track(image, np, points, scale):
             image[py[inside], px[inside]] = colour
 
 
-def render(slam, half_extent_m=3.0, scale=3, trail=()):
+def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False):
     """The map around the rover as PNG bytes, plus what it shows.
 
     `half_extent_m` is how far each way to include -- a few metres, deliberately,
     rather than the whole 20 m grid: the pose drifts, so a picture that invites
     global planning is a picture that misleads. `scale` is screen pixels per cell.
+
+    `rover_up` picks which way is up. False, the default, points the page the way the
+    rover was facing when it started, so the room holds still and the arrow turns:
+    right for watching where the rover has got to. True points the page the way the
+    rover is facing now, so the arrow holds still and the room turns underneath it,
+    which is what you want when the question is "can I get through that gap ahead".
+    Neither is more correct, and a picture cannot say which it is, so the caption
+    does.
 
     Returns (png_bytes, description) where description says what the picture is,
     because a model shown an unlabelled top-down grid has no way to know the
@@ -257,22 +265,34 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
         occupied_at = slam.config.occupied_at
         scan = slam.scan_xy()
 
-    half_cells = max(8, int(half_extent_m / res))
+    # Rounded, not truncated. The resolution comes out of the C config as a float32,
+    # so 0.05 is really 0.050000000745 and three metres divided by it is 59.999999 --
+    # which truncates to 59 and quietly loses a cell at every end of every map drawn
+    # on the rover, while the caption went on claiming the extent that was asked for.
+    half_cells = max(8, int(round(half_extent_m / res)))
+    span = 2 * half_cells + 1
     cx = int(x / res) + cells // 2
     cy = int(y / res) + cells // 2
-    x0, x1 = max(0, cx - half_cells), min(cells, cx + half_cells + 1)
-    y0, y1 = max(0, cy - half_cells), min(cells, cy + half_cells + 1)
-    sub = np.asarray(grid[x0:x1, y0:y1])
+    # How the page is turned relative to the grid. The identity is the grid's own
+    # frame, which is where the rover started.
+    ahead_cos, ahead_sin = (math.cos(th), math.sin(th)) if rover_up else (1.0, 0.0)
 
-    # Grid axes are (ix along start-forward, iy along start-left), so the array's
-    # own first axis is already the one that should run up the page. A plan view
-    # wants forward up and left to the left, which is therefore two flips and no
-    # transpose -- the same arrangement write_pgm uses, and the one to_px below
-    # inverts. A transpose here as well would reflect the walls about the diagonal
-    # while leaving the rover and its trail alone, which is how they came to
-    # disagree.
-    shown = np.flipud(np.fliplr(sub))
-    nh, nw = shown.shape
+    # Sampled rather than sliced, because a rotated view is not a slice of anything.
+    # Grid axes are (ix along start-forward, iy along start-left), so with no rotation
+    # the array's own first axis is already the one that runs up the page and this
+    # reduces to the two flips it used to be -- forward up, left to the left, which is
+    # the arrangement write_pgm uses and the one to_px below inverts.
+    #
+    # Sampling also fixes something slicing got wrong: a crop running off the edge of
+    # the 20 m grid used to come back as a smaller picture. Off-grid now reads as
+    # never-seen, which it is, and the picture is the size that was asked for.
+    ahead = (half_cells - np.arange(span))[:, None]
+    left = (half_cells - np.arange(span))[None, :]
+    gx = np.rint(cx + ahead * ahead_cos - left * ahead_sin).astype(np.int32)
+    gy = np.rint(cy + ahead * ahead_sin + left * ahead_cos).astype(np.int32)
+    on_grid = (gx >= 0) & (gx < cells) & (gy >= 0) & (gy < cells)
+    shown = np.zeros((span, span), dtype=np.int8)
+    shown[on_grid] = np.asarray(grid)[gx[on_grid], gy[on_grid]]
 
     # Occupancy as three RGB planes. The state -> colour step happens here, on the
     # small array, rather than per pixel after the scale-up.
@@ -285,11 +305,12 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
     big = np.repeat(np.repeat(rgb, scale, axis=0), scale, axis=1)
 
     def to_px(wx, wy):
-        """World metres -> pixel, matching the flips above."""
-        gx, gy = wx / res + cells // 2, wy / res + cells // 2
-        col = (y1 - 1 - gy) * scale
-        row = (x1 - 1 - gx) * scale
-        return col, row
+        """World metres -> pixel, the exact inverse of the sampling above."""
+        dgx = wx / res + cells // 2 - cx
+        dgy = wy / res + cells // 2 - cy
+        forward = dgx * ahead_cos + dgy * ahead_sin
+        sideways = -dgx * ahead_sin + dgy * ahead_cos
+        return (half_cells - sideways) * scale, (half_cells - forward) * scale
 
     # Where the rover has been, so "go around it" can be checked afterwards. Drawn
     # thick enough to survive against a busy background, since a one-pixel track over
@@ -338,15 +359,27 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
 
     seen = int((shown != 0).sum())
     solid = int((shown >= occupied_at).sum())
+    # Which way is up has to be said, and said exactly. The old wording claimed the
+    # rover's forward was up the page, which was only ever true of the heading it
+    # started with -- so a model reading it after any turn was being told the room lay
+    # in a direction it did not.
+    if rover_up:
+        orientation = ("Up the page is the direction the rover is facing right now, "
+                       "so straight ahead of it is straight up, its left is to the "
+                       "left, and the room turns in the picture as the rover turns.")
+    else:
+        orientation = ("Up the page is the direction the rover was facing when it "
+                       "started, not the way it is facing now -- the room holds still "
+                       "and the rover turns within it, so read the arrow to see which "
+                       "way it is pointing.")
     description = (
         f"A top-down map of roughly {2 * half_extent_m:.0f} by "
         f"{2 * half_extent_m:.0f} metres around the rover, built from its lidar. "
-        f"Forward for the rover is up the page and its left is to the left. The red "
-        f"triangle is the rover and its tip points the way the rover is facing, with "
-        f"a yellow dot at its exact position; the blue line is the path it has "
-        f"driven. Black is solid, near-white is space the lidar has seen to be "
-        f"empty, sandy beige is seen but not confirmed solid, and flat grey is "
-        f"unknown -- not empty. The bar at the bottom "
+        f"{orientation} The red triangle is the rover and its tip points the way the "
+        f"rover is facing, with a yellow dot at its exact position; the blue line is "
+        f"the path it has driven. Black is solid, near-white is space the lidar has "
+        f"seen to be empty, sandy beige is seen but not confirmed solid, and flat grey "
+        f"is unknown -- not empty. The bar at the bottom "
         f"left is one metre. {solid} cells are solid out of {seen} seen. Distances "
         f"here are good to a few centimetres locally, but the rover's own position "
         f"drifts over a long run, so use this to judge what is nearby rather than to "
@@ -376,7 +409,7 @@ def _decode(png):
     return np.frombuffer(b"".join(rows), dtype=np.uint8).reshape(height, width, 3)
 
 
-def _render_probe(heading, wall_axis="ahead"):
+def _render_probe(heading, wall_axis="ahead", rover_up=False):
     """`render` over a synthetic room: one wall and a track that drove forward."""
     import contextlib
 
@@ -405,7 +438,8 @@ def _render_probe(heading, wall_axis="ahead"):
             return []
 
     png, caption = render(_Slam(), half_extent_m=3.0, scale=3,
-                          trail=[(cm / 100.0, 0.0) for cm in range(0, 201, 5)])
+                          trail=[(cm / 100.0, 0.0) for cm in range(0, 201, 5)],
+                          rover_up=rover_up)
     return _decode(png), caption
 
 
@@ -428,6 +462,12 @@ def _check_orientation():
     Three claims, then: a wall straight ahead is a horizontal stripe above the
     rover; a track that drove straight forward is one vertical line; and the arrow
     turns the way the heading says, counter-clockwise for a left turn.
+
+    Then the same again for `rover_up`, where the page turns with the rover instead.
+    A rotation is exactly the sort of thing that looks entirely plausible while being
+    ninety degrees or a mirror out, so it is checked against a wall whose real
+    bearing is known: with the wall dead ahead, turning the rover a quarter turn left
+    must swing that wall to the right of the picture and not to the left.
     """
     import numpy as np
 
@@ -477,6 +517,43 @@ def _check_orientation():
 
     assert "red triangle" in caption and "blue line" in caption, (
         "the caption no longer names the colours it is explaining")
+
+    # rover_up: the page turns with the rover. Where the one wall lands says which
+    # way, and it has to land somewhere different for each quarter turn.
+    def wall_at(heading):
+        got, _ = _render_probe(heading, rover_up=True)
+        occ = _mask(got, C_OCCUPIED)
+        h, w = occ.shape
+        rows = [r for r in range(h) if occ[r].sum() > w * 0.7]
+        cols = [c for c in range(w) if occ[:, c].sum() > h * 0.7]
+        if rows:
+            return "above" if rows[0] < h // 2 else "below"
+        if cols:
+            return "left" if cols[0] < w // 2 else "right"
+        return "nowhere"
+
+    for heading, want in ((0.0, "above"), (math.pi / 2, "right"),
+                          (math.pi, "below"), (-math.pi / 2, "left")):
+        got = wall_at(heading)
+        assert got == want, (
+            f"with the rover facing {math.degrees(heading):+.0f} deg and rover_up on, "
+            f"a wall that is really straight ahead of the start heading was drawn "
+            f"{got}, not {want}")
+
+    # And with the page turned, the arrow cannot be: ahead is up by construction.
+    turned, _ = _render_probe(math.pi / 2, rover_up=True)
+    rows, cols = np.nonzero(_mask(turned, C_ROVER))
+    anchor = [v.mean() for v in np.nonzero(_mask(turned, C_ANCHOR))]
+    far = np.argmax((rows - anchor[0]) ** 2 + (cols - anchor[1]) ** 2)
+    point = (cols[far] - anchor[1], rows[far] - anchor[0])
+    assert point[1] < -2 and abs(point[0]) < 3, (
+        f"with rover_up on the arrow must always point up the page, but it points "
+        f"{point}")
+
+    up_caption = _render_probe(0.0, rover_up=True)[1]
+    assert "facing right now" in up_caption and "facing right now" not in caption, (
+        "the caption does not distinguish the two orientations, which is the only "
+        "way anything reading the picture can tell them apart")
     print(f"orientation ok: track up column {track_cols[0]}, wall across row "
           f"{solid[0]}, arrow {ahead} ahead and {left} turned left")
 

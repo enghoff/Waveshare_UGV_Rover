@@ -1004,6 +1004,7 @@ class Navigator:
                            "and the rover will not drive. " + out["text"])
         return out
 
-    def map_png(self, half_extent_m=3.0, scale=3):
+    def map_png(self, half_extent_m=3.0, scale=3, rover_up=False):
         import mapimg
-        return mapimg.render(self.slam, half_extent_m, scale, tuple(self._trail))
+        return mapimg.render(self.slam, half_extent_m, scale, tuple(self._trail),
+                             rover_up=rover_up)

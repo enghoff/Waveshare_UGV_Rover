@@ -63,7 +63,9 @@ MAX_RANGE_M = 12.0
 # against a rover that says no.
 MAP_MAX_HALF_EXTENT_M = prompts._literal(prompts.DAEMON, "MAP_MAX_HALF_EXTENT_M")
 MAP_MAX_SCALE = prompts._literal(prompts.DAEMON, "MAP_MAX_SCALE")
+MAP_MIN_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MIN_PIXELS")
 MAP_MAX_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MAX_PIXELS")
+MAP_PIXELS = prompts._literal(prompts.DAEMON, "MAP_PIXELS")
 
 
 def _wrap(radians: float) -> float:
@@ -232,20 +234,30 @@ class Rover:
                 "lidar_live": True, "lidar_port": "invented", "scan_age_s": 0.05}
 
     def map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Clamped and reported the way the real one does, including lowering the
-        detail when the two together would be too big -- a client that shows what it
-        got rather than what it asked for needs a mock that can disagree with it."""
+        """Zoomed, clamped and reported the way the real one does.
+
+        Including working pixels per cell out from the extent and the wanted picture
+        size rather than taking it as an argument, so that widening the view here also
+        keeps the picture the same size. A client that displays what it *got* needs a
+        mock that can hand back something other than what was asked for.
+        """
         half = min(MAP_MAX_HALF_EXTENT_M, max(0.5, float(
             arguments.get("half_extent_m", 3.0))))
-        scale = int(min(MAP_MAX_SCALE, max(1, arguments.get("scale", 3))))
-        side = int(2 * half / 0.05) + 1
-        while scale > 1 and side * scale > MAP_MAX_PIXELS:
+        cells = 2 * max(8, int(half / 0.05)) + 1
+        if arguments.get("scale") is not None:
+            scale = int(min(MAP_MAX_SCALE, max(1, arguments["scale"])))
+        else:
+            pixels = min(MAP_MAX_PIXELS, max(MAP_MIN_PIXELS, float(
+                arguments.get("pixels", MAP_PIXELS))))
+            scale = int(min(MAP_MAX_SCALE, max(1, round(pixels / cells))))
+        while scale > 1 and cells * scale > MAP_MAX_PIXELS:
             scale -= 1
+        rover_up = bool(arguments.get("rover_up", False))
         started = time.monotonic()
-        png, caption = self._map(half, scale)
+        png, caption = self._map(half, scale, rover_up)
         return {"ok": True, "caption": caption, "bytes": len(png),
                 "half_extent_m": round(half, 2), "scale": scale,
-                "pixels": side * scale,
+                "pixels": int.from_bytes(png[16:20], "big"), "rover_up": rover_up,
                 "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 
@@ -308,7 +320,7 @@ class Rover:
                 + ". There is a table with four legs in it, and the lidar sees the "
                   "legs rather than the top.")
 
-    def _map(self, half_extent_m: float, scale: int):
+    def _map(self, half_extent_m: float, scale: int, rover_up: bool = False):
         """The room as a colour PNG, drawn with the rover's own encoder and palette.
 
         `mapimg` is imported from the rover's tree rather than reimplemented: this
@@ -317,6 +329,11 @@ class Rover:
         the arrow come from there for the same reason -- a console that looks one way
         against the mock and another against the rover is a console that hides
         exactly the kind of drawing bug this is here to catch.
+
+        `rover_up` turns the page with the rover, as the real renderer does. Here that
+        is one rotation in `to_pixels` and the cells sampled through it, rather than
+        the array-sampling the real one needs, because this room is a formula and can
+        be evaluated at any point rather than looked up in a grid.
         """
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "lidar_slam"))
@@ -326,12 +343,24 @@ class Rover:
         half = max(8, int(half_extent_m / res))
         size = half * 2 + 1
         canvas = mapimg.Canvas(size * scale, size * scale, mapimg.C_UNKNOWN)
+        ahead_cos, ahead_sin = ((math.cos(self.heading), math.sin(self.heading))
+                                if rover_up else (1.0, 0.0))
 
         def to_pixels(px: float, py: float):
-            # Forward up the page, left to the left, as mapimg.render arranges it.
-            col = (half - (py - self.y) / res) * scale
-            row = (half - (px - self.x) / res) * scale
-            return col, row
+            # Up the page is either the start heading or the rover's own, exactly as
+            # mapimg.render arranges it; left is to the left in both.
+            dx, dy = (px - self.x) / res, (py - self.y) / res
+            forward = dx * ahead_cos + dy * ahead_sin
+            sideways = -dx * ahead_sin + dy * ahead_cos
+            return (half - sideways) * scale, (half - forward) * scale
+
+        def at_cell(iy: int, ix: int):
+            """The world point a cell of the picture looks at. The inverse of
+            to_pixels, so the room and everything drawn on it agree however the page
+            is turned -- which is the bug this mock exists to make visible."""
+            forward, sideways = ix - half, iy - half
+            return (self.x + (forward * ahead_cos - sideways * ahead_sin) * res,
+                    self.y + (forward * ahead_sin + sideways * ahead_cos) * res)
 
         # Filled from the cell indices rather than by rounding to_pixels back to a
         # block: the two agree to within float error, and that error is enough to
@@ -340,8 +369,7 @@ class Rover:
         wall = res * 1.5
         for iy in range(size):
             for ix in range(size):
-                wx = self.x + (ix - half) * res
-                wy = self.y + (iy - half) * res
+                wx, wy = at_cell(iy, ix)
                 inside = (-ROOM_BACK_M < wx < ROOM_FORWARD_M
                           and -ROOM_RIGHT_M < wy < ROOM_LEFT_M)
                 on_wall = (min(abs(wx + ROOM_BACK_M), abs(wx - ROOM_FORWARD_M),
@@ -385,12 +413,14 @@ class Rover:
         centre = half * scale
         canvas.disc(centre, centre, max(1.0, scale * 0.5), mapimg.C_ANCHOR)
 
+        facing = ("Up the page is the direction the rover is facing now" if rover_up
+                  else "Up the page is the direction the rover started facing")
         caption = (f"An invented top-down map of roughly {2 * half_extent_m:.0f} by "
-                   f"{2 * half_extent_m:.0f} metres. Forward is up the page and the "
-                   f"rover's left is to the left. The red triangle is the rover and "
-                   f"its tip points the way it is facing, with a yellow dot at its "
-                   f"exact position, and the blue line is the path it has driven. "
-                   f"Nothing in it was measured.")
+                   f"{2 * half_extent_m:.0f} metres. {facing} and the rover's left is "
+                   f"to the left. The red triangle is the rover and its tip points the "
+                   f"way it is facing, with a yellow dot at its exact position, and "
+                   f"the blue line is the path it has driven. Nothing in it was "
+                   f"measured.")
         return mapimg.png_rgb(canvas.rows), caption
 
     def set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:
