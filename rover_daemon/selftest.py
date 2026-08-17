@@ -87,9 +87,20 @@ def test_schemas():
     missing = [n for n in names if not hasattr(rover_daemon.Rover, f"_tool_{n}")]
     check("every schema has a handler", missing, [])
     # ...and the reverse, so a tool that works but is never offered is noticed.
+    #
+    # Minus the control calls, which are dispatched like tools because that is
+    # the only protocol this daemon speaks, and are deliberately kept out of
+    # `list_tools` so that no model is ever shown one. They are named here rather
+    # than detected, so that adding a handler still has to be a deliberate
+    # decision about which of the two kinds it is.
     handlers = sorted(m[len("_tool_"):] for m in dir(rover_daemon.Rover)
                       if m.startswith("_tool_"))
-    check("every handler is offered", sorted(names), handlers)
+    control = ["set_vision"]
+    for name in control:
+        check(f"{name} is a control call, not a tool", name in handlers, True)
+        check(f"...and is not offered to any model", name in names, False)
+    check("every other handler is offered",
+          sorted(names), [h for h in handlers if h not in control])
     for tool in every:
         function = tool["function"]
         check(f"{function['name']} describes itself", bool(function.get("description")), True)

@@ -30,6 +30,14 @@ Clients speak newline-delimited JSON over TCP -- one request, one reply:
     -> {"call": "list_tools"}
     <- {"ok": true, "tools": [ ...JSON schemas... ]}
 
+Two calls in that protocol are for the client rather than for the model, and
+neither appears in `list_tools`, so no model is ever shown them. `list_tools`
+itself is one. The other is `set_vision`, which says where `look` should post its
+pictures:
+
+    -> {"call": "set_vision", "arguments": {"address": "192.168.1.7:8767"}}
+    <- {"ok": true, "vision": "http://192.168.1.7:8767/frame", "tools": [...]}
+
 `list_tools` is why the clients carry no schemas of their own. The daemon is the
 only thing that knows what this rover can do, so it is the only thing that should
 be describing it -- [voice_chat/talk.py](../voice_chat/talk.py) asks, and
@@ -104,6 +112,12 @@ SKIP_RADIUS = 1.5
 # conversation, so this is sized to outlast a busy moment rather than to be
 # tight. The voice service's own patience for a tool is 12s and includes this.
 VISION_TIMEOUT_S = 6.0
+# How long to spend finding out whether the face detector is there before
+# starting to track. Short, because this is paid on the way into a tool call the
+# model is waiting on, and because the answer on a LAN is immediate either way --
+# except when the host is off rather than refusing, which is the case worth
+# bounding. See `_detector_ready` for why this check exists at all.
+DETECT_PROBE_S = 2.0
 # A frame this old is not what the camera is looking at any more. Only reached
 # while the tracking loop owns the camera, where the loop's newest frame is used
 # rather than opening a second one -- which is impossible anyway.
@@ -648,6 +662,51 @@ class Rover:
         except Exception as error:  # a bug here must not take the daemon down
             return {"ok": False, "error": f"{type(error).__name__}: {error}"}
 
+    def _tool_set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Point `look` at whoever is asking. A control call, not a model tool.
+
+        It is dispatched like a tool because that is the only protocol this
+        daemon speaks, and it is deliberately absent from :meth:`tools`, so no
+        model is ever shown it or can call it.
+
+        It exists because the picture's destination was a constant, and a
+        constant was wrong. `look` posts the JPEG straight to the model's host
+        rather than passing it back through the client, which is what keeps a
+        35kB frame off a desk that only has a microphone on it -- but it means
+        this daemon has to be told an address, and it was told one at startup, by
+        whoever last edited a crontab. When the model moved off that host the
+        pictures kept going to it, and `look` failed with "No route to host"
+        while everything else on the rover worked perfectly.
+
+        So the client that is about to hold a conversation says where it is
+        listening, every time it connects. The address it gives is the one its
+        own socket to this daemon is bound to, so it is right by construction on
+        a rover that has moved between eth0 and wlan0.
+
+        Naming no address switches the picture path off, which also withdraws
+        `look` from the tool list -- a tool that cannot reach the model's host is
+        worse than a missing one.
+        """
+        address = arguments.get("address")
+        if address is None or (isinstance(address, str) and not address.strip()):
+            was, self.vision = self.vision, None
+            if was is not None:
+                was.close()
+            return {"ok": True, "vision": None, "tools": [t["function"]["name"]
+                                                          for t in self.tools()]}
+        if not isinstance(address, str):
+            return {"ok": False, "error": "set_vision wants an address like host:port"}
+        host, _, port = address.strip().partition(":")
+        if not host or (port and not port.isdigit()):
+            return {"ok": False, "error": f"{address!r} is not a host:port"}
+        link = VisionLink(address.strip())
+        was, self.vision = self.vision, link
+        if was is not None and was is not link:
+            was.close()
+        print(f"[rover] pictures now go to {link.describe()}", flush=True)
+        return {"ok": True, "vision": link.describe(),
+                "tools": [t["function"]["name"] for t in self.tools()]}
+
     def _tool_set_lights(self, arguments: dict[str, Any]) -> dict[str, Any]:
         level = _level(arguments.get("level"))
         with self._lock:
@@ -781,11 +840,36 @@ class Rover:
         # is said once. See voice_chat/README.md.
         return {"ok": True, "image": sent["image"]}
 
+    def _detector_ready(self) -> str:
+        """Empty if the face detector answers, otherwise why not, in a sentence.
+
+        Face tracking needs a service on another host, and that host being away
+        is an expected state on a rover -- the loop is written to hold still
+        through it rather than to die. Which is right for a loop already running
+        and wrong for one being started: the loop starts, holds still, reports
+        itself as tracking, and the model says "I started tracking people" while
+        the camera never moves. That is the failure this whole directory's prompt
+        wording exists to prevent, arriving from underneath the prompt.
+
+        A refusal is instant and a host that is off takes the timeout, which is
+        why this is bounded rather than left to the first detect call.
+        """
+        host, _, port = self.service.partition(":")
+        try:
+            with socket.create_connection((host, int(port or 8768)), DETECT_PROBE_S):
+                return ""
+        except OSError as error:
+            return (f"the face detector at {self.service} is not answering "
+                    f"({error.strerror or type(error).__name__}), so tracking a "
+                    f"face is not possible right now")
+
     def _tool_start_tracking(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.device is None:
             return {"ok": False, "error": "this rover has no camera attached"}
         if self._tracking.is_set():
             return {"ok": True, "tracking": True, "already": True}
+        if (why := self._detector_ready()):
+            return {"ok": False, "error": why}
         self._tracking.set()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()

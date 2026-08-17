@@ -72,6 +72,38 @@ ssh rpi 'cd ugv && python3 rover_daemon.py --vision'              # 192.168.1.3:
 ssh rpi 'cd ugv && python3 rover_daemon.py --vision media.local:8767'
 ```
 
+**That flag is a starting position, not a setting.** The destination was a
+constant once, and being a constant is exactly how it went wrong: the model moved
+off MEDIA, the daemon kept posting pictures to MEDIA, and `look` failed with
+`No route to host` while every other tool worked perfectly — which is a hard
+thing to debug, because nothing about the rover is broken. So a client says where
+it is listening, on every connection, with the control call below; the flag only
+decides where pictures go until somebody says otherwise.
+
+### `set_vision`, and why it is not a tool
+
+```
+-> {"call": "set_vision", "arguments": {"address": "192.168.1.206:8767"}}
+<- {"ok": true, "vision": "http://192.168.1.206:8767/frame", "tools": [...]}
+-> {"call": "set_vision", "arguments": {"address": null}}
+<- {"ok": true, "vision": null, "tools": [ ...without `look`... ]}
+```
+
+It is dispatched like a tool because that is the only protocol this daemon
+speaks, and it is deliberately absent from `list_tools`, so no model is ever
+shown it or can call it. The client is the one that knows where its own frame
+server is; the model has no business knowing there is one.
+
+Naming no address switches the picture path off, which withdraws `look` — a tool
+that cannot reach the model's host is worse than a missing one, for the reason
+this file repeats: the model says it has done the thing, and nothing happens.
+
+The address a client should send is the one *its own socket to this daemon* is
+bound to, not whatever `hostname -I` says. A desk has several addresses and only
+one of them is on the way here, and which one that is changes when the rover
+leaves its dock and starts answering on wlan0. See `local_address` in
+[voice_chat/rover_tools.py](../voice_chat/rover_tools.py).
+
 ## What it cannot do, and will not pretend to
 
 **There is no face recognition here.** YuNet is a detector: it returns a box and
@@ -90,6 +122,23 @@ attribute classifier anywhere in this repo. So:
   words, because the model would otherwise claim it had found somebody new.
 - **"Find someone with glasses" has no model behind it.** Nor age, expression or
   anything else about a face. Adding one is a project, not an exposure.
+
+**Face tracking needs a service on another host, and will now say so.** The
+detector runs on the GPU box, on port 8768. The tracking loop is written to hold
+still through it being away rather than to die, which is right for a loop already
+running and wrong for one being started: it would start, hold still, report
+itself as tracking, and the model would say "I started tracking people" while the
+camera never moved. That is this file's own worst-case failure arriving from
+underneath the prompt written to prevent it. So `start_tracking` checks the
+detector answers before it claims anything:
+
+```
+{"ok": false, "error": "the face detector at 192.168.1.3:8768 is not answering
+ (TimeoutError), so tracking a face is not possible right now"}
+```
+
+A refusal is instant and a host that is off costs `DETECT_PROBE_S`, which is why
+the check is bounded rather than left to the first frame.
 
 **Driving is deliberately not exposed.** The firmware stops the base if it hears
 nothing for `HEARTBEAT_MS`, so "drive forward" is a control loop with a stop
