@@ -70,6 +70,7 @@ import socketserver
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 DEFAULT_SERIAL = "/dev/ttyAMA0"
@@ -131,6 +132,21 @@ CAMERA_IDLE_S = 20.0
 # One-shot detection: how long to wait for a frame once the camera is opened.
 # v4l2-ctl takes a moment to deliver its first buffer.
 FIRST_FRAME_S = 4.0
+
+# The lidar, when this daemon is asked to drive. A separate port from the driver
+# board: the board is on the GPIO UART and the lidar is a CH343 the cdc_acm driver
+# claims, so there is no /dev/ttyUSB* to look for. See docs/hosts.md.
+#
+# "auto" rather than a device node, because the node is not stable. This adapter
+# re-enumerated as ttyACM1 under a running daemon and left it holding a dead
+# ttyACM0, still answering questions from a scan that had stopped updating. The
+# navigator prefers the /dev/serial/by-id name, which carries the serial number.
+DEFAULT_LIDAR = "auto"
+# How much of the map goes into a picture for the model. A few metres, not the whole
+# 20 m grid: the pose drifts over a long run, so a picture wide enough to invite
+# planning a route home is a picture that will mislead.
+MAP_HALF_EXTENT_M = 3.0
+MAP_SCALE = 3
 
 
 def _level(value: Any) -> int:
@@ -526,6 +542,119 @@ LOOK_TOOL: dict[str, Any] = {
 }
 
 
+# Offered only when the daemon has a lidar, for the same reason `look` is offered
+# only when there is somewhere to send a picture: a tool that cannot reach its
+# hardware is worse than a missing one, because the model reports success and
+# nothing happens.
+NAV_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "drive",
+            "description": (
+                "Drive the rover forward, optionally curving as it goes. It watches "
+                "its lidar the whole way and stops itself rather than hitting "
+                "anything, steering around obstacles when it can. Always says how "
+                "far it actually got and why it stopped, which will often be less "
+                "than asked for. Pauses face tracking while it moves and resumes it "
+                "afterwards. It cannot see steps, drops, or anything above or below "
+                "the height of its lidar, so do not drive it near a stair or a table "
+                "edge on the strength of this."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "distance_m": {
+                        "type": "number", "minimum": 0.05, "maximum": 3.0,
+                        "description": "How far to go, in metres.",
+                    },
+                    "turn_deg": {
+                        "type": "number", "minimum": -120, "maximum": 120,
+                        "description": "Total heading change over the move, in "
+                                       "degrees; positive is left, 0 is straight.",
+                    },
+                    "speed_ms": {
+                        "type": "number", "minimum": 0.05, "maximum": 0.35,
+                        "description": "Metres per second. Leave it out for a "
+                                       "sensible walking crawl.",
+                    },
+                },
+                "required": ["distance_m"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "turn_in_place",
+            "description": (
+                "Turn the rover on the spot without going anywhere, by a number of "
+                "degrees: positive turns left, negative turns right. Use this to "
+                "face something before driving to it. Allowed in tighter spaces than "
+                "driving is, because turning does not move the rover, but it will "
+                "refuse if something is close enough to catch a corner."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "angle_deg": {
+                        "type": "number", "minimum": -180, "maximum": 180,
+                        "description": "Degrees to turn; positive is left.",
+                    },
+                },
+                "required": ["angle_deg"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_driving",
+            "description": (
+                "Stop the rover moving immediately. Use this the moment anyone asks "
+                "it to stop, or if something sounds wrong."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "describe_surroundings",
+            "description": (
+                # Named for what it answers rather than for the sensor, on the same
+                # reasoning as count_faces: a tool called "read the lidar" does not
+                # get called when somebody asks what is around the rover.
+                "Say what is around the rover and how much room it has, measured "
+                "with its lidar rather than seen with its camera. Gives the walls, "
+                "any free-standing objects, the gaps between them and how far it "
+                "can go forward. Use this to answer questions about space, room, "
+                "distance and what is in the way, and before driving somewhere. It "
+                "does not use the camera and cannot tell you what anything is -- the "
+                "lidar measures one flat slice at its own height, so a table appears "
+                "only as its legs."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+MAP_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "show_map",
+        "description": (
+            "Take a top-down map of the few metres around the rover, built up from "
+            "its lidar as it has driven, and look at it. Use this for questions "
+            "about the shape of the space or about getting from one place to "
+            "another. For a plain question about what is nearby, "
+            "describe_surroundings is quicker and more precise."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+
+
 def _where(face, width: int, height: int) -> dict[str, Any]:
     """One box described the way a person would say it, not in pixels.
 
@@ -575,6 +704,11 @@ class Rover:
 
         self._tracking = threading.Event()
         self._thread: threading.Thread | None = None
+        # Set while driving has taken face tracking away from itself, so that the
+        # end of the move can hand it back. Only the navigator's callbacks touch it,
+        # and they run on whichever thread asked for the move.
+        self._tracking_parked = False
+        self.nav = None
         self._skip_centre = None
         self._skip_until = 0.0
         # What the loop last saw, for tracking_status and count_faces while it
@@ -591,8 +725,18 @@ class Rover:
         describes is worse than a missing one -- the model says it has done the
         thing, and nothing happens -- and the same is true of one that cannot
         reach the model's own host.
+
+        The same rule covers driving, which needs a lidar, and the map, which needs
+        both a lidar to build it and somewhere to send the picture.
         """
-        return TOOLS + ([LOOK_TOOL] if self.vision is not None else [])
+        tools = list(TOOLS)
+        if self.vision is not None:
+            tools.append(LOOK_TOOL)
+        if self.nav is not None:
+            tools += NAV_TOOLS
+            if self.vision is not None:
+                tools.append(MAP_TOOL)
+        return tools
 
     def describe(self) -> str:
         return self.link.describe()
@@ -909,6 +1053,88 @@ class Rover:
             "pan": round(self.pan), "tilt": round(self.tilt),
         }
 
+    # --- driving --------------------------------------------------------------
+
+    def park_tracking(self) -> None:
+        """Put face tracking down because the wheels are about to turn.
+
+        They cannot both run. Face tracking holds the camera and posts frames to
+        MEDIA, which is about 30% of this one core, and SLAM is another 33%; run
+        both and the scan matcher starts dropping revolutions, which degrades
+        exactly the thing that is keeping the rover off the walls. Aiming the camera
+        while driving is also a good way to be looking at somebody's face when
+        something appears in front of the tracks.
+        """
+        self._tracking_parked = self.stop_tracking()
+
+    def unpark_tracking(self) -> None:
+        """Give it back, but only if driving is what took it."""
+        if not self._tracking_parked:
+            return
+        self._tracking_parked = False
+        result = self._tool_start_tracking({})
+        if not result.get("ok"):
+            print(f"[rover] could not resume face tracking after driving: "
+                  f"{result.get('error')}", file=sys.stderr, flush=True)
+
+    def _tool_drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar, so it will not "
+                                          "drive itself"}
+        distance = _number(arguments.get("distance_m", 0.5), "distance_m")
+        turn = _number(arguments.get("turn_deg", 0.0) or 0.0, "turn_deg")
+        speed = arguments.get("speed_ms")
+        outcome = self.nav.drive(distance_m=distance, turn_deg=turn,
+                                 speed_ms=None if speed is None
+                                 else _number(speed, "speed_ms"))
+        return {"ok": outcome.reason in ("arrived", "timed out"), **outcome.asdict(),
+                **self._nav_context()}
+
+    def _tool_turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar, so it will not "
+                                          "drive itself"}
+        angle = _number(arguments.get("angle_deg", 0.0), "angle_deg")
+        outcome = self.nav.turn_in_place(angle)
+        return {"ok": outcome.reason == "arrived", **outcome.asdict(),
+                **self._nav_context()}
+
+    def _tool_stop_driving(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.nav is None:
+            return {"ok": True, "stopped": True,
+                    "note": "this rover does not drive itself, so it was not moving"}
+        return {"ok": True, **self.nav.stop()}
+
+    def _nav_context(self) -> dict[str, Any]:
+        """What the model needs after a move: how much room is left, so it can decide
+        what to do next without a second tool call."""
+        described = self.nav.describe()
+        return {"clear_ahead_m": described["clear_ahead_m"],
+                "surroundings": described["text"]}
+
+    def _tool_describe_surroundings(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar attached"}
+        return {"ok": True, **self.nav.describe()}
+
+    def _tool_show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar attached"}
+        if self.vision is None:
+            return {"ok": False, "error": "there is nowhere to send a picture"}
+        png, caption = self.nav.map_png(MAP_HALF_EXTENT_M, MAP_SCALE)
+        sent = self.vision.post(png)
+        # The caption is the answer whether or not the picture arrives. The frame
+        # server stashes bytes without decoding them and the upload declares no
+        # media type, so a PNG should be as acceptable as the JPEGs `look` sends --
+        # but that has not been confirmed at the model itself, and a tool that says
+        # nothing when the image is refused would leave the model inventing a map.
+        result = {"ok": True, "caption": caption, **self.nav.describe()}
+        if not sent.get("ok"):
+            result["note"] = ("the map could not be sent as a picture, so answer "
+                              "from the description alone: " + str(sent.get("error")))
+        return result
+
     # --- the loop -----------------------------------------------------------
 
     def stop_tracking(self) -> bool:
@@ -1044,6 +1270,11 @@ class Rover:
                 self._close_camera()
 
     def close(self) -> None:
+        # The navigator first, and outside the lock: it stops the wheels and joins
+        # its own loop, and nothing else here matters until the rover is still.
+        if self.nav is not None:
+            self.nav.close()
+            self.nav = None
         self.stop_tracking()
         with self._lock:
             self._close_camera()
@@ -1104,6 +1335,12 @@ def main() -> int | str:
                              f"service (bare --vision means {DEFAULT_VISION})")
     parser.add_argument("--no-camera", dest="camera", action="store_false",
                         help="lights and gimbal only, for a rover with no camera fitted")
+    parser.add_argument("--lidar", nargs="?", default=None, const=DEFAULT_LIDAR,
+                        metavar="PORT",
+                        help="offer the driving and mapping tools, using the lidar on "
+                             "this port; bare --lidar finds it by its stable "
+                             "/dev/serial/by-id name. Without this the rover will "
+                             "not move itself.")
     parser.add_argument("--bind", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
@@ -1122,11 +1359,41 @@ def main() -> int | str:
     # kept true by putting the camera where this thinks it is, since it cannot ask.
     rover.centre_gimbal()
 
+    if args.lidar:
+        # Two layouts to satisfy: in the repository this file is in rover_daemon/ and
+        # lidar_slam/ is its sibling, while the Pi's ~/ugv is flat with lidar_slam/
+        # inside it. Checking for the directory rather than assuming either means a
+        # deployment that moves does not silently lose the driving tools.
+        here = Path(__file__).resolve().parent
+        for candidate in (here.parent / "lidar_slam", here / "lidar_slam"):
+            if candidate.is_dir():
+                sys.path.insert(0, str(candidate))
+                break
+        try:
+            from navigator import Navigator
+            rover.nav = Navigator(link,
+                                  None if args.lidar == "auto" else args.lidar,
+                                  on_drive_start=rover.park_tracking,
+                                  on_drive_end=rover.unpark_tracking)
+            # The port is opened by its loop, not here, and retried until it turns
+            # up: on this Pi the lidar enumerates 93 s after the kernel starts, long
+            # after cron has run this, so insisting on it now would mean every
+            # reboot came up without the driving tools.
+            rover.nav.start()
+        except Exception as error:
+            # Not fatal. A rover that cannot drive itself is still a rover that can
+            # light up, aim its camera and hold a conversation, and the driving tools
+            # simply will not be offered.
+            rover.nav = None
+            print(f"[rover] no driving or mapping: {error}", file=sys.stderr,
+                  flush=True)
+
     server = Server((args.bind, args.port), Handler)
     server.rover = rover
     print(f"rover daemon on {args.bind}:{args.port} -- board {rover.describe()}, "
           f"camera {args.device if args.camera else 'none'}, detector {args.service}, "
-          f"vision {rover.vision.describe() if rover.vision else 'off'} "
+          f"vision {rover.vision.describe() if rover.vision else 'off'}, "
+          f"lidar {(rover.nav.lidar_path or 'waiting for it') if rover.nav else 'off'} "
           f"({len(rover.tools())} tools)",
           flush=True)
 
