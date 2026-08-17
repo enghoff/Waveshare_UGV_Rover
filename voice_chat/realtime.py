@@ -105,12 +105,27 @@ ROOT = Path(__file__).resolve().parent.parent
 ENDPOINT = os.environ.get(
     "QWEN_REALTIME_URL",
     "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime")
-MODEL = os.environ.get("QWEN_REALTIME_MODEL", "qwen3.5-omni-plus-realtime")
-# Plus, despite costing about three times flash and despite the two being
-# indistinguishable in docs/omni-step0.md -- both 90/90 typed and spoken, both
-# 30/30 on the five extra tools. That was the *chat completions* pair. Their
-# realtime namesakes are not the same models and do not behave alike, measured
-# here against the mock rover, three samples a phrase:
+MODEL = os.environ.get("QWEN_REALTIME_MODEL", "qwen3.5-omni-flash-realtime")
+# Flash, and not because it is better. As of 2026-08-17 plus-realtime is refused
+# outright: its free tier is exhausted and the account has "Free Quota Only" set
+# on that model, so the socket opens, `session.created` arrives, and the service
+# then closes with 1007 and "The free tier of the model has been exhausted. If you
+# wish to continue access the model on a paid basis, please disable the 'use free
+# tier only' mode in the management console." Worth knowing how that presents,
+# because it does not present as a billing error: the reason travels in a close
+# frame longer than the 125 bytes the RFC allows a control frame, so `websockets`
+# refuses the frame and raises a protocol error about its length while throwing
+# the text away. It took a hand-rolled socket to read it. Turning that switch off
+# in the Model Studio console is the actual fix -- it is per model, and it takes
+# something like half an hour to propagate -- after which
+# `QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime` is the whole of the way back.
+#
+# Read what follows as the price of being here, not as a reason to stay. Plus
+# costs about three times flash and the two are indistinguishable in
+# docs/omni-step0.md -- both 90/90 typed and spoken, both 30/30 on the five extra
+# tools. That was the *chat completions* pair. Their realtime namesakes are not
+# the same models and do not behave alike, measured here against the mock rover,
+# three samples a phrase:
 #
 #     first turn of a session      flash-realtime   plus-realtime
 #     "Could you dim the lights a bit?"      0/3          3/3
@@ -120,13 +135,64 @@ MODEL = os.environ.get("QWEN_REALTIME_MODEL", "qwen3.5-omni-plus-realtime")
 #     "What do you see?"                  12/18          6/6
 #
 # Flash fails in the two ways this repository has spent the most words on. It
-# announces without acting -- "I'll pan the camera to my left now", no call --
-# and it *writes the tool call into its own speech*, which comes out as the rover
-# saying "<set_lights> <parameter=level> 128 </parameter> </function>" out loud
-# while doing nothing. Both are recoverable in principle, by the sniffer in
-# server.py and by re-tuning the schemas; neither is worth doing when the model
-# beside it is simply right. Flash is still one --model away for a sweep that
-# wants to measure the difference properly.
+# announces without acting -- "I'll pan the camera to my left now", no call -- and
+# it *writes the tool call into its own speech*, which comes out as the rover
+# saying "<set_lights> <level>255</level> </set_lights> I've switched the lights
+# on." out loud while doing nothing. Neither is caught here: the sniffer that
+# catches the second one lives in server.py and watches a text stream, and this
+# protocol replaces that stream with a control channel, so a model declining to
+# use the channel looks like a model with nothing to say.
+#
+# One sentence of the prompt causes all of it, and see `instructions` below for
+# which and for the measurement. With that sentence removed flash calls cleanly,
+# which changes what the table above means: it is a measurement of flash under a
+# prompt tuned for a different model, not of flash.
+
+
+# The sentence, verbatim from server.py's TOOL_PROMPT. Removed on the way to
+# flash-realtime and left alone everywhere else.
+_READ_ALOUD = (" Then say what you did in one short sentence, without reading the"
+               " tool call or its result out loud.")
+
+
+def instructions(*, vision: bool, model: str) -> str:
+    """The tuned prompt, minus the one sentence flash-realtime cannot be given.
+
+    Three samples a cell, fourteen schemas, typed input so the microphone is out
+    of it, counting first-turn calls for "Switch the lights on.":
+
+        base prompt only                                    3/3
+        + the tool prompt's first two sentences              3/3
+        + the "you have done something only if" clause       3/3
+        + the "do not say 'I will'" clause                   3/3
+        + the vision paragraph                               3/3
+        the whole prompt as server.py writes it              0/3
+        the whole prompt minus this one sentence             3/3
+
+    So it is not prompt length, not the tool count on its own, and not the
+    clauses that were tuned to stop a model announcing instead of acting: it is
+    the sentence that says not to read the tool call out loud, which is what
+    makes flash read the tool call out loud. Naming the thing you do not want in
+    a prompt is a way of asking for it, and this is the cleanest example of that
+    the repository has.
+
+    It stays in server.py because it earns its place there -- it is what stops
+    the local model's speech decoder reciting result JSON, which step 0 caught it
+    doing -- and the local path does not have a control channel to lose. Plus is
+    given the sentence too, having been measured with it and being fine.
+
+    This does not make flash equal to plus. Against the live daemon's fifteen
+    schemas it fixes the lights, the camera, driving and looking, and it does not
+    fix the tracking family: "Start tracking people." still calls 1/3 and "Follow
+    me." 0/3, both by announcing in the past tense. That one is crowding rather
+    than prompting -- it is 3/3 against the nine base tools and decays as the list
+    grows -- and README.md has the numbers and the two wordings that failed to fix
+    it.
+    """
+    prompt = prompts.system_prompt(vision=vision)
+    if "flash" in model and _READ_ALOUD in prompt:
+        return prompt.replace(_READ_ALOUD, "")
+    return prompt
 
 # Jennifer: the service's own description is "premium, cinematic-quality American
 # English female voice". Not the service's default, which is Tina and which
@@ -627,7 +693,7 @@ class Session:
             "voice": VOICE,
             "input_audio_format": "pcm",
             "output_audio_format": "pcm",
-            "instructions": prompts.system_prompt(vision=vision),
+            "instructions": instructions(vision=vision, model=self.model),
             "temperature": TEMPERATURE,
             # Turn-taking is either the service's job or this client's, never
             # both. See DUPLEX_TURNS for which and why.
@@ -1149,7 +1215,7 @@ async def smoke(url: str, key: str, model: str, wavs: list[str],
         vision = any(t.get("function", {}).get("name") == "look" for t in tools)
         await session.configure(tools, vision=vision)
         print(f"{model}: {len(tools)} tools, "
-              f"{len(prompts.system_prompt(vision=vision))} chars of prompt"
+              f"{len(instructions(vision=vision, model=model))} chars of prompt"
               f"{', server-side turns' if duplex else ''}")
 
         try:
