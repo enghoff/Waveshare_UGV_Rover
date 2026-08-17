@@ -49,25 +49,88 @@ STANDOFF_M = 0.30          # the rule: never closer than this to anything seen
 # end to end this chain is over 200 ms, which at 0.35 m/s is 7 cm, and spin-down
 # adds more. Braking from the standoff itself would arrive late every time.
 REACT_MARGIN_M = 0.15
-CORRIDOR_MARGIN_M = 0.06   # each side of the rover's own width
-# Rotating on the spot does not translate, so the standoff above is the wrong test
-# for it -- insisting on 30 cm all round would forbid the one manoeuvre that gets the
-# rover out of a corner. What rotating *can* do is sweep its own corners into
-# something, so the test is the chassis' circumscribed radius: about 0.17 m for a
-# 0.25 x 0.22 m body, plus a margin.
-TURN_FOOTPRINT_M = 0.24
+CORRIDOR_MARGIN_M = 0.06   # each side of the rover's own width: the hard limit
+
+# And the soft one. Steering scores itself on a corridor this much wider than the
+# rover, so that a route with room to spare beats one that merely fits. Without it
+# the rover has no reason to prefer open space until something is already inside its
+# safety margin: a wall approached at a shallow angle scored exactly the same as
+# clear floor right up to the moment it blocked, at which point the rover was too
+# close to turn away and simply stopped, wedged. Steering keeps clear; the tight
+# corridor above still decides what is actually safe.
+COMFORT_MARGIN_M = 0.28
 LOOKAHEAD_M = 2.5          # no point scoring clearance further off than this
 DECEL_MS2 = 0.45           # what the tracks can actually do on a hard floor
 
 # --- speeds ---------------------------------------------------------------------
 MAX_SPEED_MS = 0.35
 CRAWL_SPEED_MS = 0.12      # when something ahead is unknown rather than clear
-# The scan matcher's coarse window spans +/-6 degrees a revolution, i.e. 60 deg/s,
+# The scan matcher's coarse window spans +/-9 degrees a revolution, i.e. 90 deg/s,
 # and past that a 100 ms sweep smears the scan across more heading change than the
-# match can absorb. Staying well under it is not politeness, it is what keeps the
-# rover localised while it turns.
+# match can absorb -- and, worse, the reported rotation saturates at the edge of the
+# window instead of failing visibly. Staying well under it is not politeness, it is
+# what keeps the measurement honest while the rover turns.
 MAX_TURN_DPS = 45.0
-TURN_IN_PLACE_DPS = 35.0
+# Deliberately far below the window. Turning is measured by the same scan match that
+# the turn is degrading, so the margin buys accuracy, and a slow turn also coasts
+# less when it stops. It was 35 and the overshoot that produced is why this file now
+# servos the rate rather than trusting a PWM number. 25 was then too slow to finish a
+# 90 degree turn inside its budget, measured, so 30: still only 3 degrees a
+# revolution against a 9 degree window.
+TURN_IN_PLACE_DPS = 30.0
+# How fast the commanded rate may rise. Without a ramp the first command of a turn
+# is full differential, and the rover is briefly past the window before the rate
+# loop has seen anything at all -- which is the moment tracking is most likely to be
+# lost, and it happens before any feedback exists to prevent it.
+TURN_RAMP_DPS_PER_S = 60.0
+TURN_TOLERANCE_DEG = 2.0
+# Stop this much ahead of the target, scaled by how fast it is actually turning: one
+# revolution of measurement lag plus the time the tracks take to stop.
+TURN_STOP_LEAD_S = 0.25
+# After halting, how long to let it settle before believing the heading, and how
+# many corrective nudges to allow. Correcting rather than calibrating is deliberate:
+# the coast depends on the floor, and the floor is not a constant.
+TURN_SETTLE_S = 0.6
+TURN_CORRECTIONS = 2
+
+# --- turning open-loop -----------------------------------------------------------
+# Turning is dead reckoned, not servoed. Closing the loop on the scan matcher held
+# the rate down to what the matcher could follow -- 30 deg/s, so six seconds for a
+# quarter turn -- and it depended on a sensor that browns out mid-turn anyway. Open
+# loop is both far faster and immune to the dropout, at the price of needing these
+# numbers measured rather than assumed.
+#
+# Measured by calibrate_turn.py --deadreckon, which times fixed-PWM bursts and reads
+# the angle back off the lidar profile, so nothing here is inferred from the thing
+# being characterised. Angle is rate * seconds + coast; bursts of three lengths
+# separate the two.
+#
+#     PWM 180 -> 170.0 deg/s, 9.0 deg of coast   (fits 0.105-0.119)
+#     PWM  80 ->  31.6 deg/s, 2.0 deg of coast   (fits 0.054-0.080)
+#
+# Re-measure after anything that changes the drag: a different floor, worn tracks, a
+# flat battery. The signature of stale numbers is a consistent over- or under-shoot
+# in the same direction on every turn.
+TURN_RATES = {180: (170.0, 9.0), 80: (31.6, 2.0)}
+TURN_FAST_PWM = 180
+TURN_FINE_PWM = 80
+# Below this the fast burst is mostly its own coast, so the fine PWM does the whole
+# turn: 9 degrees of coast is a third of a 25 degree turn and none of a 90.
+TURN_FAST_MIN_DEG = 30.0
+TURN_RESEED_S = 0.7        # after a burst, time for the matcher to find itself again
+# How well the scan must fit the map after a re-seed before the new heading is
+# believed. Re-seeding hands the matcher an answer it cannot argue with -- its window
+# is 9 degrees -- so this score is the only evidence that the answer was right.
+RESEED_MIN_SCORE = 0.35
+
+# Turning is never refused. It used to be, whenever something sat inside the
+# chassis' circumscribed radius, and that was the wrong call: a rover that has got
+# closer to something than its own turning circle can then neither drive nor turn,
+# so the one refusal that was meant to protect it left it wedged with no move
+# available at all. Rotating is how it gets out. What proximity buys now is caution
+# rather than a veto -- inside this radius the turn goes slowly and says so.
+TURN_CAREFUL_M = 0.24
+TURN_CAREFUL_DPS = 12.0
 
 # --- PWM ------------------------------------------------------------------------
 CMD_PWM = 11               # CMD_PWM_INPUT: {"T":11,"L":..,"R":..}
@@ -150,7 +213,13 @@ class Navigator:
         self.lidar = None
         self.lidar_path = None
         self._reopen_at = 0.0
-        self._last_scan_at = None
+        # Two clocks, because "the sensor is there" and "we know where we are" are
+        # different questions and a dead-reckoned turn makes them disagree. The
+        # matched clock stops during a burst because the map is suspended; the packet
+        # clock keeps running, because the sensor is still spinning and still
+        # reporting whether or not anything is being done with what it says.
+        self._last_scan_at = None       # last revolution that matched and was mapped
+        self._last_packet_at = None     # last revolution parsed at all
 
         #: Called with no arguments just before the wheels first move, and again
         #: once they have stopped. The daemon uses these to put face tracking down
@@ -173,9 +242,17 @@ class Navigator:
         self._measured_speed = 0.0
         self._measured_turn = 0.0
         self._pwm_scale = 1.0       # closes the loop on speed with no encoders
+        self._turn_scale = 1.0      # and on turn rate, which was worse: nobody has
+                                    # measured what PWM 133 does in degrees a second
+        self._commanded_turn = 0.0  # after the ramp, for reporting and for the ramp
         self._trim = 0.0            # left/right imbalance, so straight is straight
         self._last_pose = None
         self._last_at = None
+        # Heading that accumulates instead of wrapping. The pose's own heading is
+        # kept in (-pi, pi], which is right for reporting and wrong for counting a
+        # turn: overshoot 180 and the difference flips sign, so "10 degrees left to
+        # go" reads as "350 degrees left to go" and the rover spins right round.
+        self._heading_accum = 0.0
         self._last_sent = None
         self._last_send_at = 0.0
         self._clearance = None
@@ -183,6 +260,7 @@ class Navigator:
         self._scans = 0
         self._dropped = 0
         self._near_history = []
+        self._suspend_slam = False
         self._trail = []
         self._heartbeat_set = False
 
@@ -242,18 +320,133 @@ class Navigator:
                                "turn_total": float(turn_deg)}, limit)
 
     def turn_in_place(self, angle_deg, speed_dps=None):
-        """Rotate by this many degrees, counter-clockwise positive, closing on the
-        scan matcher's heading rather than on time -- which is the only way to turn
-        a known amount on a rover with no encoders and an uncalibrated gyro."""
+        """Rotate by this many degrees, counter-clockwise positive.
+
+        Dead reckoned: a burst of fixed PWM for a computed time, using the rates in
+        TURN_RATES. That is roughly six times faster than servoing on the scan match
+        was, and it keeps working when the lidar browns out during the turn -- which
+        it does, because the motors and the lidar share one 5 V rail.
+
+        The matcher cannot follow 170 deg/s (its window is 90), so map updates are
+        suspended for the burst and the heading is re-seeded from the dead reckoning
+        afterwards. Integrating scans at wrong poses would corrupt the map, and a map
+        corrupted by a turn is worse than a turn that is a few degrees out.
+
+        Then, if the lidar is alive, the result is checked and corrected once at the
+        fine PWM. If it is not, the dead-reckoned figure is reported and said to be
+        dead-reckoned rather than passed off as a measurement.
+        """
         if self._estop:
             return Outcome("stopped", 0.0, 0.0,
                            "the emergency stop is latched; clear it first")
-        angle = float(angle_deg)
-        rate = _clamp(abs(float(speed_dps or TURN_IN_PLACE_DPS)), 8.0,
-                      TURN_IN_PLACE_DPS)
-        limit = min(MAX_MOVE_S, abs(angle) / rate * 2.0 + 2.0)
-        return self._run_goal({"kind": "turn", "angle": angle,
-                               "rate": math.copysign(rate, angle)}, limit)
+        angle = _clamp(float(angle_deg), -180.0, 180.0)
+        if abs(angle) < 1.0:
+            return Outcome("arrived", 0.0, 0.0, "already facing that way")
+
+        careful = self._nearest_recent()
+        gentle = careful is not None and careful < TURN_CAREFUL_M
+
+        self._begin_driving()
+        try:
+            start_th = self.slam.pose[2]
+            had_lidar = self.lidar_live()
+
+            # The bulk of it, fast -- unless something is close, in which case the
+            # whole turn goes at the fine rate. Turning is still never refused.
+            pwm = TURN_FINE_PWM if (gentle or abs(angle) < TURN_FAST_MIN_DEG)                 else TURN_FAST_PWM
+            done = self._burst_turn(pwm, angle)   # moves the pose to match, itself
+            time.sleep(TURN_RESEED_S)             # and this is the matcher re-finding it
+
+            # Three outcomes, and they are worth telling apart. The sensor may have
+            # stopped reporting, in which case the commanded turn is all there is to
+            # report and it must not be dressed up as a measurement. Or it is
+            # reporting but what it sees no longer fits the map at the re-seeded pose,
+            # which means the rover did not go where dead reckoning thinks -- jammed
+            # against something, most likely -- and the heading is not to be trusted.
+            # Or it fits, and the small remaining error can be corrected.
+            if not self.lidar_live():
+                return Outcome("arrived", 0.0, done,
+                               "dead reckoned; the lidar stopped reporting, so this "
+                               "is the commanded turn and not a measured one")
+            reseed_score = self.slam.score
+            if reseed_score < RESEED_MIN_SCORE:
+                return Outcome("lost", 0.0, done,
+                               f"the turn was dead reckoned as {done:.0f} degrees but "
+                               f"the scan no longer fits the map there (match "
+                               f"{reseed_score:.2f}), so the rover was probably "
+                               f"obstructed part way round and its heading is not to "
+                               f"be trusted until it sees something it recognises")
+
+            error = math.degrees((math.radians(angle) - (self.slam.pose[2] - start_th)
+                                  + math.pi) % (2 * math.pi) - math.pi)
+            if abs(error) > TURN_TOLERANCE_DEG:
+                done += self._burst_turn(TURN_FINE_PWM, error)
+                time.sleep(TURN_RESEED_S)
+                if self.lidar_live():
+                    error = math.degrees(
+                        (math.radians(angle) - (self.slam.pose[2] - start_th)
+                         + math.pi) % (2 * math.pi) - math.pi)
+
+            turned = math.degrees((self.slam.pose[2] - start_th + math.pi)
+                                  % (2 * math.pi) - math.pi) if had_lidar else done
+            detail = ""
+            if gentle:
+                detail = f"turned slowly because something was {careful:.2f} m away"
+            if abs(error) > TURN_TOLERANCE_DEG * 2:
+                detail = ((detail + "; ") if detail else "") +                     f"still {error:.0f} degrees out after correcting"
+            return Outcome("arrived", 0.0, turned, detail)
+        finally:
+            self._halt()
+            self._end_driving()
+
+    def _burst_turn(self, pwm, angle):
+        """One open-loop burst, ending with the pose moved to match. Returns degrees.
+
+        Map updates are suspended throughout: at these rates the matcher cannot keep
+        up, and a scan folded in at a pose a quarter turn out damages the map for
+        good. The pose is moved to where dead reckoning says the rover ended up
+        *before* the suspension is lifted, so there is no revolution between the two
+        that could be integrated at the heading the turn started from.
+
+        Blind time is bounded by the arithmetic: at the fast rate even a half turn is
+        just over a second, and the worst case in the file is a 180 in close quarters,
+        which runs at the fine rate for five and a half seconds. Rotating on the spot
+        cannot carry the rover into anything it was not already touching, which is
+        what makes that acceptable where the same blindness while driving would not
+        be.
+
+        Re-seeding is a loaded gun and worth understanding before trusting the
+        heading that comes back. It *tells* the matcher where it is, and the coarse
+        search window is only about 9 degrees, so if the dead reckoning was well out
+        the matcher cannot climb back and will simply agree with the wrong answer.
+        Observed: a turn that physically managed 42 degrees of a requested 90 was
+        reported as 90, because that is what it had been told. The match score is the
+        only thing that gives it away, which is why the caller checks it.
+        """
+        rate, coast = TURN_RATES[pwm]
+        hold = (abs(angle) - coast) / rate
+        if hold <= 0.0:
+            return 0.0
+        sign = 1 if angle > 0 else -1
+        turned = sign * (rate * hold + coast)
+        self._suspend_slam = True
+        try:
+            self.link.send({"T": CMD_HEARTBEAT, "cmd": HEARTBEAT_MS})
+            end = time.monotonic() + hold
+            while time.monotonic() < end and not self._estop:
+                # Counter-clockwise is left track back, right track forward.
+                self._send(-sign * pwm, sign * pwm)
+                time.sleep(0.05)
+            self._halt()
+            x, y, th = self.slam.pose
+            self.slam.pose = (x, y, th + math.radians(turned))
+        finally:
+            self._suspend_slam = False
+        return turned
+
+    def _heading_change(self, since_accum):
+        """Degrees turned since a mark taken from the accumulating heading."""
+        return math.degrees(self._heading_accum - since_accum)
 
     def stop(self, latch=False):
         """Stop now. `latch` makes it stick until cleared, so a caller that has lost
@@ -280,6 +473,7 @@ class Navigator:
             if self._goal is not None:
                 return Outcome("busy", 0.0, 0.0, "a move is already running")
             start_pose = self.slam.pose
+            goal["start_accum"] = self._heading_accum
             goal["started_at"] = time.monotonic()
             goal["deadline"] = goal["started_at"] + limit_s
             goal["start_pose"] = start_pose
@@ -319,6 +513,9 @@ class Navigator:
         if g is None:
             return Outcome("stopped", 0.0, 0.0, "cancelled")
         reason, detail = g["done"] or ("stopped", "")
+        if g.get("careful"):
+            detail = ((detail + "; ") if detail else "") + (
+                f"turned slowly because something was {g['careful']:.2f} m away")
         return Outcome(reason, g["travelled"], g["turned"], detail)
 
     def _begin_driving(self):
@@ -377,15 +574,30 @@ class Navigator:
         self.lidar_path = None
 
     def scan_age(self):
-        """Seconds since the last complete revolution, or None if there has been
-        none at all."""
+        """Seconds since the last revolution that matched and was mapped, or None if
+        there has been none at all."""
         if self._last_scan_at is None:
             return None
         return time.monotonic() - self._last_scan_at
 
     def lidar_ok(self):
+        """Is there a current position to drive on? What the driving path asks."""
         age = self.scan_age()
         return age is not None and age <= LIDAR_STALE_S
+
+    def lidar_live(self):
+        """Is the sensor still turning and reporting, whatever is done with it?
+
+        Different from :meth:`lidar_ok`, and the difference matters exactly once: a
+        dead-reckoned turn suspends the map, so no revolution is matched for the
+        length of the burst and `lidar_ok` goes false on a rover whose lidar is
+        perfectly healthy. Reporting that as "the lidar stopped reporting" would send
+        somebody looking for an electrical fault that is not there -- and the rover
+        does have one of those, which is precisely why the two must not be confused.
+        """
+        if self._last_packet_at is None:
+            return False
+        return time.monotonic() - self._last_packet_at <= LIDAR_STALE_S
 
     def _loop(self):
         while self._run.is_set():
@@ -405,6 +617,8 @@ class Navigator:
             if chunk:
                 revolutions = self.slam.feed(chunk)
                 if revolutions:
+                    self._last_packet_at = time.monotonic()
+                if revolutions and not self._suspend_slam:
                     self._dropped += revolutions - 1
                     if self.slam.update():
                         self._scans += 1
@@ -425,6 +639,18 @@ class Navigator:
         its deadline. The board's own heartbeat would eventually catch it, but half a
         second of blind driving is exactly what the standoff exists to prevent.
         """
+        if self._suspend_slam:
+            # A dead-reckoned turn is deliberately blind and suspends the map, which
+            # by itself makes the matched clock look stale after a second. Stopping
+            # on that would be this loop fighting the burst it is supposed to be
+            # letting happen: three zero-PWM packets from here against every one of
+            # the burst's own, at a far higher rate, all the way to the end. That is
+            # what made turning slow, jerky and short of what was asked -- a turn
+            # long enough to cross the staleness threshold got shut down a second in
+            # and stuttered through whatever was left, which is every turn in close
+            # quarters and any turn past about 170 degrees. A burst is bounded by its
+            # own clock; that is the safety here, and the lidar is not part of it.
+            return
         if not self._driving or self.lidar_ok():
             return
         with self._lock:
@@ -479,6 +705,9 @@ class Navigator:
                 heading = self._last_pose[2]
                 along = dx * math.cos(heading) + dy * math.sin(heading)
                 dth = (pose[2] - self._last_pose[2] + math.pi) % (2 * math.pi) - math.pi
+                # Safe to accumulate a wrapped step: one revolution's rotation is a
+                # few degrees, nowhere near the half turn that would be ambiguous.
+                self._heading_accum += dth
                 # Lightly smoothed: one revolution of match noise is a few
                 # millimetres and would otherwise fight the speed loop.
                 self._measured_speed += 0.5 * (along / dt - self._measured_speed)
@@ -486,17 +715,26 @@ class Navigator:
                                               - self._measured_turn)
         self._last_pose, self._last_at = pose, now
 
-    def _headroom(self, curvature):
-        half = self.slam.config.rover_width_m * 0.5 + CORRIDOR_MARGIN_M
+    def _headroom(self, curvature, comfort=False):
+        half = self.slam.config.rover_width_m * 0.5 + (
+            COMFORT_MARGIN_M if comfort else CORRIDOR_MARGIN_M)
         return self.slam.arc_clearance(curvature, half, LOOKAHEAD_M + STANDOFF_M)
 
     def _choose_heading(self, want_deg):
         """Follow-the-gap: the heading with the most room, penalised for departing
         from the one asked for.
 
-        A wall met at a shallow angle produces exactly the clearance gradient that
-        steers along it, so wall-following falls out of this rather than being a
-        special case with a threshold to tune.
+        Scored on two corridors, and that is the part that matters. The wide one
+        decides where to go, so a route that passes things with clearance beats one
+        that merely squeezes past; the tight one is carried along so the caller can
+        brake on what is actually unsafe rather than on what is merely snug. Scoring
+        on the tight corridor alone is what made the rover graze walls and wedge
+        itself into corners -- it had no reason to prefer space it was not yet
+        touching.
+
+        A wall met at a shallow angle produces a clearance gradient in the wide
+        corridor while it is still a comfortable distance off, so wall-following
+        falls out of this rather than being a special case with a threshold to tune.
         """
         best, best_score, best_clear = want_deg, -1e9, 0.0
         for offset in range(-40, 41, 5):
@@ -505,14 +743,16 @@ class Navigator:
                 continue
             # Curvature that swings the nose by `heading` over the lookahead.
             curvature = 2.0 * math.sin(math.radians(heading)) / LOOKAHEAD_M
-            clear = self._headroom(curvature)
-            usable = min(clear, LOOKAHEAD_M)
+            roomy = min(self._headroom(curvature, comfort=True), LOOKAHEAD_M)
+            tight = min(self._headroom(curvature), LOOKAHEAD_M)
             # A degree of detour is worth about a centimetre of room: enough to
             # prefer the open side, not enough to spin on the spot at the first
-            # thing it sees.
-            score = usable - 0.010 * abs(heading - want_deg) - 0.004 * abs(heading)
+            # thing it sees. The tight corridor gets a small say so that a heading
+            # which is merely passable is still better than one that is blocked.
+            score = (roomy + 0.3 * tight
+                     - 0.010 * abs(heading - want_deg) - 0.004 * abs(heading))
             if score > best_score:
-                best, best_score, best_clear = heading, score, clear
+                best, best_score, best_clear = heading, score, tight
         return best, best_clear
 
     def _speed_limit(self, clear):
@@ -567,10 +807,9 @@ class Navigator:
                     + (f" ({age:.0f}s ago)" if age else "")
                     + ", so the rover has no current picture of what is around it")
         if kind == "turn":
-            near = self._nearest_recent()
-            if near is not None and near < TURN_FOOTPRINT_M:
-                return (f"something is {near:.2f} m away, close enough that turning "
-                        f"on the spot would sweep the rover's corners into it")
+            # Never refused, however close anything is. Turning is the only move a
+            # wedged rover has left, and taking it away is what turned "too close to
+            # drive" into "stuck for good". _step_turn slows right down instead.
             return None
         chosen, clear = self._choose_heading(0.0)
         if self._speed_limit(clear) <= 0.0:
@@ -579,10 +818,9 @@ class Navigator:
         return None
 
     def _step_drive(self, goal, pose, now):
-        sx, sy, sth = goal["start_pose"]
+        sx, sy, _ = goal["start_pose"]
         goal["travelled"] = math.hypot(pose[0] - sx, pose[1] - sy)
-        goal["turned"] = math.degrees(
-            (pose[2] - sth + math.pi) % (2 * math.pi) - math.pi)
+        goal["turned"] = self._heading_change(goal["start_accum"])
 
         if goal["distance"] is not None and goal["travelled"] >= goal["distance"]:
             goal["done"] = ("arrived", "")
@@ -619,21 +857,17 @@ class Navigator:
         self._drive_pwm(speed, turn)
 
     def _step_turn(self, goal, pose, now):
-        sth = goal["start_pose"][2]
-        goal["turned"] = math.degrees(
-            (pose[2] - sth + math.pi) % (2 * math.pi) - math.pi)
+        goal["turned"] = self._heading_change(goal["start_accum"])
         goal["travelled"] = math.hypot(pose[0] - goal["start_pose"][0],
                                        pose[1] - goal["start_pose"][1])
         left = goal["angle"] - goal["turned"]
 
-        if abs(left) <= 3.0:
+        # Stop short by however far it is about to carry on: the rate it is actually
+        # turning, times the time between deciding and being still. A fixed margin
+        # would be wrong at both ends, since this scales with speed.
+        lead = abs(self._measured_turn) * TURN_STOP_LEAD_S
+        if abs(left) <= TURN_TOLERANCE_DEG + lead:
             goal["done"] = ("arrived", "")
-            return
-        touching = self._nearest_recent()
-        if touching is not None and touching < TURN_FOOTPRINT_M:
-            goal["done"] = ("blocked",
-                            f"something is {touching:.2f} m away and the rover would "
-                            f"sweep its own corners into it turning on the spot")
             return
         if now >= goal["deadline"]:
             goal["done"] = ("timed out",
@@ -647,11 +881,21 @@ class Navigator:
             goal["done"] = ("lost", "the scan match stopped tracking during the turn")
             return
 
-        # Ease off over the last 20 degrees so it settles instead of hunting.
-        rate = math.copysign(min(abs(goal["rate"]),
-                                 max(8.0, abs(left) / 20.0 * TURN_IN_PLACE_DPS)),
-                             left)
-        self._drive_pwm(0.0, rate)
+        # Ease off over the last 25 degrees so it settles instead of hunting. The
+        # floor is what the rate loop can still hold; below about 10 deg/s the tracks
+        # stick and release rather than turn, which is slow enough to run a turn out
+        # of its time budget while it inches the last few degrees.
+        rate = min(abs(goal["rate"]),
+                   max(10.0, abs(left) / 25.0 * TURN_IN_PLACE_DPS))
+
+        # Close quarters: turn, but gently. This used to abort the move, which left a
+        # rover that had got too near something with no way out at all.
+        touching = self._nearest_recent()
+        if touching is not None and touching < TURN_CAREFUL_M:
+            rate = min(rate, TURN_CAREFUL_DPS)
+            goal["careful"] = round(touching, 2)
+
+        self._drive_pwm(0.0, math.copysign(rate, left))
 
     def _drive_pwm(self, speed_ms, turn_dps):
         """Wanted speed and turn rate -> the PWM pair, closing what loop it can.
@@ -670,14 +914,36 @@ class Navigator:
                                      0.6, 1.8)
         throttle = _clamp(speed_ms / MAX_SPEED_MS * self._pwm_scale, 0.0, 1.0)
 
+        # Ramp the commanded rate rather than stepping to it, so a turn does not
+        # begin with a lurch past the matcher's window.
+        now = time.monotonic()
+        step = TURN_RAMP_DPS_PER_S * max(0.0, min(0.5, now - self._last_send_at))
+        if turn_dps > self._commanded_turn:
+            self._commanded_turn = min(turn_dps, self._commanded_turn + step)
+        else:
+            self._commanded_turn = max(turn_dps, self._commanded_turn - step)
+        wanted = self._commanded_turn
+
+        # Servo the rate on what the matcher measures, because the open-loop map from
+        # PWM to degrees a second was never calibrated and was wrong by enough to
+        # overshoot every turn by about 40%. The feedback converges from above even
+        # when the measurement is saturating: a saturated reading is still far higher
+        # than the target, so the correction is still downwards.
+        if abs(wanted) > 1.0:
+            error = abs(wanted) - abs(self._measured_turn)
+            self._turn_scale = _clamp(self._turn_scale + 0.06 * error / MAX_TURN_DPS,
+                                      0.30, 2.0)
+        magnitude = _clamp(abs(wanted) / MAX_TURN_DPS * self._turn_scale, 0.0, 1.0)
+        steer = -math.copysign(magnitude, wanted) if abs(wanted) > 1e-6 else 0.0
+        # Positive steer turns right in the firmware's terms (left = throttle +
+        # steer), and this module's turn rate is counter-clockwise positive, hence
+        # the sign flip above.
+
         # Equal PWM is not equal speed on this chassis, so hold a straight line by
         # trimming on the turn rate the matcher actually sees.
         if abs(turn_dps) < 2.0 and speed_ms > 0.05:
             self._trim = _clamp(self._trim - 0.004 * self._measured_turn, -0.25, 0.25)
-        steer = _clamp(-turn_dps / MAX_TURN_DPS, -1.0, 1.0) - self._trim
-        # Positive steer turns right in the firmware's terms (left = throttle +
-        # steer), and this module's turn rate is counter-clockwise positive, hence
-        # the sign flip above.
+            steer -= self._trim
 
         left, right = throttle + steer, throttle - steer
         peak = max(abs(left), abs(right))
@@ -716,6 +982,9 @@ class Navigator:
             "dropped_scans": self._dropped,
             "pwm": self._last_sent,
             "lidar_ok": self.lidar_ok(),
+            # Both, because they disagree during a dead-reckoned turn and the pair is
+            # what tells a healthy suspended map apart from a sensor that has died.
+            "lidar_live": self.lidar_live(),
             "lidar_port": self.lidar_path,
             "scan_age_s": None if self.scan_age() is None
                           else round(self.scan_age(), 2),
