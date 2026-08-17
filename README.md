@@ -55,7 +55,8 @@ face_tracking/  the control law (aiming.py) and the two programs that run it,
 face_detect/    YuNet behind an HTTP request: JPEG in, boxes out, on the CPU
 rover_daemon/   lights, gimbal and face tracking as tools over TCP
 lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's Pi
-voice_chat/     Whisper + a vision-language model + Kokoro, and a desktop client
+voice_chat/     Whisper + a vision-language model + Kokoro, a desktop client, and
+                a window that drives the rover with no model in the loop
 vm/             both sensors in ROS 2: bringup, SLAM, checks and provisioning
 docs/           the detail — hardware facts, measurements, failure modes
 ```
@@ -141,6 +142,14 @@ tools over TCP, and publishes their schemas so no client carries a copy.
 speech out, with those tools attached — and [`face_detect/`](face_detect/README.md)
 is the detector both tracking loops call, deliberately on a CPU so that the rover
 does not stop seeing while somebody is talking to it.
+
+`voice_chat/drive_console.py` is the same daemon with the model taken out: a
+window of buttons for the driving tools, the navigator's own numbers polled beside
+them, and the lidar map on screen. It is there because a conversation cannot
+measure a move — a model asked to turn ninety degrees reports what it believed
+happened, and what you need is what the navigator returned next to what you asked
+for. `python voice_chat\mock_rover.py --drive` gives it an invented room to drive
+in when there is no rover to hand.
 
 [`vm/`](vm/README.md) is the opposite in kind to everything above and shares no
 code with it: both sensors at once in ROS 2 Humble, building a 2D map while the

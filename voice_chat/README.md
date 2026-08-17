@@ -26,6 +26,12 @@ described in [The same conversation, with no GPU in
 it](#the-same-conversation-with-no-gpu-in-it) at the end; everything between here
 and there is about the deployed path.
 
+A third client has no model in it at all.
+[drive_console.py](drive_console.py) is a tkinter window with the rover's driving
+tools wired to buttons, and it exists because a conversation is the wrong
+instrument for measuring one: when a turn comes back short you need the number,
+not a paraphrase of it several seconds later. See [Driving it by hand](#driving-it-by-hand).
+
 It also carries **tools**: the model can switch the headlights, aim the camera,
 look through it, count the people it can see and start or stop face tracking.
 None of that happens here or on the desk — it is performed by
@@ -874,6 +880,59 @@ checking a voice without holding a conversation. `POST /frame` takes one JPEG
 from whoever holds a camera and answers with the name it is held under, which is
 what a `look`-shaped tool result carries back — see [Seeing](#seeing).
 
+## Driving it by hand
+
+[drive_console.py](drive_console.py) is the same tools with the model taken out: a
+tkinter window with buttons for `turn_in_place` and `drive`, a big red stop, the
+daemon's `nav_status` polled three times a second, and the lidar map on screen.
+
+```powershell
+python voice_chat\drive_console.py                     # finds the rover
+python voice_chat\drive_console.py --rover rpi.local:8769
+python voice_chat\mock_rover.py --drive                # ...with no rover at all
+```
+
+It exists because a conversation is the wrong instrument for measuring a move.
+Asking a model to turn ninety degrees and listening to what it says afterwards
+tells you what the model believed; what you need is the number the navigator
+returned, next to the number you asked for, promptly enough that ten attempts take
+a couple of minutes. So there is a table of exactly that — asked, achieved, ratio,
+seconds — because a turn is the one move whose result you cannot judge by watching
+the rover do it, and a column of ratios makes a systematic shortfall obvious in
+three attempts instead of ten.
+
+Three things in it are deliberate rather than incidental.
+
+**Three connections, not one.** `drive` does not answer until the move has
+finished, and `RoverClient` serialises calls on one socket, so anything sharing
+that socket queues behind the move — including the stop meant to interrupt it. The
+window opens one connection for moves, one for stop and one for watching. The
+daemon is a `ThreadingTCPServer` and takes no lock across a move, so the other two
+are answered while the first is still driving.
+
+**Two calls that no model is shown.** `nav_status` returns every number the driving
+loop has, and `map_png` returns the map as base64 in the reply instead of posting
+it to a frame server. Both are in [rover_daemon.py](../rover_daemon/rover_daemon.py)
+alongside `set_vision`, absent from `list_tools`, and there for the same reason:
+the PWM actually on the motors and the age of the last scan are what tell you why a
+move went wrong, and are of no use at all to something that has to say the answer
+out loud. `show_map` remains the model's version, because a tool result cannot
+carry a picture into a conversation and a GUI has no such problem.
+
+**No continuous teleop.** Every move the daemon offers is bounded, in metres or
+degrees, and watched by the lidar throughout; holding a key down would mean a stream
+of short moves, which drives worse and measures nothing. For teleop with none of
+that, [driver_board/drive_gamepad.py](../driver_board/drive_gamepad.py) talks
+straight to the ESP32 with no Pi, no SLAM and no standoff in it.
+
+`mock_rover.py --drive` adds the driving tools to the mock, in an invented room
+with a table in it, so the window can be opened and learned with no rover powered
+up. Its turns are exact, because arithmetic is exact — the room has no floor, no
+track slip, no coast after the power comes off and no lidar that browns out when
+the motors pull, and those are the four things that make real driving hard. It
+exercises a client; it measures nothing. Turn accuracy is measured on the rover,
+with [lidar_slam/calibrate_turn.py](../lidar_slam/calibrate_turn.py).
+
 ## Tuning
 
 Server knobs are environment variables in
@@ -1024,15 +1083,15 @@ that burst as a long silence and ends the turn mid-sentence.
 
 ## The same conversation, with no GPU in it
 
-[realtime.py](realtime.py) holds the conversation above against Alibaba's
-`qwen3.5-omni-plus-realtime` over its WebSocket protocol. MEDIA drops out of the
-path entirely — no Whisper, no local weights, no Kokoro, no card — and what is
-left is the microphone here and the rover there.
+[realtime.py](realtime.py) holds the conversation above against one of Alibaba's
+hosted omni models over its WebSocket protocol. MEDIA drops out of the path
+entirely — no Whisper, no local weights, no Kokoro, no card — and what is left is
+the microphone here and the rover there.
 
 ```
   the machine you are sitting at            dashscope-intl, Singapore
   ------------------------------            -------------------------
-  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-plus-realtime
+  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-flash-realtime
                                                 |  text + tool calls
   speakers <-- playback <--24k pcm--------------+
        |
@@ -1308,10 +1367,113 @@ say "I've dimmed the lights to half brightness" and call nothing, which is
 it](#and-one-promise-poisons-everything-after-it) exactly as documented.
 
 Both are recoverable in principle — parse the markup, re-tune the schemas — and
-neither is worth doing when the model beside it is simply right. So plus is the
-default despite costing about three times as much, and flash is one `--model`
-away for whoever wants to measure the difference properly. That sweep is
-[omni_bench](../omni_bench/)'s job, not a handful of samples like these.
+neither was worth doing while the model beside it was simply right. So plus was
+the default despite costing about three times as much.
+
+**It is not any more, and not for a reason to do with quality.** On 2026-08-17
+`plus-realtime` stopped answering this account: its free tier is exhausted, and
+the console offers no pay-as-you-go to fall back to — the Free Quota Only switch
+that the refusal tells you to turn off reads *Enabling not supported* for this
+model, which means it has no free quota left to gate. The service says so at the
+first `response.create`, closing the socket with 1007 and "The free tier of the
+model has been exhausted", which is error `AllocationQuota.FreeTierOnly` in the
+protocol's own clothing. The reason is easy to miss twice over: the session opens
+and `session.created` arrives before anything goes wrong, and the close frame
+carrying the text is longer than the 125 bytes the RFC allows a control frame, so
+`websockets` throws the reason away and raises a protocol error about the frame
+length instead. A hand-rolled socket read it.
+
+So the default is now `qwen3.5-omni-flash-realtime`, and
+`QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime` is the whole of the way back once
+the account is sorted out.
+
+### It was one sentence of the prompt all along
+
+Being forced onto flash is what finally got the table above tested rather than
+believed, and it does not survive. Holding the microphone out of it — typed input,
+so only the prompt and the tool list vary — first-turn calls for "Switch the lights
+on.", three samples a cell:
+
+| | one schema | all fourteen |
+|---|---|---|
+| a three-line instruction | 3/3 | 3/3 |
+| the tuned prompt | 3/3 | **0/3** |
+
+Neither the prompt nor the tool count breaks anything alone; together they break
+it every time. Bisecting the prompt against the full list then puts it on a single
+sentence, and not one of the ones you would suspect — the base prompt calls 3/3,
+the clause about never claiming you did something calls 3/3, the closing "do not
+say 'I will'" calls 3/3, the vision paragraph calls 3/3. What costs all three
+points is this:
+
+> Then say what you did in one short sentence, without reading the tool call or
+> its result out loud.
+
+Removing that one sentence and keeping every other word takes flash from 0/3 to
+3/3. **The sentence forbidding the model to read the tool call out loud is what
+makes it read the tool call out loud** — naming the unwanted behaviour is a way of
+asking for it, and this is the cleanest example of that here. It is also why the
+markup in the transcript above looks the way it does: the model is not failing to
+find the control channel, it is writing what the sentence just described.
+
+So `realtime.py` removes that sentence on the way to flash and leaves it alone
+otherwise (see `instructions` there). It stays in [server.py](server.py) because
+it earns its place there — it is what stops the local model's speech decoder
+reciting result JSON — and the local path has no control channel to lose. Plus was
+measured with the sentence and is fine.
+
+With it gone, flash on the real client and the same synthetic speech that produced
+the 0/3 rows:
+
+```
+> switch-the-lights-on.wav        [set_lights{"level": 255}]  "I've switched the lights on at full brightness."
+> could-you-dim-the-lights-a-bit  [set_lights{"level": 128}]  "I've dimmed the lights to half brightness."
+> can-you-look-to-your-left       [look_at{"pan": -30}]       "I've turned the camera thirty degrees to the left."
+> start-tracking-people           [start_tracking{}]          "I've started tracking people."
+> are-the-lights-on               [get_lights{}]              "Yes, the lights are on at half brightness."
+> what-is-your-name               no call                     "I don't have a name."
+```
+
+Three of those rows are 0/3 in the table above. The last one is there on purpose:
+removing a sentence that suppressed calling could have pushed the model into
+calling for everything, and it did not.
+
+**What this does not license.** Those six phrases were against the mock, which
+offers nine tools with vision off. Against the live daemon's fifteen, which is what
+you actually talk to, the fix carries most of the way and not all of it — typed,
+three samples a phrase:
+
+| | as written | sentence removed |
+|---|---|---|
+| "Switch the lights on." | 0/3 | 3/3 |
+| "Could you dim the lights a bit?" | 0/3 | 3/3 |
+| "Can you look to your left?" | 0/3 | 3/3 |
+| "Drive forward a little." | 0/3 | 3/3 |
+| "What do you see?" | 3/3 | 3/3 |
+| "Start tracking people." | 0/3 | **1/3** |
+| "Follow me." | 0/3 | **0/3** |
+
+So the tracking family is a second, separate failure, and it is the crowding this
+directory already documents rather than anything to do with that sentence. It comes
+on gradually as the tool list grows: with the fix applied, "Start tracking people."
+calls 3/3 against the nine base tools, 3/3 with `look` added, 2/3 once the three
+driving tools arrive, and 1/3 with `describe_surroundings` and `show_map` too.
+Tracking with a camera evidently reads as something the driving tools might do.
+
+Two attempts at the wording that fixed `count_faces` — naming what the tool is not
+for — did not survive contact. Appending "Only the camera moves: the rover does not
+drive after anybody" left it at 2/3, and the blunter "This moves the camera, not
+the wheels" made it *worse*, at 0/3. Nor is the prompt short of instruction: flash
+fails these by announcing in the past tense, "I've started tracking people", which
+the prompt forbids by name — "never say you have switched, moved, **started** or
+stopped anything unless the call was made and answered". It is a model ignoring a
+rule it was given, not a rule nobody wrote.
+
+Which puts flash's real ceiling here rather than where the original table put it,
+and leaves the account question as the thing actually worth solving: `plus` calls
+the tracking family 3/3 with no wording help at all. It also leaves a question open
+for [omni_bench](../omni_bench/) — whether that one sentence is quietly costing
+plus something too, since plus was only ever measured with it.
 
 **The numbers above are not from a room.** They are synthetic speech played into
 a socket against a rover that does not exist. The rover half has since been run

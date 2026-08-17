@@ -106,16 +106,26 @@ def system_prompt(*, vision: bool = True) -> str:
     return f"{base}{tool}{look}"
 
 
-def tools(*, vision: bool = True) -> list[dict]:
+def tools(*, vision: bool = True, nav: bool = False) -> list[dict]:
     """The daemon's schemas, in the order it offers them.
 
-    `look` is last because that is where the daemon appends it, and order matters
-    here -- the finding in [README.md](README.md) is that a tool is read against
-    its neighbours, so a reordered list is a different experiment.
+    `look` comes after the fixed set and the driving tools after that, because that
+    is the order the daemon appends them in, and order matters here -- the finding
+    in [README.md](README.md) is that a tool is read against its neighbours, so a
+    reordered list is a different experiment.
+
+    `nav` is off by default even though the rover now has a lidar on it. Every
+    measurement in that README was taken against ten tools, and quietly making the
+    default fifteen would change what those numbers mean without changing the page
+    they are written on. Ask for them.
     """
     found = list(_literal(DAEMON, "TOOLS"))
     if vision:
         found.append(_literal(DAEMON, "LOOK_TOOL"))
+    if nav:
+        found += list(_literal(DAEMON, "NAV_TOOLS"))
+        if vision:
+            found.append(_literal(DAEMON, "MAP_TOOL"))
     return found
 
 

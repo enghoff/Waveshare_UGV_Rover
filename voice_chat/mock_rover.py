@@ -28,8 +28,10 @@ be rebuilt when the model moves off the machine holding the picture.
 from __future__ import annotations
 
 import argparse
+import base64
 import http.client
 import json
+import math
 import os
 import socket
 import socketserver
@@ -43,6 +45,21 @@ import prompts
 
 DEFAULT_PORT = 8769
 LIGHT_MAX = 255
+
+# The invented room, in metres from wherever the rover started, with forward as +x
+# and left as +y -- the frame lidar_slam works in. A table sits in front and to
+# both sides of it, because a table is the thing the rover is asked to go round and
+# the interesting property of one is that a lidar sees four thin legs and no top.
+ROOM_FORWARD_M, ROOM_BACK_M = 2.5, 1.5
+ROOM_LEFT_M, ROOM_RIGHT_M = 2.0, 2.0
+LEGS = ((1.2, 0.4), (1.2, -0.4), (2.0, 0.4), (2.0, -0.4))
+LEG_RADIUS_M = 0.05
+STANDOFF_M = 0.30          # the real navigator's rule, mirrored here
+MAX_RANGE_M = 12.0
+
+
+def _wrap(radians: float) -> float:
+    return (radians + math.pi) % (2 * math.pi) - math.pi
 
 # What the invented camera sees. Two faces, because one is the boring case: the
 # tracker's "next" is only meaningful where there is somebody else to move to.
@@ -76,7 +93,8 @@ def _test_card() -> bytes | None:
 class Rover:
     """The state a real rover would have, and the answers that come out of it."""
 
-    def __init__(self, vision: str | None, picture: bytes | None) -> None:
+    def __init__(self, vision: str | None, picture: bytes | None,
+                 drive: bool = False) -> None:
         self.lights = 0
         self.pan = 0
         self.tilt = 0
@@ -84,6 +102,9 @@ class Rover:
         self.target = 0
         self.vision = vision
         self.picture = picture
+        self.driving = drive
+        self.x = self.y = self.heading = 0.0
+        self.trail: list[tuple[float, float]] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._lock = threading.Lock()
 
@@ -133,6 +154,190 @@ class Rover:
         return {"ok": True, "tracking": True, "faces": len(FACES),
                 "where": FACES[self.target]["where"]}
 
+    # --- driving, in an invented room ---------------------------------------
+    #
+    # Offered only under --drive, and worth being precise about what it is for.
+    # These answers exercise the *shape* of the driving path -- the schemas, the
+    # dispatch, the standoff refusing a move, the map arriving as a picture, a
+    # client's buttons and tables -- and they are the wrong thing to draw any
+    # conclusion from about how the rover moves. This room has no floor, no track
+    # slip, no coast after the power comes off and no lidar that browns out when
+    # the motors pull, and those are the four things that make real driving hard.
+    # A turn here is exact because arithmetic is exact. On the rover it is not, and
+    # that is measured with lidar_slam/calibrate_turn.py, on the rover.
+
+    def drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        distance = float(arguments.get("distance_m", 0.5))
+        turn = float(arguments.get("turn_deg", 0.0) or 0.0)
+        speed = float(arguments.get("speed_ms") or 0.2)
+        if distance <= 0.0:
+            return {"ok": False, "error": "distance_m has to be positive"}
+
+        # Walked in small steps rather than solved, so that stopping at the
+        # standoff falls out of the same code that moves -- which is how the real
+        # one works, and it means a curve into a wall stops where it meets it.
+        step, travelled, reason = 0.02, 0.0, "arrived"
+        while travelled < distance:
+            hop = min(step, distance - travelled)
+            heading = self.heading + math.radians(turn) * (travelled / distance)
+            ahead = self._range_at(self.x, self.y, heading)
+            if ahead < STANDOFF_M + 0.02:
+                reason = "blocked"
+                break
+            self.x += hop * math.cos(heading)
+            self.y += hop * math.sin(heading)
+            travelled += hop
+            self.trail.append((self.x, self.y))
+        self.heading = _wrap(self.heading + math.radians(turn) * (travelled / distance))
+
+        detail = ""
+        if reason == "blocked":
+            detail = (f"stopped {STANDOFF_M:.2f} m short of something after "
+                      f"{travelled:.2f} m of the {distance:.2f} m asked for")
+        return {"ok": True, "reason": reason, "travelled_m": round(travelled, 3),
+                "turned_deg": round(turn * (travelled / distance), 1),
+                **({"detail": detail} if detail else {}),
+                **self._nav_context(speed)}
+
+    def turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        angle = float(arguments.get("angle_deg", 0.0))
+        self.heading = _wrap(self.heading + math.radians(angle))
+        return {"ok": True, "reason": "arrived", "travelled_m": 0.0,
+                "turned_deg": round(angle, 1), **self._nav_context(0.0)}
+
+    def stop_driving(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True, "stopped": True, "latched": False}
+
+    def describe_surroundings(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True, **self._nav_context(0.0), **self._described()}
+
+    def nav_status(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The engineering numbers, as the real daemon's control call returns them."""
+        return {"ok": True, "driving": False, "estop": False,
+                "pose": {"x_m": round(self.x, 3), "y_m": round(self.y, 3),
+                         "heading_deg": round(math.degrees(self.heading), 1)},
+                "speed_ms": 0.0, "turn_dps": 0.0,
+                "clearance_m": round(self._range_at(self.x, self.y, self.heading), 2),
+                "steering_deg": 0.0, "match_score": 0.95,
+                "position_trusted": True, "scans": len(self.trail) + 100,
+                "dropped_scans": 0, "pwm": [0, 0], "lidar_ok": True,
+                "lidar_live": True, "lidar_port": "invented", "scan_age_s": 0.05}
+
+    def map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        half = float(arguments.get("half_extent_m", 3.0))
+        scale = int(arguments.get("scale", 3))
+        png, caption = self._map(half, scale)
+        return {"ok": True, "caption": caption, "bytes": len(png),
+                "png_base64": base64.b64encode(png).decode("ascii")}
+
+    def show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The model's version: the picture goes to the vision host, not the reply."""
+        if self.vision is None:
+            return {"ok": False, "error": "there is nowhere to send a picture"}
+        png, caption = self._map(3.0, 3)
+        _name, error = self._post(png, "image/png")
+        result = {"ok": True, "caption": caption, **self._described()}
+        if error:
+            result["note"] = ("the map could not be sent as a picture, so answer "
+                              "from the description alone")
+        return result
+
+    # --- the invented room --------------------------------------------------
+
+    def _range_at(self, x: float, y: float, heading: float) -> float:
+        """How far a ray from here gets before it meets the room or a table leg."""
+        dx, dy = math.cos(heading), math.sin(heading)
+        best = MAX_RANGE_M
+        for delta, position, low, high in ((dx, x, -ROOM_BACK_M, ROOM_FORWARD_M),
+                                          (dy, y, -ROOM_RIGHT_M, ROOM_LEFT_M)):
+            if abs(delta) > 1e-9:
+                edge = (high - position) if delta > 0 else (low - position)
+                best = min(best, edge / delta)
+        for leg_x, leg_y in LEGS:
+            # Ray against a circle: the near root, when there is one in front.
+            ox, oy = x - leg_x, y - leg_y
+            b = ox * dx + oy * dy
+            c = ox * ox + oy * oy - LEG_RADIUS_M * LEG_RADIUS_M
+            disc = b * b - c
+            if disc < 0.0:
+                continue
+            hit = -b - math.sqrt(disc)
+            if hit > 0.0:
+                best = min(best, hit)
+        return max(0.0, best)
+
+    def _nav_context(self, _speed: float) -> dict[str, Any]:
+        ahead = self._range_at(self.x, self.y, self.heading)
+        return {"clear_ahead_m": round(ahead, 2), "surroundings": self._text()}
+
+    def _described(self) -> dict[str, Any]:
+        return {"text": self._text(), "pose": {
+            "x_m": round(self.x, 3), "y_m": round(self.y, 3),
+            "heading_deg": round(math.degrees(self.heading), 1)}}
+
+    def _text(self) -> str:
+        """Bearings the way the real describe_surroundings words them."""
+        parts = []
+        for bearing, name in ((0, "straight ahead"), (45, "to the left"),
+                              (90, "hard left"), (-45, "to the right"),
+                              (-90, "hard right"), (180, "behind")):
+            span = self._range_at(self.x, self.y,
+                                 self.heading + math.radians(bearing))
+            parts.append(f"{span:.2f} m {name}")
+        return ("An invented room, so nothing here was measured: "
+                + ", ".join(parts)
+                + ". There is a table with four legs in it, and the lidar sees the "
+                  "legs rather than the top.")
+
+    def _map(self, half_extent_m: float, scale: int):
+        """The room as a greyscale PNG, drawn with the rover's own encoder.
+
+        `mapimg` is imported from the rover's tree rather than reimplemented: this
+        exists to exercise a client's picture path, and a second PNG writer here
+        would be testing this file's encoder instead of the rover's.
+        """
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "lidar_slam"))
+        import mapimg
+
+        res = 0.05
+        half = max(8, int(half_extent_m / res))
+        size = half * 2 + 1
+        canvas = mapimg.Canvas(size * scale, size * scale, mapimg.UNKNOWN)
+
+        def to_pixels(px: float, py: float):
+            # Forward up the page, left to the left, as mapimg.render arranges it.
+            col = int((half - (py - self.y) / res) * scale)
+            row = int((half - (px - self.x) / res) * scale)
+            return col, row
+
+        for iy in range(size):
+            for ix in range(size):
+                wx = self.x + (ix - half) * res
+                wy = self.y + (iy - half) * res
+                inside = (-ROOM_BACK_M < wx < ROOM_FORWARD_M
+                          and -ROOM_RIGHT_M < wy < ROOM_LEFT_M)
+                near_leg = any((wx - lx) ** 2 + (wy - ly) ** 2
+                               <= (LEG_RADIUS_M + res) ** 2 for lx, ly in LEGS)
+                value = (mapimg.OCCUPIED if (not inside or near_leg)
+                         else mapimg.FREE)
+                col, row = to_pixels(wx, wy)
+                for dy in range(scale):
+                    for dx in range(scale):
+                        canvas.put(col + dx, row + dy, value)
+
+        for tx, ty in list(self.trail)[-400:]:
+            col, row = to_pixels(tx, ty)
+            canvas.put(col, row, mapimg.TRACK)
+        centre = half * scale
+        canvas.disc(centre, centre, max(2, scale), mapimg.ROVER)
+        canvas.line(centre, centre, centre, centre - 6 * scale, mapimg.ROVER)
+
+        caption = (f"An invented top-down map of roughly {2 * half_extent_m:.0f} by "
+                   f"{2 * half_extent_m:.0f} metres. Forward is up the page and the "
+                   f"rover's left is to the left. Nothing in it was measured.")
+        return mapimg.png_grey(canvas.rows), caption
+
     def set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Where `look` posts its pictures. A control call, as on the real daemon.
 
@@ -160,23 +365,33 @@ class Rover:
             return {"ok": False, "error": "this rover cannot show you a picture"}
         if self.picture is None:
             return {"ok": False, "error": "the camera gave nothing: no picture to send"}
-        host, _, port = self.vision.partition(":")
+        name, error = self._post(self.picture)
+        if error:
+            return {"ok": False, "error": error}
+        # Nothing but the name, exactly as the daemon does it. A tool result that
+        # says anything about the picture is read as an instruction for the turn.
+        return {"ok": True, "image": name}
+
+    def _post(self, image: bytes, kind: str = "image/jpeg"):
+        """Push a picture at the vision service. Returns (name, error), one of them.
+
+        Shared by `look` and `show_map` rather than written twice, because the thing
+        being exercised is the path -- and two copies of it would be two paths.
+        """
+        host, _, port = (self.vision or "").partition(":")
         try:
             connection = http.client.HTTPConnection(host, int(port or 8767), timeout=6.0)
-            connection.request("POST", "/frame", body=self.picture,
-                               headers={"Content-Type": "image/jpeg",
-                                        "Content-Length": str(len(self.picture))})
+            connection.request("POST", "/frame", body=image,
+                               headers={"Content-Type": kind,
+                                        "Content-Length": str(len(image))})
             payload = json.loads(connection.getresponse().read())
             connection.close()
         except Exception as error:
-            return {"ok": False,
-                    "error": f"could not send the picture to {self.vision}: "
-                             f"{type(error).__name__}: {error}"}
+            return None, (f"could not send the picture to {self.vision}: "
+                          f"{type(error).__name__}: {error}")
         if not isinstance(payload, dict) or not payload.get("image"):
-            return {"ok": False, "error": "the picture was not accepted"}
-        # Nothing but the name, exactly as the daemon does it. A tool result that
-        # says anything about the picture is read as an instruction for the turn.
-        return {"ok": True, "image": payload["image"]}
+            return None, "the picture was not accepted"
+        return payload["image"], None
 
     # --- dispatch -----------------------------------------------------------
 
@@ -192,7 +407,7 @@ class Rover:
                 return {"ok": False, "error": f"{type(error).__name__}: {error}"}
 
     def tools(self) -> list[dict[str, Any]]:
-        return prompts.tools(vision=self.vision is not None)
+        return prompts.tools(vision=self.vision is not None, nav=self.driving)
 
 
 def serve(rover: Rover, host: str = "127.0.0.1", port: int = DEFAULT_PORT,
@@ -237,6 +452,10 @@ def main() -> int:
     parser.add_argument("--picture", metavar="FILE",
                         help="the JPEG 'look' hands over; without one a test card "
                              "is drawn, if OpenCV is installed")
+    parser.add_argument("--drive", action="store_true",
+                        help="also offer the driving tools, in an invented room. "
+                             "For exercising a client -- drive_console.py, or a "
+                             "conversation -- and not for measuring anything")
     args = parser.parse_args()
 
     picture = None
@@ -249,13 +468,16 @@ def main() -> int:
                 print("  no --picture and no OpenCV to draw one; 'look' will fail",
                       file=sys.stderr)
 
-    rover = Rover(args.vision, picture)
+    rover = Rover(args.vision, picture, args.drive)
     server = serve(rover, args.host, args.port)
     names = ", ".join(prompts.names(rover.tools()))
     print(f"mock rover on {args.host}:{args.port}\n"
           f"  tools: {names}\n"
           f"  vision: {args.vision or 'off'}"
           + (f", {len(picture)} bytes of JPEG" if picture else "")
+          + (f"\n  driving: an invented {ROOM_FORWARD_M + ROOM_BACK_M:.0f} by "
+             f"{ROOM_LEFT_M + ROOM_RIGHT_M:.0f} m room with a table in it; "
+             f"nothing here is measured" if args.drive else "")
           + "\nCtrl-C to stop.", flush=True)
     try:
         threading.Event().wait()
