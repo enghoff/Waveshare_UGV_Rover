@@ -12,8 +12,10 @@ to reach for first when a component misbehaves.
 
 The other half is the rover actually doing something: a daemon on the Pi that
 owns the hardware and hands it out as tools, a face detector and a voice
-assistant that call those tools, and a ROS 2 stack that fuses both sensors into a
-map.
+assistant that call those tools, a ROS 2 stack that fuses both sensors into a
+map, and a much smaller SLAM written in C that fits on the rover's own Pi — which
+matters because the ROS 2 stack, for all that it is better, runs in a VM that
+cannot reach the rover.
 
 | Directory | What it drives | Runs on | Needs |
 |---|---|---|---|
@@ -24,6 +26,7 @@ map.
 | [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | a workstation, or the Pi | OpenCV |
 | [`face_detect/`](face_detect) | that loop's detector, as an HTTP service | any Linux box with spare CPU | OpenCV |
 | [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the Pi | pyserial |
+| [`lidar_slam/`](lidar_slam) | the lidar as a pose, a map, and a rover that drives itself | the Pi | a C compiler |
 | [`voice_chat/`](voice_chat) | speech in, speech out, with the rover's tools attached | a Linux host with an 8 GB GPU | PyTorch |
 | [`vm/`](vm) | both sensors together: ROS 2, SLAM, sensor fusion | a Linux VM | ROS 2 Humble |
 
@@ -51,6 +54,7 @@ face_tracking/  the control law (aiming.py) and the two programs that run it,
                 one on a workstation and one on the rover
 face_detect/    YuNet behind an HTTP request: JPEG in, boxes out, on the CPU
 rover_daemon/   lights, gimbal and face tracking as tools over TCP
+lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's Pi
 voice_chat/     Whisper + a vision-language model + Kokoro, and a desktop client
 vm/             both sensors in ROS 2: bringup, SLAM, checks and provisioning
 docs/           the detail — hardware facts, measurements, failure modes

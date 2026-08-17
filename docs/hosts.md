@@ -50,21 +50,47 @@ number — it advertises no mDNS name.
 
 A Pi 1 Model B, 700 MHz single core, 474 MB of RAM. It is slow enough that this
 matters: it exists to hold a serial link and forward gamepad input, not to run
-vision. Anything that opens an OpenCV window runs somewhere else — the host is
+vision. It is not, however, too slow for everything — [`lidar_slam/`](../lidar_slam)
+does scan-matched 2D SLAM here in 33.5% of the core, which took writing the inner
+loops in C, since the same algorithm under numpy came to 2.3× the sensor's own
+10 Hz budget. The chip has scalar VFP and no NEON (`Features: half thumb fastmult
+vfp edsp java tls`), so there is no SIMD to recover the difference with, and the
+lesson generalises: on this host, reaching for numpy on arrays of a few hundred
+elements loses to a plain loop in C by one to two orders of magnitude.
+
+Anything that opens an OpenCV window runs somewhere else — the host is
 headless by choice (`multi-user.target`, `lightdm` disabled, cloud-init
 disabled, `gpu_mem=16`), which is also where that 474 MB came from. Boot is
 ~2m07s, most of it NetworkManager and SD-card enumeration.
 
-The rover's General Driver board is wired to the **GPIO UART**, not USB. There is
-no `/dev/ttyUSB*` or `/dev/ttyACM*` here; use `/dev/ttyAMA0` at 115200. Freeing
-that port meant masking `serial-getty@ttyAMA0` and stripping
-`console=serial0,115200` from `/boot/firmware/cmdline.txt` — so there is now no
-serial-console rescue path, and on a Pi with no built-in WiFi a bad `cmdline.txt`
-means pulling the SD card.
+The rover's General Driver board is wired to the **GPIO UART**, not USB, so its
+control link is `/dev/ttyAMA0` at 115200. Freeing that port meant masking
+`serial-getty@ttyAMA0` and stripping `console=serial0,115200` from
+`/boot/firmware/cmdline.txt` — so there is now no serial-console rescue path, and
+on a Pi with no built-in WiFi a bad `cmdline.txt` means pulling the SD card.
+
+**The lidar is on this Pi too, on a second and quite separate port.** The D500's
+data leaves the board's Type-C socket marked *LIDAR* through a CH343 USB-UART
+(`1a86:55d3`, behind the FE1.1S hub `1a40:0101`), and the `cdc_acm` driver claims
+it as **`/dev/ttyACM0`** at 230400. There is genuinely no `/dev/ttyUSB*` here, but
+this document claimed for a while that there was no `ttyACM*` either, which was
+wrong and sent [`lidar_slam/`](../lidar_slam) looking for the wrong device.
+Measured 2026-08-17 straight off the port: 19.6 kB/s, 418 packets/s, 9.94 Hz
+rotation, zero CRC failures in 836 packets, ~419 points per revolution.
 
 The firmware streams `T:1001` telemetry continuously at ~2.6 kB/s without being
-asked. A read loop that extends its deadline whenever bytes arrive never returns;
-use a fixed deadline, or read line by line.
+asked, at a measured **~20 Hz**, and it carries much more than motor state: a 9-DoF
+IMU as `ax/ay/az`, `gx/gy/gz` and — unlike the OAK's BMI270 — a magnetometer in
+`mx/my/mz`, wheel encoder counts in `odl`/`odr`, and pack volts in `v` (1208 =
+12.08 V). Everything is raw LSB rather than SI; `az` reads 8392 for 1 g, and the
+gyro's resting `gz` bias measured 6.9. That ~20 Hz is the ceiling on any dead
+reckoning done here, and it is set by the firmware, not by the reader.
+
+Measure that rate with a bulk read, not with `readline`. A line-at-a-time loop with
+a 0.2 s timeout reported 17 Hz on this stream where draining `in_waiting` reported
+19.9 — the missing sixth of the samples was the reader's, not the firmware's. And a
+read loop that extends its deadline whenever bytes arrive never returns at all; use
+a fixed deadline.
 
 **Network.** `eth0` (`b8:27:eb:56:8a:3f`) is primary at route metric 100.
 `wlan0` comes from a Realtek RTL8188FTV USB dongle (`0bda:f179`) on SSID
@@ -114,7 +140,10 @@ streaming audio and video.
 **What runs here.** `rover_daemon.py` (from `rover_daemon/` in this repo) is
 the one process that may own the UART and the camera, and everything that
 commands the rover goes through it: headlights, gimbal, face tracking, exposed as
-tools on TCP 8769. Started with `--vision` it offers one more, `look`, which
+tools on TCP 8769. [`lidar_slam/`](../lidar_slam) is the exception that does not
+conflict, because it reads the *lidar* port rather than the UART — but it needs
+`ttyAMA0` for its motion prior, so it belongs inside the daemon eventually rather
+than beside it. Started with `--vision` it offers one more, `look`, which
 POSTs a frame to `voice-chat` on MEDIA so the model can be asked what it sees;
 without the flag the tool is not offered at all. `drive_gamepad_pi.py` and
 `track_face_pi.py` are still standalone and still take the UART directly, so do

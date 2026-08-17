@@ -20,9 +20,11 @@ live COM port means the switch is off, not that the cable is wrong.
 ## Data path
 
 The header's Tx goes to an onboard USB-UART and out the Type-C port labelled
-*LIDAR* (the other Type-C is the ESP32's) — a COM port on Windows, `/dev/ttyUSB0`
-on the Pi. 230400-8-N-1, one-way: no command needed, it streams once powered. PWM
-is left unconnected, so the motor uses internal speed control at 10 Hz.
+*LIDAR* (the other Type-C is the ESP32's) — a COM port on Windows, and
+`/dev/ttyACM0` on the Pi, since the CH343 below is claimed by `cdc_acm` rather than
+by a `ttyUSB` driver. 230400-8-N-1, one-way: no command needed, it streams once
+powered. PWM is left unconnected, so the motor uses internal speed control at
+10 Hz.
 
 This board revision enumerates as a **CH343 behind an FE1.1S hub**
 (`USB\VID_1A86&PID_55D3`, parent `VID_1A40&PID_0101`), not the two CP2102Ns in
