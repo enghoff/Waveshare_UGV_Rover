@@ -4,3 +4,7 @@
 # fails as "bad interpreter: No such file or directory", naming a file that
 # plainly exists.
 vm/** text eol=lf
+
+# lidar_slam/ is compiled and run on the rover's Pi, for the same reason: build.sh
+# has a shebang, and gcc would happily accept CRLF in the C but the shell will not.
+lidar_slam/** text eol=lf

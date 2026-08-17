@@ -10,3 +10,9 @@ oak_camera/crash_dumps/
 *.onnx
 calibration_backup_*.json
 omni_bench/runs/
+
+# lidar_slam/ is compiled per-machine on the armv6 Pi that runs it; a committed
+# binary could only ever be for the wrong architecture.
+lidar_slam/libslam2d.so
+lidar_slam/selftest
+*.pgm
