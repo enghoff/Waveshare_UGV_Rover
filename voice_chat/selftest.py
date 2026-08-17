@@ -573,6 +573,23 @@ def test_rover_client() -> None:
         server.shutdown()
         server.server_close()
 
+    # Where this machine is, as the rover sees it. Taken off the socket rather
+    # than guessed, because a desk has several addresses and only one of them is
+    # on the way to the rover -- and which one that is changes when the rover
+    # drives off its dock. It is what the client tells the daemon to post
+    # pictures to, so a wrong answer here is a `look` that fails with a routing
+    # error much later.
+    server = Server(("127.0.0.1", 0), Fake)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    client = rover_tools.RoverClient(f"127.0.0.1:{server.server_address[1]}")
+    try:
+        check("the client knows which address the rover reaches it on",
+              client.local_address(), "127.0.0.1")
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+
     # And a daemon that is simply not there answers as a failure the model can
     # read out, rather than raising into the middle of a turn.
     with socket.socket() as probe:
@@ -889,6 +906,315 @@ def test_speculation() -> None:
     check("a too-short burst is not sent early", len(guesses), 0)
 
 
+def test_prompts() -> None:
+    """The prompt and the schemas are read from the source, not copied into it."""
+    try:
+        import prompts
+    except Exception as exc:
+        SKIP.append(f"prompt reader ({type(exc).__name__})")
+        return
+
+    schemas = prompts.tools()
+    check("every tool the daemon offers is found",
+          prompts.names(schemas),
+          ["set_lights", "get_lights", "look_at", "center_camera", "count_faces",
+           "start_tracking", "stop_tracking", "track_next", "tracking_status",
+           "look"])
+    check("look is last, where the daemon appends it",
+          prompts.names(schemas)[-1], "look")
+    check("without vision there is no look",
+          "look" in prompts.names(prompts.tools(vision=False)), False)
+    # The reason this module exists rather than a literal: the ceiling is written
+    # as a name in the daemon and has to survive being read out.
+    lights = next(t for t in schemas if t["function"]["name"] == "set_lights")
+    check("a schema's named constants are resolved",
+          lights["function"]["parameters"]["properties"]["level"]["maximum"], 255)
+
+    prompt = prompts.system_prompt()
+    check("the prompt is unwrapped from its environment default",
+          prompt.startswith("You are the voice of a small tracked rover."), True)
+    # The sentence whose position was worth nine points out of ninety. It goes
+    # last, and a client that reassembled the prompt in a different order would
+    # be running a different experiment than the one that was measured.
+    check("the tool prompt is in it", "never say you have switched" in prompt, True)
+    check("...and the sentence about 'I will' is last",
+          prompt.rstrip().endswith("Describe only what is actually in the picture."),
+          True)
+    check("vision can be left out",
+          "take a picture first" in prompts.system_prompt(vision=False), False)
+
+
+def test_frames() -> None:
+    """The /frame contract the daemon posts to, served by the client instead."""
+    try:
+        import realtime
+    except Exception as exc:
+        SKIP.append(f"frame server ({type(exc).__name__}: needs sounddevice)")
+        return
+
+    import http.client
+    import json as _json
+
+    frames = realtime.Frames(0, host="127.0.0.1")
+    frames.serve_in_background()
+    port = frames.server_address[1]
+
+    def post(body: bytes, path: str = "/frame"):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        connection.request("POST", path, body=body,
+                           headers={"Content-Length": str(len(body))})
+        response = connection.getresponse()
+        payload = _json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    try:
+        # A JPEG with a real frame header, so the size can be read back out of it
+        # without decoding anything.
+        jpeg = (b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+                b"\xff\xc0\x00\x11\x08\x01\xe0\x02\x80\x03\x01\x22\x00\x02\x11\x01"
+                b"\x03\x11\x01" + b"\x00" * 64 + b"\xff\xd9")
+        status, payload = post(jpeg)
+        check("a posted frame is accepted", (status, payload["ok"]), (200, True))
+        check("...and named", payload["image"], "frame-1")
+        check("...and measured without decoding it",
+              (payload["w"], payload["h"]), (640, 480))
+
+        held = frames.take("frame-1")
+        check("the frame is held for the turn that asked", held, jpeg)
+        # One picture answers one question. The camera is on a gimbal that sweeps
+        # while tracking runs, so a frame kept past its turn is a picture of
+        # somewhere the rover is no longer pointing.
+        check("...and only once", frames.take("frame-1"), None)
+
+        status, payload = post(b"this is not a picture")
+        check("something that is not a JPEG is refused",
+              (status, payload["ok"]), (400, False))
+        status, payload = post(b"\xff\xd8" + b"\x00" * realtime.MAX_FRAME_BYTES)
+        check("...and so is one too big for the model",
+              (status, payload["ok"]), (413, False))
+        check("...saying what the limit was",
+              str(realtime.MAX_FRAME_BYTES) in payload["error"], True)
+
+        # Older frames are dropped rather than accumulating, since a client that
+        # runs for hours would otherwise hold every picture it ever took.
+        for _ in range(realtime.MAX_FRAMES + 2):
+            post(jpeg)
+        check("only a few frames are kept", len(frames._frames), realtime.MAX_FRAMES)
+    finally:
+        frames.shutdown()
+        frames.server_close()
+
+
+def test_speaker() -> None:
+    """Playback bookkeeping: what was heard, and what was thrown away."""
+    try:
+        import realtime
+    except Exception as exc:
+        SKIP.append(f"speaker ({type(exc).__name__}: needs sounddevice)")
+        return
+
+    import numpy as np
+
+    speaker = realtime.Speaker(rate=24000)  # no card is opened until start()
+    speaker.begin()
+    speaker.write(np.ones(24000, dtype=np.float32) * 0.1)  # one second of reply
+    check("nothing has been heard yet", speaker.played_ms(), 0)
+    check("...and the speaker is busy", speaker.busy, True)
+
+    # Pretend the card asked for a quarter of a second.
+    out = np.zeros((6000, 1), dtype=np.float32)
+    speaker._fill(out, 6000, None, None)
+    check("a quarter second played", speaker.played_ms(), 250)
+
+    dropped = speaker.flush()
+    check("the rest is thrown away", round(dropped, 3), 0.75)
+    check("...and the speaker falls silent", speaker.busy, False)
+    # The number that matters after a barge-in: what the model must be told it
+    # actually said, which is what it played and not what it sent.
+    check("what was heard is remembered", speaker.played_ms(), 250)
+
+
+def test_echo_guard() -> None:
+    """The suppressor that keeps the rover from interrupting itself."""
+    try:
+        import realtime
+    except Exception as exc:
+        SKIP.append(f"echo guard ({type(exc).__name__}: needs sounddevice)")
+        return
+
+    speaker = realtime.Speaker(rate=24000)
+    ears = realtime.Ears(speaker, factor=2.5, on=True)
+    check("a silent speaker hears everything", ears.hears(0.001), True)
+
+    speaker._level = 0.1  # the rover is talking
+    check("its own voice does not get through", ears.hears(0.1), False)
+    check("...nor a quiet room over the top of it", ears.hears(0.2), False)
+    check("...but somebody talking over it does", ears.hears(0.4), True)
+
+    off = realtime.Ears(speaker, factor=2.5, on=False)
+    check("switched off, everything gets through", off.hears(0.001), True)
+
+
+def test_pointing_the_camera() -> None:
+    """The client tells the rover where to post pictures, on every connection."""
+    try:
+        import realtime
+        import mock_rover
+        import rover_tools
+    except Exception as exc:
+        SKIP.append(f"camera pointing ({type(exc).__name__}: needs sounddevice)")
+        return
+
+    frames = realtime.Frames(0, host="127.0.0.1")
+    frames.serve_in_background()
+    port = frames.server_address[1]
+
+    # A rover started pointing at a host that is not there, which is the state
+    # this whole mechanism exists for: the address was a constant, the model
+    # moved off that host, and `look` kept posting into the void.
+    rover = mock_rover.Rover("192.0.2.1:8767", None)
+    server = mock_rover.serve(rover, "127.0.0.1", 0, quiet=True)
+    client = rover_tools.RoverClient(f"127.0.0.1:{server.server_address[1]}")
+    try:
+        client.probe()
+        realtime.point_camera_here(client, frames)
+        check("the rover is told where this client is listening",
+              rover.vision, f"127.0.0.1:{port}")
+        # And `look` now works, which is the only thing any of it was for.
+        result = client.call("look", {})
+        check("...so a picture can be taken", result.get("ok"), True)
+        check("...and this client is holding it",
+              frames.take(result.get("image", "")) is not None, True)
+
+        # No frame server means no picture path, and a tool that cannot reach
+        # the model's host is worse than a missing one.
+        realtime.point_camera_here(client, None)
+        check("with nowhere to post, look is withdrawn",
+              "look" in [t["function"]["name"] for t in client.tools()], False)
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        frames.shutdown()
+        frames.server_close()
+
+
+def test_realtime_session() -> None:
+    """The protocol, against a service that only writes down what it was told."""
+    try:
+        import realtime
+        import mock_rover
+        import rover_tools
+    except Exception as exc:
+        SKIP.append(f"realtime session ({type(exc).__name__}: needs sounddevice)")
+        return
+
+    import asyncio
+    import base64
+    import json as _json
+
+    class Recorder:
+        """A WebSocket that goes nowhere."""
+
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, raw):
+            self.sent.append(_json.loads(raw))
+
+        def types(self):
+            return [event["type"] for event in self.sent]
+
+    frames = realtime.Frames(0, host="127.0.0.1")
+    frames.serve_in_background()
+    picture = mock_rover._test_card()
+    if picture is None:
+        SKIP.append("realtime session (no OpenCV to draw a test frame)")
+        frames.shutdown()
+        frames.server_close()
+        return
+
+    rover = mock_rover.Rover(f"127.0.0.1:{frames.server_address[1]}", picture)
+    server = mock_rover.serve(rover, "127.0.0.1", 0, quiet=True)
+    client = rover_tools.RoverClient(f"127.0.0.1:{server.server_address[1]}")
+
+    async def exercise():
+        ws = Recorder()
+        session = realtime.Session(ws, client, frames, None, realtime.Indicator(),
+                                   duplex=False, model="test", quiet=True)
+        await session.configure(client.tools(), vision=True)
+        sent = ws.sent[0]["session"]
+        check("the session carries the daemon's schemas untouched",
+              [t["function"]["name"] for t in sent["tools"]][:2],
+              ["set_lights", "get_lights"])
+        check("...and the deployed prompt",
+              sent["instructions"].startswith("You are the voice of a small"), True)
+        check("...and no turn detection when this client is doing the turns",
+              sent["turn_detection"], None)
+
+        # A tool call arriving as the service sends one.
+        await session.handle({
+            "type": "response.function_call_arguments.done",
+            "call_id": "call_1", "name": "set_lights",
+            "arguments": ' {"level": 255}'})  # the service pads with a space
+        await session.handle({"type": "response.done", "response": {}})
+        await session.drain()
+        check("the call reached the rover", rover.lights, 255)
+        result = next(e for e in ws.sent if e["type"] == "conversation.item.create")
+        check("...and the result went back under its own call id",
+              result["item"]["call_id"], "call_1")
+        check("...as the daemon's answer, verbatim",
+              _json.loads(result["item"]["output"]), {"ok": True, "level": 255})
+        check("...and a reply was asked for", ws.types()[-1], "response.create")
+        await session.handle({"type": "response.created", "response": {}})
+        await session.handle({"type": "response.done", "response": {}})
+
+        # And a call that produces a picture. The frame is not in the tool
+        # result -- it arrives at this machine by the other road -- so what has
+        # to happen is a lookup and a turn of its own.
+        ws.sent.clear()
+
+        async def acknowledge():
+            """Stand in for the service confirming the picture's turn landed."""
+            while True:
+                if any(e["type"] == "input_audio_buffer.commit" for e in ws.sent):
+                    session._landed.set()
+                    return
+                await asyncio.sleep(0.005)
+
+        watcher = asyncio.create_task(acknowledge())
+        await session.handle({
+            "type": "response.function_call_arguments.done",
+            "call_id": "call_2", "name": "look", "arguments": "{}"})
+        await session.handle({"type": "response.done", "response": {}})
+        await session.drain()
+        watcher.cancel()
+        check("a picture travels as audio, then image, then a commit",
+              ws.types(),
+              ["conversation.item.create", "input_audio_buffer.append",
+               "input_image_buffer.append", "input_audio_buffer.commit",
+               "response.create"])
+        image = next(e for e in ws.sent if e["type"] == "input_image_buffer.append")
+        check("...and it is the frame the rover posted",
+              base64.b64decode(image["image"]), picture)
+
+        # Nothing is idle until the reply that was asked for has begun.
+        check("a reply that was asked for is not idle", session.idle, False)
+        await session.handle({"type": "response.created", "response": {}})
+        await session.handle({"type": "response.done", "response": {}})
+        check("...and is once it has been and gone", session.idle, True)
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        frames.shutdown()
+        frames.server_close()
+
+
 def main() -> int:
     test_sentences()
     test_tool_sniffer()
@@ -899,6 +1225,12 @@ def main() -> int:
     test_indicator()
     test_endpointer()
     test_speculation()
+    test_prompts()
+    test_frames()
+    test_speaker()
+    test_echo_guard()
+    test_pointing_the_camera()
+    test_realtime_session()
 
     for name in PASS:
         print(f"  ok   {name}")

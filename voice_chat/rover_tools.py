@@ -151,6 +151,27 @@ class RoverClient:
         tools = reply.get("tools")
         return tools if isinstance(tools, list) else []
 
+    def local_address(self) -> str | None:
+        """This machine's address, as the rover sees it. None if not connected.
+
+        Taken from the socket rather than from `gethostbyname` or a guess,
+        because a desk has several addresses and only one of them is on the way
+        to the rover -- and which one that is changes with the rover, which
+        answers on eth0 while docked and on wlan0 once it has driven off. The
+        kernel already chose the right interface to make this connection; this
+        just reads back what it chose.
+
+        Used to tell the daemon where to post pictures. See `set_vision` in
+        [rover_daemon.py](../rover_daemon/rover_daemon.py).
+        """
+        with self._lock:
+            try:
+                if self._sock is None:
+                    self._connect()
+                return self._sock.getsockname()[0]
+            except OSError:
+                return None
+
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Perform one tool call. Never raises -- a failure is a result."""
         try:

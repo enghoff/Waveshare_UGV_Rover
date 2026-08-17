@@ -16,9 +16,15 @@ speakers stay on whatever machine you are sitting at.
      (only when the model asks to look; never via the desk)
 ```
 
-One client, [talk.py](talk.py), wherever there is a microphone. Endpointing —
+The client is [talk.py](talk.py), wherever there is a microphone. Endpointing —
 deciding the speaker has stopped — is in [endpointing.py](endpointing.py) beside
 it rather than on the GPU; see below for why.
+
+There is a second client, [realtime.py](realtime.py), which holds the same
+conversation against Alibaba's hosted omni model and needs no GPU at all. It is
+described in [The same conversation, with no GPU in
+it](#the-same-conversation-with-no-gpu-in-it) at the end; everything between here
+and there is about the deployed path.
 
 It also carries **tools**: the model can switch the headlights, aim the camera,
 look through it, count the people it can see and start or stop face tracking.
@@ -1016,21 +1022,308 @@ Endpointer timing is counted in 20ms blocks rather than wall-clock seconds —
 `sounddevice` delivers in bursts after a scheduling hiccup, and a clock reads
 that burst as a long silence and ends the turn mid-sentence.
 
+## The same conversation, with no GPU in it
+
+[realtime.py](realtime.py) holds the conversation above against Alibaba's
+`qwen3.5-omni-plus-realtime` over its WebSocket protocol. MEDIA drops out of the
+path entirely — no Whisper, no local weights, no Kokoro, no card — and what is
+left is the microphone here and the rover there.
+
+```
+  the machine you are sitting at            dashscope-intl, Singapore
+  ------------------------------            -------------------------
+  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-plus-realtime
+                                                |  text + tool calls
+  speakers <-- playback <--24k pcm--------------+
+       |
+       +-- tool call --> rover_daemon.py on the Pi --> the board, the camera
+       |
+  the rover --- one JPEG, POST /frame --> here ---> into the session as a turn
+```
+
+The split is the one this directory already had. Audio stays where the
+microphone is, the tools stay on the rover, and only the model moves. Nothing was
+rewritten to make that work: the schemas come off the daemon over the wire
+exactly as [rover_tools.py](rover_tools.py) has always fetched them, in the same
+`{"type": "function", "function": {...}}` shape this API happens to want, and the
+system prompt is read out of [server.py](server.py) by
+[prompts.py](prompts.py) rather than copied. Improve a description on the rover
+and it is in force here on the next connection.
+
+```bash
+python voice_chat/realtime.py                      # full duplex; wear headphones
+python voice_chat/realtime.py --half-duplex        # push to talk, no barge-in
+python voice_chat/realtime.py --rover rpi.local:8769
+```
+
+The key is `secrets/alibaba.key` or `$DASHSCOPE_API_KEY`, and it is never
+printed. The voice is `Jennifer`, which the service describes as a premium
+American English female voice; `Aiden` is American and male, `Mione` is British
+and female, and `$QWEN_REALTIME_VOICE` picks between them. The service's own
+default, `Tina`, speaks English with a marked accent, and a name from the wrong
+model's voice list is not refused gracefully — it closes the socket.
+
+There is no rover on most desks, so there is a rover:
+[mock_rover.py](mock_rover.py) speaks the daemon's protocol, holds the state a
+real one would hold — turn the lights on, then ask whether they are on, and the
+second answer depends on the first — and hands `look` a drawn test card. The
+schemas it offers are the daemon's own, read from its source, because a mock that
+described its tools in its own words would be a mock of a different rover.
+
+### It works, and here is a whole conversation
+
+Five turns, five tools, against the mock, on the default model:
+
+```
+> can-you-switch-the-lights-on.wav
+  [set_lights{"level": 255} -> {"ok": true, "level": 255}]
+  bot: I've turned the lights on at full brightness.
+> start-tracking-people.wav
+  [start_tracking{} -> {"ok": true, "tracking": true}]
+  bot: I've started tracking people.
+> how-many-people-can-you-see.wav
+  [count_faces{} -> {"ok": true, "faces": 2, "where": [...]}]
+  bot: I can see two people. One is on your left, quite close, and the other is
+       in the centre, further away.
+> what-do-you-see.wav
+  [look{} -> {"ok": true, "image": "frame-1"}]
+  [sent frame-1, 5603 bytes, 320x240]
+  bot: I see a red square and a green circle on a light gray background. The word
+       "ROVER" is written above them.
+> would-you-stop-following-me.wav
+  [stop_tracking{} -> {"ok": true, "tracking": false}]
+  bot: I've stopped following you.
+```
+
+That is the test card, described. Every phrasing that defeated `Qwen3-VL-4B` is
+answered correctly too — the leading "Well,", the dimming request (which comes
+back as `{"level": 128}`), "Follow me.", "Track someone else." — and "What is
+your name?" calls nothing, which is the case that is supposed to.
+
+There is no `_ToolSniffer` on this path. A tool call arrives as its own event on
+a control channel rather than as a `<tool_call>` marker racing a speech decoder,
+so the interception problem [docs/omni-step0.md](../docs/omni-step0.md) measured
+does not arise — as long as the model uses that channel. See [Flash and plus are
+not the same model](#flash-and-plus-are-not-the-same-model) for what it looks
+like when one does not.
+
+### Five things about this protocol that cost an afternoon
+
+All five fail by going *quiet* rather than by complaining, which is why
+`QWEN_REALTIME_TRACE=1` prints every event in and out.
+
+**Start reading the socket before you configure it.** Everything this client
+waits to be told — that the session took, that a turn landed — is told through
+the receive loop, so setting the session up before that loop is running means
+waiting fifteen seconds for an event that arrived in a third of a second and had
+nobody to hand it to. It costs a stall at startup rather than a failure, which is
+why it survived a whole afternoon of testing before anybody noticed.
+
+**The voice list is per model.** `Cherry` is documented and this model refuses
+it, and a refused voice does not fall back — it closes the socket at the first
+`session.update`. Ask the service what it defaults to; it says so in
+`session.created`, and for this model it is `Tina`.
+
+**A picture cannot go into an empty input buffer.** The rule is "you must send
+audio data at least once before you send image data", and a buffer that has just
+been committed counts as empty — which is exactly the state a tool result arrives
+in. So a frame travels as a user turn of its own, led by 200ms of silence whose
+only job is to satisfy that rule. Get it wrong and the reply is
+`Error append image before append audio` — and then the model describes a room it
+was never shown, in confident detail, without ever saying it could not see.
+
+**A `response.create` sent before the turn it refers to has *finished* is
+discarded in silence.** No error, no reply, a conversation that simply stops with
+the rover having taken a photograph and said nothing about it. Waiting for the
+commit's acknowledgement is not enough, and neither is waiting for the item to be
+created — both arrive while the turn is still `in_progress`. The event that is
+late enough is the transcription completing.
+
+**A manual commit is rejected outright while the service is deciding turns.**
+`Internal service error: null`, on both `server_vad` and `semantic_vad`. Since a
+picture needs a manual commit, full duplex hands turn-taking back for about a
+second per photograph and takes it again afterwards, holding the microphone shut
+in between so that nothing said in that moment joins the frame's turn. That
+second is the one real cost: a question asked just after the shutter is not
+heard.
+
+### Barge-in, and the headphones it asks for
+
+`--duplex` puts turn-taking on the service, using `semantic_vad` — which is the
+mode that knows the difference between somebody saying "mm-hm" and somebody
+taking the floor. An interruption then needs both halves: the service stops
+generating, and only this client can stop the speaker playing what it has already
+received. So `Session.interrupt` cancels, flushes what was never heard, and
+reports how many milliseconds actually reached the card.
+
+That last number is the one that keeps the model honest, and there is no
+documented way to give it back. `conversation.item.truncate` exists in the OpenAI
+protocol this one is modelled on and is not in this service's published client
+events; it is tried once and abandoned if refused. Until it works, an interrupted
+rover remembers saying the part nobody heard.
+
+**It is the default, so wear headphones.** Barge-in needs the microphone open
+while the reply plays, and an open microphone in a room with speakers hears the
+rover's own voice, decides it is being interrupted, and stops itself mid-sentence
+forever. Alibaba's own documentation says to wear headphones for exactly this.
+`Ears` is a crude suppressor for when you will not — it passes the microphone
+only when it is clearly louder than what is coming out of the speaker — and it is
+not acoustic echo cancellation, has no model of the room and no reference
+alignment, and will not save a loud room or a close speaker. Headphones will.
+
+`--half-duplex` is the other way, and it keeps a property [talk.py](talk.py) was
+built around: silence never crosses the network, because this client decides when
+a turn ended and only uploads what it judges to be speech. Full duplex gives that
+up, since a service that decides when a turn ended cannot decide it from audio it
+was never sent.
+
+### Against the actual rover
+
+Everything above is the mock. Run against `rpi.local`, the picture path works end
+to end — a 44kB, 640×480 frame off the rover's camera, described:
+
+```
+pictures: the rover will post to http://192.168.1.206:8767/frame
+> what-do-you-see.wav
+  [look{} -> {"ok": true, "image": "frame-1"}]
+  [sent frame-1, 44524 bytes, 640x480]
+  bot: I see a person sitting at a glass desk with a laptop. To the left,
+       there's a large window looking out onto a balcony with some green turf.
+```
+
+That line about where the rover will post is the fix for the first thing that
+went wrong on real hardware. The picture's destination used to be a constant,
+given to the daemon at startup by whoever last edited the crontab, and it pointed
+at MEDIA. When the model moved off MEDIA the pictures kept going there, and
+`look` failed with `No route to host` while every other tool on the rover worked
+perfectly — which is a confusing thing to debug, because the rover is plainly
+fine and the camera is plainly fine.
+
+So the destination is no longer remembered anywhere. The daemon takes a control
+call, `set_vision`, which is dispatched like a tool and deliberately absent from
+`list_tools` so no model is ever shown it, and this client sends it on every
+connection. The address it sends is the one its own socket to the daemon is bound
+to, which is right by construction: the kernel already picked the interface that
+reaches the rover, and it picks a different one once the rover is off its dock
+and answering on wlan0. Naming no address switches the path off and withdraws
+`look` from the tool list, because a tool that cannot reach the model's host is
+worse than a missing one.
+
+### Face tracking is not fixed by any of this
+
+The second thing that went wrong on real hardware: `start_tracking` answered
+`{"ok": true, "tracking": true}`, the model said "I started tracking people", and
+the camera never moved. The daemon's own log says why —
+`[rover] the face detector is not answering; holding still` — because face
+detection is a *separate* service on MEDIA, on port 8768, and MEDIA was off.
+Moving the model to Alibaba took MEDIA out of the conversation; it did not take
+it out of face tracking, and it cannot.
+
+The loop is written to hold still through a missing detector rather than to die,
+which is right for a loop already running and wrong for one being started: it
+starts, holds still, and reports itself as tracking. So `start_tracking` now
+checks the detector is reachable first and refuses honestly:
+
+```
+{"ok": false, "error": "the face detector at 192.168.1.3:8768 is not answering
+ (TimeoutError), so tracking a face is not possible right now"}
+```
+
+which the model reads out as a reason rather than saying it has done something it
+has not. That is a better failure, not a fix. Face tracking needs MEDIA up, or a
+detector somewhere else.
+
+### Flash and plus are not the same model
+
+[docs/omni-step0.md](../docs/omni-step0.md) could not tell `qwen3.5-omni-plus`
+and `qwen3.5-omni-flash` apart: both scored 90/90 typed and spoken and 30/30 on
+the five extra tools, and flash cost $0.05 against plus's $0.17 for the same
+sweep, so flash was the obvious choice. That was the *chat completions* pair.
+Their realtime namesakes behave nothing alike. Three samples a phrase, first turn
+of a session, against the mock:
+
+| asked for | `flash-realtime` | `plus-realtime` |
+|---|---|---|
+| "Could you dim the lights a bit?" | **0/3** | 3/3 |
+| "Can you look to your left?" | **0/3** | 3/3 |
+| "Start tracking people." | **0/3** | 3/3 |
+| "Switch the lights on." | **1/3** | 3/3 |
+| "What do you see?" | **12/18** | 6/6 |
+
+Flash fails in the two ways this directory has spent the most words on. It
+announces without acting — "I'll pan the camera to my left now", and no call,
+which is the failure the [system prompt's closing
+sentence](#the-re-run-it-does-not-refuse-it-promises) exists to prevent. And it
+*writes the tool call into its own speech*:
+
+```
+  bot: <set_lights> <parameter=level> 128 </parameter> </function> </tool_call>
+  calls: none
+```
+
+That is the rover reading a tool call out loud while doing nothing — the same
+thing step 0 caught MiniCPM-o's speech decoder doing, arriving by a different
+road. It is not the sniffer's failure, because the sniffer watches a text stream
+that this protocol replaces with a control channel; it is a model declining to
+use the channel it was given. Worse, it poisons what follows: the next two turns
+say "I've dimmed the lights to half brightness" and call nothing, which is
+[one promise poisoning everything after
+it](#and-one-promise-poisons-everything-after-it) exactly as documented.
+
+Both are recoverable in principle — parse the markup, re-tune the schemas — and
+neither is worth doing when the model beside it is simply right. So plus is the
+default despite costing about three times as much, and flash is one `--model`
+away for whoever wants to measure the difference properly. That sweep is
+[omni_bench](../omni_bench/)'s job, not a handful of samples like these.
+
+**The numbers above are not from a room.** They are synthetic speech played into
+a socket against a rover that does not exist. The rover half has since been run
+for real — see [Against the actual rover](#against-the-actual-rover) — but echo
+and interruption still have not been, and those are what full duplex is for.
+
+### What it costs
+
+The prompt and the ten schemas are *sent* once per session rather than with every
+question, which is the shape step 0 asked for. They are still counted on every
+response: the usage reported back puts `cached_tokens` at 0 or 128 against
+1,900–2,400 input tokens a turn. So this saves the upload, not the bill. A spoken
+question is 14–105 audio tokens and a picture is 80 video tokens — both rounding
+error next to the schemas, exactly as step 0 found. A session is capped at two
+hours, announced by the socket closing.
+
 ## Checks
 
 `selftest.py` covers the pieces where a bug is silent rather than loud: the
 sentence splitter, the endpointer, history trimming, the sniffer that keeps a
-tool call from being spoken aloud, and the line to the rover daemon. What the
-daemon *does* with a call has its own checks, in
+tool call from being spoken aloud, the line to the rover daemon, and — for the
+hosted path — the prompt reader, the `/frame` server, the playback bookkeeping a
+barge-in depends on, and the session protocol against a service that only writes
+down what it was told. What the daemon *does* with a call has its own checks, in
 [rover_daemon/selftest.py](../rover_daemon/selftest.py), which run on the rover.
 It has no GPU or microphone dependency, and each part skips where its
 dependencies are absent, so run it anywhere:
 
 ```bash
-python voice_chat/selftest.py               # endpointer + the rover client
+python voice_chat/selftest.py               # endpointer, rover client, realtime
 ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py
 ssh rpi 'cd ugv && python3 selftest.py'     # the daemon's own, on the rover
 ```
+
+The hosted path has one check that is not offline, because the things it gets
+wrong are things only the service knows. `--smoke` puts WAVs where the
+microphone goes and runs the whole conversation — session setup, schemas, tool
+dispatch, the picture — with no audio hardware involved:
+
+```bash
+python voice_chat/mock_rover.py --vision 127.0.0.1:8767 &
+python voice_chat/realtime.py --rover 127.0.0.1:8769 --smoke \
+    omni_bench/runs/audio/zira/can-you-switch-the-lights-on.wav \
+    omni_bench/runs/audio/zira/what-do-you-see.wav --out /tmp/reply.wav
+```
+
+It costs a few thousand tokens and it is the only thing that catches a protocol
+change. `--half-duplex` runs the same WAVs with this client doing the
+turn-taking, which is the other half worth checking.
 
 ## Deploying
 
@@ -1047,7 +1340,10 @@ scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/
 ```
 
 `talk.py`, `endpointing.py` and `rover_tools.py` are not deployed anywhere —
-they run from this repo on whichever desk has the microphone. The rover copy is
+they run from this repo on whichever desk has the microphone. Neither are
+`realtime.py`, `prompts.py` and `mock_rover.py`, and `prompts.py` in particular
+*cannot* be: it reads `server.py` and `rover_daemon.py` off the disk beside it,
+so it only works from a checkout where both are present. The rover copy is
 flat in `~/ugv/` alongside the face-tracking scripts, which is the layout already
 there; nothing on the Pi needs installing.
 
