@@ -307,9 +307,45 @@ def test_where():
     check("a small face is far", far["distance"], "far")
 
 
+def test_map_request():
+    import rover_daemon
+
+    res = 0.05
+    ask = lambda half, scale: rover_daemon._map_request(half, scale, res)
+    side = lambda half: int(2 * half / res) + 1
+
+    # What is asked for is honoured whenever it fits.
+    check("a modest map is drawn as asked", ask(3.0, 4), (3.0, 4))
+    check("a tight map keeps its detail", ask(0.75, 8), (0.75, 8))
+
+    # Nonsense is pulled to the ends rather than refused: this is a view setting,
+    # and a picture at the nearest sane setting beats an error where a map should be.
+    check("a negative extent lands on the floor", ask(-5.0, 3)[0], 0.5)
+    check("a huge extent lands on the ceiling",
+          ask(500.0, 1)[0], rover_daemon.MAP_MAX_HALF_EXTENT_M)
+    check("absurd detail lands on the ceiling extent-permitting",
+          ask(0.75, 99)[1], rover_daemon.MAP_MAX_SCALE)
+
+    # The cap: the extent survives and the detail is what gives way, because the
+    # extent decides what you can see and the detail only how finely it is drawn.
+    wide_half, wide_scale = ask(10.0, 8)
+    check("a wide map keeps the extent it was asked for", wide_half, 10.0)
+    check("...and gives up detail instead", wide_scale < 8, True)
+    check("...staying inside the pixel cap",
+          side(wide_half) * wide_scale <= rover_daemon.MAP_MAX_PIXELS, True)
+
+    # Never below 1, however wide: a coarse map is still a map, and returning zero
+    # pixels per cell would be an empty picture rather than a cheap one.
+    for half in sorted({2.0, 6.0, rover_daemon.MAP_MAX_HALF_EXTENT_M}):
+        got_half, got_scale = ask(half, 8)
+        check(f"{half:g} m across still draws at least a pixel a cell",
+              got_scale >= 1, True)
+        check(f"...and {half:g} m is not silently narrowed", got_half, half)
+
+
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_look, test_where):
+                 test_no_camera, test_look, test_where, test_map_request):
         try:
             test()
         except Exception as exc:

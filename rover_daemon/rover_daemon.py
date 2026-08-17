@@ -153,6 +153,14 @@ DEFAULT_LIDAR = "auto"
 # planning a route home is a picture that will mislead.
 MAP_HALF_EXTENT_M = 3.0
 MAP_SCALE = 3
+# What a hand-driven client may ask for. `map_png` takes both as arguments so the
+# window can zoom; these bound what the Pi will attempt. Measured on this host at
+# 5 cm cells: a 500 px map is about half a second and a 1200 px one about three, and
+# beyond that a caller is holding a connection open for longer than the map stays
+# true. MAP_MAX_PIXELS is the one that matters, because extent and detail multiply.
+MAP_MAX_HALF_EXTENT_M = 10.0
+MAP_MAX_SCALE = 8
+MAP_MAX_PIXELS = 1200
 
 
 def _level(value: Any) -> int:
@@ -176,6 +184,26 @@ def _level(value: Any) -> int:
     if not isinstance(value, (int, float)):
         raise ValueError(f"level must be a number from 0 to {LIGHT_MAX}")
     return int(min(max(round(value), 0), LIGHT_MAX))
+
+
+def _map_request(half: float, scale: float, resolution_m: float) -> tuple[float, int]:
+    """What the rover will actually draw, given what was asked for.
+
+    Both knobs multiply into pixels, and pixels are what this host cannot afford:
+    drawing the map is interpreted Python, so a picture costs roughly its own area.
+    10 m at 8 pixels a cell is a 3000 px square and took half a minute, during which
+    the caller holds a connection open and learns nothing.
+
+    So the area is capped and the *detail* is what gives way. The extent was asked
+    for explicitly and decides what is in frame; the detail only decides how finely
+    it is drawn, which makes it the one to spend when something has to give.
+    """
+    half = min(MAP_MAX_HALF_EXTENT_M, max(0.5, half))
+    scale = int(min(MAP_MAX_SCALE, max(1, scale)))
+    side = int(2 * half / resolution_m) + 1
+    while scale > 1 and side * scale > MAP_MAX_PIXELS:
+        scale -= 1
+    return half, scale
 
 
 def _number(value: Any, what: str) -> float:
@@ -1166,15 +1194,30 @@ class Rover:
         instead, because a tool result cannot carry an image into a conversation.
         A GUI has no such problem, and routing a picture through a frame server to
         get it onto the screen of the machine that asked for it would be silly.
+
+        `half_extent_m` and `scale` are the zoom: how many metres are in frame, and
+        how many pixels a 5 cm cell gets. Both are clamped by `_map_request`, which
+        may lower the detail, so the reply says what was actually drawn along with
+        what it cost -- a client that showed the settings it asked for rather than the
+        ones it got would report a picture that does not exist.
         """
         if self.nav is None:
             return {"ok": False, "error": "this rover has no lidar attached"}
         half = _number(arguments.get("half_extent_m", MAP_HALF_EXTENT_M),
                        "half_extent_m")
         scale = _number(arguments.get("scale", MAP_SCALE), "scale")
-        png, caption = self.nav.map_png(min(10.0, max(0.5, half)),
-                                        int(min(8, max(1, scale))))
+        resolution = self.nav.slam.config.resolution_m
+        half, scale = _map_request(half, scale, resolution)
+        side = int(2 * half / resolution) + 1
+
+        started = time.monotonic()
+        png, caption = self.nav.map_png(half, scale)
+        # What it actually rendered, not what was asked for, so a caller that had its
+        # detail reduced can say so rather than quietly showing a coarser picture.
         return {"ok": True, "caption": caption, "bytes": len(png),
+                "half_extent_m": round(half, 2), "scale": scale,
+                "pixels": side * scale,
+                "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 
     # --- the loop -----------------------------------------------------------

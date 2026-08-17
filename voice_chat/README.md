@@ -901,14 +901,29 @@ seconds — because a turn is the one move whose result you cannot judge by watc
 the rover do it, and a column of ratios makes a systematic shortfall obvious in
 three attempts instead of ten.
 
-Three things in it are deliberate rather than incidental.
+Four things in it are deliberate rather than incidental.
 
-**Three connections, not one.** `drive` does not answer until the move has
+**Four connections, not one.** `drive` does not answer until the move has
 finished, and `RoverClient` serialises calls on one socket, so anything sharing
 that socket queues behind the move — including the stop meant to interrupt it. The
-window opens one connection for moves, one for stop and one for watching. The
-daemon is a `ThreadingTCPServer` and takes no lock across a move, so the other two
-are answered while the first is still driving.
+window opens one connection for moves, one for stop, one for watching and one for
+the map. The daemon is a `ThreadingTCPServer` and takes no lock across a move, so
+the others are answered while the first is still driving.
+
+The map earned its own once its cost was measured: drawing one takes the Pi about a
+second at the default and several at the widest settings, and while it shared the
+watch connection every refresh held up a status poll that is meant to arrive three
+times a second — so the numbers went stale exactly while the picture was being drawn.
+
+**The map zooms, on two knobs.** "Across" is how many metres are in frame and must
+be asked of the rover, since the cropping happens where the grid lives; `-` and `+`
+step it through a fixed ladder from 1.5 m to 20 m so the same extents come back and
+one picture can be compared with an earlier one. "Detail" is pixels per 5 cm cell,
+and that is the expensive one — the area goes as its square, and drawing is
+interpreted Python on a Pi 1. So `map_png` caps the total pixels and reduces the
+detail rather than spend half a minute on one picture, returning what it actually
+used; the console prints that under the buttons, capping included, so a setting the
+rover declined does not look like a setting that did nothing.
 
 **Two calls that no model is shown.** `nav_status` returns every number the driving
 loop has, and `map_png` returns the map as base64 in the reply instead of posting

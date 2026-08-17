@@ -78,64 +78,162 @@ class Canvas:
     """A mutable bitmap with just enough drawing to annotate a map.
 
     Greyscale by default, so a value is one byte; pass a 3-tuple as `fill` and it
-    becomes RGB and every value is a 3-tuple instead. None of the shapes below
-    care which, because they all go through `put`.
+    becomes RGB and every value is a 3-tuple instead. None of the shapes below care
+    which, because they all go through `_pack` and `span`.
+
+    Written for a Pi 1, where this is the expensive part of making a map -- there is
+    no drawing library, so every pixel costs an interpreted bytecode or two. Two
+    things follow. Colours are packed to bytes once per call rather than once per
+    pixel, because building a `bytes` from a 3-tuple per pixel was costing more than
+    the PNG encoder did for the whole image. And every shape reduces to horizontal
+    runs, so a run of touching pixels is one slice assignment instead of one call
+    each: the border used to cost twice what compressing the picture cost.
     """
 
     def __init__(self, width, height, fill=UNKNOWN):
         self.w, self.h = width, height
         self.chan = 3 if isinstance(fill, (tuple, list)) else 1
-        pixel = bytes(fill) if self.chan == 3 else bytes([fill])
-        self.rows = [bytearray(pixel) * width for _ in range(height)]
+        self.rows = [bytearray(self._pack(fill)) * width for _ in range(height)]
+
+    @classmethod
+    def over(cls, rows, channels):
+        """A canvas that adopts `rows` as they are, for a background already built
+        by something faster than this -- numpy, say. Filling a canvas and then
+        throwing the fill away was pure waste on a host this slow."""
+        canvas = cls.__new__(cls)
+        canvas.rows = rows
+        canvas.chan = channels
+        canvas.h = len(rows)
+        canvas.w = len(rows[0]) // channels
+        return canvas
+
+    def _pack(self, value):
+        """A colour as the bytes of one pixel. Hoist this out of pixel loops."""
+        if self.chan == 1:
+            return bytes([value]) if isinstance(value, int) else bytes(value)
+        return bytes(value)
+
+    def span(self, y, x0, x1, packed):
+        """Pixels x0..x1 inclusive on row y, clipped, in one slice assignment.
+        `packed` comes from `_pack`, not a colour tuple."""
+        if not 0 <= y < self.h:
+            return
+        x0, x1 = max(0, int(x0)), min(self.w - 1, int(x1))
+        if x1 < x0:
+            return
+        c = self.chan
+        self.rows[y][c * x0:c * (x1 + 1)] = packed * (x1 - x0 + 1)
 
     def put(self, x, y, value):
-        if 0 <= x < self.w and 0 <= y < self.h:
-            if self.chan == 1:
-                self.rows[y][x] = value
-            else:
-                self.rows[y][3 * x:3 * x + 3] = bytes(value)
+        self.span(int(y), int(x), int(x), self._pack(value))
 
     def disc(self, cx, cy, r, value):
-        for y in range(int(cy - r), int(cy + r) + 1):
-            for x in range(int(cx - r), int(cx + r) + 1):
-                if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
-                    self.put(x, y, value)
+        packed = self._pack(value)
+        for y in range(int(math.floor(cy - r)), int(math.ceil(cy + r)) + 1):
+            dy = y - cy
+            if abs(dy) > r:
+                continue
+            dx = math.sqrt(max(0.0, r * r - dy * dy))
+            self.span(y, math.ceil(cx - dx), math.floor(cx + dx), packed)
 
     def line(self, x0, y0, x1, y1, value, thickness=1):
+        packed = self._pack(value)
+        if thickness <= 1 and int(y0) == int(y1):
+            # The common case for the furniture: one run, one assignment.
+            self.span(int(y0), min(x0, x1), max(x0, x1), packed)
+            return
         steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+        radius = thickness / 2.0
         for i in range(steps + 1):
             t = i / steps
             x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
             if thickness <= 1:
-                self.put(int(x), int(y), value)
+                self.span(int(y), int(x), int(x), packed)
             else:
-                self.disc(x, y, thickness / 2.0, value)
+                self.disc(x, y, radius, value)
 
     def rect(self, x0, y0, x1, y1, value):
-        self.line(x0, y0, x1, y0, value)
-        self.line(x0, y1, x1, y1, value)
-        self.line(x0, y0, x0, y1, value)
-        self.line(x1, y0, x1, y1, value)
+        packed = self._pack(value)
+        self.span(int(y0), x0, x1, packed)
+        self.span(int(y1), x0, x1, packed)
+        for y in range(int(min(y0, y1)), int(max(y0, y1)) + 1):
+            self.span(y, x0, x0, packed)
+            self.span(y, x1, x1, packed)
 
     def triangle(self, p0, p1, p2, value):
         """A filled triangle, so the rover can be an arrow rather than a dot with a
-        whisker off it. Each pixel centre is tested against the three edge
-        functions and kept if it is on the same side of all of them, which accepts
-        either winding and needs no sorting of the vertices."""
-        xs, ys = (p0[0], p1[0], p2[0]), (p0[1], p1[1], p2[1])
-
-        def side(a, b, px, py):
-            return (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0])
-
+        whisker off it. A triangle is convex, so the inside of each row is one run:
+        the row's span is found by intersecting it with the three edges, which is
+        both faster and simpler than testing every pixel in the bounding box."""
+        packed = self._pack(value)
+        edges = ((p0, p1), (p1, p2), (p2, p0))
+        ys = (p0[1], p1[1], p2[1])
         for y in range(int(math.floor(min(ys))), int(math.ceil(max(ys))) + 1):
-            for x in range(int(math.floor(min(xs))), int(math.ceil(max(xs))) + 1):
-                cx, cy = x + 0.5, y + 0.5
-                d = (side(p0, p1, cx, cy), side(p1, p2, cx, cy), side(p2, p0, cx, cy))
-                if all(v >= 0 for v in d) or all(v <= 0 for v in d):
-                    self.put(x, y, value)
+            cy = y + 0.5
+            crossings = []
+            for (ax, ay), (bx, by) in edges:
+                if (ay <= cy < by) or (by <= cy < ay):
+                    crossings.append(ax + (bx - ax) * (cy - ay) / (by - ay))
+            if len(crossings) >= 2:
+                self.span(y, math.ceil(min(crossings) - 0.5),
+                          math.floor(max(crossings) - 0.5), packed)
 
     def png(self):
         return _png(self.rows, 2 if self.chan == 3 else 0)
+
+
+def _draw_track(image, np, points, scale):
+    """Paint the rover's path into an (h, w, 3) numpy image, in one vectorised pass.
+
+    `points` is the whole trail already in pixel coordinates. It is split into runs
+    at the edges of the picture -- a rover that left the view and came back must not
+    have the two visits joined by a line straight across the middle -- and each run
+    is resampled at half-pixel spacing along its own arc length, which is what makes
+    the cost depend on how much path is on screen and not on how many poses the
+    trail happens to hold.
+    """
+    height, width = image.shape[:2]
+    margin = 4 * scale
+    runs, current = [], []
+    for col, row in points:
+        if -margin <= col <= width + margin and -margin <= row <= height + margin:
+            current.append((col, row))
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+
+    # A band exactly `thickness` pixels wide, as offsets stamped at each sample and
+    # shifted back half its width so it straddles the path. Spreading a radius either
+    # side instead drew a track half again as wide as it asked for, which read as a
+    # different, fatter line than the rest of the picture.
+    thickness = max(1, scale // 2)
+    brush = [(dx, dy) for dy in range(thickness) for dx in range(thickness)]
+    centre = (thickness - 1) / 2.0
+    colour = np.array(C_TRACK, dtype=np.uint8)
+
+    for run in runs:
+        if len(run) < 2:
+            continue
+        cols = np.array([p[0] for p in run], dtype=np.float64)
+        rows = np.array([p[1] for p in run], dtype=np.float64)
+        along = np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(cols),
+                                                          np.diff(rows)))))
+        if along[-1] <= 0.0:
+            continue
+        # One pixel between samples along the path, which is the coarsest spacing that
+        # cannot leave a gap: whatever direction the line runs in, neither coordinate
+        # can move by more than a whole pixel between samples.
+        at = np.arange(0.0, along[-1], 1.0)
+        cx, cy = np.interp(at, along, cols), np.interp(at, along, rows)
+        for dx, dy in brush:
+            px = (cx - centre + dx).astype(np.int32)
+            py = (cy - centre + dy).astype(np.int32)
+            # Masked, not clipped: a point just off the edge must be dropped, and
+            # clipping would have smeared it along the border instead.
+            inside = (px >= 0) & (px < width) & (py >= 0) & (py < height)
+            image[py[inside], px[inside]] = colour
 
 
 def render(slam, half_extent_m=3.0, scale=3, trail=()):
@@ -185,8 +283,6 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
     rgb[shown >= occupied_at] = C_OCCUPIED
 
     big = np.repeat(np.repeat(rgb, scale, axis=0), scale, axis=1)
-    canvas = Canvas(big.shape[1], big.shape[0], C_UNKNOWN)
-    canvas.rows = [bytearray(row.tobytes()) for row in big]
 
     def to_px(wx, wy):
         """World metres -> pixel, matching the flips above."""
@@ -196,15 +292,24 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
         return col, row
 
     # Where the rover has been, so "go around it" can be checked afterwards. Drawn
-    # thick enough to survive against a busy background, since a one-pixel track
-    # over speckle is the thing that was hardest to follow in grey.
-    prev = None
-    for px, py in trail:
-        cur = to_px(px, py)
-        if prev is not None:
-            canvas.line(prev[0], prev[1], cur[0], cur[1], C_TRACK,
-                        thickness=max(1, scale // 2))
-        prev = cur
+    # thick enough to survive against a busy background, since a one-pixel track over
+    # speckle is the thing that was hardest to follow in grey.
+    #
+    # Painted into the numpy array before the canvas exists, which is the one place in
+    # here worth departing from drawing through the canvas. The trail holds up to 4000
+    # poses 5 cm apart, so a rover that has pottered around one room for an afternoon
+    # has 200 m of path to draw; walked a pixel at a time in Python that was 17
+    # seconds of a 19-second map, and it grew for as long as the session lasted.
+    # Thinning the points does not fix it, because the cost is the length of the line
+    # and not the number of corners in it -- thinning only turns curves into chords,
+    # and measured, it bought 20%. Resampling each run along its own arc length and
+    # writing the pixels in one indexed assignment costs tens of milliseconds, and
+    # stops depending on how long the rover has been driving at all.
+    _draw_track(big, np, [to_px(*point) for point in trail], scale)
+
+    # From here on the drawing is small and irregular -- an arrow, a bar, a border --
+    # which is what the canvas is for.
+    canvas = Canvas.over([bytearray(row.tobytes()) for row in big], 3)
 
     # Where the rover is and which way it points, as one arrow. A disc with a
     # whisker off it read badly at this scale -- at three pixels per cell the

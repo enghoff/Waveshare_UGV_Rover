@@ -15,19 +15,36 @@ wrong.
 
     python voice_chat/drive_console.py                     # finds the rover
     python voice_chat/drive_console.py --rover rpi.local:8769
-    python voice_chat/drive_console.py --half-extent 4.0   # a wider map
+    python voice_chat/drive_console.py --half-extent 4.0   # a wider map to start on
 
 Only the standard library, plus [rover_tools.py](rover_tools.py) for the wire
 protocol. tkinter ships with Python, which matters because this is a diagnostic,
 and a diagnostic that needs something installed first is one you will not have when
 you need it.
 
-**Three connections, deliberately.** A `drive` call does not answer until the move
+**The map zooms**, on two separate knobs, because they are two separate questions.
+"Across" changes how many metres are in frame and has to be asked of the rover,
+since the cropping happens where the grid lives; `-` and `+` step it through a
+fixed ladder so the same extents come back and one picture can be compared with an
+earlier one. "Detail" changes pixels per 5 cm cell, which is the one that costs:
+the picture's area goes as its square and there is no drawing library on the Pi, so
+the daemon caps the total and lowers the detail rather than spend half a minute on
+one map. The line under the buttons reports what came back -- size, kilobytes, time
+to draw, and whether the detail was capped -- so a setting that the rover declined
+does not look like a setting that did nothing.
+
+**Four connections, deliberately.** A `drive` call does not answer until the move
 has finished, and `RoverClient` serialises calls on one socket, so anything sharing
 that socket would queue behind the move. Stop must never queue, and neither should
 the status poll that tells you what the move is doing while it does it -- so moves,
 stop, and watching each get their own. The daemon is a threading server and holds
-no lock across a move, so the other two are answered while the first is driving.
+no lock across a move, so the others are answered while the first is driving.
+
+The map gets a fourth for the same reason one step down: drawing it costs the Pi
+about a second, sometimes several, and it shared the status connection until that
+was measured -- so the numbers went stale exactly while the picture was being
+drawn. It is the slowest thing here and it is the least urgent, which is a good
+argument for its own socket and a poor one for sharing.
 
 **What it will not do.** There is no continuous teleop here, because the daemon
 offers none: every move it exposes is bounded, in metres or in degrees, and it
@@ -69,6 +86,15 @@ TURN_ROWS = 40
 # are where the coast after the power comes off is a large fraction of the whole
 # turn, and 90 is what a model asks for when it wants to face another way.
 TURN_PRESETS_DEG = (15, 45, 90)
+
+# How far each way the map covers, as a ladder rather than a zoom multiplier, so the
+# same handful of extents come back and one picture can be compared with an earlier
+# one. The daemon will not go past 10 m, and there is nothing beyond that worth
+# looking at: the pose drifts, so a wide map invites planning a route home that the
+# map cannot support.
+MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0)
+MAP_MAX_SCALE = 8          # the daemon's own ceiling; it lowers this further if the
+                           # extent and the detail together would cost too much
 
 
 def _legend():
@@ -199,7 +225,8 @@ class Console:
 
         self.moves: Channel | None = None     # blocking, one bounded move at a time
         self.halt: Channel | None = None      # stop, and nothing else, ever
-        self.watch: Channel | None = None     # status, map, tool list
+        self.watch: Channel | None = None     # status, questions, tool list
+        self.picture: Channel | None = None   # the map, which is slow enough to matter
         self.channels: list[Channel] = []
 
         self.tools: list[str] = []
@@ -209,7 +236,9 @@ class Console:
         self.poll_outstanding = False
         self.poll_at = 0.0
         self.map_outstanding = False
+        self.map_wanted = False        # the view moved while one was already in flight
         self.map_at = 0.0
+        self.map_cost = 0.0            # how long the rover said the last one took
         self.map_image: tk.PhotoImage | None = None
 
         root.title("rover drive console")
@@ -316,19 +345,47 @@ class Console:
         ttk.Checkbutton(ask, text=f"map every {MAP_AUTO_S:.0f} s",
                         variable=self.auto_map).pack(anchor="w")
 
+        # How much is in frame, and how finely it is drawn. Two knobs rather than one
+        # because they are different questions: the extent decides what you can see,
+        # the detail only decides how big the picture is, and on this Pi the detail is
+        # the one that costs.
+        zoom = ttk.LabelFrame(parent, text="map view", padding=8)
+        zoom.pack(fill="x", pady=(10, 0))
+        for label, out_text, in_text, handler in (
+                ("across", "wider", "closer", self._zoom),
+                ("detail", "coarser", "finer", self._detail)):
+            row = ttk.Frame(zoom)
+            row.pack(fill="x", pady=1)
+            ttk.Label(row, text=label, width=7).pack(side="left")
+            ttk.Button(row, text=out_text, width=8,
+                       command=lambda h=handler: h(-1)).pack(side="left")
+            ttk.Button(row, text=in_text, width=8,
+                       command=lambda h=handler: h(1)).pack(side="left", padx=2)
+        self.zoom_var = tk.StringVar(value="")
+        ttk.Label(zoom, textvariable=self.zoom_var, foreground="#444").pack(anchor="w")
+        self.cost_var = tk.StringVar(value="")
+        ttk.Label(zoom, textvariable=self.cost_var, foreground="#666").pack(anchor="w")
+        self._show_zoom()
+
         keys = ttk.LabelFrame(parent, text="keys", padding=8)
         keys.pack(fill="x", pady=(10, 0))
         ttk.Label(keys, justify="left", foreground="#444",
                   text=("space  stop\n"
                         "up     drive the distance above\n"
                         "left   turn left by the angle above\n"
-                        "right  turn right by the angle above")).pack(anchor="w")
+                        "right  turn right by the angle above\n"
+                        "+ -    map closer or wider")).pack(anchor="w")
         for sequence, handler in (
                 ("<space>", lambda _e: self._stop()),
                 ("<Escape>", lambda _e: self._stop()),
                 ("<Up>", lambda _e: self._typing() or self._drive()),
                 ("<Left>", lambda _e: self._typing() or self._turn(self._angle())),
-                ("<Right>", lambda _e: self._typing() or self._turn(-self._angle()))):
+                ("<Right>", lambda _e: self._typing() or self._turn(-self._angle())),
+                ("<plus>", lambda _e: self._typing() or self._zoom(1)),
+                ("<KP_Add>", lambda _e: self._typing() or self._zoom(1)),
+                ("<equal>", lambda _e: self._typing() or self._zoom(1)),
+                ("<minus>", lambda _e: self._typing() or self._zoom(-1)),
+                ("<KP_Subtract>", lambda _e: self._typing() or self._zoom(-1))):
             self.root.bind(sequence, handler)
 
     def _build_status(self, parent: ttk.Frame) -> None:
@@ -448,7 +505,8 @@ class Console:
         self.moves = Channel("move", address, self.replies)
         self.halt = Channel("stop", address, self.replies)
         self.watch = Channel("watch", address, self.replies)
-        self.channels = [self.moves, self.halt, self.watch]
+        self.picture = Channel("map", address, self.replies)
+        self.channels = [self.moves, self.halt, self.watch, self.picture]
         self.link_var.set(f"{address}: asking what it can do")
         self.watch.submit("list_tools")
 
@@ -505,12 +563,58 @@ class Console:
         self.halt.submit("stop_driving")
 
     def _refresh_map(self) -> None:
-        if self.watch is None or self.map_outstanding:
+        """On its own connection, because the map is the slowest thing here.
+
+        It shared the status connection at first, which was wrong once the cost was
+        measured: a map at the default settings takes a couple of seconds on the Pi,
+        and `RoverClient` serialises, so every refresh held up a status poll that is
+        meant to arrive three times a second. The numbers went stale exactly while
+        the picture was being drawn.
+        """
+        if self.picture is None:
             return
+        if self.map_outstanding:
+            # One at a time, but do not lose the request: the map takes seconds, and a
+            # zoom pressed while one is in flight would otherwise be dropped on the
+            # floor -- silently, and for good if auto-refresh is off. Remember that the
+            # settings moved and ask again as soon as this one lands.
+            self.map_wanted = True
+            return
+        self.map_wanted = False
         self.map_outstanding = True
         self.map_at = time.monotonic()
-        self.watch.submit("map_png", {"half_extent_m": self.half_extent,
-                                      "scale": self.scale})
+        # Say that the picture on screen is the old one. The buttons change the labels
+        # at once and the rover takes a second or more to answer, so without this the
+        # settings shown and the picture shown disagree for as long as the draw takes.
+        self.cost_var.set("drawing...")
+        self.picture.submit("map_png", {"half_extent_m": self.half_extent,
+                                        "scale": self.scale})
+
+    def _zoom(self, step: int) -> None:
+        """Wider or tighter, through a fixed ladder rather than a multiplier, so the
+        same few extents come back and a picture can be compared with an earlier
+        one."""
+        try:
+            index = MAP_EXTENTS_M.index(self.half_extent)
+        except ValueError:
+            index = min(range(len(MAP_EXTENTS_M)),
+                        key=lambda i: abs(MAP_EXTENTS_M[i] - self.half_extent))
+        self.half_extent = MAP_EXTENTS_M[max(0, min(len(MAP_EXTENTS_M) - 1,
+                                                    index + step))]
+        self._show_zoom()
+        self._refresh_map()
+
+    def _detail(self, step: int) -> None:
+        """Pixels per 5 cm cell. This is the one that costs: the picture's area goes
+        as its square, and the drawing is interpreted Python on a Pi 1. The daemon
+        caps the total and says what it actually used, which is what gets displayed."""
+        self.scale = max(1, min(MAP_MAX_SCALE, self.scale + step))
+        self._show_zoom()
+        self._refresh_map()
+
+    def _show_zoom(self) -> None:
+        self.zoom_var.set(f"{2 * self.half_extent:.0f} m across, "
+                          f"{self.scale} px/cell")
 
     # --- the pump -------------------------------------------------------------
     def _tick(self) -> None:
@@ -529,8 +633,13 @@ class Console:
             self.poll_outstanding = True
             self.poll_at = now
             self.watch.submit("nav_status")
-        if (self.watch is not None and self.auto_map.get()
-                and not self.map_outstanding and now - self.map_at > MAP_AUTO_S):
+        # Auto-refresh leaves the rover as long to breathe as the last map took to
+        # draw. Asking every two seconds for a picture that takes two and a half is
+        # how you keep a single-core Pi permanently drawing maps while it is also
+        # running the SLAM it is drawing them from.
+        if (self.picture is not None and self.auto_map.get()
+                and not self.map_outstanding
+                and now - self.map_at > max(MAP_AUTO_S, self.map_cost)):
             self._refresh_map()
 
         self.root.after(TICK_MS, self._tick)
@@ -553,6 +662,8 @@ class Console:
         if name == "map_png":
             self.map_outstanding = False
             self._show_map(body)
+            if self.map_wanted:
+                self._refresh_map()
             return
         if name == "list_tools":
             self._show_tools(body)
@@ -623,6 +734,20 @@ class Console:
         self.map_image = image          # Tk keeps no reference of its own
         self.map_label.configure(image=image, text="")
         self.caption_var.set(body.get("caption", ""))
+
+        # What the rover actually drew, which is not always what was asked for: the
+        # daemon lowers the detail rather than spend half a minute on one picture, and
+        # a console that hid that would leave you wondering why finer changed nothing.
+        got_scale, took = body.get("scale"), body.get("render_s")
+        self.map_cost = float(took or 0.0)
+        cost = f"{image.width()} px"
+        if body.get("bytes"):
+            cost += f", {body['bytes'] / 1000:.0f} kB"
+        if took is not None:
+            cost += f", {took:.1f} s to draw"
+        if got_scale is not None and got_scale != self.scale:
+            cost += f" -- capped to {got_scale} px/cell"
+        self.cost_var.set(cost)
 
     def _tally_turn(self, reply: Reply) -> None:
         asked = float(reply.arguments.get("angle_deg", 0.0))

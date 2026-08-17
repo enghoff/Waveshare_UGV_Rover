@@ -37,6 +37,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +57,13 @@ LEGS = ((1.2, 0.4), (1.2, -0.4), (2.0, 0.4), (2.0, -0.4))
 LEG_RADIUS_M = 0.05
 STANDOFF_M = 0.30          # the real navigator's rule, mirrored here
 MAX_RANGE_M = 12.0
+# The daemon's own map limits, read out of its source the same way the schemas are.
+# A mock that had its own copy of these would drift from the rover, and the whole
+# point of clamping here is that a client which shows what it *got* can be tested
+# against a rover that says no.
+MAP_MAX_HALF_EXTENT_M = prompts._literal(prompts.DAEMON, "MAP_MAX_HALF_EXTENT_M")
+MAP_MAX_SCALE = prompts._literal(prompts.DAEMON, "MAP_MAX_SCALE")
+MAP_MAX_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MAX_PIXELS")
 
 
 def _wrap(radians: float) -> float:
@@ -224,10 +232,21 @@ class Rover:
                 "lidar_live": True, "lidar_port": "invented", "scan_age_s": 0.05}
 
     def map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        half = float(arguments.get("half_extent_m", 3.0))
-        scale = int(arguments.get("scale", 3))
+        """Clamped and reported the way the real one does, including lowering the
+        detail when the two together would be too big -- a client that shows what it
+        got rather than what it asked for needs a mock that can disagree with it."""
+        half = min(MAP_MAX_HALF_EXTENT_M, max(0.5, float(
+            arguments.get("half_extent_m", 3.0))))
+        scale = int(min(MAP_MAX_SCALE, max(1, arguments.get("scale", 3))))
+        side = int(2 * half / 0.05) + 1
+        while scale > 1 and side * scale > MAP_MAX_PIXELS:
+            scale -= 1
+        started = time.monotonic()
         png, caption = self._map(half, scale)
         return {"ok": True, "caption": caption, "bytes": len(png),
+                "half_extent_m": round(half, 2), "scale": scale,
+                "pixels": side * scale,
+                "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 
     def show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:

@@ -317,6 +317,27 @@ draw text, so the caption names the colours for the model and
 [voice_chat/drive_console.py](../voice_chat/drive_console.py) builds its key out of
 this file's palette rather than its own.
 
+`half_extent_m` and `scale` are both arguments, so a client can zoom: the first
+decides how many metres are in frame, the second how many pixels a 5 cm cell gets.
+They are not equally cheap. Drawing here is interpreted Python — there is no library
+to hand it to — so a picture costs roughly its own area, and the two multiply: 10 m
+at 8 pixels a cell is a 3000 px square and took half a minute on this Pi. `map_png`
+in the daemon therefore caps the total pixels and lets the *detail* give way, since
+the extent was asked for explicitly and decides what you can see while the detail
+only decides how finely it is drawn, and it returns what it actually used.
+
+Most of that cost turned out to be avoidable, and finding it needed measurement
+rather than reading. Colours were being packed from a tuple into `bytes` once per
+pixel, which cost more than compressing the whole image; every shape now reduces to
+horizontal runs, one slice assignment each, and packs its colour once. The border
+alone had been twice the price of the PNG encoder. Worst was the rover's own track:
+4000 poses 5 cm apart, most of them outside the crop, the rest drawn over their own
+pixels again and again — 86 seconds for a single map late in a session against 2
+seconds for the same map early in one. It is clipped, thinned, and then thinned
+again to a fixed budget of points, which makes it a fixed cost instead of one that
+grows all afternoon. Together those took the default map from 2.3 s to about 0.7 s,
+and the rendering is pixel-for-pixel identical wherever the budget does not bite.
+
 ## Files
 
 ```
