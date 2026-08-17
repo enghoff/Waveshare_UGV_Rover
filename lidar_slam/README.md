@@ -294,6 +294,16 @@ grey speckle that invites confident nonsense. The caption travels as the tool re
 whether or not the picture arrives, so a refused image degrades to a worse answer
 rather than to an invented one.
 
+Two things in there turn metres into pixels — the array of cells, and `to_px` for
+everything drawn over it — and they have to agree, because the grid's axes are
+forward and left rather than row and column. They did not, for a while: an extra
+transpose reflected the walls about the diagonal and left the rover, its heading and
+its track alone, so the track ran across a corridor instead of down it. Each half
+looked plausible by itself, and the mock rover draws both halves with one function of
+its own, so only the real map showed it. `python mapimg.py` now asserts that a wall
+straight ahead and a track that drove into it come out as a vertical line meeting a
+horizontal one.
+
 ## Files
 
 ```

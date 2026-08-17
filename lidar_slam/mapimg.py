@@ -104,11 +104,14 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
     y0, y1 = max(0, cy - half_cells), min(cells, cy + half_cells + 1)
     sub = np.asarray(grid[x0:x1, y0:y1])
 
-    # Grid axes are (ix along start-forward, iy along start-left). A plan view wants
-    # forward up the page and left to the left, so forward becomes the row index
-    # counting upward and left becomes the column index counting leftward -- one
-    # transpose and two flips, the same arrangement write_pgm uses.
-    shown = np.flipud(np.fliplr(sub.T))
+    # Grid axes are (ix along start-forward, iy along start-left), so the array's
+    # own first axis is already the one that should run up the page. A plan view
+    # wants forward up and left to the left, which is therefore two flips and no
+    # transpose -- the same arrangement write_pgm uses, and the one to_px below
+    # inverts. A transpose here as well would reflect the walls about the diagonal
+    # while leaving the rover and its trail alone, which is how they came to
+    # disagree.
+    shown = np.flipud(np.fliplr(sub))
     nh, nw = shown.shape
 
     img = np.full((nh, nw), UNKNOWN, dtype=np.uint8)
@@ -167,10 +170,80 @@ def render(slam, half_extent_m=3.0, scale=3, trail=()):
     return canvas.png(), description
 
 
+def _check_orientation():
+    """Assert the mapped walls and the drawn trail use one convention.
+
+    The grid arrives indexed [forward, left] and comes out as pixels twice over,
+    once as an array and once through `to_px`, and for a while those two disagreed
+    by a transpose: the walls were mirrored about the diagonal while the rover and
+    its trail were not. Nothing caught it, because each half looks plausible alone
+    and the mock rover draws both halves itself. So: a wall straight ahead and a
+    trail that drove straight at it must come out as a vertical track running into
+    a horizontal stripe.
+    """
+    import contextlib
+
+    import numpy as np
+
+    class _Config:
+        resolution_m, grid_cells, occupied_at, rover_width_m = 0.05, 400, 20, 0.34
+
+    class _Slam:
+        config = _Config()
+        lock = contextlib.nullcontext()
+        pose = (2.0, 0.0, 0.0)          # 2 m along forward, facing forward
+
+        def __init__(self):
+            n = _Config.grid_cells
+            self._g = np.zeros((n, n), dtype=np.int8)
+            self._g[n // 2 + 60, :] = 60         # a wall across, a metre ahead
+
+        def grid(self):
+            return self._g
+
+        def scan_xy(self):
+            return []
+
+    png, _ = render(_Slam(), half_extent_m=3.0, scale=3,
+                    trail=[(cm / 100.0, 0.0) for cm in range(0, 201, 5)])
+
+    # Decode our own PNG rather than trusting the maths that wrote it.
+    body = b""
+    at = 8
+    while at < len(png):
+        size = struct.unpack(">I", png[at:at + 4])[0]
+        if png[at + 4:at + 8] == b"IHDR":
+            width, height = struct.unpack(">II", png[at + 8:at + 16])
+        elif png[at + 4:at + 8] == b"IDAT":
+            body += png[at + 8:at + 8 + size]
+        at += 12 + size
+    raw = zlib.decompress(body)
+    rows = [raw[r * (width + 1) + 1:(r + 1) * (width + 1)] for r in range(height)]
+    img = np.array([list(r) for r in rows], dtype=np.uint8)
+
+    track_rows, track_cols = np.nonzero(img == TRACK)
+    assert len(track_cols), "no trail was drawn at all"
+    assert len(set(track_cols.tolist())) <= 2, (
+        f"the trail drove straight forward but spans columns "
+        f"{track_cols.min()}..{track_cols.max()}, so forward is not up the page")
+
+    # The wall is the one image row that is almost entirely solid.
+    solid = [r for r in range(height) if (img[r] == OCCUPIED).sum() > width * 0.9]
+    assert solid, "the wall across the map did not come out as a horizontal stripe"
+    assert max(solid) < track_rows.min(), (
+        f"the wall is at row {max(solid)} but the trail starts at row "
+        f"{track_rows.min()}, so the wall ahead was not drawn ahead")
+    print(f"orientation ok: trail up column {track_cols[0]}, wall across row "
+          f"{solid[0]}, rover at row {track_rows.min()}")
+
+
 if __name__ == "__main__":
     # A synthetic check that needs no rover: a box with a gap, so the geometry and
-    # the encoder can be eyeballed without the hardware.
+    # the encoder can be eyeballed without the hardware, and an assertion that the
+    # two halves of `render` agree about which way is forward.
     import sys
+
+    _check_orientation()
 
     c = Canvas(160, 120, UNKNOWN)
     for i in range(20, 140):

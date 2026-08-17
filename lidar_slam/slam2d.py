@@ -405,8 +405,10 @@ class Slam2D:
         img[(g < 0)] = 245
         img[(g >= 0) & (g < occ) & (g != 0)] = 190
         # Rows top-to-bottom with +x up and +y left, so the picture is the plan view
-        # lidar/lidar_view.py draws rather than its transpose.
-        out = np.flipud(np.fliplr(img.T))
+        # lidar/lidar_view.py draws rather than its transpose. The grid's first axis
+        # is already +x, so this is two flips and nothing else; transposing as well
+        # would mirror the room about its diagonal.
+        out = np.flipud(np.fliplr(img))
         with open(path, "wb") as f:
             f.write(b"P5\n# slam2d occupancy, %d m across at %.3f m/cell\n%d %d\n255\n"
                     % (int(n * self.config.resolution_m), self.config.resolution_m,
