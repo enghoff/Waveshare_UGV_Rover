@@ -38,6 +38,14 @@ typedef struct {
                               * is the same convention as lidar/lidar_view.py. */
     float min_range_m;       /* below this a return is the chassis, not the world */
     float max_range_m;
+    /* The rover's own structure, as the sensor sees it: a box behind the lidar that
+     * returns inside are discarded from. A ring of range alone cannot do this job --
+     * the two mount posts on this rover sit 12 to 16 cm out, well beyond anything it
+     * would be safe to blind the sensor to in front, and they were being reported as
+     * an obstacle 13 cm away in 59% of revolutions. Measured on the rover; see
+     * docs/d500-lidar.md. Zero either field to switch the mask off. */
+    float body_back_m;       /* how far behind the lidar the rover's structure runs */
+    float body_half_width_m; /* and how far to each side of it */
     int   max_points;        /* decimate each revolution to at most this many points */
 
     /* --- scan match ------------------------------------------------------ */

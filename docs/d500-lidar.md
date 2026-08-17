@@ -100,3 +100,42 @@ vertical for any `VIEW_ROTATION_DEG`; change the constant and the cloud turns
 underneath it. The rotation is applied to the point geometry, not the finished
 canvas, so the HUD and range-ring labels stay upright — and the parsed bearings are
 untouched, so a distance read off a point means the same thing at any setting.
+
+## It sees the rover it is bolted to
+
+Two of the lidar's own mount posts are inside its field of view, and it reports
+them as an obstacle 13 cm away. Over 397 stationary revolutions:
+
+| | behind the lidar | to the side | range | seen in |
+|---|---|---|---|---|
+| the post at −135° | 8.5–11.2 cm | 8.2–10.7 cm right | 0.120–0.155 m | 59% of revolutions |
+| the post at +135° | 8.5–8.8 cm | 8.4–8.6 cm left | 0.120–0.123 m | 3% of revolutions |
+
+Nothing forward of the sensor was ever this close: all 251 short returns were
+behind it. That asymmetry is what identifies them — a real object at 13 cm would
+not confine itself to two bearings 90° apart and never appear anywhere else.
+
+They matter more than a stray return should, for three reasons. They are **inside
+the rover**, since the chassis is 34 cm wide and these sit 13 cm from its centre,
+so no external object can ever be where they are. They **move with the rover**, so
+they were stamped into the occupancy grid at each new pose, painting a trail of
+phantom obstacles down the middle of the map. And because the navigator takes the
+nearest return in any direction as its clearance, and takes the *minimum* over the
+last few revolutions to be pessimistic about dropouts, a post seen in 59% of
+revolutions was effectively always the nearest thing — which held every turn down
+to the slow rate and, before turning was made unrefusable, would refuse it outright.
+
+The minimum-range filter cannot do this job: at 12–16 cm the posts are well beyond
+anything it would be safe to blind the sensor to in front, where a return that
+close is something the rover is about to hit. So `slam2d.c` masks a box behind the
+lidar instead — `body_back_m` deep by `body_half_width_m` either side, 16 cm by
+14 cm, fitted to the measurements above with about 5 cm of margin and still inside
+the chassis' own 17 cm half-width. It is applied where a return first enters, so
+the matcher, the map, the sector query and the feature segmentation all agree about
+what is real; filtering further out would have left the map corrupted, and the map
+is the part that does not recover. `test_body_mask` in `selftest.c` feeds a ring of
+returns at 13 cm and checks that the rear half goes and the front half stays.
+
+Re-measure after moving the sensor or its bracket. The signature is a clearance
+that sits at some small constant whatever the room, and a `describe_surroundings`
+that disagrees with it.

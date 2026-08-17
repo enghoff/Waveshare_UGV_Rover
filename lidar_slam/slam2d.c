@@ -78,6 +78,13 @@ void slam2d_default_config(slam2d_config *cfg)
     cfg->mount_deg    = 90.0f;      /* this rover; matches lidar/lidar_view.py */
     cfg->min_range_m  = 0.12f;
     cfg->max_range_m  = 8.0f;
+    /* Fitted to what the sensor actually reports of the rover, not to a drawing: the
+     * offending returns span 8.5 to 11.2 cm behind the lidar and 8.2 to 10.7 cm to
+     * each side, over 397 revolutions. These are those bounds with about 5 cm of
+     * margin, and still comfortably inside the chassis' own 17 cm half-width, so
+     * nothing this mask can hide is anywhere but on the rover itself. */
+    cfg->body_back_m       = 0.16f;
+    cfg->body_half_width_m = 0.14f;
     /* The sensor delivers ~419 points a revolution and every one of them costs a
      * cache miss in every candidate pose, so the scan is thinned to 300. That is
      * still 1.2 deg of angular resolution against a 5 cm grid, and it bought 25 ms
@@ -85,13 +92,25 @@ void slam2d_default_config(slam2d_config *cfg)
      * and not. */
     cfg->max_points   = 300;
 
-    /* +/-0.15 m and +/-6 deg of coarse window, which is 1.5 m/s and 60 deg/s at
-     * 10 Hz -- several times what this rover does, so the prior can be left at zero
-     * until the encoder and gyro scale factors have been calibrated. Widening it is
-     * the first thing to try if a fast turn loses the match, and it is also the
-     * most expensive: cost goes as the square of the linear steps. */
-    cfg->coarse_lin_m     = 0.05f;  cfg->coarse_lin_steps = 3;
-    cfg->coarse_ang_deg   = 3.0f;   cfg->coarse_ang_steps = 2;
+    /* +/-0.15 m and +/-9 deg of coarse window: 1.5 m/s and 90 deg/s at 10 Hz.
+     *
+     * The angular half was +/-6 and that was not enough. Rotation beyond the window
+     * does not merely go unmatched, it comes back *under-reported* -- the matcher
+     * returns the largest rotation it was allowed to consider -- and a controller
+     * closing on that measurement keeps turning to make up a difference that is not
+     * there. Commanded 90 degree turns overshot by around 40%. Three extra angles
+     * cost about 7 ms a revolution, which is worth it to stop the measurement
+     * saturating quietly.
+     *
+     * Paid for out of the linear window, which was over-generous: +/-0.15 m is
+     * 1.5 m/s and the rover's top speed is 0.35, so 3.5 cm a revolution against a
+     * 10 cm window is still a threefold margin. Cost goes as the *square* of the
+     * linear steps and only linearly in the angular ones, so trading one for the
+     * other is not even: 5x5x7 coarse plus 5x5x5 fine is 300 poses against the 370
+     * this replaces, so the angular window widens by half and the whole match gets
+     * cheaper. */
+    cfg->coarse_lin_m     = 0.05f;  cfg->coarse_lin_steps = 2;
+    cfg->coarse_ang_deg   = 3.0f;   cfg->coarse_ang_steps = 3;
     /* The fine pass only has to beat the coarse grid, so it spans one coarse step. */
     cfg->fine_lin_m       = 0.0125f; cfg->fine_lin_steps  = 2;
     cfg->fine_ang_deg     = 0.75f;   cfg->fine_ang_steps  = 2;
@@ -223,10 +242,30 @@ static void add_point(slam2d *s, int angle_centi, int dist_mm)
     if (s->acc_n >= MAX_POINTS) return;
 
     int idx = (angle_centi / (36000 / LUT_BINS)) % LUT_BINS;
+    float px = r * s->lut_cos[idx];
+    float py = r * s->lut_sin[idx];
+
+    /* The rover, seen by its own sensor. Two posts behind the lidar came back at 12
+     * to 16 cm in most revolutions, and because they move with the rover they were
+     * being taken for the nearest obstacle -- which held every turn down to the slow
+     * rate and, worse, was stamped into the grid at each new pose, painting a trail
+     * of obstacles down the middle of the map as the rover drove.
+     *
+     * Discarded here, at the one place a return enters, so that the matcher, the map,
+     * the sector query and the feature segmentation all agree about what is real.
+     * Doing it further out would have left the map corrupted, and the map is the part
+     * that does not recover.
+     *
+     * Only behind. A return this close in front is something the rover is about to
+     * hit, and the standoff exists to act on exactly that. */
+    if (s->cfg.body_back_m > 0.0f && s->cfg.body_half_width_m > 0.0f
+        && px < 0.0f && px > -s->cfg.body_back_m
+        && fabsf(py) < s->cfg.body_half_width_m) return;
+
     point *p = &s->acc[s->acc_n++];
     p->range = r;
-    p->x = r * s->lut_cos[idx];
-    p->y = r * s->lut_sin[idx];
+    p->x = px;
+    p->y = py;
     /* Rover-frame bearing, kept as an integer so the sector query never needs an
      * atan2 -- 420 of those a revolution is a millisecond this host cannot spare. */
     int b = (int)(s->cfg.mount_deg * 100.0f) - angle_centi;
@@ -287,7 +326,7 @@ int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n)
 
 /* Sum the likelihood field under the scan, with the points already rotated into
  * world bearings and the candidate translation folded into (ox, oy). This is the
- * hot loop: at the defaults it runs 7 x 7 x 5 coarse plus 5 x 5 x 5 fine times a
+ * hot loop: at the defaults it runs 5 x 5 x 7 coarse plus 5 x 5 x 5 fine times a
  * revolution, so everything that can be hoisted out of it has been. */
 static long score_pose(const slam2d *s, float ox, float oy)
 {

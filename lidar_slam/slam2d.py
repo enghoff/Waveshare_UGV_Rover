@@ -32,6 +32,8 @@ class Config(ctypes.Structure):
         ("mount_deg", c_float),
         ("min_range_m", c_float),
         ("max_range_m", c_float),
+        ("body_back_m", c_float),
+        ("body_half_width_m", c_float),
         ("max_points", c_int),
         ("coarse_lin_m", c_float),
         ("coarse_ang_deg", c_float),

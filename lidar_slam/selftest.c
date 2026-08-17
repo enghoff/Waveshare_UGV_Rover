@@ -356,6 +356,86 @@ static void test_unknown_sectors(void)
     slam2d_destroy(s);
 }
 
+/* One revolution with every return at the same range, whatever the bearing. Not a
+ * room -- it is a ring, which is the shape that makes the body mask's geometry
+ * readable: whatever survives did so because of where it was, not how far. */
+static int make_ring_revolution(unsigned char *out, double range_m)
+{
+    int n = 0, mm = (int)(range_m * 1000.0 + 0.5);
+    for (int p = 0; p < PKTS_PER_REV; p++) {
+        unsigned char *q = out + n;
+        int first = (int)(p * PKT_POINTS * 36000.0 / PTS_PER_REV + 0.5) % 36000;
+        int last  = (int)(((p + 1) * PKT_POINTS - 1) * 36000.0 / PTS_PER_REV + 0.5) % 36000;
+        memset(q, 0, 47);
+        q[0] = 0x54; q[1] = 0x2C;
+        q[2] = 0x60; q[3] = 0x0E;
+        q[4] = first & 0xFF;  q[5] = first >> 8;
+        for (int k = 0; k < PKT_POINTS; k++) {
+            q[6 + k * 3] = mm & 0xFF;
+            q[7 + k * 3] = mm >> 8;
+            q[8 + k * 3] = 200;
+        }
+        q[42] = last & 0xFF;  q[43] = last >> 8;
+        uint8_t c = 0;
+        for (int k = 0; k < 46; k++) c = crc_tab[c ^ q[k]];
+        q[46] = c;
+        n += 47;
+    }
+    return n;
+}
+
+/* The rover's own mount posts, which it was reporting as the nearest obstacle in most
+ * revolutions -- holding every turn down to the slow rate, and being stamped into the
+ * grid at each new pose as the rover drove. They sit behind the lidar and inside the
+ * chassis, so the mask is a box behind it; the property that has to hold is that it
+ * takes the rear and leaves the front, because a return this close in front is
+ * something the rover is about to hit. */
+static void test_body_mask(void)
+{
+    puts("\n--- the rover's own body is not an obstacle ---");
+    slam2d_config cfg;
+    slam2d_default_config(&cfg);
+    cfg.mount_deg = MOUNT_DEG;
+    slam2d *s = slam2d_create(&cfg);
+
+    /* At 13 cm -- what the posts actually measure -- every bearing is inside the
+     * box's width and depth, so the whole rear half should go and the whole front
+     * half should stay. */
+    int n = make_ring_revolution(rev, 0.13);
+    slam2d_feed_lidar(s, rev, n);
+    n = make_ring_revolution(rev, 0.13);
+    slam2d_feed_lidar(s, rev, n);
+    slam2d_update(s);
+
+    float sec[36];
+    slam2d_sectors(s, sec, 36);
+    /* Sector i spans bearings around i * 10 degrees, counter-clockwise from forward.
+     * Rear is anything past 90 degrees either way: sectors 10..26. */
+    int rear_seen = 0, front_seen = 0;
+    for (int i = 0; i < 36; i++) {
+        int deg = i * 10;
+        if (deg > 180) deg -= 360;
+        if (deg > 100 || deg < -100) { if (sec[i] > 0.0f) rear_seen++; }
+        else if (deg < 80 && deg > -80) { if (sec[i] > 0.0f) front_seen++; }
+    }
+    check(rear_seen == 0, "rear sectors still reporting the body", rear_seen, 0, 0);
+    check(front_seen >= 14, "front sectors kept", front_seen, 16, 2);
+
+    /* And it is a box, not a blanket: the same ring further out is all real world. */
+    slam2d_destroy(s);
+    s = slam2d_create(&cfg);
+    n = make_ring_revolution(rev, 0.60);
+    slam2d_feed_lidar(s, rev, n);
+    n = make_ring_revolution(rev, 0.60);
+    slam2d_feed_lidar(s, rev, n);
+    slam2d_update(s);
+    slam2d_sectors(s, sec, 36);
+    int kept = 0;
+    for (int i = 0; i < 36; i++) if (sec[i] > 0.0f) kept++;
+    check(kept >= 34, "sectors kept at 0.60 m, well outside the box", kept, 36, 2);
+    slam2d_destroy(s);
+}
+
 static void test_arc_clearance(void)
 {
     puts("\n--- swept-arc clearance ---");
@@ -593,6 +673,7 @@ int main(void)
     test_moving();
     test_prior_helps();
     test_unknown_sectors();
+    test_body_mask();
     test_arc_clearance();
     test_features();
     test_table();
