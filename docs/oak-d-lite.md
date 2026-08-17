@@ -7,12 +7,11 @@ findings that constrain how these scripts are written: the
 ## What the board is
 
 It reports itself as **OAK-D-LITE**, product **OAK-D-LITE-AF** — an OAK-D-Lite
-with the autofocus colour module, not a full OAK-D. Measured with
-`probe_device.py` on 2026-08-11:
+with the autofocus colour module, not a full OAK-D. What `probe_device.py`
+reported for one unit on 2026-08-11, which is also the shape of what it prints:
 
 | | |
 |---|---|
-| Device id | `1944301031A02C7E00` |
 | VPU | Movidius MyriadX, RVC2 |
 | CAM_A | IMX214, autofocus, 4208×3120, colour, 69° horizontal FOV |
 | CAM_B / CAM_C | OV7251, fixed focus, 640×480, mono, 73° horizontal FOV |

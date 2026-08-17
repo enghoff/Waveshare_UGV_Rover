@@ -1,5 +1,12 @@
 # The two other machines: `rpi` and `media`
 
+**This is a local-setup document.** It describes one particular installation —
+its hostnames, addresses, keys and firewall rules — rather than anything general
+about the repository. Nothing here is required to run the code; the components
+that reach these machines take the host as an argument. Read it as a worked
+example of what deploying to a Pi and a GPU box actually involves, and expect
+every name and number in it to be different on your own network.
+
 Most of this repo runs on the workstation or in the SLAM VM. Two named hosts sit
 outside both, and neither is interchangeable with the other: `rpi` is the only
 machine physically wired to the rover, and `media` is the only one with a GPU.
