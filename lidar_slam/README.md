@@ -356,11 +356,23 @@ shot. That is the only thing in the picture that did not come off the lidar, and
 is there because the map otherwise says nothing at all about the other sensor: the
 two point in different directions most of the time — the gimbal pans a long way
 either side and sweeps continuously while face tracking runs — and the rover's own
-arrow says nothing about where the camera got to. It is drawn as an outline rather
-than filled, because the interesting part of the map is precisely the part inside
-the cone and a wash over it would hide what it is there to point at, and it reaches
-across the crop rather than a fixed number of metres, so it reads the same at every
-zoom: it is a direction and a width, not a range.
+arrow says nothing about where the camera got to. It reaches across the crop rather
+than a fixed number of metres, so it reads the same at every zoom: it is a direction
+and a width, not a range.
+
+It is washed over the map at a quarter strength and then outlined at full. The fill
+is what makes it read as one lit area rather than as three unrelated violet lines,
+and a quarter is as far as it can go in the other direction: the interesting part of
+the map is precisely the part inside the cone, so a heavier wash would hide what the
+cone is there to point at — a wall under it has to stay as legible as a wall beside
+it. The outline goes on top so the edges stay exact whatever the fill lands on. A
+translucent fill is the one shape here that has to *read* what is underneath it
+rather than overwrite it, which would be a per-pixel Python loop on a Pi 1 — so the
+colour and the fraction, both fixed for the whole shape, are folded into a 256-entry
+table per channel and `bytes.translate` applies it a row at a time in C. `python
+mapimg.py` checks that more of the picture changed than the outline accounts for,
+because every other check there finds the cone by its exact colour and would pass an
+outline with nothing inside it.
 
 **The two angle conventions are opposite, and that sign is the whole risk here.**
 The gimbal counts pan positive to the right; the lidar, the map and everything else

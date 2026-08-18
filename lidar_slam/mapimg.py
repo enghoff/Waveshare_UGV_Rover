@@ -51,6 +51,12 @@ C_CAMERA = (150, 80, 210)           # where the camera is looking, and how wide
 # and the camera can see a good deal further than any of these maps are wide.
 CAMERA_REACH = 0.95
 CAMERA_ARC_DEG = 6.0                # one segment per this much of the arc
+# How strongly the cone is washed over the map underneath it. A quarter is enough
+# to read as one lit area rather than as three violet lines, and light enough that
+# the occupancy under it -- which is the part the cone exists to point at -- is
+# still legible through it. The outline is drawn over the wash at full strength, so
+# where the cone ends stays exact whatever the fill sits on.
+CAMERA_FILL = 0.25
 
 
 def _png(rows, colour):
@@ -186,6 +192,58 @@ class Canvas:
                 self.span(y, math.ceil(min(crossings) - 0.5),
                           math.floor(max(crossings) - 0.5), packed)
 
+    def wash_tables(self, value, alpha):
+        """Translation tables for :meth:`wash`: `value` laid over whatever is there,
+        at `alpha` from 0 to 1. One per channel, and the caller builds them once for
+        a whole shape rather than once per row."""
+        return tuple(bytes(round(alpha * component + (1.0 - alpha) * under)
+                           for under in range(256))
+                     for component in self._pack(value))
+
+    def wash(self, y, x0, x1, tables):
+        """Blend a colour into pixels x0..x1 of row y, clipped.
+
+        A translucent fill has to read what is underneath it, so this cannot be
+        `span`'s assignment of a constant run. It is still not a per-pixel Python
+        loop, which on a Pi 1 is what the difference between a map and a slideshow
+        is made of: with the colour and the fraction both fixed, every output byte
+        depends only on the byte it replaces, and that is a 256-entry table per
+        channel with `translate` applying it in C. The channels interleave, so each
+        one is a strided slice of the row.
+        """
+        if not 0 <= y < self.h:
+            return
+        x0, x1 = max(0, int(x0)), min(self.w - 1, int(x1))
+        if x1 < x0:
+            return
+        row, c = self.rows[y], self.chan
+        lo, hi = c * x0, c * (x1 + 1)
+        for i, table in enumerate(tables):
+            row[lo + i:hi:c] = row[lo + i:hi:c].translate(table)
+
+    def wash_polygon(self, points, value, alpha):
+        """A polygon washed over the map rather than painted on top of it.
+
+        Rows are filled between sorted pairs of edge crossings, which is
+        `triangle`'s method generalised: pairing them rather than taking the
+        outermost two means a shape that is not convex still fills correctly, and a
+        wedge of more than half a turn is not convex. Each row is washed once, so a
+        shared edge inside the shape cannot show up as a double-blended seam.
+        """
+        tables = self.wash_tables(value, alpha)
+        ys = [p[1] for p in points]
+        edges = list(zip(points, points[1:] + points[:1]))
+        for y in range(int(math.floor(min(ys))), int(math.ceil(max(ys))) + 1):
+            cy = y + 0.5
+            crossings = []
+            for (ax, ay), (bx, by) in edges:
+                if (ay <= cy < by) or (by <= cy < ay):
+                    crossings.append(ax + (bx - ax) * (cy - ay) / (by - ay))
+            crossings.sort()
+            for i in range(0, len(crossings) - 1, 2):
+                self.wash(y, math.ceil(crossings[i] - 0.5),
+                          math.floor(crossings[i + 1] - 0.5), tables)
+
     def png(self):
         return _png(self.rows, 2 if self.chan == 3 else 0)
 
@@ -271,11 +329,14 @@ def draw_camera(canvas, to_px, x, y, heading_rad, bearing_deg, fov_deg, reach_m)
     tracking runs -- and the rover's own arrow says nothing about where the camera
     got to.
 
-    Drawn as an outline rather than filled, because the interesting part of the map
-    is precisely the part inside the cone and a wash over it would hide what it is
-    there to point at. In a hue outside the black-to-white occupancy ramp for the
-    same reason the rover and its track are: anything neutral drawn over the map
-    reads as more map.
+    Filled at `CAMERA_FILL` and then outlined at full strength. The fill is what
+    makes it read as one lit area rather than as three unrelated violet lines, and
+    a quarter is as far as it can go: the interesting part of the map is precisely
+    the part inside the cone, so a heavier wash would hide what the cone is there to
+    point at. The outline goes on top so that where the shot ends stays exact
+    whatever the fill lands on. In a hue outside the black-to-white occupancy ramp
+    for the same reason the rover and its track are: anything neutral drawn over the
+    map reads as more map.
 
     `bearing_deg` is in the rover's own frame, counter-clockwise from its nose, and
     the conversion is the caller's. The gimbal counts pan positive to the *right*
@@ -290,18 +351,19 @@ def draw_camera(canvas, to_px, x, y, heading_rad, bearing_deg, fov_deg, reach_m)
     def at(angle):
         return to_px(x + reach_m * math.cos(angle), y + reach_m * math.sin(angle))
 
-    for side in (-half, half):
-        edge = at(centre + side)
+    # The apex and the far edge as one polygon, segmented finely enough that the arc
+    # does not read as a chord. The same points serve the fill and the outline drawn
+    # over it, so the two cannot disagree about where the cone ends.
+    steps = max(4, int(fov_deg / CAMERA_ARC_DEG))
+    arc = [at(centre - half + 2.0 * half * step / steps) for step in range(steps + 1)]
+    canvas.wash_polygon([origin] + arc, C_CAMERA, CAMERA_FILL)
+
+    for edge in (arc[0], arc[-1]):
         canvas.line(origin[0], origin[1], edge[0], edge[1], C_CAMERA)
     # The far edge, as a polyline. It closes the shape, which is what makes it read
     # as a cone rather than as two unrelated lines leaving the rover.
-    steps = max(4, int(fov_deg / CAMERA_ARC_DEG))
-    previous = None
-    for step in range(steps + 1):
-        point = at(centre - half + 2.0 * half * step / steps)
-        if previous is not None:
-            canvas.line(previous[0], previous[1], point[0], point[1], C_CAMERA)
-        previous = point
+    for previous, point in zip(arc, arc[1:]):
+        canvas.line(previous[0], previous[1], point[0], point[1], C_CAMERA)
 
 
 def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=None):
@@ -732,6 +794,18 @@ def _check_camera():
         return cols.max() - cols.min()
 
     assert spread(30.0) < spread(65.0) < spread(120.0),         (spread(30.0), spread(65.0), spread(120.0))
+
+    # Filled, not merely outlined. Everything above finds the cone by its exact
+    # colour, which is the outline alone, so a fill that silently stopped being
+    # drawn would pass every one of those checks: this one asks instead how much of
+    # the picture the cone changed without becoming the cone's own colour, which is
+    # the wash and nothing else.
+    plain = _render_probe(0.0)[0]
+    outline = _mask(straight, C_CAMERA)
+    washed = np.any(straight != plain, axis=-1) & ~outline
+    assert washed.sum() > outline.sum(), (
+        f"the cone is an outline with nothing inside it: {washed.sum()} washed "
+        f"pixels against {outline.sum()} of outline")
 
     # Turned rover, page held still: the cone turns with the rover, because the
     # bearing it is given is relative to the nose and not to the page.
