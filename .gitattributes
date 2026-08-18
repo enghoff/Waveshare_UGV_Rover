@@ -8,3 +8,9 @@ vm/** text eol=lf
 # lidar_slam/ is compiled and run on the rover's Pi, for the same reason: build.sh
 # has a shebang, and gcc would happily accept CRLF in the C but the shell will not.
 lidar_slam/** text eol=lf
+
+# oak_detect/ is compiled and run on the rover's Pi too -- build.sh has a shebang,
+# and the vendored C would build fine with CRLF but the shell script would not.
+oak_detect/** text eol=lf
+oak_detect/*.mvcmd binary
+oak_detect/*.blob binary

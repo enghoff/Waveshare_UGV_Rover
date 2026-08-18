@@ -1,13 +1,18 @@
-"""Track a face from the rover itself: the Pi holds the loop, MEDIA does the seeing.
+"""Track a face from the rover itself: the Pi holds the loop, the OAK does the seeing.
 
 The rover's own machine is a Pi 1 Model B -- one ARM1176 at 700 MHz with no NEON
 -- and it cannot run a face detector at any useful rate. What it *can* do is hold
 a control loop, and it is the only machine wired to the ESP32, so this is where
-the loop belongs. The picture goes out to the detector on MEDIA and the boxes
-come back; the servo commands never leave the board.
+the loop belongs. The picture goes out to a detector and the boxes come back; the
+servo commands never leave the board.
 
-    python3 track_face_pi.py                          # camera, MEDIA, ttyAMA0
-    python3 track_face_pi.py --service 192.168.1.3:8768
+That detector used to be YuNet on MEDIA's CPU, across the network. It is now
+oak_detect/server.py on this same Pi, running the graph on the Myriad X inside the
+OAK camera -- so the rover sees without MEDIA, or any network, being up at all.
+The protocol did not change, which is why this script did not have to.
+
+    python3 track_face_pi.py                          # camera, the OAK, ttyAMA0
+    python3 track_face_pi.py --service 192.168.1.3:8768   # or a detector elsewhere
     python3 track_face_pi.py --host 192.168.1.22      # command the board over WiFi
     python3 track_face_pi.py --no-move                # detect and report, command nothing
     python3 track_face_pi.py --no-scan                # stay put when there is nobody about
@@ -39,10 +44,21 @@ ceiling here measured 38 Mbit/s, against 8.4 for this stream.
 The rest of the round trip, measured from the Pi against the service on MEDIA:
 **22.6 ms** for a 35 kB POST, of which about 6 is the detection and 13 this
 machine's own HTTP stack -- a 700 MHz ARM11 is not fast at anything, including
-sockets. So a box is in hand roughly 65 ms after the light that made it, against
+sockets. So a box was in hand roughly 65 ms after the light that made it, against
 the 266 ms of dead time measured for track_face.py with the camera on the
 workstation's own USB. Moving the camera onto the rover made the loop faster, not
 slower, and the command path is now a wire rather than a radio.
+
+**Against the OAK on this Pi it is slower than that, and the reason is JPEG.**
+Measured 2026-08-18, one frame end to end over loopback: 85 ms to decode a 640x480
+MJPEG frame, 41 ms for the detection itself, and 41 ms of this machine's HTTP
+stack, for about 190 ms a frame -- and with the scan matcher also running, the
+tracking loop settles at **2.3 fps**. Nothing there is the camera's fault: the
+inference is the cheapest part, and what costs is that the picture now has to be
+decoded on the rover instead of being handed to a 5700G. The way to get the rate
+back is to stop sending JPEG at all -- this camera offers uncompressed YUYV, and
+the graph would take those pixels directly -- which is a change to how the frame
+is captured rather than to anything about the detector.
 
 That figure was 73 ms until the detector stopped writing its replies in two
 sends: see the Nagle note in face_detect/server.py. Worth recording how that hid,
@@ -72,9 +88,12 @@ time, waiting for the boxes before sending the next. The rate falls out of the
 round trip and the staleness cannot accumulate. Dropped frames are counted and
 shown, because a silently decimated stream would look identical to a healthy one.
 
-**If the detector goes away, the rover stops.** MEDIA is a desktop that reboots,
-and voice-chat alone takes ~150 s to come back; LOST_GRACE_S covers a blink, not
-that. After SERVICE_GRACE_S of failures the camera is centred and left alone
+**If the detector goes away, the rover stops.** That was written when the
+detector was a desktop that reboots, and it still holds now that it is a service
+on this same Pi: it drives a USB device that can be unplugged or brown out, and it
+spends about 6 s uploading firmware and a graph before it answers again after a
+restart. LOST_GRACE_S covers a blink, not that. After SERVICE_GRACE_S of failures
+the camera is centred and left alone
 rather than sweeping blind, and the loop keeps retrying quietly until the service
 answers again.
 """
@@ -163,8 +182,8 @@ CAMERA_NICE = 10
 # lookups of `media.local` in a row: 344 ms, **5193 ms**, 194 ms. This sits
 # in a control loop with a 1 s service timeout, so that outlier is a stall,
 # and a transient resolver failure is a frame nobody looked at. Pass
-# --service media.local:8768 if the address ever moves.
-DEFAULT_SERVICE = "192.168.1.3:8768"  # face-detect.service on MEDIA
+# --service media.local:8768 to point it at a detector on another host instead.
+DEFAULT_SERVICE = "127.0.0.1:8768"  # oak_detect/server.py, on this Pi
 # One round trip is ~15 ms of network and detection. This is long enough that a
 # service busy with another client is waited for and short enough that a dead one
 # is noticed within a frame or two.
@@ -509,7 +528,7 @@ def snapshot(device=DEFAULT_DEVICE, size=DEFAULT_SIZE, frames=SNAPSHOT_FRAMES,
 
 
 class Detector:
-    """face-detect.service on MEDIA, over one kept-open connection.
+    """The face detector, over one kept-open connection.
 
     Strictly one request at a time, which is the backpressure: the next frame is
     not sent until this one's boxes are back, so nothing can queue anywhere and
@@ -697,7 +716,7 @@ def parse_size(text):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Track a face from the rover, detecting on the MEDIA host.")
+        description="Track a face from the rover, detecting on the OAK camera's VPU.")
     parser.add_argument(
         "--service", default=DEFAULT_SERVICE, metavar="HOST[:PORT]",
         help=f"the face detector (default {DEFAULT_SERVICE})")
@@ -818,7 +837,7 @@ def main():
                 error_x = (target.centre[0] - width / 2) / (width / 2)
                 error_y = (height / 2 - target.centre[1]) / (height / 2)
                 # The measured exposure time, not DEAD_TIME_S: this is the whole
-                # reason the stamp is carried out to MEDIA and back.
+                # reason the stamp is carried out to the detector and back.
                 gimbal.track(error_x, error_y, dt, now, exposed_at=exposed_at)
             else:
                 if target.centre is not None:

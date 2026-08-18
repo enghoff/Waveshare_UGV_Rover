@@ -20,6 +20,7 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 |---|---|---|
 | `rover_daemon/`, `driver_board/`, `face_tracking/` | `rpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
 | `lidar_slam/` | `rpi` | `~/ugv/lidar_slam/` |
+| `oak_detect/` | `rpi` | `~/ugv/oak_detect/` |
 | `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
 | `vm/` | the SLAM VM | `~/ugv/<same relative path>` |
 | `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/drive_console.py`, `voice_chat/mock_rover.py` | whatever desk is in use | nothing to deploy |
@@ -32,9 +33,14 @@ their keys.
 ```bash
 scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/
 scp lidar_slam/*.py lidar_slam/README.md rpi:~/ugv/lidar_slam/
+scp -r oak_detect rpi:~/ugv/          # the face detector, on the OAK's VPU
 ssh rpi 'cd ~/ugv && python3 selftest.py | tail -2'
 ssh rpi '~/ugv/restart.sh'          # ~35 s; prints the new tool count
 ```
+
+Both `restart.sh` scripts exist so that the pattern they kill on lives in a file
+rather than on an ssh command line, where it would match -- and kill -- the very
+session that typed it.
 
 `restart.sh` kills only the daemon and lets the supervisor restart it, because the
 crontab entry — `@reboot ~/ugv/run_daemon.sh --vision --lidar` — is where the
@@ -46,6 +52,15 @@ Anything touching `slam2d.c` or `slam2d.h` also needs a rebuild on the host, sin
 
 ```bash
 ssh rpi 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
+```
+
+`oak_detect/` is the same story for the same reason — `liboak.so` is armv6 and is
+not committed. Its supervisor is a separate crontab entry, so reloading the
+detector is not the same act as reloading the daemon:
+
+```bash
+ssh rpi '~/ugv/oak_detect/build.sh && python3 ~/ugv/oak_detect/selftest.py | tail -2'
+ssh rpi '~/ugv/oak_detect/restart.sh'      # ~6 s to boot the VPU and load the graph
 ```
 
 Plain `scp` is fine here — these are `.py` files with no shebang, so CRLF does not

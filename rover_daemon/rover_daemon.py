@@ -8,7 +8,7 @@ each other. `drive_gamepad_pi.py` takes the UART for the wheels and the lights,
 and `track_face_pi.py` takes it for the gimbal; running both means interleaved
 JSON on one wire, and nothing at all could then also want the camera.
 
-    python3 rover_daemon.py                    # ttyAMA0, camera, detector on MEDIA
+    python3 rover_daemon.py                    # ttyAMA0, camera, detector on the OAK
     python3 rover_daemon.py --host 192.168.1.22    # board over WiFi instead
     python3 rover_daemon.py --no-camera        # lights and gimbal only
     python3 rover_daemon.py --vision 192.168.1.3:8767   # ...and it can be looked through
@@ -83,14 +83,14 @@ DEFAULT_SERIAL = "/dev/ttyAMA0"
 # The ESP32, by address: it is the one device here that advertises no mDNS
 # name, so there is nothing to call it by.
 DEFAULT_BOARD_HOST = "192.168.1.22"
-# By address, not by name. The rover is reached by name because it has two
-# addresses and which one is live varies; MEDIA has one fixed address, so a
-# name buys no agility here and costs mDNS. Measured from the Pi, three
-# lookups of `media.local` in a row: 344 ms, **5193 ms**, 194 ms. This sits
-# in a control loop with a 1 s service timeout, so that outlier is a stall,
-# and a transient resolver failure is a frame nobody looked at. Pass
-# --service media.local:8768 if the address ever moves.
-DEFAULT_SERVICE = "192.168.1.3:8768"  # face-detect.service on MEDIA
+# The detector is on this Pi now, not on MEDIA -- oak_detect/server.py, running
+# the graph on the OAK camera's Myriad X. It is still reached over HTTP rather
+# than called in-process, because the protocol was already there and a separate
+# process is what lets the device be restarted without restarting the rover.
+# Loopback and by address, so nothing about a frame's round trip can depend on
+# the network or on mDNS: this sits in a control loop with a 1 s timeout, and
+# what used to be here was a 5 s outlier resolving `media.local`.
+DEFAULT_SERVICE = "127.0.0.1:8768"  # oak_detect/server.py, on this Pi
 # Where a picture goes to be looked at, when --vision is given. By address for
 # the same reason as the detector above: this is on a control path, and a 5s
 # mDNS outlier is a tool call that times out.
@@ -365,9 +365,9 @@ class HttpLink:
 class VisionLink:
     """The voice service's `/frame`, over one kept-open connection.
 
-    Modelled on `track_face_pi.Detector` rather than on anything new: the same
-    machine already POSTs JPEGs to MEDIA thirty times a second, and this is the
-    same POST to a different port. One request at a time, a stale keep-alive
+    Modelled on `track_face_pi.Detector` rather than on anything new: this
+    machine already POSTs a JPEG for every tracked frame, and this is the same
+    POST to a different host and port. One request at a time, a stale keep-alive
     costs a retry rather than a picture, and a service that is not there comes
     back as a failure to report rather than an exception to raise -- the model
     has to be told it could not see, in words it can repeat.
@@ -1087,7 +1087,7 @@ class Rover:
                     break
         if faces is None:
             return {"ok": False,
-                    "error": f"the face detector on the media host did not answer, or "
+                    "error": f"the face detector did not answer, or "
                              f"rejected {len(got)} frames running"}
         width, height = self.size
         where = [_where(face, width, height) for face in faces]
@@ -1186,9 +1186,11 @@ class Rover:
     def _detector_ready(self) -> str:
         """Empty if the face detector answers, otherwise why not, in a sentence.
 
-        Face tracking needs a service on another host, and that host being away
-        is an expected state on a rover -- the loop is written to hold still
-        through it rather than to die. Which is right for a loop already running
+        Face tracking needs the detector service, and its being away is still an
+        expected state even now that it is on this same Pi -- it holds a USB
+        device that can be unplugged, and it takes several seconds to boot that
+        device after a restart. The loop is written to hold still through that
+        rather than to die. Which is right for a loop already running
         and wrong for one being started: the loop starts, holds still, reports
         itself as tracking, and the model says "I started tracking people" while
         the camera never moves. That is the failure this whole directory's prompt
@@ -1259,10 +1261,12 @@ class Rover:
 
         Called by the navigator the instant before anything moves, and the one place
         that decides what driving outranks. Face tracking and driving cannot both
-        run. Face tracking holds the camera and posts frames to MEDIA, which is about
-        30% of this one core, and SLAM is another 33%; run both and the scan matcher
-        starts dropping revolutions, which degrades exactly the thing that is keeping
-        the rover off the walls. Aiming the camera while driving is also a good way
+        run. Face tracking holds the camera and now decodes every frame here as
+        well as posting it -- measured at 64-87 ms of JPEG per frame since the
+        detector moved onto the rover, well over the 30% of this core that
+        forwarding alone used to cost -- and SLAM is another 33%; run both and the
+        scan matcher starts dropping revolutions, which degrades exactly the thing
+        that is keeping the rover off the walls. Aiming the camera while driving is also a good way
         to be looking at somebody's face when something appears in front of the
         tracks.
 
