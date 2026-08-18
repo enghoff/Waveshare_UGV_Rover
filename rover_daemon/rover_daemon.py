@@ -1636,8 +1636,10 @@ class Rover:
 
         gimbal = Gimbal(clamp(GAIN, 0.05, 1.0), self.size)
         # The angles are a model; this is what makes the model true. Start it
-        # from wherever the camera actually is rather than assuming centre.
-        gimbal.pan, gimbal.tilt = self.pan, self.tilt
+        # from wherever the camera actually is rather than assuming centre -- and
+        # seed the history with it too, or was_at() will answer the first frames
+        # with zero. See Gimbal.begin().
+        gimbal.begin(time.monotonic(), self.pan, self.tilt)
         target = Target(self._acquire_score)
         scan = None
         last_tick = time.monotonic()
@@ -1740,7 +1742,7 @@ class Rover:
                     if now - target.seen_at > SCAN_AFTER_S:
                         if scan is None:
                             scan = Scan(gimbal)
-                        scan.step(gimbal, scan_rate_for(dt), dt)
+                        scan.step(gimbal, scan_rate_for(dt, gimbal.pan_gain), dt)
                 gimbal.record(now)
 
                 aimed = time.monotonic()

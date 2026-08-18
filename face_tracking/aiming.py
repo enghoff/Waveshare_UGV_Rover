@@ -165,9 +165,23 @@ HISTORY_S = max(2.5, DEAD_TIME_S * 2)
 # The fraction of the *remaining* error to correct per frame -- remaining meaning
 # what is left once motion already in flight is subtracted. With the dead time
 # accounted for this is a genuine proportional gain again, and 0.5 halves the error
-# every frame. Left lower than it could be because the compensation is only as good
-# as the exposure time it is given.
-GAIN = 0.4
+# every frame.
+#
+# Raised from 0.4 once the two things it was being held down for were fixed: the
+# exposure stamps now pair, so "when was this taken" is answered rather than
+# guessed, and was_at() now reads a move as a ramp rather than as an arrival. At
+# 0.4 a face 40 degrees off axis took four frames to reach -- nearly two seconds
+# at this loop rate, and visibly a series of ever smaller nudges. Simulated under
+# the measured conditions (430 ms frames, 227 ms old, servo ceiling 130 deg/s):
+#
+#     gain 0.4     4 frames to settle,  7 deg of overshoot
+#     gain 0.7     3 frames,           14 deg
+#     gain 1.0     2 frames,           19 deg
+#
+# 0.7 buys most of the speed for a bounded amount of swinging past. Going higher
+# is tempting and is what the servo ceiling punishes: the bigger the single step,
+# the longer the camera spends mid-move while frames are being taken of it.
+GAIN = 0.7
 # Inside this fraction of a half frame, the face counts as centred and nothing is
 # sent. Servos hunting around a target they cannot quite hold is the failure this
 # prevents, and it also keeps the shared servo bus quiet when the subject is still.
@@ -280,16 +294,32 @@ SCAN_TILT = 45
 # already moved on by the time the correction is worked out. Cap the sweep by how
 # far it may travel between two looks instead, which leaves the measured rate
 # untouched wherever frames are plentiful.
-SCAN_RATE = 25
+SCAN_RATE = 90
 # The most the sweep may cross between one look and the next.
 SCAN_DEG_PER_FRAME = 3.0
+# ...or rather, as much of a frame as may be crossed between two looks. Three
+# degrees was set as an absolute, and on a lens this wide it is absurdly timid:
+# the camera sees about 123 degrees at once, so a 3 degree step re-examines 97% of
+# what it just looked at and a full turn takes the better part of a minute.
+#
+# What actually has to hold is that nothing is stepped *over*. Advancing a third
+# of a frame between looks means every direction appears in three consecutive
+# frames before it is left behind, which is generous cover for a face that is only
+# found on four frames out of five. At this rover's rate that is about 40 degrees
+# a look and a full sweep in four seconds, against fifty-one.
+SCAN_FRAME_FRACTION = 1 / 3
 
 
-def scan_rate_for(dt, rate=SCAN_RATE):
-    """The sweep rate a loop running at this frame period can actually follow."""
+def scan_rate_for(dt, half_frame=PAN_DEG_PER_HALF_FRAME, rate=SCAN_RATE):
+    """The sweep rate a loop running at this frame period can actually follow.
+
+    `half_frame` is the gimbal's own degrees-per-half-frame for the mode being
+    captured, so the sweep follows the lens rather than a number written down for
+    one of them -- pass `gimbal.pan_gain`.
+    """
     if dt <= 0:
         return rate
-    return min(rate, SCAN_DEG_PER_FRAME / dt)
+    return min(rate, half_frame * 2 * SCAN_FRAME_FRACTION / dt)
 # How long without a face before sweeping starts. Long enough that setting the rover
 # down in front of somebody does not send it hunting before it has looked at them.
 SCAN_AFTER_S = 2.0
@@ -485,7 +515,7 @@ class Gimbal:
         self.speed_tilt = PLACE_DEG_S
         # Where the camera has been told to point, and when. Read back one dead
         # time later to find out what the angles were when a frame was exposed.
-        self.history = collections.deque([(0.0, 0.0, 0.0)])
+        self.history = collections.deque([(0.0, 0.0, 0.0, 0.0, 0.0)])
         # The face's angle as last worked out from a picture. An angle rather than
         # a pixel, because an angle is a fact about the world and stays true while
         # the camera moves -- which is exactly what keep_going() needs.
@@ -500,24 +530,70 @@ class Gimbal:
         # kept.
         self.last = None
 
+    def begin(self, now, pan, tilt):
+        """Seed the angles and the history together, before the loop starts.
+
+        The two have to be set at once. Assigning `pan`/`tilt` alone leaves the
+        history holding the placeholder this object was built with, and was_at()
+        then answers every exposure older than the first frame with **zero** --
+        which is not where the camera is, so the first corrections of every lock
+        are computed against a position it was never in. Seen on the rover: the
+        camera parked at pan 60, and the first four frames aimed as though it were
+        pointing straight ahead.
+        """
+        self.pan, self.tilt = pan, tilt
+        self.history.clear()
+        self.history.append((now, pan, tilt, 0.0, 0.0))
+
     def record(self, now):
-        self.history.append((now, self.pan, self.tilt))
+        # The speeds go in beside the angles because a command is not a position:
+        # it is a move that takes time, and was_at() has to be able to say how far
+        # along it the camera had got. See there for what this costs when omitted.
+        self.history.append((now, self.pan, self.tilt, self.speed_pan, self.speed_tilt))
         while len(self.history) > 1 and self.history[0][0] < now - HISTORY_S:
             self.history.popleft()
 
     def was_at(self, when):
-        """The angles as they had been commanded at `when`.
+        """Where the camera actually was at `when` -- along its move, not at the end.
 
-        The most recent entry at or before that moment, which for a deque filled
-        once a frame is never more than a frame stale. An exposure older than the
-        history reads back its earliest entry -- stale, but not wrong.
+        The obvious reading of the history is "the most recent angle commanded at
+        or before that moment", and it is wrong whenever the servo is still on its
+        way there. It is *always* still on its way there on this rover: the ceiling
+        is SERVO_MAX_DEG_S, so a 40 degree correction takes 310 ms, and the frame
+        that arrives next was exposed about 60 ms into that move -- eight degrees
+        in, with thirty-two still to go.
+
+        Reporting the destination therefore tells the controller the correction has
+        already happened, so it issues the whole thing again. Simulated at this
+        rover's frame rate, that is the difference between overshooting a face by
+        **48 degrees and by 19**, and it is what kept the gain pinned at 0.4.
+
+        So each entry is read as the move it actually was: starting from the angle
+        before it, at the speed it was sent with, for as long as it has had. An
+        exposure older than the whole history reads back the earliest angle there
+        is -- stale, but not wrong.
         """
-        found = self.history[0]
-        for entry in self.history:
+        history = self.history
+        found = 0
+        for i, entry in enumerate(history):
             if entry[0] > when:
                 break
-            found = entry
-        return found[1], found[2]
+            found = i
+        entry = history[found]
+        if found == 0:
+            return entry[1], entry[2]
+        start = history[found - 1]
+        elapsed = max(0.0, when - entry[0])
+
+        def along(from_angle, to_angle, speed):
+            gap = to_angle - from_angle
+            if not gap:
+                return to_angle
+            moved = min(abs(gap), max(speed, 0.0) * elapsed)
+            return from_angle + math.copysign(moved, gap)
+
+        return (along(start[1], entry[1], entry[3]),
+                along(start[2], entry[2], entry[4]))
 
     def track(self, error_x, error_y, dt, now, exposed_at=None):
         """One step towards a face at (error_x, error_y), each -1..1 from centre.

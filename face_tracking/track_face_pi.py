@@ -111,7 +111,7 @@ import time
 
 from aiming import (
     DEADBAND, DETECT_WIDTH, GAIN, KEEP_SCORE, MAX_DT, SCAN_AFTER_S, SCAN_RATE,
-    Gimbal, Scan, Target, clamp,
+    Gimbal, Scan, Target, clamp, scan_rate_for,
 )
 
 # --- the camera -----------------------------------------------------------
@@ -945,7 +945,7 @@ def main():
                 if args.scan and now - target.seen_at > SCAN_AFTER_S:
                     if scan is None:
                         scan = Scan(gimbal)
-                    scan.step(gimbal, scan_rate, dt)
+                    scan.step(gimbal, scan_rate_for(dt, gimbal.pan_gain, scan_rate), dt)
                     scanning = True
 
             # Every frame, moved or not: track() reads this back to find where the
