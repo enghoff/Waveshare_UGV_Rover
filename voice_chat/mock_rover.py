@@ -178,34 +178,31 @@ class Rover:
 
     def drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
         distance = float(arguments.get("distance_m", 0.5))
-        turn = float(arguments.get("turn_deg", 0.0) or 0.0)
         speed = float(arguments.get("speed_ms") or 0.2)
         if distance <= 0.0:
             return {"ok": False, "error": "distance_m has to be positive"}
 
         # Walked in small steps rather than solved, so that stopping at the
         # standoff falls out of the same code that moves -- which is how the real
-        # one works, and it means a curve into a wall stops where it meets it.
+        # one works, and it means a drive into a wall stops where it meets it.
         step, travelled, reason = 0.02, 0.0, "arrived"
         while travelled < distance:
             hop = min(step, distance - travelled)
-            heading = self.heading + math.radians(turn) * (travelled / distance)
-            ahead = self._range_at(self.x, self.y, heading)
+            ahead = self._range_at(self.x, self.y, self.heading)
             if ahead < STANDOFF_M + 0.02:
                 reason = "blocked"
                 break
-            self.x += hop * math.cos(heading)
-            self.y += hop * math.sin(heading)
+            self.x += hop * math.cos(self.heading)
+            self.y += hop * math.sin(self.heading)
             travelled += hop
             self.trail.append((self.x, self.y))
-        self.heading = _wrap(self.heading + math.radians(turn) * (travelled / distance))
 
         detail = ""
         if reason == "blocked":
             detail = (f"stopped {STANDOFF_M:.2f} m short of something after "
                       f"{travelled:.2f} m of the {distance:.2f} m asked for")
         return {"ok": True, "reason": reason, "travelled_m": round(travelled, 3),
-                "turned_deg": round(turn * (travelled / distance), 1),
+                "turned_deg": 0.0,
                 **({"detail": detail} if detail else {}),
                 **self._nav_context(speed)}
 

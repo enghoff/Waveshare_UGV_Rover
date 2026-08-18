@@ -628,14 +628,14 @@ NAV_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "drive",
             "description": (
-                "Drive the rover forward, optionally curving as it goes. It watches "
-                "its lidar the whole way and stops itself rather than hitting "
-                "anything, steering around obstacles when it can. Always says how "
-                "far it actually got and why it stopped, which will often be less "
-                "than asked for. Pauses face tracking while it moves and resumes it "
-                "afterwards. It cannot see steps, drops, or anything above or below "
-                "the height of its lidar, so do not drive it near a stair or a table "
-                "edge on the strength of this."
+                "Drive the rover forward. It watches its lidar the whole way and "
+                "stops itself rather than hitting anything, steering around "
+                "obstacles when it can. Always says how far it actually got and why "
+                "it stopped, which will often be less than asked for. Pauses face "
+                "tracking while it moves and resumes it afterwards. It cannot see "
+                "steps, drops, or anything above or below the height of its lidar, "
+                "so do not drive it near a stair or a table edge on the strength of "
+                "this. To change heading, turn on the spot first."
             ),
             "parameters": {
                 "type": "object",
@@ -643,11 +643,6 @@ NAV_TOOLS: list[dict[str, Any]] = [
                     "distance_m": {
                         "type": "number", "minimum": 0.05, "maximum": 3.0,
                         "description": "How far to go, in metres.",
-                    },
-                    "turn_deg": {
-                        "type": "number", "minimum": -120, "maximum": 120,
-                        "description": "Total heading change over the move, in "
-                                       "degrees; positive is left, 0 is straight.",
                     },
                     "speed_ms": {
                         "type": "number", "minimum": 0.05, "maximum": 0.35,
@@ -1159,9 +1154,8 @@ class Rover:
             return {"ok": False, "error": "this rover has no lidar, so it will not "
                                           "drive itself"}
         distance = _number(arguments.get("distance_m", 0.5), "distance_m")
-        turn = _number(arguments.get("turn_deg", 0.0) or 0.0, "turn_deg")
         speed = arguments.get("speed_ms")
-        outcome = self.nav.drive(distance_m=distance, turn_deg=turn,
+        outcome = self.nav.drive(distance_m=distance,
                                  speed_ms=None if speed is None
                                  else _number(speed, "speed_ms"))
         return {"ok": outcome.reason in ("arrived", "timed out"), **outcome.asdict(),

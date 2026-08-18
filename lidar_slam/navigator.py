@@ -286,14 +286,10 @@ class Navigator:
             self.slam.close()
 
     # --- commands -------------------------------------------------------------
-    def drive(self, distance_m=None, speed_ms=None, turn_deg=0.0, seconds=None):
-        """Go forward, optionally curving, until the distance is covered or
-        something is in the way. Blocks until it is done and says why it stopped.
-
-        `turn_deg` is the total heading change to aim for over the move, so 0 is
-        straight and 90 is a quarter circle -- a shape rather than a rate, because
-        that is what a caller can picture. Avoidance may steer away from it, and
-        will say so.
+    def drive(self, distance_m=None, speed_ms=None, seconds=None):
+        """Go forward until the distance is covered or something is in the way.
+        Blocks until it is done and says why it stopped. Avoidance may steer
+        around obstacles, and will say so.
         """
         if self._estop:
             return Outcome("stopped", 0.0, 0.0,
@@ -308,16 +304,8 @@ class Navigator:
             # Plus a margin for getting up to speed; the distance still decides.
             limit = min(MAX_MOVE_S, distance / speed * 1.8 + 1.5)
 
-        turn_rate = 0.0
-        if distance and abs(turn_deg) > 0.5:
-            turn_rate = _clamp(float(turn_deg) / (distance / speed),
-                               -MAX_TURN_DPS, MAX_TURN_DPS)
-        elif abs(turn_deg) > 0.5:
-            turn_rate = _clamp(float(turn_deg) / limit, -MAX_TURN_DPS, MAX_TURN_DPS)
-
         return self._run_goal({"kind": "drive", "distance": distance,
-                               "speed": speed, "turn_rate": turn_rate,
-                               "turn_total": float(turn_deg)}, limit)
+                               "speed": speed}, limit)
 
     def turn_in_place(self, angle_deg, speed_dps=None):
         """Rotate by this many degrees, counter-clockwise positive.
@@ -829,12 +817,7 @@ class Navigator:
             goal["done"] = ("timed out", "the move ran out of its time budget")
             return
 
-        # Where the caller wants to go, as a heading offset for this instant.
-        want = 0.0
-        if goal["turn_rate"]:
-            want = _clamp(goal["turn_rate"] / MAX_TURN_DPS * 25.0, -25.0, 25.0)
-
-        chosen, clear = self._choose_heading(want)
+        chosen, clear = self._choose_heading(0.0)
         self._chosen_deg, self._clearance = chosen, clear
 
         limit = self._speed_limit(clear)

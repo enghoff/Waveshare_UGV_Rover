@@ -327,14 +327,12 @@ class Console:
         drive = ttk.LabelFrame(parent, text="drive", padding=8)
         drive.pack(fill="x", pady=(10, 0))
         self.distance_var = tk.StringVar(value="0.5")
-        self.curve_var = tk.StringVar(value="0")
         self.speed_var = tk.StringVar(value="")
         for label, var, hint in (("distance", self.distance_var, "m"),
-                                 ("turn over the move", self.curve_var, "deg"),
                                  ("speed", self.speed_var, "m/s, blank for auto")):
             row = ttk.Frame(drive)
             row.pack(fill="x", pady=1)
-            ttk.Label(row, text=label, width=17).pack(side="left")
+            ttk.Label(row, text=label, width=8).pack(side="left")
             ttk.Entry(row, textvariable=var, width=7).pack(side="left")
             ttk.Label(row, text=hint, foreground="#666").pack(side="left", padx=4)
         button = ttk.Button(drive, text="drive", command=self._drive)
@@ -359,15 +357,17 @@ class Console:
         # rover, since a picture costs roughly its own area to draw.
         zoom = ttk.LabelFrame(parent, text="map view", padding=8)
         zoom.pack(fill="x", pady=(10, 0))
-        for label, out_text, in_text, handler in (
-                ("across", "wider", "closer", self._zoom),
+        # The left button of each pair always steps down its ladder and the right one
+        # always steps up, so the two rows behave the same way round.
+        for label, down_text, up_text, handler in (
+                ("across", "closer", "wider", self._zoom),
                 ("size", "smaller", "bigger", self._resize)):
             row = ttk.Frame(zoom)
             row.pack(fill="x", pady=1)
             ttk.Label(row, text=label, width=7).pack(side="left")
-            ttk.Button(row, text=out_text, width=8,
+            ttk.Button(row, text=down_text, width=8,
                        command=lambda h=handler: h(-1)).pack(side="left")
-            ttk.Button(row, text=in_text, width=8,
+            ttk.Button(row, text=up_text, width=8,
                        command=lambda h=handler: h(1)).pack(side="left", padx=2)
         # Which way is up. Off, the page keeps the heading the rover started with, so
         # the room holds still and the arrow turns -- right for watching where the
@@ -399,11 +399,13 @@ class Console:
                 ("<Up>", lambda _e: self._typing() or self._drive()),
                 ("<Left>", lambda _e: self._typing() or self._turn(self._angle())),
                 ("<Right>", lambda _e: self._typing() or self._turn(-self._angle())),
-                ("<plus>", lambda _e: self._typing() or self._zoom(1)),
-                ("<KP_Add>", lambda _e: self._typing() or self._zoom(1)),
-                ("<equal>", lambda _e: self._typing() or self._zoom(1)),
-                ("<minus>", lambda _e: self._typing() or self._zoom(-1)),
-                ("<KP_Subtract>", lambda _e: self._typing() or self._zoom(-1))):
+                # Plus zooms in, the way it does everywhere else, which means asking
+                # for a smaller extent -- a step down the ladder, not up it.
+                ("<plus>", lambda _e: self._typing() or self._zoom(-1)),
+                ("<KP_Add>", lambda _e: self._typing() or self._zoom(-1)),
+                ("<equal>", lambda _e: self._typing() or self._zoom(-1)),
+                ("<minus>", lambda _e: self._typing() or self._zoom(1)),
+                ("<KP_Subtract>", lambda _e: self._typing() or self._zoom(1))):
             self.root.bind(sequence, handler)
 
     def _build_status(self, parent: ttk.Frame) -> None:
@@ -572,9 +574,6 @@ class Console:
 
     def _drive(self) -> None:
         arguments: dict[str, Any] = {"distance_m": self._float(self.distance_var, 0.5)}
-        curve = self._float(self.curve_var, 0.0)
-        if abs(curve) > 0.01:
-            arguments["turn_deg"] = curve
         if self.speed_var.get().strip():
             arguments["speed_ms"] = self._float(self.speed_var, 0.2)
         self._move("drive", arguments)
