@@ -33,7 +33,7 @@ one map. The line under the buttons reports what came back -- size, kilobytes, t
 to draw, and whether the detail was capped -- so a setting that the rover declined
 does not look like a setting that did nothing.
 
-**Four connections, deliberately.** A `drive` call does not answer until the move
+**Five connections, deliberately.** A `drive` call does not answer until the move
 has finished, and `RoverClient` serialises calls on one socket, so anything sharing
 that socket would queue behind the move. Stop must never queue, and neither should
 the status poll that tells you what the move is doing while it does it -- so moves,
@@ -49,6 +49,32 @@ about a second, sometimes several, and it shared the status connection until tha
 was measured -- so the numbers went stale exactly while the picture was being
 drawn. It is the slowest thing here and it is the least urgent, which is a good
 argument for its own socket and a poor one for sharing.
+
+The camera gets a fifth, and it is the slowest of the lot: opening the camera and
+waiting for its first buffer takes the rover up to four seconds, so a picture on
+the status connection would blank the numbers for longer than a map ever did.
+
+**The other sensor, and the board.** Beside the map there is a panel for the
+camera, for face tracking and for the headlights. The picture is worth having next
+to the map rather than instead of it: the map draws the camera's cone, and the two
+together are what say which part of the room a photograph is of. Tracking is polled
+rather than remembered, because the daemon puts it down by itself -- driving parks
+it, since the tracking loop and SLAM cannot share this Pi -- so a window that only
+updated when you pressed something would go on claiming the camera was following
+somebody long after a drive took it away.
+
+Showing a frame is the one thing here that needs a library. The rover sends JPEG
+because that is all it can send -- there is no image library on that Pi, which is
+why face detection happens on another host -- and tkinter reads PNG, GIF and PPM.
+OpenCV does the decode, it is already in the repo's requirements.txt, and where it
+is missing the frame is written to a file and the window says where.
+
+**Clearing the map** throws the occupancy grid away and stands the rover at the
+origin of an empty one. Drift here is permanent -- there is no loop closure on this
+hardware and never will be -- so a map that has come out of true with itself will
+stay that way, and an empty map that fills back in over a few revolutions is worth
+more than a confident wrong one. It takes two presses rather than a confirmation
+box, because a modal dialog stops the event loop this window's stop button lives in.
 
 **What it will not do.** There is no continuous teleop here, because the daemon
 offers none: every move it exposes is bounded, in metres or in degrees, and it
@@ -66,9 +92,12 @@ is not a thing to leave lying around.
 from __future__ import annotations
 
 import argparse
+import base64
 import math
+import os
 import queue
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -111,6 +140,31 @@ MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
 # not send back a bigger picture. The rover works out pixels per cell from the two.
 MAP_SIZES_PX = (320, 480, 640, 800)
 
+# The camera panel. Frames arrive at whatever the daemon captures -- 640x480 on this
+# rover -- and are scaled to this to sit beside the map without dominating it.
+CAMERA_BOX_PX = 320
+# Auto-refresh for the picture, and it is off until asked for. Face tracking and
+# SLAM already cannot share this one core, and a picture every few seconds opens the
+# camera on the same core the driving loop is using -- so continuous frames are a
+# thing to switch on while looking at something, not a thing to leave running while
+# measuring a turn.
+CAMERA_AUTO_S = 3.0
+
+# How often to ask what face tracking is doing. It reads state the daemon already
+# has -- no camera, no detector, no lock -- so it is cheap, and it has to be asked
+# rather than remembered because the daemon parks tracking by itself when the wheels
+# turn.
+TRACK_POLL_S = 2.0
+
+# How long "clear map" stays armed after the first press. Deliberately not a
+# confirmation dialog: a modal window stops the tk event loop, and that loop is where
+# the stop button and the status poll live, so the rover would be unstoppable from
+# here for as long as somebody left the box open. A map thrown away by accident costs
+# a minute of driving; that costs whatever the rover hits.
+CLEAR_ARM_S = 4.0
+
+LIGHT_MAX = 255            # what the daemon calls full brightness
+
 
 def _legend():
     """Swatch colours and labels for the map key, taken from the renderer itself.
@@ -120,8 +174,6 @@ def _legend():
     is imported rather than copied, and if it cannot be found the key is simply
     omitted. It is a label on a picture; it is not worth failing to start over.
     """
-    import os
-
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "lidar_slam"))
     try:
@@ -139,6 +191,53 @@ def _legend():
 
 
 MAP_LEGEND = _legend()
+
+
+def _photo(jpeg, box):
+    """A JPEG as something tkinter can show, scaled to `box` across, or (None, why).
+
+    Tk reads PNG, GIF and PPM, and does not read JPEG. The rover cannot send anything
+    else: there is no image library on that Pi at all -- v4l2-ctl produces MJPEG and
+    the daemon forwards those bytes without decoding them, which is the same reason
+    face detection runs on another host. So the decode lands at this end, and it is
+    the one thing in this window that needs something installed. OpenCV is already in
+    the repo's requirements.txt, so a machine that runs anything else here has it, and
+    where it is missing the caller writes the frame to a file instead -- which beats a
+    blank panel and keeps every other control in the window working.
+
+    PPM rather than PNG on the way out because PPM needs no encoder: the bytes are the
+    pixels. They go to Tk raw, not base64 -- Tk's PPM reader does not accept base64,
+    only the compressed formats do, and a base64 PPM comes back as "couldn't recognize
+    image data".
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None, ("OpenCV is not installed here, so the picture cannot be put on "
+                      "screen (pip install opencv-python)")
+    image = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return None, "those bytes did not decode as a picture"
+    height, width = image.shape[:2]
+    if width > box:
+        image = cv2.resize(image, (box, max(1, round(height * box / width))),
+                           interpolation=cv2.INTER_AREA)
+        height, width = image.shape[:2]
+    # OpenCV is BGR and PPM is RGB. Getting this backwards produces a picture that
+    # looks entirely plausible until somebody wears a red jumper.
+    ppm = b"P6\n%d %d\n255\n" % (width, height) + image[:, :, ::-1].tobytes()
+    return tk.PhotoImage(data=ppm), ""
+
+
+def _save_frame(jpeg):
+    """The frame on disk, for when it cannot go on screen. One file, overwritten:
+    a window left open for an afternoon should not fill a disk with pictures of a
+    carpet."""
+    path = os.path.join(tempfile.gettempdir(), "rover-frame.jpg")
+    with open(path, "wb") as handle:
+        handle.write(jpeg)
+    return path
 
 
 def _f(value, spec="{}"):
@@ -246,6 +345,7 @@ class Console:
         self.halt: Channel | None = None      # stop, and nothing else, ever
         self.watch: Channel | None = None     # status, questions, tool list
         self.picture: Channel | None = None   # the map, which is slow enough to matter
+        self.camera: Channel | None = None    # frames, which are slower still
         self.channels: list[Channel] = []
 
         self.tools: list[str] = []
@@ -261,9 +361,20 @@ class Console:
         self.map_image: tk.PhotoImage | None = None
         self.map_view: dict[str, Any] | None = None
         self._heading_rad = 0.0
+        self.frame_outstanding = False
+        self.frame_at = 0.0
+        self.frame_cost = 0.0          # how long the last one took to arrive
+        self.frame_image: tk.PhotoImage | None = None
+        self.track_outstanding = False
+        self.track_at = 0.0
+        self.light_level: int | None = None
+        self.clear_armed_until = 0.0
 
         root.title("rover drive console")
-        root.minsize(960, 640)
+        # Wide enough for the numbers, the map and the camera side by side. They earn
+        # the width: the map draws the cone the camera is looking down, so reading one
+        # against the other is the point of having both.
+        root.minsize(1220, 700)
         self._build()
 
         self.address_var.set(address or "")
@@ -369,7 +480,7 @@ class Console:
         # the first one a zoom: widening the view shows more room in the same picture
         # rather than sending back a bigger one. The size is the one that costs the
         # rover, since a picture costs roughly its own area to draw.
-        zoom = ttk.LabelFrame(parent, text="map view", padding=8)
+        zoom = ttk.LabelFrame(parent, text="map", padding=8)
         zoom.pack(fill="x", pady=(10, 0))
         # The left button of each pair always steps down its ladder and the right one
         # always steps up, so the two rows behave the same way round.
@@ -399,6 +510,17 @@ class Console:
         ttk.Label(zoom, textvariable=self.cost_var, foreground="#666").pack(anchor="w")
         self._show_zoom()
 
+        # Throwing the map away is a map control, so it lives with them rather than
+        # with the moves. In the same disabled-while-driving list as the moves, though,
+        # because the navigator refuses it mid-move for the same reason it exists: the
+        # route being followed is written in the frame this discards.
+        ttk.Separator(zoom, orient="horizontal").pack(fill="x", pady=(8, 6))
+        self.clear_button = ttk.Button(zoom, text="clear map", command=self._clear_map)
+        self.clear_button.pack(fill="x")
+        self.buttons.append(self.clear_button)
+        ttk.Label(zoom, text="empties the grid and re-centres the rover",
+                  foreground="#666").pack(anchor="w", pady=(2, 0))
+
         keys = ttk.LabelFrame(parent, text="keys", padding=8)
         keys.pack(fill="x", pady=(10, 0))
         ttk.Label(keys, justify="left", foreground="#444",
@@ -426,7 +548,9 @@ class Console:
     def _build_status(self, parent: ttk.Frame) -> None:
         top = ttk.Frame(parent)
         top.grid(row=0, column=0, sticky="ew")
-        top.columnconfigure(1, weight=1)
+        # The slack goes to the right of the camera rather than between it and the
+        # map, so the two pictures stay side by side however wide the window is.
+        top.columnconfigure(2, weight=1)
 
         panel = ttk.LabelFrame(top, text="nav_status", padding=8)
         panel.grid(row=0, column=0, sticky="nw")
@@ -474,6 +598,8 @@ class Console:
         ttk.Label(picture, textvariable=self.caption_var, wraplength=400,
                   foreground="#444", justify="left").pack(anchor="w", pady=(4, 0))
 
+        self._build_camera(top)
+
         # Asked against achieved, one row per turn, newest at the top. This table is
         # much of the reason the window exists: a turn is the one move whose result
         # you cannot judge by watching the rover, and a column of ratios makes a
@@ -493,6 +619,69 @@ class Console:
             self.turns.heading(column, text=label)
             self.turns.column(column, width=width, anchor="w")
         self.turns.grid(row=0, column=0, sticky="ew")
+
+    def _build_camera(self, parent: ttk.Frame) -> None:
+        """The other sensor, and the two board controls that go with it.
+
+        Beside the map rather than under the driving buttons because the two pictures
+        answer the same question from opposite ends -- the map says where the rover is
+        in the room, the frame says what is in front of the lens -- and the map draws
+        the camera's cone, so having both in view is what makes that violet wedge mean
+        anything.
+        """
+        column = ttk.Frame(parent)
+        column.grid(row=0, column=2, sticky="nw", padx=(8, 0))
+
+        camera = ttk.LabelFrame(column, text="camera", padding=8)
+        camera.pack(fill="x")
+        # A box of its own fixed size, for the reason the map has one: a picture that
+        # sets the size of everything around it makes the whole window twitch when a
+        # frame fails to arrive and the label falls back to a line of text.
+        self.frame_box = tk.Frame(camera, width=CAMERA_BOX_PX,
+                                  height=CAMERA_BOX_PX * 3 // 4)
+        self.frame_box.pack()
+        self.frame_box.pack_propagate(False)
+        self.frame_label = ttk.Label(self.frame_box, text="no picture yet",
+                                     anchor="center", justify="center",
+                                     wraplength=CAMERA_BOX_PX - 12)
+        self.frame_label.place(relx=0.5, rely=0.5, anchor="center")
+        row = ttk.Frame(camera)
+        row.pack(fill="x", pady=(6, 0))
+        ttk.Button(row, text="take a picture", command=self._take_picture
+                   ).pack(side="left")
+        self.auto_camera = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row, text=f"every {CAMERA_AUTO_S:.0f} s",
+                        variable=self.auto_camera).pack(side="left", padx=6)
+        self.frame_var = tk.StringVar(value="")
+        ttk.Label(camera, textvariable=self.frame_var, foreground="#666"
+                  ).pack(anchor="w", pady=(4, 0))
+
+        # Face tracking. Started here it does the same thing the model's tool does:
+        # the loop takes the camera, sweeps for a face and follows it.
+        tracking = ttk.LabelFrame(column, text="face tracking", padding=8)
+        tracking.pack(fill="x", pady=(10, 0))
+        row = ttk.Frame(tracking)
+        row.pack(fill="x")
+        for label, name in (("start", "start_tracking"), ("stop", "stop_tracking")):
+            ttk.Button(row, text=label, width=8,
+                       command=lambda n=name: self._track(n)).pack(side="left", padx=2)
+        self.tracking_var = tk.StringVar(value="-")
+        ttk.Label(tracking, textvariable=self.tracking_var, font=("TkFixedFont", 9)
+                  ).pack(anchor="w", pady=(4, 0))
+        ttk.Label(tracking, text="driving stops it: they cannot share the core",
+                  foreground="#666").pack(anchor="w")
+
+        lights = ttk.LabelFrame(column, text="headlights", padding=8)
+        lights.pack(fill="x", pady=(10, 0))
+        row = ttk.Frame(lights)
+        row.pack(fill="x")
+        for label, level in (("on", LIGHT_MAX), ("off", 0)):
+            ttk.Button(row, text=label, width=8,
+                       command=lambda v=level: self._set_lights(v)
+                       ).pack(side="left", padx=2)
+        self.lights_var = tk.StringVar(value="-")
+        ttk.Label(lights, textvariable=self.lights_var, font=("TkFixedFont", 9)
+                  ).pack(anchor="w", pady=(4, 0))
 
     def _build_log(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="calls and replies", padding=(4, 4))
@@ -515,7 +704,13 @@ class Console:
         for channel in self.channels:
             channel.close()
         self.channels = []
-        self.moves = self.halt = self.watch = None
+        # All of them, including the two the reconnect path used to leave pointing at
+        # a closed socket: a submit on a closed channel is queued to a thread that has
+        # already returned, so the map simply never came back and the "one at a time"
+        # flag stayed set for good.
+        self.moves = self.halt = self.watch = self.picture = self.camera = None
+        self.frame_outstanding = False
+        self.map_outstanding = False
         self.tools = []
         self.can_drive = False
         self.busy_since = None
@@ -550,9 +745,13 @@ class Console:
         self.halt = Channel("stop", address, self.replies)
         self.watch = Channel("watch", address, self.replies)
         self.picture = Channel("map", address, self.replies)
-        self.channels = [self.moves, self.halt, self.watch, self.picture]
+        self.camera = Channel("camera", address, self.replies)
+        self.channels = [self.moves, self.halt, self.watch, self.picture, self.camera]
         self.link_var.set(f"{address}: asking what it can do")
         self.watch.submit("list_tools")
+        # The board cannot be read back, so the daemon only knows the level it last
+        # set. Ask once on connect and the panel starts out true rather than blank.
+        self.watch.submit("get_lights")
 
     # --- issuing calls --------------------------------------------------------
     def _watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
@@ -624,6 +823,58 @@ class Console:
             arguments["speed_ms"] = self._float(self.speed_var, 0.2)
         self._move("drive_to", arguments)
         return "break"
+
+    def _take_picture(self) -> None:
+        """On its own connection, because it is the slowest call here: a camera that
+        has to be opened takes the rover up to four seconds to deliver a first
+        buffer, and while it is doing that nothing else on that socket is answered."""
+        if self.camera is None:
+            self._say("not connected, so no picture was asked for\n", "bad")
+            return
+        if self.frame_outstanding:
+            return
+        self.frame_outstanding = True
+        self.frame_at = time.monotonic()
+        self.frame_var.set("taking one...")
+        self.camera.submit("camera_jpeg")
+
+    def _track(self, name: str) -> None:
+        """Start or stop face tracking, and ask straight away what came of it rather
+        than believing the button."""
+        self._watch_call(name)
+        self.track_at = 0.0
+
+    def _set_lights(self, level: int) -> None:
+        self._watch_call("set_lights", {"level": level})
+
+    def _clear_map(self) -> None:
+        """Two presses, and no dialog between them.
+
+        A modal confirmation box stops the tk event loop, and that loop is where the
+        stop button, the key bindings and the status poll live -- so the window would
+        be unable to stop a rover for as long as somebody left the box sitting there.
+        Arming the button costs one extra press and takes nothing away. It disarms
+        itself after CLEAR_ARM_S, so a press forgotten about does not lie in wait.
+        """
+        now = time.monotonic()
+        if now > self.clear_armed_until:
+            self.clear_armed_until = now + CLEAR_ARM_S
+            self.clear_button.configure(text="clear map -- press again")
+            return
+        self._disarm_clear()
+        if self.picture is None:
+            self._say("not connected, so the map was not cleared\n", "bad")
+            return
+        # On the map's connection, so that a picture already being drawn comes back
+        # before the clear rather than after it. The other way round shows an empty
+        # map and then replaces it with the old one, which reads as the clear having
+        # failed.
+        self._log_sent("clear_map", {})
+        self.picture.submit("clear_map")
+
+    def _disarm_clear(self) -> None:
+        self.clear_armed_until = 0.0
+        self.clear_button.configure(text="clear map")
 
     def _stop(self) -> None:
         """Always allowed, and on the connection that carries nothing else."""
@@ -727,6 +978,22 @@ class Console:
                 and not self.map_outstanding
                 and now - self.map_at > max(MAP_AUTO_S, self.map_cost)):
             self._refresh_map()
+        # Paced off what the last one cost, like the map: a cold camera takes seconds
+        # to produce a frame, and asking again while it is still opening would keep a
+        # single-core Pi taking pictures for the whole time it is meant to be driving.
+        if (self.camera is not None and self.auto_camera.get()
+                and not self.frame_outstanding
+                and now - self.frame_at > max(CAMERA_AUTO_S, self.frame_cost)):
+            self._take_picture()
+        # Asked, not remembered: the daemon parks tracking by itself when the wheels
+        # turn, so the only honest source for this panel is the daemon.
+        if (self.watch is not None and not self.track_outstanding
+                and now - self.track_at > TRACK_POLL_S):
+            self.track_outstanding = True
+            self.track_at = now
+            self.watch.submit("tracking_status")
+        if self.clear_armed_until and now > self.clear_armed_until:
+            self._disarm_clear()
 
         self.root.after(TICK_MS, self._tick)
 
@@ -754,6 +1021,23 @@ class Console:
         if name == "list_tools":
             self._show_tools(body)
             return
+        if name == "camera_jpeg":
+            self.frame_outstanding = False
+            self.frame_cost = reply.seconds
+            self._show_picture(body)
+            return
+        if name == "tracking_status":
+            # Polled by the window rather than asked for by a person, so it updates
+            # the panel and stays out of the transcript.
+            self.track_outstanding = False
+            self._show_tracking(body)
+            return
+        if name in ("get_lights", "set_lights"):
+            if body.get("ok"):
+                self.light_level = body.get("level")
+                self._show_lights()
+            if name == "get_lights":
+                return          # the window asked for this one, on connect
 
         # What is left is something a person asked for, so it is logged.
         moved = name in ("drive", "turn_in_place", "drive_to")
@@ -764,7 +1048,9 @@ class Console:
         self._log_reply(reply)
         if name == "turn_in_place":
             self._tally_turn(reply)
-        if moved:
+        if name in ("start_tracking", "stop_tracking") and body.get("ok"):
+            self._show_tracking(body)
+        if moved or name == "clear_map":
             self._refresh_map()
 
     # --- showing it -----------------------------------------------------------
@@ -843,6 +1129,54 @@ class Console:
         if abs(image.width() - self.map_size) > self.map_size * 0.1:
             cost += f" -- {self.map_size} px was not reachable here"
         self.cost_var.set(cost)
+
+    def _show_picture(self, body: dict[str, Any]) -> None:
+        if not body.get("ok"):
+            self.frame_label.configure(text=str(body.get("error", "no picture")),
+                                       image="")
+            self.frame_var.set("")
+            return
+        jpeg = base64.b64decode(body.get("jpeg_base64", ""))
+        photo, why = _photo(jpeg, CAMERA_BOX_PX)
+        if photo is None:
+            # The frame arrived and only the showing of it failed, so it is put
+            # somewhere it can be looked at rather than dropped on the floor.
+            self.frame_label.configure(
+                text=f"{why}.\nThe frame itself is at {_save_frame(jpeg)}", image="")
+        else:
+            self.frame_image = photo        # Tk keeps no reference of its own
+            self.frame_label.configure(image=photo, text="")
+        where = f"pan {_f(body.get('pan'))}, tilt {_f(body.get('tilt'))}"
+        size = f"{_f(body.get('width'))}x{_f(body.get('height'))}"
+        # Which of the two paths it came off. They mean different things: while
+        # tracking runs the loop owns the camera and this is its newest frame, which
+        # is also the one the gimbal is actually pointed at.
+        source = "tracking's own frame" if body.get("live") else "fresh"
+        self.frame_var.set(f"{size}, {body.get('bytes', 0) / 1000:.0f} kB, {where}, "
+                           f"{source}, {self.frame_cost:.1f} s")
+
+    def _show_tracking(self, body: dict[str, Any]) -> None:
+        if not body.get("ok"):
+            self.tracking_var.set(str(body.get("error", "-")))
+            return
+        if not body.get("tracking"):
+            self.tracking_var.set("off")
+            return
+        # "Running" and "following somebody" are different states and the difference
+        # is the whole question: a loop that is running and has locked onto nobody is
+        # sweeping, which looks identical from here and quite different on the rover.
+        who = ("following someone" if body.get("following_someone")
+               else "sweeping, nobody yet")
+        faces = body.get("faces_in_view")
+        self.tracking_var.set(
+            f"on, {who}" + ("" if faces is None else f", {faces} in view"))
+
+    def _show_lights(self) -> None:
+        level = self.light_level
+        if level is None:
+            self.lights_var.set("-")
+            return
+        self.lights_var.set(f"{'on' if level else 'off'} ({level})")
 
     def _tally_turn(self, reply: Reply) -> None:
         asked = float(reply.arguments.get("angle_deg", 0.0))

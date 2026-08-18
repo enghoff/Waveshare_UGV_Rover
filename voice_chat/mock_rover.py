@@ -547,6 +547,40 @@ class Rover:
         return {"ok": True, "vision": f"http://{self.vision}/frame",
                 "tools": prompts.names(self.tools())}
 
+    def camera_jpeg(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """A frame in the reply, the way the daemon's control call returns one.
+
+        Not gated on a vision host, because the real one is not: `look` needs
+        somewhere to post a picture and this needs only a camera, which is what lets
+        a window take pictures from a daemon started without `--vision`.
+        """
+        if self.picture is None:
+            self.picture = _test_card()
+        if self.picture is None:
+            return {"ok": False,
+                    "error": "the camera gave nothing: no picture to send, and "
+                             "OpenCV is not here to draw a test card"}
+        return {"ok": True, "bytes": len(self.picture), "width": 320, "height": 240,
+                "live": self.tracking, "pan": self.pan, "tilt": self.tilt,
+                "jpeg_base64": base64.b64encode(self.picture).decode("ascii")}
+
+    def clear_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """Throw the map away -- as far as an invented room can.
+
+        The real one empties an occupancy grid that was built up scan by scan and
+        stands the rover at the origin of it. This room is not built up; it is
+        evaluated from its own geometry every time a map is drawn, so it cannot be
+        un-seen and the walls come straight back. What does go is the driven track,
+        which is the part a client can see disappear -- and the pose stays where it
+        is, because teleporting the rover to the middle of the room would move the
+        room around it, which is the one thing clearing a real map does not do.
+        """
+        had = len(self.trail)
+        self.trail = []
+        return {"ok": True, "cleared": True,
+                "reason": f"the track of {had} places is gone; the invented room "
+                          f"itself cannot be un-seen"}
+
     def look(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.vision is None:
             return {"ok": False, "error": "this rover cannot show you a picture"}

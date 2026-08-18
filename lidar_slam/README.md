@@ -389,6 +389,42 @@ degrees, which is a guess at a generic USB webcam; `--camera-fov` on the daemon 
 it, and it is worth ten minutes with a doorframe — pan until a known edge just
 leaves the frame, and double it.
 
+## Throwing the map away
+
+`slam2d_reset` empties the occupancy grid and the likelihood field and stands the
+rover at the origin of what is left; `Navigator.clear_map` wraps it, and the daemon
+offers it as a control call that no model is shown. It exists because drift here is
+permanent. There is no loop closure on this hardware and there will not be — a
+closure attempt costs about 19 seconds at the rate this Pi searches poses — so a room
+that has come out a few degrees out of true with itself, or a corridor stamped in
+twice from two passes, stays that way for as long as the daemon runs. Past a certain
+point the map is worse than no map: the planner routes on it and refuses gaps that
+are really there. An empty map is at least true, and this rover fills one back in
+within a revolution or two of standing still.
+
+Three things about it are deliberate.
+
+**Both grids, not just the picture.** The occupancy grid is what gets drawn and the
+likelihood field is what the matcher actually slides a scan over. Clearing only the
+first would blank the map while the old room went on deciding where the rover is.
+
+**The pose goes back to the origin.** The grid is finite and centred on the origin,
+so a rover that has driven six metres from where it started would otherwise get a
+blank map with a third of it already behind it. The cost is that everything anyone
+holds in world coordinates — a route, the driven track, somewhere worth going back
+to — refers to an origin that no longer exists, so the track is thrown away with the
+map and the navigator refuses to clear at all while a move is running. The route
+being followed is written in the very frame the clear discards.
+
+**The scan count goes back to zero**, which is what makes the next revolution take
+the same first-scan path as the first one after startup and get stamped straight in.
+Leave it alone and that revolution is matched against an empty likelihood field,
+scores nothing, is rejected, and the map is never written again — a rover dead
+reckoning through a permanently blank map, which looks exactly like a dead lidar and
+is not one. `selftest.c` drives a metre and a half, clears, and then checks that the
+grid is empty, that the pose and the count are back to zero, and that the next dozen
+revolutions are mapped and matched.
+
 `rover_up` picks which way is up: the heading the rover started with, so the room
 holds still and the arrow turns, or the heading it has now, so the arrow holds still
 and the room turns underneath it. The second needs the grid *sampled* through a

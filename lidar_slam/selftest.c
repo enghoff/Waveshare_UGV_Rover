@@ -284,6 +284,58 @@ static void test_moving(void)
     slam2d_destroy(s);
 }
 
+static void test_reset(void)
+{
+    puts("\n--- clearing the map: an empty grid, and a core that maps again ---");
+    slam2d_config cfg;
+    slam2d_default_config(&cfg);
+    cfg.mount_deg = MOUNT_DEG;
+    slam2d *s = slam2d_create(&cfg);
+    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
+    const signed char *g = slam2d_grid(s);
+    long written;
+    float px, py, pth;
+
+    /* Drive a metre and a half up the room, so what gets thrown away is a map
+     * built over a run and a pose that has gone somewhere -- which is the state a
+     * reset is actually asked for in. */
+    double x = 0.0;
+    for (int i = 0; i < 30; i++) { x += 0.05; step(s, x, 0.0, 0.0); }
+
+    written = 0;
+    for (long i = 0; i < n_cells; i++) if (g[i]) written++;
+    check_true(written > 100, "there is a map to throw away");
+    slam2d_pose(s, &px, &py, &pth);
+    check_true(px > 1.0, "and the rover has driven away from the origin");
+
+    slam2d_reset(s);
+
+    slam2d_pose(s, &px, &py, &pth);
+    close_to("x is back at the origin (m)", px, 0.0, 1e-6);
+    close_to("y is back at the origin (m)", py, 0.0, 1e-6);
+    close_to("heading is back at the origin (deg)", pth * 180.0 / M_PI, 0.0, 1e-6);
+    check_true(slam2d_scans(s) == 0, "the scan count starts again");
+    written = 0;
+    for (long i = 0; i < n_cells; i++) if (g[i]) written++;
+    check_true(written == 0, "every cell is empty");
+
+    /* And it maps again from where it stands, which is the half a reset gets wrong
+     * quietly: leave the scan count alone and the next revolution is matched
+     * against an empty likelihood field, scores nothing, is rejected, and the map
+     * is never written again. That looks exactly like a dead lidar and is not one. */
+    for (int i = 0; i < 12; i++) step(s, x, 0.0, 0.0);
+    written = 0;
+    for (long i = 0; i < n_cells; i++) if (g[i]) written++;
+    check_true(written > 100, "the new map is being written");
+    check(slam2d_score(s) > 0.5, "and it is matching again", slam2d_score(s), 1.0, 0.5);
+    check_true(!slam2d_rejected(s), "the match is accepted, not dead reckoned");
+    slam2d_pose(s, &px, &py, &pth);
+    close_to("standing still, it stays at the new origin (m)",
+             hypot(px, py), 0.0, 0.05);
+
+    slam2d_destroy(s);
+}
+
 static void test_prior_helps(void)
 {
     const double STRIDE = 0.30;             /* per revolution, so 3 m/s */
@@ -671,6 +723,7 @@ int main(void)
     test_parser_and_room();
     test_stationary();
     test_moving();
+    test_reset();
     test_prior_helps();
     test_unknown_sectors();
     test_body_mask();

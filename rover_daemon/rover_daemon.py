@@ -1107,6 +1107,41 @@ class Rover:
         # is said once. See voice_chat/README.md.
         return {"ok": True, "image": sent["image"]}
 
+    def _tool_camera_jpeg(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """One frame, as base64 JPEG in the reply. A control call, not a model tool.
+
+        `look` is the model's version and posts the picture to the model's host,
+        because a tool result cannot carry an image into a conversation. A window on
+        a desk has no such problem, and routing a frame through a frame server to get
+        it onto the screen of the machine that asked for it would be silly -- the
+        same argument that gives `map_png` its own existence beside `show_map`.
+
+        It needs a camera and not a vision host, which is the practical difference:
+        a daemon started without `--vision` cannot `look` at all, and can still be
+        asked for a picture from here.
+
+        The bytes are the camera's own, undecoded. There is no image library on this
+        Pi -- see [face_tracking/track_face_pi.py](../face_tracking/track_face_pi.py),
+        where v4l2-ctl does the capturing precisely because of that -- so JPEG is the
+        only thing this end can send, and turning it into something a widget can show
+        is the caller's problem. `_whole_jpeg` still checks it is a whole picture and
+        not the tail of one, which costs two bytes rather than the 93 ms a decode
+        would.
+        """
+        if self.device is None:
+            return {"ok": False, "error": "this rover has no camera attached"}
+        jpeg, why = self._whole_jpeg()
+        if jpeg is None:
+            return {"ok": False, "error": why}
+        width, height = self.size
+        return {"ok": True, "bytes": len(jpeg), "width": width, "height": height,
+                # Which of the two paths it came off, because they mean different
+                # things: the loop's newest frame is what the camera is pointing at
+                # while it sweeps, and a fresh grab is a camera opened for this call.
+                "live": self._tracking.is_set(),
+                "pan": round(self.pan), "tilt": round(self.tilt),
+                "jpeg_base64": base64.b64encode(jpeg).decode("ascii")}
+
     def _detector_ready(self) -> str:
         """Empty if the face detector answers, otherwise why not, in a sentence.
 
@@ -1358,6 +1393,25 @@ class Rover:
                          "heading_deg": round(math.degrees(th), 1)},
                 "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
+
+    def _tool_clear_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """Throw the SLAM map away and start again. A control call, not a model tool.
+
+        Kept away from models deliberately, and not because it is dangerous -- the
+        rover fills a map back in within a revolution or two. It is that a model
+        handed this will reach for it. Asked to go somewhere and told there is no
+        route, the obliging thing to do is clear the map and try again, and that
+        throws away the only account anyone has of the room, including the walls the
+        route was refused for. Whether the map has drifted past being worth keeping
+        is a judgement made by looking at it, which is a thing a person does.
+
+        The refusal while driving comes from the navigator, where the route being
+        followed is: see `clear_map` there.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar attached"}
+        result = self.nav.clear_map()
+        return {"ok": bool(result.get("cleared")), **result}
 
     # --- the loop -----------------------------------------------------------
 

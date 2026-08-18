@@ -884,7 +884,8 @@ what a `look`-shaped tool result carries back — see [Seeing](#seeing).
 
 [drive_console.py](drive_console.py) is the same tools with the model taken out: a
 tkinter window with buttons for `turn_in_place` and `drive`, a big red stop, the
-daemon's `nav_status` polled three times a second, and the lidar map on screen.
+daemon's `nav_status` polled three times a second, and the lidar map on screen —
+with the camera's own picture, face tracking and the headlights beside it.
 
 ```powershell
 python voice_chat\drive_console.py                     # finds the rover
@@ -901,19 +902,21 @@ seconds — because a turn is the one move whose result you cannot judge by watc
 the rover do it, and a column of ratios makes a systematic shortfall obvious in
 three attempts instead of ten.
 
-Four things in it are deliberate rather than incidental.
+Several things in it are deliberate rather than incidental.
 
-**Four connections, not one.** `drive` does not answer until the move has
+**Five connections, not one.** `drive` does not answer until the move has
 finished, and `RoverClient` serialises calls on one socket, so anything sharing
 that socket queues behind the move — including the stop meant to interrupt it. The
-window opens one connection for moves, one for stop, one for watching and one for
-the map. The daemon is a `ThreadingTCPServer` and takes no lock across a move, so
-the others are answered while the first is still driving.
+window opens one connection for moves, one for stop, one for watching, one for
+the map and one for the camera. The daemon is a `ThreadingTCPServer` and takes no
+lock across a move, so the others are answered while the first is still driving.
 
 The map earned its own once its cost was measured: drawing one takes the Pi about a
 second at the default and several at the widest settings, and while it shared the
 watch connection every refresh held up a status poll that is meant to arrive three
 times a second — so the numbers went stale exactly while the picture was being drawn.
+The camera earned the fifth for the same reason one step worse: opening the camera
+and waiting for its first buffer takes the rover up to four seconds.
 
 **The map zooms, and zooming does not resize it.** "Across" is how many metres are
 in frame; `-` and `+` step it through a fixed ladder from 1.5 m to 12 m so the same
@@ -939,20 +942,60 @@ through the gap in front of it. Neither is more correct and a picture cannot say
 which it is, so the caption does — and the caption used to claim the rover's forward
 was up the page in both, which was only ever true of the heading it started with.
 
-**Two calls that no model is shown.** `nav_status` returns every number the driving
-loop has, and `map_png` returns the map as base64 in the reply instead of posting
-it to a frame server. Both are in [rover_daemon.py](../rover_daemon/rover_daemon.py)
-alongside `set_vision`, absent from `list_tools`, and there for the same reason:
-the PWM actually on the motors and the age of the last scan are what tell you why a
-move went wrong, and are of no use at all to something that has to say the answer
-out loud. `show_map` remains the model's version, because a tool result cannot
-carry a picture into a conversation and a GUI has no such problem.
+**Four calls that no model is shown.** `nav_status` returns every number the driving
+loop has; `map_png` returns the map as base64 in the reply instead of posting it to a
+frame server; `camera_jpeg` does the same for one frame off the camera; and
+`clear_map` throws the SLAM map away. All four are in
+[rover_daemon.py](../rover_daemon/rover_daemon.py) alongside `set_vision`, absent
+from `list_tools`, and the first three are there for the same reason: the PWM
+actually on the motors and the age of the last scan are what tell you why a move went
+wrong, and are of no use at all to something that has to say the answer out loud.
+`show_map` and `look` remain the model's versions, because a tool result cannot carry
+a picture into a conversation and a window has no such problem. `clear_map` is kept
+back on different grounds — a model told there is no route somewhere will reach for
+it, and clearing the map throws away the walls the route was refused for. See
+[rover_daemon/README.md](../rover_daemon/README.md).
+
+**The other sensor, and the board.** Beside the map there is a panel for the camera,
+for face tracking and for the headlights. The picture belongs next to the map rather
+than instead of it: the map draws the camera's cone as a violet wedge, and the two
+together are what say which part of the room a photograph is of. Tracking is polled
+every couple of seconds rather than remembered, because the daemon puts it down by
+itself — driving parks it, since the tracking loop and SLAM cannot share this one
+core — so a window that only updated when you pressed something would go on claiming
+the camera was following somebody long after a drive took it away. The headlight
+level is asked for once on connect, because the board cannot be read back and the
+daemon only knows the level it last set.
+
+Showing a frame is the one thing in this window that needs a library installed. The
+rover sends JPEG because that is all it can send — there is no image library on that
+Pi, which is why face detection happens on another host — and tkinter reads PNG, GIF
+and PPM. OpenCV does the decode and is already in the repo's `requirements.txt`;
+where it is missing the frame is written to a file and the panel says where, and
+every other control goes on working. On the way to the screen it becomes a PPM
+rather than a PNG, because PPM needs no encoder at all — the bytes are the pixels —
+and it is handed to Tk raw, since Tk's PPM reader rejects base64 where its PNG
+reader accepts it.
+
+**Clearing the map takes two presses and no dialog.** A modal confirmation box stops
+the tk event loop, and that loop is where the stop button, the key bindings and the
+status poll live — so the window would be unable to stop a rover for exactly as long
+as somebody left the box sitting there. The button arms itself instead, and disarms
+after four seconds. A map cleared by accident costs a minute of driving; a stop
+button behind a dialog costs whatever the rover hits.
 
 **No continuous teleop.** Every move the daemon offers is bounded, in metres or
 degrees, and watched by the lidar throughout; holding a key down would mean a stream
 of short moves, which drives worse and measures nothing. For teleop with none of
 that, [driver_board/drive_gamepad.py](../driver_board/drive_gamepad.py) talks
 straight to the ESP32 with no Pi, no SLAM and no standoff in it.
+
+`mock_rover.py` answers `camera_jpeg` with the same test card `look` posts, and
+`clear_map` by dropping the driven track — the invented room is evaluated from its own
+geometry every time a map is drawn rather than built up scan by scan, so it cannot be
+un-seen and the walls come straight back. The pose stays where it is, because
+teleporting the rover to the middle of the room would move the room around it, which
+is the one thing clearing a real map does not do.
 
 `mock_rover.py --drive` adds the driving tools to the mock, in an invented room
 with a table in it, so the window can be opened and learned with no rover powered

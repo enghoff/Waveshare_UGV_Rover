@@ -212,6 +212,31 @@ void slam2d_destroy(slam2d *s)
     free(s);
 }
 
+void slam2d_reset(slam2d *s)
+{
+    if (!s) return;
+    size_t n = (size_t)s->cells * s->cells;
+    /* Both grids. Clearing the occupancy alone would blank the picture while the
+     * likelihood field went on holding the old room -- and the field is the half
+     * the matcher actually reads, so the rover would be localised in a map nobody
+     * could see. */
+    memset(s->occ, 0, n);
+    memset(s->lik, 0, n);
+
+    s->x = s->y = s->th = 0.0f;
+    /* The prior is a movement not yet accounted for, measured between two poses
+     * that have both just ceased to mean anything. */
+    s->prior_fwd = s->prior_yaw = 0.0f;
+    s->score = 0.0f;
+    s->rejected = 0;
+    /* Back to zero so the next update takes its first-scan branch and stamps the
+     * pending revolution straight in. It has to: there is nothing to match
+     * against, and matching an empty field would score zero and reject every scan
+     * that followed, leaving the rover dead-reckoning inside a map that never got
+     * written. */
+    s->scans = 0;
+}
+
 /* ----------------------------------------------------------------- parsing */
 
 static void finish_revolution(slam2d *s)

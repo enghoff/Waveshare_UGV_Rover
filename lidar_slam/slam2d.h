@@ -87,6 +87,29 @@ int slam2d_feature_size(void);   /* likewise, for slam2d_feature */
 slam2d *slam2d_create(const slam2d_config *cfg);
 void    slam2d_destroy(slam2d *s);
 
+/* Throw the map away and stand the rover at the origin of an empty one.
+ *
+ * Every cell is a claim about a place, and every one of those claims was written
+ * from a pose that has been drifting since the first revolution. Once the drift
+ * has grown past the point where the map helps -- a corridor stamped in twice, a
+ * room a few degrees out of true with itself -- there is nothing to salvage cell
+ * by cell, and with no loop closure here nothing that will ever repair it. The
+ * cheapest true map is an empty one.
+ *
+ * The pose goes back to the origin rather than staying where it is, because the
+ * grid is finite and centred on the origin: a rover that has driven 6 m from
+ * where it started would otherwise get a blank map with a third of it already
+ * behind it. So everything the caller is holding in world coordinates -- a route,
+ * a driven track, somewhere worth coming back to -- refers to an origin that no
+ * longer exists and has to go with it.
+ *
+ * The likelihood field goes too, not just the occupancy grid: the field is what
+ * the matcher slides a scan over, so clearing only the picture would leave the
+ * old room still deciding where the rover is. The revolution already parsed is
+ * kept and seeds the new map on the next update, exactly as the first one after
+ * create does. Allocates nothing. */
+void slam2d_reset(slam2d *s);
+
 /* --- input ---------------------------------------------------------------- */
 
 /* Feed raw bytes from the lidar port. Handles packets split across reads, drops

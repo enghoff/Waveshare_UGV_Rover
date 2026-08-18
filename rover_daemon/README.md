@@ -121,6 +121,44 @@ one of them is on the way here, and which one that is changes when the rover
 leaves its dock and starts answering on wlan0. See `local_address` in
 [voice_chat/rover_tools.py](../voice_chat/rover_tools.py).
 
+### The calls no model is shown
+
+Five things are dispatched exactly like tools and are deliberately absent from
+`list_tools`, so no model is ever offered one: `set_vision` above, and four written
+for [voice_chat/drive_console.py](../voice_chat/drive_console.py), the window
+somebody drives this rover from by hand.
+
+| call | what it does |
+|---|---|
+| `nav_status` | every number the driving loop has — PWM, measured turn rate, scan age |
+| `map_png` | the map as base64 PNG **in the reply**, at a given extent and picture size |
+| `camera_jpeg` | one frame as base64 JPEG in the reply |
+| `clear_map` | throw the SLAM map away and stand the rover at the origin of an empty one |
+
+The first two are covered in [voice_chat/README.md](../voice_chat/README.md). The
+other two are worth a note each.
+
+`camera_jpeg` is to `look` what `map_png` is to `show_map`: a tool result cannot
+carry an image into a conversation, so `look` posts the frame to the model's host and
+returns the name it was filed under, while a window on a desk has no such problem and
+routing a picture through a frame server to reach the screen of the machine that
+asked for it would be silly. The practical difference is what each one needs.
+`look` needs somewhere to post and is withdrawn without `--vision`; `camera_jpeg`
+needs only a camera, so a daemon started with no vision host can still be asked for a
+picture. The bytes are the camera's own and nothing here decodes them — there is no
+image library on this Pi, which is the same reason face detection happens on another
+host — so what arrives is MJPEG and turning it into something a widget can show is
+the caller's problem.
+
+`clear_map` is kept from models for a different reason than danger. The rover fills a
+map back in within a revolution or two; the trouble is that a model handed this will
+reach for it. Told there is no route to somewhere, the obliging thing to do is clear
+the map and try again — which throws away the only account anyone has of the room,
+including the walls the route was refused for. Whether a map has drifted past being
+worth keeping is a judgement made by looking at it. The navigator refuses while a
+move is running, because the route being followed is written in the frame the clear
+discards; see [lidar_slam/README.md](../lidar_slam/README.md).
+
 ## What it cannot do, and will not pretend to
 
 **There is no face recognition here.** YuNet is a detector: it returns a box and

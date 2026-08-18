@@ -95,6 +95,7 @@ def _load(path=None):
     lib.slam2d_create.argtypes = [POINTER(Config)]
     lib.slam2d_create.restype = c_void_p
     lib.slam2d_destroy.argtypes = [c_void_p]
+    lib.slam2d_reset.argtypes = [c_void_p]
     lib.slam2d_feed_lidar.argtypes = [c_void_p, c_char_p, c_int]
     lib.slam2d_feed_lidar.restype = c_int
     lib.slam2d_set_prior.argtypes = [c_void_p, c_float, c_float]
@@ -172,6 +173,17 @@ class Slam2D:
         self.close()
 
     __del__ = close
+
+    def reset(self):
+        """Throw the map away and stand the rover at the origin of an empty one.
+
+        Everything anyone else is holding in world coordinates -- a planned route, a
+        driven track, somewhere worth going back to -- was measured against an
+        origin that no longer exists, and has to be thrown away with it. See
+        slam2d.h for why the pose moves rather than staying put.
+        """
+        with self.lock:
+            self._lib.slam2d_reset(self._h)
 
     # --- input ----------------------------------------------------------------
     def feed(self, data):

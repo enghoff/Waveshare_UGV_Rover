@@ -97,7 +97,7 @@ def test_schemas():
     # decision about which of the two kinds it is.
     handlers = sorted(m[len("_tool_"):] for m in dir(rover_daemon.Rover)
                       if m.startswith("_tool_"))
-    control = ["set_vision", "nav_status", "map_png"]
+    control = ["set_vision", "nav_status", "map_png", "camera_jpeg", "clear_map"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
@@ -167,7 +167,7 @@ def test_no_camera():
 
     rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
     # A rover with no camera must say so rather than hanging or claiming to look.
-    for tool in ("count_faces", "start_tracking"):
+    for tool in ("count_faces", "start_tracking", "camera_jpeg"):
         got = rover.call(tool, {})
         check(f"{tool} without a camera is refused", got["ok"], False)
         check(f"...and says why", "camera" in got["error"], True)
@@ -323,6 +323,28 @@ def test_camera_cone():
     check("a rover with no camera draws no cone", blind._camera_cone(), None)
 
 
+def test_control_calls_without_hardware():
+    """The two newest control calls refuse rather than raise when the hardware they
+    need is not fitted.
+
+    Worth its own check because both are reached from a window with live buttons
+    rather than from a model that would read an explanation: a daemon started
+    without `--lidar` still shows a `clear map` button, and pressing it has to come
+    back as a sentence rather than as a traceback that closes the connection.
+    """
+    import rover_daemon
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    blind = rover.call("clear_map", {})
+    check("clear_map with no lidar is refused", blind["ok"], False)
+    check("...and says why", "lidar" in blind["error"], True)
+    # camera_jpeg needs a camera and *not* a vision host, which is the whole
+    # difference between it and `look`: a daemon with nowhere to post a picture can
+    # still hand one back in the reply.
+    check("camera_jpeg is not gated on a vision host",
+          "vision" in rover.call("camera_jpeg", {})["error"], False)
+
+
 def test_where():
     import rover_daemon
 
@@ -416,7 +438,8 @@ def test_flags():
 
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_look, test_camera_cone, test_where,
+                 test_no_camera, test_look, test_camera_cone,
+                 test_control_calls_without_hardware, test_where,
                  test_map_view, test_flags):
         try:
             test()

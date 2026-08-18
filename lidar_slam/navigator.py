@@ -803,11 +803,15 @@ class Navigator:
                 self._halt()
             return
 
-        if len(self._trail) < 4000 and (
-                not self._trail
-                or math.hypot(pose[0] - self._trail[-1][0],
-                              pose[1] - self._trail[-1][1]) > 0.05):
-            self._trail.append((pose[0], pose[1]))
+        # Bound once: clear_map swaps a fresh list in from another thread, and
+        # reading self._trail twice across that swap is how a length check passes
+        # on the old list and the index that follows it lands on the empty new one.
+        trail = self._trail
+        if len(trail) < 4000 and (
+                not trail
+                or math.hypot(pose[0] - trail[-1][0],
+                              pose[1] - trail[-1][1]) > 0.05):
+            trail.append((pose[0], pose[1]))
 
         if goal["kind"] == "goto":
             self._step_goto(goal, pose, now)
@@ -1177,6 +1181,46 @@ class Navigator:
             out["text"] = ("The lidar is not reporting, so nothing here is current "
                            "and the rover will not drive. " + out["text"])
         return out
+
+    def clear_map(self):
+        """Throw the map away and start again from where the rover is standing.
+
+        There is no loop closure here and never will be -- see slam2d.h -- so drift
+        is permanent: a room that has come out a few degrees out of true with itself,
+        or a corridor stamped in twice from two passes, will stay that way for as
+        long as the daemon runs. Once that has happened the map is worse than no map,
+        because the planner routes on it and refuses gaps that are really there. An
+        empty map is at least true, and this rover fills one back in within a
+        revolution or two of standing still.
+
+        Refused while a move is running, and refused rather than queued. The route a
+        move is following is a list of places in the very frame this is about to
+        throw away, so clearing underneath one would have the rover drive to
+        coordinates that no longer mean anything -- and it is holding the lidar's
+        own picture of the room at the time. Stop first; stopping is never refused.
+        """
+        if not self._move_mutex.acquire(blocking=False):
+            return {"cleared": False,
+                    "reason": "the rover is moving, and the route it is following is "
+                              "in the frame this would throw away -- stop it first"}
+        try:
+            with self.slam.lock:
+                self.slam.reset()
+            # The track is where the rover has been in the old frame, so drawing it
+            # over the new map would put an invented history across an empty room.
+            self._trail = []
+            # Speed and turn rate are differences between one pose and the next, and
+            # the pose has just moved without the rover moving. Re-seed rather than
+            # measure the jump, which would otherwise be reported as several metres
+            # a second for one revolution and would reach the speed loop as fact.
+            self._last_pose = None
+            self._last_at = None
+            self._measured_speed = 0.0
+            self._measured_turn = 0.0
+            return {"cleared": True,
+                    "reason": "the map is empty and the rover is at its origin"}
+        finally:
+            self._move_mutex.release()
 
     def map_png(self, half_extent_m=3.0, scale=3, rover_up=False, camera=None):
         """`camera` is `(bearing_deg, fov_deg)` for the gimbal's cone, or None.
