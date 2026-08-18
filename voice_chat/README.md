@@ -911,8 +911,8 @@ window opens one connection for moves, one for stop, one for watching, one for
 the map and one for the camera. The daemon is a `ThreadingTCPServer` and takes no
 lock across a move, so the others are answered while the first is still driving.
 
-The map earned its own once its cost was measured: drawing one takes the Pi about a
-second at the default and several at the widest settings, and while it shared the
+The map earned its own once its cost was measured: drawing one takes the Pi a second
+and a half at the default and several at the widest settings, and while it shared the
 watch connection every refresh held up a status poll that is meant to arrive three
 times a second — so the numbers went stale exactly while the picture was being drawn.
 The camera earned the fifth for the same reason one step worse: opening the camera

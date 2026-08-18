@@ -44,8 +44,8 @@ Clicking the map sends `drive_to`: the rover plans a route of segments and turns
 to that point, relative to where it is now, and follows it with the lidar in the
 loop. Stop still interrupts it.
 
-The map gets a fourth for the same reason one step down: drawing it costs the Pi
-about a second, sometimes several, and it shared the status connection until that
+The map gets a fourth for the same reason one step down: drawing it costs the Pi a
+second and a half, sometimes several, and it shared the status connection until that
 was measured -- so the numbers went stale exactly while the picture was being
 drawn. It is the slowest thing here and it is the least urgent, which is a good
 argument for its own socket and a poor one for sharing.
