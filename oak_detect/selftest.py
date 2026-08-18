@@ -47,7 +47,7 @@ def main():
     parser.add_argument("--jpeg", help="a photograph to decode and detect in")
     parser.add_argument("--runs", type=int, default=30)
     parser.add_argument("--blob", default=os.path.join(
-        HERE, "face-detection-retail-0004-320x240.blob"))
+        HERE, "face-detection-retail-0004-640x480.blob"))
     args = parser.parse_args()
 
     print("oak_detect selftest")

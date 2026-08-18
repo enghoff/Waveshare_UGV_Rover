@@ -92,29 +92,43 @@ was 42.6 ms with a float input and **24.8 ms** with this one.
 
 ## What it costs
 
-Measured 2026-08-18 on the rover, a 640x480 frame from its own camera:
+Measured 2026-08-18 on the rover, a 640x480 frame from its own camera. Elapsed
+time and, where it differs, the calling thread's **own CPU time** — which is the
+column that turned out to matter:
 
-| | |
-|---|---|
-| boot the VPU and upload the graph | 4.4–6.1 s, once, at startup |
-| decode one 640x480 MJPEG frame | **85–87 ms** |
-| the same at 320x240, which the camera also offers | 64 ms |
-| the inference | 41 ms (24.8 on a workstation — the rest is this host's USB) |
-| this Pi's HTTP stack, `GET /health` under load | 41 ms |
-| one whole `POST /detect` | ~190 ms |
-| the tracking loop, with the scan matcher also running | **2.3 fps** |
+| | elapsed | CPU |
+|---|---|---|
+| boot the VPU and upload the graph | 4.4–6.1 s, once, at startup | |
+| decode one 640x480 MJPEG frame, scaling 2:1 as it goes | 107–281 ms | **~55 ms** |
+| convert one 640x480 YUYV frame instead | 26–98 ms | **14 ms** |
+| the inference | 56–133 ms | **4 ms** |
+| this Pi's HTTP stack, `GET /health` under load | 41 ms | |
+| one whole `POST /detect` | ~190 ms | |
+| the tracking loop, everything else on the rover also running | **2.4–3.1 fps** | |
 
-**The inference is the cheapest part, and JPEG is the problem.** This is the cost
-[face_detect/server.py](../face_detect/server.py) predicted when it argued the
-picture should cross the network instead: decoding a frame here costs 93 ms, it
-said, and it was right. What has changed is that the alternative is no longer 6 ms
-on a 5700G plus a LAN — it is a desktop that has to be awake.
+**The detector is nearly free and it never was the bottleneck.** It costs about
+60 ms of core per frame; the rest of its elapsed time is this host blocked on USB
+while the Myriad works, which is the arrangement working as intended.
 
-So this trades frame rate for not needing one. The way to get the rate back is to
-stop sending JPEG at all: this camera offers uncompressed YUYV at 640x480, the
-graph would take those pixels directly, and the 85 ms would simply not exist. That
-is a change to how frames are captured rather than anything about the detector, so
-it is not done here.
+An earlier version of this table said "JPEG is the problem" and proposed
+uncompressed capture as the way to get the rate back. That was measured correctly
+and concluded wrongly, and it is worth keeping the correction visible:
+
+* Uncompressed capture **tripled the loop period**, to 1.0–1.2 fps. 640x480 YUYV at
+  30 fps is 18 MB/s and this host's reader drains about 7, so frames queued in the
+  pipe and the loop spent 390–635 ms of every turn reading stale ones in full in
+  order to throw them away. The 70 ms of decode saved bought half a second of
+  waiting. See `_open_camera` in [rover_daemon.py](../rover_daemon/rover_daemon.py).
+* It also starved the wlan adapter off the same USB controller and took the rover
+  off the network, which is the failure [oak-on-the-pi.md](../docs/oak-on-the-pi.md)
+  feared — arriving through the camera rather than the OAK.
+
+What limits the loop now is not this directory at all: **the tracking loop gets
+under a quarter of the one core.** Measured per thread with tracking live, the
+lidar's scan matcher takes ~27%, rendering the console's map takes ~26% whenever it
+is asked for one, and tracking takes ~23% — which is why 60 ms of decode takes
+280 ms to happen. `kill -USR1` on the daemon dumps every thread's stack, which is
+how that was attributed.
 
 ## Building it
 

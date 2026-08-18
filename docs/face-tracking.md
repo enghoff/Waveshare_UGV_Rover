@@ -57,6 +57,17 @@ by template matching gives **9.65 px of image shift per commanded degree in pan
 and 9.5 in tilt** at 1280×720, symmetric in both directions, from which `+X` pans
 right and `+Y` tilts up. A half frame is 640 px, so 66 of those degrees.
 
+At 640×480, the mode the rover actually captures, it is **5.22 px per degree in
+pan and 5.32 in tilt**, or 61° and 45° to the half frame.
+
+**Let the servo arrive before taking the second frame.** That 480p pair first
+measured 4.36 and 4.90, taken after two and a half seconds, which is not long
+enough for a 25° step — the picture was still moving, so the shift came out short
+and the numbers came out low, by 20% in pan and 9% in tilt. Both wrong in the same
+direction is the signature. Re-measured with five seconds and two step sizes per
+axis, the four readings on each axis agree within 2%. The 720p pair was taken the
+old way and has never been redone, so treat it with the same suspicion.
+
 That first suggested the firmware's "degrees" were about half a real one, on the
 grounds that no sane lens is 132° wide — but the
 [firmware source](https://github.com/waveshareteam/ugv_base_general/blob/main/General_Driver/gimbal_module.h)
@@ -93,6 +104,68 @@ seconds at a stretch, with nothing pinned at a limit. A sign error looks the sam
 from the outside as too much gain, so tell them apart by watching one correction
 from a standstill: the wrong sign moves away immediately, too much gain moves the
 right way first and overshoots.
+
+## A pixel expires; an angle does not
+
+This is the invariant the whole loop rests on, and breaking it is what made the
+rover appear to dodge people once the detector moved onto its own hardware.
+
+A detection is a pixel, and **a pixel only means anything alongside the frame it
+came from and the angle the camera was pointing when that frame was exposed.**
+The moment the camera moves, the pixel describes a place the camera is no longer
+looking. An angle is the opposite: `pan_then + error × degrees-per-half-frame` is
+a fact about the room, and it stays true however much the camera moves afterwards.
+So the loop converts to an angle as early as it can, and everything downstream —
+what is left to do, the deadband, the rate limit — works in angles.
+
+The rule that follows: **convert a pixel to an angle exactly once.** The bug was
+that a frame the detector answered with nothing went round the loop again on the
+old pixel. `Target` deliberately holds a lock open for a few frames without a
+detection, so a turning head is not dropped; but on those frames `centre` is the
+pixel from an *earlier* frame, while `track()` measures whatever it is given
+against where the camera is *now*. The stale pixel therefore claimed the face was
+still the full original distance away, and the correction already in flight was
+issued a second time — and a third, and a fourth.
+
+Simulated against a stationary face 37° off axis, with detections landing on about
+half the frames, which is what this rover gets:
+
+| | worst overshoot past the face | settles |
+|---|---|---|
+| re-reading the remembered pixel | **23° past** | 4° off, still hunting |
+| carrying on to the remembered angle | 1° | 1° |
+
+The fix is `Gimbal.keep_going()`: on a frame with no detection of its own, carry
+on towards the angle already worked out and do not look at the picture again.
+`Target.fresh` is how the loop tells the two kinds of frame apart. `Gimbal.forget()`
+clears the angle when the lock is given up, so the next person is not aimed at
+through the last one's coordinates.
+
+**Why this hid for so long.** The same fault costs only 11° at 25 frames a second,
+where it reads as a slight wobble, and misses are rare besides. It became a
+40-degree tour of the room only when the loop dropped to two or three frames a
+second with the detector on the rover. Nothing about the aiming changed; the frame
+rate did. Any control constant here that is a count of frames wearing a stopwatch,
+or a correction that assumes the next frame is close behind, deserves re-reading
+whenever the loop rate moves.
+
+## Four faults, one symptom
+
+A camera that will not settle on a face it can plainly see is the presentation of
+all of these, and they are not distinguishable by watching it flail. Tell them
+apart deliberately:
+
+| looks like | actually is | how to tell |
+|---|---|---|
+| moves away immediately, from a standstill | a sign error | one correction from rest goes the wrong way |
+| moves the right way, then sails past and back | too much gain for the dead time | it crosses the face before it overshoots |
+| creeps past the face over several frames | a stale pixel re-read, as above | the pushes land on the frames with *no* detection |
+| never settles, always half a step behind | the exposure clock is wrong | `frame_age_ms` in `tracking_status` disagrees with reality |
+
+`tracking_status` carries the whole chain per frame, which is what makes the row
+above checkable rather than a guess: the pixel a step was computed from, how old
+that frame was, where the camera had been pointed then, the angle that put the
+face at, and where it was consequently sent.
 
 ## Running the loop from the rover
 

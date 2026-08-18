@@ -832,6 +832,12 @@ class Rover:
         self._camera_used = 0.0
         self._detector = None
         self._loop_fps = 0.0
+        # Where a turn of the loop goes, besides the detector: waiting for a
+        # fresh frame, and telling the servos. Smoothed the same way and for the
+        # same reason -- one slow turn is not news.
+        self._wait_ms = 0.0
+        self._aim_ms = 0.0
+        self._aim: list[dict[str, Any]] = []
         # Overridden by whichever detector is opened, since the bar for
         # starting a lock is a property of that detector's scores.
         self._acquire_score = None
@@ -933,11 +939,27 @@ class Rover:
             return self._camera
         if self._camera is not None:
             self._camera.close()
-        # YUYV when the detector is in this process, because it can take pixels
-        # directly and decoding a JPEG here costs 85 ms a frame -- more than the
-        # inference. MJPEG when the detector is over HTTP, which wants a picture.
-        camera = Camera(self.device, self.size,
-                        "YUYV" if self.service == "local" else "MJPG")
+        # MJPEG, even though the in-process detector can take raw pixels and
+        # decoding a JPEG costs 85 ms against 14 ms to convert YUYV. Taking the
+        # cheaper conversion made the loop three times *slower*, and the reason is
+        # that the cost being compared was not the cost that mattered.
+        #
+        # v4l2-ctl's stdout is a queue, not a slot. Uncompressed 640x480 at 30 fps
+        # is 18 MB/s and this host's reader drains about 7, so the pipe stayed full
+        # and every fresh frame sat behind stale ones that had to be read first --
+        # in full, to be thrown away. Measured live: 390-635 ms per turn waiting
+        # for a frame, against 14 ms of actual conversion. MJPEG is 39 kB a frame
+        # instead of 614, the reader keeps up at the full 30 fps, and the frame in
+        # hand is at most 33 ms old rather than half a second.
+        #
+        # The decode is not even wasted work here: libjpeg-turbo scales while it
+        # decodes, and 640x480 at its 1/2 factor is exactly the graph's 320x240
+        # input, so no resize follows it. See oak_detect/local.py.
+        #
+        # The 18 MB/s had a second cost that settles the question on its own: it
+        # starved the wlan adapter off the same USB controller and took the rover
+        # off the network, which is the failure docs/oak-on-the-pi.md feared.
+        camera = Camera(self.device, self.size, "MJPG")
         self._camera = camera
         self._camera_used = time.monotonic()
         return camera
@@ -1003,6 +1025,39 @@ class Rover:
             return {"ok": False, "error": str(error)}
         except Exception as error:  # a bug here must not take the daemon down
             return {"ok": False, "error": f"{type(error).__name__}: {error}"}
+
+    def _tool_detect_in(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Run the detector over a supplied picture. A diagnostic, not a tool.
+
+        Dispatched like a tool because that is the only protocol this daemon
+        speaks, and deliberately absent from :meth:`tools`, so no model is shown
+        it -- the same arrangement as `set_vision` above.
+
+        It exists because "does it see me?" and "does it aim at me properly?" are
+        different questions that were repeatedly answered as one. The camera is
+        moving, the frame rate is low and the boxes are gone by the time anybody
+        looks, so a claim about detection made from a live run is a claim about a
+        picture nobody kept. This takes a picture that *was* kept -- one a person
+        has looked at and can point to the face in -- and says what the detector
+        makes of it, as many times as you like, with the answer checkable against
+        the image it came from.
+        """
+        blob = arguments.get("jpeg_base64")
+        if not isinstance(blob, str):
+            return {"ok": False, "error": "jpeg_base64 must be a base64 string"}
+        try:
+            jpeg = base64.b64decode(blob, validate=True)
+        except Exception as error:
+            return {"ok": False, "error": f"not base64: {error}"}
+        with self._detector_lock:
+            detector = self._open_detector()
+            faces = detector.detect(jpeg, time.monotonic())
+        if faces is None:
+            return {"ok": False, "error": "the detector gave no answer"}
+        return {"ok": True, "count": len(faces),
+                # x, y, w, h, score -- in the picture's own pixels
+                "faces": [[round(v, 1) for v in face] for face in faces],
+                "acquire_at": getattr(self, "_acquire_score", None)}
 
     def _tool_set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Point `look` at whoever is asking. A control call, not a model tool.
@@ -1309,9 +1364,23 @@ class Rover:
         if detector is not None and hasattr(detector, "convert_ms"):
             status["loop_fps"] = round(self._loop_fps, 1)
             status["frame_ms"] = {"convert": round(detector.convert_ms, 1),
-                                  "detect": round(detector.detect_ms, 1)}
+                                  "detect": round(detector.detect_ms, 1),
+                                  "convert_busy": round(detector.convert_busy_ms, 1),
+                                  "detect_busy": round(detector.detect_busy_ms, 1),
+                                  "wait": round(self._wait_ms, 1),
+                                  "aim": round(self._aim_ms, 1)}
+            # Frames whose exposure stamp could not be matched to them, against
+            # frames captured and thrown away. An unpaired frame is not a dropped
+            # one: it still gets used, but with a *guessed* exposure time, and the
+            # whole dead-time compensation is built on that stamp being real.
+            camera = self._camera
+            if camera is not None:
+                status["frames"] = {"unpaired": camera.unpaired,
+                                    "dropped": camera.dropped}
             status["acquire_at"] = self._acquire_score
             status["recent_scores"] = list(detector.recent)
+            if self._aim:
+                status["aim"] = list(self._aim)
         return status
 
     # --- driving --------------------------------------------------------------
@@ -1573,13 +1642,17 @@ class Rover:
         scan = None
         last_tick = time.monotonic()
         self._loop_fps = 0.0
+        self._wait_ms = self._aim_ms = 0.0
+        self._aim = []
         service_ok_at = time.monotonic()
         stalled = False
 
         try:
             while self._tracking.is_set():
+                waited = time.monotonic()
                 got = camera.latest(timeout=1.0)
                 now = time.monotonic()
+                self._wait_ms += 0.2 * ((now - waited) * 1e3 - self._wait_ms)
                 if got is None:
                     if not camera.alive():
                         why = "; ".join(camera.complaints) or "it stopped without saying why"
@@ -1593,11 +1666,14 @@ class Rover:
                 self._frame = (frame, now)
                 # Clamped: a frame that took a second to arrive must not be
                 # answered with a second's worth of sweep.
-                dt, last_tick = min(now - last_tick, MAX_DT), now
-                # Exponentially smoothed rather than instantaneous: one slow frame
-                # is not news, a loop that has halved is.
-                if dt > 0:
-                    self._loop_fps += 0.2 * (1.0 / dt - self._loop_fps)
+                elapsed = now - last_tick
+                dt, last_tick = min(elapsed, MAX_DT), now
+                # Smoothed from the *unclamped* elapsed time. Using dt here would
+                # cap the reported rate at 1/MAX_DT, so a loop running at 1.6 fps
+                # reported a steady 4.0 -- a floor reading as a measurement, and
+                # it hid the slowdown it was put there to show.
+                if elapsed > 0:
+                    self._loop_fps += 0.2 * (1.0 / elapsed - self._loop_fps)
                 # Hold a lock for whichever is longer, the measured 0.7 s or four
                 # frames. This loop runs at four frames a second with the detector
                 # on the rover, where 0.7 s is not "a frame or two" but two and a
@@ -1635,22 +1711,39 @@ class Rover:
                     self._skip_centre = None
 
                 tracking = target.update(visible, now)
-                if tracking:
+                if tracking and not target.fresh:
+                    # The lock is being held open on grace, with no detection of
+                    # its own this frame. Carry on to the angle already worked
+                    # out; re-reading the remembered pixel would apply the same
+                    # correction again -- see Gimbal.keep_going().
+                    scan = None
+                    gimbal.keep_going(dt)
+                elif tracking:
                     scan = None
                     # Positive x is right of centre and positive y is *above* it,
                     # which is not the picture's own row order.
                     error_x = (target.centre[0] - width / 2) / (width / 2)
                     error_y = (height / 2 - target.centre[1]) / (height / 2)
                     gimbal.track(error_x, error_y, dt, now, exposed_at=exposed_at)
+                    # The pixel the angles were computed from, beside the angles.
+                    # Kept together because the fault being looked for is a
+                    # disagreement between them, and either alone looks reasonable.
+                    step = dict(gimbal.last)
+                    step["face_px"] = [round(target.centre[0]), round(target.centre[1])]
+                    step["frame"] = [width, height]
+                    self._aim.append(step)
+                    del self._aim[:-10]
                 else:
                     if target.centre is not None:
                         target.drop()
+                        gimbal.forget()
                     if now - target.seen_at > SCAN_AFTER_S:
                         if scan is None:
                             scan = Scan(gimbal)
                         scan.step(gimbal, scan_rate_for(dt), dt)
                 gimbal.record(now)
 
+                aimed = time.monotonic()
                 with self._lock:
                     if gimbal.changed():
                         self.pan, self.tilt = gimbal.pan, gimbal.tilt
@@ -1662,6 +1755,7 @@ class Rover:
                         "centre": target.centre if tracking else None,
                         "where": [_where(face, width, height) for face in faces],
                     }
+                self._aim_ms += 0.2 * ((time.monotonic() - aimed) * 1e3 - self._aim_ms)
         finally:
             self._tracking.clear()
             self._seen = {"faces": 0, "locked": False, "at": 0.0, "where": []}
@@ -1727,6 +1821,19 @@ class Server(socketserver.ThreadingTCPServer):
 
 def main() -> int | str:
     """Returns 0, or a message -- sys.exit prints a string and exits non-zero."""
+    # `kill -USR1 <pid>` makes the daemon write a stack for every thread it has to
+    # the log. Worth the four lines: this rover has one core and a dozen threads,
+    # and the question that keeps coming up is not what the code does but which
+    # thread is holding the core right now. From outside, a thread that is spinning
+    # and a thread that is blocked are both just a number in `top`, and there is no
+    # py-spy for armv6 to tell them apart.
+    try:
+        import faulthandler
+        import signal
+
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
+    except (AttributeError, ValueError, OSError):
+        pass                     # no SIGUSR1 off Linux; the daemon still runs
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--serial", default=DEFAULT_SERIAL, metavar="PORT",
                         help=f"the ESP32's serial port (default {DEFAULT_SERIAL})")

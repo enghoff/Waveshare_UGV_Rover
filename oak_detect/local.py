@@ -7,14 +7,24 @@ are pure waste: a loopback round trip through Python's HTTP stack, measured at
 decoded again at the other end, at **85 ms**. Between them they were most of the
 frame time, and the inference was the cheapest part of the loop.
 
-So this is the same detector reached directly. The camera is asked for
-uncompressed YUYV, the frame is halved straight into the graph's input by
-`oak_yuyv_to_planar_bgr`, and the boxes come back in the same process. Measured on
-the rover, per frame:
+So this is the same detector reached directly, and the boxes come back in the
+same process. Measured on the rover, per frame, as elapsed time and as the
+calling thread's own CPU time:
 
-    convert     25.7 ms      (against 85-117 ms to decode the JPEG)
-    infer       49.7 ms      (about half of it this host pushing 230 kB over USB)
-    both        73.2 ms      (against ~190 ms through the service)
+    convert, from YUYV      25.7 ms elapsed     14 ms CPU
+    convert, from JPEG      85 ms elapsed
+    infer                   49.7 ms elapsed      4 ms CPU
+    both, from YUYV         73.2 ms             (against ~190 ms through HTTP)
+
+The two CPU figures are the useful ones and they say the detector is nearly free:
+18 ms of core per frame, the rest of it blocked on USB while the Myriad works.
+
+**Which is why the rover feeds this JPEG rather than YUYV**, despite the 85 ms.
+Taking the cheaper conversion made the loop three times slower, because 18 MB/s of
+uncompressed frames overran the reader and the loop spent 390-635 ms a turn waiting
+for one that was not stale -- see `_open_camera` in rover_daemon.py. At 640x480 the
+decode scales 2:1 as it goes and lands exactly on the graph's input, so the resize
+that would follow it does not exist.
 
 `LocalDetector` is deliberately shaped like `track_face_pi.Detector` -- same
 `detect(frame, exposed_at)`, same `None` for "no answer", same `rtt_ms` and
@@ -36,7 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from oak import Oak, OakError  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_BLOB = os.path.join(HERE, "face-detection-retail-0004-320x240.blob")
+DEFAULT_BLOB = os.path.join(HERE, "face-detection-retail-0004-640x480.blob")
 
 # **This detector's thresholds, measured the way aiming.py's were.** They are not
 # aiming.py's, and using aiming.py's here is why face tracking looked broken for an
@@ -107,6 +117,14 @@ class LocalDetector:
         self.rtt_ms = 0.0
         self.detect_ms = 0.0
         self.convert_ms = 0.0
+        # The same two spans measured as *this thread's own CPU time* rather than
+        # as elapsed time. The gap between the pair is the diagnostic: both these
+        # spans are C with the GIL dropped, so a wall time far above the busy time
+        # is not slow work, it is a thread that was ready and not allowed to run.
+        # Worth keeping permanently, because the two faults look identical from
+        # outside and have opposite fixes -- do less work, or stop competing.
+        self.convert_busy_ms = 0.0
+        self.detect_busy_ms = 0.0
         self.frames = 0
         self.errors = 0
         # The top score of each of the last few frames. Cheap, and the only way to
@@ -133,7 +151,7 @@ class LocalDetector:
         """
         width, height = self.size
         with self._lock:
-            started = time.monotonic()
+            started, busy_started = time.monotonic(), time.thread_time()
             try:
                 if len(frame) == width * height * 2:
                     ok = self._oak.yuyv_to_input(frame, self._input, width, height)
@@ -145,18 +163,20 @@ class LocalDetector:
                 if not ok:
                     self.errors += 1
                     return []          # an unusable frame, not an absent device
-                converted = time.monotonic()
+                converted, busy_converted = time.monotonic(), time.thread_time()
                 raw = self._oak.infer(self._input)
             except OakError:
                 # The device has gone or wedged. None is "no answer", which is
                 # what the tracking loop already knows how to hold still through.
                 self.errors += 1
                 return None
-            finished = time.monotonic()
+            finished, busy_finished = time.monotonic(), time.thread_time()
 
         self.convert_ms = (converted - started) * 1e3
         self.detect_ms = (finished - converted) * 1e3
         self.rtt_ms = (finished - started) * 1e3
+        self.convert_busy_ms = (busy_converted - busy_started) * 1e3
+        self.detect_busy_ms = (busy_finished - busy_converted) * 1e3
         self.frames += 1
         faces = parse_detections(raw, source[0], source[1], self.score)
         self.recent.append(round(max((f[4] for f in faces), default=0.0), 3))

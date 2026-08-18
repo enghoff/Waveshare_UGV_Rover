@@ -124,9 +124,19 @@ DEFAULT_SIZE = (DETECT_WIDTH, 480)
 # What one frame is worth waiting for before giving up on the camera entirely.
 FRAME_TIMEOUT_S = 2.0
 # How long to wait for a frame's exposure stamp, which arrives on a different pipe
-# and can lose the race with the frame's own bytes -- see Camera._stamp_for(). Six
-# milliseconds is the measured p90; this is the ceiling before giving up on it.
-STAMP_WAIT_S = 0.03
+# and can lose the race with the frame's own bytes -- see Camera._stamp_for().
+#
+# Six milliseconds is the p90 when this process has the core to itself, and 0.03
+# was set from that. On the rover it is not the p90 that matters but the tail: the
+# stderr thread is one of a dozen competing for one core, and when it does not get
+# scheduled in time the frame is used with a *guessed* exposure time instead. That
+# guess was 41 ms against a real age of 227, and the whole dead-time compensation
+# is built on it -- so the camera under-subtracted its own motion and hunted.
+# Measured 2026-08-18 on the rover: **106 of about 70 frames unpaired**, which is
+# to say all of them, several times over. Waiting is much the cheaper mistake:
+# a late stamp still describes the frame correctly, where a missing one is a lie
+# about when the camera was looking.
+STAMP_WAIT_S = 0.25
 # Fallback for a frame that could not be paired with a V4L2 stamp: how old a frame
 # already is when this process has all of it. MEASURED, over 60 frames each, with
 # `stdbuf -o0` and this pairing:
@@ -146,7 +156,17 @@ CAMERA_LAG_S = 0.041
 # by content and resynchronises itself, so this is a backstop rather than the
 # mechanism -- but a wrong answer here is a lie to the controller about when it
 # was looking, which is worse than no answer at all.
-MAX_FRAME_AGE_S = 0.5
+#
+# **Sized for the reader, not for the camera.** v4l2-ctl delivers 30 frames a
+# second and this host reassembles about four, so a frame really is most of a
+# second old by the time it is in hand -- and at 0.5 this backstop was rejecting
+# every correctly matched stamp as implausible, leaving the loop to guess 41 ms.
+# The guess is what made it hunt: a frame believed fresh is a frame whose
+# correction has not been applied yet, so the same correction went out again. An
+# old frame with an honest stamp is entirely usable, because Gimbal.was_at() looks
+# up where the camera was pointing then; an old frame with a *fresh* stamp is not
+# usable at all. So this is now sized to admit the truth rather than to flatter it.
+MAX_FRAME_AGE_S = 1.5
 # JPEG's end-of-image marker. Safe to scan for: 0xFF inside entropy-coded data is
 # byte-stuffed as FF 00, so FFD9 only appears where the picture ends. Its opposite
 # number is what tells a whole picture from the tail of one, which is the only
@@ -154,10 +174,12 @@ MAX_FRAME_AGE_S = 0.5
 JPEG_EOI = b"\xff\xd9"
 JPEG_SOI = b"\xff\xd8"
 READ_CHUNK = 4096
-# Buffers whose bytes may still be in flight. Deeper than anything measured (the
-# pairing runs one behind at most), shallow enough that a stamp cannot be matched
-# against a frame from seconds ago.
-STAMP_BACKLOG = 16
+# Buffers whose bytes may still be in flight. This is deep because the reader is
+# slow, not because the pairing is: v4l2-ctl delivers 30 frames a second and this
+# host reassembles about four, so the stamps of every frame still queued have to
+# stay in hand. At 16 they were being discarded before their frames arrived, which
+# is why the pairing failed on the rover while passing standalone.
+STAMP_BACKLOG = 96
 
 # How many frames a one-shot capture asks for, and how long to allow it. Three
 # rather than one because the first frame off a camera that was closed a moment
@@ -290,6 +312,13 @@ class Camera:
     aiming errors, and the loop is better served by the newest picture than by
     every picture.
 
+    **Dropping happens after the read, so it only helps if the reader keeps up.**
+    The pipe is a queue whatever this slot does, and a reader slower than the
+    camera reaches the newest frame only by reading every stale one first, in
+    full, to discard it. That turned an 85 ms decode saved into half a second of
+    waiting bought -- see `_open_camera` in rover_daemon.py. Choosing a format the
+    reader can drain is therefore not a bandwidth question but a latency one.
+
     `stdbuf -o0` is load bearing. v4l2-ctl writes frames with stdio, and stdio
     buffers when its output is a pipe, so the tail of each frame sits in libc
     waiting for the next frame to push it out. That is 25 ms added to every
@@ -301,9 +330,17 @@ class Camera:
         self.device = device
         self.size = size
         # MJPG or YUYV. Uncompressed exists for the detector on the rover, which
-        # would otherwise have to decode every frame at 85 ms a go -- see
-        # oak_detect/local.py. It costs USB bandwidth instead: 614 kB a frame
-        # against 30, measured at 12.3 MB/s and 20 fps, which this bus carries.
+        # can take pixels directly rather than decoding a JPEG at 85 ms a go --
+        # see oak_detect/local.py.
+        #
+        # **On the Pi this bus does not carry it, and tracking uses MJPG.** 614 kB
+        # a frame at 30 fps is 18 MB/s where the reader below drains about 7, so
+        # the frames pile up in the pipe and `latest` hands out half-second-old
+        # pictures; and the traffic starved the wlan adapter off the same USB
+        # controller. The earlier note here claimed 12.3 MB/s at 20 fps and that
+        # the bus carried it -- measured with nothing else on the bus, which is
+        # not the condition it runs in. Kept because the format itself is right
+        # for a host whose reader can keep up.
         self.pixelformat = pixelformat
         self.frame_bytes = size[0] * size[1] * 2 if pixelformat == "YUYV" else 0
         self.dropped = 0
@@ -884,7 +921,13 @@ def main():
             tracking = target.update(faces, now)
 
             scanning = False
-            if tracking:
+            if tracking and not target.fresh:
+                # Holding the lock on grace, with nothing detected this frame.
+                # The angle is still known; the pixel is not -- see
+                # Gimbal.keep_going(), which is also why this is not a track().
+                scan = None
+                gimbal.keep_going(dt)
+            elif tracking:
                 # A face again: the sweep is abandoned, and the next one will be
                 # built afresh from wherever tracking has left the camera pointing.
                 scan = None
@@ -898,6 +941,7 @@ def main():
             else:
                 if target.centre is not None:
                     target.drop()
+                    gimbal.forget()
                 if args.scan and now - target.seen_at > SCAN_AFTER_S:
                     if scan is None:
                         scan = Scan(gimbal)

@@ -63,15 +63,25 @@ NMS_THRESHOLD = 0.3
 #                  px per degree        degrees per half frame
 #                  pan     tilt         pan     tilt
 #   1280x720       9.65    9.50          66      38
-#    640x480       4.36    4.90          73      49
+#    640x480       5.22    5.32          61      45
 #
-# The consequence is that the constants calibrated at 720p are wrong by 10% in pan
-# and 22% in tilt when the rover runs at 480p -- both in the direction of
-# under-correcting, so a loop that used them was merely sluggish rather than
-# unstable, which is exactly the kind of error that survives a long time.
+# The consequence is that the constants calibrated at 720p are wrong when the rover
+# runs at 480p -- in the direction of under-correcting, so a loop that used them was
+# merely sluggish rather than unstable, which is exactly the kind of error that
+# survives a long time.
+#
+# **Let the servo arrive before taking the second frame.** The 480p pair was first
+# measured at 4.36 and 4.90 with two and a half seconds of settling, which is not
+# enough for a 25 degree step: the picture had not finished moving, so the shift
+# came out short and the figures came out low -- by 20% in pan and 9% in tilt, both
+# in the same direction, which is the signature. Re-measured 2026-08-18 with five
+# seconds, +-15 and +-25 degrees in pan and +-12 and +-20 in tilt, all four readings
+# on each axis within 2% of each other and template matches 0.88-0.97. The 720p pair
+# above was taken the same way as the old 480p one and has never been re-measured,
+# so treat it as suspect for the same reason.
 PX_PER_DEGREE = {
     (1280, 720): (9.65, 9.50),
-    (640, 480): (4.36, 4.90),
+    (640, 480): (5.22, 5.32),
 }
 # What the constants were before the modes were told apart, and still the answer
 # for 1280x720. Kept named because the README and the docstrings quote them.
@@ -146,7 +156,11 @@ COMMAND_LATENCY_S = 0.14
 # spare: on the rover the pair comes to about 190 ms against this 540. Asking for
 # something older reads back the earliest entry there is, which is a stale answer
 # rather than a wrong one, and only happens if the picture has stalled entirely.
-HISTORY_S = DEAD_TIME_S * 2
+# ...and it has to reach back as far as the oldest frame that might still be
+# answered. On the rover a frame is up to a second old when the loop gets it --
+# see MAX_FRAME_AGE_S -- so two dead times is not enough and was_at() was falling
+# back to its earliest entry, reporting a camera angle newer than the truth.
+HISTORY_S = max(2.5, DEAD_TIME_S * 2)
 
 # The fraction of the *remaining* error to correct per frame -- remaining meaning
 # what is left once motion already in flight is subtracted. With the dead time
@@ -196,6 +210,22 @@ SERVO_MAX_DEG_S = 130    # measured ceiling; asking for more just saturates
 # What the camera is moved at when it is being placed rather than tracking -- the
 # centring at startup and on exit. Brisk, but not a slam.
 PLACE_DEG_S = 90
+
+# The longest a correction may take to travel, whatever the gap between frames.
+#
+# move() paces each step to cover its ground in exactly one frame interval, so the
+# servo arrives as the next frame does rather than long before it. That is right
+# while the interval is short. It stops being right when the loop slows down: the
+# camera is then moving throughout the exposure of every frame that follows a
+# correction, and the picture blurs. Measured on the rover at 4.5 fps, the mean
+# gradient of a frame taken while tracking was **1.99 against 3.68** with the camera
+# still -- half the sharpness -- and a blurred frame is one the detector is likelier
+# to miss, which drops the lock, which starts the sweep, which blurs the next one.
+#
+# So the pacing is capped rather than removed. Below this interval nothing changes
+# and the servo still arrives with the frame; above it the step is made at this
+# pace and the camera is standing still by the time the picture is taken.
+SETTLE_WITHIN_S = 0.08
 
 # The box centre jitters by a few pixels frame to frame on a motionless face, and
 # every pixel of that becomes a servo command. This is the weight of a new
@@ -295,6 +325,21 @@ def aim_gains():
         tilt +20 deg  ->  the scene moved DOWN  188 px       9.4
         tilt -20 deg  ->  the scene moved UP    192 px       9.6
 
+    And again at 640x480, the mode the rover actually captures, after waiting five
+    seconds rather than two and a half for the servo to arrive:
+
+        pan  +15 deg  ->  the scene moved LEFT   78 px       5.20 px per degree
+        pan  -15 deg  ->  the scene moved RIGHT  78 px       5.20
+        pan  +25 deg  ->  the scene moved LEFT  132 px       5.28
+        pan  -25 deg  ->  the scene moved RIGHT 130 px       5.20
+        tilt +12 deg  ->  the scene moved DOWN   64 px       5.33
+        tilt -12 deg  ->  the scene moved UP     64 px       5.33
+        tilt +20 deg  ->  the scene moved DOWN  108 px       5.40
+        tilt -20 deg  ->  the scene moved UP    104 px       5.20
+
+    The signs agree with the 720p run in every case, which is the part worth
+    re-reading: +pan moves the scene left, so +pan aims the camera right.
+
     So +X pans right and +Y tilts up, symmetric both ways. A face right of centre
     is therefore centred by *raising* X, and one above centre by raising Y, which
     is what PAN_SIGN and TILT_SIGN say.
@@ -363,11 +408,17 @@ class Target:
         self.grace = grace
         self.centre = None   # smoothed (x, y), the thing actually aimed at
         self.box = None      # the last raw detection, for drawing
+        # Whether the *last* update had a detection of its own, as opposed to
+        # holding the lock open on grace. The caller has to know: `centre` is a
+        # pixel, and a pixel is only meaningful against the frame it came from.
+        # See Gimbal.keep_going() for what goes wrong when the two are confused.
+        self.fresh = False
         # Now, rather than zero: the scan delay counts from this, and a rover that
         # has only just started has not been failing to find anyone since the epoch.
         self.seen_at = time.monotonic()
 
     def update(self, faces, now):
+        self.fresh = False
         if not faces:
             return self.centre is not None and now - self.seen_at < self.grace
         pick = None
@@ -399,6 +450,7 @@ class Target:
             )
         self.box = pick
         self.seen_at = now
+        self.fresh = True
         return True
 
     def drop(self):
@@ -434,6 +486,19 @@ class Gimbal:
         # Where the camera has been told to point, and when. Read back one dead
         # time later to find out what the angles were when a frame was exposed.
         self.history = collections.deque([(0.0, 0.0, 0.0)])
+        # The face's angle as last worked out from a picture. An angle rather than
+        # a pixel, because an angle is a fact about the world and stays true while
+        # the camera moves -- which is exactly what keep_going() needs.
+        self.aim_pan = None
+        self.aim_tilt = None
+        # What the last step was computed from -- see track(), which fills it in.
+        # Aiming is the one part of this rover whose faults are all invisible in
+        # the result: a mirrored picture, a wrong gain, a stale exposure clock and
+        # a servo that has not arrived yet all present as the same symptom, a
+        # camera that will not settle on a face it can plainly see. They are told
+        # apart only by the intermediate numbers, so the intermediate numbers are
+        # kept.
+        self.last = None
 
     def record(self, now):
         self.history.append((now, self.pan, self.tilt))
@@ -490,6 +555,7 @@ class Gimbal:
         # describe how the picture relates to the servos, which is this conversion.
         face_pan = pan_then + PAN_SIGN * error_x * self.pan_gain
         face_tilt = tilt_then + TILT_SIGN * error_y * self.tilt_gain
+        self.aim_pan, self.aim_tilt = face_pan, face_tilt
         remaining_pan = face_pan - self.pan
         remaining_tilt = face_tilt - self.tilt
         # Deadband in degrees, on what is left to do rather than on what can be
@@ -504,6 +570,51 @@ class Gimbal:
             clamp(step_tilt, -TILT_RATE * dt, TILT_RATE * dt),
             dt,
         )
+        self.last = {
+            # Read left to right, this is the whole chain: the face was this far
+            # off centre, in a frame exposed this long ago, when the camera was
+            # pointed there; so the face is at that angle; so go here.
+            "error": [round(error_x, 3), round(error_y, 3)],
+            "frame_age_ms": None if exposed_at is None else round((now - exposed_at) * 1e3),
+            "was_at": [round(pan_then, 1), round(tilt_then, 1)],
+            "face_at": [round(face_pan, 1), round(face_tilt, 1)],
+            "sent_to": [round(self.pan, 1), round(self.tilt, 1)],
+        }
+
+    def keep_going(self, dt):
+        """Carry on to the angle already worked out, without re-reading the picture.
+
+        For a frame the detector answered with nothing, while Target is still
+        holding the lock open on its grace window. **Do not call track() with the
+        remembered pixel on such a frame.** The face's angle has not changed, but
+        the pixel it was measured at has, because the camera has moved since; and
+        track() measures a pixel against where the camera is *now*. Feeding it a
+        stale pixel therefore states that the face is still the full original
+        distance away, and the whole correction is applied a second time on top of
+        the one already in flight.
+
+        Measured in simulation, at this rover's frame rate with detections landing
+        on about half the frames: the camera crossed a stationary face 37 degrees
+        off axis, carried **23 degrees past it**, and hunted. Holding the angle
+        instead settles within 1 degree. The same fault at 25 frames a second
+        costs 11 degrees, which is why it survived for as long as the detector was
+        on another machine and the loop was fast -- it read as a slight wobble.
+        """
+        if self.aim_pan is None:
+            return
+        remaining_pan = self.aim_pan - self.pan
+        remaining_tilt = self.aim_tilt - self.tilt
+        step_pan = 0.0 if abs(remaining_pan) < DEADBAND * self.pan_gain             else self.gain * remaining_pan
+        step_tilt = 0.0 if abs(remaining_tilt) < DEADBAND * self.tilt_gain             else self.gain * remaining_tilt
+        self.move(
+            clamp(step_pan, -PAN_RATE * dt, PAN_RATE * dt),
+            clamp(step_tilt, -TILT_RATE * dt, TILT_RATE * dt),
+            dt,
+        )
+
+    def forget(self):
+        """Stop aiming at a remembered angle. For when the lock is given up."""
+        self.aim_pan = self.aim_tilt = None
 
     def move(self, delta_pan, delta_tilt, dt):
         """Move the target by so many degrees over dt. No signs: see track().
@@ -518,8 +629,11 @@ class Gimbal:
         self.pan = clamp(self.pan + delta_pan, -PAN_LIMIT, PAN_LIMIT)
         self.tilt = clamp(self.tilt + delta_tilt, *TILT_LIMITS)
         if dt > 0:
-            self.speed_pan = abs(self.pan - was_pan) / dt
-            self.speed_tilt = abs(self.tilt - was_tilt) / dt
+            # Capped, so a slow loop does not mean a camera that is never still --
+            # see SETTLE_WITHIN_S, where the blur this costs is measured.
+            travel = min(dt, SETTLE_WITHIN_S)
+            self.speed_pan = abs(self.pan - was_pan) / travel
+            self.speed_tilt = abs(self.tilt - was_tilt) / travel
 
     def centre(self, speed=PLACE_DEG_S):
         self.pan = self.tilt = 0.0

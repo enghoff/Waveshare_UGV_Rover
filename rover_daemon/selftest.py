@@ -97,7 +97,8 @@ def test_schemas():
     # decision about which of the two kinds it is.
     handlers = sorted(m[len("_tool_"):] for m in dir(rover_daemon.Rover)
                       if m.startswith("_tool_"))
-    control = ["set_vision", "nav_status", "map_png", "camera_jpeg", "clear_map"]
+    control = ["set_vision", "nav_status", "map_png", "camera_jpeg", "clear_map",
+               "detect_in"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
@@ -562,13 +563,83 @@ def test_flags():
                   "rover_up" in str(error), True)
 
 
+def test_aiming_through_a_missed_frame():
+    """A face that never moves must not push the camera further on every miss.
+
+    The detector on this rover answers about half the frames, and the lock is
+    deliberately held open across the gaps. What must not happen in a gap is a
+    second correction for the same error: `centre` is a pixel, it was measured
+    against an older frame, and the camera has moved since. Feeding it back to
+    track() walked the camera 23 degrees past a stationary face 37 away, and it
+    read from outside as the rover avoiding the person it could plainly see.
+    """
+    import aiming
+    from aiming import Gimbal, Target
+
+    width, height = 640, 480
+    face_px = (480, 240)               # half a frame right of centre, and still
+    detection = [[face_px[0] - 40, face_px[1] - 40, 80, 80, 0.95]]
+    dt, now = 0.4, 1000.0
+
+    gimbal = Gimbal(aiming.GAIN, (width, height))
+    target = Target(0.65, grace=max(aiming.LOST_GRACE_S, aiming.GRACE_FRAMES * dt))
+
+    def turn(faces):
+        nonlocal now
+        now += dt
+        if target.update(faces, now):
+            if target.fresh:
+                gimbal.track((target.centre[0] - width / 2) / (width / 2),
+                             (height / 2 - target.centre[1]) / (height / 2),
+                             dt, now, exposed_at=now - 0.05)
+            else:
+                gimbal.keep_going(dt)
+        gimbal.record(now)
+
+    turn(detection)
+    after_one, aim = gimbal.pan, gimbal.aim_pan
+    check("one look at a face off to the right pans right", after_one > 1.0, True)
+    for _ in range(3):
+        turn([])                        # the grace window, with nothing detected
+    # Converging on the angle is right; passing it is the fault. keep_going()
+    # closes the remaining gap and stops there however many frames are missed.
+    check("missed frames keep closing on the face", gimbal.pan > after_one, True)
+    check("missed frames never pan past it", gimbal.pan <= aim + 0.1, True)
+
+    # And the fault itself, kept beside the fix so the number is not just a
+    # claim in a docstring: re-reading the remembered pixel each missed frame,
+    # which is what the loop used to do, sails past the face instead.
+    naive = Gimbal(aiming.GAIN, (width, height))
+    naive_target = Target(0.65, grace=999.0)
+    when = 2000.0
+    for turn_number in range(4):
+        when += dt
+        faces = detection if turn_number == 0 else []
+        if naive_target.update(faces, when):
+            naive.track((naive_target.centre[0] - width / 2) / (width / 2),
+                        (height / 2 - naive_target.centre[1]) / (height / 2),
+                        dt, when, exposed_at=when - 0.05)
+        naive.record(when)
+    check("re-reading the stale pixel would pan well past it",
+          naive.pan > aim + 10, True)
+
+    # Once the lock is given up, the remembered angle goes with it: the next
+    # person is not aimed at through the last one's coordinates.
+    target.drop()
+    gimbal.forget()
+    check("dropping the lock forgets the angle", gimbal.aim_pan, None)
+    before = gimbal.pan
+    gimbal.keep_going(dt)
+    check("and keep_going then does nothing", gimbal.pan, before)
+
+
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_control_calls_without_hardware, test_where,
-                 test_map_view, test_flags):
+                 test_map_view, test_flags, test_aiming_through_a_missed_frame):
         try:
             test()
         except Exception as exc:

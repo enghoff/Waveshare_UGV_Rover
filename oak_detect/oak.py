@@ -87,7 +87,7 @@ class Oak:
     lock rather than this paying for one it cannot use.
     """
 
-    def __init__(self, blob_path, input_shape=(3, 240, 320), library=None,
+    def __init__(self, blob_path, input_shape=(3, 480, 640), library=None,
                  firmware_dir=None, watchdog_ms=1000):
         here = os.path.dirname(os.path.abspath(__file__))
         self._lib = ctypes.CDLL(library or os.path.join(here, "liboak.so"))

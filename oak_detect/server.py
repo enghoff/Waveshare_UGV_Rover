@@ -49,7 +49,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from oak import Oak, OakError  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BLOB = os.path.join(HERE, "face-detection-retail-0004-320x240.blob")
+BLOB = os.path.join(HERE, "face-detection-retail-0004-640x480.blob")
 
 DEFAULT_SCORE = 0.5
 MAX_BODY = 8 << 20
