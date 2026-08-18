@@ -41,6 +41,13 @@ DETECT_WIDTH = 640
 # away, is half shadowed or is briefly blurred by the servos should not be dropped
 # merely for scoring badly for a moment. Proximity to the last known position is
 # what protects the low bar: see Target.update().
+#
+# **These two are YuNet's numbers and no other detector's.** They are a property
+# of how a particular network scores this room's furniture, not of how tracking
+# should behave, so a different detector needs its own pair measured the same way
+# -- see oak_detect/local.py, where the SSD on the OAK camera scores both faces
+# and furniture lower and would never acquire anybody against a bar set here.
+# Target takes them as arguments for exactly that reason.
 ACQUIRE_SCORE = 0.85
 KEEP_SCORE = 0.60
 NMS_THRESHOLD = 0.3
@@ -198,7 +205,15 @@ SMOOTHING = 0.5
 # A face is not lost the instant it is not detected -- a blink, a turn of the head
 # or the motion blur of the servos moving all drop a frame or two. Hold the aim
 # this long before admitting it is gone.
+#
+# **This is really a frame count wearing a stopwatch.** At the 25 fps this was
+# measured at it is seventeen frames, which is generous; on the rover's own
+# detector the loop runs at four, where the same 0.7 s is under three frames and a
+# single turn of the head drops the lock. `Target.grace` is therefore settable, and
+# the loops raise it when they are slow -- see GRACE_FRAMES.
 LOST_GRACE_S = 0.7
+# What that 0.7 s is worth in frames, and the floor to keep when frames are scarce.
+GRACE_FRAMES = 4
 
 # --- scanning -------------------------------------------------------------
 
@@ -322,7 +337,13 @@ class Target:
     Faces arrive as (x, y, w, h, score) in full-frame pixels, whoever found them.
     """
 
-    def __init__(self):
+    def __init__(self, acquire_score=ACQUIRE_SCORE, grace=LOST_GRACE_S):
+        # Whose score has to be beaten to *start* a lock. An argument rather than
+        # the constant, because it belongs to the detector rather than to aiming.
+        self.acquire_score = acquire_score
+        # How long a lock survives without a detection. Raised by a slow loop, so
+        # that "a frame or two" stays a frame or two rather than becoming none.
+        self.grace = grace
         self.centre = None   # smoothed (x, y), the thing actually aimed at
         self.box = None      # the last raw detection, for drawing
         # Now, rather than zero: the scan delay counts from this, and a rover that
@@ -331,9 +352,9 @@ class Target:
 
     def update(self, faces, now):
         if not faces:
-            return self.centre is not None and now - self.seen_at < LOST_GRACE_S
+            return self.centre is not None and now - self.seen_at < self.grace
         pick = None
-        if self.centre is not None and now - self.seen_at < LOST_GRACE_S:
+        if self.centre is not None and now - self.seen_at < self.grace:
             x0, y0 = self.centre
             near = [
                 face for face in faces
@@ -345,14 +366,14 @@ class Target:
             if near:
                 pick = max(near, key=lambda f: f[2] * f[3])
         if pick is None:
-            strong = [face for face in faces if face[4] >= ACQUIRE_SCORE]
+            strong = [face for face in faces if face[4] >= self.acquire_score]
             if not strong:
                 # Something face-shaped, but not enough to point the camera at.
-                return self.centre is not None and now - self.seen_at < LOST_GRACE_S
+                return self.centre is not None and now - self.seen_at < self.grace
             pick = max(strong, key=lambda f: f[2] * f[3])
         x, y, w, h, _ = pick
         fresh = (x + w / 2, y + h / 2)
-        if self.centre is None or now - self.seen_at >= LOST_GRACE_S:
+        if self.centre is None or now - self.seen_at >= self.grace:
             self.centre = fresh  # a new lock starts where the face is, not part way
         else:
             self.centre = tuple(
@@ -367,7 +388,7 @@ class Target:
         self.centre = self.box = None
 
     def locked(self, now):
-        return self.centre is not None and now - self.seen_at < LOST_GRACE_S
+        return self.centre is not None and now - self.seen_at < self.grace
 
 
 class Gimbal:

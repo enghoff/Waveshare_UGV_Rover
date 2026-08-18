@@ -297,9 +297,15 @@ class Camera:
     numbers are recorded.
     """
 
-    def __init__(self, device=DEFAULT_DEVICE, size=DEFAULT_SIZE):
+    def __init__(self, device=DEFAULT_DEVICE, size=DEFAULT_SIZE, pixelformat="MJPG"):
         self.device = device
         self.size = size
+        # MJPG or YUYV. Uncompressed exists for the detector on the rover, which
+        # would otherwise have to decode every frame at 85 ms a go -- see
+        # oak_detect/local.py. It costs USB bandwidth instead: 614 kB a frame
+        # against 30, measured at 12.3 MB/s and 20 fps, which this bus carries.
+        self.pixelformat = pixelformat
+        self.frame_bytes = size[0] * size[1] * 2 if pixelformat == "YUYV" else 0
         self.dropped = 0
         self.unpaired = 0
         self.complaints = []                # what v4l2-ctl said, if it went wrong
@@ -310,7 +316,8 @@ class Camera:
         self._stamps = threading.Condition()
         self._stop = threading.Event()
         argv = ["v4l2-ctl", "-d", device,
-                "--set-fmt-video=width=%d,height=%d,pixelformat=MJPG" % size,
+                "--set-fmt-video=width=%d,height=%d,pixelformat=%s"
+                % (size + (pixelformat,)),
                 "--stream-mmap", "--stream-to=-", "--verbose"]
         if os.path.exists("/usr/bin/stdbuf"):
             argv = ["stdbuf", "-o0"] + argv
@@ -318,7 +325,9 @@ class Camera:
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
             preexec_fn=die_with_parent)
         self._readers = [
-            threading.Thread(target=self._read_frames, daemon=True),
+            threading.Thread(
+                target=self._read_raw if self.frame_bytes else self._read_frames,
+                daemon=True),
             threading.Thread(target=self._read_stamps, daemon=True),
         ]
         for thread in self._readers:
@@ -371,6 +380,38 @@ class Camera:
                     break
                 frame, buf, scan = buf[:end + 2], buf[end + 2:], 0
                 self._offer(frame, self._stamp_for(len(frame)))
+
+    def _read_raw(self):
+        """Fixed-size frames, for an uncompressed format.
+
+        Simpler than reassembling JPEG and cheaper: there is no marker to scan
+        for, so this is a byte count and a slice. The pairing in `_stamp_for` is
+        weaker here and cannot be helped -- every buffer is the same size, so
+        matching a stamp by its byte count degenerates into taking the oldest
+        pending one, which is the arrival-order matching that docstring warns
+        about. With frames this large the camera either delivers one whole or
+        drops it, so the failure it guards against does not arise the same way.
+        """
+        stand_aside()
+        need = self.frame_bytes
+        # readinto a buffer that is reused, rather than read() and concatenate.
+        # A frame is 614 kB here and the naive form copies it three times -- once
+        # for the bytes read() returns, once to append, once to freeze -- which is
+        # 13 MB/s of pure memcpy at any useful rate, on a host whose whole USB
+        # budget is about 12. Only the freeze survives, and it has to: the buffer
+        # is handed on while the next frame is already being read into this one.
+        buf = bytearray(need)
+        view = memoryview(buf)
+        got = 0
+        stream = self.proc.stdout
+        while not self._stop.is_set():
+            read = stream.readinto(view[got:])
+            if not read:
+                return
+            got += read
+            if got == need:
+                self._offer(bytes(buf), self._stamp_for(need))
+                got = 0
 
     def _stamp_for(self, length):
         """When the frame now in hand was exposed, on time.monotonic()'s clock.

@@ -90,7 +90,7 @@ DEFAULT_BOARD_HOST = "192.168.1.22"
 # Loopback and by address, so nothing about a frame's round trip can depend on
 # the network or on mDNS: this sits in a control loop with a 1 s timeout, and
 # what used to be here was a 5 s outlier resolving `media.local`.
-DEFAULT_SERVICE = "127.0.0.1:8768"  # oak_detect/server.py, on this Pi
+DEFAULT_SERVICE = "local"  # the OAK, in this process -- see oak_detect/local.py
 # Where a picture goes to be looked at, when --vision is given. By address for
 # the same reason as the detector above: this is on a control path, and a 5s
 # mDNS outlier is a tool call that times out.
@@ -831,6 +831,10 @@ class Rover:
         self._camera = None
         self._camera_used = 0.0
         self._detector = None
+        self._loop_fps = 0.0
+        # Overridden by whichever detector is opened, since the bar for
+        # starting a lock is a property of that detector's scores.
+        self._acquire_score = None
         # The tracking loop's newest frame, kept so that `look` has something to
         # send while the loop owns the camera. One 35kB JPEG, replaced in place.
         self._frame: tuple[bytes, float] | None = None
@@ -929,7 +933,11 @@ class Rover:
             return self._camera
         if self._camera is not None:
             self._camera.close()
-        camera = Camera(self.device, self.size)
+        # YUYV when the detector is in this process, because it can take pixels
+        # directly and decoding a JPEG here costs 85 ms a frame -- more than the
+        # inference. MJPEG when the detector is over HTTP, which wants a picture.
+        camera = Camera(self.device, self.size,
+                        "YUYV" if self.service == "local" else "MJPG")
         self._camera = camera
         self._camera_used = time.monotonic()
         return camera
@@ -952,10 +960,29 @@ class Rover:
             self._camera = None
 
     def _open_detector(self):
-        from track_face_pi import Detector
+        """The face detector, in this process or over HTTP.
 
-        if self._detector is None:
+        `--service local` opens the OAK here and feeds it raw frames, which is
+        what makes the loop run at a useful rate. Anything host:port keeps the
+        old path, which is how the detector can be put back on another machine
+        without changing anything else.
+        """
+        if self._detector is not None:
+            return self._detector
+        if self.service == "local":
+            sys.path.insert(0, str(Path(__file__).resolve().parent / "oak_detect"))
+            from local import ACQUIRE_SCORE, KEEP_SCORE, LocalDetector
+
+            # This detector's own thresholds, not aiming.py's -- see local.py.
+            self._detector = LocalDetector(score=KEEP_SCORE, size=self.size)
+            self._acquire_score = ACQUIRE_SCORE
+        else:
+            from aiming import ACQUIRE_SCORE
+            from track_face_pi import Detector
+
+            # YuNet's bar, for YuNet behind the HTTP service.
             self._detector = Detector(self.service)
+            self._acquire_score = ACQUIRE_SCORE
         return self._detector
 
     # --- tools --------------------------------------------------------------
@@ -1115,6 +1142,14 @@ class Rover:
             jpeg, at = frame
             if time.monotonic() - at > FRAME_STALE_S:
                 return None, "tracking is running but its last frame is stale"
+            # Raw when the local detector is in use, so this is where a picture
+            # gets made. Only reached when somebody asks to see one, never in the
+            # loop -- encoding costs about what decoding used to.
+            if not jpeg.startswith(b"\xff\xd8"):
+                encoder = self._detector
+                jpeg = encoder.encode_jpeg(jpeg) if encoder is not None else None
+                if jpeg is None:
+                    return None, "the frame could not be turned into a picture"
             return jpeg, ""
         got, why = self._snapshot()
         if not got:
@@ -1198,7 +1233,20 @@ class Rover:
 
         A refusal is instant and a host that is off takes the timeout, which is
         why this is bounded rather than left to the first detect call.
+
+        For the detector in this process there is no socket to probe, so the
+        readiness question is whether the device opens -- which is the same
+        question, and answering it here means the several seconds of firmware and
+        graph upload are paid once, on the first call, rather than being mistaken
+        for a camera that will not answer.
         """
+        if self.service == "local":
+            try:
+                self._open_detector()
+                return ""
+            except Exception as error:
+                return (f"the OAK could not be opened ({error}), so tracking a "
+                        f"face is not possible right now")
         host, _, port = self.service.partition(":")
         try:
             with socket.create_connection((host, int(port or 8768)), DETECT_PROBE_S):
@@ -1246,13 +1294,25 @@ class Rover:
     def _tool_tracking_status(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         seen = dict(self._seen)
         fresh = seen["at"] and time.monotonic() - seen["at"] < 2.0
-        return {
+        status = {
             "ok": True,
             "tracking": self._tracking.is_set(),
             "following_someone": bool(seen["locked"]) if fresh else False,
             "faces_in_view": seen["faces"] if fresh else 0,
             "pan": round(self.pan), "tilt": round(self.tilt),
         }
+        # How fast the loop is actually going round, which is the difference
+        # between "it cannot see me" and "it sees me twice a second". Only the
+        # in-process detector keeps these; over HTTP the service's own /health
+        # has them instead.
+        detector = self._detector
+        if detector is not None and hasattr(detector, "convert_ms"):
+            status["loop_fps"] = round(self._loop_fps, 1)
+            status["frame_ms"] = {"convert": round(detector.convert_ms, 1),
+                                  "detect": round(detector.detect_ms, 1)}
+            status["acquire_at"] = self._acquire_score
+            status["recent_scores"] = list(detector.recent)
+        return status
 
     # --- driving --------------------------------------------------------------
 
@@ -1491,7 +1551,8 @@ class Rover:
         become two different robots, which is the reason aiming.py exists.
         """
         from aiming import (
-            GAIN, MAX_DT, SCAN_AFTER_S, SCAN_RATE, Gimbal, Scan, Target, clamp,
+            GAIN, GRACE_FRAMES, LOST_GRACE_S, MAX_DT, SCAN_AFTER_S, SCAN_RATE,
+            Gimbal, Scan, Target, clamp,
         )
 
         width, height = self.size
@@ -1508,9 +1569,10 @@ class Rover:
         # The angles are a model; this is what makes the model true. Start it
         # from wherever the camera actually is rather than assuming centre.
         gimbal.pan, gimbal.tilt = self.pan, self.tilt
-        target = Target()
+        target = Target(self._acquire_score)
         scan = None
         last_tick = time.monotonic()
+        self._loop_fps = 0.0
         service_ok_at = time.monotonic()
         stalled = False
 
@@ -1532,6 +1594,16 @@ class Rover:
                 # Clamped: a frame that took a second to arrive must not be
                 # answered with a second's worth of sweep.
                 dt, last_tick = min(now - last_tick, MAX_DT), now
+                # Exponentially smoothed rather than instantaneous: one slow frame
+                # is not news, a loop that has halved is.
+                if dt > 0:
+                    self._loop_fps += 0.2 * (1.0 / dt - self._loop_fps)
+                # Hold a lock for whichever is longer, the measured 0.7 s or four
+                # frames. This loop runs at four frames a second with the detector
+                # on the rover, where 0.7 s is not "a frame or two" but two and a
+                # half, and one turn of a head then drops somebody the camera is
+                # still pointing straight at.
+                target.grace = max(LOST_GRACE_S, GRACE_FRAMES * dt)
 
                 faces = detector.detect(frame, exposed_at)
                 if faces is None:
@@ -1661,7 +1733,9 @@ def main() -> int | str:
     parser.add_argument("--host", default=None, metavar="ADDRESS",
                         help="command the board over WiFi at this address instead")
     parser.add_argument("--service", default=DEFAULT_SERVICE, metavar="HOST[:PORT]",
-                        help=f"the face detector (default {DEFAULT_SERVICE})")
+                        help=f"the face detector: 'local' for the OAK in this "
+                             f"process, or host:port for one over HTTP "
+                             f"(default {DEFAULT_SERVICE})")
     parser.add_argument("--device", default=DEFAULT_DEVICE, metavar="PATH",
                         help=f"the camera (default {DEFAULT_DEVICE})")
     parser.add_argument("--vision", nargs="?", default=None, const=DEFAULT_VISION,

@@ -54,6 +54,7 @@ BLOB = os.path.join(HERE, "face-detection-retail-0004-320x240.blob")
 DEFAULT_SCORE = 0.5
 MAX_BODY = 8 << 20
 STAT_WINDOW = 100
+RECENT_WINDOW = 60
 
 # The SSD's output is a fixed 200 rows of seven float16s -- image id, label,
 # confidence, then the corners as fractions of the frame. A row whose image id is
@@ -63,10 +64,11 @@ ROW_FLOATS = 7
 
 _device = None
 _input = None
+_save_dir = None
 _lock = threading.Lock()
 _stats_lock = threading.Lock()
 _stats = {"frames": 0, "faces": 0, "errors": 0, "detect_ms": [], "decode_ms": [],
-          "last_error": None}
+          "last_error": None, "recent": []}
 
 
 def detect(jpeg, score):
@@ -147,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             # caller simply sends the next one, while anything from the device is
             # the service needing a restart to boot it again.
             "last_error": _stats["last_error"],
+            "recent": list(_stats["recent"]),
             "decode_ms_median": round(statistics.median(decode_ms), 2) if decode_ms else None,
             "detect_ms_median": round(statistics.median(detect_ms), 2) if detect_ms else None,
             "detect_ms_max": round(max(detect_ms), 2) if detect_ms else None,
@@ -181,10 +184,26 @@ class Handler(BaseHTTPRequestHandler):
         with _stats_lock:
             _stats["frames"] += 1
             _stats["faces"] += len(faces)
+            # The top score and the count for each of the last few frames. This is
+            # the only view of what the tracking loop is actually being told: from
+            # outside, a loop that never locks on looks the same whether nothing
+            # scores high enough or something else scored higher.
+            _stats["recent"].append(
+                [round(max(f[4] for f in faces), 3) if faces else 0.0, len(faces),
+                 int(max(faces, key=lambda f: f[2] * f[3])[2]) if faces else 0])
+            del _stats["recent"][:-RECENT_WINDOW]
             _stats["detect_ms"].append(detect_ms)
             _stats["decode_ms"].append(decode_ms)
             del _stats["detect_ms"][:-STAT_WINDOW]
             del _stats["decode_ms"][:-STAT_WINDOW]
+
+        if _save_dir:
+            name = "face.jpg" if faces else "no_face.jpg"
+            try:
+                with open(os.path.join(_save_dir, name), "wb") as handle:
+                    handle.write(jpeg)
+            except OSError:
+                pass
 
         self._reply(200, {
             "ts": ts, "w": w, "h": h, "faces": faces,
@@ -200,7 +219,15 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8768)
     parser.add_argument("--blob", default=BLOB)
+    # A diagnostic, off unless asked for: writes the most recent frame that found
+    # no face and the most recent that did, so "the loop never detects anything"
+    # can be told apart from "the loop is sending something unexpected". Costs one
+    # file write per frame, which is why it is not on by default.
+    parser.add_argument("--save-frames", metavar="DIR",
+                        help="keep the last frame with and without a face, for looking at")
     args = parser.parse_args()
+    global _save_dir
+    _save_dir = args.save_frames
 
     # Booted before the socket is bound, so a camera that is not there is a
     # refusal to start rather than a 400 on every frame -- and so the first real

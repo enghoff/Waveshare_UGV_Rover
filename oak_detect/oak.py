@@ -139,6 +139,16 @@ class Oak:
             ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
         lib.oak_jpeg_to_planar_bgr.restype = ctypes.c_int
+        lib.oak_yuyv_to_planar_bgr.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+            ctypes.c_int, ctypes.c_int]
+        lib.oak_yuyv_to_planar_bgr.restype = ctypes.c_int
+        lib.oak_yuyv_to_jpeg.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),
+            ctypes.POINTER(ctypes.c_ulong)]
+        lib.oak_yuyv_to_jpeg.restype = ctypes.c_int
+        lib.oak_jpeg_free.argtypes = [ctypes.POINTER(ctypes.c_ubyte)]
 
     def open(self, quiet=True):
         """Boot the device and load the graph. A couple of seconds, mostly the upload."""
@@ -220,6 +230,31 @@ class Oak:
         if rc != 0:
             return None
         return (src_w.value, src_h.value, dec_w.value, dec_h.value)
+
+    def yuyv_to_input(self, frame, buffer, src_w, src_h):
+        """Halve a packed YUYV frame straight into the graph's input.
+
+        The fast path in every sense: no Huffman decoding, no resize, no
+        intermediate buffer. Returns True, or False if the frame is not exactly
+        twice the graph's input in both axes -- which means the camera is not in
+        the mode this was set up for, and is worth failing on rather than papering
+        over.
+        """
+        _, height, width = self.input_shape
+        return self._lib.oak_yuyv_to_planar_bgr(
+            frame, src_w, src_h, buffer, width, height) == 0
+
+    def yuyv_to_jpeg(self, frame, src_w, src_h, quality=80):
+        """The same frame as JPEG bytes, for anything that has to show a picture."""
+        out = ctypes.POINTER(ctypes.c_ubyte)()
+        length = ctypes.c_ulong(0)
+        if self._lib.oak_yuyv_to_jpeg(frame, src_w, src_h, quality,
+                                      ctypes.byref(out), ctypes.byref(length)) != 0:
+            return None
+        try:
+            return bytes(bytearray(out[:length.value]))
+        finally:
+            self._lib.oak_jpeg_free(out)
 
     def infer(self, planar):
         """One frame in, the raw output tensor out. Blocks until the device answers."""

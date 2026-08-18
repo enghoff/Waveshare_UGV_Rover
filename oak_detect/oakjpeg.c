@@ -213,3 +213,116 @@ int oak_jpeg_to_planar_bgr(const unsigned char *jpeg, unsigned long len,
     *dec_h = dh;
     return 0;
 }
+
+/* ---- YUYV, the path that avoids JPEG altogether -------------------------- */
+
+/* The camera will hand over uncompressed 4:2:2 instead of MJPEG, and on this host
+ * that is the difference between 85 ms of Huffman decoding a frame and a few
+ * milliseconds of arithmetic. It costs USB bandwidth rather than CPU -- 614 kB a
+ * frame against 30, measured at 12.3 MB/s and 20 fps, which this bus carries.
+ *
+ * YUYV packs two pixels into four bytes as Y0 U Y1 V, so a 640x480 frame maps onto
+ * a 320x240 network input exactly: one output pixel per group, taking every second
+ * row. The chroma is already shared between the pair, so nothing is thrown away
+ * that the format had in the first place.
+ */
+
+#define CLAMP_BYTE(v) ((unsigned char)((v) < 0 ? 0 : ((v) > 255 ? 255 : (v))))
+
+/* BT.601, in integer arithmetic: the VFP here is scalar and this runs three
+ * multiplies per pixel. The 298/409/516 coefficients are the standard fixed-point
+ * form of the full-range conversion, and >> 8 is the matching scale. */
+static void yuv_to_bgr(int y, int u, int v, unsigned char *b, unsigned char *g,
+                       unsigned char *r)
+{
+    int c = 298 * (y - 16);
+    int d = u - 128;
+    int e = v - 128;
+
+    *r = CLAMP_BYTE((c + 409 * e + 128) >> 8);
+    *g = CLAMP_BYTE((c - 100 * d - 208 * e + 128) >> 8);
+    *b = CLAMP_BYTE((c + 516 * d + 128) >> 8);
+}
+
+/* Halves a packed YUYV frame straight into the graph's three planes. Returns 0, or
+ * -1 if the sizes are not the exact 2:1 this is for -- deliberately strict, since
+ * silently resampling here would hide a camera that changed mode underneath us. */
+int oak_yuyv_to_planar_bgr(const unsigned char *src, int sw, int sh,
+                           unsigned char *out, int ow, int oh)
+{
+    const int plane = ow * oh;
+    int x, y;
+
+    if (sw != ow * 2 || sh != oh * 2)
+        return -1;
+
+    for (y = 0; y < oh; y++) {
+        const unsigned char *row = src + (size_t)(y * 2) * sw * 2;
+        unsigned char *b = out + (size_t)y * ow;
+        unsigned char *g = b + plane;
+        unsigned char *r = g + plane;
+
+        for (x = 0; x < ow; x++, row += 4)
+            yuv_to_bgr(row[0], row[1], row[3], b + x, g + x, r + x);
+    }
+    return 0;
+}
+
+/* The same frame as a JPEG, for the picture the console asks for. Only reached on
+ * demand: once tracking is capturing raw, this is the only way a whole frame gets
+ * back out as something a widget can show, and it costs about as much as decoding
+ * one did -- which is affordable at a picture every few seconds and would not be
+ * per frame. `out` is filled with a pointer that must be released by
+ * oak_jpeg_free.
+ */
+extern tjhandle tjInitCompress(void);
+extern int tjCompress2(tjhandle h, const unsigned char *src, int width, int pitch,
+                       int height, int pixelFormat, unsigned char **jpegBuf,
+                       unsigned long *jpegSize, int jpegSubsamp, int quality,
+                       int flags);
+extern int tjFree(unsigned char *buffer);
+
+#define TJSAMP_420 2
+
+static tjhandle g_tjc;
+static unsigned char *g_bgr;
+static size_t g_bgr_len;
+
+int oak_yuyv_to_jpeg(const unsigned char *src, int sw, int sh, int quality,
+                     unsigned char **out, unsigned long *out_len)
+{
+    int x, y;
+
+    if (!g_tjc && !(g_tjc = tjInitCompress()))
+        return -1;
+    if ((size_t)sw * sh * 3 > g_bgr_len) {
+        unsigned char *grown = realloc(g_bgr, (size_t)sw * sh * 3);
+
+        if (!grown)
+            return -1;
+        g_bgr = grown;
+        g_bgr_len = (size_t)sw * sh * 3;
+    }
+
+    for (y = 0; y < sh; y++) {
+        const unsigned char *row = src + (size_t)y * sw * 2;
+        unsigned char *dst = g_bgr + (size_t)y * sw * 3;
+
+        for (x = 0; x < sw; x += 2, row += 4, dst += 6) {
+            yuv_to_bgr(row[0], row[1], row[3], dst + 0, dst + 1, dst + 2);
+            yuv_to_bgr(row[2], row[1], row[3], dst + 3, dst + 4, dst + 5);
+        }
+    }
+
+    *out = NULL;
+    *out_len = 0;
+    if (tjCompress2(g_tjc, g_bgr, sw, sw * 3, sh, TJPF_BGR, out, out_len,
+                    TJSAMP_420, quality, TJFLAG_FASTDCT) < 0)
+        return -1;
+    return 0;
+}
+
+void oak_jpeg_free(unsigned char *buffer)
+{
+    tjFree(buffer);
+}
