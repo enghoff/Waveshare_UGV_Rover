@@ -31,6 +31,7 @@ import time
 
 import serial
 
+import planner
 from slam2d import Slam2D, default_config
 
 LIDAR_BAUD = 230400
@@ -145,6 +146,19 @@ STOP_REPEATS = 3           # a dropped stop is the one packet that matters
 # The voice service gives a tool 12 s, all in. A bounded move has to finish inside
 # that or the model is told nothing at all, which is worse than a short move.
 MAX_MOVE_S = 8.0
+# A route to a tap is not one 8 s hop: it is a handful of segments and the turns
+# between them, and it is allowed to take the time that actually takes. The voice
+# service will still cut a spoken call short; the console waits.
+MAX_GOTO_S = 75.0
+MAX_GOTO_M = 8.0
+MAX_REPLANS = 8
+GOTO_ARRIVE_M = 0.16       # close enough; the pose is not a millimetre thing
+GOTO_CORRIDOR_M = 0.55     # off the polyline by more than this means replan
+GOTO_LOOKAHEAD_M = 0.80    # carrot along the path, not the next 5 cm cell
+GOTO_SLACK_M = 0.35        # progress may slide back this far without rewinding
+GOTO_TURN_DEG = 40.0       # more heading error than this: stop and turn
+GOTO_ALIGN_DEG = 12.0      # then drive once the nose is this close
+GOTO_RECHECK_S = 1.5       # how often to notice the map along the route changing
 UNKNOWN_AHEAD_SECTORS = 3  # +/-30 degrees at 36 sectors
 # How many recent revolutions the "is anything touching us" test looks back over.
 # One is not enough: a thin or dark object near the sensor's 0.12 m floor comes and
@@ -306,6 +320,108 @@ class Navigator:
 
         return self._run_goal({"kind": "drive", "distance": distance,
                                "speed": speed}, limit)
+
+    def drive_to(self, ahead_m, left_m, speed_ms=None):
+        """Go to a place relative to where the rover is now, around obstacles.
+
+        Plans on the occupancy grid, thins the route to a few waypoints, and
+        follows that polyline by looking ahead along it rather than by chasing
+        every cell. A large heading change is a turn on the spot; a small one is
+        steered through while driving. If the live scan cannot proceed, or the
+        rover has left the corridor, or the map along the remaining route has
+        grown a wall, the route is thrown away and another is planned from here.
+        """
+        if self._estop:
+            return Outcome("stopped", 0.0, 0.0,
+                           "the emergency stop is latched; clear it first")
+        ahead_m, left_m = float(ahead_m), float(left_m)
+        range_m = math.hypot(ahead_m, left_m)
+        if range_m < 0.08:
+            return Outcome("arrived", 0.0, 0.0, "already there")
+        if range_m > MAX_GOTO_M:
+            return Outcome("blocked", 0.0, 0.0,
+                           f"that is {range_m:.1f} m away and a single route is "
+                           f"capped at {MAX_GOTO_M:.0f} m")
+        why = self._preflight("goto")
+        if why:
+            return Outcome("blocked", 0.0, 0.0, why)
+
+        speed = _clamp(float(speed_ms if speed_ms is not None else 0.22),
+                       0.05, MAX_SPEED_MS)
+        x, y, th = self.slam.pose
+        target = (x + ahead_m * math.cos(th) - left_m * math.sin(th),
+                  y + ahead_m * math.sin(th) + left_m * math.cos(th))
+        path, last_why = self._plan_route(target)
+        if not path:
+            return Outcome("blocked", 0.0, 0.0, last_why)
+
+        started = time.monotonic()
+        travelled_before = 0.0
+        turned_before = 0.0
+        replans = 0
+
+        self._begin_driving()
+        try:
+            while time.monotonic() - started < MAX_GOTO_S:
+                if self._estop:
+                    return Outcome("stopped", travelled_before, turned_before,
+                                   "the emergency stop was latched")
+                if path is None:
+                    path, last_why = self._plan_route(target)
+                    if not path:
+                        return Outcome("blocked", travelled_before, turned_before,
+                                       last_why)
+                remaining = planner.length(path)
+                limit = min(MAX_GOTO_S - (time.monotonic() - started),
+                            remaining / speed * 2.2 + 4.0)
+                if limit < 1.0:
+                    break
+                outcome = self._run_goal({
+                    "kind": "goto",
+                    "speed": speed,
+                    "path": path,
+                    "target": target,
+                    "progress": 0.0,
+                    "travelled_before": travelled_before,
+                    "last_check": time.monotonic(),
+                }, limit)
+                path = None
+                travelled_before = outcome.travelled_m
+                turned_before = outcome.turned_deg
+                if outcome.reason == "arrived":
+                    extra = (f"replanned {replans} time"
+                             f"{'' if replans == 1 else 's'}" if replans else "")
+                    return Outcome("arrived", outcome.travelled_m, outcome.turned_deg,
+                                   extra)
+                if outcome.reason == "replan":
+                    replans += 1
+                    if replans > MAX_REPLANS:
+                        return Outcome("blocked", outcome.travelled_m,
+                                       outcome.turned_deg,
+                                       "gave up replanning: " + (outcome.detail
+                                                                 or last_why))
+                    continue
+                if outcome.reason == "stopped":
+                    return outcome
+                return Outcome(outcome.reason, outcome.travelled_m, outcome.turned_deg,
+                               outcome.detail or last_why)
+            return Outcome("timed out", travelled_before, turned_before,
+                           "the route ran out of its time budget")
+        finally:
+            self._halt()
+            self._end_driving()
+
+    def _plan_route(self, target_xy):
+        """A polyline from here to `target_xy`, or (None, why)."""
+        import numpy as np
+
+        with self.slam.lock:
+            grid = np.array(self.slam.grid(), copy=True)
+            pose = self.slam.pose
+            res = self.slam.config.resolution_m
+            occupied_at = self.slam.config.occupied_at
+        return planner.plan(grid, res, occupied_at, (pose[0], pose[1]), target_xy,
+                            inflate_m=STANDOFF_M)
 
     def turn_in_place(self, angle_deg, speed_dps=None):
         """Rotate by this many degrees, counter-clockwise positive.
@@ -472,6 +588,9 @@ class Navigator:
 
         if not self._driving:
             self._begin_driving()
+            owned = True
+        else:
+            owned = False
         # A backstop on the wait itself, not only on the move. Every deadline below
         # this one is checked inside a per-scan step, so if scans stop arriving
         # nothing checks anything and this loop waits for ever -- which is what
@@ -496,7 +615,8 @@ class Navigator:
                 g, self._goal = self._goal, None
                 self._want_speed = self._want_turn = 0.0
             self._halt()
-            self._end_driving()
+            if owned:
+                self._end_driving()
 
         if g is None:
             return Outcome("stopped", 0.0, 0.0, "cancelled")
@@ -678,6 +798,8 @@ class Navigator:
 
         if goal["kind"] == "turn":
             self._step_turn(goal, pose, now)
+        elif goal["kind"] == "goto":
+            self._step_goto(goal, pose, now)
         else:
             self._step_drive(goal, pose, now)
 
@@ -794,10 +916,13 @@ class Navigator:
             return ("the lidar has stopped reporting"
                     + (f" ({age:.0f}s ago)" if age else "")
                     + ", so the rover has no current picture of what is around it")
-        if kind == "turn":
-            # Never refused, however close anything is. Turning is the only move a
-            # wedged rover has left, and taking it away is what turned "too close to
-            # drive" into "stuck for good". _step_turn slows right down instead.
+        if kind in ("turn", "goto"):
+            # Turning is never refused, however close anything is. Going to a place
+            # that is not straight ahead starts with a turn, so refusing goto for a
+            # blocked nose would refuse every destination that is not already in
+            # front of a clear run. Turning is also the only move a wedged rover
+            # has left -- taking it away is what turned "too close to drive" into
+            # "stuck for good".
             return None
         chosen, clear = self._choose_heading(0.0)
         if self._speed_limit(clear) <= 0.0:
@@ -838,6 +963,95 @@ class Navigator:
         # take to get the nose there.
         turn = _clamp(chosen / 0.8, -MAX_TURN_DPS, MAX_TURN_DPS)
         self._drive_pwm(speed, turn)
+
+    def _step_goto(self, goal, pose, now):
+        """Follow a planned polyline by looking ahead along it.
+
+        Progress is the closest point on the path, allowed to slide back a little
+        so a weave beside the line is not a rewind. The carrot is nearly a metre
+        further on, so the rover aims at a stretch rather than at the next cell.
+        A corner is a turn on the spot; the rest is the same follow-the-gap drive
+        as a straight move, aimed at the carrot. Replan rather than fight when
+        the line is blocked, the rover has left the corridor, or the map has
+        grown a wall on the remaining route.
+        """
+        path = goal["path"]
+        tx, ty = goal["target"]
+        x, y, th = pose
+        goal["turned"] = self._heading_change(goal["start_accum"])
+        remaining = math.hypot(tx - x, ty - y)
+
+        if remaining <= GOTO_ARRIVE_M:
+            goal["travelled"] = (goal.get("travelled_before", 0.0)
+                                 + goal.get("progress", 0.0))
+            goal["done"] = ("arrived", "")
+            return
+        if now >= goal["deadline"]:
+            goal["travelled"] = (goal.get("travelled_before", 0.0)
+                                 + goal.get("progress", 0.0))
+            goal["done"] = ("timed out", "the move ran out of its time budget")
+            return
+
+        s, cross = planner.project(path, (x, y), goal["progress"], GOTO_SLACK_M)
+        goal["progress"] = s
+        goal["travelled"] = goal.get("travelled_before", 0.0) + s
+        if cross > GOTO_CORRIDOR_M:
+            goal["done"] = ("replan",
+                            f"drifted {cross:.2f} m off the route, so planning "
+                            f"again from here")
+            self._drive_pwm(0.0, 0.0)
+            return
+
+        if now - goal.get("last_check", now) >= GOTO_RECHECK_S:
+            goal["last_check"] = now
+            if self._route_blocked_on_map(path, s):
+                goal["done"] = ("replan",
+                                "the map along the remaining route is no longer "
+                                "clear")
+                self._drive_pwm(0.0, 0.0)
+                return
+
+        carrot = planner.point_at(path, s + GOTO_LOOKAHEAD_M)
+        want = math.degrees(math.atan2(carrot[1] - y, carrot[0] - x) - th)
+        want = (want + 180.0) % 360.0 - 180.0
+
+        # A sharp corner is a turn, not a curve. Turning-over-the-move is how
+        # the matcher used to lose the room; stopping and spinning is the move
+        # this rover already has.
+        if abs(want) > GOTO_TURN_DEG:
+            turn = _clamp(want / 0.6, -MAX_TURN_DPS, MAX_TURN_DPS)
+            self._drive_pwm(0.0, turn)
+            self._chosen_deg, self._clearance = want, None
+            return
+
+        chosen, clear = self._choose_heading(want)
+        self._chosen_deg, self._clearance = chosen, clear
+        limit = self._speed_limit(clear)
+        if limit <= 0.0:
+            goal["done"] = ("replan",
+                            f"the way towards the route is {clear:.2f} m and the "
+                            f"rover keeps {STANDOFF_M:.2f} m from anything it can "
+                            f"see")
+            self._drive_pwm(0.0, 0.0)
+            return
+
+        if self._unknown_ahead():
+            limit = min(limit, CRAWL_SPEED_MS)
+        if abs(want) > GOTO_ALIGN_DEG:
+            limit = min(limit, CRAWL_SPEED_MS)
+        speed = min(goal["speed"], limit)
+        turn = _clamp(chosen / 0.8, -MAX_TURN_DPS, MAX_TURN_DPS)
+        self._drive_pwm(speed, turn)
+
+    def _route_blocked_on_map(self, path, progress):
+        """True if the remaining polyline now sits on a solid cell."""
+        import numpy as np
+
+        with self.slam.lock:
+            grid = np.array(self.slam.grid(), copy=True)
+            res = self.slam.config.resolution_m
+            occupied_at = self.slam.config.occupied_at
+        return planner.cells_occupied_along(grid, res, occupied_at, path, progress)
 
     def _step_turn(self, goal, pose, now):
         goal["turned"] = self._heading_change(goal["start_accum"])
@@ -949,6 +1163,12 @@ class Navigator:
     # --- reporting ------------------------------------------------------------
     def status(self):
         x, y, th = self.slam.pose
+        remaining = None
+        with self._lock:
+            goal = self._goal
+            if goal is not None and goal.get("kind") == "goto" and goal.get("path"):
+                remaining = max(0.0, planner.length(goal["path"])
+                                - goal.get("progress", 0.0))
         return {
             "driving": self._driving,
             "estop": self._estop,
@@ -959,6 +1179,7 @@ class Navigator:
             "clearance_m": None if self._clearance is None
                            else round(self._clearance, 2),
             "steering_deg": round(self._chosen_deg, 1),
+            "remaining_m": None if remaining is None else round(remaining, 2),
             "match_score": round(self.slam.score, 3),
             "position_trusted": not self.slam.rejected,
             "scans": self._scans,

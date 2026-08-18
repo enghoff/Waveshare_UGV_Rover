@@ -657,6 +657,46 @@ NAV_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "drive_to",
+            "description": (
+                "Drive to a place a given distance ahead and to the left of the "
+                "rover, in metres, going around obstacles. It plans a route of "
+                "straight segments and turns, follows it without needing to hit "
+                "the line exactly, and plans again if something gets in the way "
+                "or the room has changed. Distances are from where the rover is "
+                "now, not from where it started: positive ahead is forward, "
+                "positive left is to its left, negatives are behind and right. "
+                "Always says how far it actually got and why it stopped. Prefer "
+                "this over a series of drive and turn calls when you know where "
+                "you want to end up. It cannot see steps, drops, or table tops. "
+                "This can take tens of seconds."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ahead_m": {
+                        "type": "number", "minimum": -8.0, "maximum": 8.0,
+                        "description": "Metres forward of the rover; negative is "
+                                       "behind.",
+                    },
+                    "left_m": {
+                        "type": "number", "minimum": -8.0, "maximum": 8.0,
+                        "description": "Metres to the rover's left; negative is "
+                                       "right.",
+                    },
+                    "speed_ms": {
+                        "type": "number", "minimum": 0.05, "maximum": 0.35,
+                        "description": "Metres per second. Leave it out for a "
+                                       "sensible walking crawl.",
+                    },
+                },
+                "required": ["ahead_m", "left_m"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "turn_in_place",
             "description": (
                 "Turn the rover on the spot without going anywhere, by a number of "
@@ -1161,6 +1201,19 @@ class Rover:
         return {"ok": outcome.reason in ("arrived", "timed out"), **outcome.asdict(),
                 **self._nav_context()}
 
+    def _tool_drive_to(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar, so it will not "
+                                          "drive itself"}
+        ahead = _number(arguments.get("ahead_m", 0.0), "ahead_m")
+        left = _number(arguments.get("left_m", 0.0), "left_m")
+        speed = arguments.get("speed_ms")
+        outcome = self.nav.drive_to(ahead, left,
+                                    speed_ms=None if speed is None
+                                    else _number(speed, "speed_ms"))
+        return {"ok": outcome.reason in ("arrived", "timed out"), **outcome.asdict(),
+                **self._nav_context()}
+
     def _tool_turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
             return {"ok": False, "error": "this rover has no lidar, so it will not "
@@ -1266,9 +1319,12 @@ class Rover:
         # Read the size out of the PNG rather than working it out again: this is the
         # number the caller is going to display, and it should be the real one.
         width = int.from_bytes(png[16:20], "big")
+        x, y, th = self.nav.slam.pose
         return {"ok": True, "caption": caption, "bytes": len(png),
                 "half_extent_m": round(half, 2), "scale": scale, "pixels": width,
                 "rover_up": rover_up,
+                "pose": {"x_m": round(x, 3), "y_m": round(y, 3),
+                         "heading_deg": round(math.degrees(th), 1)},
                 "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 

@@ -206,6 +206,96 @@ class Rover:
                 **({"detail": detail} if detail else {}),
                 **self._nav_context(speed)}
 
+    def drive_to(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Around the table, not through it -- the point of the invented room."""
+        ahead = float(arguments.get("ahead_m", 0.0) or 0.0)
+        left = float(arguments.get("left_m", 0.0) or 0.0)
+        speed = float(arguments.get("speed_ms") or 0.2)
+        range_m = math.hypot(ahead, left)
+        if range_m < 0.08:
+            return {"ok": True, "reason": "arrived", "travelled_m": 0.0,
+                    "turned_deg": 0.0, **self._nav_context(speed)}
+        if range_m > 8.0:
+            return {"ok": False, "error": (
+                f"that is {range_m:.1f} m away and a single route is capped at 8 m")}
+
+        target = (self.x + ahead * math.cos(self.heading) - left * math.sin(self.heading),
+                  self.y + ahead * math.sin(self.heading) + left * math.cos(self.heading))
+        start_heading = self.heading
+        travelled, replans = 0.0, 0
+        last_why = "no clear route through what the lidar has seen"
+        while replans <= 8:
+            path, last_why = self._plan_to(target)
+            if not path:
+                break
+            blocked = False
+            for wx, wy in path[1:]:
+                desired = math.atan2(wy - self.y, wx - self.x)
+                delta = _wrap(desired - self.heading)
+                if abs(math.degrees(delta)) > 35.0:
+                    self.heading = _wrap(self.heading + delta)
+                while math.hypot(wx - self.x, wy - self.y) > 0.12:
+                    heading = math.atan2(wy - self.y, wx - self.x)
+                    if self._range_at(self.x, self.y, heading) < STANDOFF_M + 0.02:
+                        blocked = True
+                        break
+                    hop = min(0.02, math.hypot(wx - self.x, wy - self.y) - 0.10)
+                    if hop <= 0.0:
+                        break
+                    self.x += hop * math.cos(heading)
+                    self.y += hop * math.sin(heading)
+                    self.heading = heading
+                    travelled += hop
+                    self.trail.append((self.x, self.y))
+                if blocked:
+                    break
+            remaining = math.hypot(target[0] - self.x, target[1] - self.y)
+            if remaining <= 0.16:
+                turned = math.degrees(_wrap(self.heading - start_heading))
+                extra = (f"replanned {replans} time"
+                         f"{'' if replans == 1 else 's'}" if replans else "")
+                return {"ok": True, "reason": "arrived",
+                        "travelled_m": round(travelled, 3),
+                        "turned_deg": round(turned, 1),
+                        **({"detail": extra} if extra else {}),
+                        **self._nav_context(speed)}
+            replans += 1
+            if not blocked:
+                last_why = "the route did not reach that place"
+        turned = math.degrees(_wrap(self.heading - start_heading))
+        return {"ok": False, "reason": "blocked",
+                "travelled_m": round(travelled, 3),
+                "turned_deg": round(turned, 1),
+                "detail": last_why, **self._nav_context(speed)}
+
+    def _plan_to(self, target: tuple[float, float]):
+        """The invented room as an occupancy grid, then the real planner."""
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "lidar_slam"))
+        import numpy as np
+        import planner
+
+        res, n, occ = 0.05, 120, 20
+        origin = n // 2
+        grid = np.zeros((n, n), dtype=np.int8)
+        wall = res * 1.5
+        for ix in range(n):
+            for iy in range(n):
+                wx, wy = (ix - origin) * res, (iy - origin) * res
+                inside = (-ROOM_BACK_M < wx < ROOM_FORWARD_M
+                          and -ROOM_RIGHT_M < wy < ROOM_LEFT_M)
+                on_wall = (min(abs(wx + ROOM_BACK_M), abs(wx - ROOM_FORWARD_M),
+                               abs(wy + ROOM_RIGHT_M), abs(wy - ROOM_LEFT_M)) < wall)
+                near_leg = any((wx - lx) ** 2 + (wy - ly) ** 2
+                               <= (LEG_RADIUS_M + STANDOFF_M * 0.15) ** 2
+                               for lx, ly in LEGS)
+                if near_leg or on_wall:
+                    grid[ix, iy] = occ
+                elif inside:
+                    grid[ix, iy] = -10
+        return planner.plan(grid, res, occ, (self.x, self.y), target,
+                            inflate_m=STANDOFF_M)
+
     def turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
         angle = float(arguments.get("angle_deg", 0.0))
         self.heading = _wrap(self.heading + math.radians(angle))
@@ -228,7 +318,8 @@ class Rover:
                 "steering_deg": 0.0, "match_score": 0.95,
                 "position_trusted": True, "scans": len(self.trail) + 100,
                 "dropped_scans": 0, "pwm": [0, 0], "lidar_ok": True,
-                "lidar_live": True, "lidar_port": "invented", "scan_age_s": 0.05}
+                "lidar_live": True, "lidar_port": "invented", "scan_age_s": 0.05,
+                "remaining_m": None}
 
     def map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Zoomed, clamped and reported the way the real one does.
@@ -255,6 +346,8 @@ class Rover:
         return {"ok": True, "caption": caption, "bytes": len(png),
                 "half_extent_m": round(half, 2), "scale": scale,
                 "pixels": int.from_bytes(png[16:20], "big"), "rover_up": rover_up,
+                "pose": {"x_m": round(self.x, 3), "y_m": round(self.y, 3),
+                         "heading_deg": round(math.degrees(self.heading), 1)},
                 "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 

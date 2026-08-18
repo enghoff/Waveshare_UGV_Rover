@@ -40,6 +40,10 @@ the status poll that tells you what the move is doing while it does it -- so mov
 stop, and watching each get their own. The daemon is a threading server and holds
 no lock across a move, so the others are answered while the first is driving.
 
+Clicking the map sends `drive_to`: the rover plans a route of segments and turns
+to that point, relative to where it is now, and follows it with the lidar in the
+loop. Stop still interrupts it.
+
 The map gets a fourth for the same reason one step down: drawing it costs the Pi
 about a second, sometimes several, and it shared the status connection until that
 was measured -- so the numbers went stale exactly while the picture was being
@@ -62,6 +66,7 @@ is not a thing to leave lying around.
 from __future__ import annotations
 
 import argparse
+import math
 import queue
 import sys
 import threading
@@ -77,6 +82,9 @@ MAP_AUTO_S = 2.0           # how often to refresh the map when auto is ticked
 TICK_MS = 100              # the reply pump, and the in-flight timer
 LOG_LINES = 500            # trimmed, so an afternoon of testing does not grow forever
 TURN_ROWS = 40
+# drive_to can take a minute of segments and turns; the default client timeout is
+# 12 s, which is right for a single hop and wrong for a route.
+MOVE_TIMEOUT_S = 90.0
 
 # Preset turns, as magnitudes. Laid out as two columns with the left turns in the
 # left one and the right turns in the right one, increasing downwards, so a button's
@@ -154,6 +162,7 @@ STATUS_FIELDS = (
     ("pwm", "pwm L,R", lambda v: "-" if not v else f"{v[0]}, {v[1]}"),
     ("clearance_m", "clearance", lambda v: _f(v, "{:.2f} m")),
     ("steering_deg", "steering", lambda v: _f(v, "{:.1f} deg")),
+    ("remaining_m", "to go", lambda v: _f(v, "{:.2f} m")),
     ("match_score", "match", lambda v: _f(v, "{:.3f}")),
     ("position_trusted", "position", lambda v: "trusted" if v else "NOT TRUSTED"),
     ("scans", "scans", lambda v: _f(v)),
@@ -185,9 +194,11 @@ class Channel:
     having two of them in flight.
     """
 
-    def __init__(self, label: str, address: str, replies: queue.Queue) -> None:
+    def __init__(self, label: str, address: str, replies: queue.Queue,
+                 timeout: float | None = None) -> None:
         self.label = label
-        self.client = rover_tools.RoverClient(address)
+        self.client = rover_tools.RoverClient(
+            address, timeout=rover_tools.TIMEOUT_S if timeout is None else timeout)
         self._replies = replies
         self._work: queue.Queue = queue.Queue()
         threading.Thread(target=self._run, daemon=True,
@@ -247,6 +258,8 @@ class Console:
         self.map_at = 0.0
         self.map_cost = 0.0            # how long the rover said the last one took
         self.map_image: tk.PhotoImage | None = None
+        self.map_view: dict[str, Any] | None = None
+        self._heading_rad = 0.0
 
         root.title("rover drive console")
         root.minsize(960, 640)
@@ -392,7 +405,8 @@ class Console:
                         "up     drive the distance above\n"
                         "left   turn left by the angle above\n"
                         "right  turn right by the angle above\n"
-                        "+ -    map closer or wider")).pack(anchor="w")
+                        "+ -    map closer or wider\n"
+                        "click the map to drive there")).pack(anchor="w")
         for sequence, handler in (
                 ("<space>", lambda _e: self._stop()),
                 ("<Escape>", lambda _e: self._stop()),
@@ -428,7 +442,7 @@ class Console:
         ttk.Label(panel, textvariable=self.pose_var, font=("TkFixedFont", 9)).grid(
             row=len(STATUS_FIELDS), column=1, sticky="w")
 
-        picture = ttk.LabelFrame(top, text="map", padding=8)
+        picture = ttk.LabelFrame(top, text="map — click to drive there", padding=8)
         picture.grid(row=0, column=1, sticky="nw", padx=(8, 0))
         # The picture sits in a box of its own fixed size rather than setting the size
         # of everything around it. Whole cells at whole pixels cannot land on exactly
@@ -437,8 +451,10 @@ class Console:
         self.map_box = tk.Frame(picture, width=self.map_size, height=self.map_size)
         self.map_box.pack()
         self.map_box.pack_propagate(False)
-        self.map_label = ttk.Label(self.map_box, text="no map yet", anchor="center")
+        self.map_label = ttk.Label(self.map_box, text="no map yet", anchor="center",
+                                   cursor="crosshair")
         self.map_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.map_label.bind("<Button-1>", self._map_tap)
 
         # A key for the colours. The map itself cannot carry one: there is no font on
         # the rover and no image library to draw text with, so the picture names its
@@ -529,7 +545,7 @@ class Console:
 
     def _connected(self, address: str) -> None:
         self.address_var.set(address)
-        self.moves = Channel("move", address, self.replies)
+        self.moves = Channel("move", address, self.replies, timeout=MOVE_TIMEOUT_S)
         self.halt = Channel("stop", address, self.replies)
         self.watch = Channel("watch", address, self.replies)
         self.picture = Channel("map", address, self.replies)
@@ -577,6 +593,36 @@ class Console:
         if self.speed_var.get().strip():
             arguments["speed_ms"] = self._float(self.speed_var, 0.2)
         self._move("drive", arguments)
+
+    def _map_tap(self, event: tk.Event) -> str:
+        """A click on the picture is a place relative to the rover, not a pixel."""
+        if self.map_image is None or self.map_view is None:
+            return "break"
+        width, height = self.map_image.width(), self.map_image.height()
+        if not (0 <= event.x < width and 0 <= event.y < height):
+            return "break"
+        if "drive_to" not in self.tools:
+            self._say("this rover has no drive_to tool, so the tap was not sent\n",
+                      "quiet")
+            return "break"
+        view = self.map_view
+        pose = view.get("pose") or {}
+        heading = math.radians(float(pose.get("heading_deg", math.degrees(
+            self._heading_rad))))
+        try:
+            import mapimg
+        except ImportError:
+            self._say("cannot convert a tap without mapimg\n", "bad")
+            return "break"
+        ahead, left = mapimg.tap_to_relative(
+            event.x, event.y, view["half_extent_m"], view["scale"],
+            rover_up=bool(view.get("rover_up")), heading_rad=heading)
+        arguments: dict[str, Any] = {
+            "ahead_m": round(ahead, 2), "left_m": round(left, 2)}
+        if self.speed_var.get().strip():
+            arguments["speed_ms"] = self._float(self.speed_var, 0.2)
+        self._move("drive_to", arguments)
+        return "break"
 
     def _stop(self) -> None:
         """Always allowed, and on the connection that carries nothing else."""
@@ -709,7 +755,7 @@ class Console:
             return
 
         # What is left is something a person asked for, so it is logged.
-        moved = name in ("drive", "turn_in_place")
+        moved = name in ("drive", "turn_in_place", "drive_to")
         if moved:
             self.busy_since = None
             self.busy_name = ""
@@ -755,6 +801,7 @@ class Console:
             self.status_labels[key].configure(
                 text=fmt(value), foreground="#a01010" if alarm else "black")
         pose = body.get("pose") or {}
+        self._heading_rad = math.radians(float(pose.get("heading_deg", 0.0)))
         self.pose_var.set("x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
             pose.get("x_m", 0.0), pose.get("y_m", 0.0), pose.get("heading_deg", 0.0)))
 
@@ -773,6 +820,12 @@ class Console:
         self.map_image = image          # Tk keeps no reference of its own
         self.map_label.configure(image=image, text="")
         self.caption_var.set(body.get("caption", ""))
+        self.map_view = {
+            "half_extent_m": float(body.get("half_extent_m", self.half_extent)),
+            "scale": int(body.get("scale") or 1),
+            "rover_up": bool(body.get("rover_up")),
+            "pose": body.get("pose") or {"heading_deg": math.degrees(self._heading_rad)},
+        }
 
         # What the rover actually drew, which is not always the size asked for: a cell
         # has to be a whole number of pixels, so most sizes are only reachable to
@@ -817,6 +870,7 @@ class Console:
             return
         summary = str(body.get("reason", "ok" if ok else "failed"))
         for key, unit in (("travelled_m", " m"), ("turned_deg", " deg"),
+                          ("remaining_m", " m to go"),
                           ("clear_ahead_m", " m clear ahead")):
             if body.get(key) is not None:
                 summary += f", {body[key]}{unit}"

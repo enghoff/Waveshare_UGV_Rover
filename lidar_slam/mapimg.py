@@ -388,6 +388,28 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False):
     return canvas.png(), description
 
 
+def tap_to_relative(col, row, half_extent_m, scale, resolution_m=0.05,
+                    rover_up=False, heading_rad=0.0):
+    """A click on the map PNG -> (ahead_m, left_m) in the rover's frame.
+
+    Inverse of the sampling in `render`: the rover sits at cell (half_cells,
+    half_cells), up the page is `forward`, left is `sideways`. With `rover_up`
+    those already are the rover's ahead and left; without, they are offsets in
+    the frame the rover started in, and `heading_rad` turns them into the
+    rover's current frame so a tap is a place relative to the rover now, which
+    is what `drive_to` takes.
+    """
+    half_cells = max(8, int(round(half_extent_m / resolution_m)))
+    forward_m = (half_cells - row / scale) * resolution_m
+    left_m = (half_cells - col / scale) * resolution_m
+    if rover_up:
+        return forward_m, left_m
+    c, s = math.cos(heading_rad), math.sin(heading_rad)
+    ahead = forward_m * c + left_m * s
+    left = -forward_m * s + left_m * c
+    return ahead, left
+
+
 def _decode(png):
     """Our own PNG back to an (h, w, 3) array, so the checks below read the picture
     that shipped rather than the maths that wrote it."""
@@ -558,6 +580,40 @@ def _check_orientation():
           f"{solid[0]}, arrow {ahead} ahead and {left} turned left")
 
 
+def _check_tap():
+    """A click on the rover is here, a click above it is ahead, a click left is left.
+
+    `rover_up` and a heading change must not change what a tap on the picture means
+    in the rover's own frame, because the tool that consumes it is relative to the
+    rover, not to the page.
+    """
+    res, half, scale = 0.05, 3.0, 4
+    half_cells = max(8, int(round(half / res)))
+    rover_col = rover_row = half_cells * scale
+
+    ahead, left = tap_to_relative(rover_col, rover_row, half, scale)
+    assert abs(ahead) < res and abs(left) < res, (ahead, left)
+
+    ahead, left = tap_to_relative(rover_col, rover_row - 20 * scale, half, scale)
+    assert abs(ahead - 1.0) < res and abs(left) < res, (ahead, left)
+
+    ahead, left = tap_to_relative(rover_col - 20 * scale, rover_row, half, scale)
+    assert abs(ahead) < res and abs(left - 1.0) < res, (ahead, left)
+
+    # Same tap, page turned with the rover: still ahead/left of the rover.
+    heading = math.pi / 2
+    ahead, left = tap_to_relative(rover_col, rover_row - 20 * scale, half, scale,
+                                  rover_up=True, heading_rad=heading)
+    assert abs(ahead - 1.0) < res and abs(left) < res, (ahead, left)
+
+    # Without rover_up, up the page is the start heading. A rover that has turned
+    # left 90 deg sees that tap as to its right.
+    ahead, left = tap_to_relative(rover_col, rover_row - 20 * scale, half, scale,
+                                  rover_up=False, heading_rad=heading)
+    assert abs(ahead) < res and abs(left + 1.0) < res, (ahead, left)
+    print("tap ok: rover is 0,0; up is ahead; left is left")
+
+
 if __name__ == "__main__":
     # A synthetic check that needs no rover: a box with a gap, so the geometry and
     # the encoder can be eyeballed without the hardware, and an assertion that the
@@ -565,6 +621,7 @@ if __name__ == "__main__":
     import sys
 
     _check_orientation()
+    _check_tap()
 
     c = Canvas(160, 120, UNKNOWN)
     for i in range(20, 140):
