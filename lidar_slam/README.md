@@ -265,10 +265,28 @@ than being a special case with a threshold to tune.
 
 Going to a *place* rather than a distance — `drive_to`, which is what a tap on the
 map becomes — plans on the occupancy grid first: A* at cell resolution over the map
-inflated by the standoff, with unknown treated as blocked, thinned to the handful of
-corners that change heading. The polyline is a sketch, not a promise — the live scan
-stays in the loop while following it, and the route is thrown away and planned again
-when the room disagrees. `planner.py` is pure Python but shaped for this host: the
+inflated by 25 cm, with unknown treated as blocked, thinned to the handful of
+corners that change heading. That radius is a sideways gap, not the along-track
+brake: inflating by the standoff plus the 15 cm reaction asked for a 90 cm opening
+and refused pinches the chassis still fits, with the live scan clear down the
+middle. The follower still keeps 30 cm ahead and brakes 15 cm early; it just is
+not asked to pretend a 85 cm doorway is closed.
+
+The hard ring alone has the opposite vice: A* hugs it, so every corner is passed
+at exactly the distance the follower brakes at and an ordinary pose error turns a
+legal route into a stop. So beyond the keep-out there is a toll — travel within
+55 cm of anything blocked costs up to three times its length, fading to nothing at
+the edge. In the open the route arcs wide of a corner (measured in the self-test:
+24 cm of clearance becomes 63 cm, for 0.7 m more path); through a narrow gap both
+sides charge every route the same, so the squeeze is still taken. The toll shapes
+the route, the keep-out decides what exists at all.
+
+The polyline is a sketch, not a promise — the live scan stays in the loop while
+following it, and the route is thrown away and planned again when the room
+disagrees. A route is not thrown away for being blocked, though: the planner reads
+the pose and the map, so a rover that has stopped gets the same route back and
+refuses it again a revolution later. It turns to look for room instead, and asks
+for a new route only once it has moved somewhere the planner can answer from. `planner.py` is pure Python but shaped for this host: the
 inflation is one whole-array pass per disc offset rather than one write per blocked
 cell, and A* runs on flat Python lists because a numpy scalar read costs several
 list indexes. The first version did neither and took 7–10 **seconds** a route on

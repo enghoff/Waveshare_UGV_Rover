@@ -21,17 +21,32 @@ import math
 # picture of empty, and driving into grey is how a rover finds a stair. Occupied
 # is blocked too. Only cells the lidar has seen to be empty are a route.
 #
-# The inflate radius is the same standoff the driving loop keeps, so a path that
-# threads a gap the rover cannot actually take is not offered in the first place.
+# The inflate radius is the caller's business. It is a sideways gap, not the
+# along-track brake: STANDOFF_M + REACT_MARGIN_M (0.45 m) asked for a 90 cm
+# opening and sealed pinches the chassis still fits. Navigator uses 0.25 m.
+#
+# Beyond that hard ring there is a soft one -- see `comfort_m`. A route hugging
+# the keep-out boundary passes corners at exactly the distance the follower
+# brakes at, so an ordinary pose error turns a legal route into a stop. Charging
+# extra for travelling near anything blocked swings the route wide when there is
+# room, and still takes a narrow gap when there is not, because in a squeeze
+# every route pays the same toll and the shortest one is still through.
+
+# What a step next to the keep-out costs, on top of its length: 1 + this, fading
+# linearly to 1 at comfort_m. At 2.0 the planner will spend up to two extra cells
+# of path to avoid one cell of wall-hugging -- enough to arc around a corner in
+# the open, not enough to refuse a doorway both of whose sides charge it.
+COMFORT_COST = 2.0
 
 
 def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
-         origin_cells=None):
+         comfort_m=0.0, origin_cells=None):
     """World metres -> a polyline of world metres, or (None, why_not).
 
     `grid` is indexed [forward, left] the way slam2d's occupancy is, with the origin
     cell at `origin_cells` (defaults to the centre). `start_xy` and `goal_xy` are
-    metres in that same frame.
+    metres in that same frame. `comfort_m` is the distance from anything blocked
+    at which travel stops costing extra; at or below `inflate_m` it does nothing.
     """
     import numpy as np
 
@@ -94,7 +109,9 @@ def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
             return None, "there is no room to stand at that place"
         lgx, lgy = snapped
 
-    local = _astar(inflated, (lsx, lsy), (lgx, lgy))
+    comfort_cells = int(math.ceil(max(0.0, comfort_m - inflate_m) / resolution_m))
+    penalty = _proximity_penalty(inflated, comfort_cells)
+    local = _astar(inflated, (lsx, lsy), (lgx, lgy), penalty)
     if local is None:
         return None, "no clear route through what the lidar has seen"
 
@@ -217,6 +234,42 @@ def _inflate(blocked, radius_cells):
     return out
 
 
+def _dilate1(mask):
+    """One cell of 8-connected dilation -- the same whole-array trick as _inflate,
+    fixed at radius 1 so repeated calls walk outward one chessboard ring at a time."""
+    out = mask.copy()
+    h, w = mask.shape
+    for du in (-1, 0, 1):
+        for dv in (-1, 0, 1):
+            if du or dv:
+                out[max(0, du):h + min(0, du), max(0, dv):w + min(0, dv)] |= \
+                    mask[max(0, -du):h + min(0, -du),
+                         max(0, -dv):w + min(0, -dv)]
+    return out
+
+
+def _proximity_penalty(inflated, radius_cells, peak=COMFORT_COST):
+    """Extra cost per step for travelling near the keep-out, or None for none.
+
+    `peak` right against the keep-out, fading linearly to zero `radius_cells`
+    out. Built as successive one-cell dilations of the keep-out mask -- each new
+    ring is one distance band -- so the whole thing is a few dozen whole-array
+    ORs rather than a distance transform this host cannot afford.
+    """
+    import numpy as np
+
+    if radius_cells <= 0 or peak <= 0.0:
+        return None
+    penalty = np.zeros(inflated.shape, dtype=np.float32)
+    ring = inflated
+    for k in range(radius_cells):
+        grown = _dilate1(ring)
+        band = grown & ~ring
+        penalty[band] = peak * (radius_cells - k) / radius_cells
+        ring = grown
+    return penalty
+
+
 def _nearest_free(inflated, gx, gy, limit):
     h, w = inflated.shape
     best, best_d = None, None
@@ -231,7 +284,7 @@ def _nearest_free(inflated, gx, gy, limit):
     return best
 
 
-def _astar(blocked, start, goal):
+def _astar(blocked, start, goal, penalty=None):
     """8-connected A* on a boolean blocked grid. Returns a list of (ix, iy).
 
     Flat Python lists rather than numpy arrays, because the cost of A* is almost
@@ -239,11 +292,17 @@ def _astar(blocked, start, goal):
     a list index -- numpy earns its keep on whole-array passes like _inflate, and
     this is the opposite of one. Measured on the Pi it is the difference between
     a route in well under a second and one the caller times out waiting for.
+
+    `penalty` scales each step by 1 + the destination cell's value, so nearness
+    to the keep-out is a toll rather than a wall. The heuristic stays the plain
+    distance, which every real cost is at least, so it stays admissible and the
+    route stays optimal under the tolled costs.
     """
     h, w = blocked.shape
     sx, sy = start
     gx, gy = goal
     solid = blocked.ravel().tolist()
+    toll = None if penalty is None else penalty.ravel().tolist()
     start_i, goal_i = sx * w + sy, gx * w + gy
     if solid[goal_i] or solid[start_i]:
         return None
@@ -279,7 +338,7 @@ def _astar(blocked, start, goal):
             # No cutting a corner through a blocked diagonal neighbour.
             if dx != 0 and dy != 0 and (solid[i + dx * w] or solid[i + dy]):
                 continue
-            nxt = cost + step
+            nxt = cost + (step if toll is None else step * (1.0 + toll[j]))
             if nxt + 1e-9 < g[j]:
                 g[j] = nxt
                 came[j] = i
@@ -372,6 +431,49 @@ def _selftest():
     grid[:, :] = 0
     path, why = plan(grid, res, occ, (0.0, 0.0), (1.0, 0.0), inflate_m=0.20)
     assert path is None and "seen" in why, why
+
+    # Corners are given room when there is room to give. A wall ends at
+    # (1.0, 0.25); the route from (0,0) to (2,0) has to round that end, and with
+    # open floor above it the comfort toll should swing it wide where a plain
+    # keep-out would hug the ring at exactly inflate_m.
+    def corner_distance(pts, cx, cy):
+        best, s = 1e9, 0.0
+        while s <= length(pts) + 1e-6:
+            px, py = point_at(pts, s)
+            best = min(best, math.hypot(px - cx, py - cy))
+            s += 0.02
+        return best
+
+    big = np.full((120, 120), -10, dtype=np.int8)   # 6 m of known-free floor
+    o = 60
+    wx = o + int(round(1.0 / res))
+    big[wx, :o + int(round(0.25 / res)) + 1] = occ  # wall along x=1.0, y <= 0.25
+    hug, why = plan(big, res, occ, (0.0, 0.0), (2.0, 0.0), inflate_m=0.25)
+    assert hug is not None, why
+    wide, why = plan(big, res, occ, (0.0, 0.0), (2.0, 0.0),
+                     inflate_m=0.25, comfort_m=0.55)
+    assert wide is not None, why
+    d_hug = corner_distance(hug, 1.0, 0.25)
+    d_wide = corner_distance(wide, 1.0, 0.25)
+    assert d_wide >= 0.35, f"still hugging the corner at {d_wide:.2f} m"
+    assert d_wide > d_hug + 0.04, (
+        f"comfort changed nothing: {d_hug:.2f} -> {d_wide:.2f}")
+    assert length(wide) < length(hug) + 1.0, (
+        f"the wide route ballooned: {length(hug):.2f} -> {length(wide):.2f}")
+
+    # ...but a narrow gap is still taken when it is the only way through. A
+    # 0.6 m opening leaves one free cell after the 0.25 m keep-out; the toll is
+    # paid, not treated as a wall.
+    big[wx, :] = occ
+    gap0 = o - int(round(0.30 / res))
+    gap1 = o + int(round(0.30 / res))
+    big[wx, gap0:gap1] = -10
+    path, why = plan(big, res, occ, (0.0, 0.0), (2.0, 0.0),
+                     inflate_m=0.25, comfort_m=0.55)
+    assert path is not None, f"refused a gap the chassis fits through: {why}"
+    assert all(abs(y) < 0.31 for x, y in
+               [point_at(path, s * 0.05) for s in range(int(length(path) / 0.05))]
+               if 0.9 < x < 1.1), f"did not go through the gap: {path}"
 
     # Progress along a path does not rewind for a small sideways weave.
     line = [(0.0, 0.0), (2.0, 0.0)]

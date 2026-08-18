@@ -53,6 +53,21 @@ STANDOFF_M = 0.30          # the rule: never closer than this to anything seen
 REACT_MARGIN_M = 0.15
 CORRIDOR_MARGIN_M = 0.06   # each side of the rover's own width: the hard limit
 
+# What the planner has to leave around an obstacle. This is a sideways gap, not
+# the along-track brake: inflating by STANDOFF_M + REACT_MARGIN_M (0.45 m) asked
+# for a 90 cm opening, and a pinch the chassis fits through -- 85 cm, live scan
+# still 4 m clear down the middle -- was refused as "no clear route" with the
+# rover sitting still. 0.25 m is half of that; the live corridor still enforces
+# the 30 cm standoff and 15 cm reaction along the path it actually follows.
+PLAN_INFLATE_M = 0.25
+# But a route allowed to touch that ring hugs it, and a hugged corner is passed
+# at exactly the distance the follower brakes at -- an ordinary pose error turns
+# a legal route into a stop. So travel inside this distance of anything blocked
+# costs extra, fading to nothing at the edge: the route arcs wide of a corner
+# whenever there is room, and still takes a narrow gap when there is not,
+# because in a squeeze every route pays the toll and the shortest still wins.
+PLAN_COMFORT_M = 0.55
+
 # And the soft one. Steering scores itself on a corridor this much wider than the
 # rover, so that a route with room to spare beats one that merely fits. Without it
 # the rover has no reason to prefer open space until something is already inside its
@@ -145,6 +160,13 @@ GOTO_SLACK_M = 0.35        # progress may slide back this far without rewinding
 GOTO_TURN_DEG = 40.0       # more heading error than this: stop and turn
 GOTO_ALIGN_DEG = 12.0      # then drive once the nose is this close
 GOTO_RECHECK_S = 1.5       # how often to notice the map along the route changing
+# When the way on is blocked, turning is the only move that changes anything -- see
+# _step_goto. This is how long to spend turning to look for room before admitting it
+# has not worked, and what has to have changed before asking the planner again can
+# come back with a different answer at all.
+GOTO_UNSTICK_S = 2.5
+GOTO_REPLAN_MIN_S = 1.0
+GOTO_REPLAN_MIN_MOVE_M = 0.10
 UNKNOWN_AHEAD_SECTORS = 3  # +/-30 degrees at 36 sectors
 # How many recent revolutions the "is anything touching us" test looks back over.
 # One is not enough: a thin or dark object near the sensor's 0.12 m floor comes and
@@ -434,7 +456,7 @@ class Navigator:
             res = self.slam.config.resolution_m
             occupied_at = self.slam.config.occupied_at
         return planner.plan(grid, res, occupied_at, (pose[0], pose[1]), target_xy,
-                            inflate_m=STANDOFF_M)
+                            inflate_m=PLAN_INFLATE_M, comfort_m=PLAN_COMFORT_M)
 
     @_one_move_at_a_time
     def turn_in_place(self, angle_deg, speed_dps=None):
@@ -1010,7 +1032,7 @@ class Navigator:
         s, cross = planner.project(path, (x, y), goal["progress"], GOTO_SLACK_M)
         goal["progress"] = s
         goal["travelled"] = goal.get("travelled_before", 0.0) + s
-        if cross > GOTO_CORRIDOR_M:
+        if cross > GOTO_CORRIDOR_M and self._replan_could_differ(goal, now):
             goal["done"] = ("replan",
                             f"drifted {cross:.2f} m off the route, so planning "
                             f"again from here")
@@ -1019,7 +1041,8 @@ class Navigator:
 
         if now - goal.get("last_check", now) >= GOTO_RECHECK_S:
             goal["last_check"] = now
-            if self._route_blocked_on_map(path, s):
+            if (self._route_blocked_on_map(path, s)
+                    and self._replan_could_differ(goal, now)):
                 goal["done"] = ("replan",
                                 "the map along the remaining route is no longer "
                                 "clear")
@@ -1043,12 +1066,32 @@ class Navigator:
         self._chosen_deg, self._clearance = chosen, clear
         limit = self._speed_limit(clear)
         if limit <= 0.0:
-            goal["done"] = ("replan",
-                            f"the way towards the route is {clear:.2f} m and the "
-                            f"rover keeps {STANDOFF_M:.2f} m from anything it can "
-                            f"see")
+            # Blocked is not a reason to replan. The planner reads the pose and the
+            # map, and a rover that has stopped has changed neither, so it draws the
+            # same route and the loop refuses it again on the next revolution.
+            # Turning is the move that changes something -- and it is the move a
+            # cornered rover always still has, which is why turn_in_place refuses
+            # nothing. So rotate towards whatever heading has the most room and let
+            # the next revolution look again, giving up only once that has been
+            # tried for a while and found nothing.
+            stuck_since = goal.setdefault("stuck_since", now)
+            if now - stuck_since < GOTO_UNSTICK_S:
+                best, best_clear = self._roomiest()
+                self._chosen_deg, self._clearance = best, best_clear
+                self._drive_pwm(0.0, _clamp(best / 0.6, -MAX_TURN_DPS, MAX_TURN_DPS))
+                return
+            if self._replan_could_differ(goal, now):
+                goal["done"] = ("replan",
+                                f"only {clear:.2f} m of room and turning has not "
+                                f"found more, so planning again from here")
+            else:
+                goal["done"] = ("blocked",
+                                f"the way on is {clear:.2f} m, the rover keeps "
+                                f"{STANDOFF_M:.2f} m from anything it can see, and "
+                                f"nothing it can turn to is clearer")
             self._drive_pwm(0.0, 0.0)
             return
+        goal.pop("stuck_since", None)
 
         if self._unknown_ahead():
             limit = min(limit, CRAWL_SPEED_MS)
@@ -1057,6 +1100,39 @@ class Navigator:
         speed = min(goal["speed"], limit)
         turn = _clamp(chosen / 0.8, -MAX_TURN_DPS, MAX_TURN_DPS)
         self._drive_pwm(speed, turn)
+
+    def _replan_could_differ(self, goal, now):
+        """Whether asking the planner again could possibly come back with anything new.
+
+        It plans from the pose, on the map. A rover that has not moved since the last
+        route was drawn, over a map that has not been rebuilt under it, gets handed
+        the same polyline and refuses it again one revolution later -- which is how
+        eight replans and a "gave up" used to fit inside nine tenths of a second,
+        with the rover standing still throughout and the caller told it had been
+        tried eight times.
+        """
+        sx, sy, _th = goal["start_pose"]
+        x, y, _ = self.slam.pose
+        return (now - goal["started_at"] >= GOTO_REPLAN_MIN_S
+                and math.hypot(x - sx, y - sy) >= GOTO_REPLAN_MIN_MOVE_M)
+
+    def _roomiest(self):
+        """The heading with the most room anywhere the rover can turn to.
+
+        _choose_heading searches either side of where the route wants to go, which is
+        the right question while the route is drivable and the wrong one once there
+        is no room in that direction at all: the way out is wherever it happens to
+        be, not near the way in.
+        """
+        best, best_score, best_clear = 0.0, -1e9, 0.0
+        for heading in range(-90, 91, 5):
+            curvature = 2.0 * math.sin(math.radians(heading)) / LOOKAHEAD_M
+            roomy = min(self._headroom(curvature, comfort=True), LOOKAHEAD_M)
+            tight = min(self._headroom(curvature), LOOKAHEAD_M)
+            score = roomy + 0.3 * tight - 0.004 * abs(heading)
+            if score > best_score:
+                best, best_score, best_clear = float(heading), score, tight
+        return best, best_clear
 
     def _route_blocked_on_map(self, path, progress):
         """True if the remaining polyline now sits on a solid cell."""
