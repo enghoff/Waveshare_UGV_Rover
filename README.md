@@ -166,6 +166,7 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 
 | Document | Covers |
 |---|---|
+| [oak-on-the-pi.md](docs/oak-on-the-pi.md) | why this camera is not on the rover: the firmware upload, the wheel that does not exist for armv6, and the 5 V rail |
 | [oak-d-lite.md](docs/oak-d-lite.md) | what the board is, each of the five tools, depth semantics, the calibration oddity |
 | [oak-usb-link.md](docs/oak-usb-link.md) | why every script pins USB2, what throughput the link allows, recovering a wedged device |
 | [depthai-version-pin.md](docs/depthai-version-pin.md) | why depthai is pinned `<3`, the evidence, upstream issues |
