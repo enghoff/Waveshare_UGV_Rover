@@ -84,10 +84,17 @@ about any of that.
 the left**, so `_camera_cone` hands over minus the pan. That is the whole conversion,
 it happens in exactly one place, and `selftest.py` checks its direction rather than
 its value — a sign error draws an ordinary-looking wedge over the wrong half of the
-room. `--camera-fov` sets how wide it is; the default of 65 degrees is a guess at a
-generic USB webcam and is the one number in this path that has never been measured.
-Started with `--no-camera` there is no cone at all, because a wedge drawn for a lens
-that is not fitted is the map making a claim the hardware cannot keep.
+room. Started with `--no-camera` there is no cone at all, because a wedge drawn for a
+lens that is not fitted is the map making a claim the hardware cannot keep.
+
+`--camera-fov` sets how wide the wedge is, and the default is now the measured 132
+degrees. It was 65 for a long time, on the reasoning that this is a generic USB
+webcam — and that was wrong by more than a factor of two, because the module actually
+fitted is a fisheye. A cone drawn at 65 degrees covered a third of what the camera
+could see, so the map said the photographs were of one chair when they had the whole
+end of the room in them. [`usb_cameras/calibrate_fov.py`](../usb_cameras/calibrate_fov.py)
+is what measured it: sweep the gimbal across the room, track how far the room slides
+for each degree of pan, and fit the lens. Run it again if the camera is ever changed.
 
 **That flag is a starting position, not a setting.** The destination was a
 constant once, and being a constant is exactly how it went wrong: the model moved

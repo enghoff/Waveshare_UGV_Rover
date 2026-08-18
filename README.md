@@ -48,7 +48,8 @@ button.
 oak_camera/     probe the device, read its calibration and crash dumps, preview
                 depth and colour — five tools, in triage order
 lidar/          lidar_view.py, a top-down view of the point cloud
-usb_cameras/    preview_usb_cameras.py, cycling through the host's UVC cameras
+usb_cameras/    preview_usb_cameras.py, cycling through the host's UVC cameras;
+                calibrate_fov.py, measuring how wide a camera really sees
 driver_board/   drive_gamepad.py, teleop from a game pad, no Pi involved
 face_tracking/  the control law (aiming.py) and the two programs that run it,
                 one on a workstation and one on the rover
@@ -109,6 +110,10 @@ python lidar\lidar_view.py                # auto-detects the serial port
 
 # the host's USB cameras
 python usb_cameras\preview_usb_cameras.py
+
+# how wide is the rover's camera really? -- rover powered on and on the LAN
+python usb_cameras\calibrate_fov.py --selftest    # the method, with no hardware
+python usb_cameras\calibrate_fov.py sweep\
 
 # drive it -- rover powered on, pad plugged in
 python driver_board\drive_gamepad.py

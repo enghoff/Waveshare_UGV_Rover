@@ -1,11 +1,13 @@
 # The host's USB cameras
 
-Exercised by [`usb_cameras/`](../usb_cameras). One script,
-`preview_usb_cameras.py`, which needs only OpenCV — no depthai, no pyserial. It
-covers every UVC device on the machine driving the rover: the host's own webcams
-and, since it plugs in over USB like any other, the rover's camera module too. The
-OAK-D-Lite is the exception — it is not a UVC device and will not appear here; use
+Exercised by [`usb_cameras/`](../usb_cameras). Two scripts, both needing only
+OpenCV — no depthai, no pyserial. `preview_usb_cameras.py` covers every UVC device on
+the machine driving the rover: the host's own webcams and, since it plugs in over USB
+like any other, the rover's camera module too. The OAK-D-Lite is the exception — it is
+not a UVC device and will not appear here; use
 [`oak_camera/preview_rgb.py`](oak-d-lite.md#preview_rgbpy) for that one.
+`calibrate_fov.py` measures how wide a camera actually sees, and is described in
+[Measuring the field of view](#measuring-the-field-of-view).
 
 ## How it finds cameras
 
@@ -103,3 +105,58 @@ the Brio's focus, for one. That is DirectShow-only and a no-op elsewhere.
 Left-click or `n`/space for the next camera, right-click or `p` for the previous,
 `a` re-applies auto, `s` opens the driver settings dialog, `q` or Esc quits.
 Closing the window also quits.
+
+## Measuring the field of view
+
+`calibrate_fov.py` answers "how much of the room is actually in this picture", which
+matters because the map draws the camera's cone from that number and a guessed one
+puts the wedge over the wrong part of the room. It needs no chart, no tape measure and
+nobody holding a chessboard: the rover already owns two things that turn its camera by
+a known angle, so the room it happens to be standing in is the target.
+
+```bash
+python usb_cameras/calibrate_fov.py --selftest         # no rover needed
+python usb_cameras/calibrate_fov.py sweep/             # pan the gimbal
+python usb_cameras/calibrate_fov.py sweep/ --by rover  # turn the whole chassis
+python usb_cameras/calibrate_fov.py sweep/ --axis tilt
+python usb_cameras/calibrate_fov.py sweep/ --fit-only  # re-measure saved frames
+```
+
+It talks to [`rover_daemon`](../rover_daemon/README.md) over TCP, using the same
+`RoverClient` the voice stack uses, and keeps every frame it took beside a
+`sweep.json` of the angles — so a sweep can be re-fitted later without going back to
+the hardware.
+
+**Two independent references, and running both is the point.** `--by gimbal` trusts
+the pan servo's degrees. `--by rover` turns the chassis instead and takes the angle
+from the lidar's scan match, which is measured against the walls rather than asked
+for. They share no mechanism, so when they agree the servo is honest as well as the
+lens known. On the rover's camera they came out at 132.4 and 131.7 degrees — half a
+percent apart, which is the servo being vouched for by the lidar.
+
+**It fits a lens model rather than averaging pixel shifts, and that is not fussiness.**
+The obvious method — pixels moved, divided into degrees turned — reads high on a wide
+lens, because a feature near the top of the frame slides less under a pan than one on
+the centreline, for the same reason a degree of longitude is shorter away from the
+equator. `--selftest` renders a synthetic room through a lens of known width and
+measures it back, and it quotes both numbers: the fit recovers 136.0 degrees from a
+136 degree lens, and averaging shifts over the same frames says 142.3.
+
+That selftest is also the only thing that checks the sign conventions. A pan fitted
+backwards, or the tilt axis used for a pan, gives a small residual and a quietly wrong
+answer; rendering the sweep through the same rotation the fit inverts is what catches
+it.
+
+### What this camera turned out to be
+
+| | measured |
+|---|---|
+| horizontal | 132 degrees across 640 px |
+| vertical | 98 degrees across 480 px |
+| on the axis | 12.2 arcmin per pixel |
+| centre of the lens | 320, 240 px — the middle of the picture, to a pixel |
+
+Near enough an equidistant fisheye: the angular scale is nearly the same everywhere
+in the frame, which is why straight walls bow so obviously in anything it takes. The
+daemon's cone had been drawn at 65 degrees, a guess at a generic webcam, and was
+therefore claiming a third of what the camera could see.

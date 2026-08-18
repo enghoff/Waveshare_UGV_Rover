@@ -384,10 +384,13 @@ ordinarily over the wrong half of the room and nothing about the picture gives i
 away. The caption says which way and how wide in words as well, since a wedge on its
 own cannot say whether it is 40 degrees or 90.
 
-The width is the one number in this path nobody has measured. It defaults to 65
-degrees, which is a guess at a generic USB webcam; `--camera-fov` on the daemon sets
-it, and it is worth ten minutes with a doorframe — pan until a known edge just
-leaves the frame, and double it.
+The width comes from the daemon's `--camera-fov`, and for this rover's camera it has
+been measured at 132 degrees across — by
+[`usb_cameras/calibrate_fov.py`](../usb_cameras/calibrate_fov.py), which sweeps the
+gimbal and fits the lens to how far the room slides. It stood at 65 degrees for a
+long time as a guess at a generic webcam, and the guess was out by more than a factor
+of two: the module is a fisheye. A cone that narrow is not a small error to leave in
+a picture whose whole job is saying which part of the room is in shot.
 
 ## Throwing the map away
 

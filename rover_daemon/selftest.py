@@ -301,7 +301,10 @@ def test_camera_cone():
     import rover_daemon
 
     rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
-    check("centred, the cone points straight ahead", rover._camera_cone(), (0.0, 65.0))
+    # Against the constant rather than against a number written out here, so that
+    # re-measuring the lens does not leave a stale figure in a passing test.
+    check("centred, the cone points straight ahead", rover._camera_cone(),
+          (0.0, rover_daemon.CAMERA_FOV_DEG))
 
     # Panning right must give a negative bearing, because the map's positive is left.
     rover.call("look_at", {"pan": 40})
