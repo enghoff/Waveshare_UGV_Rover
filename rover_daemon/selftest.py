@@ -289,6 +289,40 @@ def test_look():
     rover.close()
 
 
+def test_camera_cone():
+    """The one conversion between the gimbal's angles and the map's.
+
+    The gimbal counts pan positive to the right and everything in lidar_slam counts
+    bearings positive to the left, so the map is handed minus the pan. A sign error
+    there draws a perfectly ordinary cone over the wrong half of the room, and
+    nothing about the resulting picture looks wrong -- which is exactly why it is
+    worth a check rather than a comment.
+    """
+    import rover_daemon
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
+    check("centred, the cone points straight ahead", rover._camera_cone(), (0.0, 65.0))
+
+    # Panning right must give a negative bearing, because the map's positive is left.
+    rover.call("look_at", {"pan": 40})
+    bearing, fov = rover._camera_cone()
+    check("panning right aims the cone to the map's right", bearing < 0, True)
+    check("...by the same amount", abs(bearing), 40.0)
+    rover.call("look_at", {"pan": -40})
+    check("panning left aims the cone to the map's left",
+          rover._camera_cone()[0], 40.0)
+
+    # The width is a setting, not a constant, because nobody has measured the lens.
+    wide = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0",
+                              camera_fov_deg=100.0)
+    check("the field of view is what it was told", wide._camera_cone()[1], 100.0)
+
+    # No camera, no cone: a wedge drawn for a lens that is not fitted is the map
+    # making a claim the hardware cannot keep.
+    blind = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    check("a rover with no camera draws no cone", blind._camera_cone(), None)
+
+
 def test_where():
     import rover_daemon
 
@@ -382,7 +416,8 @@ def test_flags():
 
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_look, test_where, test_map_view, test_flags):
+                 test_no_camera, test_look, test_camera_cone, test_where,
+                 test_map_view, test_flags):
         try:
             test()
         except Exception as exc:

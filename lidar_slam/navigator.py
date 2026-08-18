@@ -1178,7 +1178,13 @@ class Navigator:
                            "and the rover will not drive. " + out["text"])
         return out
 
-    def map_png(self, half_extent_m=3.0, scale=3, rover_up=False):
+    def map_png(self, half_extent_m=3.0, scale=3, rover_up=False, camera=None):
+        """`camera` is `(bearing_deg, fov_deg)` for the gimbal's cone, or None.
+
+        Passed straight through and not worked out here, because this owns the lidar
+        and knows nothing whatever about the camera -- the daemon owns that, and it
+        is the daemon that has to turn a pan into a bearing in this frame.
+        """
         import mapimg
         return mapimg.render(self.slam, half_extent_m, scale, tuple(self._trail),
-                             rover_up=rover_up)
+                             rover_up=rover_up, camera=camera)

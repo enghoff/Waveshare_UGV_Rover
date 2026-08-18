@@ -130,6 +130,7 @@ def _legend():
         return ()
     return tuple(("#%02x%02x%02x" % colour, label) for colour, label in (
         (mapimg.C_ROVER, "rover"),
+        (mapimg.C_CAMERA, "camera"),
         (mapimg.C_TRACK, "driven"),
         (mapimg.C_OCCUPIED, "solid"),
         (mapimg.C_FREE, "empty"),

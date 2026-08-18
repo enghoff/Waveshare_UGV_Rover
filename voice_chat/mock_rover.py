@@ -66,6 +66,7 @@ MAP_MAX_SCALE = prompts._literal(prompts.DAEMON, "MAP_MAX_SCALE")
 MAP_MIN_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MIN_PIXELS")
 MAP_MAX_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MAX_PIXELS")
 MAP_PIXELS = prompts._literal(prompts.DAEMON, "MAP_PIXELS")
+CAMERA_FOV_DEG = prompts._literal(prompts.DAEMON, "CAMERA_FOV_DEG")
 
 
 def _wrap(radians: float) -> float:
@@ -491,6 +492,16 @@ class Rover:
         # The arrow turns with the heading, which the old dot-and-whisker did not:
         # it was drawn straight up whatever the rover had done, so every turn looked
         # like it had not happened.
+        #
+        # The camera's cone first, so the arrow is never crossed by it -- and drawn
+        # by the rover's own `draw_camera`, including the minus sign that turns a
+        # gimbal pan into a bearing in the map's frame. Two copies of that sign would
+        # be two chances to get it backwards, and this file exists to catch exactly
+        # the kind of drawing bug that looks right from either side.
+        mapimg.draw_camera(canvas, to_pixels, self.x, self.y, self.heading,
+                           -self.pan, CAMERA_FOV_DEG,
+                           half_extent_m * mapimg.CAMERA_REACH)
+
         forward = (math.cos(self.heading), math.sin(self.heading))
         side = (-math.sin(self.heading), math.cos(self.heading))
 
@@ -509,8 +520,9 @@ class Rover:
                    f"{2 * half_extent_m:.0f} metres. {facing} and the rover's left is "
                    f"to the left. The red triangle is the rover and its tip points the "
                    f"way it is facing, with a yellow dot at its exact position, and "
-                   f"the blue line is the path it has driven. Nothing in it was "
-                   f"measured.")
+                   f"the blue line is the path it has driven. "
+                   + mapimg.camera_caption(-self.pan, CAMERA_FOV_DEG)
+                   + " Nothing in it was measured.")
         return mapimg.png_rgb(canvas.rows), caption
 
     def set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:

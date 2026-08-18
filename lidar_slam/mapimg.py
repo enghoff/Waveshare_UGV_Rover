@@ -43,6 +43,14 @@ C_ROVER = (222, 46, 46)             # where it is, and which way it points
 C_ANCHOR = (250, 236, 120)          # the exact pose, inside the arrow
 C_SCALE = (24, 24, 28)              # the one-metre bar
 C_BORDER = (150, 150, 156)          # the edge of the crop
+C_CAMERA = (150, 80, 210)           # where the camera is looking, and how wide
+
+# How much of the crop the camera's cone reaches across, and how finely its far edge
+# is drawn. Reaching the edge rather than a fixed number of metres means the cone
+# says the same thing at every zoom -- it is a direction and a width, not a range,
+# and the camera can see a good deal further than any of these maps are wide.
+CAMERA_REACH = 0.95
+CAMERA_ARC_DEG = 6.0                # one segment per this much of the arc
 
 
 def _png(rows, colour):
@@ -236,7 +244,67 @@ def _draw_track(image, np, points, scale):
             image[py[inside], px[inside]] = colour
 
 
-def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False):
+def camera_caption(bearing_deg, fov_deg):
+    """The sentence that tells a reader what the violet wedge is.
+
+    Here rather than inline in `render` because the mock rover draws the same cone
+    over its invented room and has to describe it the same way -- a mock whose
+    caption differed would be a mock of a different rover, which is the same reason
+    it borrows the palette and the drawing.
+    """
+    side = "left" if bearing_deg > 0 else "right"
+    where = ("straight ahead" if abs(bearing_deg) < 1.0
+             else f"{abs(bearing_deg):.0f} degrees to the rover's {side}")
+    return (f"The violet wedge is where the camera is pointing and how much of the "
+            f"room is in shot -- about {fov_deg:.0f} degrees wide, centred {where}. "
+            f"Everything the rover can photograph is inside it, and everything "
+            f"outside it is known to the lidar only.")
+
+
+def draw_camera(canvas, to_px, x, y, heading_rad, bearing_deg, fov_deg, reach_m):
+    """The gimbal's cone: which way the camera is looking, and how much it takes in.
+
+    The map is what the lidar knows and the camera is the other sensor entirely, so
+    without this there is nothing in the picture to say which part of the room the
+    photographs are of. The two point in different directions most of the time --
+    the gimbal pans a long way either side and sweeps continuously while face
+    tracking runs -- and the rover's own arrow says nothing about where the camera
+    got to.
+
+    Drawn as an outline rather than filled, because the interesting part of the map
+    is precisely the part inside the cone and a wash over it would hide what it is
+    there to point at. In a hue outside the black-to-white occupancy ramp for the
+    same reason the rover and its track are: anything neutral drawn over the map
+    reads as more map.
+
+    `bearing_deg` is in the rover's own frame, counter-clockwise from its nose, and
+    the conversion is the caller's. The gimbal counts pan positive to the *right*
+    while everything here counts positive to the *left*, so a camera panned to `p`
+    is looking along `-p`; a sign error there is invisible, because what comes out
+    is a perfectly ordinary cone aimed at the wrong half of the room.
+    """
+    half = math.radians(fov_deg) / 2.0
+    centre = heading_rad + math.radians(bearing_deg)
+    origin = to_px(x, y)
+
+    def at(angle):
+        return to_px(x + reach_m * math.cos(angle), y + reach_m * math.sin(angle))
+
+    for side in (-half, half):
+        edge = at(centre + side)
+        canvas.line(origin[0], origin[1], edge[0], edge[1], C_CAMERA)
+    # The far edge, as a polyline. It closes the shape, which is what makes it read
+    # as a cone rather than as two unrelated lines leaving the rover.
+    steps = max(4, int(fov_deg / CAMERA_ARC_DEG))
+    previous = None
+    for step in range(steps + 1):
+        point = at(centre - half + 2.0 * half * step / steps)
+        if previous is not None:
+            canvas.line(previous[0], previous[1], point[0], point[1], C_CAMERA)
+        previous = point
+
+
+def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=None):
     """The map around the rover as PNG bytes, plus what it shows.
 
     `half_extent_m` is how far each way to include -- a few metres, deliberately,
@@ -250,6 +318,11 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False):
     which is what you want when the question is "can I get through that gap ahead".
     Neither is more correct, and a picture cannot say which it is, so the caption
     does.
+
+    `camera` is `(bearing_deg, fov_deg)` and draws the gimbal's cone -- where the
+    camera is pointed relative to the rover's nose, positive to its left, and how
+    much of the room is in shot. Omit it and nothing is drawn and nothing is
+    claimed, which is the right answer for a rover with no camera on it.
 
     Returns (png_bytes, description) where description says what the picture is,
     because a model shown an unlabelled top-down grid has no way to know the
@@ -344,6 +417,12 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False):
         return to_px(x + forward[0] * along + side[0] * across,
                      y + forward[1] * along + side[1] * across)
 
+    # Before the arrow, so the arrow is never crossed by it: where the rover is
+    # beats where it happens to be looking, and the two share the same origin.
+    if camera is not None:
+        draw_camera(canvas, to_px, x, y, th, camera[0], camera[1],
+                    half_extent_m * CAMERA_REACH)
+
     canvas.triangle(offset(0.30, 0.0), offset(-0.15, 0.16), offset(-0.15, -0.16),
                     C_ROVER)
     rc, rr = to_px(x, y)
@@ -372,12 +451,15 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False):
                        "started, not the way it is facing now -- the room holds still "
                        "and the rover turns within it, so read the arrow to see which "
                        "way it is pointing.")
+    # Said only when it is drawn. A caption describing a violet cone on a picture
+    # that has none is the map's version of the rover saying it turned the lights on.
+    cone = "" if camera is None else " " + camera_caption(camera[0], camera[1])
     description = (
         f"A top-down map of roughly {2 * half_extent_m:.0f} by "
         f"{2 * half_extent_m:.0f} metres around the rover, built from its lidar. "
         f"{orientation} The red triangle is the rover and its tip points the way the "
         f"rover is facing, with a yellow dot at its exact position; the blue line is "
-        f"the path it has driven. Black is solid, near-white is space the lidar has "
+        f"the path it has driven.{cone} Black is solid, near-white is space the lidar has "
         f"seen to be empty, sandy beige is seen but not confirmed solid, and flat grey "
         f"is unknown -- not empty. The bar at the bottom "
         f"left is one metre. {solid} cells are solid out of {seen} seen. Distances "
@@ -431,7 +513,7 @@ def _decode(png):
     return np.frombuffer(b"".join(rows), dtype=np.uint8).reshape(height, width, 3)
 
 
-def _render_probe(heading, wall_axis="ahead", rover_up=False):
+def _render_probe(heading, wall_axis="ahead", rover_up=False, camera=None):
     """`render` over a synthetic room: one wall and a track that drove forward."""
     import contextlib
 
@@ -461,7 +543,7 @@ def _render_probe(heading, wall_axis="ahead", rover_up=False):
 
     png, caption = render(_Slam(), half_extent_m=3.0, scale=3,
                           trail=[(cm / 100.0, 0.0) for cm in range(0, 201, 5)],
-                          rover_up=rover_up)
+                          rover_up=rover_up, camera=camera)
     return _decode(png), caption
 
 
@@ -614,6 +696,60 @@ def _check_tap():
     print("tap ok: rover is 0,0; up is ahead; left is left")
 
 
+def _check_camera():
+    """The cone points where the camera points, on both turns of the page.
+
+    It goes through `to_px` like everything else drawn over the map, so it is
+    subject to the same transpose that once mirrored the walls out from under their
+    own track -- and a mirrored cone is worse than a mirrored wall, because a wall
+    only claims the room is a shape it is not, while this claims the photographs are
+    of the opposite side of it.
+    """
+    import numpy as np
+
+    def bearing_of(img):
+        """Which way the drawn cone leaves the rover, in degrees ccw from up."""
+        rows, cols = np.nonzero(_mask(img, C_CAMERA))
+        assert len(rows), "the camera cone was not drawn at all"
+        centre = img.shape[0] / 2.0
+        # The mean of the wedge, taken from the rover at the middle of the picture.
+        return math.degrees(math.atan2(centre - cols.mean(), centre - rows.mean()))
+
+    straight, caption = _render_probe(0.0, camera=(0.0, 65.0))
+    assert abs(bearing_of(straight)) < 6.0, bearing_of(straight)
+    # Positive is the rover's left, which is to the left of the page when the rover
+    # faces up it. This is the sign the whole thing rests on.
+    left = bearing_of(_render_probe(0.0, camera=(50.0, 65.0))[0])
+    assert 35.0 < left < 65.0, left
+    right = bearing_of(_render_probe(0.0, camera=(-50.0, 65.0))[0])
+    assert -65.0 < right < -35.0, right
+
+    # A wider field of view is a wider wedge, and a narrow one does not simply
+    # vanish -- both of which a single fixed-width cone would pass.
+    def spread(fov):
+        img = _render_probe(0.0, camera=(0.0, fov))[0]
+        rows, cols = np.nonzero(_mask(img, C_CAMERA))
+        return cols.max() - cols.min()
+
+    assert spread(30.0) < spread(65.0) < spread(120.0),         (spread(30.0), spread(65.0), spread(120.0))
+
+    # Turned rover, page held still: the cone turns with the rover, because the
+    # bearing it is given is relative to the nose and not to the page.
+    turned = bearing_of(_render_probe(math.pi / 2, camera=(0.0, 65.0))[0])
+    assert 80.0 < turned < 100.0, turned
+    # ...and with the page turned too, it comes back to straight up.
+    both = bearing_of(_render_probe(math.pi / 2, rover_up=True, camera=(0.0, 65.0))[0])
+    assert abs(both) < 6.0, both
+
+    # Said only when drawn, and said with the side the right way round.
+    assert "violet" in caption.lower() and "straight ahead" in caption
+    assert "violet" not in _render_probe(0.0)[1].lower(),         "the caption describes a cone on a map that has none"
+    assert "50 degrees to the rover's left" in _render_probe(0.0, camera=(50.0, 65.0))[1]
+    assert "50 degrees to the rover's right" in _render_probe(0.0, camera=(-50.0, 65.0))[1]
+    assert "straight ahead" in camera_caption(0.0, 65.0)
+    print("camera ok: cone aims where the gimbal does, widens with the field of view")
+
+
 if __name__ == "__main__":
     # A synthetic check that needs no rover: a box with a gap, so the geometry and
     # the encoder can be eyeballed without the hardware, and an assertion that the
@@ -622,6 +758,7 @@ if __name__ == "__main__":
 
     _check_orientation()
     _check_tap()
+    _check_camera()
 
     c = Canvas(160, 120, UNKNOWN)
     for i in range(20, 140):

@@ -351,6 +351,32 @@ a cell must be a whole number of pixels, and past 12 m across it is down to two,
 is why the ladder stops there. Drawing is interpreted Python — there is no library to
 hand it to — so a picture costs roughly its own area, and the total is capped.
 
+A violet wedge shows where the camera is pointing and how much of the room is in
+shot. That is the only thing in the picture that did not come off the lidar, and it
+is there because the map otherwise says nothing at all about the other sensor: the
+two point in different directions most of the time — the gimbal pans a long way
+either side and sweeps continuously while face tracking runs — and the rover's own
+arrow says nothing about where the camera got to. It is drawn as an outline rather
+than filled, because the interesting part of the map is precisely the part inside
+the cone and a wash over it would hide what it is there to point at, and it reaches
+across the crop rather than a fixed number of metres, so it reads the same at every
+zoom: it is a direction and a width, not a range.
+
+**The two angle conventions are opposite, and that sign is the whole risk here.**
+The gimbal counts pan positive to the right; the lidar, the map and everything else
+in this directory count bearings positive to the left, counter-clockwise from
+straight ahead. So the daemon hands the renderer minus the pan, in one place —
+`_camera_cone` — and both `rover_daemon/selftest.py` and `python mapimg.py` check
+the *direction* rather than the value, because a mirrored cone draws perfectly
+ordinarily over the wrong half of the room and nothing about the picture gives it
+away. The caption says which way and how wide in words as well, since a wedge on its
+own cannot say whether it is 40 degrees or 90.
+
+The width is the one number in this path nobody has measured. It defaults to 65
+degrees, which is a guess at a generic USB webcam; `--camera-fov` on the daemon sets
+it, and it is worth ten minutes with a doorframe — pan until a known edge just
+leaves the frame, and double it.
+
 `rover_up` picks which way is up: the heading the rover started with, so the room
 holds still and the arrow turns, or the heading it has now, so the arrow holds still
 and the room turns underneath it. The second needs the grid *sampled* through a

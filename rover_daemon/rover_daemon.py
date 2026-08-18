@@ -164,6 +164,15 @@ MAP_SCALE = 3
 # The bounds are what the Pi will attempt. Measured on this host at 5 cm cells, a
 # 480 px map is about half a second and a 1200 px one about three, and past that the
 # caller holds a connection open for longer than the map stays true.
+# How wide a slice of the room the camera takes in, across the picture. It is drawn
+# on the map as the gimbal's cone, so that a picture of the room says which part of
+# the room the photographs are of -- the two sensors point in different directions
+# most of the time, and the rover's own arrow says nothing about where the camera got
+# to. 65 degrees is a guess at a generic 640x480 USB webcam and is the one figure
+# here that has never been measured: point the rover at a doorframe, note the pan
+# that just brings it to the edge of the frame, and set --camera-fov to twice it.
+CAMERA_FOV_DEG = 65.0
+
 MAP_MAX_HALF_EXTENT_M = 10.0
 MAP_MAX_SCALE = 16
 MAP_MIN_PIXELS = 200
@@ -795,10 +804,12 @@ class Rover:
     """
 
     def __init__(self, link, service: str, device: str | None, size=(640, 480),
-                 vision: str | None = None) -> None:
+                 vision: str | None = None,
+                 camera_fov_deg: float = CAMERA_FOV_DEG) -> None:
         self.link = link
         self.service = service
         self.device = device
+        self.camera_fov_deg = camera_fov_deg
         self.size = size
         self.vision = VisionLink(vision) if vision and device else None
 
@@ -1241,12 +1252,31 @@ class Rover:
             return {"ok": False, "error": "this rover has no lidar attached"}
         return {"ok": True, **self.nav.describe()}
 
+    def _camera_cone(self) -> tuple[float, float] | None:
+        """The gimbal as `(bearing_deg, fov_deg)` for the map, or None with no camera.
+
+        **The two conventions are opposite, and this minus sign is the whole of the
+        conversion.** The gimbal takes pan positive to the *right* (see `look_at`);
+        the lidar, the map and everything in [lidar_slam/](../lidar_slam) take
+        bearings positive to the *left*, counter-clockwise from straight ahead. Get
+        it backwards and the map draws a perfectly ordinary cone over the wrong half
+        of the room, which nothing about the picture would give away.
+
+        None when there is no camera on this rover, because a cone drawn for a lens
+        that does not exist is a picture making a claim the hardware cannot keep.
+        """
+        if self.device is None:
+            return None
+        with self._lock:
+            return -self.pan, self.camera_fov_deg
+
     def _tool_show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
             return {"ok": False, "error": "this rover has no lidar attached"}
         if self.vision is None:
             return {"ok": False, "error": "there is nowhere to send a picture"}
-        png, caption = self.nav.map_png(MAP_HALF_EXTENT_M, MAP_SCALE)
+        png, caption = self.nav.map_png(MAP_HALF_EXTENT_M, MAP_SCALE,
+                                        camera=self._camera_cone())
         sent = self.vision.post(png)
         # The caption is the answer whether or not the picture arrives. The frame
         # server stashes bytes without decoding them and the upload declares no
@@ -1315,7 +1345,8 @@ class Rover:
         rover_up = _flag(arguments.get("rover_up", False), "rover_up")
 
         started = time.monotonic()
-        png, caption = self.nav.map_png(half, scale, rover_up=rover_up)
+        png, caption = self.nav.map_png(half, scale, rover_up=rover_up,
+                                        camera=self._camera_cone())
         # Read the size out of the PNG rather than working it out again: this is the
         # number the caller is going to display, and it should be the real one.
         width = int.from_bytes(png[16:20], "big")
@@ -1534,6 +1565,12 @@ def main() -> int | str:
                              "this port; bare --lidar finds it by its stable "
                              "/dev/serial/by-id name. Without this the rover will "
                              "not move itself.")
+    parser.add_argument("--camera-fov", type=float, default=CAMERA_FOV_DEG,
+                        metavar="DEGREES",
+                        help="how wide a slice of the room the camera sees across "
+                             "the picture, drawn on the map as the gimbal's cone. "
+                             "The default is a guess -- measure it by panning until "
+                             "a known object just leaves the frame.")
     parser.add_argument("--bind", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
@@ -1544,7 +1581,7 @@ def main() -> int | str:
         return f"Cannot reach the driver board: {error}"
 
     rover = Rover(link, args.service, args.device if args.camera else None,
-                  vision=args.vision)
+                  vision=args.vision, camera_fov_deg=args.camera_fov)
     if not rover.probe():
         link.close()
         return f"No answer from the driver board on {link.describe()}. Is it powered?"

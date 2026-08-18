@@ -72,6 +72,23 @@ ssh rpi 'cd ugv && python3 rover_daemon.py --vision'              # 192.168.1.3:
 ssh rpi 'cd ugv && python3 rover_daemon.py --vision media.local:8767'
 ```
 
+Where the camera is pointed also goes onto the map. `show_map` and the console's
+`map_png` draw the gimbal's cone as a violet wedge — which way the lens is aimed and
+how much of the room is inside the frame — because the map is otherwise entirely the
+lidar's account of the room and says nothing about where the photographs are of. The
+two sensors rarely agree on a direction: the gimbal pans a long way either side and
+sweeps continuously while face tracking runs, and the rover's own arrow says nothing
+about any of that.
+
+**The gimbal counts pan positive to the right and the map counts bearings positive to
+the left**, so `_camera_cone` hands over minus the pan. That is the whole conversion,
+it happens in exactly one place, and `selftest.py` checks its direction rather than
+its value — a sign error draws an ordinary-looking wedge over the wrong half of the
+room. `--camera-fov` sets how wide it is; the default of 65 degrees is a guess at a
+generic USB webcam and is the one number in this path that has never been measured.
+Started with `--no-camera` there is no cone at all, because a wedge drawn for a lens
+that is not fitted is the map making a claim the hardware cannot keep.
+
 **That flag is a starting position, not a setting.** The destination was a
 constant once, and being a constant is exactly how it went wrong: the model moved
 off MEDIA, the daemon kept posting pictures to MEDIA, and `look` failed with
@@ -154,6 +171,7 @@ does not feed the heartbeat, so aiming is not mistaken for driving.
 ssh rpi 'cd ugv && python3 rover_daemon.py'
 ssh rpi 'cd ugv && python3 rover_daemon.py --no-camera'     # lights and gimbal only
 ssh rpi 'cd ugv && python3 rover_daemon.py --host 192.168.1.22'   # board over wifi
+ssh rpi 'cd ugv && python3 rover_daemon.py --lidar --camera-fov 58'
 ```
 
 It centres the gimbal at startup, like every other script that commands it: the
@@ -202,7 +220,7 @@ obvious, and a 4B model at int4 produces all of them.
 ## Checks
 
 ```bash
-ssh rpi 'cd ugv && python3 selftest.py'    # 76 checks, no board and no camera
+ssh rpi 'cd ugv && python3 selftest.py'    # 134 checks, no board and no camera
 python rover_daemon/selftest.py            # the same, from the repo
 ```
 
