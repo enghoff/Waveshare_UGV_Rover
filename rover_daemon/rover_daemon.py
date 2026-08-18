@@ -130,14 +130,17 @@ DETECT_PROBE_S = 2.0
 # rather than opening a second one -- which is impossible anyway.
 FRAME_STALE_S = 2.0
 
-# The camera is closed this long after the last thing that needed it. Held open
-# briefly because a conversation asking "how many people can you see" twice
-# should not pay v4l2-ctl's start-up twice, and released because an open camera
-# is a camera nothing else can open.
+# The camera feed is closed this long after the last thing that needed it. Only
+# face tracking opens the feed now -- one-shot pictures do not, see `_snapshot` --
+# and tracking closes it on its way out, so in ordinary running nothing reaches
+# this. It stays as the backstop for the case it was always really for: an open
+# camera is a camera nothing else can open, and a feed left behind by a crash
+# between `_open_camera` and tracking's own `finally` would otherwise sit there
+# taking a quarter of the core off the scan matcher until the daemon restarted.
 CAMERA_IDLE_S = 20.0
-# One-shot detection: how long to wait for a frame once the camera is opened.
-# v4l2-ctl takes a moment to deliver its first buffer.
-FIRST_FRAME_S = 4.0
+# How many frames a one-shot picture asks the camera for. Named here as well as in
+# track_face_pi because it is in two error messages the model reads out loud.
+SNAPSHOT_FRAMES = 3
 
 # The lidar, when this daemon is asked to drive. A separate port from the driver
 # board: the board is on the GPIO UART and the lidar is a CH343 the cdc_acm driver
@@ -844,6 +847,12 @@ class Rover:
         # What the loop last saw, for tracking_status and count_faces while it
         # is running -- the loop owns the camera then, so nothing else may look.
         self._seen = {"faces": 0, "locked": False, "at": 0.0, "where": []}
+        # The detector is one kept-open connection that takes strictly one request
+        # at a time, so two `count_faces` arriving together must not both be in it.
+        # Its own lock rather than the board's: waiting on a detector on another
+        # host is no reason a light cannot be switched or the wheels stopped, and
+        # this call used to hold the board lock for exactly that wait.
+        self._detector_lock = threading.Lock()
 
     # --- the board ----------------------------------------------------------
 
@@ -890,9 +899,29 @@ class Rover:
             return self._send_gimbal()
 
     # --- the camera ---------------------------------------------------------
+    #
+    # There are two ways to get a picture here and the difference is not the
+    # picture, it is what is still running afterwards.
+    #
+    # `_open_camera` is the 30 fps feed, and only face tracking uses it: the loop
+    # wants every frame it can get, and pays for them. Everything else -- `look`,
+    # `camera_jpeg`, `count_faces` -- goes through `_snapshot`, which opens the
+    # camera for three frames and closes it. That is not a micro-optimisation. The
+    # feed costs this one core about a quarter of the lidar's revolutions, and
+    # leaving it warm for CAMERA_IDLE_S meant one photograph degraded the scan
+    # matcher for twenty seconds; since the matcher is this rover's only odometer,
+    # that is twenty seconds of a drive measuring itself wrong. The numbers are in
+    # `track_face_pi.snapshot`, which is also where the capture lives.
 
     def _open_camera(self):
-        """The shared camera, opened on demand. Caller holds the lock."""
+        """The shared camera feed, opened on demand. Caller holds the lock.
+
+        **Only call this from a thread that will outlive the camera.** v4l2-ctl is
+        started with PR_SET_PDEATHSIG, and the kernel counts the *thread* that
+        started it as the parent, so a feed opened on a connection thread dies when
+        that request finishes. Tracking's loop thread is the one caller that
+        qualifies, and it is now the only caller.
+        """
         from track_face_pi import Camera
 
         if self._camera is not None and self._camera.alive():
@@ -904,6 +933,18 @@ class Rover:
         self._camera = camera
         self._camera_used = time.monotonic()
         return camera
+
+    def _snapshot(self, frames: int = SNAPSHOT_FRAMES):
+        """A few whole frames from a camera that is shut again straight away.
+
+        The seam the self-test replaces, and the reason it is a method rather than a
+        bare import at each call site. Nothing is held: no lock, no camera, no
+        thread -- so this is safe to call while the rover is driving, which is the
+        whole point of it.
+        """
+        from track_face_pi import snapshot
+
+        return snapshot(self.device, self.size, frames=frames)
 
     def _close_camera(self) -> None:
         if self._camera is not None:
@@ -1025,33 +1066,29 @@ class Rover:
                 return {"ok": False, "error": "tracking is running but has not seen a frame yet"}
             return {"ok": True, "count": seen["faces"], "faces": seen["where"],
                     "from": "the tracking loop"}
-        with self._lock:
-            try:
-                camera = self._open_camera()
-            except Exception as error:
-                return {"ok": False, "error": f"cannot open the camera: {error}"}
+        # Deliberately outside the lock, and without opening the feed: a capture
+        # holds nothing, so counting faces cannot delay a stop or a gimbal command
+        # the way waiting on a camera under the lock could.
+        got, why = self._snapshot()
+        if not got:
+            return {"ok": False, "error": f"the camera gave nothing: {why}"}
+        # Newest first. More than one frame is worth having because the detector
+        # rejecting a frame arrives here as the same None a dead service gives, so
+        # a single undecodable picture used to read as "the host is away" -- but the
+        # old reason for it has gone: these frames are whole buffers rather than
+        # whatever a reader starting mid-stream happened to find, so the fragment
+        # that made a cold `count_faces` fail every time cannot occur here.
+        faces = None
+        with self._detector_lock:
             detector = self._open_detector()
-            # More than one frame, because the first one off a freshly started
-            # stream is usually not a whole picture: the reader begins mid-stream
-            # and the first end-of-image marker it finds can terminate a
-            # fragment. The detector rejects that as undecodable, which arrives
-            # here as the same None a dead service gives -- so a cold
-            # `count_faces` failed every time while a second one, half a second
-            # later, worked. Tracking never noticed because its loop simply
-            # takes the next frame.
-            faces = None
-            for attempt in range(3):
-                got = camera.latest(timeout=FIRST_FRAME_S if not attempt else 2.0)
-                if got is None:
-                    why = "; ".join(camera.complaints) or "no frame arrived"
-                    return {"ok": False, "error": f"the camera gave nothing: {why}"}
-                faces = detector.detect(*got)
+            for jpeg, at in reversed(got):
+                faces = detector.detect(jpeg, at)
                 if faces is not None:
                     break
         if faces is None:
             return {"ok": False,
-                    "error": "the face detector on the media host did not answer, or "
-                             "rejected three frames running"}
+                    "error": f"the face detector on the media host did not answer, or "
+                             f"rejected {len(got)} frames running"}
         width, height = self.size
         where = [_where(face, width, height) for face in faces]
         return {"ok": True, "count": len(faces), "faces": where}
@@ -1059,12 +1096,14 @@ class Rover:
     def _whole_jpeg(self) -> tuple[bytes | None, str]:
         """One complete frame from the camera, or (None, why).
 
-        Complete is checked rather than assumed. The reader begins mid-stream,
-        so the first end-of-image marker it finds can terminate a *fragment* --
-        which is why `count_faces` tries three times. Here the same fragment is
-        caught two bytes earlier and for free: a whole JPEG starts with the
-        start-of-image marker, and a piece of one does not. Nothing is decoded
-        on this machine; that costs 93 ms here and the picture is not for us.
+        Complete is checked rather than assumed, and it is still worth checking even
+        though the capture below now hands back whole buffers: a picture is about to
+        cross a network and be looked at by a model, and two bytes is a cheaper way
+        to find out it is a fragment than either of those. Nothing is decoded on
+        this machine; that costs 93 ms here and the picture is not for us.
+
+        Newest of the three, because that is the frame the camera settled on -- see
+        SNAPSHOT_FRAMES for why a cold camera's first frame is not the one to send.
         """
         if self._tracking.is_set():
             # The loop has the camera. Nothing else can open it, so the honest
@@ -1077,19 +1116,14 @@ class Rover:
             if time.monotonic() - at > FRAME_STALE_S:
                 return None, "tracking is running but its last frame is stale"
             return jpeg, ""
-        with self._lock:
-            try:
-                camera = self._open_camera()
-            except Exception as error:
-                return None, f"cannot open the camera: {error}"
-            for attempt in range(3):
-                got = camera.latest(timeout=FIRST_FRAME_S if not attempt else 2.0)
-                if got is None:
-                    why = "; ".join(camera.complaints) or "no frame arrived"
-                    return None, f"the camera gave nothing: {why}"
-                if got[0].startswith(b"\xff\xd8"):
-                    return got[0], ""
-        return None, "the camera gave three frames running that were not whole pictures"
+        got, why = self._snapshot()
+        if not got:
+            return None, f"the camera gave nothing: {why}"
+        for jpeg, _at in reversed(got):
+            if jpeg.startswith(b"\xff\xd8"):
+                return jpeg, ""
+        return None, (f"the camera gave {len(got)} frames running that were not "
+                      f"whole pictures")
 
     def _tool_look(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.vision is None:
@@ -1221,16 +1255,28 @@ class Rover:
     # --- driving --------------------------------------------------------------
 
     def park_tracking(self) -> None:
-        """Put face tracking down because the wheels are about to turn.
+        """Give the core to the scan matcher, because the wheels are about to turn.
 
-        They cannot both run. Face tracking holds the camera and posts frames to
-        MEDIA, which is about 30% of this one core, and SLAM is another 33%; run
-        both and the scan matcher starts dropping revolutions, which degrades
-        exactly the thing that is keeping the rover off the walls. Aiming the camera
-        while driving is also a good way to be looking at somebody's face when
-        something appears in front of the tracks.
+        Called by the navigator the instant before anything moves, and the one place
+        that decides what driving outranks. Face tracking and driving cannot both
+        run. Face tracking holds the camera and posts frames to MEDIA, which is about
+        30% of this one core, and SLAM is another 33%; run both and the scan matcher
+        starts dropping revolutions, which degrades exactly the thing that is keeping
+        the rover off the walls. Aiming the camera while driving is also a good way
+        to be looking at somebody's face when something appears in front of the
+        tracks.
+
+        The camera feed is released as well as the loop that was reading it, and not
+        only the loop, because those are two different things and the second used to
+        be missed. Tracking closes its own camera on the way out, so ordinarily this
+        finds nothing left to do -- but a feed nobody is reading costs the matcher
+        just as much as one somebody is, and it is exactly what a crash between
+        opening the camera and entering the loop leaves behind. Twenty seconds of
+        CAMERA_IDLE_S is a long time to be driving on a degraded map.
         """
         self._tracking_parked = self.stop_tracking()
+        with self._lock:
+            self._close_camera()
 
     def unpark_tracking(self) -> None:
         """Give it back, but only if driving is what took it."""

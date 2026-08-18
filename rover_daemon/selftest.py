@@ -207,15 +207,12 @@ def test_look():
         def log_message(self, *args):
             pass
 
-    class FakeCamera:
-        """Frames on demand, including the half-frame a cold camera really gives."""
-
-        def __init__(self, frames):
-            self.frames = list(frames)
-            self.complaints = []
-
-        def latest(self, timeout=None):
-            return (self.frames.pop(0), 1.0) if self.frames else None
+    def captures(*frames):
+        """Stand in for a one-shot capture: frames oldest first, as v4l2-ctl gives
+        them, plus the complaint that explains an empty list."""
+        stamped = [(frame, 1.0) for frame in frames]
+        why = "" if stamped else "no frame arrived"
+        return lambda frames=None: (stamped, why)
 
     whole = b"\xff\xd8" + b"jpeg bytes" + b"\xff\xd9"
     fragment = b"middle of a picture" + b"\xff\xd9"
@@ -242,10 +239,12 @@ def test_look():
         check("look is offered with --vision",
               [t["function"]["name"] for t in rover.tools()].count("look"), 1)
 
-        # The half-frame is the one that matters: the reader starts mid-stream,
-        # so the first end-of-image marker can end a fragment. Caught by the
-        # two bytes at the front rather than by decoding anything.
-        rover._open_camera = lambda: FakeCamera([fragment, whole])
+        # The half-frame is the one that matters, and it is put *last* on purpose:
+        # frames come back oldest first and the newest is the one worth sending, so
+        # a fragment in that position is the one a naive "take the last" would
+        # send. Caught by the two bytes at the front rather than by decoding
+        # anything.
+        rover._snapshot = captures(whole, fragment)
         got = rover.call("look", {})
         check("a picture is sent and named", got.get("image"), "frame-1")
         check("...and it is the whole frame, not the fragment", posted[-1], whole)
@@ -256,14 +255,18 @@ def test_look():
         check("...and the result is the name and nothing else", sorted(got), ["image", "ok"])
 
         # Three fragments running is a camera that is not producing pictures.
-        rover._open_camera = lambda: FakeCamera([fragment, fragment, fragment])
+        rover._snapshot = captures(fragment, fragment, fragment)
         got = rover.call("look", {})
         check("nothing but fragments is a failure", got["ok"], False)
         check("...that says what happened", "whole pictures" in got["error"], True)
 
-        # A camera that gives nothing at all, which is what an unplugged one does.
-        rover._open_camera = lambda: FakeCamera([])
-        check("no frame at all is a failure", rover.call("look", {})["ok"], False)
+        # A camera that gives nothing at all, which is what an unplugged one does,
+        # and what a camera another process is holding open does too. Either way
+        # the capture's own complaint is what reaches the model.
+        rover._snapshot = captures()
+        got = rover.call("look", {})
+        check("no frame at all is a failure", got["ok"], False)
+        check("...carrying the capture's complaint", "no frame arrived" in got["error"], True)
 
         # While tracking owns the camera, the loop's newest frame is what there
         # is -- and a stale one is refused rather than passed off as now.
@@ -282,10 +285,130 @@ def test_look():
 
     # And the service being away: a failure the model can say out loud, not an
     # exception in the middle of a turn.
-    rover._open_camera = lambda: FakeCamera([whole])
+    rover._snapshot = captures(whole)
     got = rover.call("look", {})
     check("a vision service that has gone is reported", got["ok"], False)
     check("...naming where it tried", "/frame" in got["error"], True)
+    rover.close()
+
+
+def test_snapshot_splitting():
+    """Cutting a run of concatenated JPEGs back into pictures.
+
+    This is what makes a one-shot capture possible, and a bug in it is silent in
+    the worst way: a frame with someone else's bytes on the end still decodes, so
+    a model would be shown a picture and describe it without anything looking
+    wrong. `--stream-count=3` genuinely returns three pictures back to back with
+    nothing between them, so the markers are the only boundary there is.
+    """
+    try:
+        from track_face_pi import split_jpegs
+    except ImportError as error:            # no aiming.py beside it, e.g. a bare copy
+        SKIP.append(f"snapshot splitting ({error})")
+        return
+
+    a = b"\xff\xd8" + b"first" + b"\xff\xd9"
+    b = b"\xff\xd8" + b"second" + b"\xff\xd9"
+    c = b"\xff\xd8" + b"third" + b"\xff\xd9"
+    check("three frames come back as three", split_jpegs(a + b + c), [a, b, c])
+    check("one frame comes back as one", split_jpegs(a), [a])
+    check("nothing at all is no frames", split_jpegs(b""), [])
+    # The case the streaming reader could not tell apart, and the reason a start
+    # marker is required as well as an end one: a capture joined part-way through
+    # has an end-of-image with no start before it, and that end must not be taken
+    # as the end of a picture that was never whole.
+    check("a leading part-frame is dropped, not returned",
+          split_jpegs(b"tail of a picture\xff\xd9" + a), [a])
+    # A capture cut short by the timeout: what did arrive whole is still worth
+    # having, and the unterminated remainder is not returned as if it were.
+    check("an unfinished last frame is left out",
+          split_jpegs(a + b"\xff\xd8" + b"cut off here"), [a])
+    check("...and its whole predecessors are kept", split_jpegs(a + b + b"\xff\xd8no end"),
+          [a, b])
+
+
+def test_driving_takes_the_core():
+    """Driving releases the camera, not just the loop that was reading it.
+
+    The navigator calls `park_tracking` the instant before the wheels move, and what
+    it has to accomplish is that nothing else is competing for this one core -- the
+    scan matcher is the rover's only odometer, so a camera left streaming is a drive
+    measuring itself wrong. Tracking closes its own camera on the way out, so the
+    case worth pinning is the other one: a feed open with no loop reading it, which
+    is what a crash between the two leaves behind, and what a photograph used to
+    leave behind for twenty seconds.
+    """
+    import rover_daemon
+
+    closed = []
+
+    class FakeFeed:
+        def close(self):
+            closed.append(True)
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
+    # No tracking loop running, but a camera open: park_tracking has to notice.
+    rover._camera = FakeFeed()
+    rover.park_tracking()
+    check("driving closes a camera nobody was reading", closed, [True])
+    check("...and leaves nothing behind to reopen", rover._camera, None)
+    # And it must not then hand tracking back, because tracking was never taken.
+    started = []
+    rover._tool_start_tracking = lambda _a: started.append(True) or {"ok": True}
+    rover.unpark_tracking()
+    check("a drive that never parked tracking does not start it", started, [])
+    rover.close()
+
+
+def test_counting_faces_does_not_hold_the_board():
+    """A slow detector on another host must not lock the rover up.
+
+    `count_faces` waits on MEDIA, and MEDIA being slow or away is an expected state
+    here rather than an exceptional one. It used to do that waiting while holding
+    the lock that also serialises the driver board, so a detector taking its time
+    was a rover that could not switch a light or be told to stop. The wait now has
+    its own lock: still strictly one request at a time, because the detector is one
+    kept-open connection, but not at the board's expense.
+    """
+    import rover_daemon
+    import threading
+    import time
+
+    in_detect, release = threading.Event(), threading.Event()
+
+    class SlowDetector:
+        def detect(self, jpeg, at):
+            in_detect.set()
+            release.wait(5.0)
+            return []
+
+    whole = b"\xff\xd8" + b"jpeg" + b"\xff\xd9"
+    board = FakeLink()
+    rover = rover_daemon.Rover(board, "unused", device="/dev/video0")
+    rover._snapshot = lambda frames=None: ([(whole, 1.0)], "")
+    rover._open_detector = lambda: SlowDetector()
+
+    counted = []
+    threading.Thread(target=lambda: counted.append(rover.call("count_faces", {})),
+                     daemon=True).start()
+    check("the detector is reached", in_detect.wait(5.0), True)
+    # The board, while that call is still inside the detector -- and *timed*, because
+    # the old behaviour did not refuse this, it simply made it wait for the detector.
+    # Passing slowly is the exact failure being pinned, so the clock is the check.
+    started = time.monotonic()
+    got = rover.call("set_lights", {"level": 7})
+    waited = time.monotonic() - started
+    check("the lights still answer while a count is waiting", got["ok"], True)
+    check("...without waiting for the detector", waited < 1.0, True)
+    check("...and the board really was told", board.sent[-1],
+          {"T": 132, "IO4": 7, "IO5": 7})
+    release.set()
+    for _ in range(50):
+        if counted:
+            break
+        time.sleep(0.1)
+    check("the count finishes once the detector answers",
+          counted and counted[0]["ok"], True)
     rover.close()
 
 
@@ -441,7 +564,9 @@ def test_flags():
 
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_look, test_camera_cone,
+                 test_no_camera, test_look, test_snapshot_splitting,
+                 test_driving_takes_the_core,
+                 test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_control_calls_without_hardware, test_where,
                  test_map_view, test_flags):
         try:

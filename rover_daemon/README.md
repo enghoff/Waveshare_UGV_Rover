@@ -254,10 +254,28 @@ obvious, and a 4B model at int4 produces all of them.
 - **The board** is behind a lock, because the tracking loop commands servos on
   its own thread while tool calls arrive on connection threads. Two interleaved
   writes are one line of JSON the ESP32 cannot parse.
-- **The camera** is opened on demand and released `CAMERA_IDLE_S` after the last
-  thing that wanted it. While tracking is running the loop owns it, so
-  `count_faces` answers from what the loop last saw rather than trying to take a
-  second look — an honest answer beats a contended one.
+- **The camera** is opened two different ways, and the difference is not the
+  picture but what is still running afterwards. A single picture — `look`,
+  `camera_jpeg`, `count_faces` — starts `v4l2-ctl` for three frames and lets it
+  exit, which is 0.6 s and leaves nothing behind. Only face tracking opens the
+  30 fps feed, because only face tracking wants every frame. While tracking is
+  running the loop owns the camera, so `count_faces` answers from what the loop
+  last saw rather than trying to take a second look — an honest answer beats a
+  contended one. `CAMERA_IDLE_S` still exists but nothing reaches it in ordinary
+  running; it is the backstop for a feed left behind by a crash.
+- **Driving outranks looking**, and that is a rule about this one core rather
+  than about the camera. Holding the feed open costs the scan matcher about a
+  quarter of the lidar's revolutions — measured, stationary, one picture taken:
+  9.94 revolutions/s and no losses with the camera shut, 7.52/s and 22.1%
+  dropped with it streaming. Since the matcher is the only odometer this rover
+  has, a photograph taken on the move used to corrupt the measurement `drive`
+  closes its loop on, for the whole twenty seconds the camera stayed warm. Two
+  things keep that from happening: a one-shot picture never opens the feed, and
+  the navigator calls `park_tracking` before the wheels turn, which puts the
+  tracking loop down **and** releases the camera. The `stand_aside` niceness in
+  `track_face_pi` is the weaker half of the same rule — within one interpreter
+  the GIL decides who runs, not the scheduler, so not asking for frames nobody
+  wants matters more than asking politely.
 - **The gimbal** cannot be aimed by two things at once, so `look_at` and
   `center_camera` stop tracking first and say so in their result. That is what a
   person means by "look left" while the rover is following somebody.
@@ -265,7 +283,7 @@ obvious, and a 4B model at int4 produces all of them.
 ## Checks
 
 ```bash
-ssh rpi 'cd ugv && python3 selftest.py'    # 134 checks, no board and no camera
+ssh rpi 'cd ugv && python3 selftest.py'    # 153 checks, no board and no camera
 python rover_daemon/selftest.py            # the same, from the repo
 ```
 

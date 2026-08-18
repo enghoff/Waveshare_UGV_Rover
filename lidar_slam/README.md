@@ -494,10 +494,16 @@ once and later cleared back to exactly zero is indistinguishable from one never 
   refused, the caption still answers and the fix is a JPEG encoder or a service-side
   change.
 - **Driving and face tracking are mutually exclusive**, enforced by the daemon parking
-  tracking for the duration of a move. That is a real limitation and not a bug: SLAM
-  is a third of the core, MJPEG forwarding is another third, and oversubscribing the
-  one core makes the scan matcher drop revolutions — degrading exactly the thing
-  keeping the rover off the walls.
+  tracking for the duration of a move — and parking it now releases the camera as
+  well as the loop reading it, which are two different things. That is a real
+  limitation and not a bug: SLAM is a third of the core, MJPEG forwarding is another
+  third, and oversubscribing the one core makes the scan matcher drop revolutions —
+  degrading exactly the thing keeping the rover off the walls. Measured with the
+  rover stationary and one picture taken, 9.94 revolutions/s and no losses with the
+  camera shut against 7.52/s and 22.1% dropped with it streaming. A single
+  photograph does not cost this any more: `look` and friends capture three frames
+  and let `v4l2-ctl` exit rather than holding the feed open, so only tracking
+  competes with driving now.
 - **The lidar sees one horizontal slice** and cannot see a step, a drop, a low sill or
   a table top. Thirty centimetres from a wall is safe; thirty centimetres from a stair
   is not. Nothing in software fixes that, and an unattended rover needs either a
