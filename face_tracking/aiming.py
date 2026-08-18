@@ -242,7 +242,24 @@ SCAN_TILT = 45
 # 1-4% of frames not moving at all, while at 45 it delivers 11 px of an expected 13
 # and stalls on nearly a fifth of them. Slower is smoother and sees no less.
 # --scan-rate moves it either way.
+#
+# **Also a frame count wearing a stopwatch**, like LOST_GRACE_S. 25 deg/s at the
+# 25 fps this was measured at is one degree between looks; on the rover's own
+# detector, at four frames a second, it is six -- so the camera sweeps past
+# somebody, acquires them from the frame where they were at the edge, and has
+# already moved on by the time the correction is worked out. Cap the sweep by how
+# far it may travel between two looks instead, which leaves the measured rate
+# untouched wherever frames are plentiful.
 SCAN_RATE = 25
+# The most the sweep may cross between one look and the next.
+SCAN_DEG_PER_FRAME = 3.0
+
+
+def scan_rate_for(dt, rate=SCAN_RATE):
+    """The sweep rate a loop running at this frame period can actually follow."""
+    if dt <= 0:
+        return rate
+    return min(rate, SCAN_DEG_PER_FRAME / dt)
 # How long without a face before sweeping starts. Long enough that setting the rover
 # down in front of somebody does not send it hunting before it has looked at them.
 SCAN_AFTER_S = 2.0

@@ -1552,7 +1552,7 @@ class Rover:
         """
         from aiming import (
             GAIN, GRACE_FRAMES, LOST_GRACE_S, MAX_DT, SCAN_AFTER_S, SCAN_RATE,
-            Gimbal, Scan, Target, clamp,
+            Gimbal, Scan, Target, clamp, scan_rate_for,
         )
 
         width, height = self.size
@@ -1648,7 +1648,7 @@ class Rover:
                     if now - target.seen_at > SCAN_AFTER_S:
                         if scan is None:
                             scan = Scan(gimbal)
-                        scan.step(gimbal, SCAN_RATE, dt)
+                        scan.step(gimbal, scan_rate_for(dt), dt)
                 gimbal.record(now)
 
                 with self._lock:

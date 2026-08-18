@@ -315,15 +315,30 @@ class Camera:
         self._pending = []                  # (bytesused, exposed_at) awaiting frames
         self._stamps = threading.Condition()
         self._stop = threading.Event()
+        # The format is set by its own call, and the streaming call is left with
+        # nothing to say. v4l2-ctl echoes the negotiated format to *stdout* --
+        # "Format Video Capture:" and so on -- before the first buffer, and for
+        # MJPEG that is harmless, because the reader syncs on the end-of-image
+        # marker and swallows the text as a prefix. A raw stream has no marker to
+        # sync on, so those bytes offset every frame that follows, for ever: the
+        # picture tears into displaced bands and, since a one-byte shift lands U
+        # where V should be, the colours invert with it. Detection still worked,
+        # which is what made it hard to see -- luma survives a chroma swap, so
+        # faces were still found in a picture that plainly looked wrong.
+        # --silent would take the text away and the exposure timestamps with it.
+        subprocess.run(
+            ["v4l2-ctl", "-d", device,
+             "--set-fmt-video=width=%d,height=%d,pixelformat=%s"
+             % (size + (pixelformat,))],
+            capture_output=True, check=False)
         argv = ["v4l2-ctl", "-d", device,
-                "--set-fmt-video=width=%d,height=%d,pixelformat=%s"
-                % (size + (pixelformat,)),
                 "--stream-mmap", "--stream-to=-", "--verbose"]
         if os.path.exists("/usr/bin/stdbuf"):
             argv = ["stdbuf", "-o0"] + argv
         self.proc = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
             preexec_fn=die_with_parent)
+        self._frames = self.proc.stdout
         self._readers = [
             threading.Thread(
                 target=self._read_raw if self.frame_bytes else self._read_frames,
@@ -403,7 +418,7 @@ class Camera:
         buf = bytearray(need)
         view = memoryview(buf)
         got = 0
-        stream = self.proc.stdout
+        stream = self._frames
         while not self._stop.is_set():
             read = stream.readinto(view[got:])
             if not read:
