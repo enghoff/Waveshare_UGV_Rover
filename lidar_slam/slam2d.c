@@ -92,7 +92,7 @@ void slam2d_default_config(slam2d_config *cfg)
      * and not. */
     cfg->max_points   = 300;
 
-    /* +/-0.15 m and +/-9 deg of coarse window: 1.5 m/s and 90 deg/s at 10 Hz.
+    /* +/-0.10 m and +/-9 deg of coarse window: 1.0 m/s and 90 deg/s at 10 Hz.
      *
      * The angular half was +/-6 and that was not enough. Rotation beyond the window
      * does not merely go unmatched, it comes back *under-reported* -- the matcher
@@ -325,24 +325,30 @@ int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n)
 /* ------------------------------------------------------------ scan matching */
 
 /* Sum the likelihood field under the scan, with the points already rotated into
- * world bearings and the candidate translation folded into (ox, oy). This is the
- * hot loop: at the defaults it runs 5 x 5 x 7 coarse plus 5 x 5 x 5 fine times a
- * revolution, so everything that can be hoisted out of it has been. */
+ * world bearings *and converted to grid units* by rotate_scan, so the candidate
+ * translation (ox, oy metres) folds to one add per axis here. This is the hot
+ * loop: at the defaults it runs 5 x 5 x 7 coarse plus 5 x 5 x 5 fine times a
+ * revolution over every point, so everything that can be hoisted out has been --
+ * the metres-to-cells multiply used to be in here, once per point per pose, and
+ * moving it into the once-per-angle rotation measured 12% off the whole match
+ * (19.7 -> 17.3 ms in selftest on the rover's Pi). */
 static long score_pose(const slam2d *s, float ox, float oy)
 {
     const int cells = s->cells;
-    const float inv = s->inv_res, half = (float)(cells / 2);
+    const float fcells = (float)cells;
+    const float dx = ox * s->inv_res, dy = oy * s->inv_res;
     const unsigned char *lik = s->lik;
     const float *rx = s->rot_x, *ry = s->rot_y;
     long sum = 0;
 
     for (int i = 0; i < s->pend_n; i++) {
-        /* Bias by half the map before truncating, so the conversion floors
-         * correctly either side of the origin instead of folding -0.5 and +0.5 into
-         * the same cell; the bounds test is on the float for the same reason. */
-        float fx = (rx[i] + ox) * inv + half;
-        float fy = (ry[i] + oy) * inv + half;
-        if (fx < 0.0f || fx >= cells || fy < 0.0f || fy >= cells) continue;
+        /* Already biased by half the map (in rotate_scan), so the conversion
+         * floors correctly either side of the origin instead of folding -0.5 and
+         * +0.5 into the same cell; the bounds test is on the float for the same
+         * reason. */
+        float fx = rx[i] + dx;
+        float fy = ry[i] + dy;
+        if (fx < 0.0f || fx >= fcells || fy < 0.0f || fy >= fcells) continue;
         sum += lik[(int)fx * cells + (int)fy];
     }
     return sum;
@@ -350,11 +356,15 @@ static long score_pose(const slam2d *s, float ox, float oy)
 
 static void rotate_scan(slam2d *s, float th)
 {
-    float ct = cosf(th), st = sinf(th);
+    /* Rotated straight into grid units -- cells, biased by half the map -- so the
+     * translation search above never multiplies. The rotation itself absorbs the
+     * scaling for free: it is the same multiply-add either way. */
+    const float ct = cosf(th) * s->inv_res, st = sinf(th) * s->inv_res;
+    const float half = (float)(s->cells / 2);
     for (int i = 0; i < s->pend_n; i++) {
         float px = s->pend[i].x, py = s->pend[i].y;
-        s->rot_x[i] = px * ct - py * st;
-        s->rot_y[i] = px * st + py * ct;
+        s->rot_x[i] = px * ct - py * st + half;
+        s->rot_y[i] = px * st + py * ct + half;
     }
 }
 

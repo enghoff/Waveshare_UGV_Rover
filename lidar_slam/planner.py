@@ -73,11 +73,20 @@ def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
     inflated = _inflate(blocked, radius)
 
     # The rover is already where it is, even if that cell is inside the inflate
-    # radius of a wall. Leaving the start blocked is how a planner refuses to
-    # extract itself from a tight spot.
+    # radius of a wall. Plan from the nearest cell that is actually free: merely
+    # unblocking the start cell looked like the same fix and was not, because the
+    # rest of the inflation still walled that one cell in and every route out was
+    # refused -- exactly the tight spot a planner most needs to leave. The first
+    # waypoint is re-anchored to the true pose below, so the short blind hop from
+    # the real start to free space is followed on the live scan like everything
+    # else.
     lsx, lsy = sx - x0, sy - y0
     lgx, lgy = gx - x0, gy - y0
-    inflated[lsx, lsy] = False
+    if inflated[lsx, lsy]:
+        freed = _nearest_free(inflated, lsx, lsy, max(radius + 2, 8))
+        if freed is None:
+            return None, "the map shows no room to move at all from here"
+        lsx, lsy = freed
 
     if inflated[lgx, lgy]:
         snapped = _nearest_free(inflated, lgx, lgy, max(radius + 2, 8))
@@ -186,23 +195,25 @@ def cells_occupied_along(grid, resolution_m, occupied_at, points, s_from,
 
 
 def _inflate(blocked, radius_cells):
-    """Euclidean dilation of a boolean grid, in-place-safe (returns a copy)."""
-    import numpy as np
+    """Euclidean dilation of a boolean grid, in-place-safe (returns a copy).
 
+    One whole-array OR per offset in the disc, not one neighbourhood write per
+    blocked cell. The distinction decides whether this runs on the Pi: unknown
+    counts as blocked here, so a typical crop has *thousands* of blocked cells,
+    against ~113 offsets in a radius-6 disc -- and each OR is a single numpy pass
+    where the per-cell version paid several interpreted numpy calls per cell.
+    """
     if radius_cells <= 0:
         return blocked.copy()
     out = blocked.copy()
-    ys, xs = np.nonzero(blocked)
-    if len(ys) == 0:
-        return out
     h, w = blocked.shape
-    r2 = radius_cells * radius_cells
-    for y, x in zip(ys.tolist(), xs.tolist()):
-        y0, y1 = max(0, y - radius_cells), min(h, y + radius_cells + 1)
-        x0, x1 = max(0, x - radius_cells), min(w, x + radius_cells + 1)
-        yy = np.arange(y0, y1)[:, None]
-        xx = np.arange(x0, x1)[None, :]
-        out[y0:y1, x0:x1] |= ((yy - y) * (yy - y) + (xx - x) * (xx - x)) <= r2
+    r, r2 = radius_cells, radius_cells * radius_cells
+    for du in range(-r, r + 1):
+        for dv in range(-r, r + 1):
+            if (du or dv) and du * du + dv * dv <= r2:
+                out[max(0, du):h + min(0, du), max(0, dv):w + min(0, dv)] |= \
+                    blocked[max(0, -du):h + min(0, -du),
+                            max(0, -dv):w + min(0, -dv)]
     return out
 
 
@@ -221,66 +232,73 @@ def _nearest_free(inflated, gx, gy, limit):
 
 
 def _astar(blocked, start, goal):
-    """8-connected A* on a boolean blocked grid. Returns a list of (ix, iy)."""
-    import numpy as np
+    """8-connected A* on a boolean blocked grid. Returns a list of (ix, iy).
 
+    Flat Python lists rather than numpy arrays, because the cost of A* is almost
+    entirely element access and a numpy scalar read is several times the price of
+    a list index -- numpy earns its keep on whole-array passes like _inflate, and
+    this is the opposite of one. Measured on the Pi it is the difference between
+    a route in well under a second and one the caller times out waiting for.
+    """
     h, w = blocked.shape
     sx, sy = start
     gx, gy = goal
-    if blocked[gx, gy] or blocked[sx, sy]:
+    solid = blocked.ravel().tolist()
+    start_i, goal_i = sx * w + sy, gx * w + gy
+    if solid[goal_i] or solid[start_i]:
         return None
     if start == goal:
         return [start]
 
+    rt2 = math.sqrt(2)
     nbrs = ((1, 0, 1.0), (-1, 0, 1.0), (0, 1, 1.0), (0, -1, 1.0),
-            (1, 1, math.sqrt(2)), (1, -1, math.sqrt(2)),
-            (-1, 1, math.sqrt(2)), (-1, -1, math.sqrt(2)))
-
-    def h_cost(ix, iy):
-        return math.hypot(gx - ix, gy - iy)
+            (1, 1, rt2), (1, -1, rt2), (-1, 1, rt2), (-1, -1, rt2))
 
     inf = 1e18
-    g = np.full((h, w), inf, dtype=np.float64)
-    came = np.full((h, w, 2), -1, dtype=np.int32)
-    g[sx, sy] = 0.0
-    heap = [(h_cost(sx, sy), 0.0, sx, sy)]
-    closed = np.zeros((h, w), dtype=bool)
+    g = [inf] * (h * w)
+    came = [-1] * (h * w)
+    closed = bytearray(h * w)
+    g[start_i] = 0.0
+    heap = [(math.hypot(gx - sx, gy - sy), 0.0, sx, sy)]
 
     while heap:
         _f, cost, x, y = heapq.heappop(heap)
-        if closed[x, y]:
+        i = x * w + y
+        if closed[i]:
             continue
-        closed[x, y] = True
-        if (x, y) == (gx, gy):
-            return _reconstruct(came, start, goal)
+        closed[i] = 1
+        if i == goal_i:
+            return _reconstruct(came, w, start_i, goal_i)
         for dx, dy, step in nbrs:
             nx, ny = x + dx, y + dy
-            if not (0 <= nx < h and 0 <= ny < w) or blocked[nx, ny] or closed[nx, ny]:
+            if not (0 <= nx < h and 0 <= ny < w):
+                continue
+            j = nx * w + ny
+            if solid[j] or closed[j]:
                 continue
             # No cutting a corner through a blocked diagonal neighbour.
-            if dx != 0 and dy != 0 and (blocked[x + dx, y] or blocked[x, y + dy]):
+            if dx != 0 and dy != 0 and (solid[i + dx * w] or solid[i + dy]):
                 continue
             nxt = cost + step
-            if nxt + 1e-9 < g[nx, ny]:
-                g[nx, ny] = nxt
-                came[nx, ny] = (x, y)
-                heapq.heappush(heap, (nxt + h_cost(nx, ny), nxt, nx, ny))
+            if nxt + 1e-9 < g[j]:
+                g[j] = nxt
+                came[j] = i
+                heapq.heappush(heap, (nxt + math.hypot(gx - nx, gy - ny),
+                                      nxt, nx, ny))
     return None
 
 
-def _reconstruct(came, start, goal):
-    path = [goal]
-    x, y = goal
-    sx, sy = start
-    for _ in range(came.shape[0] * came.shape[1] + 1):
-        if (x, y) == (sx, sy):
+def _reconstruct(came, w, start_i, goal_i):
+    path = [goal_i]
+    i = goal_i
+    for _ in range(len(came) + 1):
+        if i == start_i:
             path.reverse()
-            return path
-        px, py = int(came[x, y, 0]), int(came[x, y, 1])
-        if px < 0:
+            return [(k // w, k % w) for k in path]
+        i = came[i]
+        if i < 0:
             return None
-        path.append((px, py))
-        x, y = px, py
+        path.append(i)
     return None
 
 
@@ -343,6 +361,12 @@ def _selftest():
     # Occupied target is refused rather than planned onto.
     path, why = plan(grid, res, occ, (0.0, 0.0), (1.0, 0.0), inflate_m=0.20)
     assert path is None and "solid" in why, why
+
+    # A rover that has ended up inside the wall's inflation ring can still plan
+    # its way out -- this is the wedged case, and refusing it strands the rover.
+    path, why = plan(grid, res, occ, (0.85, 0.0), (-0.5, 0.0), inflate_m=0.20)
+    assert path is not None, f"wedged start was refused: {why}"
+    assert path[0] == (0.85, 0.0), f"route does not start at the rover: {path[0]}"
 
     # Unseen target is refused.
     grid[:, :] = 0

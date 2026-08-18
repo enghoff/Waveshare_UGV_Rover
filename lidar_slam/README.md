@@ -51,13 +51,13 @@ What ships is not that benchmark's configuration — the search window and point
 were tuned afterwards — so `selftest` measures the real thing end to end:
 
 ```
-parse + CRC, 35 packets                  0.33 ms
-map update + 1 pose                      4.70 ms
-scan match                              28.48 ms   (370 poses, 0.077 ms each)
-TOTAL per revolution                    33.50 ms    33.5% of one core -> fits
+parse + CRC, 35 packets                  0.30 ms
+map update + 1 pose                      3.98 ms
+scan match                              17.27 ms   (300 poses, 0.058 ms each)
+TOTAL per revolution                    21.55 ms    21.5% of one core -> fits
 ```
 
-**That 33.5% is the number to plan around, not the 100 ms budget.** The core is
+**That 21.5% is the number to plan around, not the 100 ms budget.** The core is
 already committed elsewhere: forwarding 640×480 MJPEG over the WiFi dongle costs
 about 30% of it, and the link saturates the CPU at 72% before it saturates itself.
 SLAM and video at full frame rate do not both fit, and that is the trade to make
@@ -66,9 +66,9 @@ consciously rather than discover.
 ## What is deliberately missing
 
 **Loop closure, and with it any globally consistent map.** The cost is not marginal.
-Each candidate pose costs a measured 0.077 ms, and the search window `slam_toolbox`
+Each candidate pose costs a measured 0.058 ms, and the search window `slam_toolbox`
 uses in the VM — `loop_search_space_dimension: 8.0` at `resolution: 0.05`, so
-160×160 offsets across 13 angles — is 332,800 poses, or about **26 seconds for one
+160×160 offsets across 13 angles — is 332,800 poses, or about **19 seconds for one
 closure attempt** on this host. Branch-and-bound of the kind Cartographer uses would
 change that answer, and hand-rolling it is a much larger project than this.
 
@@ -169,10 +169,12 @@ That 10 cm of smear is much wider than the sensor's ±20 mm accuracy, and it is 
 modelling the sensor — it is widening the basin the search has to fall into, so the
 coarse pass can step a whole 5 cm cell without walking past the peak.
 
-The coarse pass spans ±0.15 m and ±6°, which at 10 Hz is 1.5 m/s and 60°/s. The fine
-pass then spans one coarse step. 7×7×5 + 5×5×5 = 370 poses, and points are thinned
-to 300 of the ~419 the sensor delivers because every point costs a cache miss in
-every one of those poses; thinning bought 25 ms a revolution.
+The coarse pass spans ±0.10 m and ±9°, which at 10 Hz is 1.0 m/s and 90°/s — the
+angular window earns its width because a rotation past the edge comes back
+*under-reported* rather than rejected, and a controller closing on that keeps
+turning. The fine pass then spans one coarse step. 5×5×7 + 5×5×5 = 300 poses, and
+points are thinned to 300 of the ~419 the sensor delivers because every point costs
+a cache miss in every one of those poses; thinning bought 25 ms a revolution.
 
 A match whose mean likelihood falls below `min_match_score` is **rejected** and the
 motion prior is used instead. This matters more than it looks: dead reckoning drifts
@@ -260,6 +262,26 @@ to catch it again. On a bench that would have been the rover spinning off the ed
 Steering is follow-the-gap — the heading with the most room, penalised for departing
 from the one asked for. Wall-following at a shallow angle falls out of that rather
 than being a special case with a threshold to tune.
+
+Going to a *place* rather than a distance — `drive_to`, which is what a tap on the
+map becomes — plans on the occupancy grid first: A* at cell resolution over the map
+inflated by the standoff, with unknown treated as blocked, thinned to the handful of
+corners that change heading. The polyline is a sketch, not a promise — the live scan
+stays in the loop while following it, and the route is thrown away and planned again
+when the room disagrees. `planner.py` is pure Python but shaped for this host: the
+inflation is one whole-array pass per disc offset rather than one write per blocked
+cell, and A* runs on flat Python lists because a numpy scalar read costs several
+list indexes. The first version did neither and took 7–10 **seconds** a route on
+this Pi, paid again at every replan; it now takes about 0.2 s, same routes. A rover
+that has ended up inside the inflation ring of a wall plans from the nearest free
+cell instead of being refused — that is the wedged case, and refusing it is how a
+planner strands the thing it steers.
+
+One move at a time, enforced with a lock rather than assumed: tool calls arrive on
+whichever connection thread carried them, and a turn racing a drive would interleave
+PWM. The second request is refused as "busy" — queueing it would drive the rover
+somewhere the first caller has since made wrong. `stop()` takes no lock and always
+gets through.
 
 Every move returns **why it stopped**, which matters more than the pose: "stopped
 after 40 cm because something was 32 cm ahead" is actionable and "done" is not.
@@ -360,9 +382,11 @@ selftest.c    correctness against a synthetic room and a synthetic table
 build.sh      builds libslam2d.so and selftest, on the machine that runs them
 slam2d.py     ctypes binding, and describe(); checks its struct layout each load
 navigator.py  the drive controller: avoidance, steering, speed, PWM
+planner.py    a route through the occupancy grid, as a few corners; `python3 planner.py` self-tests
 mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
 run_slam.py   mapping on its own: pose, clearance, a PGM
 dryrun.py     the whole driving stack on live scans, with nothing wired to the motors
+calibrate_turn.py  measures real turns against the lidar profile, outside the matcher
 ```
 
 `libslam2d.so` and `selftest` are build products and are not committed.
@@ -375,18 +399,14 @@ once and later cleared back to exactly zero is indistinguishable from one never 
 
 ## What is not done yet
 
-- **Nothing has actually been driven.** This is the big one. Every real-sensor
-  measurement here was taken with the rover stationary on a bench, and every figure
-  for tracking, speed control and steering comes either from synthetic scans or from
-  `dryrun.py` with the motors disconnected. The first real move wants a clear floor,
-  a hand near the power switch, and `--seconds` kept short.
-- **The direction the wheels turn is inferred, not observed.** The PWM pairing copies
-  `driver_board/drive_gamepad.py`, which is known to work, and the counter-clockwise
-  sense is asserted in `dryrun.py` — but no motor has yet turned under this code.
-- **The speed loop has never seen a moving rover.** With no encoders it is a single
-  scale factor nudged by the matcher's measured speed, clamped tight because at 10 Hz
-  anything eager will oscillate. Expect to tune it, and expect the straight-line trim
-  to matter, since equal PWM is not equal speed on this chassis.
+- **Turning has been driven for real; straight-line speed control barely has.** The
+  open-loop turn rates in `navigator.py` came off the floor via `calibrate_turn.py`,
+  which measures against the lidar profile rather than the matcher under test, and
+  the wheel sense is both asserted in `dryrun.py` and confirmed by those runs. The
+  speed loop is still a single scale factor nudged by the matcher's measured speed,
+  clamped tight because at 10 Hz anything eager will oscillate — expect to tune it,
+  and expect the straight-line trim to matter, since equal PWM is not equal speed on
+  this chassis.
 - **The gyro and the magnetometer are still unused.** The two scale factors in
   [The motion prior](#the-motion-prior-and-the-two-numbers-nobody-has-measured) remain
   unmeasured. Once driving works, `turn_in_place` calibrates the gyro for free by

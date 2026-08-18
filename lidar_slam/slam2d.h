@@ -7,9 +7,9 @@
  * CRC-checking one revolution's 42 packets is 24.7 ms against 0.05 ms. See
  * README.md for the whole table.
  *
- * There is deliberately no loop closure and no pose graph. At the 0.138 ms per
+ * There is deliberately no loop closure and no pose graph. At the 0.058 ms per
  * candidate pose this hardware manages, the search window slam_toolbox uses in the
- * VM works out to roughly 46 seconds per closure attempt, so what you get here is
+ * VM works out to roughly 19 seconds per closure attempt, so what you get here is
  * scan-matched local odometry with honest accumulated drift -- good enough to keep
  * a room-scale occupancy grid and avoid obstacles, not a globally consistent map.
  *

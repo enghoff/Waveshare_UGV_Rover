@@ -23,6 +23,7 @@ nothing to consult, and it is still right when the pose estimate is not.
 drop, a low sill or a table top. Thirty centimetres from a wall is safe; thirty
 centimetres from a table edge is not, and no tuning here changes that.
 """
+import functools
 import glob
 import math
 import os
@@ -72,27 +73,12 @@ CRAWL_SPEED_MS = 0.12      # when something ahead is unknown rather than clear
 # window instead of failing visibly. Staying well under it is not politeness, it is
 # what keeps the measurement honest while the rover turns.
 MAX_TURN_DPS = 45.0
-# Deliberately far below the window. Turning is measured by the same scan match that
-# the turn is degrading, so the margin buys accuracy, and a slow turn also coasts
-# less when it stops. It was 35 and the overshoot that produced is why this file now
-# servos the rate rather than trusting a PWM number. 25 was then too slow to finish a
-# 90 degree turn inside its budget, measured, so 30: still only 3 degrees a
-# revolution against a 9 degree window.
-TURN_IN_PLACE_DPS = 30.0
 # How fast the commanded rate may rise. Without a ramp the first command of a turn
 # is full differential, and the rover is briefly past the window before the rate
 # loop has seen anything at all -- which is the moment tracking is most likely to be
 # lost, and it happens before any feedback exists to prevent it.
 TURN_RAMP_DPS_PER_S = 60.0
 TURN_TOLERANCE_DEG = 2.0
-# Stop this much ahead of the target, scaled by how fast it is actually turning: one
-# revolution of measurement lag plus the time the tracks take to stop.
-TURN_STOP_LEAD_S = 0.25
-# After halting, how long to let it settle before believing the heading, and how
-# many corrective nudges to allow. Correcting rather than calibrating is deliberate:
-# the coast depends on the floor, and the floor is not a constant.
-TURN_SETTLE_S = 0.6
-TURN_CORRECTIONS = 2
 
 # --- turning open-loop -----------------------------------------------------------
 # Turning is dead reckoned, not servoed. Closing the loop on the scan matcher held
@@ -129,9 +115,9 @@ RESEED_MIN_SCORE = 0.35
 # closer to something than its own turning circle can then neither drive nor turn,
 # so the one refusal that was meant to protect it left it wedged with no move
 # available at all. Rotating is how it gets out. What proximity buys now is caution
-# rather than a veto -- inside this radius the turn goes slowly and says so.
+# rather than a veto -- inside this radius the whole turn runs at the fine PWM,
+# and the outcome says so.
 TURN_CAREFUL_M = 0.24
-TURN_CAREFUL_DPS = 12.0
 
 # --- PWM ------------------------------------------------------------------------
 CMD_PWM = 11               # CMD_PWM_INPUT: {"T":11,"L":..,"R":..}
@@ -212,6 +198,30 @@ class Outcome:
         return out
 
 
+def _one_move_at_a_time(method):
+    """The wheels have one owner at a time.
+
+    The daemon calls tools from whichever connection thread they arrived on, so
+    without this a turn_in_place and a drive_to arriving together would interleave
+    their PWM -- the burst turn sends directly, bypassing the goal that guards
+    _run_goal, so the goal check alone does not cover it. Refusing the second
+    caller with "busy" is the honest answer; queueing it would drive the rover
+    somewhere the first caller has since made wrong.
+
+    stop() and clear_estop() deliberately do not take this lock: a stop must
+    always get through, most of all while a move holds the lock.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if not self._move_mutex.acquire(blocking=False):
+            return Outcome("busy", 0.0, 0.0, "a move is already running")
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._move_mutex.release()
+    return wrapper
+
+
 class Navigator:
     """The lidar, the SLAM core and the control loop, as one owned thing."""
 
@@ -242,6 +252,7 @@ class Navigator:
         self.on_drive_end = on_drive_end
 
         self._lock = threading.Lock()
+        self._move_mutex = threading.Lock()   # see _one_move_at_a_time
         self._run = threading.Event()
         self._thread = None
 
@@ -300,6 +311,7 @@ class Navigator:
             self.slam.close()
 
     # --- commands -------------------------------------------------------------
+    @_one_move_at_a_time
     def drive(self, distance_m=None, speed_ms=None, seconds=None):
         """Go forward until the distance is covered or something is in the way.
         Blocks until it is done and says why it stopped. Avoidance may steer
@@ -321,6 +333,7 @@ class Navigator:
         return self._run_goal({"kind": "drive", "distance": distance,
                                "speed": speed}, limit)
 
+    @_one_move_at_a_time
     def drive_to(self, ahead_m, left_m, speed_ms=None):
         """Go to a place relative to where the rover is now, around obstacles.
 
@@ -423,6 +436,7 @@ class Navigator:
         return planner.plan(grid, res, occupied_at, (pose[0], pose[1]), target_xy,
                             inflate_m=STANDOFF_M)
 
+    @_one_move_at_a_time
     def turn_in_place(self, angle_deg, speed_dps=None):
         """Rotate by this many degrees, counter-clockwise positive.
 
@@ -457,7 +471,8 @@ class Navigator:
 
             # The bulk of it, fast -- unless something is close, in which case the
             # whole turn goes at the fine rate. Turning is still never refused.
-            pwm = TURN_FINE_PWM if (gentle or abs(angle) < TURN_FAST_MIN_DEG)                 else TURN_FAST_PWM
+            pwm = (TURN_FINE_PWM if gentle or abs(angle) < TURN_FAST_MIN_DEG
+                   else TURN_FAST_PWM)
             done = self._burst_turn(pwm, angle)   # moves the pose to match, itself
             time.sleep(TURN_RESEED_S)             # and this is the matcher re-finding it
 
@@ -497,7 +512,8 @@ class Navigator:
             if gentle:
                 detail = f"turned slowly because something was {careful:.2f} m away"
             if abs(error) > TURN_TOLERANCE_DEG * 2:
-                detail = ((detail + "; ") if detail else "") +                     f"still {error:.0f} degrees out after correcting"
+                detail = (((detail + "; ") if detail else "")
+                          + f"still {error:.0f} degrees out after correcting")
             return Outcome("arrived", 0.0, turned, detail)
         finally:
             self._halt()
@@ -621,9 +637,6 @@ class Navigator:
         if g is None:
             return Outcome("stopped", 0.0, 0.0, "cancelled")
         reason, detail = g["done"] or ("stopped", "")
-        if g.get("careful"):
-            detail = ((detail + "; ") if detail else "") + (
-                f"turned slowly because something was {g['careful']:.2f} m away")
         return Outcome(reason, g["travelled"], g["turned"], detail)
 
     def _begin_driving(self):
@@ -796,9 +809,7 @@ class Navigator:
                               pose[1] - self._trail[-1][1]) > 0.05):
             self._trail.append((pose[0], pose[1]))
 
-        if goal["kind"] == "turn":
-            self._step_turn(goal, pose, now)
-        elif goal["kind"] == "goto":
+        if goal["kind"] == "goto":
             self._step_goto(goal, pose, now)
         else:
             self._step_drive(goal, pose, now)
@@ -1052,47 +1063,6 @@ class Navigator:
             res = self.slam.config.resolution_m
             occupied_at = self.slam.config.occupied_at
         return planner.cells_occupied_along(grid, res, occupied_at, path, progress)
-
-    def _step_turn(self, goal, pose, now):
-        goal["turned"] = self._heading_change(goal["start_accum"])
-        goal["travelled"] = math.hypot(pose[0] - goal["start_pose"][0],
-                                       pose[1] - goal["start_pose"][1])
-        left = goal["angle"] - goal["turned"]
-
-        # Stop short by however far it is about to carry on: the rate it is actually
-        # turning, times the time between deciding and being still. A fixed margin
-        # would be wrong at both ends, since this scales with speed.
-        lead = abs(self._measured_turn) * TURN_STOP_LEAD_S
-        if abs(left) <= TURN_TOLERANCE_DEG + lead:
-            goal["done"] = ("arrived", "")
-            return
-        if now >= goal["deadline"]:
-            goal["done"] = ("timed out",
-                            f"turned {goal['turned']:.0f} of "
-                            f"{goal['angle']:.0f} degrees")
-            return
-        if self.slam.rejected:
-            # Turning is where the matcher is most likely to lose its place, and
-            # continuing to spin on a heading nobody trusts is how a rover ends up
-            # facing the wrong way and sure it is not.
-            goal["done"] = ("lost", "the scan match stopped tracking during the turn")
-            return
-
-        # Ease off over the last 25 degrees so it settles instead of hunting. The
-        # floor is what the rate loop can still hold; below about 10 deg/s the tracks
-        # stick and release rather than turn, which is slow enough to run a turn out
-        # of its time budget while it inches the last few degrees.
-        rate = min(abs(goal["rate"]),
-                   max(10.0, abs(left) / 25.0 * TURN_IN_PLACE_DPS))
-
-        # Close quarters: turn, but gently. This used to abort the move, which left a
-        # rover that had got too near something with no way out at all.
-        touching = self._nearest_recent()
-        if touching is not None and touching < TURN_CAREFUL_M:
-            rate = min(rate, TURN_CAREFUL_DPS)
-            goal["careful"] = round(touching, 2)
-
-        self._drive_pwm(0.0, math.copysign(rate, left))
 
     def _drive_pwm(self, speed_ms, turn_dps):
         """Wanted speed and turn rate -> the PWM pair, closing what loop it can.
