@@ -173,7 +173,22 @@ MAX_FRAME_AGE_S = 1.5
 # check either camera path here makes on what it hands back.
 JPEG_EOI = b"\xff\xd9"
 JPEG_SOI = b"\xff\xd8"
-READ_CHUNK = 4096
+# How much of v4l2-ctl's stdout to take at a time. Sized for the *reader*, not for
+# the frame: this host cannot reassemble 30 frames a second while the tracking loop
+# has the core, so the pipe backs up and every picture the loop acts on is old --
+# measured live on the rover at a median 1.4 s, against a control loop whose whole
+# frame period is 0.43 s. Reading in 4 kB bites cost ten trips through the
+# interpreter per frame and it was losing the race. Measured on the Pi with one
+# core kept busy, frames reassembled per second:
+#
+#                          4 kB reads    64 kB reads
+#     stamping each frame     1.2            3.2
+#     stamping only the kept  1.8           10.4
+#
+# Both halves are needed and neither is sufficient: with a stamp looked up for every
+# frame the read size makes no difference, and with 4 kB reads dropping the stamps
+# makes almost none.
+READ_CHUNK = 65536
 # Buffers whose bytes may still be in flight. This is deep because the reader is
 # slow, not because the pairing is: v4l2-ctl delivers 30 frames a second and this
 # host reassembles about four, so the stamps of every frame still queued have to
@@ -345,6 +360,10 @@ class Camera:
         self.frame_bytes = size[0] * size[1] * 2 if pixelformat == "YUYV" else 0
         self.dropped = 0
         self.unpaired = 0
+        # How old the frames that *did* pair have lately turned out to be, in
+        # seconds. The fallback for a frame whose stamp cannot be found -- see
+        # _stamp_for, where guessing CAMERA_LAG_S instead was actively harmful.
+        self.typical_age = CAMERA_LAG_S
         self.complaints = []                # what v4l2-ctl said, if it went wrong
         self._lock = threading.Lock()
         self._fresh = threading.Event()
@@ -413,9 +432,23 @@ class Camera:
                 del self.complaints[:-6]
 
     def _read_frames(self):
-        # Reassembling 30 frames a second is the expensive half of holding this
-        # camera open, and on this one core it is expensive enough to matter to the
-        # rover's control loop. Whoever wants a picture waits; the wheels do not.
+        """Whole JPEGs off the pipe, of which only the newest is ever handed on.
+
+        Reassembling 30 frames a second is the expensive half of holding this camera
+        open, and on this one core it is expensive enough to matter to the rover's
+        control loop. Whoever wants a picture waits; the wheels do not.
+
+        **But falling behind is not free, and that is what this used to do.** Only
+        the newest frame is ever taken -- `_offer` overwrites the slot -- so the
+        work spent looking up an exposure stamp for each of the others bought
+        nothing, and while it was being spent the pipe filled and v4l2-ctl's own
+        buffers filled behind it. What the loop then got was a *queue*, drained at
+        the reader's rate, so the picture it steered by was over a second old. A
+        control loop cannot be given a second of dead time and be expected to
+        settle; that showed up as the camera swinging past faces and coming back.
+        So everything in the pipe is drained each pass, the pictures nobody will
+        look at are dropped by their length alone, and only the survivor is stamped.
+        """
         stand_aside()
         buf = b""
         scan = 0
@@ -424,14 +457,27 @@ class Camera:
             if not chunk:
                 return
             buf += chunk
+            newest, skipped = None, []
             while True:
                 end = buf.find(JPEG_EOI, scan)
                 if end < 0:
                     # Only the last byte can be half of a marker; keep it in view.
                     scan = max(0, len(buf) - 1)
                     break
-                frame, buf, scan = buf[:end + 2], buf[end + 2:], 0
-                self._offer(frame, self._stamp_for(len(frame)))
+                if newest is not None:
+                    skipped.append(len(newest))
+                newest, buf, scan = buf[:end + 2], buf[end + 2:], 0
+            if newest is None:
+                continue
+            # The stamps of the frames being dropped are consumed rather than left
+            # behind, because _stamp_for matches by byte count from the oldest
+            # pending stamp forwards: an abandoned stamp of the same length would
+            # be handed to a later frame, which is a wrong exposure time rather
+            # than a missing one, and a wrong one is not detectable afterwards.
+            for length in skipped:
+                self._discard_stamp(length)
+            self.dropped += len(skipped)
+            self._offer(newest, self._stamp_for(len(newest)))
 
     def _read_raw(self):
         """Fixed-size frames, for an uncompressed format.
@@ -465,6 +511,19 @@ class Camera:
                 self._offer(bytes(buf), self._stamp_for(need))
                 got = 0
 
+    def _discard_stamp(self, length):
+        """Drop the pending stamp for a frame nobody is going to look at.
+
+        Never waits: a frame being thrown away is not worth a quarter of a second,
+        and if its stamp has not arrived yet the byte count will simply not match
+        anything, which leaves the list as it was and costs one scan.
+        """
+        with self._stamps:
+            hit = next((i for i, s in enumerate(self._pending) if s[0] == length),
+                       None)
+            if hit is not None:
+                del self._pending[:hit + 1]
+
     def _stamp_for(self, length):
         """When the frame now in hand was exposed, on time.monotonic()'s clock.
 
@@ -488,13 +547,29 @@ class Camera:
                 if hit is not None:
                     stamp = self._pending[hit][1]
                     del self._pending[:hit + 1]
-                    if 0 <= time.monotonic() - stamp <= MAX_FRAME_AGE_S:
+                    age = time.monotonic() - stamp
+                    if 0 <= age <= MAX_FRAME_AGE_S:
+                        # Slowly, because one late frame is not a new normal and
+                        # this is what an unpaired frame will be given.
+                        self.typical_age += 0.1 * (age - self.typical_age)
                         return stamp
                     break
                 if not self._stamps.wait(max(0.0, deadline - time.monotonic())):
                     break
         self.unpaired += 1
-        return time.monotonic() - CAMERA_LAG_S
+        # **Not CAMERA_LAG_S.** That is how long this camera takes to hand over a
+        # frame once it has been exposed, and using it here amounts to claiming the
+        # picture is fresh -- which is the one claim that switches off the whole
+        # dead-time compensation, on exactly the frames where the pairing has
+        # already shown something is wrong. On this host the difference is not
+        # academic: frames run over a second old, so an unpaired one was being
+        # declared 41 ms old and its full error corrected a second time.
+        #
+        # What frames have lately turned out to be is a guess, but it is a guess
+        # made of measurements, and it degrades towards the truth rather than away
+        # from it. Until something pairs it is CAMERA_LAG_S, which is right for a
+        # host that is keeping up.
+        return time.monotonic() - self.typical_age
 
     def _offer(self, frame, exposed_at):
         with self._lock:
