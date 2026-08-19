@@ -1163,7 +1163,7 @@ the microphone here and the rover there.
 ```
   the machine you are sitting at            dashscope-intl, Singapore
   ------------------------------            -------------------------
-  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-flash-realtime
+  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-plus-realtime-2026-03-15
                                                 |  text + tool calls
   speakers <-- playback <--24k pcm--------------+
        |
@@ -1455,9 +1455,11 @@ carrying the text is longer than the 125 bytes the RFC allows a control frame, s
 `websockets` throws the reason away and raises a protocol error about the frame
 length instead. A hand-rolled socket read it.
 
-So the default is now `qwen3.5-omni-flash-realtime`, and
-`QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime` is the whole of the way back once
-the account is sorted out.
+The undated alias still cannot bill. A dated snapshot is a different model with
+its own quota, and as of 2026-08-19 `qwen3.5-omni-plus-realtime-2026-03-15` still
+has 1,000,000/1,000,000 free until 2026-11-15, with Stop-on-Exhaust already off.
+That is the default. The alias is `QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime`
+once that row can bill; flash is `QWEN_REALTIME_MODEL=qwen3.5-omni-flash-realtime`.
 
 ### It was one sentence of the prompt all along
 

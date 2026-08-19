@@ -105,20 +105,27 @@ ROOT = Path(__file__).resolve().parent.parent
 ENDPOINT = os.environ.get(
     "QWEN_REALTIME_URL",
     "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime")
-MODEL = os.environ.get("QWEN_REALTIME_MODEL", "qwen3.5-omni-flash-realtime")
-# Flash, and not because it is better. As of 2026-08-17 plus-realtime is refused
-# outright: its free tier is exhausted and the account has "Free Quota Only" set
-# on that model, so the socket opens, `session.created` arrives, and the service
-# then closes with 1007 and "The free tier of the model has been exhausted. If you
-# wish to continue access the model on a paid basis, please disable the 'use free
-# tier only' mode in the management console." Worth knowing how that presents,
-# because it does not present as a billing error: the reason travels in a close
-# frame longer than the 125 bytes the RFC allows a control frame, so `websockets`
-# refuses the frame and raises a protocol error about its length while throwing
-# the text away. It took a hand-rolled socket to read it. Turning that switch off
-# in the Model Studio console is the actual fix -- it is per model, and it takes
-# something like half an hour to propagate -- after which
-# `QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime` is the whole of the way back.
+MODEL = os.environ.get(
+    "QWEN_REALTIME_MODEL", "qwen3.5-omni-plus-realtime-2026-03-15")
+# The dated snapshot, not the undated alias. As of 2026-08-17 the alias
+# `qwen3.5-omni-plus-realtime` is refused outright: its free tier is exhausted
+# and the console marks Stop-on-Exhaust as "Not Supported" for that name, which
+# is Alibaba's way of saying the model has no free quota left to gate. The socket
+# opens, `session.created` arrives, and the service then closes with 1007 and
+# "The free tier of the model has been exhausted. If you wish to continue access
+# the model on a paid basis, please disable the 'use free tier only' mode in the
+# management console." Worth knowing how that presents, because it does not
+# present as a billing error: the reason travels in a close frame longer than the
+# 125 bytes the RFC allows a control frame, so `websockets` refuses the frame and
+# raises a protocol error about its length while throwing the text away. It took
+# a hand-rolled socket to read it.
+#
+# A dated snapshot is a different model with its own quota. Console as of
+# 2026-08-19: `qwen3.5-omni-plus-realtime-2026-03-15` still has 1,000,000/1,000,000
+# free until 2026-11-15, and Stop-on-Exhaust is already off. That is why it is
+# the default. The alias is still
+# `QWEN_REALTIME_MODEL=qwen3.5-omni-plus-realtime` once that row can bill.
+# Flash is `QWEN_REALTIME_MODEL=qwen3.5-omni-flash-realtime`.
 #
 # Read what follows as the price of being here, not as a reason to stay. Plus
 # costs about three times flash and the two are indistinguishable in
