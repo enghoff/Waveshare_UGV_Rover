@@ -15,6 +15,7 @@ The hardware paths are not covered and cannot be: they need the rover.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 
@@ -633,13 +634,91 @@ def test_aiming_through_a_missed_frame():
     check("and keep_going then does nothing", gimbal.pan, before)
 
 
+def test_one_move_puts_a_face_in_the_middle():
+    """Aiming at a corner of the frame must arrive, not set off in roughly the way.
+
+    The gimbal pans about the world's vertical and then tilts about its own
+    horizontal, and the lens is a 130 degree fisheye, so the degrees that centre a
+    face are not the horizontal error times one number and the vertical error times
+    another. That is what this file used to do. Measured on the rover it left a face
+    up to 20 degrees out -- a sixth of the frame -- and worst of all in the ordinary
+    case of the camera already tilted up at somebody standing.
+
+    So the check is the whole claim end to end: put a face at a pixel, let track()
+    make one correction at full gain, then work out where that pixel has got to and
+    insist it is in the middle. Nothing here consults the model being tested -- the
+    forward direction is turned by the pose that was commanded -- so a solve() with
+    its arctangents in the wrong order fails rather than agreeing with itself.
+    """
+    import aiming
+    from aiming import Gimbal
+
+    size = (640, 480)
+    lens = aiming.lens_for(*size)
+    middle = aiming.ray_at(size[0] / 2, size[1] / 2, lens)
+
+    def turned(vector, axis, degrees):
+        """The same fixed direction, seen from a camera that has turned. y is down."""
+        angle = math.radians(degrees)
+        cos, sin = math.cos(angle), math.sin(angle)
+        x, y, z = vector
+        if axis == "pan":                       # about the vertical, positive right
+            return (x * cos - z * sin, y, x * sin + z * cos)
+        return (x, y * cos + z * sin, -y * sin + z * cos)   # positive up
+
+    def where_it_ends_up(face, tilt_now, pan, tilt):
+        fixed = turned(aiming.ray_at(face[0], face[1], lens), "tilt", -tilt_now)
+        return turned(turned(fixed, "pan", pan), "tilt", tilt)
+
+    def off_by(seen):
+        together = sum(a * b for a, b in zip(seen, middle))
+        return math.degrees(math.acos(min(1.0, together)))
+
+    def one_correction(face, tilt_now):
+        gimbal = Gimbal(1.0, size)              # all of it, in one step
+        gimbal.begin(1000.0, 0.0, tilt_now)
+        gimbal.track((face[0] - size[0] / 2) / (size[0] / 2),
+                     (size[1] / 2 - face[1]) / (size[1] / 2),
+                     1.0, 1000.5, exposed_at=1000.5)
+        return gimbal.pan, gimbal.tilt
+
+    # Corners, edges and the two centre lines, from level and from tilted up, which
+    # is where the old arithmetic went furthest wrong.
+    worst = 0.0
+    for face in ((600, 60), (600, 420), (40, 60), (40, 420), (600, 240), (320, 40),
+                 (320, 240), (500, 150)):
+        for tilt_now in (0.0, 15.0, 30.0):
+            pan, tilt = one_correction(face, tilt_now)
+            worst = max(worst, off_by(where_it_ends_up(face, tilt_now, pan, tilt)))
+    check(f"one move centres a face anywhere in the frame (worst {worst:.2f} deg)",
+          worst < 0.5, True)
+
+    # And the fault it replaced, so the size of it is recorded rather than claimed.
+    # This is the arithmetic that used to be in track(): the two errors, each times
+    # a degrees-per-half-frame constant, with no coupling between them.
+    face, tilt_now = (600, 60), 30.0
+    pan_gain, tilt_gain = aiming.gains_for(*size)
+    separable = ((face[0] - size[0] / 2) / (size[0] / 2) * pan_gain,
+                 tilt_now + (size[1] / 2 - face[1]) / (size[1] / 2) * tilt_gain)
+    check("the separable version it replaced would have missed by 10 degrees or more",
+          off_by(where_it_ends_up(face, tilt_now, *separable)) > 10.0, True)
+
+    # A frame size nobody has measured must still aim, and aim sensibly: the desk
+    # script offers 1280x720 and a caller may ask for anything its camera does.
+    for size_tried in ((1280, 720), (320, 240), (800, 600)):
+        pan_half, tilt_half = aiming.gains_for(*size_tried)
+        check(f"{size_tried[0]}x{size_tried[1]} has a believable half frame",
+              60 < pan_half < 75 and 30 < tilt_half < 60, True)
+
+
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_control_calls_without_hardware, test_where,
-                 test_map_view, test_flags, test_aiming_through_a_missed_frame):
+                 test_map_view, test_flags, test_aiming_through_a_missed_frame,
+                 test_one_move_puts_a_face_in_the_middle):
         try:
             test()
         except Exception as exc:

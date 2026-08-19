@@ -11,8 +11,7 @@ this lens and these servo horns, and the two scripts must agree on every one of
 them or they are two different robots. Keeping them in one file makes that
 structural rather than a matter of remembering. The measurement provenance rides
 along with each one, because a number without its recipe cannot be re-measured
-when the hardware changes -- the recipe for the two aiming gains is in
-aim_gains() below.
+when the hardware changes -- the recipe for the lens is in lens_recipe() below.
 
 What is deliberately *not* here: anything that decodes a picture, opens a camera
 or talks to the board. A caller supplies face boxes in full-frame pixels and a
@@ -79,34 +78,135 @@ NMS_THRESHOLD = 0.3
 # on each axis within 2% of each other and template matches 0.88-0.97. The 720p pair
 # above was taken the same way as the old 480p one and has never been re-measured,
 # so treat it as suspect for the same reason.
-PX_PER_DEGREE = {
-    (1280, 720): (9.65, 9.50),
-    (640, 480): (5.22, 5.32),
+# **The lens, not a pixels-per-degree pair.** What used to be here was one number
+# per axis and a multiplication: a face this fraction of a half frame to the right
+# is that many degrees to the right. That is only true along the two centre lines.
+# Everywhere else it is wrong, and measurably so -- see lens_recipe() for what a
+# probe on the rover found and what replaced it.
+#
+# A mode is a window onto the sensor as well as a pixel count, and this camera's
+# 16:9 mode is a *crop* rather than a letterboxed 4:3, so the two modes do not see
+# the same angle and one cannot be derived from the other.
+LENS = {
+    # Measured 2026-08-19 by usb_cameras/calibrate_fov.py, two sweeps that share no
+    # motion: panning gave 11.85 arcmin per pixel with a distortion term of +0.025,
+    # tilting 11.79 and +0.035. Half a percent apart on the scale, which is the part
+    # the aiming leans on. The centre comes one axis from each run, because a sweep
+    # pins the coordinate it moves along and says next to nothing about the other.
+    (640, 480): (11.82, 0.030, (315.9, 227.4)),
+    # Converted from the old template-match pair (9.65 and 9.50 pixels per degree,
+    # which agree to 1.5% and so describe an equidistant lens at 9.575) and never
+    # sweep-fitted. Treat the distortion term and the centre as guesses: this mode
+    # is not what the rover captures, and the desk script that does use it should
+    # have calibrate_fov.py run on it before anything is concluded from it.
+    (1280, 720): (6.27, 0.0, None),
 }
-# What the constants were before the modes were told apart, and still the answer
-# for 1280x720. Kept named because the README and the docstrings quote them.
-PAN_DEG_PER_HALF_FRAME = 66
-TILT_DEG_PER_HALF_FRAME = 38
+# What half a frame comes to in degrees, kept because the README and the docstrings
+# quote them and because the sweep and the deadband are still sized in frames. Now
+# read off the lens rather than measured separately, so there is one description of
+# the optics and not two that can disagree.
+PAN_DEG_PER_HALF_FRAME = 65
+TILT_DEG_PER_HALF_FRAME = 48
+
+
+def lens_for(width, height):
+    """(radians per pixel on the axis, distortion, centre x, centre y, normal).
+
+    An unmeasured mode is scaled from a measured one of the same shape, since within
+    one crop the angular scale goes with the pixel count and the distortion term is
+    written against a normalised radius and so does not. A mode of some *other*
+    shape is a different window onto the sensor and cannot be derived at all, so it
+    falls back to the mode this rover captures and should be measured.
+    """
+    known = LENS.get((width, height))
+    scale, bend, centre = known if known else (None, None, None)
+    if known is None:
+        shape = round(width / height, 2)
+        for (w, h), (arcmin, term, middle) in LENS.items():
+            if round(w / h, 2) == shape:
+                scale, bend = arcmin * w / width, term
+                centre = None if middle is None else \
+                    (middle[0] * width / w, middle[1] * height / h)
+                break
+    if scale is None:
+        scale, bend, centre = LENS[(640, 480)]
+    if centre is None:
+        centre = (width / 2.0, height / 2.0)
+    return math.radians(scale / 60.0), bend, centre[0], centre[1], width / 2.0
+
+
+def theta_of(radius, lens):
+    """Angle off the lens axis, in radians, for a point this many pixels out.
+
+    An equidistant fisheye puts angle in proportion to radius -- which is what this
+    camera turned out to be, near enough -- and the distortion term is the one thing
+    that lets the fit say otherwise. It is written against a normalised radius so
+    that it comes out around a hundredth rather than around 1e-9. The same function
+    is in usb_cameras/calibrate_fov.py, which fits it; this is the one that flies.
+    """
+    scale, bend, _, _, normal = lens
+    return radius * scale * (1.0 + bend * (radius / normal) ** 2)
+
+
+def ray_at(x, y, lens):
+    """The direction a pixel looks along: x right, y down, z out of the lens."""
+    _, _, cx, cy, _ = lens
+    dx, dy = x - cx, y - cy
+    radius = math.hypot(dx, dy)
+    if radius < 1e-9:
+        return 0.0, 0.0, 1.0
+    theta = theta_of(radius, lens)
+    across = math.sin(theta) / radius
+    return dx * across, dy * across, math.cos(theta)
+
+
+def solve(seen, wanted, tilt_now):
+    """Degrees of pan and tilt that move the direction `seen` onto `wanted`.
+
+    One move, exactly, and no iterating towards it. **This is the whole correction
+    that used to be two multiplications**, and the reason it cannot be two is that
+    the gimbal pans about the world's vertical and then tilts about its own
+    horizontal, so the axes are not independent: how much pan centres a face
+    depends on how high in the frame the face is, and on how far the camera is
+    tilted already.
+
+    Undo the tilt first, which puts the direction back in the frame the pan turns
+    within. A pan cannot change how far a direction sits out of that frame's
+    forward plane, so the pan wanted is the one that leaves it exactly as far out
+    as the destination is; the tilt that remains then follows outright.
+
+    Measured on the rover, the old separable version left a face 2 degrees off at
+    20 degrees from the middle, 5 to 9 at 35 to 45, and 13 to 20 -- a sixth of the
+    frame -- out towards the corners, and it got worse the more the camera was
+    already tilted. See lens_recipe().
+    """
+    cos, sin = math.cos(math.radians(tilt_now)), math.sin(math.radians(tilt_now))
+    ax = seen[0]
+    ay = seen[1] * cos - seen[2] * sin
+    az = seen[1] * sin + seen[2] * cos
+    across = math.hypot(ax, az)
+    # Only reachable by pointing a camera at something further round than the
+    # gimbal can swing it, which a face in the picture never is. Standing still
+    # beats moving somewhere arbitrary.
+    if across < 1e-12 or abs(wanted[0]) > across:
+        return 0.0, 0.0
+    pan = math.atan2(ax, az) - math.asin(wanted[0] / across)
+    forward = math.sqrt(max(across * across - wanted[0] * wanted[0], 0.0))
+    tilt = math.atan2(wanted[1], wanted[2]) - math.atan2(ay, forward)
+    return math.degrees(pan), math.degrees(tilt) - tilt_now
 
 
 def gains_for(width, height):
     """Degrees that swing the view by one half frame, in this capture mode.
 
-    An unmeasured mode is scaled from a measured one of the same shape, since
-    within one crop the pixels-per-degree goes with the pixel count. A mode of
-    some *other* shape is a different window onto the sensor and cannot be
-    derived at all, so it falls back to the 720p figures and should be measured.
+    Not the aiming any more -- solve() does that -- but still what sizes the sweep
+    and the deadband, both of which are naturally spoken in frames: step a third of
+    a frame between looks, hold still while the face is within a twenty-fifth of
+    one. Read off the lens so that there is nothing here to disagree with it.
     """
-    measured = PX_PER_DEGREE.get((width, height))
-    if measured is None:
-        shape = round(width / height, 2)
-        for (w, h), (pan, tilt) in PX_PER_DEGREE.items():
-            if round(w / h, 2) == shape:
-                measured = (pan * width / w, tilt * height / h)
-                break
-    if measured is None:
-        return float(PAN_DEG_PER_HALF_FRAME), float(TILT_DEG_PER_HALF_FRAME)
-    return (width / 2) / measured[0], (height / 2) / measured[1]
+    lens = lens_for(width, height)
+    return (math.degrees(theta_of(width / 2.0, lens)),
+            math.degrees(theta_of(height / 2.0, lens)))
 
 
 # Between a command going out and the picture showing any sign of it: 266 ms,
@@ -333,12 +433,52 @@ SCAN_AFTER_S = 2.0
 MAX_DT = 0.25
 
 
-def aim_gains():
-    """How PAN_DEG_PER_HALF_FRAME and TILT_DEG_PER_HALF_FRAME were arrived at.
+def lens_recipe():
+    """How LENS was arrived at, and why it is a lens rather than two gains.
 
-    Not called. Kept as the recipe, because the two constants are the only things
-    in this file that are properties of the hardware rather than of the algorithm,
-    and a changed lens or a servo horn refitted a spline out makes them wrong:
+    Not called. Kept as the recipe, because LENS is the only thing in this file
+    that is a property of the hardware rather than of the algorithm, and a changed
+    lens or a servo horn refitted a spline out makes it wrong.
+
+    **Measure it with usb_cameras/calibrate_fov.py**, which turns the camera by a
+    known angle and fits the projection -- angular scale, one distortion term and
+    the principal point -- to the motion of every feature in the room. Run it both
+    ways, `--axis pan` and `--axis tilt`: they constrain different halves of the
+    answer, the scale twice over and one coordinate of the centre each. On this
+    rover, 2026-08-19, at 640x480:
+
+        pan  sweep   11.85 arcmin per pixel, distortion +0.025, cx 315.9
+        tilt sweep   11.79 arcmin per pixel, distortion +0.035, cy 227.4
+
+    which is 129.6 by 96.2 degrees of room in one picture, and a lens axis thirteen
+    pixels above the middle of the frame.
+
+    **Then check the aiming itself with usb_cameras/calibrate_aim.py**, which is a
+    different question and was the one that mattered: not how wide the lens is but
+    whether the degrees this file works out actually put a face in the middle in
+    one move. It cuts a patch out at a known pixel, commands what the model says,
+    and measures where the patch really went. Measured that way on this rover,
+    degrees still owed after a single correction:
+
+        how far off the middle      the old separable gains      solve()
+        20 degrees                        2.0 - 2.4                0.9 - 1.1
+        35 to 45                          4.7 - 9.1                1.3 - 3.6
+        50 to 65                          8.0 - 19.7               2.4 - 6.2
+
+    Nineteen degrees is a sixth of the frame, and the error grows with the tilt
+    already on -- about 9 degrees from level for a corner target, 21 from +15, 36
+    from +30 -- so the old model was at its worst in the ordinary case of following
+    somebody standing up. It converged anyway, because the loop re-measures every
+    frame; it converged by walking, and at the two and a bit frames a second the
+    on-board detector manages, walking reads as hunting.
+
+    What is left is a degree or three, and most of it is not the model. The gimbal
+    pivots a few centimetres behind the lens, so a subject nearer than about a
+    metre moves by parallax as well as by rotation and no rotation-only model can
+    take that out. Measure in a room with something far away in it.
+
+    **The old recipe, kept because it is the cheap check.** Two gains, one per
+    axis, measured by template matching rather than fitted:
 
         centre the gimbal and grab a frame. Cut a patch out of the middle of it,
         command a known step, grab another frame, and find that patch again with
@@ -395,6 +535,13 @@ def aim_gains():
     camera to a limit and hold it there. Tell them apart by watching one correction
     from a standstill: the wrong sign moves away from the face immediately, while
     too much gain moves towards it first and overshoots.
+
+    Note that those two gains came out 5.22 and 5.32 pixels per degree where the
+    sweep fit says 5.08, three per cent apart and in the direction that says the
+    servo had still not quite arrived. That is the argument for the sweep: it uses
+    thousands of points across twenty frames and throws out the ones that move in a
+    way no rotation explains, where the template match uses one patch and believes
+    whatever the picture did.
     """
 
 
@@ -504,8 +651,14 @@ class Gimbal:
         self.pan = 0.0
         self.tilt = 0.0
         self.gain = gain
-        # Degrees per half frame, for the mode actually being captured -- see
-        # gains_for(). Defaulting to 720p keeps every existing caller as it was.
+        # The lens of the mode actually being captured, and where the middle of its
+        # picture points. Both are fixed for the life of the loop, so they are
+        # worked out once here rather than per frame.
+        self.frame_size = frame_size
+        self.lens = lens_for(*frame_size)
+        self.middle = ray_at(frame_size[0] / 2.0, frame_size[1] / 2.0, self.lens)
+        # Degrees per half frame, which no longer aim anything but still size the
+        # sweep and the deadband -- see gains_for().
         self.pan_gain, self.tilt_gain = gains_for(*frame_size)
         self.sent = None
         # How fast each axis is currently meant to be travelling, degrees a second.
@@ -628,9 +781,18 @@ class Gimbal:
             when = exposed_at - COMMAND_LATENCY_S
         pan_then, tilt_then = self.was_at(when)
         # Where the face is, as an angle. The signs live here, and only here: they
-        # describe how the picture relates to the servos, which is this conversion.
-        face_pan = pan_then + PAN_SIGN * error_x * self.pan_gain
-        face_tilt = tilt_then + TILT_SIGN * error_y * self.tilt_gain
+        # say which way the picture's axes run against the servos', so they belong
+        # on the pixel and not on the answer -- flipping the answer of a coupled
+        # solve() would give a mirrored rover a differently wrong tilt as well.
+        width, height = self.frame_size
+        x = width / 2.0 * (1.0 + PAN_SIGN * error_x)
+        y = height / 2.0 * (1.0 - TILT_SIGN * error_y)
+        # What one move from where the camera was would have to be to put that
+        # pixel in the middle of the picture. Adding it to where the camera was
+        # gives the face's angle outright.
+        step_pan, step_tilt = solve(ray_at(x, y, self.lens), self.middle, tilt_then)
+        face_pan = pan_then + step_pan
+        face_tilt = tilt_then + step_tilt
         self.aim_pan, self.aim_tilt = face_pan, face_tilt
         remaining_pan = face_pan - self.pan
         remaining_tilt = face_tilt - self.tilt
