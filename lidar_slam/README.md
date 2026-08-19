@@ -3,9 +3,8 @@
 Scan-matched localisation, an occupancy grid, and a drive controller that will not
 run into things — from the D500 lidar alone, on the Raspberry Pi 1 bolted to the
 rover. It exists because that Pi already has both sensors wired to it and no map to
-show for them: the ROS 2 stack in [`vm/`](../vm) does the mapping far better, but it
-lives in a VM on VMware's NAT segment and cannot see the rover at all, so nothing it
-computes can ever steer anything.
+show for them, and because a map is only worth computing somewhere that can act on
+it — which means on the rover itself.
 
 The scope is deliberately small. This finds where the rover is relative to where it
 started, keeps a grid of what is solid around it, drives it there without hitting
@@ -67,7 +66,7 @@ consciously rather than discover.
 
 **Loop closure, and with it any globally consistent map.** The cost is not marginal.
 Each candidate pose costs a measured 0.058 ms, and the search window `slam_toolbox`
-uses in the VM — `loop_search_space_dimension: 8.0` at `resolution: 0.05`, so
+uses by default — `loop_search_space_dimension: 8.0` at `resolution: 0.05`, so
 160×160 offsets across 13 angles — is 332,800 poses, or about **19 seconds for one
 closure attempt** on this host. Branch-and-bound of the kind Cartographer uses would
 change that answer, and hand-rolling it is a much larger project than this.
@@ -195,9 +194,9 @@ where the prior stops being optional:
 ```
 
 The driver board's `T:1001` telemetry has everything needed to supply it, and rather
-more than the VM's filter gets: a 9-DoF IMU in `ax/ay/az`, `gx/gy/gz` and — unlike
-the OAK-D-Lite's BMI270 — a magnetometer in `mx/my/mz`, plus wheel encoders in
-`odl`/`odr`.
+more than the lidar alone can offer: a 9-DoF IMU in `ax/ay/az`, `gx/gy/gz` and —
+unlike the OAK-D-Lite's BMI270 — a magnetometer in `mx/my/mz`, plus wheel encoders
+in `odl`/`odr`.
 
 **Two scale factors are needed and neither has been measured on this rover**: the
 encoders' counts per metre, which depends on gearbox and wheel, and the gyro's LSB
@@ -211,8 +210,7 @@ Two further things are known about that stream and worth planning around. It run
 with a 0.2 s timeout reports 17, and the missing sixth is the reader's fault, not the
 firmware's. Even 20 Hz is slow for a gyro: a 60°/s turn advances 3° between samples.
 And the bias is worth removing — `Telemetry` averages the first ~34 samples, about
-1.7 s, with the rover held still, for the same reason `vm/config/ekf.yaml` does. It
-measured 6.9 LSB on `gz`.
+1.7 s, with the rover held still. It measured 6.9 LSB on `gz`.
 
 There is a pleasing way out of the calibration problem, not implemented here: once
 scan matching works, *its* heading is the reference the gyro lacks, so the rover can

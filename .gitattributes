@@ -1,12 +1,8 @@
-# Everything under vm/ is deployed to and executed on a Linux guest. Left to
-# Windows' CRLF checkout, a shebang becomes "#!/usr/bin/env bash\r" and the
-# kernel looks for an interpreter with a carriage return in its name -- which
-# fails as "bad interpreter: No such file or directory", naming a file that
-# plainly exists.
-vm/** text eol=lf
-
-# lidar_slam/ is compiled and run on the rover's Pi, for the same reason: build.sh
-# has a shebang, and gcc would happily accept CRLF in the C but the shell will not.
+# lidar_slam/ is compiled and run on the rover's Pi. Left to Windows' CRLF
+# checkout, build.sh's shebang becomes "#!/usr/bin/env bash\r" and the kernel
+# looks for an interpreter with a carriage return in its name -- which fails as
+# "bad interpreter: No such file or directory", naming a file that plainly
+# exists. gcc would accept CRLF in the C; the shell script will not.
 lidar_slam/** text eol=lf
 
 # oak_detect/ is compiled and run on the rover's Pi too -- build.sh has a shebang,
@@ -14,3 +10,8 @@ lidar_slam/** text eol=lf
 oak_detect/** text eol=lf
 oak_detect/*.mvcmd binary
 oak_detect/*.blob binary
+
+# docs/refs/ is vendor material kept verbatim -- a datasheet or a CAD export is
+# evidence for numbers quoted elsewhere, and rewriting the line endings of a STEP
+# file edits that evidence.
+docs/refs/** -text

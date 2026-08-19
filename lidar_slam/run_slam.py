@@ -81,9 +81,9 @@ class Telemetry:
         gz = msg.get("gz")
         if gz is not None:
             if self.gz_bias is None:
-                # The rover has to be still for this first second. The VM's EKF found
-                # the same thing worth doing: an un-biased yaw rate integrates into
-                # invented rotation faster than anything else here.
+                # The rover has to be still for this first second: an un-biased
+                # yaw rate integrates into invented rotation faster than anything
+                # else here.
                 self._bias_acc += gz
                 self._bias_n += 1
                 if self._bias_n >= self._bias_want:

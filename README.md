@@ -12,10 +12,9 @@ to reach for first when a component misbehaves.
 
 The other half is the rover actually doing something: a daemon on the Pi that
 owns the hardware and hands it out as tools, a face detector and a voice
-assistant that call those tools, a ROS 2 stack that fuses both sensors into a
-map, and a much smaller SLAM written in C that fits on the rover's own Pi — which
-matters because the ROS 2 stack, for all that it is better, runs in a VM that
-cannot reach the rover.
+assistant that call those tools, and a SLAM written in C small enough to run on
+the rover's own Pi — which is the machine that can actually act on what it
+computes.
 
 | Directory | What it drives | Runs on | Needs |
 |---|---|---|---|
@@ -29,7 +28,6 @@ cannot reach the rover.
 | [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the Pi | pyserial |
 | [`lidar_slam/`](lidar_slam) | the lidar as a pose, a map, and a rover that drives itself | the Pi | a C compiler |
 | [`voice_chat/`](voice_chat) | speech in, speech out, with the rover's tools attached | a Linux host with an 8 GB GPU | PyTorch |
-| [`vm/`](vm) | both sensors together: ROS 2, SLAM, sensor fusion | a Linux VM | ROS 2 Humble |
 
 The first four are independent: any can be run with the other components
 unplugged or unpowered, so a result from one never needs the others to be
@@ -60,8 +58,8 @@ rover_daemon/   lights, gimbal and face tracking as tools over TCP
 lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's Pi
 voice_chat/     Whisper + a vision-language model + Kokoro, a desktop client, and
                 a window that drives the rover with no model in the loop
-vm/             both sensors in ROS 2: bringup, SLAM, checks and provisioning
-docs/           the detail — hardware facts, measurements, failure modes
+docs/           the detail — hardware facts, measurements, failure modes;
+                refs/ holds the vendor datasheets and CAD the numbers came from
 ```
 
 A component's directory holds everything belonging to it, output included, which
@@ -92,7 +90,6 @@ on Windows.
 The three service components have their own environments and their own setup,
 described in their own READMEs: [`face_detect/`](face_detect/README.md),
 [`voice_chat/`](voice_chat/README.md) and [`rover_daemon/`](rover_daemon/README.md).
-[`vm/`](vm/README.md) is provisioned by the scripts in `vm/setup/`.
 
 ## Usage
 
@@ -158,15 +155,6 @@ happened, and what you need is what the navigator returned next to what you aske
 for. `python voice_chat\mock_rover.py --drive` gives it an invented room to drive
 in when there is no rover to hand.
 
-[`vm/`](vm/README.md) is the opposite in kind to everything above and shares no
-code with it: both sensors at once in ROS 2 Humble, building a 2D map while the
-rover is pushed by hand. It runs in a Linux VM because the depthai stack and the
-ROS 2 packages need Linux, and the sensors reach it over USB passthrough. What is
-established there is measured rather than assumed — the two sensors agree about
-where objects are to −14.9 mm median over 0.3–1.0 m, and since the rover has no
-wheel encoders, an EKF fusing scan-matched translation with the camera's de-biased
-gyro cuts stationary heading drift by a factor of 260.
-
 ## Documentation
 
 The measurements, hardware facts and failure modes live in [`docs/`](docs).
@@ -182,7 +170,6 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 | [driver-board.md](docs/driver-board.md) | the gamepad controls, how the ESP32 is found, what the heartbeat failsafe does and does not cover |
 | [face-tracking.md](docs/face-tracking.md) | the calibration, the 266 ms of dead time that makes it hard, the sweep, the servo's own limits |
 | [moving-to-new-hardware.md](docs/moving-to-new-hardware.md) | what to re-measure and what to re-tune when the tracking leaves the Pi, and the five faults that all look like a camera that hunts |
-| [vm-usb.md](docs/vm-usb.md) | how a sound card on a shared virtual hub kept killing the lidar, and the three-part fix |
 | [hosts.md](docs/hosts.md) | the machines this rover shares work with here — a local-setup document, not a general one |
 | [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which GPUs are worth it, rent vs buy |
 | [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in, the safety supervisor |
@@ -190,6 +177,9 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 
 The last four are planning and local-setup documents, and are specific to one
 installation rather than general. The rest describe the hardware and the code.
+[`docs/refs/`](docs/refs) is not prose at all: the LD19 datasheet and STEP model
+and the rover kit's own drawing, kept because several measured numbers in the
+documents above are checked against them.
 
 Read the relevant one before concluding a component is dead. Several documented
 failures look exactly like broken hardware and are not: a camera that will not

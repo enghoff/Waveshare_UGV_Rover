@@ -7,9 +7,9 @@ that reach these machines take the host as an argument. Read it as a worked
 example of what deploying to a Pi and a GPU box actually involves, and expect
 every name and number in it to be different on your own network.
 
-Most of this repo runs on the workstation or in the SLAM VM. Two named hosts sit
-outside both, and neither is interchangeable with the other: `rpi` is the only
-machine physically wired to the rover, and `media` is the only one with a GPU.
+Most of this repo runs on the workstation. Two named hosts sit outside it, and
+neither is interchangeable with the other: `rpi` is the only machine physically
+wired to the rover, and `media` is the only one with a GPU.
 
 |  | `admin@rpi` | `root@media` |
 |---|---|---|
@@ -22,8 +22,7 @@ machine physically wired to the rover, and `media` is the only one with a GPU.
 | key | `~/.ssh/id_ed25519_rpi` | `~/.ssh/id_ed25519` (the default one) |
 
 Both are on the same 192.168.1.0/24 home LAN as the rover's ESP32
-(`192.168.1.22`). The SLAM VM is *not* — it lives on VMware's NAT segment at
-192.168.80.x and reaches nothing here directly.
+(`192.168.1.22`).
 
 **Address them by name, not by number.** `rpi.local` and `media.local` both
 resolve by mDNS from the workstation, from the Pi and from MEDIA, and the name is
@@ -157,8 +156,8 @@ takes the *first* value it sees for a keyword — so the key-only settings live 
 `00-key-only.conf` to sort ahead of it. A `99-` file silently loses.
 
 **Code.** Repo files are deployed to `~/ugv/`, mirroring their path here; the
-repo stays source of truth. Plain `scp` is fine (unlike the VM — these are `.py`
-with no shebang, so CRLF does not bite).
+repo stays source of truth. Plain `scp` is fine — these are `.py` with no
+shebang, so CRLF does not bite.
 
 ## `media` — the GPU host
 

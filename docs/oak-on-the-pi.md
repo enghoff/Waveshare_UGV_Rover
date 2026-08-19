@@ -7,9 +7,8 @@ could not have powered it if it could.
 Nothing here is a verdict on the camera or on the tooling for it. It runs from a
 workstation exactly as it always has — that is what [`oak_camera/`](../oak_camera) is
 for, and what [oak-d-lite.md](oak-d-lite.md) and [oak-usb-link.md](oak-usb-link.md)
-describe — and it runs in ROS 2 in [`vm/`](../vm/README.md), which keeps a depthai of
-its own in `~/venvs/oak`. What is ruled out is the third thing: the Pi driving it, on
-the rover, as part of the daemon.
+describe. What is ruled out is the other thing: the Pi driving it, on the rover, as
+part of the daemon.
 
 This is the record of the three findings that decided it. Any of them would have been
 enough on its own.
@@ -42,7 +41,7 @@ depthai's wheels, read off PyPI on 2026-08-18:
 | release | 32-bit ARM wheels |
 |---|---|
 | 3.9.0 (current) | none at all — x86-64, aarch64, macOS and win-amd64 only |
-| 2.32.0.0 (what the VM pins) | `linux_armv6l.linux_armv7l` for **CPython 3.9 and 3.11**, nothing later |
+| 2.32.0.0 (what this repo pins) | `linux_armv6l.linux_armv7l` for **CPython 3.9 and 3.11**, nothing later |
 | piwheels | armv6 builds stop at depthai 2.13.3, for CPython 3.7 and 3.9 |
 
 The wheel exists for the architecture and not for the interpreter, and there is no

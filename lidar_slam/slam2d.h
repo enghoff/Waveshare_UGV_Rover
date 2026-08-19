@@ -8,8 +8,8 @@
  * README.md for the whole table.
  *
  * There is deliberately no loop closure and no pose graph. At the 0.058 ms per
- * candidate pose this hardware manages, the search window slam_toolbox uses in the
- * VM works out to roughly 19 seconds per closure attempt, so what you get here is
+ * candidate pose this hardware manages, the search window slam_toolbox uses by
+ * default works out to roughly 19 seconds per closure attempt, so what you get is
  * scan-matched local odometry with honest accumulated drift -- good enough to keep
  * a room-scale occupancy grid and avoid obstacles, not a globally consistent map.
  *
@@ -28,8 +28,8 @@ typedef struct slam2d slam2d;
 typedef struct {
     /* --- map ------------------------------------------------------------- */
     int   grid_cells;        /* map is grid_cells x grid_cells, rover starts centred */
-    float resolution_m;      /* metres per cell. 0.03 is what the VM uses; 0.05 here,
-                              * because the match cost is dominated by cache misses
+    float resolution_m;      /* metres per cell. 0.05 rather than the more usual
+                              * 0.03, because match cost is dominated by cache misses
                               * into the grid and 5 cm keeps it a third smaller. */
 
     /* --- sensor ---------------------------------------------------------- */
