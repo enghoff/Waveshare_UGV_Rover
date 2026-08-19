@@ -88,3 +88,46 @@ Get-PnpDevice | ? InstanceId -like '*VID_03E7*'
 shows the two states: PID `2485` is the ROM bootloader — idle and healthy — and
 PID `F63B` is the booted device, listed as a phantom whenever the camera is in ROM
 state.
+
+### The other wedge, on the Pi: healthy in `lsusb`, and still refusing to boot
+
+There is a second failure that looks nothing like the one above, and the difference
+matters because the advice above — wait it out — does not touch it. Seen on `rpi`
+after an unexpected reboot, 2026-08-19: the device enumerates perfectly as
+`03e7:2485`, nothing else has it open, `/dev/bus/usb` is writable, and every attempt
+to boot the VPU fails at the first step with
+
+```
+ncDeviceOpen (booting the VPU): communication error (-2)
+```
+
+The tell is in `dmesg`, not in the error: `usb 1-1.3.2: can't set config #1, error
+-71`. The device answers enumeration and then fails to accept a configuration, which
+is a USB-level wedge rather than an XLink one, and no amount of waiting clears it.
+**A device-level reset is not enough** — neither the `USBDEVFS_RESET` ioctl on
+`/dev/bus/usb/001/NNN` nor unbinding and rebinding the device itself changed
+anything. What cleared it was re-binding the **parent hub**:
+
+```bash
+sudo sh -c 'echo 1-1.3 > /sys/bus/usb/drivers/usb/unbind; sleep 5;
+            echo 1-1.3 > /sys/bus/usb/drivers/usb/bind'
+```
+
+after which the self-test passed first time — VPU booted in 4.1 s, inference back at
+its usual 109 ms. Find the path with
+
+```bash
+for d in /sys/bus/usb/devices/*/idVendor; do
+    [ "$(cat $d)" = "03e7" ] && echo "${d%/idVendor}"
+done
+```
+
+and take the parent: `1-1.3.2` is on hub `1-1.3`. Everything else on that hub — on
+this rover the camera, the audio dongle and the lidar's serial adapter — is
+re-enumerated too and comes back on its own; the ESP32 is on the GPIO UART and is
+not affected, so the wheels are not part of this. Stop the daemon first if it is
+tracking, so nothing is holding `/dev/video0` across the reset.
+
+That this followed a spontaneous reboot is probably not a coincidence, and
+[oak-on-the-pi.md](oak-on-the-pi.md) has the reason to suspect: the 5 V rail. Treat a
+Pi that reboots by itself and an OAK that will not boot afterwards as one event.

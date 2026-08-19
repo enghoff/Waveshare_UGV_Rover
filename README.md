@@ -181,6 +181,7 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 | [usb-cameras.md](docs/usb-cameras.md) | how cameras are probed and named, why a black frame is usually the pixel format |
 | [driver-board.md](docs/driver-board.md) | the gamepad controls, how the ESP32 is found, what the heartbeat failsafe does and does not cover |
 | [face-tracking.md](docs/face-tracking.md) | the calibration, the 266 ms of dead time that makes it hard, the sweep, the servo's own limits |
+| [moving-to-new-hardware.md](docs/moving-to-new-hardware.md) | what to re-measure and what to re-tune when the tracking leaves the Pi, and the five faults that all look like a camera that hunts |
 | [vm-usb.md](docs/vm-usb.md) | how a sound card on a shared virtual hub kept killing the lidar, and the three-part fix |
 | [hosts.md](docs/hosts.md) | the machines this rover shares work with here — a local-setup document, not a general one |
 | [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which GPUs are worth it, rent vs buy |
