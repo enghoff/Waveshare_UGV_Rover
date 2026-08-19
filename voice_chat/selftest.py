@@ -632,12 +632,11 @@ def test_rover_client() -> None:
 
 
 def test_connect_errors() -> None:
-    """What the client says when the service is not there.
+    """What the client says when the hosted service is not there.
 
-    This is the most likely thing to go wrong -- the card is shared, so the
-    service is off more often than on -- and it used to be a fifty-line asyncio
-    traceback that named neither the host nor the way to start it. Each way the
-    connection can fail must arrive as one sentence about the right cause.
+    Each way the connection can fail must arrive as one sentence about the
+    right cause -- a traceback out of `websockets` names asyncio internals and
+    not which host, or which key, was refused.
     """
     import asyncio
     import socket
@@ -651,52 +650,39 @@ def test_connect_errors() -> None:
 
     def why(url: str) -> str:
         try:
-            asyncio.run(talk._open(url))
+            asyncio.run(talk._open(url, "sk-test", "qwen3.5-omni-plus-realtime-2026-03-15"))
             return "connected"
-        except talk.ServiceUnreachable as error:
+        except SystemExit as error:
             return str(error)
         except Exception as error:  # the failure this whole thing exists to prevent
             return f"raw {type(error).__name__}: {error}"
 
-    check("a bad URL is explained, not raised",
-          "is not a WebSocket URL" in why("http://127.0.0.1:8767/ws"), True)
     check("a name that does not resolve says so",
-          "does not resolve" in why("ws://nx.invalid:8767/ws"), True)
+          "cannot reach" in why("wss://nx.invalid.example/api-ws/v1/realtime"), True)
 
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         dead = probe.getsockname()[1]
-    refused = why(f"ws://127.0.0.1:{dead}/ws")
-    check("a refused port names the port", f"127.0.0.1:{dead}" in refused, True)
-    # A service that is still loading its weights refuses exactly like one that
-    # was never started, so the message has to cover both or it sends somebody
-    # to restart a service that was seconds from being ready.
-    check("...and allows for a service still warming up", "not bind its port" in refused, True)
-    check("...and says how to start it", "switch_service.sh voice" in refused, True)
+    refused = why(f"ws://127.0.0.1:{dead}/api-ws/v1/realtime")
+    check("a refused port is explained, not raised", "cannot reach" in refused, True)
+    check("...and names the port", f"127.0.0.1:{dead}" in refused, True)
 
-    # A listening socket nobody accepts from: the TCP handshake completes and the
-    # HTTP one never does. This is the shape the failure took in practice -- a
-    # host that is up with the port filtered looks the same from here.
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
     silent = listener.getsockname()[1]
-    original = talk.CONNECT_TIMEOUT_S
+    original = talk.OPEN_TIMEOUT_S
     try:
-        talk.CONNECT_TIMEOUT_S = 0.3
+        talk.OPEN_TIMEOUT_S = 0.3
         check("a silent port times out with an explanation",
-              "did not answer" in why(f"ws://127.0.0.1:{silent}/ws"), True)
+              "did not answer" in why(f"ws://127.0.0.1:{silent}/api-ws/v1/realtime"), True)
     finally:
-        talk.CONNECT_TIMEOUT_S = original
+        talk.OPEN_TIMEOUT_S = original
         listener.close()
 
-    # Something answering HTTP on the port is nearly always the wrong path: the
-    # service serves /health and /chat beside /ws, and only /ws is a socket.
     import http.server
 
     class Plain(http.server.BaseHTTPRequestHandler):
-        # HTTP/1.1 on purpose: websockets refuses a 1.0 response before it ever
-        # looks at the status, and this is meant to exercise the status branch.
         protocol_version = "HTTP/1.1"
 
         def do_GET(self):
@@ -709,7 +695,7 @@ def test_connect_errors() -> None:
     threading.Thread(target=http_server.serve_forever, daemon=True).start()
     try:
         wrong = why(f"ws://127.0.0.1:{http_server.server_address[1]}/")
-        check("a plain HTTP answer points at the path", "/ws" in wrong, True)
+        check("a plain HTTP answer is explained", "rather than upgrading" in wrong, True)
         check("...and quotes what it answered", "404" in wrong, True)
     finally:
         http_server.shutdown()
@@ -947,7 +933,7 @@ def test_prompts() -> None:
 def test_frames() -> None:
     """The /frame contract the daemon posts to, served by the client instead."""
     try:
-        import realtime
+        import talk
     except Exception as exc:
         SKIP.append(f"frame server ({type(exc).__name__}: needs sounddevice)")
         return
@@ -955,7 +941,7 @@ def test_frames() -> None:
     import http.client
     import json as _json
 
-    frames = realtime.Frames(0, host="127.0.0.1")
+    frames = talk.Frames(0, host="127.0.0.1")
     frames.serve_in_background()
     port = frames.server_address[1]
 
@@ -990,17 +976,17 @@ def test_frames() -> None:
         status, payload = post(b"this is not a picture")
         check("something that is not a JPEG is refused",
               (status, payload["ok"]), (400, False))
-        status, payload = post(b"\xff\xd8" + b"\x00" * realtime.MAX_FRAME_BYTES)
+        status, payload = post(b"\xff\xd8" + b"\x00" * talk.MAX_FRAME_BYTES)
         check("...and so is one too big for the model",
               (status, payload["ok"]), (413, False))
         check("...saying what the limit was",
-              str(realtime.MAX_FRAME_BYTES) in payload["error"], True)
+              str(talk.MAX_FRAME_BYTES) in payload["error"], True)
 
         # Older frames are dropped rather than accumulating, since a client that
         # runs for hours would otherwise hold every picture it ever took.
-        for _ in range(realtime.MAX_FRAMES + 2):
+        for _ in range(talk.MAX_FRAMES + 2):
             post(jpeg)
-        check("only a few frames are kept", len(frames._frames), realtime.MAX_FRAMES)
+        check("only a few frames are kept", len(frames._frames), talk.MAX_FRAMES)
     finally:
         frames.shutdown()
         frames.server_close()
@@ -1009,14 +995,14 @@ def test_frames() -> None:
 def test_speaker() -> None:
     """Playback bookkeeping: what was heard, and what was thrown away."""
     try:
-        import realtime
+        import talk
     except Exception as exc:
         SKIP.append(f"speaker ({type(exc).__name__}: needs sounddevice)")
         return
 
     import numpy as np
 
-    speaker = realtime.Speaker(rate=24000)  # no card is opened until start()
+    speaker = talk.Speaker(rate=24000)  # no card is opened until start()
     speaker.begin()
     speaker.write(np.ones(24000, dtype=np.float32) * 0.1)  # one second of reply
     check("nothing has been heard yet", speaker.played_ms(), 0)
@@ -1038,13 +1024,13 @@ def test_speaker() -> None:
 def test_echo_guard() -> None:
     """The suppressor that keeps the rover from interrupting itself."""
     try:
-        import realtime
+        import talk
     except Exception as exc:
         SKIP.append(f"echo guard ({type(exc).__name__}: needs sounddevice)")
         return
 
-    speaker = realtime.Speaker(rate=24000)
-    ears = realtime.Ears(speaker, factor=2.5, on=True)
+    speaker = talk.Speaker(rate=24000)
+    ears = talk.Ears(speaker, factor=2.5, on=True)
     check("a silent speaker hears everything", ears.hears(0.001), True)
 
     speaker._level = 0.1  # the rover is talking
@@ -1052,21 +1038,21 @@ def test_echo_guard() -> None:
     check("...nor a quiet room over the top of it", ears.hears(0.2), False)
     check("...but somebody talking over it does", ears.hears(0.4), True)
 
-    off = realtime.Ears(speaker, factor=2.5, on=False)
+    off = talk.Ears(speaker, factor=2.5, on=False)
     check("switched off, everything gets through", off.hears(0.001), True)
 
 
 def test_pointing_the_camera() -> None:
     """The client tells the rover where to post pictures, on every connection."""
     try:
-        import realtime
+        import talk
         import mock_rover
         import rover_tools
     except Exception as exc:
         SKIP.append(f"camera pointing ({type(exc).__name__}: needs sounddevice)")
         return
 
-    frames = realtime.Frames(0, host="127.0.0.1")
+    frames = talk.Frames(0, host="127.0.0.1")
     frames.serve_in_background()
     port = frames.server_address[1]
 
@@ -1078,7 +1064,7 @@ def test_pointing_the_camera() -> None:
     client = rover_tools.RoverClient(f"127.0.0.1:{server.server_address[1]}")
     try:
         client.probe()
-        realtime.point_camera_here(client, frames)
+        talk.point_camera_here(client, frames)
         check("the rover is told where this client is listening",
               rover.vision, f"127.0.0.1:{port}")
         # And `look` now works, which is the only thing any of it was for.
@@ -1089,7 +1075,7 @@ def test_pointing_the_camera() -> None:
 
         # No frame server means no picture path, and a tool that cannot reach
         # the model's host is worse than a missing one.
-        realtime.point_camera_here(client, None)
+        talk.point_camera_here(client, None)
         check("with nowhere to post, look is withdrawn",
               "look" in [t["function"]["name"] for t in client.tools()], False)
     finally:
@@ -1100,14 +1086,14 @@ def test_pointing_the_camera() -> None:
         frames.server_close()
 
 
-def test_realtime_session() -> None:
+def test_talk_session() -> None:
     """The protocol, against a service that only writes down what it was told."""
     try:
-        import realtime
+        import talk
         import mock_rover
         import rover_tools
     except Exception as exc:
-        SKIP.append(f"realtime session ({type(exc).__name__}: needs sounddevice)")
+        SKIP.append(f"talk session ({type(exc).__name__}: needs sounddevice)")
         return
 
     import asyncio
@@ -1126,11 +1112,11 @@ def test_realtime_session() -> None:
         def types(self):
             return [event["type"] for event in self.sent]
 
-    frames = realtime.Frames(0, host="127.0.0.1")
+    frames = talk.Frames(0, host="127.0.0.1")
     frames.serve_in_background()
     picture = mock_rover._test_card()
     if picture is None:
-        SKIP.append("realtime session (no OpenCV to draw a test frame)")
+        SKIP.append("talk session (no OpenCV to draw a test frame)")
         frames.shutdown()
         frames.server_close()
         return
@@ -1141,7 +1127,7 @@ def test_realtime_session() -> None:
 
     async def exercise():
         ws = Recorder()
-        session = realtime.Session(ws, client, frames, None, realtime.Indicator(),
+        session = talk.Session(ws, client, frames, None, talk.Indicator(),
                                    duplex=False, model="test", quiet=True)
         await session.configure(client.tools(), vision=True)
         sent = ws.sent[0]["session"]
@@ -1250,7 +1236,7 @@ def main() -> int:
     test_speaker()
     test_echo_guard()
     test_pointing_the_camera()
-    test_realtime_session()
+    test_talk_session()
 
     for name in PASS:
         print(f"  ok   {name}")

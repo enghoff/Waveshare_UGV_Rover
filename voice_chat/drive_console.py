@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Drive the rover by hand through the daemon, and watch what it says back.
 
-[realtime.py](realtime.py) and [talk.py](talk.py) move the rover by talking to a
-model that decides which tool to call. That is the point of them, and it is also
+[talk.py](talk.py) moves the rover by talking to a
+model that decides which tool to call. That is the point of it, and it is also
 what makes them the wrong instrument for finding out whether a 90 degree turn
 turns 90 degrees: every number arrives paraphrased, seconds late, from a model
 that may have asked for something else entirely and will describe whatever

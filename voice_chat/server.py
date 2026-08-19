@@ -22,8 +22,8 @@ Tools are executed by the *client*, not here. The rover's hardware hangs off an
 ESP32 that only the Pi is wired to, so this service knows nothing about it: a
 client announces what it can do when it connects, those schemas go into the
 prompt, and a call the model makes goes back down the same socket to be
-performed. `talk.py` on a desktop announces nothing and gets a plain
-conversation, with no mention of rover hardware in its context at all.
+performed. A client that announces no tools gets a plain conversation, with no
+mention of rover hardware in its context at all.
 
 With VOICE_VISION=1 the reply model is a vision-language one and the
 conversation can hold pictures. The picture does **not** arrive through the

@@ -1,32 +1,29 @@
 # Voice chat
 
-Speech in, speech out. The models run on the MEDIA GPU host; the microphone and
-speakers stay on whatever machine you are sitting at.
+Speech in, speech out. The client is [talk.py](talk.py), wherever there is a
+microphone. The model is Alibaba's hosted omni service in Singapore; MEDIA is not
+in that path.
 
 ```
-  the machine you are sitting at        root@media  (RTX 3070, 8GB)
-  ------------------------------        ---------------------------
-  mic -> VAD/endpointing --16k s16le-->  faster-whisper distil-large-v3
-                                              |  text
-                                         Qwen3-VL-4B-Instruct (int4)
-                                              |  sentences, streamed
-  speakers <-- playback <--24k s16le---  Kokoro-82M
+  the machine you are sitting at            dashscope-intl, Singapore
+  ------------------------------            -------------------------
+  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-plus-realtime-2026-03-15
+                                                |  text + tool calls
+  speakers <-- playback <--24k pcm--------------+
+       |
+       +-- tool call --> rover_daemon.py on the Pi --> the board, the camera
 
-  the rover ------------ one JPEG, POST /frame -----------^
-     (only when the model asks to look; never via the desk)
+  the rover --- one JPEG, POST /frame --> here ---> into the session as a turn
 ```
 
-The client is [talk.py](talk.py), wherever there is a microphone. Endpointing —
-deciding the speaker has stopped — is in [endpointing.py](endpointing.py) beside
-it rather than on the GPU; see below for why.
+Endpointing — deciding the speaker has stopped — is in
+[endpointing.py](endpointing.py) beside the client rather than in the cloud; see
+below for why.
 
-There is a second client, [realtime.py](realtime.py), which holds the same
-conversation against Alibaba's hosted omni model and needs no GPU at all. It is
-described in [The same conversation, with no GPU in
-it](#the-same-conversation-with-no-gpu-in-it) at the end; everything between here
-and there is about the deployed path.
+The local GPU stack on MEDIA ([server.py](server.py)) is still in this directory.
+It has no desk client anymore.
 
-A third client has no model in it at all.
+A second program has no model in it at all.
 [drive_console.py](drive_console.py) is a tkinter window with the rover's driving
 tools wired to buttons, and it exists because a conversation is the wrong
 instrument for measuring one: when a turn comes back short you need the number,
@@ -120,8 +117,20 @@ Steady-state turns are ~3.8x faster, and the whole exchange 2x. The first turn i
 
 ## Running it
 
-The service shares the card with `grounding-dino` and `qwen3-vl` and is not meant
-to run alongside them. Switch with the interlock, which now has three options:
+The desk client talks to Alibaba and needs no GPU:
+
+```bash
+python voice_chat/talk.py                      # full duplex; wear headphones
+python voice_chat/talk.py --half-duplex        # push to talk, no barge-in
+python voice_chat/talk.py --rover rpi.local:8769
+```
+
+Just talk. `Ctrl-C` to quit. `--list-devices` and `--input-device N` /
+`--output-device N` if it picks the wrong hardware.
+
+The local GPU service on MEDIA still exists ([server.py](server.py)). It shares
+the card with `grounding-dino` and `qwen3-vl` and is not meant to run alongside
+them. Switch with the interlock, which now has three options:
 
 ```bash
 ssh root@media ~/switch_service.sh voice     # or: dino, qwen
@@ -130,15 +139,7 @@ ssh root@media ~/switch_service.sh voice     # or: dino, qwen
 (That script was `switch_vision_service.sh` until this landed — renamed because
 voice-chat is not vision, and what the set has in common is the card. Its source
 of truth is `services/switch_service.sh` in the **mt4** repo, not this one.)
-
-Then, from the machine with the microphone:
-
-```bash
-python voice_chat/talk.py
-```
-
-Just talk; it endpoints on its own. `Ctrl-C` to quit. `--list-devices` and
-`--input-device N` / `--output-device N` if it picks the wrong hardware.
+It has no desk client in this directory.
 
 One line at the bottom says what the microphone is doing, rewritten in place:
 
@@ -1155,7 +1156,7 @@ that burst as a long silence and ends the turn mid-sentence.
 
 ## The same conversation, with no GPU in it
 
-[realtime.py](realtime.py) holds the conversation above against one of Alibaba's
+[talk.py](talk.py) holds the conversation above against one of Alibaba's
 hosted omni models over its WebSocket protocol. MEDIA drops out of the path
 entirely — no Whisper, no local weights, no Kokoro, no card — and what is left is
 the microphone here and the rover there.
@@ -1182,9 +1183,9 @@ system prompt is read out of [server.py](server.py) by
 and it is in force here on the next connection.
 
 ```bash
-python voice_chat/realtime.py                      # full duplex; wear headphones
-python voice_chat/realtime.py --half-duplex        # push to talk, no barge-in
-python voice_chat/realtime.py --rover rpi.local:8769
+python voice_chat/talk.py                      # full duplex; wear headphones
+python voice_chat/talk.py --half-duplex        # push to talk, no barge-in
+python voice_chat/talk.py --rover rpi.local:8769
 ```
 
 Run it with the virtualenv active. `python` outside it is whichever interpreter
@@ -1307,9 +1308,8 @@ only when it is clearly louder than what is coming out of the speaker — and it
 not acoustic echo cancellation, has no model of the room and no reference
 alignment, and will not save a loud room or a close speaker. Headphones will.
 
-`--half-duplex` is the other way, and it keeps a property [talk.py](talk.py) was
-built around: silence never crosses the network, because this client decides when
-a turn ended and only uploads what it judges to be speech. Full duplex gives that
+`--half-duplex` is the other way: silence never crosses the network, because this
+client decides when a turn ended and only uploads what it judges to be speech. Full duplex gives that
 up, since a service that decides when a turn ended cannot decide it from audio it
 was never sent.
 
@@ -1490,7 +1490,7 @@ asking for it, and this is the cleanest example of that here. It is also why the
 markup in the transcript above looks the way it does: the model is not failing to
 find the control channel, it is writing what the sentence just described.
 
-So `realtime.py` removes that sentence on the way to flash and leaves it alone
+So `talk.py` removes that sentence on the way to flash and leaves it alone
 otherwise (see `instructions` there). It stays in [server.py](server.py) because
 it earns its place there — it is what stops the local model's speech decoder
 reciting result JSON — and the local path has no control channel to lose. Plus was
@@ -1577,7 +1577,7 @@ It has no GPU or microphone dependency, and each part skips where its
 dependencies are absent, so run it anywhere:
 
 ```bash
-python voice_chat/selftest.py               # endpointer, rover client, realtime
+python voice_chat/selftest.py               # endpointer, rover client, talk
 ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py
 ssh rpi 'cd ugv && python3 selftest.py'     # the daemon's own, on the rover
 ```
@@ -1589,7 +1589,7 @@ dispatch, the picture — with no audio hardware involved:
 
 ```bash
 python voice_chat/mock_rover.py --vision 127.0.0.1:8767 &
-python voice_chat/realtime.py --rover 127.0.0.1:8769 --smoke \
+python voice_chat/talk.py --rover 127.0.0.1:8769 --smoke \
     omni_bench/runs/audio/zira/can-you-switch-the-lights-on.wav \
     omni_bench/runs/audio/zira/what-do-you-see.wav --out /tmp/reply.wav
 ```
@@ -1614,7 +1614,7 @@ scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/
 
 `talk.py`, `endpointing.py` and `rover_tools.py` are not deployed anywhere —
 they run from this repo on whichever desk has the microphone. Neither are
-`realtime.py`, `prompts.py` and `mock_rover.py`, and `prompts.py` in particular
+`prompts.py` and `mock_rover.py`, and `prompts.py` in particular
 *cannot* be: it reads `server.py` and `rover_daemon.py` off the disk beside it,
 so it only works from a checkout where both are present. The rover copy is
 flat in `~/ugv/` alongside the face-tracking scripts, which is the layout already
