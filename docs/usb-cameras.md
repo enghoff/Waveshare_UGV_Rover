@@ -149,14 +149,57 @@ it.
 
 ### What this camera turned out to be
 
-| | measured |
+| | measured, at 640x480 |
 |---|---|
-| horizontal | 132 degrees across 640 px |
-| vertical | 98 degrees across 480 px |
-| on the axis | 12.2 arcmin per pixel |
-| centre of the lens | 320, 240 px — the middle of the picture, to a pixel |
+| horizontal | 130 degrees across 640 px |
+| vertical | 96 degrees across 480 px |
+| on the axis | 11.8 arcmin per pixel |
+| distortion term | +0.03, so slightly wider than equidistant at the edge |
+| centre of the lens | 316, 227 px — about 13 px above the middle of the picture |
 
 Near enough an equidistant fisheye: the angular scale is nearly the same everywhere
 in the frame, which is why straight walls bow so obviously in anything it takes. The
 daemon's cone had been drawn at 65 degrees, a guess at a generic webcam, and was
 therefore claiming a third of what the camera could see.
+
+Those figures are from two sweeps taken the same day, 2026-08-19, one panning and one
+tilting: they agree on the scale to half a percent, and each pins the coordinate of
+the centre that it moves along while saying almost nothing about the other, so `cx`
+comes from the pan run and `cy` from the tilt run. **Run both.** An earlier pan-only
+run put the centre 97 px off in `cy` and nobody would have known.
+
+The centre is the row worth reading twice. The lens axis is not the middle of the
+picture, and [`face_tracking/aiming.py`](../face_tracking/aiming.py) needs it to be
+told apart from the middle, because the thing it is trying to do is put a face in the
+*middle* — aiming at the axis instead would leave everyone two and a half degrees
+high in every frame the rover took.
+
+## Whether the aiming can actually use it
+
+[`calibrate_aim.py`](../usb_cameras/calibrate_aim.py) asks the question the tracking
+loop depends on, which the field of view does not answer: given a face at some pixel,
+do the degrees `aiming.py` works out put it in the middle **in one move**?
+
+```bash
+python usb_cameras/calibrate_aim.py --selftest       # no rover needed
+python usb_cameras/calibrate_aim.py aim/ --from -20 30
+python usb_cameras/calibrate_aim.py aim/ --mirror    # the other side of the frame
+```
+
+It cuts a textured patch out at a known pixel, commands what the model says would
+centre it, and measures where the patch really ended up — rectifying both frames
+through the fitted lens onto a common tangent plane first, so that the fisheye's own
+squeeze towards the edges is not read as aiming error. `--selftest` renders a camera
+whose lens and kinematics are known and recovers a rendered residual to a tenth of a
+degree, which is what makes the hardware numbers worth anything.
+
+What it found on this rover, 2026-08-19, is in `aiming.lens_recipe()`: the separable
+pixels-times-a-gain model that used to fly left a face up to 20 degrees out towards
+the corners and got worse the more the camera was already tilted. Solving the
+pan-then-tilt geometry instead lands within a few degrees everywhere.
+
+**Measure in a room with something far away in it.** The gimbal pivots a few
+centimetres behind the lens, so a subject nearer than about a metre moves by parallax
+as well as by rotation, and no rotation-only model can take that out. A first run of
+this test was done against a sofa 40 cm away and produced a confident, wrong answer
+in the opposite direction.

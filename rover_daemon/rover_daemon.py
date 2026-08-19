@@ -173,15 +173,16 @@ MAP_SCALE = 3
 # most of the time, and the rover's own arrow says nothing about where the camera got
 # to.
 #
-# Measured, on this rover's camera, by usb_cameras/calibrate_fov.py: 132 degrees
-# across and 98 down, at 640x480. It stood at 65 for a long time as a guess at a
+# Measured, on this rover's camera, by usb_cameras/calibrate_fov.py: 130 degrees
+# across and 96 down, at 640x480, re-measured 2026-08-19 by a pan sweep and a tilt
+# sweep that agreed to half a percent. It stood at 65 for a long time as a guess at a
 # generic webcam, and the guess was wrong by more than a factor of two -- the module
 # fitted here is a fisheye, and the cone was claiming a third of what was actually in
 # shot. Two independent references agree to within a degree, the pan servo's own
 # degrees and the lidar's scan-matched heading while the whole chassis turns, which
 # is also what says the servo is honest. Re-measure it if the camera is ever changed;
 # `--camera-fov` is there for a rover wearing a different lens.
-CAMERA_FOV_DEG = 132.0
+CAMERA_FOV_DEG = 130.0
 
 MAP_MAX_HALF_EXTENT_M = 10.0
 MAP_MAX_SCALE = 16
