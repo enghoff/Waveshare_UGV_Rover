@@ -281,6 +281,24 @@ HISTORY_S = max(2.5, DEAD_TIME_S * 2)
 # 0.7 buys most of the speed for a bounded amount of swinging past. Going higher
 # is tempting and is what the servo ceiling punishes: the bigger the single step,
 # the longer the camera spends mid-move while frames are being taken of it.
+#
+# **0.9 was tried on 2026-08-19 and put back the same day.** The argument for it was
+# that the frames this loop acts on are a measured 1.4 s old -- the camera delivers
+# 30 a second and this host reassembles five, so everything else queues -- and that a
+# higher gain covers more of the ground on the one correction anybody watching the
+# rover actually sees. Simulated at that frame age rather than the 227 ms the table
+# above assumes, a stationary face 39 degrees off centre, pixels from the middle:
+#
+#     gain 0.5    250 250 127  64  76 118 101  44  11    worst swing back  42 px
+#     gain 0.7    250 250 102  31  84 156  96  19  19                      72 px
+#     gain 0.9    250 250 102  10  97 190  78  74  25                     102 px
+#
+# 0.9 does land within 10 px on the third frame where 0.7 needs 31 -- and then swings
+# back out half a frame, which is worse to watch than arriving a frame later. Every
+# gain rings while the picture is a second old and the higher ones ring harder, so
+# the answer is not the gain: it is the frame age, and that is a property of the
+# host. At a 200 ms frame age the ranking is the one the table above describes and
+# 0.7 rings barely at all.
 GAIN = 0.7
 # Inside this fraction of a half frame, the face counts as centred and nothing is
 # sent. Servos hunting around a target they cannot quite hold is the failure this
@@ -343,9 +361,58 @@ SETTLE_WITHIN_S = 0.08
 
 # The box centre jitters by a few pixels frame to frame on a motionless face, and
 # every pixel of that becomes a servo command. This is the weight of a new
-# measurement in the smoothed position: low enough to settle, high enough not to
+# measurement in the smoothed estimate: low enough to settle, high enough not to
 # lag a person walking across the frame.
-SMOOTHING = 0.5
+#
+# **What is smoothed is the face's angle, not its pixel, and the difference is not
+# a nicety.** A pixel means nothing on its own -- it is a position in a particular
+# frame, taken from a particular camera pose -- so averaging the pixels of two
+# frames taken while the camera was chasing averages two measurements of different
+# things, and track() then reads the result as though it had all been measured at
+# the newest pose. The face's angle is a fact about the room and stays true however
+# the camera moves, so successive estimates of it can be averaged honestly.
+#
+# This was smoothing the pixel until 2026-08-19, and the cost was not subtle. Driving
+# the real Target and Gimbal from a simulated loop at the rover's own 2.4 frames a
+# second, with the servo modelled -- command latency, then travel at the speed the
+# command carried -- a stationary face 39 degrees off centre went
+#
+#     250 -> 191 -> 41 -> 110 -> 141 -> 96 -> 40 -> 3 px from the middle
+#
+# reaching the middle on the third frame and then swinging back out past a fifth of
+# the frame. From the corner it did not settle at all inside eight frames, and
+# raising GAIN made it worse rather than better, which is the signature of a lag in
+# the loop and not of a gain set too low. Smoothing the angle instead:
+#
+#     250 -> 191 -> 41 -> 62 -> 19 -> 6 -> 6 -> 6
+#
+# which is the monotone approach the gain was chosen to give.
+#
+# **The weight itself is a trade and 0.5 was the wrong end of it.** Filtering costs
+# frames, and the thing it is paid to suppress is already suppressed by DEADBAND,
+# which holds the camera still for anything under 2.6 degrees. Simulated on the same
+# loop -- frames for a face to reach the middle, against the servo commands and the
+# total travel provoked over forty frames by a *motionless* face whose box wanders:
+#
+#      weight    frames to settle       box wanders 3 px      wanders 8 px
+#                39 deg   corner        cmds   travel         cmds   travel
+#       0.3        10       12           1.2    2.2 deg       2.5    5.5 deg
+#       0.5         7        9           1.7    3.2          5.7   11.6
+#       0.7         5        6           1.8    3.4         10.8   21.8
+#       1.0         5        5           2.5    4.8         17.5   43.2
+#
+# At three pixels of wander the filter buys nothing at all -- the deadband has
+# already eaten it -- and at eight it is the only thing standing between a still
+# face and a twitching servo. 0.7 takes essentially all of the settling speed while
+# keeping half the protection, which is the right place to sit while the wander is
+# unmeasured.
+#
+# **And it is unmeasured.** Measure it: track somebody sitting still and take the
+# frame-to-frame change in `measured_at` out of tracking_status, which is the face's
+# angle in the room and so is free of the camera's own motion. Divide by the lens's
+# 0.197 degrees per pixel for the figure in the table above. Nobody was in front of
+# the rover on 2026-08-19 when this was written.
+SMOOTHING = 0.7
 # A face is not lost the instant it is not detected -- a blink, a turn of the head
 # or the motion blur of the servos moving all drop a frame or two. Hold the aim
 # this long before admitting it is gone.
@@ -583,7 +650,7 @@ class Target:
         # How long a lock survives without a detection. Raised by a slow loop, so
         # that "a frame or two" stays a frame or two rather than becoming none.
         self.grace = grace
-        self.centre = None   # smoothed (x, y), the thing actually aimed at
+        self.centre = None   # (x, y) of the last detection, as the detector gave it
         self.box = None      # the last raw detection, for drawing
         # Whether the *last* update had a detection of its own, as opposed to
         # holding the lock open on grace. The caller has to know: `centre` is a
@@ -617,14 +684,12 @@ class Target:
                 return self.centre is not None and now - self.seen_at < self.grace
             pick = max(strong, key=lambda f: f[2] * f[3])
         x, y, w, h, _ = pick
-        fresh = (x + w / 2, y + h / 2)
-        if self.centre is None or now - self.seen_at >= self.grace:
-            self.centre = fresh  # a new lock starts where the face is, not part way
-        else:
-            self.centre = tuple(
-                previous + SMOOTHING * (new - previous)
-                for previous, new in zip(self.centre, fresh)
-            )
+        # Unsmoothed, deliberately. This is where the face was in *this* frame, and
+        # both the things that read it need that: the proximity gate above is asking
+        # which detection is the same person, and track() is about to say what angle
+        # this frame's pixel corresponds to. The averaging that used to happen here
+        # is in Gimbal.track() now, on the angle -- see SMOOTHING.
+        self.centre = (x + w / 2, y + h / 2)
         self.box = pick
         self.seen_at = now
         self.fresh = True
@@ -793,9 +858,17 @@ class Gimbal:
         step_pan, step_tilt = solve(ray_at(x, y, self.lens), self.middle, tilt_then)
         face_pan = pan_then + step_pan
         face_tilt = tilt_then + step_tilt
-        self.aim_pan, self.aim_tilt = face_pan, face_tilt
-        remaining_pan = face_pan - self.pan
-        remaining_tilt = face_tilt - self.tilt
+        # Smoothed here, where the quantity is an angle in the room rather than a
+        # pixel in a picture -- see SMOOTHING for what averaging the pixel cost. A
+        # lock that has just been taken has nothing to average against and starts
+        # where the face is, exactly as Target used to for the same reason.
+        if self.aim_pan is None:
+            self.aim_pan, self.aim_tilt = face_pan, face_tilt
+        else:
+            self.aim_pan += SMOOTHING * (face_pan - self.aim_pan)
+            self.aim_tilt += SMOOTHING * (face_tilt - self.aim_tilt)
+        remaining_pan = self.aim_pan - self.pan
+        remaining_tilt = self.aim_tilt - self.tilt
         # Deadband in degrees, on what is left to do rather than on what can be
         # seen: a face already centred in a stale frame may still need correcting
         # back if the camera has since been sent past it.
@@ -815,7 +888,8 @@ class Gimbal:
             "error": [round(error_x, 3), round(error_y, 3)],
             "frame_age_ms": None if exposed_at is None else round((now - exposed_at) * 1e3),
             "was_at": [round(pan_then, 1), round(tilt_then, 1)],
-            "face_at": [round(face_pan, 1), round(face_tilt, 1)],
+            "face_at": [round(self.aim_pan, 1), round(self.aim_tilt, 1)],
+            "measured_at": [round(face_pan, 1), round(face_tilt, 1)],
             "sent_to": [round(self.pan, 1), round(self.tilt, 1)],
         }
 

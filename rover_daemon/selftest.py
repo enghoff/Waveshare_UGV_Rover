@@ -711,6 +711,90 @@ def test_one_move_puts_a_face_in_the_middle():
               60 < pan_half < 75 and 30 < tilt_half < 60, True)
 
 
+def test_the_approach_to_a_face_never_turns_back():
+    """Following a face must close on it, not close on it and swing out again.
+
+    A whole simulated loop, because the fault this catches is not visible in any one
+    call: the camera comes most of the way to a face on the third frame, then heads
+    back out past a fifth of the frame before returning. What did that was smoothing
+    the face's *pixel* across frames -- a pixel is a position in one picture taken
+    from one camera pose, and averaging two of them while the camera is moving
+    averages measurements of two different things. Gimbal.track() then reads the
+    average as though it were all measured at the newest pose, which is a lag inside
+    the feedback path, and a lag inside the feedback path rings.
+
+    The tell is in the last check: with the fault present, *raising* the gain makes
+    the overshoot worse rather than the approach quicker. That is what says the loop
+    is not merely sluggish.
+    """
+    import aiming
+    from aiming import Gimbal, Target
+
+    size = (640, 480)
+    lens = aiming.lens_for(*size)
+
+    def turned(vector, axis, degrees):
+        angle = math.radians(degrees)
+        cos, sin = math.cos(angle), math.sin(angle)
+        x, y, z = vector
+        if axis == "pan":
+            return (x * cos - z * sin, y, x * sin + z * cos)
+        return (x, y * cos + z * sin, -y * sin + z * cos)
+
+    def seen_from(world, pan, tilt):
+        """Where a fixed direction lands in the picture, at this pose."""
+        x, y, z = turned(turned(world, "pan", pan), "tilt", tilt)
+        flat = math.hypot(x, y)
+        theta = math.atan2(flat, z)
+        radius, scale, bend = theta / lens[0], lens[0], lens[1]
+        for _ in range(20):               # invert theta_of, which is monotone
+            guess = aiming.theta_of(radius, lens)
+            slope = scale * (1.0 + 3.0 * bend * (radius / lens[4]) ** 2)
+            radius -= (guess - theta) / slope
+        along = radius / flat if flat > 1e-9 else 0.0
+        return lens[2] + x * along, lens[3] + y * along
+
+    def approach(start_px, gain, frames=8):
+        """How far the face is from the middle, frame by frame, in pixels."""
+        dt = 0.42                          # the rate the rover's own detector gives
+        gimbal = Gimbal(gain, size)
+        target = Target(0.65, grace=max(aiming.LOST_GRACE_S, aiming.GRACE_FRAMES * dt))
+        now = 1000.0
+        gimbal.begin(now, 0.0, 0.0)
+        world = aiming.ray_at(*start_px, lens)
+        pose, offsets = (0.0, 0.0), []
+        for _ in range(frames):
+            now += dt
+            x, y = seen_from(world, *pose)
+            offsets.append(math.hypot(x - size[0] / 2, y - size[1] / 2))
+            if target.update([[x - 45, y - 45, 90, 90, 0.95]], now):
+                gimbal.track((target.centre[0] - size[0] / 2) / (size[0] / 2),
+                             (size[1] / 2 - target.centre[1]) / (size[1] / 2),
+                             min(dt, aiming.MAX_DT), now, exposed_at=now - 0.2)
+            gimbal.record(now)
+            pose = (gimbal.pan, gimbal.tilt)
+
+        return offsets
+
+    for start in ((570, 240), (600, 60), (60, 400)):
+        offsets = approach(start, aiming.GAIN)
+        # Never further from the middle than it was two frames ago. Two rather than
+        # one because a frame exposed part way through a move can legitimately read
+        # a little worse than the one before it.
+        turning_back = max((offsets[i] - offsets[i - 2] for i in range(2, len(offsets))),
+                           default=0.0)
+        check(f"the approach from {start} closes on the face "
+              f"(worst turn back {turning_back:+.0f} px)", turning_back < 8.0, True)
+        check(f"and gets inside a fifth of the frame from {start}",
+              min(offsets) < size[0] / 10, True)
+
+    # More gain must buy a quicker approach, not a bigger swing. Where the loop
+    # carries a lag it buys the opposite, which is how this fault announces itself.
+    slow, fast = approach((600, 60), 0.4), approach((600, 60), 1.0)
+    check("more gain arrives sooner rather than overshooting further",
+          min(fast) <= min(slow) + 1.0, True)
+
+
 def main():
     for test in (test_levels, test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_look, test_snapshot_splitting,
@@ -718,7 +802,8 @@ def main():
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_control_calls_without_hardware, test_where,
                  test_map_view, test_flags, test_aiming_through_a_missed_frame,
-                 test_one_move_puts_a_face_in_the_middle):
+                 test_one_move_puts_a_face_in_the_middle,
+                 test_the_approach_to_a_face_never_turns_back):
         try:
             test()
         except Exception as exc:
