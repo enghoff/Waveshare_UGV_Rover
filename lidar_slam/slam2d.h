@@ -59,6 +59,12 @@ typedef struct {
     /* Reject a match whose mean likelihood per point falls below this fraction of
      * the maximum, and fall back to the motion prior instead of believing it. */
     float min_match_score;
+    /* Fold the scan into the map only at or above this. Believe and write are
+     * different questions: a 0.16 fit is still better than the motion prior, but
+     * it is not a pose to stamp walls from. The first scan is exempt, because it
+     * is what the map is made of and has no score. A winner against the rim of
+     * the search window is never written either, whatever it scored. */
+    float min_write_score;
 
     /* --- recovery -------------------------------------------------------- */
     /* A one-off wide search, asked for with slam2d_request_recovery.
@@ -149,12 +155,15 @@ void slam2d_set_prior(slam2d *s, float d_forward_m, float d_yaw_rad);
 /* Match the pending revolution, then fold it into the map. Returns 1 if a scan was
  * processed, 0 if none was pending.
  *
- * A rejected match is never folded in. The pose it would have been written from is
- * one this code has just said it does not believe, and a scan stamped at a pose
- * that is tens of degrees out does not merely go unused -- it becomes part of what
- * the next revolution matches against, at full likelihood, and from then on the
- * wrong answer has evidence for it. Skipping the update leaves the map a little
- * staler and entirely true, which is the trade worth making every time. */
+ * A rejected match is never folded in, nor is a match below min_write_score, nor
+ * one whose winner sat on the rim of the window. The pose those would have been
+ * written from is one this code cannot defend, and a scan stamped there does not
+ * merely go unused -- it becomes part of what the next revolution matches against,
+ * at full likelihood, and from then on the wrong answer has evidence for it.
+ * Skipping the update leaves the map a little staler and entirely true, which is
+ * the trade worth making every time. The pose may still be updated: an answer
+ * against the rim is allowed to walk the window toward the truth, it is just not
+ * allowed to draw. */
 int slam2d_update(slam2d *s);
 
 /* Match, but do not write the map, until told otherwise.

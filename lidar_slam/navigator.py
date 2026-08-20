@@ -138,9 +138,19 @@ TURN_REFIND_S = 2.5        # how long to let the matcher confirm where the re-se
 # a scan that has snapped onto the wrong-but-consistent alignment scores *high* --
 # scoring high is why that pose won -- so the score alone cannot tell a fix from a
 # confident mistake. See slam2d.h.
-RESEED_MIN_SCORE = 0.35    # does the scan fit here at all
-RESEED_MAX_AMBIGUITY = 0.90  # was there an equally good answer somewhere else
-REACQUIRE_GOOD_SCANS = 2   # consecutive healthy matches before the map is trusted again
+RESEED_MIN_SCORE = 0.35    # does the scan fit here at all; same number as
+                           # slam2d min_write_score, and the C core is what
+                           # actually refuses to write below it
+RESEED_MAX_AMBIGUITY = 0.60  # was there an equally good answer somewhere else.
+                           # 0.90 never fired: a 90-degree-out fit in a
+                           # rectangle sits in the 0.7-0.9 band. A turn still
+                           # comes back lost at this; mapping does not stay
+                           # held -- it takes the winner once the pose holds
+                           # still, because freezing the map in a rectangle
+                           # is how a rover stops adding walls for good.
+RESEED_CONFIRM_M = 0.05    # pose must stay put this close across the pair
+RESEED_CONFIRM_DEG = 5.0   # of confirming revolutions, wrap-aware
+REACQUIRE_GOOD_SCANS = 2   # consecutive agreeing matches before the map is trusted again
 SLAM_EVENTS = 20           # how much of the recent history of all this to keep
 
 # Turning is never refused. It used to be, whenever something sat inside the
@@ -195,6 +205,21 @@ UNKNOWN_AHEAD_SECTORS = 3  # +/-30 degrees at 36 sectors
 NEAR_HISTORY = 5
 
 
+def _pose_close(a, b, max_m=RESEED_CONFIRM_M, max_deg=RESEED_CONFIRM_DEG):
+    """True if two (x, y, theta) poses agree closely enough to be the same answer.
+
+    The confirming pair after a re-find has to pass this, not just both look
+    healthy: two recovery sweeps of a rectangle can lock at +38 deg and -25 deg
+    in successive revolutions, both scoring beautifully, and that is two answers
+    that contradict each other rather than one pose to write from.
+    """
+    dx, dy = a[0] - b[0], a[1] - b[1]
+    if dx * dx + dy * dy > max_m * max_m:
+        return False
+    dth = abs((math.degrees(a[2] - b[2]) + 180.0) % 360.0 - 180.0)
+    return dth <= max_deg
+
+
 def _why_lost(health):
     """The reason a re-seed was not believed, as something a person can act on.
 
@@ -208,8 +233,11 @@ def _why_lost(health):
     if health.get("reason"):
         return health["reason"]
     if health.get("edge"):
-        return ("the best fit was against the edge of even the wide search, so the "
-                "rover ended up further round than that search could reach")
+        if health.get("recovery"):
+            return ("the best fit was against the edge of even the wide search, so "
+                    "the rover ended up further round than that search could reach")
+        return ("the best fit was against the edge of the tracking window, so the "
+                "rover moved further than one revolution's search covers")
     if health.get("ambiguity", 0.0) >= RESEED_MAX_AMBIGUITY:
         return (f"another heading fitted the room just as well "
                 f"({health['ambiguity']:.2f} of the best), so the room looks the "
@@ -451,7 +479,12 @@ class Navigator:
         # from _suspend_slam, which stops the matching too: this one keeps matching
         # so the rover can find its way back, and only holds off writing.
         self._map_paused = False
-        self._good_run = 0           # consecutive healthy matches while paused
+        self._need_recovery = False  # wide search until the first healthy match
+        self._confirm_pose = None    # first of the confirming pair, or None
+        self._recovery_this_scan = False
+        self._hold_confirm = False   # True while a burst is still coasting
+        self._min_write_score = float(self.slam.config.min_write_score)
+        self._good_run = 0           # consecutive agreeing matches while paused
         self._health = {}            # how the last match was won, for status
         self._events = []            # a short history of losing and regaining the pose
         self._trail = []
@@ -655,9 +688,11 @@ class Navigator:
         suspended for each burst and the heading re-seeded from the dead reckoning
         afterwards. That re-seed is a guess, and it has been wrong by 48 degrees --
         five times the window the matcher can search -- so nothing is written to the
-        map until a wide search has agreed with it. Until that happens the pose is
-        the only thing at risk; the map, which cannot be repaired because there is no
-        loop closure, is not.
+        map until a wide search has agreed with a tracking revolution on the same
+        pose. Until that happens the pose is the only thing at risk; the map, which
+        cannot be repaired because there is no loop closure, is not. A room that
+        looks the same two ways round still makes the turn come back lost, but
+        mapping takes the winner rather than staying held for good.
 
         Long turns go in bursts of TURN_BURST_MAX_DEG with a measurement between
         them, because a dead-reckoned error is a fraction of the burst it came from
@@ -739,13 +774,17 @@ class Navigator:
                                "dead reckoned; the lidar stopped reporting, so this "
                                "is the commanded turn and not a measured one")
             if lost is not None:
+                map_bit = (
+                    "The map is not being written meanwhile, so nothing is being "
+                    "spoiled by it" if self._map_paused else
+                    "The map is being written from the heading the matcher kept "
+                    "picking -- the better of the answers the room offered -- but "
+                    "that heading is not a measurement")
                 return Outcome("lost", 0.0, done,
                                f"the turn was dead reckoned as {done:.0f} degrees but "
                                f"{_why_lost(lost)}, so the rover is not where it "
                                f"thinks it is and its heading is not to be trusted "
-                               f"until it sees something it recognises. The map is "
-                               f"not being written meanwhile, so nothing is being "
-                               f"spoiled by it")
+                               f"until it sees something it recognises. {map_bit}")
 
             turned = self._heading_change(start_accum)
             error = angle - turned
@@ -820,26 +859,33 @@ class Navigator:
     # --- knowing whether the pose is worth believing --------------------------
 
     def _match_health(self):
-        """How the last match was won, and whether that is good enough to build on.
+        """How the last match was won, and whether that is a pose to build on.
 
-        The score on its own is not enough and never was. A scan that has snapped
-        onto the wrong-but-self-consistent alignment scores *high* -- scoring high
-        is exactly why that pose beat the others -- so a confident mistake and a
-        good fix look identical in it. The other two numbers are what separate them:
-        whether the winner sat against the rim of the window, meaning the answer was
-        probably outside it, and whether some quite different heading fitted just as
-        well. See slam2d.h.
+        `map_ok` is the one bar computed here: the scan fits, the winner was not
+        jammed against the rim of the window, and the match was not rejected.
+        Mapping takes that and a pose that holds still, even when the room is
+        ambiguous -- freezing the map forever in a rectangle is worse than picking
+        the better of the two answers. A turn needs more: no rival heading worth
+        the winner. That bar is deliberately not computed here, because the
+        ambiguity worth judging it by is the recovery sweep's and this runs every
+        revolution -- a tracking match reports 0.0 however symmetric the room is.
+        _refind keeps the sweep's figure and applies it.
+
+        The score on its own is not the bar. A scan that has snapped onto the
+        wrong-but-self-consistent alignment scores *high* -- scoring high is
+        exactly why that pose beat the others. See slam2d.h.
         """
         with self.slam.lock:
             health = {"score": round(self.slam.score, 3),
                       "edge": self.slam.match_edge,
                       "ambiguity": round(self.slam.ambiguity, 3),
-                      "rejected": self.slam.rejected}
-        ok = (not health["rejected"]
-              and health["score"] >= RESEED_MIN_SCORE
-              and not health["edge"]
-              and health["ambiguity"] < RESEED_MAX_AMBIGUITY)
-        return ok, health
+                      "rejected": self.slam.rejected,
+                      "pose": self.slam.pose,
+                      "recovery": self._recovery_this_scan}
+        health["map_ok"] = (not health["rejected"]
+                            and health["score"] >= self._min_write_score
+                            and not health["edge"])
+        return health
 
     def _refind(self, within_s=TURN_REFIND_S):
         """Wait for the matcher to agree with a re-seeded pose, or give up on it.
@@ -847,17 +893,34 @@ class Navigator:
         Per revolution rather than after a fixed wait, which is the difference that
         matters: the old code slept seven revolutions and then read the score once,
         by which time seven scans had already been folded into the map at whatever
-        heading the re-seed invented. Nothing is written here until this returns
-        true, so the cost of being wrong is a few revolutions of pose and no map.
+        heading the re-seed invented. The C core will not write below min_write_score
+        or from an edge match, and mapping stays paused here until the pose holds
+        still across a confirming pair -- so the cost of being wrong is revolutions
+        of pose, not a second copy of the room.
+
+        A turn is only believed if the *recovery* sweep had no rival. The confirming
+        revolution is a tracking match, which cannot see 90 degrees away and so
+        reports ambiguity 0.0 even when the room has two answers; the figure from
+        the wide search is the one that counts.
 
         Returns (ok, health) -- see _match_health.
         """
         # The burst coasts, and a scan taken mid-coast is smeared across the
-        # rotation. Judging the re-seed on it would fail turns that were fine.
-        time.sleep(TURN_SETTLE_S)
+        # rotation. Judging the re-seed on it would fail turns that were fine, and
+        # would also let _note_match resume mapping from those smeared poses.
+        self._hold_confirm = True
+        try:
+            time.sleep(TURN_SETTLE_S)
+        finally:
+            self._hold_confirm = False
+        self._good_run = 0
+        self._confirm_pose = None
+        self._need_recovery = True
         deadline = time.monotonic() + within_s
         seen = self._scans
         good = 0
+        confirm = None
+        recovery_amb = None
         health = dict(self._health)
         while time.monotonic() < deadline:
             if not self.lidar_live():
@@ -870,10 +933,36 @@ class Navigator:
                 time.sleep(0.02)
                 continue
             seen = self._scans
-            ok, health = self._match_health()
-            good = good + 1 if ok else 0
-            if good >= REACQUIRE_GOOD_SCANS:
+            # _note_match already ran on this revolution; its health is the record.
+            health = dict(self._health)
+            pose = health.get("pose")
+            if health.get("recovery"):
+                recovery_amb = health.get("ambiguity")
+            if not health.get("map_ok") or pose is None:
+                good = 0
+                confirm = None
+                continue
+            if confirm is None or not _pose_close(pose, confirm):
+                confirm = pose
+                good = 1
+                continue
+            good += 1
+            if good < REACQUIRE_GOOD_SCANS:
+                continue
+            amb = (recovery_amb if recovery_amb is not None
+                   else health.get("ambiguity", 0.0))
+            if amb < RESEED_MAX_AMBIGUITY:
                 return True, health
+            # The pair has agreed, and no more wide sweeps are coming that could
+            # retract the rival -- the verdict cannot improve, so hand it back
+            # now rather than after the rest of the deadline.
+            break
+        # The tracking confirmation reports ambiguity 0.0, which is a window too
+        # narrow to hold a rival, not a clean bill of health. The figure from the
+        # recovery sweep is the one that made the turn lost.
+        if recovery_amb is not None:
+            health = dict(health)
+            health["ambiguity"] = recovery_amb
         return False, health
 
     def _pause_mapping(self, why):
@@ -884,14 +973,21 @@ class Navigator:
             self.slam.mapping = False
         self._map_paused = True
         self._good_run = 0
+        self._confirm_pose = None
+        self._need_recovery = True
 
     def _resume_mapping(self, why):
         if self._map_paused:
-            self._log_event("map resumed", why, **self._health)
+            self._log_event("map resumed", why,
+                            score=self._health.get("score"),
+                            edge=self._health.get("edge"),
+                            ambiguity=self._health.get("ambiguity"))
         with self.slam.lock:
             self.slam.mapping = True
         self._map_paused = False
         self._good_run = 0
+        self._confirm_pose = None
+        self._need_recovery = False
 
     def _log_event(self, what, why, **fields):
         """A short history of losing and regaining the pose, for whoever asks later.
@@ -910,19 +1006,47 @@ class Navigator:
             del self._events[0]
 
     def _note_match(self):
-        """Record how the last match went, and heal the map when it comes good.
+        """Record how the last match went, and hold or heal the map from it.
 
-        While the map is held there is nothing to do but keep looking, so the way
-        back is the matcher agreeing with itself for a couple of revolutions
-        running. That is what "until it sees something it recognises" means in
-        practice, and it means a rover left lost recovers by itself as soon as it is
-        somewhere it knows, without anybody having to clear the map.
+        One untrustworthy revolution is enough to pause: C will not stamp it, but
+        the next one will not get a wide search unless mapping is held. While held,
+        the first healthy match drops the wide search so the confirming revolution
+        is an ordinary tracking match that has to land in the same place -- two
+        independent +/-60 degree answers agreeing is not the same as the tracker
+        agreeing with the recovery. Mapping resumes once that pair agrees, even if
+        the room looked the same two ways round: the matcher already picked a
+        winner, and a frozen map in a rectangle never grows again.
         """
-        ok, self._health = self._match_health()
+        health = self._match_health()
+        self._health = health
+        if self._hold_confirm:
+            return
+        pose = health.get("pose")
+        # The seed scan has score 0 and is not a failure -- it *is* the map.
+        matched = health["score"] > 0.0 or health["rejected"] or health["edge"]
+
         if not self._map_paused:
             self._good_run = 0
+            self._confirm_pose = None
+            if matched and not health["map_ok"]:
+                self._pause_mapping(_why_lost(health))
             return
-        self._good_run = self._good_run + 1 if ok else 0
+
+        if not health["map_ok"] or pose is None:
+            self._good_run = 0
+            self._confirm_pose = None
+            self._need_recovery = True
+            return
+
+        if self._confirm_pose is None or not _pose_close(pose, self._confirm_pose):
+            self._confirm_pose = pose
+            self._good_run = 1
+            # Next revolution tracks rather than searching +/-60 deg again, so a
+            # flip to a rival peak 90 deg away cannot masquerade as confirmation.
+            self._need_recovery = False
+            return
+
+        self._good_run += 1
         if self._good_run >= REACQUIRE_GOOD_SCANS:
             self._resume_mapping("the scan fits the map again")
 
@@ -1109,16 +1233,19 @@ class Navigator:
                     self._last_packet_at = time.monotonic()
                 if revolutions and not self._suspend_slam:
                     self._dropped += revolutions - 1
-                    if self._map_paused:
+                    self._recovery_this_scan = False
+                    if self._map_paused and self._need_recovery:
                         # Nothing is being written, so the pose is all there is to
                         # get back, and the ordinary window cannot reach it from
-                        # tens of degrees out. Costs about three normal matches a
-                        # revolution and stops the moment the pose is found again.
+                        # tens of degrees out. Asked for until the first healthy
+                        # match, then the confirming revolution tracks -- a second
+                        # wide sweep is free to pick a different peak.
                         self.slam.request_recovery()
+                        self._recovery_this_scan = True
                     if self.slam.update():
-                        self._scans += 1
                         self._last_scan_at = time.monotonic()
                         self._note_match()
+                        self._scans += 1
                         self._on_scan()
             self._watchdog()
             # Keep the board's heartbeat fed even when the PWM has not changed, or
@@ -1601,7 +1728,9 @@ class Navigator:
             "heading_ambiguity": self._health.get("ambiguity", 0.0),
             # False while the pose is not trusted enough to write the map from. The
             # rover goes on driving and avoiding things -- that reads the live scan,
-            # never the map -- but the map stops growing until it knows where it is.
+            # never the map -- but the map stops growing until two revolutions have
+            # agreed on where it is. A room with two answers still resumes, on the
+            # heading the matcher kept picking.
             "mapping": not self._map_paused,
             "slam_events": [dict(e, age_s=round(time.monotonic() - e["at"], 1))
                             for e in self._events[-6:]],
@@ -1671,6 +1800,9 @@ class Navigator:
             # does the same on its side; this is the flag that mirrors it.
             self._map_paused = False
             self._good_run = 0
+            self._confirm_pose = None
+            self._need_recovery = False
+            self._hold_confirm = False
             self._log_event("map resumed", "the map was cleared and rebuilt")
             return {"cleared": True,
                     "reason": "the map is empty and the rover is at its origin"}
@@ -1699,6 +1831,12 @@ def _selftest():
     """
     report = MoveReport()
     assert report.snapshot()["phase"] == "idle", "a fresh report claims a move"
+
+    origin = (0.0, 0.0, 0.0)
+    assert _pose_close(origin, (0.01, 0.0, math.radians(1))), "a centimetre is the same pose"
+    assert not _pose_close(origin, (0.0, 0.0, math.radians(20))), "twenty degrees is not"
+    assert _pose_close((0.0, 0.0, math.pi - 0.02), (0.0, 0.0, -math.pi + 0.02)), \
+        "heading wrap is still the same pose"
 
     report.begin("drive_to", {"ahead_m": 1.2, "left_m": -0.4}, "planning")
     first = report.snapshot()

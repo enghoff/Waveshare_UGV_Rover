@@ -92,6 +92,10 @@ static void build_crc(void)
  * belongs in the record: this rover cannot reliably see a slim chair leg across a
  * room, and a test built on one would only be measuring luck. */
 static int obstacles_on;
+
+/* When set, every packet parses and no point survives -- a covered sensor. The
+ * parser still sees the start angles wrap, so revolutions complete as usual. */
+static int no_returns;
 static const double LEGS[][3] = {
     {1.2, -0.4, 0.05}, {1.2, 0.4, 0.05}, {2.0, -0.4, 0.05}, {2.0, 0.4, 0.05},
 };
@@ -142,7 +146,8 @@ static int make_revolution(unsigned char *out, double x, double y, double th)
              * the world bearing adds the heading. */
             double phi = (MOUNT_DEG - b / 100.0) * M_PI / 180.0;
             angles[k] = b;
-            dists[k]  = (int)(raycast(x, y, th + phi) * 1000.0 + 0.5);
+            dists[k]  = no_returns ? 0
+                        : (int)(raycast(x, y, th + phi) * 1000.0 + 0.5);
         }
 
         memset(q, 0, 47);
@@ -710,6 +715,103 @@ static void test_rejected_scan_is_not_mapped(void)
     slam2d_destroy(s);
 }
 
+static void test_write_is_stricter_than_believe(void)
+{
+    puts("\n--- a match can be believed and still not written ---");
+    /* min_match_score keeps the pose; min_write_score keeps the map. A threshold
+     * above 1.0 makes every later scan fail the write gate while still matching,
+     * which is the split this is testing -- not any particular real-world score. */
+    slam2d_config cfg;
+    slam2d_default_config(&cfg);
+    cfg.mount_deg = MOUNT_DEG;
+    cfg.min_write_score = 1.5f;
+    slam2d *s = slam2d_create(&cfg);
+    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
+    const signed char *g = slam2d_grid(s);
+
+    step(s, 0, 0, 0);
+    step(s, 0, 0, 0);
+    long seeded = grid_fingerprint(g, n_cells);
+    check_true(seeded != 0, "the first scan still seeded a map");
+
+    double x = 0.0;
+    for (int i = 0; i < 10; i++) { x += 0.02; step(s, x, 0, 0); }
+    check_true(!slam2d_rejected(s), "later matches were believed");
+    check_true(grid_fingerprint(g, n_cells) == seeded,
+               "and not one of them reached the map");
+    float px, py, pth;
+    slam2d_pose(s, &px, &py, &pth);
+    close_to("the pose still followed the rover (m)", px, x, 0.06);
+
+    slam2d_destroy(s);
+}
+
+static void test_edge_match_is_not_mapped(void)
+{
+    puts("\n--- a winner against the rim of the window is not written ---");
+    /* Twelve degrees is past the coarse window (+/-9) and close enough that the
+     * rim candidate still fits, so this is an edge match that would have been
+     * believed and written before the write gate, not a rejected one. */
+    const double LIE_DEG = 12.0;
+    slam2d_config cfg;
+    slam2d_default_config(&cfg);
+    cfg.mount_deg = MOUNT_DEG;
+    slam2d *s = slam2d_create(&cfg);
+    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
+
+    for (int i = 0; i < 12; i++) step(s, 0, 0, 0);
+    long fingerprint = grid_fingerprint(slam2d_grid(s), n_cells);
+    check(slam2d_score(s) > 0.8, "a map to stain", slam2d_score(s), 1.0, 0.2);
+
+    slam2d_set_pose(s, 0.0f, 0.0f, (float)(LIE_DEG * M_PI / 180.0));
+    step(s, 0, 0, 0);
+    check_true(slam2d_match_edge(s), "the winner sat on the rim of the window");
+    check_true(!slam2d_rejected(s), "but the pose was still believed");
+    check_true(grid_fingerprint(slam2d_grid(s), n_cells) == fingerprint,
+               "and none of it reached the map");
+    float px, py, pth;
+    slam2d_pose(s, &px, &py, &pth);
+    double heading = pth * 180.0 / M_PI;
+    printf("  %-42s %5.1f deg (was %.0f)\n", "pose walked toward the truth",
+           heading, LIE_DEG);
+    check_true(fabs(heading) < LIE_DEG - 1.0,
+               "the window walked toward the true heading");
+
+    slam2d_destroy(s);
+}
+
+static void test_blind_revolution_does_not_seed(void)
+{
+    puts("\n--- a revolution with no returns is not the seed scan ---");
+    /* A covered sensor still completes revolutions: every packet parses, no point
+     * survives the range filter. Letting one of those stand as the first scan
+     * would mark an empty map as seeded, and every later scan would match an
+     * empty field, score zero and be rejected -- so nothing would ever be
+     * written, and the rover would dead-reckon inside a map that stayed empty
+     * however long it stood in the room. */
+    slam2d_config cfg;
+    slam2d_default_config(&cfg);
+    cfg.mount_deg = MOUNT_DEG;
+    slam2d *s = slam2d_create(&cfg);
+    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
+    const signed char *g = slam2d_grid(s);
+
+    no_returns = 1;
+    for (int i = 0; i < 4; i++) step(s, 0, 0, 0);
+    no_returns = 0;
+    check_true(grid_fingerprint(g, n_cells) == 0,
+               "blind revolutions left the map empty");
+
+    for (int i = 0; i < 6; i++) step(s, 0, 0, 0);
+    check_true(grid_fingerprint(g, n_cells) != 0,
+               "the first real scan still seeded it");
+    check(slam2d_score(s) > 0.8, "and tracking works on it",
+          slam2d_score(s), 1.0, 0.2);
+    check_true(!slam2d_rejected(s), "with the matches believed");
+
+    slam2d_destroy(s);
+}
+
 static void test_mapping_can_be_suspended(void)
 {
     puts("\n--- mapping suspended: still matching, writing nothing ---");
@@ -794,7 +896,7 @@ static void test_recovery_after_a_bad_reseed(void)
     close_to("recovery finds the true heading (deg)", recovered_err, 0.0, 2.0);
     check_true(!slam2d_match_edge(s), "well inside the window it searched");
     check(slam2d_score(s) > 0.8, "and it fits", slam2d_score(s), 1.0, 0.2);
-    check_true(slam2d_ambiguity(s) < 0.9,
+    check_true(slam2d_ambiguity(s) < 0.6,
                "with no rival heading worth worrying about");
     check_true(grid_fingerprint(slam2d_grid(s), n_cells) == fingerprint,
                "and none of it reached the map");
@@ -942,6 +1044,9 @@ int main(void)
     test_features();
     test_table();
     test_rejected_scan_is_not_mapped();
+    test_write_is_stricter_than_believe();
+    test_edge_match_is_not_mapped();
+    test_blind_revolution_does_not_seed();
     test_mapping_can_be_suspended();
     test_recovery_after_a_bad_reseed();
     test_ambiguity_is_reported();

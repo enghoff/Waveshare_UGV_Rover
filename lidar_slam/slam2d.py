@@ -44,6 +44,7 @@ class Config(ctypes.Structure):
         ("fine_lin_steps", c_int),
         ("fine_ang_steps", c_int),
         ("min_match_score", c_float),
+        ("min_write_score", c_float),
         ("recover_lin_m", c_float),
         ("recover_ang_deg", c_float),
         ("recover_lin_steps", c_int),
@@ -231,7 +232,9 @@ class Slam2D:
         For a caller that has just moved the pose itself and cannot yet vouch for
         where it put it -- see slam2d.h. The pose goes on being corrected while
         this is off, so the matcher can find its way back; nothing it believes gets
-        written down until the caller says so.
+        written down until the caller says so. Even while this is on, the C core
+        will not stamp a match below min_write_score or one that won against the
+        rim of its window.
         """
         with self.lock:
             self._lib.slam2d_set_mapping(self._h, 1 if on else 0)
@@ -240,7 +243,7 @@ class Slam2D:
         """Search the wide window on the next revolution, once.
 
         About three normal matches' worth of work, so this is asked for after a
-        dead-reckoned turn rather than done as a matter of course.
+        dead-reckoned turn or a lost pose rather than done as a matter of course.
         """
         with self.lock:
             self._lib.slam2d_request_recovery(self._h)

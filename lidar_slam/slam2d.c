@@ -131,6 +131,7 @@ void slam2d_default_config(slam2d_config *cfg)
     cfg->fine_lin_m       = 0.0125f; cfg->fine_lin_steps  = 2;
     cfg->fine_ang_deg     = 0.75f;   cfg->fine_ang_steps  = 2;
     cfg->min_match_score  = 0.15f;
+    cfg->min_write_score  = 0.35f;
 
     /* +/-60 deg and +/-0.05 m of recovery window, in the same 3 deg steps as the
      * coarse pass so the fine pass after it still fits.
@@ -673,15 +674,21 @@ int slam2d_update(slam2d *s)
     while (s->th > (float)M_PI)  s->th -= (float)(2.0 * M_PI);
     while (s->th <= -(float)M_PI) s->th += (float)(2.0 * M_PI);
 
-    /* Written only from a pose this code is prepared to defend. A rejected match
-     * is one it has just said it does not believe, and a scan stamped at a pose
-     * tens of degrees out is not merely wasted -- the likelihood field takes the
-     * maximum, so it lands at full strength, as attractive to the next revolution
-     * as a wall seen all afternoon, and from then on the wrong answer has evidence
-     * for it. Suspended mapping is the same argument made by the caller, which
-     * knows things this does not: that it has just dead-reckoned a turn and cannot
-     * yet vouch for where it put the pose. */
-    if (s->mapping && !s->rejected) {
+    /* Written only from a pose this code is prepared to defend. Believe and write
+     * are different: a weak or edge-of-window match may still be a better pose than
+     * the prior, but stamping it would put a wall in the likelihood field at full
+     * strength, as attractive to the next revolution as one seen all afternoon, and
+     * from then on the wrong answer has evidence for it. The first scan has nothing
+     * to match against and is the map by definition, so it is exempt -- but a
+     * revolution with no returns in range is not that scan. Letting it stand as the
+     * seed marks an empty map as seeded, and every later scan then matches an empty
+     * field, scores zero and is rejected, so nothing is ever written. Suspended
+     * mapping is the same argument made by the caller, which knows things this does
+     * not: that it has just dead-reckoned a turn and cannot yet vouch for the pose. */
+    int write = s->mapping && !s->rejected && s->pend_n > 0;
+    if (s->seeded)
+        write = write && !s->edge && s->score >= s->cfg.min_write_score;
+    if (write) {
         integrate(s);
         s->seeded = 1;
     }

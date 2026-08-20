@@ -180,10 +180,13 @@ points are thinned to 300 of the ~419 the sensor delivers because every point co
 a cache miss in every one of those poses; thinning bought 25 ms a revolution.
 
 A match whose mean likelihood falls below `min_match_score` is **rejected** and the
-motion prior is used instead — and, since the map is what a bad pose corrupts, a
-rejected match is never written into it. This matters more than it looks: dead
-reckoning drifts predictably, whereas a confidently wrong match teleports the rover
-and then corrupts the map it will be matched against next.
+motion prior is used instead. Writing is a higher bar: `min_write_score` (0.35) and
+a winner that did not sit on the rim of the window. Believe and write are different
+questions — a 0.16 fit is still better than the prior, but it is not a pose to stamp
+walls from, and the first scan — the first that saw anything, a revolution with no
+returns does not count — is exempt because it *is* the map. This matters more
+than it looks: dead reckoning drifts predictably, whereas a confidently wrong match
+teleports the rover and then corrupts the map it will be matched against next.
 
 ## When the match is wrong, and how it says so
 
@@ -212,7 +215,8 @@ room a half turn maps the room exactly onto itself; the self-test measures 0.97 
 against 0.58 from an off-centre pose. Both fit beautifully and the score cannot say
 which is right. It reads 0.0 during ordinary tracking, because a ±9° sweep cannot
 hold a rival 20° out — this is a number to read after a recovery search, not every
-revolution.
+revolution. A turn treats 0.60 as the bar for believing the heading; mapping takes
+the winner once the pose holds still, rather than staying paused in a rectangle.
 
 **`slam2d_angle_profile`** hands back the whole correlation curve against heading,
 which is the artifact worth logging when a map comes out wrong: a peak against the
@@ -222,19 +226,22 @@ in it worth matching.
 
 ### Two rules that keep a bad pose out of the map
 
-**A rejected match is never written.** It used to be: the update stamped the scan
-whether or not it had just declared the pose unbelievable. That is not merely wasted
-work. The likelihood field takes the maximum, so a bad stamp lands at full strength
-— as attractive to the next revolution as a wall seen all afternoon — and from then
-on the wrong answer has evidence for it. One stamp is enough, `lik_decay` needs
-about thirty-two clearing passes to erase it, and with no loop closure nothing ever
-repairs what is left.
+**A rejected match is never written, and neither is a weak one, and neither is one
+that won against the rim of the window.** It used to be that anything not rejected
+was stamped. The likelihood field takes the maximum, so a bad stamp lands at full
+strength — as attractive to the next revolution as a wall seen all afternoon — and
+from then on the wrong answer has evidence for it. One stamp is enough, `lik_decay`
+needs about thirty-two clearing passes to erase it, and with no loop closure nothing
+ever repairs what is left. The pose is still allowed to follow an edge winner, so
+the window can walk toward the truth; it is just not allowed to draw while it does.
 
 **Mapping can be suspended without suspending the matching.** `slam2d_set_mapping`
 is for the caller that has just moved the pose itself and cannot yet vouch for where
 it put it. Matching goes on, so the matcher can find its way back; nothing is
 written until the caller says so. The cost of a wrong re-seed becomes a few
-revolutions of pose and no map at all.
+revolutions of pose and no map at all. The navigator also holds the map on the first
+untrustworthy revolution *outside* a turn: C already refused to stamp that one, but
+the next will not get a wide search unless mapping is paused.
 
 ### The recovery search
 
@@ -249,8 +256,10 @@ spot errs by tens of degrees in heading and by centimetres in position — and b
 cost goes as the *square* of the linear steps and only linearly in the angular ones.
 369 poses against the coarse pass's 175, so a recovery revolution costs about half as
 much again as a normal one (measured 97 ms against 59 ms, both with the daemon also
-running, so both inflated against the idle table above). It has to be that cheap: a
-rover that is lost asks for one every revolution until it is found.
+running, so both inflated against the idle table above). It is asked for until the
+first healthy match, then the confirming revolution uses the ordinary tracking
+window: two independent ±60° answers can lock onto different peaks, both scoring
+beautifully, which is not the matcher agreeing with itself.
 
 Measured in the self-test, on a pose deliberately put 35° out:
 
@@ -344,7 +353,11 @@ from the rates in `TURN_RATES`. That re-seed *tells* the matcher where it is and
 cannot argue — which is how a turn that physically managed 42° of a requested 90 came
 back reported as 90. So the re-seed is treated as a hypothesis rather than an answer:
 mapping stays suspended, a recovery search runs, and the map is written again only
-once a couple of consecutive revolutions have agreed with it.
+once a recovery sweep and the tracking revolution after it have landed within 5° and
+5 cm of each other. A rival heading (ambiguity at or above 0.60) still makes the
+turn come back `lost`, because that number was added to catch a rectangle that fits
+two ways round; mapping takes the winner rather than staying held for the rest of
+the run.
 
 Checked **per revolution**, which is the part that used to lose. The old code slept
 0.7 s and then read the score once, by which time seven scans had already been folded
@@ -357,15 +370,12 @@ because a dead-reckoned error is a fraction of the burst it came from, and a who
 180 guessed in one go can land outside what the search can undo.
 
 If the re-seed is never confirmed the move comes back `lost`, saying which of the
-three things went wrong, and **the map stays suspended** rather than being filled in
-from a pose nobody believes. The rover then heals itself: mapping resumes as soon as
-a couple of revolutions match cleanly again, which is what "until it sees something
-it recognises" means in practice, and it needs nobody to clear the map. `status()`
-carries `mapping`, `match_edge`, `heading_ambiguity` and a short `slam_events`
-history, which is what lets the two failures be told apart after the fact — a rover
-that could not keep up shows dropped revolutions and an answer against the rim of the
-window, while a room that looks the same two ways round shows a rival peak and no
-drops at all.
+three things went wrong. The map is held until two revolutions agree on a pose, even
+when those two were the better of two answers the room offered. `status()` carries
+`mapping`, `match_edge`, `heading_ambiguity` and a short `slam_events` history, which
+is what lets the two failures be told apart after the fact — a rover that could not
+keep up shows dropped revolutions and an answer against the rim of the window, while
+a room that looks the same two ways round shows a rival peak and no drops at all.
 
 Steering is follow-the-gap — the heading with the most room, penalised for departing
 from the one asked for. Wall-following at a shallow angle falls out of that rather
