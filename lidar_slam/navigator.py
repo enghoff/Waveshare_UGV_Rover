@@ -120,11 +120,28 @@ TURN_FINE_PWM = 80
 # Below this the fast burst is mostly its own coast, so the fine PWM does the whole
 # turn: 9 degrees of coast is a third of a 25 degree turn and none of a 90.
 TURN_FAST_MIN_DEG = 30.0
-TURN_RESEED_S = 0.7        # after a burst, time for the matcher to find itself again
-# How well the scan must fit the map after a re-seed before the new heading is
-# believed. Re-seeding hands the matcher an answer it cannot argue with -- its window
-# is 9 degrees -- so this score is the only evidence that the answer was right.
-RESEED_MIN_SCORE = 0.35
+# A burst is dead reckoned, so its error grows with its size -- a 90 that physically
+# managed 42 was 48 degrees out. Cutting a long turn into bursts this size and
+# measuring between them keeps each error inside what the recovery search can undo,
+# and costs only the settling time of the extra bursts.
+TURN_BURST_MAX_DEG = 60.0
+TURN_MAX_BURSTS = 6        # 180 degrees plus corrections, and a floor under a loop
+                           # that would otherwise depend on the turn converging
+# The burst coasts after the PWM stops -- 9 degrees of it at the fast rate -- and a
+# revolution taken during that coast is smeared across the rotation. Waiting this
+# out before believing anything costs a third of a second and saves judging the
+# re-seed on the one scan guaranteed to be worst.
+TURN_SETTLE_S = 0.35
+TURN_REFIND_S = 2.5        # how long to let the matcher confirm where the re-seed put it
+# What the matcher has to say before a re-seeded heading is believed and the map is
+# written again. Three separate questions, because the score answers only the first:
+# a scan that has snapped onto the wrong-but-consistent alignment scores *high* --
+# scoring high is why that pose won -- so the score alone cannot tell a fix from a
+# confident mistake. See slam2d.h.
+RESEED_MIN_SCORE = 0.35    # does the scan fit here at all
+RESEED_MAX_AMBIGUITY = 0.90  # was there an equally good answer somewhere else
+REACQUIRE_GOOD_SCANS = 2   # consecutive healthy matches before the map is trusted again
+SLAM_EVENTS = 20           # how much of the recent history of all this to keep
 
 # Turning is never refused. It used to be, whenever something sat inside the
 # chassis' circumscribed radius, and that was the wrong call: a rover that has got
@@ -176,6 +193,29 @@ UNKNOWN_AHEAD_SECTORS = 3  # +/-30 degrees at 36 sectors
 # again. Taking the closest thing seen in the last half second instead means a
 # return only has to appear once to be believed.
 NEAR_HISTORY = 5
+
+
+def _why_lost(health):
+    """The reason a re-seed was not believed, as something a person can act on.
+
+    Worth spelling out rather than printing three numbers: the fixes are different.
+    An answer against the rim of the window means the turn went further wrong than
+    the search can undo, and the rover needs to be told where it is or the map
+    cleared. A rival peak means the room genuinely looks the same two ways round,
+    and driving somewhere less symmetric fixes it. A low score means the scan does
+    not fit anywhere near here at all, which is usually something in the way.
+    """
+    if health.get("reason"):
+        return health["reason"]
+    if health.get("edge"):
+        return ("the best fit was against the edge of even the wide search, so the "
+                "rover ended up further round than that search could reach")
+    if health.get("ambiguity", 0.0) >= RESEED_MAX_AMBIGUITY:
+        return (f"another heading fitted the room just as well "
+                f"({health['ambiguity']:.2f} of the best), so the room looks the "
+                f"same from two directions and the scan cannot say which is right")
+    return (f"the scan does not fit the map anywhere near there "
+            f"(best match {health.get('score', 0.0):.2f})")
 
 
 def _clamp(v, lo, hi):
@@ -407,6 +447,13 @@ class Navigator:
         self._dropped = 0
         self._near_history = []
         self._suspend_slam = False
+        # Mapping suspended while nothing has confirmed where the pose is. Distinct
+        # from _suspend_slam, which stops the matching too: this one keeps matching
+        # so the rover can find its way back, and only holds off writing.
+        self._map_paused = False
+        self._good_run = 0           # consecutive healthy matches while paused
+        self._health = {}            # how the last match was won, for status
+        self._events = []            # a short history of losing and regaining the pose
         self._trail = []
         self._heartbeat_set = False
 
@@ -599,19 +646,25 @@ class Navigator:
     def turn_in_place(self, angle_deg, speed_dps=None):
         """Rotate by this many degrees, counter-clockwise positive.
 
-        Dead reckoned: a burst of fixed PWM for a computed time, using the rates in
-        TURN_RATES. That is roughly six times faster than servoing on the scan match
-        was, and it keeps working when the lidar browns out during the turn -- which
-        it does, because the motors and the lidar share one 5 V rail.
+        Dead reckoned in bursts of fixed PWM, using the rates in TURN_RATES. That is
+        roughly six times faster than servoing on the scan match was, and it keeps
+        working when the lidar browns out during the turn -- which it does, because
+        the motors and the lidar share one 5 V rail.
 
-        The matcher cannot follow 170 deg/s (its window is 90), so map updates are
-        suspended for the burst and the heading is re-seeded from the dead reckoning
-        afterwards. Integrating scans at wrong poses would corrupt the map, and a map
-        corrupted by a turn is worse than a turn that is a few degrees out.
+        The matcher cannot follow 170 deg/s (its window is 90), so matching is
+        suspended for each burst and the heading re-seeded from the dead reckoning
+        afterwards. That re-seed is a guess, and it has been wrong by 48 degrees --
+        five times the window the matcher can search -- so nothing is written to the
+        map until a wide search has agreed with it. Until that happens the pose is
+        the only thing at risk; the map, which cannot be repaired because there is no
+        loop closure, is not.
 
-        Then, if the lidar is alive, the result is checked and corrected once at the
-        fine PWM. If it is not, the dead-reckoned figure is reported and said to be
-        dead-reckoned rather than passed off as a measurement.
+        Long turns go in bursts of TURN_BURST_MAX_DEG with a measurement between
+        them, because a dead-reckoned error is a fraction of the burst it came from
+        and a whole 180 guessed in one go can land outside what the search can undo.
+
+        If the lidar is not reporting, the commanded figure is returned and said to
+        be dead-reckoned rather than passed off as a measurement.
         """
         self.report.begin("turn_in_place", {"angle_deg": round(float(angle_deg), 1)},
                           "turning")
@@ -630,48 +683,72 @@ class Navigator:
 
         self._begin_driving()
         try:
-            start_th = self.slam.pose[2]
+            # Accumulated rather than wrapped, because a turn is counted and not
+            # merely reported: a measured 181 against a requested 180 wraps to -179
+            # and reads as a rover that has gone the wrong way round.
+            start_accum = self._heading_accum
             had_lidar = self.lidar_live()
+            done = 0.0            # what dead reckoning was told to do, in degrees
+            remaining = angle
+            blind = not had_lidar
+            lost = None
 
-            # The bulk of it, fast -- unless something is close, in which case the
-            # whole turn goes at the fine rate. Turning is still never refused.
-            pwm = (TURN_FINE_PWM if gentle or abs(angle) < TURN_FAST_MIN_DEG
-                   else TURN_FAST_PWM)
-            done = self._burst_turn(pwm, angle)   # moves the pose to match, itself
-            time.sleep(TURN_RESEED_S)             # and this is the matcher re-finding it
+            for _ in range(TURN_MAX_BURSTS):
+                if self._estop:
+                    break
+                # Splitting a turn buys a measurement between the pieces, so with
+                # nothing measuring there is nothing to buy: a blind 180 done sixty
+                # degrees at a time is only three chances to be interrupted.
+                piece = (remaining if blind else
+                         _clamp(remaining, -TURN_BURST_MAX_DEG, TURN_BURST_MAX_DEG))
+                # Fast for the bulk of it, fine for the last of it or when something
+                # is close. Turning is still never refused.
+                pwm = (TURN_FINE_PWM if gentle or abs(piece) < TURN_FAST_MIN_DEG
+                       else TURN_FAST_PWM)
+                stepped = self._burst_turn(pwm, piece)
+                if stepped == 0.0:
+                    break         # what is left is smaller than the burst's own coast
+                done += stepped
+                if blind:
+                    break         # nothing measured that, and nothing is going to
+
+                ok, health = self._refind()
+                if health.get("lidar_gone"):
+                    # It was reporting when this burst began and is not now. Finish
+                    # on what the last measurement said, less the burst just
+                    # commanded -- the best estimate there is once nothing measures.
+                    blind = True
+                    remaining -= stepped
+                    continue
+                if not ok:
+                    lost = health
+                    break
+                remaining = angle - self._heading_change(start_accum)
+                if abs(remaining) <= TURN_TOLERANCE_DEG:
+                    break
 
             # Three outcomes, and they are worth telling apart. The sensor may have
             # stopped reporting, in which case the commanded turn is all there is to
             # report and it must not be dressed up as a measurement. Or it is
-            # reporting but what it sees no longer fits the map at the re-seeded pose,
-            # which means the rover did not go where dead reckoning thinks -- jammed
-            # against something, most likely -- and the heading is not to be trusted.
-            # Or it fits, and the small remaining error can be corrected.
-            if not self.lidar_live():
+            # reporting but nothing it sees fits the map anywhere near where the turn
+            # was supposed to end, which means the rover did not go where dead
+            # reckoning thinks -- jammed against something, most likely. Or it fits,
+            # and the number handed back is a measurement.
+            if blind:
                 return Outcome("arrived", 0.0, done,
                                "dead reckoned; the lidar stopped reporting, so this "
                                "is the commanded turn and not a measured one")
-            reseed_score = self.slam.score
-            if reseed_score < RESEED_MIN_SCORE:
+            if lost is not None:
                 return Outcome("lost", 0.0, done,
                                f"the turn was dead reckoned as {done:.0f} degrees but "
-                               f"the scan no longer fits the map there (match "
-                               f"{reseed_score:.2f}), so the rover was probably "
-                               f"obstructed part way round and its heading is not to "
-                               f"be trusted until it sees something it recognises")
+                               f"{_why_lost(lost)}, so the rover is not where it "
+                               f"thinks it is and its heading is not to be trusted "
+                               f"until it sees something it recognises. The map is "
+                               f"not being written meanwhile, so nothing is being "
+                               f"spoiled by it")
 
-            error = math.degrees((math.radians(angle) - (self.slam.pose[2] - start_th)
-                                  + math.pi) % (2 * math.pi) - math.pi)
-            if abs(error) > TURN_TOLERANCE_DEG:
-                done += self._burst_turn(TURN_FINE_PWM, error)
-                time.sleep(TURN_RESEED_S)
-                if self.lidar_live():
-                    error = math.degrees(
-                        (math.radians(angle) - (self.slam.pose[2] - start_th)
-                         + math.pi) % (2 * math.pi) - math.pi)
-
-            turned = math.degrees((self.slam.pose[2] - start_th + math.pi)
-                                  % (2 * math.pi) - math.pi) if had_lidar else done
+            turned = self._heading_change(start_accum)
+            error = angle - turned
             detail = ""
             if gentle:
                 detail = f"turned slowly because something was {careful:.2f} m away"
@@ -699,13 +776,18 @@ class Navigator:
         what makes that acceptable where the same blindness while driving would not
         be.
 
-        Re-seeding is a loaded gun and worth understanding before trusting the
-        heading that comes back. It *tells* the matcher where it is, and the coarse
-        search window is only about 9 degrees, so if the dead reckoning was well out
-        the matcher cannot climb back and will simply agree with the wrong answer.
-        Observed: a turn that physically managed 42 degrees of a requested 90 was
-        reported as 90, because that is what it had been told. The match score is the
-        only thing that gives it away, which is why the caller checks it.
+        Re-seeding is a loaded gun. It *tells* the matcher where it is, and the
+        ordinary search window is only about 9 degrees, so if the dead reckoning was
+        well out the matcher cannot climb back on its own and will simply agree with
+        the wrong answer. Observed: a turn that physically managed 42 degrees of a
+        requested 90 was reported as 90, because that is what it had been told.
+
+        So this leaves two things behind for the caller to clean up, and _refind is
+        the caller doing it. Mapping is suspended, so the wrong answer cannot be
+        written into the map and become the thing the next revolution matches
+        against. And a recovery search is asked for, which sweeps far wider than the
+        tracking window and can therefore find an answer the re-seed missed by tens
+        of degrees. Neither costs anything if the re-seed was right.
         """
         rate, coast = TURN_RATES[pwm]
         hold = (abs(angle) - coast) / rate
@@ -722,11 +804,127 @@ class Navigator:
                 self._send(-sign * pwm, sign * pwm)
                 time.sleep(0.05)
             self._halt()
-            x, y, th = self.slam.pose
-            self.slam.pose = (x, y, th + math.radians(turned))
+            with self.slam.lock:
+                x, y, th = self.slam.pose
+                # Dead reckoning's answer, and only ever the starting point for the
+                # search that follows. An estop part way through the burst lands here
+                # too, with a `turned` the rover never completed -- which the recovery
+                # search undoes like any other bad guess.
+                self.slam.pose = (x, y, th + math.radians(turned))
+            self._pause_mapping("a turn was dead reckoned and nothing has "
+                                "confirmed where it ended yet")
         finally:
             self._suspend_slam = False
         return turned
+
+    # --- knowing whether the pose is worth believing --------------------------
+
+    def _match_health(self):
+        """How the last match was won, and whether that is good enough to build on.
+
+        The score on its own is not enough and never was. A scan that has snapped
+        onto the wrong-but-self-consistent alignment scores *high* -- scoring high
+        is exactly why that pose beat the others -- so a confident mistake and a
+        good fix look identical in it. The other two numbers are what separate them:
+        whether the winner sat against the rim of the window, meaning the answer was
+        probably outside it, and whether some quite different heading fitted just as
+        well. See slam2d.h.
+        """
+        with self.slam.lock:
+            health = {"score": round(self.slam.score, 3),
+                      "edge": self.slam.match_edge,
+                      "ambiguity": round(self.slam.ambiguity, 3),
+                      "rejected": self.slam.rejected}
+        ok = (not health["rejected"]
+              and health["score"] >= RESEED_MIN_SCORE
+              and not health["edge"]
+              and health["ambiguity"] < RESEED_MAX_AMBIGUITY)
+        return ok, health
+
+    def _refind(self, within_s=TURN_REFIND_S):
+        """Wait for the matcher to agree with a re-seeded pose, or give up on it.
+
+        Per revolution rather than after a fixed wait, which is the difference that
+        matters: the old code slept seven revolutions and then read the score once,
+        by which time seven scans had already been folded into the map at whatever
+        heading the re-seed invented. Nothing is written here until this returns
+        true, so the cost of being wrong is a few revolutions of pose and no map.
+
+        Returns (ok, health) -- see _match_health.
+        """
+        # The burst coasts, and a scan taken mid-coast is smeared across the
+        # rotation. Judging the re-seed on it would fail turns that were fine.
+        time.sleep(TURN_SETTLE_S)
+        deadline = time.monotonic() + within_s
+        seen = self._scans
+        good = 0
+        health = dict(self._health)
+        while time.monotonic() < deadline:
+            if not self.lidar_live():
+                # Not the same failure as a re-seed that could not be confirmed, and
+                # the caller has to tell them apart: one means the rover is lost,
+                # the other only that nothing is looking.
+                return False, {"lidar_gone": True,
+                               "reason": "the lidar stopped reporting"}
+            if self._scans == seen:
+                time.sleep(0.02)
+                continue
+            seen = self._scans
+            ok, health = self._match_health()
+            good = good + 1 if ok else 0
+            if good >= REACQUIRE_GOOD_SCANS:
+                return True, health
+        return False, health
+
+    def _pause_mapping(self, why):
+        """Match, but write nothing, until something confirms where the rover is."""
+        if not self._map_paused:
+            self._log_event("map held", why)
+        with self.slam.lock:
+            self.slam.mapping = False
+        self._map_paused = True
+        self._good_run = 0
+
+    def _resume_mapping(self, why):
+        if self._map_paused:
+            self._log_event("map resumed", why, **self._health)
+        with self.slam.lock:
+            self.slam.mapping = True
+        self._map_paused = False
+        self._good_run = 0
+
+    def _log_event(self, what, why, **fields):
+        """A short history of losing and regaining the pose, for whoever asks later.
+
+        The point of keeping it is that the two ways this goes wrong need telling
+        apart and neither is visible after the fact: a rover that could not keep up
+        shows dropped revolutions and an answer against the rim of the window, while
+        a room that looks the same two ways round shows a rival peak and no drops at
+        all. Both used to end as the same misaligned map with nothing to say why.
+        """
+        event = {"at": time.monotonic(), "what": what, "why": why,
+                 "dropped_total": self._dropped}
+        event.update(fields)
+        self._events.append(event)
+        if len(self._events) > SLAM_EVENTS:
+            del self._events[0]
+
+    def _note_match(self):
+        """Record how the last match went, and heal the map when it comes good.
+
+        While the map is held there is nothing to do but keep looking, so the way
+        back is the matcher agreeing with itself for a couple of revolutions
+        running. That is what "until it sees something it recognises" means in
+        practice, and it means a rover left lost recovers by itself as soon as it is
+        somewhere it knows, without anybody having to clear the map.
+        """
+        ok, self._health = self._match_health()
+        if not self._map_paused:
+            self._good_run = 0
+            return
+        self._good_run = self._good_run + 1 if ok else 0
+        if self._good_run >= REACQUIRE_GOOD_SCANS:
+            self._resume_mapping("the scan fits the map again")
 
     def _heading_change(self, since_accum):
         """Degrees turned since a mark taken from the accumulating heading."""
@@ -911,9 +1109,16 @@ class Navigator:
                     self._last_packet_at = time.monotonic()
                 if revolutions and not self._suspend_slam:
                     self._dropped += revolutions - 1
+                    if self._map_paused:
+                        # Nothing is being written, so the pose is all there is to
+                        # get back, and the ordinary window cannot reach it from
+                        # tens of degrees out. Costs about three normal matches a
+                        # revolution and stops the moment the pose is found again.
+                        self.slam.request_recovery()
                     if self.slam.update():
                         self._scans += 1
                         self._last_scan_at = time.monotonic()
+                        self._note_match()
                         self._on_scan()
             self._watchdog()
             # Keep the board's heartbeat fed even when the PWM has not changed, or
@@ -1388,6 +1593,18 @@ class Navigator:
             "move": self.report.snapshot(since_seq),
             "match_score": round(self.slam.score, 3),
             "position_trusted": not self.slam.rejected,
+            # How the match was won, which the score alone does not say: a winner
+            # against the rim of the search window means the answer was probably
+            # outside it, and a rival near 1.0 means some other heading fitted just
+            # as well. Both read false and 0.0 on a healthy revolution.
+            "match_edge": self._health.get("edge", False),
+            "heading_ambiguity": self._health.get("ambiguity", 0.0),
+            # False while the pose is not trusted enough to write the map from. The
+            # rover goes on driving and avoiding things -- that reads the live scan,
+            # never the map -- but the map stops growing until it knows where it is.
+            "mapping": not self._map_paused,
+            "slam_events": [dict(e, age_s=round(time.monotonic() - e["at"], 1))
+                            for e in self._events[-6:]],
             "scans": self._scans,
             "dropped_scans": self._dropped,
             "pwm": self._last_sent,
@@ -1449,6 +1666,12 @@ class Navigator:
             self._last_at = None
             self._measured_speed = 0.0
             self._measured_turn = 0.0
+            # A map asked for from scratch is one to write, so whatever hold a bad
+            # turn left behind goes with the map it was protecting. slam2d_reset
+            # does the same on its side; this is the flag that mirrors it.
+            self._map_paused = False
+            self._good_run = 0
+            self._log_event("map resumed", "the map was cleared and rebuilt")
             return {"cleared": True,
                     "reason": "the map is empty and the rover is at its origin"}
         finally:

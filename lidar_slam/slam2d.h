@@ -60,6 +60,27 @@ typedef struct {
      * the maximum, and fall back to the motion prior instead of believing it. */
     float min_match_score;
 
+    /* --- recovery -------------------------------------------------------- */
+    /* A one-off wide search, asked for with slam2d_request_recovery.
+     *
+     * The coarse window above spans what the rover can move in one revolution,
+     * which is the right size for tracking and far too small for re-finding a pose
+     * somebody else has moved. A dead-reckoned turn here is open-loop PWM against a
+     * measured rate, and one has been observed 48 degrees out -- five times the
+     * coarse window. The match cannot climb back from that and, worse, does not
+     * report it as a failure: it returns the largest rotation it was allowed to
+     * consider and scores it well, because the scan does fit the map somewhere.
+     *
+     * Wide in angle and narrow in translation, because a turn errs in heading and
+     * hardly moves. Keep recover_ang_deg equal to coarse_ang_deg: the fine pass is
+     * sized to beat one coarse step and is reused unchanged after this one. */
+    float recover_lin_m,   recover_ang_deg;
+    int   recover_lin_steps, recover_ang_steps;
+    /* How far away in heading a rival peak has to be before it counts as a
+     * different answer rather than the shoulder of the same one. Only meaningful
+     * when the search is wider than this, so in practice only during recovery. */
+    float ambiguity_sep_deg;
+
     /* --- map update ------------------------------------------------------ */
     int   hit_inc;           /* log-odds added to a cell a beam ended in */
     int   miss_dec;          /* log-odds taken off a cell a beam passed through */
@@ -126,8 +147,34 @@ int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n);
 void slam2d_set_prior(slam2d *s, float d_forward_m, float d_yaw_rad);
 
 /* Match the pending revolution, then fold it into the map. Returns 1 if a scan was
- * processed, 0 if none was pending. */
+ * processed, 0 if none was pending.
+ *
+ * A rejected match is never folded in. The pose it would have been written from is
+ * one this code has just said it does not believe, and a scan stamped at a pose
+ * that is tens of degrees out does not merely go unused -- it becomes part of what
+ * the next revolution matches against, at full likelihood, and from then on the
+ * wrong answer has evidence for it. Skipping the update leaves the map a little
+ * staler and entirely true, which is the trade worth making every time. */
 int slam2d_update(slam2d *s);
+
+/* Match, but do not write the map, until told otherwise.
+ *
+ * For the caller that has just moved the pose itself and cannot yet vouch for
+ * where it put it. Matching continues, so the pose keeps being corrected and
+ * `score` keeps saying how well it fits, but nothing is stamped -- so a re-seed
+ * that turns out to be wrong costs a few revolutions of pose and no map at all.
+ * Turn it back on once a match has confirmed the pose. On by default; also turned
+ * back on by slam2d_reset, since a map you have just asked to be rebuilt is by
+ * definition one you want written. */
+void slam2d_set_mapping(slam2d *s, int on);
+int  slam2d_mapping(const slam2d *s);
+
+/* Search the recovery window instead of the coarse one on the next update, once.
+ *
+ * Costs roughly three times a normal match at the defaults, which is why it is a
+ * request and not the standing behaviour: it is affordable as a one-off after a
+ * turn, and not ten times a second. */
+void slam2d_request_recovery(slam2d *s);
 
 /* --- output --------------------------------------------------------------- */
 
@@ -140,6 +187,39 @@ float slam2d_score(const slam2d *s);
 /* 1 if the last match was rejected as below min_match_score and the prior was used
  * instead. A run where this stays high is lost, whatever the map looks like. */
 int   slam2d_rejected(const slam2d *s);
+
+/* --- how the last match was won, which the score alone does not say ------- */
+/*
+ * A scan that has snapped onto the wrong-but-self-consistent alignment scores
+ * *high* -- scoring high is why that pose won -- so `score` cannot tell a good fix
+ * from a confident mistake. These two can.
+ */
+
+/* 1 if the winning coarse candidate sat on the rim of the search lattice, in any
+ * of x, y or heading. The true pose was then probably outside the window and what
+ * came back is the nearest edge of what was searched, not a fit -- the failure the
+ * coarse window comment warns about, made visible instead of silent. */
+int   slam2d_match_edge(const slam2d *s);
+
+/* The best rival peak as a fraction of the winner, comparing only headings at
+ * least ambiguity_sep_deg away, so 0.98 means the room has two answers and this
+ * one was picked by a hair. Zero when the search was never wide enough to hold a
+ * rival that far out, which is the normal tracking case -- read it after a
+ * recovery search, not every revolution. */
+float slam2d_ambiguity(const slam2d *s);
+
+/* The whole correlation-against-heading curve of the last coarse pass: `offsets`
+ * gets each candidate heading as degrees from the pose the search started at, and
+ * `scores` the best likelihood found at it, normalised 0..1. Returns how many
+ * were written.
+ *
+ * This is the one artifact worth logging when a map comes out misaligned, because
+ * the three ways a match goes wrong look different in it: a peak against the end
+ * of the curve is a window too narrow, two comparable peaks are a room that does
+ * not say which way round the rover is, and one broad low hump is a scan with
+ * nothing in it worth matching. */
+int   slam2d_angle_profile(const slam2d *s, float *offsets, float *scores,
+                           int max_n);
 int   slam2d_scans(const slam2d *s);
 int   slam2d_points(const slam2d *s);
 

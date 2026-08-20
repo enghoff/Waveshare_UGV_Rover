@@ -27,6 +27,9 @@
 #define RX_CAP      16384           /* one revolution is ~1974 bytes */
 #define MAX_POINTS  2048
 #define KERN        2               /* likelihood kernel half-width, in cells */
+#define MAX_ANG_BINS 129            /* candidate headings one pass may search, so
+                                     * recover_ang_steps tops out at 64. The profile
+                                     * across them is kept for the caller. */
 
 typedef struct {
     uint16_t bearing;               /* rover-frame, centi-degrees, ccw from forward */
@@ -66,6 +69,19 @@ struct slam2d {
     float prior_fwd, prior_yaw;
     float score;
     int   rejected, scans;
+
+    int   seeded;                   /* a scan has been written, so there is something
+                                     * to match against */
+    int   mapping;                  /* 0 = match but write nothing to the map */
+    int   recover;                  /* one-shot: search the wide window next update */
+    int   edge;                     /* the coarse winner sat on the lattice rim */
+    float ambiguity;                /* best distant rival / winner, 0..1 */
+    /* The last coarse pass's best score at each candidate heading, and what that
+     * heading was as an offset from where the search started. Filled by the pass
+     * that is running anyway, so it costs an array and no arithmetic. */
+    int   ang_bins;
+    float ang_off[MAX_ANG_BINS];
+    long  ang_best[MAX_ANG_BINS];
 };
 
 /* ------------------------------------------------------------------ setup */
@@ -115,6 +131,30 @@ void slam2d_default_config(slam2d_config *cfg)
     cfg->fine_lin_m       = 0.0125f; cfg->fine_lin_steps  = 2;
     cfg->fine_ang_deg     = 0.75f;   cfg->fine_ang_steps  = 2;
     cfg->min_match_score  = 0.15f;
+
+    /* +/-60 deg and +/-0.05 m of recovery window, in the same 3 deg steps as the
+     * coarse pass so the fine pass after it still fits.
+     *
+     * Wide in angle and deliberately narrow in translation. 41 headings x 9 offsets
+     * is 369 poses against the coarse pass's 175, so a recovery match costs about
+     * half as much again as a normal one rather than three times -- and it has to
+     * be affordable every revolution, because a rover that is lost goes on asking
+     * for one until it is found. Cost grows as the square of the linear steps and
+     * only linearly in the angular ones, and a rover turning on the spot errs by
+     * tens of degrees in heading and by centimetres in position, so this is where
+     * the budget belongs.
+     *
+     * 60 rather than 30 because the error being recovered from is a fraction of the
+     * whole turn: the worst seen was 48 degrees, on a 90 that physically managed
+     * 42. Wider than this starts finding rivals in an ordinary room faster than it
+     * finds the answer, which is what ambiguity_sep_deg is there to catch. */
+    cfg->recover_lin_m     = 0.05f;  cfg->recover_lin_steps = 1;
+    cfg->recover_ang_deg   = 3.0f;   cfg->recover_ang_steps = 20;
+    /* Two peaks closer together than this in heading are the same peak. 20 deg is
+     * comfortably past the shoulder of a genuine one -- a 300-point scan of a room
+     * falls off within a few degrees -- and well inside the symmetries that matter,
+     * which arrive at 90 and 180. */
+    cfg->ambiguity_sep_deg = 20.0f;
 
     cfg->hit_inc    = 12;
     cfg->miss_dec   = 3;            /* asymmetric on purpose: a beam that passes
@@ -185,6 +225,14 @@ slam2d *slam2d_create(const slam2d_config *cfg)
     s->cfg = *cfg;
     if (s->cfg.max_points < 1) s->cfg.max_points = 1;
     if (s->cfg.max_points > MAX_POINTS) s->cfg.max_points = MAX_POINTS;
+    /* Clamped rather than rejected: the profile buffer is what sets the ceiling,
+     * and a caller asking for a wider sweep than it holds wants the widest sweep
+     * available, not a NULL handle. */
+    if (s->cfg.coarse_ang_steps  > MAX_ANG_BINS / 2) s->cfg.coarse_ang_steps  = MAX_ANG_BINS / 2;
+    if (s->cfg.recover_ang_steps > MAX_ANG_BINS / 2) s->cfg.recover_ang_steps = MAX_ANG_BINS / 2;
+    if (s->cfg.recover_ang_steps < 0) s->cfg.recover_ang_steps = 0;
+    if (s->cfg.recover_lin_steps < 0) s->cfg.recover_lin_steps = 0;
+    s->mapping = 1;
 
     s->cells   = cfg->grid_cells;
     s->inv_res = 1.0f / cfg->resolution_m;
@@ -229,11 +277,21 @@ void slam2d_reset(slam2d *s)
     s->prior_fwd = s->prior_yaw = 0.0f;
     s->score = 0.0f;
     s->rejected = 0;
-    /* Back to zero so the next update takes its first-scan branch and stamps the
-     * pending revolution straight in. It has to: there is nothing to match
+    /* The last match described a room that no longer exists. */
+    s->edge = 0;
+    s->ambiguity = 0.0f;
+    s->ang_bins = 0;
+    s->recover = 0;
+    /* A map somebody has just asked to be rebuilt is by definition one they want
+     * written, and leaving mapping suspended here would hand back an empty grid
+     * that stayed empty however long the rover stood in the room. */
+    s->mapping = 1;
+    /* Back to unseeded so the next update takes its first-scan branch and stamps
+     * the pending revolution straight in. It has to: there is nothing to match
      * against, and matching an empty field would score zero and reject every scan
      * that followed, leaving the rover dead-reckoning inside a map that never got
      * written. */
+    s->seeded = 0;
     s->scans = 0;
 }
 
@@ -393,25 +451,79 @@ static void rotate_scan(slam2d *s, float th)
     }
 }
 
-/* Search a lattice around (cx, cy, cth), leaving the best pose in place. */
+/* Search a lattice around (cx, cy, cth), leaving the best pose in place.
+ *
+ * Two things come out besides the pose, and both exist because the score does not
+ * say how the match was won. `edge` reports that the winner sat on the rim of the
+ * lattice, which means the answer was most likely outside it and what came back is
+ * the boundary of what was searched rather than a fit. `profile`, when given, gets
+ * the best score found at each candidate heading -- the correlation curve against
+ * rotation, which is what tells a window too narrow apart from a room with two
+ * answers in it.
+ *
+ * Ties now go to the centre, and the centre is the prior. The previous version
+ * started from -1 and kept the first candidate evaluated, so anywhere every
+ * candidate scores the same -- ground the map has never seen, where they are all
+ * zero -- it returned a corner of its own lattice rather than the pose it was
+ * handed, and would now report that corner as having hit the edge.
+ */
 static long match_pass(slam2d *s, float *cx, float *cy, float *cth,
-                       float lin, int lin_steps, float ang_deg, int ang_steps)
+                       float lin, int lin_steps, float ang_deg, int ang_steps,
+                       int *edge, long *profile)
 {
-    float bx = *cx, by = *cy, bth = *cth;
-    long best = -1;
+    const float centre_th = *cth;
+    float bx = *cx, by = *cy, bth = centre_th;
+    int bu = 0, bv = 0, ba = 0;
+
+    rotate_scan(s, centre_th);
+    long best = score_pose(s, *cx, *cy);
 
     for (int a = -ang_steps; a <= ang_steps; a++) {
-        float th = *cth + a * ang_deg * (float)(M_PI / 180.0);
+        float th = centre_th + a * ang_deg * (float)(M_PI / 180.0);
         rotate_scan(s, th);                 /* hoisted: once per angle, not per pose */
+        long top = -1;
         for (int u = -lin_steps; u <= lin_steps; u++)
             for (int v = -lin_steps; v <= lin_steps; v++) {
                 float ox = *cx + u * lin, oy = *cy + v * lin;
                 long sc = score_pose(s, ox, oy);
-                if (sc > best) { best = sc; bx = ox; by = oy; bth = th; }
+                if (sc > top) top = sc;
+                if (sc > best) {
+                    best = sc; bx = ox; by = oy; bth = th;
+                    bu = u; bv = v; ba = a;
+                }
             }
+        if (profile) profile[a + ang_steps] = top;
     }
     *cx = bx; *cy = by; *cth = bth;
+    if (edge)
+        *edge = ((lin_steps > 0 && (abs(bu) == lin_steps || abs(bv) == lin_steps))
+                 || (ang_steps > 0 && abs(ba) == ang_steps));
     return best;
+}
+
+/* The best peak in the heading profile far enough from the winner to be a rival
+ * answer rather than the shoulder of the same one, as a fraction of the winner.
+ *
+ * Zero when the pass was never wide enough to hold anything that far out, which is
+ * every ordinary tracking revolution -- the number is worth reading after a
+ * recovery search and nowhere else. */
+static float rival_ratio(const slam2d *s, float ang_deg)
+{
+    if (s->ang_bins < 3 || ang_deg <= 0.0f) return 0.0f;
+
+    int sep = (int)(s->cfg.ambiguity_sep_deg / ang_deg + 0.999f);
+    if (sep < 1) sep = 1;
+
+    int win = 0;
+    for (int i = 1; i < s->ang_bins; i++)
+        if (s->ang_best[i] > s->ang_best[win]) win = i;
+    long top = s->ang_best[win];
+    if (top <= 0) return 0.0f;
+
+    long rival = 0;
+    for (int i = 0; i < s->ang_bins; i++)
+        if (abs(i - win) >= sep && s->ang_best[i] > rival) rival = s->ang_best[i];
+    return (float)rival / (float)top;
 }
 
 /* ---------------------------------------------------------------- mapping */
@@ -485,10 +597,23 @@ void slam2d_set_prior(slam2d *s, float d_forward_m, float d_yaw_rad)
     s->prior_yaw = d_yaw_rad;
 }
 
+void slam2d_set_mapping(slam2d *s, int on)
+{
+    if (s) s->mapping = on ? 1 : 0;
+}
+
+void slam2d_request_recovery(slam2d *s)
+{
+    if (s) s->recover = 1;
+}
+
 int slam2d_update(slam2d *s)
 {
     if (!s || !s->pend_ready) return 0;
     s->pend_ready = 0;
+
+    const int recovering = s->recover;
+    s->recover = 0;
 
     /* Apply the prior first: drive forward along the heading we had, then turn.
      * This is only the centre of the search window, so its errors are corrected by
@@ -498,23 +623,42 @@ int slam2d_update(slam2d *s)
     float pth = s->th + s->prior_yaw;
     s->prior_fwd = s->prior_yaw = 0.0f;
 
-    if (s->scans == 0 || s->pend_n == 0) {
-        /* Nothing to match against on the first revolution: the map is where the
-         * first scan is put, and the pose it defines is the origin by definition. */
+    if (!s->seeded || s->pend_n == 0) {
+        /* Nothing to match against until a scan has been written: the map is where
+         * the first scan is put, and the pose it defines is the origin by
+         * definition. Keyed on the map having been seeded rather than on the scan
+         * count, because mapping can be suspended -- and counting a suspended
+         * revolution as the first one would leave every later scan matching against
+         * an empty field, scoring zero and being rejected for ever. */
         s->x = px; s->y = py; s->th = pth;
         s->score = 0.0f;
         s->rejected = 0;
+        s->edge = 0;
+        s->ambiguity = 0.0f;
+        s->ang_bins = 0;
     } else {
+        /* One window for tracking, a much wider one for re-finding a pose the
+         * caller has moved itself. See the recovery block in slam2d.h. */
+        const float lin   = recovering ? s->cfg.recover_lin_m     : s->cfg.coarse_lin_m;
+        const int   lsteps= recovering ? s->cfg.recover_lin_steps : s->cfg.coarse_lin_steps;
+        const float ang   = recovering ? s->cfg.recover_ang_deg   : s->cfg.coarse_ang_deg;
+        const int   asteps= recovering ? s->cfg.recover_ang_steps : s->cfg.coarse_ang_steps;
+
         float mx = px, my = py, mth = pth;
-        match_pass(s, &mx, &my, &mth,
-                   s->cfg.coarse_lin_m, s->cfg.coarse_lin_steps,
-                   s->cfg.coarse_ang_deg, s->cfg.coarse_ang_steps);
+        match_pass(s, &mx, &my, &mth, lin, lsteps, ang, asteps,
+                   &s->edge, s->ang_best);
+        s->ang_bins = 2 * asteps + 1;
+        for (int i = 0; i < s->ang_bins; i++)
+            s->ang_off[i] = (float)(i - asteps) * ang;
+
         long best = match_pass(s, &mx, &my, &mth,
                                s->cfg.fine_lin_m, s->cfg.fine_lin_steps,
-                               s->cfg.fine_ang_deg, s->cfg.fine_ang_steps);
+                               s->cfg.fine_ang_deg, s->cfg.fine_ang_steps,
+                               NULL, NULL);
 
         float peak = (float)s->pend_n * s->cfg.lik_stamp;
         s->score = peak > 0.0f ? (float)best / peak : 0.0f;
+        s->ambiguity = rival_ratio(s, ang);
         s->rejected = s->score < s->cfg.min_match_score;
         if (s->rejected) {
             /* Believe the prior instead. Dead reckoning drifts; a bad match can
@@ -529,7 +673,18 @@ int slam2d_update(slam2d *s)
     while (s->th > (float)M_PI)  s->th -= (float)(2.0 * M_PI);
     while (s->th <= -(float)M_PI) s->th += (float)(2.0 * M_PI);
 
-    integrate(s);
+    /* Written only from a pose this code is prepared to defend. A rejected match
+     * is one it has just said it does not believe, and a scan stamped at a pose
+     * tens of degrees out is not merely wasted -- the likelihood field takes the
+     * maximum, so it lands at full strength, as attractive to the next revolution
+     * as a wall seen all afternoon, and from then on the wrong answer has evidence
+     * for it. Suspended mapping is the same argument made by the caller, which
+     * knows things this does not: that it has just dead-reckoned a turn and cannot
+     * yet vouch for where it put the pose. */
+    if (s->mapping && !s->rejected) {
+        integrate(s);
+        s->seeded = 1;
+    }
     s->scans++;
     return 1;
 }
@@ -554,6 +709,23 @@ float slam2d_score(const slam2d *s)    { return s ? s->score : 0.0f; }
 int   slam2d_rejected(const slam2d *s) { return s ? s->rejected : 0; }
 int   slam2d_scans(const slam2d *s)    { return s ? s->scans : 0; }
 int   slam2d_points(const slam2d *s)   { return s ? s->pend_n : 0; }
+int   slam2d_match_edge(const slam2d *s) { return s ? s->edge : 0; }
+float slam2d_ambiguity(const slam2d *s)  { return s ? s->ambiguity : 0.0f; }
+int   slam2d_mapping(const slam2d *s)    { return s ? s->mapping : 0; }
+
+int slam2d_angle_profile(const slam2d *s, float *offsets, float *scores, int max_n)
+{
+    if (!s || max_n < 1) return 0;
+    int n = s->ang_bins < max_n ? s->ang_bins : max_n;
+    /* Normalised against the same peak the score is, so a value here and the score
+     * are the same measurement and can be compared to each other. */
+    float peak = (float)s->pend_n * (float)s->cfg.lik_stamp;
+    for (int i = 0; i < n; i++) {
+        if (offsets) offsets[i] = s->ang_off[i];
+        if (scores)  scores[i]  = peak > 0.0f ? (float)s->ang_best[i] / peak : 0.0f;
+    }
+    return n;
+}
 
 void slam2d_sectors(const slam2d *s, float *out, int n_sectors)
 {

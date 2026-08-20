@@ -122,6 +122,25 @@ a tenth of a volt per cell, and interpolating linearly reads twenty points high
 for most of a run. It is still an estimate under load and it says so: what it is
 good for is watching the number fall over an afternoon, not comparing two runs.
 
+**The two ends of that curve are Waveshare's numbers, not ours.** The pack is the
+[UPS Module 3S](https://www.waveshare.com/wiki/UPS_Module_3S), which ships with a
+12.6 V 2 A charger and carries three HY2213-BB3A balancing chips — those start
+bleeding a cell at 4.200 ± 0.025 V, so full is 4.2 V per cell by construction rather
+than by convention. The empty end is theirs too: the `INA219.py` demo published for
+that module computes `(volts - 9) / 3.6 * 100`, putting 0% at 3.0 V per cell. This
+table keeps both of those ends and disagrees only about the middle, where that
+straight line is exactly the twenty-point error described above. Underneath sits an
+S-8254AA protection IC, but the schematic names only the family and its variants cut
+off anywhere between 2.0 and 3.0 V per cell, so 0% here is deliberately set at the
+safe top of that range.
+
+**What this cannot see is charging.** The board sends voltage and nothing else —
+there is no current anywhere in `T:1001` — and the INA219 on the UPS module, which
+does measure charge current, is not read here: the Pi has no I²C enabled at all. So a
+pack sitting on the charger and not taking any looks exactly like a pack at rest, and
+the only thing that tells them apart is the module's own LED — red while charging,
+green when full.
+
 Under 6 V there is no pack at all. The ESP32 runs perfectly well from USB with the
 battery out or the main switch off, and reports a few tenths of a volt when it
 does, so that gets its own answer — `"state": "absent"`, with no percentage

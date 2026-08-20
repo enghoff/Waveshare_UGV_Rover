@@ -96,11 +96,15 @@ t=  6.0s scan   60  x=+0.000 y=+0.000 th=  +0.0deg  score 0.98  pts 278  ahead  
    @@@@  @@@.. .   ::-- --   :..... ..@@
 ```
 
-`score` is the mean likelihood under the matched scan, 0 to 1, and it is the health
-indicator worth watching: 0.98 stationary against a mature map, and a run where it
-sags toward `min_match_score` (0.15) is a run that is losing its position. `drop`
-counts revolutions thrown away because the loop fell behind — it should stay at 0,
-and if it does not, the Pi is oversubscribed rather than the SLAM being slow.
+`score` is the mean likelihood under the matched scan, 0 to 1: 0.98 stationary
+against a mature map, and a run where it sags toward `min_match_score` (0.15) is a
+run that is losing its position. It is **not** a sufficient health check on its own
+— a scan that has snapped onto the wrong alignment scores high, because scoring high
+is why that pose won — so see [When the match is
+wrong](#when-the-match-is-wrong-and-how-it-says-so) for the two numbers that catch
+what it cannot. `drop` counts revolutions thrown away because the loop fell behind —
+it should stay at 0, and if it does not, the Pi is oversubscribed rather than the
+SLAM being slow.
 
 If nothing arrives at all, the rover's power switch is the first thing to check: the
 port enumerates without it, because the CH343 is USB-powered, but the lidar's motor
@@ -176,9 +180,86 @@ points are thinned to 300 of the ~419 the sensor delivers because every point co
 a cache miss in every one of those poses; thinning bought 25 ms a revolution.
 
 A match whose mean likelihood falls below `min_match_score` is **rejected** and the
-motion prior is used instead. This matters more than it looks: dead reckoning drifts
-predictably, whereas a confidently wrong match teleports the rover and then corrupts
-the map it will be matched against next.
+motion prior is used instead — and, since the map is what a bad pose corrupts, a
+rejected match is never written into it. This matters more than it looks: dead
+reckoning drifts predictably, whereas a confidently wrong match teleports the rover
+and then corrupts the map it will be matched against next.
+
+## When the match is wrong, and how it says so
+
+The score is not a health check on its own, and treating it as one is what produced
+maps with the room stamped in twice at an angle to itself. **A scan that has snapped
+onto the wrong-but-self-consistent alignment scores high** — scoring high is
+precisely why that pose beat the others — so a confident mistake and a good fix are
+indistinguishable in it. `min_match_score` catches "this scan matched nothing
+anywhere", which is a dead sensor or an empty map, not "this scan matched the wrong
+thing". Worse, the update then stamps the bad pose into the map, after which the map
+agrees with the error and the score *recovers*.
+
+Two more numbers come out of the same search, which already computed them and used
+to throw them away.
+
+**`slam2d_match_edge`** is 1 when the winning coarse candidate sat on the rim of the
+lattice. The window spans what the rover can move in one revolution, so a winner
+against its edge means the true pose was probably outside it and what came back is
+the boundary of what was searched rather than a fit. This is the failure the coarse
+window's own comment warns about — rotation past the window comes back
+*under-reported* rather than rejected — made visible instead of silent.
+
+**`slam2d_ambiguity`** is the best rival peak as a fraction of the winner, comparing
+only headings at least `ambiguity_sep_deg` (20°) away. At the centre of a rectangular
+room a half turn maps the room exactly onto itself; the self-test measures 0.97 there
+against 0.58 from an off-centre pose. Both fit beautifully and the score cannot say
+which is right. It reads 0.0 during ordinary tracking, because a ±9° sweep cannot
+hold a rival 20° out — this is a number to read after a recovery search, not every
+revolution.
+
+**`slam2d_angle_profile`** hands back the whole correlation curve against heading,
+which is the artifact worth logging when a map comes out wrong: a peak against the
+end of the sweep is a window too narrow, two comparable peaks are a room that does
+not say which way round the rover is, and one low broad hump is a scan with nothing
+in it worth matching.
+
+### Two rules that keep a bad pose out of the map
+
+**A rejected match is never written.** It used to be: the update stamped the scan
+whether or not it had just declared the pose unbelievable. That is not merely wasted
+work. The likelihood field takes the maximum, so a bad stamp lands at full strength
+— as attractive to the next revolution as a wall seen all afternoon — and from then
+on the wrong answer has evidence for it. One stamp is enough, `lik_decay` needs
+about thirty-two clearing passes to erase it, and with no loop closure nothing ever
+repairs what is left.
+
+**Mapping can be suspended without suspending the matching.** `slam2d_set_mapping`
+is for the caller that has just moved the pose itself and cannot yet vouch for where
+it put it. Matching goes on, so the matcher can find its way back; nothing is
+written until the caller says so. The cost of a wrong re-seed becomes a few
+revolutions of pose and no map at all.
+
+### The recovery search
+
+`slam2d_request_recovery` widens the next coarse pass, once, to ±60° and ±0.05 m —
+41 candidate headings against the tracking window's 7. It exists because the tracking
+window is sized for what the rover can move in 100 ms and is hopeless for re-finding
+a pose somebody else moved: a dead-reckoned turn on this rover has been observed 48°
+out, five times the coarse window, which the match cannot climb back from on its own.
+
+Wide in angle and deliberately narrow in translation, because a rover turning on the
+spot errs by tens of degrees in heading and by centimetres in position — and because
+cost goes as the *square* of the linear steps and only linearly in the angular ones.
+369 poses against the coarse pass's 175, so a recovery revolution costs about half as
+much again as a normal one (measured 97 ms against 59 ms, both with the daemon also
+running, so both inflated against the idle table above). It has to be that cheap: a
+rover that is lost asks for one every revolution until it is found.
+
+Measured in the self-test, on a pose deliberately put 35° out:
+
+```
+  normal window                               35.0 deg out, score 0.14
+the ordinary window cannot reach the answer                                    ok
+and says so: the winner sat on the rim of the window                           ok
+  recovery window                              0.5 deg out, score 0.90
+```
 
 ## The motion prior, and the two numbers nobody has measured
 
@@ -256,6 +337,35 @@ That test looks back over the last five revolutions rather than the newest one, 
 that is not conservatism for its own sake: testing only the newest let a turn start
 beside something 0.13 m away and run for nearly four seconds before a scan happened
 to catch it again. On a bench that would have been the rover spinning off the edge.
+
+**A turn is dead reckoned, and then checked.** The matcher cannot follow 170°/s, so
+each burst runs blind with matching suspended, and the pose is re-seeded afterwards
+from the rates in `TURN_RATES`. That re-seed *tells* the matcher where it is and it
+cannot argue — which is how a turn that physically managed 42° of a requested 90 came
+back reported as 90. So the re-seed is treated as a hypothesis rather than an answer:
+mapping stays suspended, a recovery search runs, and the map is written again only
+once a couple of consecutive revolutions have agreed with it.
+
+Checked **per revolution**, which is the part that used to lose. The old code slept
+0.7 s and then read the score once, by which time seven scans had already been folded
+into the map at whatever heading the re-seed invented — and since `integrate` ran
+whether or not the match had been rejected, being lost was no protection. That is the
+whole mechanism behind a map with a second copy of the room welded in at an angle.
+
+Long turns go in bursts of `TURN_BURST_MAX_DEG` with a measurement between them,
+because a dead-reckoned error is a fraction of the burst it came from, and a whole
+180 guessed in one go can land outside what the search can undo.
+
+If the re-seed is never confirmed the move comes back `lost`, saying which of the
+three things went wrong, and **the map stays suspended** rather than being filled in
+from a pose nobody believes. The rover then heals itself: mapping resumes as soon as
+a couple of revolutions match cleanly again, which is what "until it sees something
+it recognises" means in practice, and it needs nobody to clear the map. `status()`
+carries `mapping`, `match_edge`, `heading_ambiguity` and a short `slam_events`
+history, which is what lets the two failures be told apart after the fact — a rover
+that could not keep up shows dropped revolutions and an answer against the rim of the
+window, while a room that looks the same two ways round shows a rival peak and no
+drops at all.
 
 Steering is follow-the-gap — the heading with the most room, penalised for departing
 from the one asked for. Wall-following at a shallow angle falls out of that rather
@@ -513,10 +623,20 @@ once and later cleared back to exactly zero is indistinguishable from one never 
   clamped tight because at 10 Hz anything eager will oscillate — expect to tune it,
   and expect the straight-line trim to matter, since equal PWM is not equal speed on
   this chassis.
-- **The gyro and the magnetometer are still unused.** The two scale factors in
+- **The gyro and the magnetometer are still unused**, and this is now the largest
+  thing left. The two scale factors in
   [The motion prior](#the-motion-prior-and-the-two-numbers-nobody-has-measured) remain
-  unmeasured. Once driving works, `turn_in_place` calibrates the gyro for free by
-  comparing its integral against the matcher's heading.
+  unmeasured, and `turn_in_place` calibrates the gyro for free by comparing its
+  integral against the matcher's heading over a confirmed turn — which is a
+  measurement the re-find now produces on every turn anyway.
+  
+  Worth separating two uses of it, because they have very different requirements. As
+  a *prior* the gyro needs its scale factor, or it drags the match off true. As a
+  *detector* it needs nothing: an uncalibrated gyro still says, unambiguously,
+  whether the rover physically rotated at all while the pose claims nine degrees of
+  yaw, and sign disagreement is scale-free too. It is the only witness to rotation
+  that is not the thing under suspicion, and the daemon is already parsing the
+  `T:1001` lines it arrives in for the battery voltage.
 - **The map picture has not been seen by the model.** The frame server stashes bytes
   without decoding and the upload declares no media type, so a PNG ought to be as
   acceptable as a JPEG — but that is reasoning, not a test. If it turns out to be

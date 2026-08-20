@@ -126,7 +126,10 @@ BATTERY_CELLS = 3
 # Volts per cell against percentage left. A table rather than a straight line
 # because lithium-ion is nearly flat through the middle of its discharge, where
 # 40% to 70% is a tenth of a volt: interpolating from full to empty would read
-# twenty points high for most of a run.
+# twenty points high for most of a run. Both ends of it are Waveshare's own
+# numbers rather than a guess -- the module's balancing chips start bleeding a cell
+# at 4.200 V and its published gauge calls 9.0 V empty -- and only the shape between
+# them is this table's. See the battery section of README.md for the sources.
 BATTERY_CURVE = ((3.00, 0), (3.45, 5), (3.68, 10), (3.74, 20), (3.77, 30),
                  (3.79, 40), (3.82, 50), (3.87, 60), (3.92, 70), (3.98, 80),
                  (4.06, 90), (4.20, 100))

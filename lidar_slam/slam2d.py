@@ -44,6 +44,11 @@ class Config(ctypes.Structure):
         ("fine_lin_steps", c_int),
         ("fine_ang_steps", c_int),
         ("min_match_score", c_float),
+        ("recover_lin_m", c_float),
+        ("recover_ang_deg", c_float),
+        ("recover_lin_steps", c_int),
+        ("recover_ang_steps", c_int),
+        ("ambiguity_sep_deg", c_float),
         ("hit_inc", c_int),
         ("miss_dec", c_int),
         ("occupied_at", c_int),
@@ -78,6 +83,9 @@ Feature = namedtuple("Feature", "kind bearing_deg range_m width_m span_deg "
                                 "straightness_m x0 y0 x1 y1")
 
 MAX_FEATURES = 64
+#: Room for the widest angular sweep the library will do -- MAX_ANG_BINS in
+#: slam2d.c. Allocated once, because angle_profile is called from the control loop.
+MAX_ANG_BINS = 129
 
 
 def _load(path=None):
@@ -99,6 +107,8 @@ def _load(path=None):
     lib.slam2d_feed_lidar.argtypes = [c_void_p, c_char_p, c_int]
     lib.slam2d_feed_lidar.restype = c_int
     lib.slam2d_set_prior.argtypes = [c_void_p, c_float, c_float]
+    lib.slam2d_set_mapping.argtypes = [c_void_p, c_int]
+    lib.slam2d_request_recovery.argtypes = [c_void_p]
     lib.slam2d_update.argtypes = [c_void_p]
     lib.slam2d_update.restype = c_int
     lib.slam2d_pose.argtypes = [c_void_p, POINTER(c_float), POINTER(c_float),
@@ -106,9 +116,15 @@ def _load(path=None):
     lib.slam2d_set_pose.argtypes = [c_void_p, c_float, c_float, c_float]
     lib.slam2d_score.argtypes = [c_void_p]
     lib.slam2d_score.restype = c_float
-    for name in ("slam2d_rejected", "slam2d_scans", "slam2d_points"):
+    for name in ("slam2d_rejected", "slam2d_scans", "slam2d_points",
+                 "slam2d_match_edge", "slam2d_mapping"):
         getattr(lib, name).argtypes = [c_void_p]
         getattr(lib, name).restype = c_int
+    lib.slam2d_ambiguity.argtypes = [c_void_p]
+    lib.slam2d_ambiguity.restype = c_float
+    lib.slam2d_angle_profile.argtypes = [c_void_p, POINTER(c_float),
+                                         POINTER(c_float), c_int]
+    lib.slam2d_angle_profile.restype = c_int
     lib.slam2d_sectors.argtypes = [c_void_p, POINTER(c_float), c_int]
     lib.slam2d_arc_clearance.argtypes = [c_void_p, c_float, c_float, c_float]
     lib.slam2d_arc_clearance.restype = c_float
@@ -156,6 +172,8 @@ class Slam2D:
             raise RuntimeError(f"slam2d_create rejected {self.config}")
         self._xy = (c_float * (2 * max(1, self.config.max_points)))()
         self._feat = (_Feature * MAX_FEATURES)()
+        self._prof_off = (c_float * MAX_ANG_BINS)()
+        self._prof_sc = (c_float * MAX_ANG_BINS)()
         #: Nothing in the C is internally locked, and the daemon reads this from
         #: connection threads while a control loop writes it. Every method here takes
         #: this; hold it yourself across any read-modify-write of your own.
@@ -200,6 +218,33 @@ class Slam2D:
         with self.lock:
             return bool(self._lib.slam2d_update(self._h))
 
+    @property
+    def mapping(self):
+        """Whether matched scans are being written into the map."""
+        with self.lock:
+            return bool(self._lib.slam2d_mapping(self._h))
+
+    @mapping.setter
+    def mapping(self, on):
+        """Suspend or resume writing the map, without suspending the matching.
+
+        For a caller that has just moved the pose itself and cannot yet vouch for
+        where it put it -- see slam2d.h. The pose goes on being corrected while
+        this is off, so the matcher can find its way back; nothing it believes gets
+        written down until the caller says so.
+        """
+        with self.lock:
+            self._lib.slam2d_set_mapping(self._h, 1 if on else 0)
+
+    def request_recovery(self):
+        """Search the wide window on the next revolution, once.
+
+        About three normal matches' worth of work, so this is asked for after a
+        dead-reckoned turn rather than done as a matter of course.
+        """
+        with self.lock:
+            self._lib.slam2d_request_recovery(self._h)
+
     # --- output ---------------------------------------------------------------
     @property
     def pose(self):
@@ -222,6 +267,34 @@ class Slam2D:
     def rejected(self):
         with self.lock:
             return bool(self._lib.slam2d_rejected(self._h))
+
+    @property
+    def match_edge(self):
+        """True if the last coarse search's winner sat on the rim of its own window,
+        so what came back is the edge of what was looked at rather than a fit."""
+        with self.lock:
+            return bool(self._lib.slam2d_match_edge(self._h))
+
+    @property
+    def ambiguity(self):
+        """The best rival heading's score as a fraction of the winner's, or 0.0 when
+        the search was too narrow to hold a rival -- so read this after a recovery
+        search and not every revolution. Near 1.0 means the room has two answers."""
+        with self.lock:
+            return self._lib.slam2d_ambiguity(self._h)
+
+    def angle_profile(self):
+        """The last coarse pass as [(heading offset in degrees, score 0..1)].
+
+        The picture worth logging when a map comes out misaligned: a peak against
+        the end of the sweep is a window too narrow, two comparable peaks are a
+        room that does not say which way round the rover is, and one low broad
+        hump is a scan with nothing in it worth matching.
+        """
+        with self.lock:
+            n = self._lib.slam2d_angle_profile(self._h, self._prof_off,
+                                               self._prof_sc, MAX_ANG_BINS)
+            return [(self._prof_off[i], self._prof_sc[i]) for i in range(n)]
 
     @property
     def scans(self):
