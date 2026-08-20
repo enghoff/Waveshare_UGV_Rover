@@ -79,6 +79,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import scripting
+
 DEFAULT_SERIAL = "/dev/ttyAMA0"
 # The ESP32, by address: it is the one device here that advertises no mDNS
 # name, so there is nothing to call it by.
@@ -864,6 +866,10 @@ class Rover:
         # host is no reason a light cannot be switched or the wheels stopped, and
         # this call used to hold the board lock for exactly that wait.
         self._detector_lock = threading.Lock()
+        # Set by main() once the port is known, since a script reaches the rover
+        # by connecting back to this daemon like any other client. None on a
+        # daemon that is not running scripts, which is what every call checks.
+        self.scripts = None
 
     # --- the board ----------------------------------------------------------
 
@@ -1600,6 +1606,65 @@ class Rover:
         result = self.nav.clear_map()
         return {"ok": bool(result.get("cleared")), **result}
 
+    # --- scripts ------------------------------------------------------------
+    #
+    # Five control calls, none of them in :meth:`tools`, and all five refused on
+    # anything but the loopback interface -- see `Handler`. A model is not shown
+    # them and could not reach them if it were, because the clients that hold a
+    # conversation are on a desk across the LAN.
+    #
+    # That is the MVP's answer to the obvious objection: this port authenticates
+    # nothing, and "run this code" is a different proposition from "turn the
+    # lights on". Bound to loopback it grants exactly what an ssh session on this
+    # Pi already grants, and it is reached the same way -- a tunnel, or an agent
+    # working on the rover itself. What lets a model use a behaviour later is
+    # `run_behaviour`, which runs something already written and reviewed rather
+    # than something composed in the middle of a conversation.
+
+    def _tool_run_script(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Run a script and wait for it. A control call, not a model tool.
+
+        For something that finishes while the caller holds the connection. A
+        behaviour that runs for minutes is `start_script`; the difference is only
+        who does the waiting, and this one is bounded well inside the clients'
+        12 s patience so that "no answer" cannot mean "still working".
+        """
+        if self.scripts is None:
+            return {"ok": False, "error": "this daemon is not running scripts"}
+        return self.scripts.run(arguments.get("source"), arguments.get("limit_s"))
+
+    def _tool_start_script(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Start a script and return its handle. A control call, not a model tool."""
+        if self.scripts is None:
+            return {"ok": False, "error": "this daemon is not running scripts"}
+        return self.scripts.start(arguments.get("source"), arguments.get("limit_s"))
+
+    def _tool_script_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """How a run is going, or how the last one went. A control call."""
+        if self.scripts is None:
+            return {"ok": False, "error": "this daemon is not running scripts"}
+        return self.scripts.status(arguments.get("id"))
+
+    def _tool_script_stop(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """Stop the running script. A control call, and never refused."""
+        if self.scripts is None:
+            return {"ok": False, "error": "this daemon is not running scripts"}
+        return self.scripts.stop()
+
+    def _tool_list_api(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The primitives a script may use, generated from the module itself.
+
+        `list_tools` for programs, and for the same reason: the rover is the only
+        thing that knows what it can do, so nothing that writes a behaviour should
+        be carrying its own copy of the answer.
+        """
+        import rover_api
+
+        return {"ok": True, "reference": rover_api.reference(),
+                "run_limit_s": scripting.RUN_LIMIT_S,
+                "start_limit_s": scripting.START_LIMIT_S,
+                "memory_mb": scripting.MEMORY_MB}
+
     # --- the loop -----------------------------------------------------------
 
     def stop_tracking(self) -> bool:
@@ -1774,7 +1839,11 @@ class Rover:
                 self._close_camera()
 
     def close(self) -> None:
-        # The navigator first, and outside the lock: it stops the wheels and joins
+        # A running script first of all, because it is the only thing here that
+        # will otherwise go on issuing calls into a daemon that is shutting down.
+        if self.scripts is not None:
+            self.scripts.close()
+        # The navigator next, and outside the lock: it stops the wheels and joins
         # its own loop, and nothing else here matters until the rover is still.
         if self.nav is not None:
             self.nav.close()
@@ -1789,12 +1858,27 @@ class Rover:
             self.link.close()
 
 
+# Calls that run code rather than perform an act, and are therefore refused from
+# anywhere but this machine. Nothing on this port authenticates -- the same trade
+# `face-detect` makes and the same home LAN -- so the difference between the rest
+# of the protocol and these is the difference between a stranger flashing the
+# headlights and a stranger with a shell on the Pi. Bound to loopback they grant
+# what an ssh session here already grants, and are reached the same way.
+#
+# `script_status` is deliberately not among them. Watching a behaviour run is
+# what a console on a desk wants, it changes nothing, and everything else this
+# port hands out about the rover's state is already served on the LAN.
+LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api")
+LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
 class Handler(socketserver.StreamRequestHandler):
     """One client connection: newline-delimited JSON, one reply per request."""
 
     def handle(self) -> None:
         self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         rover: Rover = self.server.rover
+        local = self.client_address[0] in LOOPBACK
         for raw in self.rfile:
             raw = raw.strip()
             if not raw:
@@ -1809,6 +1893,10 @@ class Handler(socketserver.StreamRequestHandler):
                     reply = {"ok": True, "tools": rover.tools()}
                 elif not isinstance(name, str):
                     reply = {"ok": False, "error": "every request needs a 'call'"}
+                elif name in LOCAL_ONLY and not local:
+                    reply = {"ok": False,
+                             "error": f"{name} is only served on the rover itself; "
+                                      f"reach it through an ssh tunnel"}
                 else:
                     reply = rover.call(name, request.get("arguments") or {})
             try:
@@ -1912,6 +2000,16 @@ def main() -> int | str:
             rover.nav = None
             print(f"[rover] no driving or mapping: {error}", file=sys.stderr,
                   flush=True)
+
+    # A script reaches the rover by connecting back to this daemon on loopback,
+    # like any other client -- so it can be told where that is only once the port
+    # is settled. Starting one stops face tracking, for the reason `look_at` does:
+    # two things aiming one gimbal is two robots. Every run ends with the wheels
+    # stopped, which is a no-op unless it was killed in the middle of a move.
+    rover.scripts = scripting.Runner(
+        f"127.0.0.1:{args.port}",
+        on_start=rover.stop_tracking,
+        on_finish=lambda: rover.call("stop_driving", {}))
 
     server = Server((args.bind, args.port), Handler)
     server.rover = rover

@@ -21,6 +21,7 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 | `rover_daemon/`, `driver_board/`, `face_tracking/` | `rpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
 | `lidar_slam/` | `rpi` | `~/ugv/lidar_slam/` |
 | `oak_detect/` | `rpi` | `~/ugv/oak_detect/` |
+| `behaviours/` | `rpi` | `~/ugv/behaviours/` — **planned, not built**; see [docs/scripting.md](docs/scripting.md). `scripting.py` and `rover_api.py`, which run scripts, deploy flat with the daemon; the agent-written store must never be overwritten by a deploy |
 | `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
 | `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/drive_console.py`, `voice_chat/mock_rover.py` | whatever desk is in use | nothing to deploy |
 
@@ -30,7 +31,7 @@ their keys.
 ## The Pi
 
 ```bash
-scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/
+scp rover_daemon/{rover_daemon.py,selftest.py,scripting.py,rover_api.py} rpi:~/ugv/
 scp lidar_slam/*.py lidar_slam/README.md rpi:~/ugv/lidar_slam/
 scp -r oak_detect rpi:~/ugv/          # the face detector, on the OAK's VPU
 ssh rpi 'cd ~/ugv && python3 selftest.py | tail -2'

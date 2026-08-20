@@ -18,6 +18,7 @@ import json
 import math
 import os
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -99,7 +100,12 @@ def test_schemas():
     handlers = sorted(m[len("_tool_"):] for m in dir(rover_daemon.Rover)
                       if m.startswith("_tool_"))
     control = ["set_vision", "nav_status", "map_png", "camera_jpeg", "clear_map",
-               "detect_in"]
+               "detect_in",
+               # The scripting calls, which are control calls twice over: no model
+               # is shown them, and four of the five are refused on anything but
+               # loopback -- see LOCAL_ONLY in rover_daemon.py.
+               "run_script", "start_script", "script_status", "script_stop",
+               "list_api"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
@@ -471,6 +477,113 @@ def test_control_calls_without_hardware():
     # still hand one back in the reply.
     check("camera_jpeg is not gated on a vision host",
           "vision" in rover.call("camera_jpeg", {})["error"], False)
+    # The script runner is attached by main() once the port is known, so a Rover
+    # built any other way -- here, or by anything embedding it -- has none. The
+    # four that need one have to say so rather than raise on a None.
+    for name in ("run_script", "start_script", "script_status", "script_stop"):
+        refused = rover.call(name, {"source": "print(1)"})
+        check(f"{name} without a runner is refused", refused["ok"], False)
+        check(f"...and says why", "not running scripts" in refused["error"], True)
+    # `list_api` is the exception and needs nothing: it describes the primitives
+    # by looking at the module, which is a question worth answering on a daemon
+    # that is not currently in a position to run anything.
+    reference = rover.call("list_api", {})
+    check("list_api answers without a runner", reference["ok"], True)
+    check("...with the primitives in it",
+          all(word in reference["reference"] for word in ("gimbal.look_at", "every")),
+          True)
+
+
+def test_the_api_only_calls_tools_that_exist():
+    """Every daemon call `rover_api.py` makes has a handler behind it.
+
+    The same check `test_schemas` makes for the model's schemas, for the other
+    surface: a script's primitive that names a tool which has since been renamed
+    fails as "no such tool" in the middle of a behaviour, several minutes into a
+    run, which is a poor place to find out. Read out of the source rather than
+    from a list kept beside it, because a list kept beside it is a list that
+    stops being true.
+    """
+    import re
+
+    import rover_daemon
+
+    with open(os.path.join(HERE, "rover_api.py"), "r", encoding="utf-8") as handle:
+        source = handle.read()
+    called = sorted(set(re.findall(r'_call\("([a-z_]+)"', source)))
+    check("rover_api calls something", len(called) > 8, True)
+    missing = [n for n in called if not hasattr(rover_daemon.Rover, f"_tool_{n}")]
+    check("every primitive names a tool that exists", missing, [])
+    # And a script must not be able to start a script: one slot, and a behaviour
+    # that can spawn behaviours is a slot that means nothing.
+    check("no primitive starts another script",
+          [n for n in called if n.endswith("_script")], [])
+
+
+def test_scripts_run_and_say_what_happened():
+    """A script runs, prints, and comes back as an outcome rather than an exit code.
+
+    These spawn a real `python3`, which is the point -- the isolation being tested
+    is a process boundary, and a fake one would be testing nothing. They need no
+    rover: none of these scripts calls a primitive.
+    """
+    import scripting
+
+    runner = scripting.Runner("127.0.0.1:1")  # nothing there; nothing calls it
+    try:
+        done = runner.run("print('hello'); print(6 * 7)")
+        check("a script's output comes back", done["output"].split(), ["hello", "42"])
+        check("...and it says it finished", done["outcome"], "finished")
+
+        # The line number is the whole point of compiling the source as
+        # `<script>`: a traceback pointing into a temp file names something the
+        # person who asked for the behaviour cannot look at.
+        broken = runner.run("a = 1\nb = facse\n")
+        check("a broken script fails", broken["outcome"], "failed")
+        check("...and names the line", broken["error"].startswith("line 2: NameError"),
+              True)
+        check("a syntax error names its line too",
+              runner.run("def (:")["error"].startswith("line 1: SyntaxError"), True)
+        # `ok` on a blocking run is the script's own fate, because that is what
+        # the caller asked. Everywhere else it means the daemon answered.
+        check("a failed script reports ok false", broken["ok"], False)
+        check("a status call about a failed script still reports ok true",
+              runner.status()["ok"], True)
+
+        # The one that matters, and the one an interpreter inside the daemon
+        # could not do without help from the language: a script with no exit in
+        # it, spinning, is still stopped.
+        started = time.monotonic()
+        runaway = runner.run("while True:\n    pass\n", limit_s=1.0)
+        took = time.monotonic() - started
+        check("a runaway script is stopped", runaway["outcome"], "stopped")
+        # Bounded in terms of the module's own allowance rather than a number
+        # written here. Starting an interpreter is four seconds on the rover and
+        # a fifth of one on a workstation, so a fixed bound would be measuring
+        # which machine the test is running on.
+        check(f"...at about the time it was given ({took:.1f}s)",
+              0.9 < took < scripting.STARTUP_S + 1.0 + scripting.GRACE_S + 4.0, True)
+    finally:
+        runner.close()
+
+
+def test_one_script_at_a_time():
+    import scripting
+
+    runner = scripting.Runner("127.0.0.1:1")
+    try:
+        first = runner.start("import time\ntime.sleep(30)\n", limit_s=30)
+        check("the first script starts", first["ok"], True)
+        second = runner.start("print(1)")
+        check("a second is refused rather than queued", second["ok"], False)
+        check("...and says which one is running", first["id"] in second["error"], True)
+        stopped = runner.stop()
+        check("stopping succeeds even though the script did not", stopped["ok"], True)
+        check("...and the run is recorded as stopped", stopped["outcome"], "stopped")
+        check("a slot freed by a stop takes the next script",
+              runner.run("print('after')")["outcome"], "finished")
+    finally:
+        runner.close()
 
 
 def test_where():
@@ -800,7 +913,10 @@ def main():
                  test_no_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
-                 test_control_calls_without_hardware, test_where,
+                 test_control_calls_without_hardware,
+                 test_the_api_only_calls_tools_that_exist,
+                 test_scripts_run_and_say_what_happened,
+                 test_one_script_at_a_time, test_where,
                  test_map_view, test_flags, test_aiming_through_a_missed_frame,
                  test_one_move_puts_a_face_in_the_middle,
                  test_the_approach_to_a_face_never_turns_back):

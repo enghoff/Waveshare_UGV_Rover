@@ -174,8 +174,9 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 | [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which GPUs are worth it, rent vs buy |
 | [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in, the safety supervisor |
 | [omni-build.md](docs/omni-build.md) | the costed version of that design: what survives, what to write, and what to do first |
+| [scripting.md](docs/scripting.md) | running a program on the rover instead of calling one more tool: what the MVP does, what a script costs to start, and why a saved behaviour must not become a tool |
 
-The last four are planning and local-setup documents, and are specific to one
+The last five are planning and local-setup documents, and are specific to one
 installation rather than general. The rest describe the hardware and the code.
 [`docs/refs/`](docs/refs) is not prose at all: the LD19 datasheet and STEP model
 and the rover kit's own drawing, kept because several measured numbers in the
