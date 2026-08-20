@@ -812,6 +812,46 @@ static void test_blind_revolution_does_not_seed(void)
     slam2d_destroy(s);
 }
 
+static void test_midstream_join_does_not_seed(void)
+{
+    puts("\n--- joining a spinning sensor does not seed a remnant ---");
+    /* The port opens onto a lidar that has been turning the whole time, so the
+     * first wrap is the leftover of the revolution we joined in the middle of.
+     * Stamping that remnant as the seed is how a restart left a wedge of map
+     * that later full scans would not match, so mapping froze until someone
+     * cleared it. */
+    slam2d_config cfg;
+    slam2d_default_config(&cfg);
+    cfg.mount_deg = MOUNT_DEG;
+    cfg.max_range_m = 12.0f;
+    slam2d *s = slam2d_create(&cfg);
+    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
+    const signed char *g = slam2d_grid(s);
+
+    int n = make_revolution(rev, 0, 0, 0);
+    int half = (PKTS_PER_REV / 2) * 47;
+    slam2d_feed_lidar(s, rev + half, n - half);   /* remnant, no wrap yet */
+    check_true(grid_fingerprint(g, n_cells) == 0,
+               "a half-revolution by itself wrote nothing");
+
+    check_true(step(s, 0, 0, 0) == 0,
+               "the wrap of the remnant was discarded, not processed");
+    check_true(grid_fingerprint(g, n_cells) == 0,
+               "and did not seed the map");
+
+    check_true(step(s, 0, 0, 0) != 0,
+               "the next wrap is a full revolution and is processed");
+    check_true(grid_fingerprint(g, n_cells) != 0,
+               "and that one is the seed");
+
+    float sec[72];
+    slam2d_sectors(s, sec, 72);
+    close_to("seeded map sees the wall ahead",  sec[0],  ROOM_XMAX,  0.05);
+    close_to("and the wall behind",             sec[36], -ROOM_XMIN, 0.05);
+
+    slam2d_destroy(s);
+}
+
 static void test_mapping_can_be_suspended(void)
 {
     puts("\n--- mapping suspended: still matching, writing nothing ---");
@@ -1047,6 +1087,7 @@ int main(void)
     test_write_is_stricter_than_believe();
     test_edge_match_is_not_mapped();
     test_blind_revolution_does_not_seed();
+    test_midstream_join_does_not_seed();
     test_mapping_can_be_suspended();
     test_recovery_after_a_bad_reseed();
     test_ambiguity_is_reported();

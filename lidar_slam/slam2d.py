@@ -105,6 +105,7 @@ def _load(path=None):
     lib.slam2d_create.restype = c_void_p
     lib.slam2d_destroy.argtypes = [c_void_p]
     lib.slam2d_reset.argtypes = [c_void_p]
+    lib.slam2d_resync.argtypes = [c_void_p]
     lib.slam2d_feed_lidar.argtypes = [c_void_p, c_char_p, c_int]
     lib.slam2d_feed_lidar.restype = c_int
     lib.slam2d_set_prior.argtypes = [c_void_p, c_float, c_float]
@@ -203,6 +204,17 @@ class Slam2D:
         """
         with self.lock:
             self._lib.slam2d_reset(self._h)
+
+    def resync(self):
+        """Drop a half-parsed packet and a half-assembled revolution.
+
+        The map is untouched. Call this when the lidar port is (re)opened: the
+        sensor is already spinning, so the first wrap is a remnant of the
+        revolution the parser joined in the middle of, and stamping that remnant
+        is how a restart used to leave a wedge of map until someone cleared it.
+        """
+        with self.lock:
+            self._lib.slam2d_resync(self._h)
 
     # --- input ----------------------------------------------------------------
     def feed(self, data):

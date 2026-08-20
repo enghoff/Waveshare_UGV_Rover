@@ -23,31 +23,59 @@ import math
 #
 # The inflate radius is the caller's business. It is a sideways gap, not the
 # along-track brake: STANDOFF_M + REACT_MARGIN_M (0.45 m) asked for a 90 cm
-# opening and sealed pinches the chassis still fits. Navigator uses 0.25 m.
+# opening and sealed pinches the chassis still fits. Navigator uses 0.25 m as
+# the floor, and tries 0.45 m first -- see `preferred_m`.
 #
-# Beyond that hard ring there is a soft one -- see `comfort_m`. A route hugging
-# the keep-out boundary passes corners at exactly the distance the follower
-# brakes at, so an ordinary pose error turns a legal route into a stop. Charging
-# extra for travelling near anything blocked swings the route wide when there is
-# room, and still takes a narrow gap when there is not, because in a squeeze
-# every route pays the same toll and the shortest one is still through.
+# A single hard ring is hugged, and a hugged corner is passed at exactly the
+# distance the follower brakes at, so an ordinary pose error turns a legal
+# route into a stop. A soft toll (`comfort_m`) was not enough: two extra cells
+# of path is a cheap price to scrape a corner when going around costs metres.
+# So `preferred_m` is a second keep-out, tried first. Only if it has no route
+# at all does planning fall back to `inflate_m`. A corner gets the room the
+# follower actually needs whenever the room has it, and a pinch is still taken
+# when it does not.
+#
+# `start_yaw` matters because the rover may always turn, even with its nose in
+# a wall. A* has no heading, so a start cell that is free will still step into
+# the keep-out ahead and the follower will drive that chord. If the heading
+# looks into the keep-out, the route starts from a free cell off that heading
+# and keeps the hop as a waypoint, so the first thing the rover does is turn.
 
 # What a step next to the keep-out costs, on top of its length: 1 + this, fading
-# linearly to 1 at comfort_m. At 2.0 the planner will spend up to two extra cells
-# of path to avoid one cell of wall-hugging -- enough to arc around a corner in
-# the open, not enough to refuse a doorway both of whose sides charge it.
+# linearly to 1 at comfort_m. This is a nudge toward the middle of a gap, not
+# the thing that keeps corners at arm's length -- `preferred_m` is.
 COMFORT_COST = 2.0
+# Thin the cell path, but not enough to eat the keep-out. 0.22 m used to cut a
+# 0.45 m ring down to the distance the follower brakes at.
+SIMPLIFY_M = 0.12
+# Off-axis enough that the follower's turn-in-place threshold (40 deg) sees it.
+TURN_ESCAPE_DEG = 55.0
 
 
 def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
-         comfort_m=0.0, origin_cells=None):
+         comfort_m=0.0, origin_cells=None, preferred_m=None, start_yaw=None):
     """World metres -> a polyline of world metres, or (None, why_not).
 
     `grid` is indexed [forward, left] the way slam2d's occupancy is, with the origin
     cell at `origin_cells` (defaults to the centre). `start_xy` and `goal_xy` are
     metres in that same frame. `comfort_m` is the distance from anything blocked
     at which travel stops costing extra; at or below `inflate_m` it does nothing.
+    `preferred_m`, if larger than `inflate_m`, is tried as the keep-out first and
+    `inflate_m` is used only when that has no route. `start_yaw` is radians in
+    this frame (x forward, y left): if the heading looks into the keep-out, the
+    route begins with a hop off that heading.
     """
+    if preferred_m is not None and preferred_m > inflate_m:
+        path, _why = _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy,
+                                preferred_m, comfort_m, origin_cells, start_yaw)
+        if path is not None:
+            return path, None
+    return _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy,
+                      inflate_m, comfort_m, origin_cells, start_yaw)
+
+
+def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
+               comfort_m, origin_cells, start_yaw):
     import numpy as np
 
     grid = np.asarray(grid)
@@ -91,20 +119,27 @@ def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
     # radius of a wall. Plan from the nearest cell that is actually free: merely
     # unblocking the start cell looked like the same fix and was not, because the
     # rest of the inflation still walled that one cell in and every route out was
-    # refused -- exactly the tight spot a planner most needs to leave. The first
-    # waypoint is re-anchored to the true pose below, so the short blind hop from
-    # the real start to free space is followed on the live scan like everything
-    # else.
-    lsx, lsy = sx - x0, sy - y0
+    # refused -- exactly the tight spot a planner most needs to leave. The true
+    # pose is prepended below, and that hop is kept as a waypoint, so a rover
+    # facing the wall turns onto the free cell instead of driving the chord.
+    true_sx, true_sy = sx - x0, sy - y0
+    lsx, lsy = true_sx, true_sy
     lgx, lgy = gx - x0, gy - y0
+    search = max(radius + 2, 8)
     if inflated[lsx, lsy]:
-        freed = _nearest_free(inflated, lsx, lsy, max(radius + 2, 8))
+        freed = _nearest_free(inflated, lsx, lsy, search)
         if freed is None:
             return None, "the map shows no room to move at all from here"
         lsx, lsy = freed
+    elif start_yaw is not None and _heading_hits_keepout(
+            inflated, lsx, lsy, start_yaw, resolution_m, inflate_m):
+        escaped = _nearest_free_not_ahead(
+            inflated, lsx, lsy, start_yaw, search)
+        if escaped is not None:
+            lsx, lsy = escaped
 
     if inflated[lgx, lgy]:
-        snapped = _nearest_free(inflated, lgx, lgy, max(radius + 2, 8))
+        snapped = _nearest_free(inflated, lgx, lgy, search)
         if snapped is None:
             return None, "there is no room to stand at that place"
         lgx, lgy = snapped
@@ -118,10 +153,17 @@ def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
     world = [to_world(ix + x0, iy + y0) for ix, iy in local]
     # The cell centres of start and goal are not the poses that were asked for.
     # Keep the real endpoints so the follower is aiming at the tap, not at a
-    # 5 cm rounding of it.
-    world[0] = tuple(start_xy)
+    # 5 cm rounding of it. If A* started somewhere else -- a snap out of the
+    # keep-out, or a hop off a blocked heading -- that cell stays as the second
+    # waypoint; thinning it away is how a turn-first route became a chord
+    # through the wall.
+    pin_hop = (lsx, lsy) != (true_sx, true_sy)
+    if pin_hop:
+        world.insert(0, tuple(start_xy))
+    else:
+        world[0] = tuple(start_xy)
     world[-1] = tuple(goal_xy)
-    return _simplify(world, 0.22), None
+    return _simplify_pinned(world, SIMPLIFY_M, pin_hop), None
 
 
 def length(points):
@@ -184,6 +226,31 @@ def project(points, xy, s_min, slack_m):
     if not found:
         return s_min, math.hypot(x - points[-1][0], y - points[-1][1])
     return best_s, best_d
+
+
+def segment_end_s(points, s):
+    """Metres along the polyline at the end of the segment that contains `s`.
+
+    A carrot that looks past this vertex cuts the corner: the follower aims at a
+    point on the next leg and drives the chord, which is how a route that gave a
+    corner room still arrives at the brake distance. Looking only to the vertex
+    makes a sharp corner the turn-in-place it already is. A progress value that
+    sits exactly on a vertex belongs to the outgoing segment, so the carrot
+    after arriving is the next heading, not the one just finished.
+    """
+    if len(points) < 2:
+        return 0.0
+    walked = 0.0
+    s = max(0.0, s)
+    eps = 1e-6
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        step = math.hypot(bx - ax, by - ay)
+        if step < 1e-9:
+            continue
+        if s < walked + step - eps:
+            return walked + step
+        walked += step
+    return walked
 
 
 def cells_occupied_along(grid, resolution_m, occupied_at, points, s_from,
@@ -270,6 +337,21 @@ def _proximity_penalty(inflated, radius_cells, peak=COMFORT_COST):
     return penalty
 
 
+def _heading_hits_keepout(inflated, sx, sy, yaw, resolution_m, look_m):
+    """True if the heading from this cell runs into the keep-out within `look_m`."""
+    if look_m <= 0.0:
+        return False
+    h, w = inflated.shape
+    steps = max(1, int(math.ceil(look_m / resolution_m)))
+    for i in range(1, steps + 1):
+        dist = i * resolution_m
+        ix = sx + int(round(math.cos(yaw) * dist / resolution_m))
+        iy = sy + int(round(math.sin(yaw) * dist / resolution_m))
+        if not (0 <= ix < h and 0 <= iy < w) or inflated[ix, iy]:
+            return True
+    return False
+
+
 def _nearest_free(inflated, gx, gy, limit):
     h, w = inflated.shape
     best, best_d = None, None
@@ -277,6 +359,33 @@ def _nearest_free(inflated, gx, gy, limit):
         for dy in range(-limit, limit + 1):
             ix, iy = gx + dx, gy + dy
             if not (0 <= ix < h and 0 <= iy < w) or inflated[ix, iy]:
+                continue
+            d = dx * dx + dy * dy
+            if best is None or d < best_d:
+                best, best_d = (ix, iy), d
+    return best
+
+
+def _nearest_free_not_ahead(inflated, gx, gy, yaw, limit):
+    """Nearest free cell whose bearing is off the heading by TURN_ESCAPE_DEG.
+
+    The rover may always turn, so a blocked nose is a reason to start the route
+    to the side, not to refuse it. Cells still inside the forward cone are
+    ignored: those are the hop into the wall this is here to avoid.
+    """
+    h, w = inflated.shape
+    best, best_d = None, None
+    min_rad = math.radians(TURN_ESCAPE_DEG)
+    for dx in range(-limit, limit + 1):
+        for dy in range(-limit, limit + 1):
+            if dx == 0 and dy == 0:
+                continue
+            ix, iy = gx + dx, gy + dy
+            if not (0 <= ix < h and 0 <= iy < w) or inflated[ix, iy]:
+                continue
+            bearing = math.atan2(dy, dx) - yaw
+            bearing = (bearing + math.pi) % (2 * math.pi) - math.pi
+            if abs(bearing) < min_rad:
                 continue
             d = dx * dx + dy * dy
             if best is None or d < best_d:
@@ -361,6 +470,13 @@ def _reconstruct(came, w, start_i, goal_i):
     return None
 
 
+def _simplify_pinned(points, epsilon_m, pin_first_hop):
+    """Thin the route, keeping the first hop when that hop is the turn off a wall."""
+    if pin_first_hop and len(points) >= 3:
+        return [points[0]] + _simplify(points[1:], epsilon_m)
+    return _simplify(points, epsilon_m)
+
+
 def _simplify(points, epsilon_m):
     """Ramer–Douglas–Peucker, so a 3 m detour around a table is three corners
     rather than sixty cells."""
@@ -433,9 +549,10 @@ def _selftest():
     assert path is None and "seen" in why, why
 
     # Corners are given room when there is room to give. A wall ends at
-    # (1.0, 0.25); the route from (0,0) to (2,0) has to round that end, and with
-    # open floor above it the comfort toll should swing it wide where a plain
-    # keep-out would hug the ring at exactly inflate_m.
+    # (1.0, 0.25); the route from (0,0) to (2,0) has to round that end. The
+    # preferred keep-out is a wall, not a toll: if a 0.45 m ring fits, the
+    # route must stay that far out. A soft comfort still helps a little on a
+    # single ring, but it is not what keeps the follower off the brake.
     def corner_distance(pts, cx, cy):
         best, s = 1e9, 0.0
         while s <= length(pts) + 1e-6:
@@ -461,19 +578,47 @@ def _selftest():
     assert length(wide) < length(hug) + 1.0, (
         f"the wide route ballooned: {length(hug):.2f} -> {length(wide):.2f}")
 
+    pref, why = plan(big, res, occ, (0.0, 0.0), (2.0, 0.0),
+                     inflate_m=0.25, preferred_m=0.45)
+    assert pref is not None, why
+    d_pref = corner_distance(pref, 1.0, 0.25)
+    assert d_pref >= 0.40, f"preferred still grazed the corner at {d_pref:.2f} m"
+    assert d_pref > d_hug + 0.10, (
+        f"preferred changed nothing: {d_hug:.2f} -> {d_pref:.2f}")
+
     # ...but a narrow gap is still taken when it is the only way through. A
-    # 0.6 m opening leaves one free cell after the 0.25 m keep-out; the toll is
-    # paid, not treated as a wall.
+    # 0.6 m opening leaves one free cell after the 0.25 m keep-out; preferred
+    # 0.45 m seals it, so this is the fallback, not a refusal.
     big[wx, :] = occ
     gap0 = o - int(round(0.30 / res))
     gap1 = o + int(round(0.30 / res))
     big[wx, gap0:gap1] = -10
     path, why = plan(big, res, occ, (0.0, 0.0), (2.0, 0.0),
-                     inflate_m=0.25, comfort_m=0.55)
+                     inflate_m=0.25, preferred_m=0.45, comfort_m=0.55)
     assert path is not None, f"refused a gap the chassis fits through: {why}"
     assert all(abs(y) < 0.31 for x, y in
                [point_at(path, s * 0.05) for s in range(int(length(path) / 0.05))]
                if 0.9 < x < 1.1), f"did not go through the gap: {path}"
+
+    # Facing a wall, goal on the other side: the nose is blocked and turning is
+    # free, so the first hop must not be into the keep-out.
+    faced = np.full((120, 120), -10, dtype=np.int8)
+    wx = o + int(round(0.50 / res))
+    faced[wx, :o + int(round(0.80 / res)) + 1] = occ
+    path, why = plan(faced, res, occ, (0.0, 0.0), (1.2, 0.0),
+                     inflate_m=0.25, preferred_m=0.45, start_yaw=0.0)
+    assert path is not None, f"refused a turn-first route: {why}"
+    assert len(path) >= 2, path
+    hop = math.atan2(path[1][1] - path[0][1], path[1][0] - path[0][0])
+    assert abs(hop) > math.radians(50), (
+        f"first hop into the wall: {path[:4]} heading {math.degrees(hop):.0f} deg")
+
+    # And a clear run ahead is still a clear run: yaw must not invent a turn.
+    clear = np.full((120, 120), -10, dtype=np.int8)
+    path, why = plan(clear, res, occ, (0.0, 0.0), (1.5, 0.0),
+                     inflate_m=0.25, preferred_m=0.45, start_yaw=0.0)
+    assert path is not None, why
+    assert all(abs(y) < 0.15 for _, y in path), f"yaw forced a detour: {path}"
 
     # Progress along a path does not rewind for a small sideways weave.
     line = [(0.0, 0.0), (2.0, 0.0)]
@@ -483,6 +628,12 @@ def _selftest():
     assert 0.65 < s < 0.75, f"should be allowed to slide back 30 cm, got s={s}"
     s, d = project(line, (0.4, 0.0), 1.0, slack_m=0.35)
     assert s >= 0.64, f"rewound past the slack to s={s}"
+
+    corner = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
+    assert abs(segment_end_s(corner, 0.0) - 1.0) < 1e-9
+    assert abs(segment_end_s(corner, 0.4) - 1.0) < 1e-9
+    assert abs(segment_end_s(corner, 1.0) - 2.0) < 1e-9
+    assert abs(segment_end_s(corner, 1.5) - 2.0) < 1e-9
 
     print("planner: ok")
     return 0

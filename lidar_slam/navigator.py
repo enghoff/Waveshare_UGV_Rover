@@ -61,12 +61,16 @@ CORRIDOR_MARGIN_M = 0.06   # each side of the rover's own width: the hard limit
 # rover sitting still. 0.25 m is half of that; the live corridor still enforces
 # the 30 cm standoff and 15 cm reaction along the path it actually follows.
 PLAN_INFLATE_M = 0.25
-# But a route allowed to touch that ring hugs it, and a hugged corner is passed
-# at exactly the distance the follower brakes at -- an ordinary pose error turns
-# a legal route into a stop. So travel inside this distance of anything blocked
-# costs extra, fading to nothing at the edge: the route arcs wide of a corner
-# whenever there is room, and still takes a narrow gap when there is not,
-# because in a squeeze every route pays the toll and the shortest still wins.
+# A route allowed to touch that ring hugs it, and a hugged corner is passed at
+# exactly the distance the follower brakes at -- an ordinary pose error turns a
+# legal route into a stop. The first attempt therefore inflates by that brake
+# distance. Only if there is no such route does planning fall back to
+# PLAN_INFLATE_M: a corner is given room whenever there is room, and a pinch is
+# still taken when there is not. A soft toll was not enough; two extra cells of
+# path is a cheap price to scrape a corner when going around costs metres.
+PLAN_PREFERRED_M = STANDOFF_M + REACT_MARGIN_M
+# Soft extra beyond whichever keep-out was used, so even a fallback route
+# prefers the middle of a gap to its edge.
 PLAN_COMFORT_M = 0.55
 
 # And the soft one. Steering scores itself on a corridor this much wider than the
@@ -183,7 +187,7 @@ MAX_GOTO_M = 8.0
 MAX_REPLANS = 8
 GOTO_ARRIVE_M = 0.16       # close enough; the pose is not a millimetre thing
 GOTO_CORRIDOR_M = 0.55     # off the polyline by more than this means replan
-GOTO_LOOKAHEAD_M = 0.80    # carrot along the path, not the next 5 cm cell
+GOTO_LOOKAHEAD_M = 0.80    # carrot along the current segment, not past the corner
 GOTO_SLACK_M = 0.35        # progress may slide back this far without rewinding
 GOTO_TURN_DEG = 40.0       # more heading error than this: stop and turn
 GOTO_ALIGN_DEG = 12.0      # then drive once the nose is this close
@@ -664,7 +668,12 @@ class Navigator:
                         waypoints=len(path), replans=replans)
 
     def _plan_route(self, target_xy):
-        """A polyline from here to `target_xy`, or (None, why)."""
+        """A polyline from here to `target_xy`, or (None, why).
+
+        Tries the follower's brake distance as keep-out first, then the gap the
+        chassis still fits, and starts with a turn when the heading looks into
+        the keep-out -- turning is always legal even when the nose is not.
+        """
         import numpy as np
 
         with self.slam.lock:
@@ -673,7 +682,10 @@ class Navigator:
             res = self.slam.config.resolution_m
             occupied_at = self.slam.config.occupied_at
         return planner.plan(grid, res, occupied_at, (pose[0], pose[1]), target_xy,
-                            inflate_m=PLAN_INFLATE_M, comfort_m=PLAN_COMFORT_M)
+                            inflate_m=PLAN_INFLATE_M,
+                            preferred_m=PLAN_PREFERRED_M,
+                            comfort_m=PLAN_COMFORT_M,
+                            start_yaw=pose[2])
 
     @_one_move_at_a_time
     def turn_in_place(self, angle_deg, speed_dps=None):
@@ -1175,6 +1187,11 @@ class Navigator:
             self.lidar = None
             return False
         self.lidar_path = path
+        # The sensor has been spinning the whole time. The first wrap we see is a
+        # remnant of the revolution we joined in the middle of; without this it
+        # was stamped as the seed and later full scans would not match it, so
+        # mapping froze on a wedge of room until the map was cleared.
+        self.slam.resync()
         return True
 
     def _drop_lidar(self):
@@ -1485,12 +1502,13 @@ class Navigator:
         """Follow a planned polyline by looking ahead along it.
 
         Progress is the closest point on the path, allowed to slide back a little
-        so a weave beside the line is not a rewind. The carrot is nearly a metre
-        further on, so the rover aims at a stretch rather than at the next cell.
-        A corner is a turn on the spot; the rest is the same follow-the-gap drive
-        as a straight move, aimed at the carrot. Replan rather than fight when
-        the line is blocked, the rover has left the corridor, or the map has
-        grown a wall on the remaining route.
+        so a weave beside the line is not a rewind. The carrot stays on the current
+        segment: looking past a vertex is how a route that gave a corner room still
+        drove the chord and arrived at the brake distance. A sharp corner is a turn
+        on the spot, which is the move this rover already has; the rest is the same
+        follow-the-gap drive as a straight move, aimed at the carrot. Replan rather
+        than fight when the line is blocked, the rover has left the corridor, or
+        the map has grown a wall on the remaining route.
         """
         path = goal["path"]
         tx, ty = goal["target"]
@@ -1529,7 +1547,8 @@ class Navigator:
                 self._drive_pwm(0.0, 0.0)
                 return
 
-        carrot = planner.point_at(path, s + GOTO_LOOKAHEAD_M)
+        end_s = planner.segment_end_s(path, s)
+        carrot = planner.point_at(path, min(s + GOTO_LOOKAHEAD_M, end_s))
         want = math.degrees(math.atan2(carrot[1] - y, carrot[0] - x) - th)
         want = (want + 180.0) % 360.0 - 180.0
 

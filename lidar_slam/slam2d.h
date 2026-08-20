@@ -137,11 +137,19 @@ void    slam2d_destroy(slam2d *s);
  * create does. Allocates nothing. */
 void slam2d_reset(slam2d *s);
 
+/* Drop a half-parsed packet and a half-assembled revolution, without touching the
+ * map. Call this when the lidar port is (re)opened: the sensor is already spinning,
+ * so the first bytes are mid-packet and the first wrap is a remnant of the
+ * revolution the parser joined in the middle of. */
+void slam2d_resync(slam2d *s);
+
 /* --- input ---------------------------------------------------------------- */
 
 /* Feed raw bytes from the lidar port. Handles packets split across reads, drops
  * anything failing the LD19 CRC-8, and returns the number of complete revolutions
- * that became available (normally 0 or 1). Only the newest is kept. */
+ * that became available (normally 0 or 1). Only the newest is kept. A wrap that
+ * has not covered 270 degrees is not a revolution -- that is the remnant of
+ * joining a spinning sensor mid-turn, and it is discarded rather than seeded. */
 int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n);
 
 /* Where the rover thinks it has moved since the last processed revolution: forward

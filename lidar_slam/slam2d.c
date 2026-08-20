@@ -52,6 +52,7 @@ struct slam2d {
     unsigned char rx[RX_CAP];
     int  rx_len;
     int  prev_start;                /* last packet's start angle, for wrap detection */
+    int  acc_from;                  /* start angle of the first packet in acc, or -1 */
 
     point pts_a[MAX_POINTS], pts_b[MAX_POINTS];
     point *acc, *pend;              /* accumulating / complete */
@@ -250,6 +251,7 @@ slam2d *slam2d_create(const slam2d_config *cfg)
     s->acc = s->pts_a;
     s->pend = s->pts_b;
     s->prev_start = -1;
+    s->acc_from = -1;
     return s;
 }
 
@@ -259,6 +261,23 @@ void slam2d_destroy(slam2d *s)
     free(s->occ);
     free(s->lik);
     free(s);
+}
+
+static void parser_resync(slam2d *s)
+{
+    /* The byte stream and the revolution being assembled, not the map or a scan
+     * already handed over. Joining mid-packet or mid-revolution is the normal
+     * case after a port open, and mixing that remnant with the next wrap is how
+     * a restart used to seed a wedge of room. */
+    s->rx_len = 0;
+    s->acc_n = 0;
+    s->prev_start = -1;
+    s->acc_from = -1;
+}
+
+void slam2d_resync(slam2d *s)
+{
+    if (s) parser_resync(s);
 }
 
 void slam2d_reset(slam2d *s)
@@ -366,7 +385,7 @@ int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n)
         /* More than a revolution has queued up behind us without a single valid
          * packet coming out, so sync is gone rather than merely late. Start over
          * from the newest bytes instead of parsing a stale backlog. */
-        s->rx_len = 0;
+        parser_resync(s);
         if (n > RX_CAP) { buf += n - RX_CAP; n = RX_CAP; }
     }
     memcpy(s->rx + s->rx_len, buf, (size_t)n);
@@ -385,11 +404,26 @@ int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n)
         int end   = q[42] | q[43] << 8;
 
         /* The start angle climbs monotonically through a revolution and then wraps,
-         * so a start below the previous one is the revolution boundary. */
+         * so a start below the previous one is the revolution boundary. The first
+         * wrap after we start listening is almost always a remnant -- the port
+         * opens onto a spinning sensor -- and stamping that as the seed is how a
+         * restart left a wedge of map that later full scans would not match, so
+         * mapping froze until someone cleared it. A wrap that has not covered
+         * 270 degrees is discarded; the next one is a real revolution. */
         if (s->prev_start >= 0 && start < s->prev_start) {
-            finish_revolution(s);
-            revolutions++;
+            int rev_span = (s->acc_from >= 0)
+                ? (s->prev_start - s->acc_from + 36000) % 36000
+                : 0;
+            if (rev_span >= 27000 && s->acc_n > 0) {
+                finish_revolution(s);
+                revolutions++;
+            } else {
+                s->acc_n = 0;
+            }
+            s->acc_from = start;
         }
+        if (s->prev_start < 0)
+            s->acc_from = start;
         s->prev_start = start;
 
         int span = (end - start + 36000) % 36000;

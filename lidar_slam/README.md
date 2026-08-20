@@ -184,9 +184,15 @@ motion prior is used instead. Writing is a higher bar: `min_write_score` (0.35) 
 a winner that did not sit on the rim of the window. Believe and write are different
 questions — a 0.16 fit is still better than the prior, but it is not a pose to stamp
 walls from, and the first scan — the first that saw anything, a revolution with no
-returns does not count — is exempt because it *is* the map. This matters more
-than it looks: dead reckoning drifts predictably, whereas a confidently wrong match
-teleports the rover and then corrupts the map it will be matched against next.
+returns does not count — is exempt because it *is* the map. That first scan has to
+be a real revolution. The port opens onto a sensor that is already spinning, so the
+first wrap is a remnant of the turn we joined in the middle of; stamping that
+remnant is how a restart used to leave a wedge of map that later full scans would
+not match (a 0.16 score, mapping held) until someone cleared it. A wrap that has
+not covered 270 degrees is discarded, and the next one becomes the map. This
+matters more than it looks: dead reckoning drifts predictably, whereas a
+confidently wrong match teleports the rover and then corrupts the map it will be
+matched against next.
 
 ## When the match is wrong, and how it says so
 
@@ -383,21 +389,24 @@ than being a special case with a threshold to tune.
 
 Going to a *place* rather than a distance — `drive_to`, which is what a tap on the
 map becomes — plans on the occupancy grid first: A* at cell resolution over the map
-inflated by 25 cm, with unknown treated as blocked, thinned to the handful of
-corners that change heading. That radius is a sideways gap, not the along-track
-brake: inflating by the standoff plus the 15 cm reaction asked for a 90 cm opening
-and refused pinches the chassis still fits, with the live scan clear down the
-middle. The follower still keeps 30 cm ahead and brakes 15 cm early; it just is
-not asked to pretend a 85 cm doorway is closed.
+inflated by 45 cm, with unknown treated as blocked, thinned to the handful of
+corners that change heading. 45 cm is the distance at which the follower actually
+stops (30 cm standoff plus 15 cm of reaction). If that ring has no route, planning
+falls back to 25 cm — a sideways gap, not the along-track brake, because inflating
+every attempt by 45 cm asked for a 90 cm opening and refused pinches the chassis
+still fits, with the live scan clear down the middle. The follower still keeps
+30 cm ahead and brakes 15 cm early; it just is not asked to pretend an 85 cm
+doorway is closed. A soft toll beyond the keep-out is a nudge toward the middle of
+a gap, not the thing that keeps corners at arm's length: two extra cells of path
+was a cheap price to scrape a corner when going around cost metres.
 
-The hard ring alone has the opposite vice: A* hugs it, so every corner is passed
-at exactly the distance the follower brakes at and an ordinary pose error turns a
-legal route into a stop. So beyond the keep-out there is a toll — travel within
-55 cm of anything blocked costs up to three times its length, fading to nothing at
-the edge. In the open the route arcs wide of a corner (measured in the self-test:
-24 cm of clearance becomes 63 cm, for 0.7 m more path); through a narrow gap both
-sides charge every route the same, so the squeeze is still taken. The toll shapes
-the route, the keep-out decides what exists at all.
+The follower's carrot stays on the current segment. Looking a metre past a vertex
+is how a route that gave a corner room still drove the chord and arrived at the
+brake distance; a sharp corner is a turn on the spot, which is the move this rover
+already has. And because turning is always legal, even with the nose in a wall, a
+heading that looks into the keep-out starts the route with a hop off that heading
+so the first thing the rover does is turn, rather than drive the chord through the
+blocked cell.
 
 The polyline is a sketch, not a promise — the live scan stays in the loop while
 following it, and the route is thrown away and planned again when the room
@@ -408,8 +417,11 @@ for a new route only once it has moved somewhere the planner can answer from. `p
 inflation is one whole-array pass per disc offset rather than one write per blocked
 cell, and A* runs on flat Python lists because a numpy scalar read costs several
 list indexes. The first version did neither and took 7–10 **seconds** a route on
-this Pi, paid again at every replan; it now takes about 0.2 s, same routes. A rover
-that has ended up inside the inflation ring of a wall plans from the nearest free
+this Pi, paid again at every replan; it now takes about 0.2 s a keep-out. Trying
+the 45 cm ring first and falling back to 25 cm is two of those when the wide
+ring has no route, and one when it has.
+
+A rover that has ended up inside the inflation ring of a wall plans from the nearest free
 cell instead of being refused — that is the wedged case, and refusing it is how a
 planner strands the thing it steers.
 
