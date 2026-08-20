@@ -23,6 +23,7 @@ nothing to consult, and it is still right when the pose estimate is not.
 drop, a low sill or a table top. Thirty centimetres from a wall is safe; thirty
 centimetres from a table edge is not, and no tuning here changes that.
 """
+import collections
 import functools
 import glob
 import math
@@ -220,6 +221,99 @@ class Outcome:
         return out
 
 
+class MoveReport:
+    """A running commentary on the move that is happening now.
+
+    A move here is one blocking call that can last a minute -- plan a route, drive
+    a leg, lose the corridor, plan again, drive the rest -- and until this existed
+    the only account of any of it was the `Outcome` that arrived once it was all
+    over. Anything watching had a stopwatch and nothing else: a route the planner
+    had refused outright looked exactly like a route still being driven, and a
+    rover that had quietly replanned four times looked like one driving a long way
+    slowly.
+
+    So the move says what it is doing while it does it, and `status()` hands the
+    sentence it is on to whoever is polling.
+
+    `seq` is what makes that usable. The console asks three times a second, and
+    without a counter it cannot tell a sentence it has not seen from the same one
+    read again -- every line it wrote would land in its log thirty times over.
+
+    Behind the current sentence is a short history, and that is not
+    belt-and-braces: some phases are briefer than the poll. A replan lasts exactly
+    as long as the planner takes, about 0.2 s on this Pi, and is then superseded by
+    the route it produced -- so a watcher asking every 0.3 s could easily see the
+    new route appear and never learn what provoked it, which is the one thing about
+    a replan worth knowing. A caller that says which sentence it saw last gets the
+    ones in between along with the current one. A caller that says nothing gets the
+    current one alone, which is the right answer for a status line.
+    """
+
+    #: How many sentences to keep for a watcher that blinked. A move is over long
+    #: before it could produce this many, so in practice nothing is ever lost; the
+    #: bound is here so that a daemon nobody is watching cannot grow a list forever.
+    HISTORY = 32
+
+    def __init__(self):
+        # Its own lock rather than the navigator's: that one is taken by the control
+        # loop twenty times a second, and there is nothing here worth queueing
+        # behind a PWM decision for.
+        self._lock = threading.Lock()
+        self._state = self._blank(0)
+        self._at = time.monotonic()
+        self._history = collections.deque(maxlen=self.HISTORY)
+
+    @staticmethod
+    def _blank(seq, kind=None, asked=None):
+        return {"seq": seq, "phase": "idle", "kind": kind, "asked": asked,
+                "why": "", "route_m": None, "waypoints": None, "replans": 0,
+                "reason": None}
+
+    def begin(self, kind, asked, phase):
+        """A new move. Everything the last one said goes, except the counter."""
+        with self._lock:
+            self._history.append(self._state)
+            self._state = self._blank(self._state["seq"] + 1, kind, asked)
+            self._state["phase"] = phase
+            self._at = time.monotonic()
+
+    def say(self, phase, why="", **fields):
+        """One turn in the move. `why` is cleared unless this phase gives a reason,
+        because a reason left lying around from the previous phase is a lie about
+        this one."""
+        with self._lock:
+            self._history.append(self._state)
+            self._state = dict(self._state)
+            self._state.update(fields)
+            self._state["phase"] = phase
+            self._state["why"] = why
+            self._state["seq"] += 1
+            self._at = time.monotonic()
+
+    def finish(self, reason, why=""):
+        self.say("ended", why, reason=reason)
+
+    def snapshot(self, since_seq=None):
+        """The sentence being said now, carrying an age rather than a clock reading
+        -- this machine's monotonic clock means nothing on the machine asking.
+
+        `since_seq` is the last sentence the caller saw. Anything said between then
+        and now comes back under `missed`, oldest first, so a phase shorter than the
+        gap between two polls is still accounted for. Left out, `missed` is empty
+        and this is simply the latest -- which is what a caller who wants a status
+        line rather than a narrative should ask for.
+        """
+        with self._lock:
+            out = dict(self._state)
+            out["age_s"] = round(time.monotonic() - self._at, 2)
+            missed = []
+            if since_seq is not None:
+                missed = [dict(state) for state in self._history
+                          if since_seq < state["seq"] < out["seq"]]
+            out["missed"] = missed
+        return out
+
+
 def _one_move_at_a_time(method):
     """The wheels have one owner at a time.
 
@@ -285,6 +379,11 @@ class Navigator:
         self._estop = False
         self._driving = False
 
+        #: What the move currently running is doing, for anything polling status().
+        #: See MoveReport -- a move is one call that lasts a minute, and this is the
+        #: only account of it that arrives before it is over.
+        self.report = MoveReport()
+
         # Telemetry for status and for the speed loop.
         self._measured_speed = 0.0
         self._measured_turn = 0.0
@@ -333,12 +432,27 @@ class Navigator:
             self.slam.close()
 
     # --- commands -------------------------------------------------------------
+    # Each of the three is a thin wrapper that opens and closes the commentary in
+    # `report`, around a private body that is the move itself. Wrapping rather than
+    # threading report calls through every `return` keeps the bodies readable: this
+    # one has eight ways to end and the route has more, and each of them would
+    # otherwise have to remember to have the last word.
+    def _ended(self, outcome):
+        """Close the commentary on a move, and hand the outcome back untouched."""
+        self.report.finish(outcome.reason, outcome.detail)
+        return outcome
+
     @_one_move_at_a_time
     def drive(self, distance_m=None, speed_ms=None, seconds=None):
         """Go forward until the distance is covered or something is in the way.
         Blocks until it is done and says why it stopped. Avoidance may steer
         around obstacles, and will say so.
         """
+        self.report.begin("drive", {"distance_m": distance_m, "speed_ms": speed_ms},
+                          "driving")
+        return self._ended(self._drive(distance_m, speed_ms, seconds))
+
+    def _drive(self, distance_m, speed_ms, seconds):
         if self._estop:
             return Outcome("stopped", 0.0, 0.0,
                            "the emergency stop is latched; clear it first")
@@ -365,7 +479,17 @@ class Navigator:
         steered through while driving. If the live scan cannot proceed, or the
         rover has left the corridor, or the map along the remaining route has
         grown a wall, the route is thrown away and another is planned from here.
+
+        This is the one move where the answer is worth having before the end of it.
+        It reports through `report`: the plan being drawn, the route it came back
+        with or the reason there is none, and every replan with what provoked it.
         """
+        self.report.begin("drive_to", {"ahead_m": round(float(ahead_m), 2),
+                                       "left_m": round(float(left_m), 2)},
+                          "planning")
+        return self._ended(self._drive_to(ahead_m, left_m, speed_ms))
+
+    def _drive_to(self, ahead_m, left_m, speed_ms):
         if self._estop:
             return Outcome("stopped", 0.0, 0.0,
                            "the emergency stop is latched; clear it first")
@@ -386,14 +510,15 @@ class Navigator:
         x, y, th = self.slam.pose
         target = (x + ahead_m * math.cos(th) - left_m * math.sin(th),
                   y + ahead_m * math.sin(th) + left_m * math.cos(th))
+        replans = 0
         path, last_why = self._plan_route(target)
         if not path:
             return Outcome("blocked", 0.0, 0.0, last_why)
+        self._say_route(path, replans)
 
         started = time.monotonic()
         travelled_before = 0.0
         turned_before = 0.0
-        replans = 0
 
         self._begin_driving()
         try:
@@ -406,6 +531,7 @@ class Navigator:
                     if not path:
                         return Outcome("blocked", travelled_before, turned_before,
                                        last_why)
+                    self._say_route(path, replans)
                 remaining = planner.length(path)
                 limit = min(MAX_GOTO_S - (time.monotonic() - started),
                             remaining / speed * 2.2 + 4.0)
@@ -435,6 +561,11 @@ class Navigator:
                                        outcome.turned_deg,
                                        "gave up replanning: " + (outcome.detail
                                                                  or last_why))
+                    # Said before the planner is asked rather than after it answers,
+                    # because what provoked the replan is the interesting half and
+                    # planning on this host is not instant.
+                    self.report.say("replanning", outcome.detail or last_why,
+                                    replans=replans, route_m=None, waypoints=None)
                     continue
                 if outcome.reason == "stopped":
                     return outcome
@@ -445,6 +576,12 @@ class Navigator:
         finally:
             self._halt()
             self._end_driving()
+
+    def _say_route(self, path, replans):
+        """The planner came back with a route. How long it is and how many corners
+        it has is what says whether it went the way you meant it to."""
+        self.report.say("driving", route_m=round(planner.length(path), 2),
+                        waypoints=len(path), replans=replans)
 
     def _plan_route(self, target_xy):
         """A polyline from here to `target_xy`, or (None, why)."""
@@ -476,6 +613,11 @@ class Navigator:
         fine PWM. If it is not, the dead-reckoned figure is reported and said to be
         dead-reckoned rather than passed off as a measurement.
         """
+        self.report.begin("turn_in_place", {"angle_deg": round(float(angle_deg), 1)},
+                          "turning")
+        return self._ended(self._turn_in_place(angle_deg, speed_dps))
+
+    def _turn_in_place(self, angle_deg, speed_dps):
         if self._estop:
             return Outcome("stopped", 0.0, 0.0,
                            "the emergency stop is latched; clear it first")
@@ -600,6 +742,12 @@ class Navigator:
             if latch:
                 self._estop = True
         self._halt()
+        # Only while something is actually moving. A stop pressed on a still rover
+        # is a reasonable thing to do and would otherwise wipe the last move's
+        # ending off the screen of whoever pressed it.
+        if self._driving:
+            self.report.say("stopping", "a stop was asked for"
+                                        + (" and latched" if latch else ""))
         return {"stopped": True, "latched": self._estop}
 
     def clear_estop(self):
@@ -1211,7 +1359,10 @@ class Navigator:
         self._last_send_at = time.monotonic()
 
     # --- reporting ------------------------------------------------------------
-    def status(self):
+    def status(self, since_seq=None):
+        """`since_seq` is passed straight to the move commentary: give it the last
+        sentence you saw and the reply carries anything said since. See
+        MoveReport.snapshot."""
         x, y, th = self.slam.pose
         remaining = None
         with self._lock:
@@ -1230,6 +1381,11 @@ class Navigator:
                            else round(self._clearance, 2),
             "steering_deg": round(self._chosen_deg, 1),
             "remaining_m": None if remaining is None else round(remaining, 2),
+            # What the move says it is doing, as opposed to what the wheels are
+            # doing. The numbers above are the state of the rover; this is the state
+            # of the request, and a plan being refused shows up here and nowhere
+            # else until the call itself returns. See MoveReport.
+            "move": self.report.snapshot(since_seq),
             "match_score": round(self.slam.score, 3),
             "position_trusted": not self.slam.rejected,
             "scans": self._scans,
@@ -1308,3 +1464,69 @@ class Navigator:
         import mapimg
         return mapimg.render(self.slam, half_extent_m, scale, tuple(self._trail),
                              rover_up=rover_up, camera=camera)
+
+
+def _selftest():
+    """The commentary, which is the one thing in this file that can be checked
+    without a lidar, a driver board or a floor.
+
+    Worth checking on its own because the failure mode is quiet: a report that
+    keeps a stale field, or that fails to move its counter, does not break a move
+    -- it makes the window watching one describe something that is not happening.
+    """
+    report = MoveReport()
+    assert report.snapshot()["phase"] == "idle", "a fresh report claims a move"
+
+    report.begin("drive_to", {"ahead_m": 1.2, "left_m": -0.4}, "planning")
+    first = report.snapshot()
+    assert first["phase"] == "planning" and first["kind"] == "drive_to", first
+    assert first["asked"] == {"ahead_m": 1.2, "left_m": -0.4}, first
+
+    report.say("driving", route_m=1.86, waypoints=4, replans=0)
+    accepted = report.snapshot()
+    assert accepted["seq"] > first["seq"], "the counter did not move"
+    assert accepted["route_m"] == 1.86 and accepted["waypoints"] == 4, accepted
+    assert accepted["asked"] == first["asked"], "the request was forgotten mid-move"
+
+    # A reason belongs to the phase that gave it. Left lying around it becomes a
+    # claim about the next phase, which is how a route that planned cleanly ends up
+    # captioned with the drift that provoked the replan before it.
+    report.say("replanning", "drifted 0.61 m off the route", replans=1,
+               route_m=None, waypoints=None)
+    assert report.snapshot()["route_m"] is None, "the old route outlived the replan"
+    report.say("driving", route_m=1.2, waypoints=3, replans=1)
+    assert report.snapshot()["why"] == "", "the replan's reason outlived the replan"
+
+    report.finish("arrived", "")
+    ended = report.snapshot()
+    assert ended["phase"] == "ended" and ended["reason"] == "arrived", ended
+    assert ended["replans"] == 1, "the replans were not counted"
+    assert ended["missed"] == [], "asked for no history and got some anyway"
+
+    # A watcher that blinked. Everything said between the sentence it last saw and
+    # the one being said now comes back with it, oldest first -- a replan lasts
+    # about as long as the planner takes and is easily shorter than a poll.
+    caught_up = report.snapshot(since_seq=first["seq"])
+    phases = [state["phase"] for state in caught_up["missed"]]
+    assert phases == ["driving", "replanning", "driving"], phases
+    assert [state["seq"] for state in caught_up["missed"]] == sorted(
+        state["seq"] for state in caught_up["missed"]), "history is out of order"
+    assert caught_up["missed"][1]["why"].startswith("drifted"), (
+        "the history lost the reason with the phase it belonged to")
+    assert report.snapshot(since_seq=ended["seq"])["missed"] == [], (
+        "a caller already up to date was handed history anyway")
+
+    # A new move starts clean, except for the counter -- which must never go
+    # backwards, or a poller decides it has already seen what it is looking at.
+    report.begin("turn_in_place", {"angle_deg": -90.0}, "turning")
+    fresh = report.snapshot()
+    assert fresh["seq"] > ended["seq"], "the counter went backwards"
+    assert fresh["reason"] is None and fresh["replans"] == 0, fresh
+    assert fresh["route_m"] is None and fresh["why"] == "", fresh
+
+    print("navigator: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_selftest())

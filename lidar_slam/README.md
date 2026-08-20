@@ -302,6 +302,19 @@ gets through.
 Every move returns **why it stopped**, which matters more than the pose: "stopped
 after 40 cm because something was 32 cm ahead" is actionable and "done" is not.
 
+**And says what it is doing before it is over.** That answer arrives once, at the
+end, and a route can take a minute to reach the end of — so on its own it left
+anything watching with a stopwatch and no idea whether the planner had accepted the
+request, refused it outright, or was three replans into carrying it out. A move now
+publishes each of its turns into `status()` under `move`: planning, the route it
+came back with and how many corners are in it, the reason there is none, every
+replan with what provoked it, and how it ended. `MoveReport` holds it, one sentence
+at a time rather than a queue — a watcher that misses a phase wants the one
+happening now, not a backlog — and each carries a counter, which is what lets a
+console poll this three times a second and still write one line per thing the rover
+said. [voice_chat/drive_console.py](../voice_chat/drive_console.py) is what reads
+it, under the map you clicked on.
+
 `dryrun.py` exercises all of it against the real lidar with a stub link, so the
 control loop, the clearance checks and the PWM arithmetic can be tested on live scans
 with nothing reaching the motors. Run it before the first real move.
@@ -474,7 +487,7 @@ slam2d.c      parser, scan matcher, occupancy and likelihood grids, segmentation
 selftest.c    correctness against a synthetic room and a synthetic table
 build.sh      builds libslam2d.so and selftest, on the machine that runs them
 slam2d.py     ctypes binding, and describe(); checks its struct layout each load
-navigator.py  the drive controller: avoidance, steering, speed, PWM
+navigator.py  the drive controller: avoidance, steering, speed, PWM; `python3 navigator.py` self-tests the move commentary
 planner.py    a route through the occupancy grid, as a few corners; `python3 planner.py` self-tests
 mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
 run_slam.py   mapping on its own: pose, clearance, a PGM

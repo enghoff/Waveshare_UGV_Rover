@@ -919,6 +919,32 @@ times a second — so the numbers went stale exactly while the picture was being
 The camera earned the fifth for the same reason one step worse: opening the camera
 and waiting for its first buffer takes the rover up to four seconds.
 
+**Clicking the map is answered while it is being acted on.** A click sends
+`drive_to`, and that is one blocking call which can last a minute: plan a route,
+drive a leg, lose the corridor, plan again, drive the rest. It does not return
+until all of that is over, so a click used to buy a stopwatch and nothing else —
+and a route the planner had refused outright looked exactly like a route still
+being driven, for as long as you were willing to wait.
+
+The navigator now publishes each turn in a move into `nav_status`, which this
+window already polls three times a second on a connection the move is not holding.
+The line under the map reads it back: what was asked for, the route that came back
+and how many corners are in it, or the planner's own words for why there is none —
+*that place is solid*, *there is no room to stand at that place*, *no clear route
+through what the lidar has seen*. Mid-route it says when the rover threw a route
+away and what provoked it, then what the next one came out as.
+
+Those lines go into the transcript too, but only when they change and only when
+they add to the request already on screen. The record carries the navigator's count
+of the sentences it has published, and that counter is the whole reason this can be
+polled rather than streamed: without it there is no telling a phase that has just
+started from the same phase read again a tenth of a second later, and every line
+would land in the log thirty times. What is kept out is a plain drive announcing
+that it is driving — the `-> drive(distance_m=0.5)` line above it says so already —
+and the ending, because the move's own reply is on its way with the distances in it
+and two accounts of one ending, a tenth of a second apart, read like two things
+having happened.
+
 **The map zooms, and zooming does not resize it.** "Across" is how many metres are
 in frame; `-` and `+` step it through a fixed ladder from 1.5 m to 12 m so the same
 extents come back and one picture can be compared with an earlier one. "Size" is how

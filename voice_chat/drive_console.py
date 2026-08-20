@@ -44,6 +44,25 @@ Clicking the map sends `drive_to`: the rover plans a route of segments and turns
 to that point, relative to where it is now, and follows it with the lidar in the
 loop. Stop still interrupts it.
 
+**And the rover says what it is making of that while it makes it.** `drive_to` is
+one blocking call that can last a minute -- plan a route, drive a leg, lose the
+corridor, plan again -- and it does not answer until all of it is over, so a click
+on the map used to buy a stopwatch and nothing else. A route the planner had
+refused outright looked exactly like a route still being driven. The navigator now
+publishes each turn in the move into `nav_status`, which this window is already
+polling three times a second on its own connection, and the line under the map
+reads it back: planning, the route it accepted and how many corners are in it or
+why there is no route, every replan with what provoked it, and how it ended.
+
+Those lines also go into the transcript, but only when they change and only when
+they say something the request already on screen did not. The record carries a
+counter of the sentences the rover has published, and without it a poll three times
+a second would write each line thirty times. What is kept out is a plain drive
+announcing that it is driving -- the line above it says so already -- and the
+ending, because the move's own reply is on its way with the distances in it and two
+accounts of one ending, a tenth of a second apart, read like two things having
+happened.
+
 The map gets a fourth for the same reason one step down: drawing it costs the Pi a
 second and a half, sometimes several, and it shared the status connection until that
 was measured -- so the numbers went stale exactly while the picture was being
@@ -292,6 +311,96 @@ STATUS_FIELDS = (
 ALARM_WHEN_FALSE = ("lidar_live", "position_trusted")
 ALARM_WHEN_TRUE = ("estop",)
 
+# The phases worth noticing when they do reach the transcript. A replan is not a
+# failure, so it is not red -- but it is the moment the rover changed its mind, and
+# it should not read like ordinary progress either.
+LOUD_PHASES = ("replanning", "stopping")
+
+
+def worth_logging(move):
+    """Whether this sentence belongs in the transcript as well as on the panel.
+
+    The test is whether it says anything the `-> drive(distance_m=0.5)` line just
+    above it did not. A plain drive or turn announcing itself as driving or turning
+    says nothing -- the request is already on screen a line higher, and echoing it
+    back is how a log becomes a thing people stop reading. What earns a line is the
+    planner's verdict on a request, and anything the rover decides for itself once
+    it is under way.
+
+    The ending earns none, for a different reason: the move's own reply is already
+    on its way carrying the distances, and two accounts of one ending a tenth of a
+    second apart read like two things having happened.
+    """
+    phase = (move or {}).get("phase")
+    if phase in ("planning", "replanning", "stopping"):
+        return True
+    # `driving` covers both "the wheels are turning" and "the planner came back
+    # with this route". Only the second is news.
+    return phase == "driving" and move.get("route_m") is not None
+
+
+def _asked_for(move):
+    """The request, in the units it was made in: what to put after "planning a
+    route to". Every kind states its own, because "1.20, -0.40" means nothing."""
+    asked = move.get("asked") or {}
+    kind = move.get("kind")
+    if kind == "drive_to":
+        return "ahead {:+.2f} m, left {:+.2f} m".format(
+            float(asked.get("ahead_m") or 0.0), float(asked.get("left_m") or 0.0))
+    if kind == "turn_in_place":
+        return "{:+.0f} deg".format(float(asked.get("angle_deg") or 0.0))
+    if kind == "drive":
+        distance = asked.get("distance_m")
+        return "as far as it can" if distance is None else f"{float(distance):.2f} m"
+    return ""
+
+
+def move_sentence(move):
+    """What the rover says the move in flight is doing, as one line for a person.
+
+    The navigator publishes this into `nav_status` as the move runs, which is the
+    only way to hear about a move before it is over: `drive_to` is one blocking
+    call that plans, drives, and may plan again several times, and it does not
+    answer until all of that has happened. Without this a click on the map bought
+    a stopwatch and nothing else, and a route the planner had refused outright
+    looked exactly like a route still being driven.
+
+    Pure, and self-tested in [selftest.py](selftest.py), because it is the whole of
+    what this window has to say about a move in progress and a GUI is a miserable
+    place to debug a sentence.
+    """
+    if not move:
+        return ""
+    phase = move.get("phase") or ""
+    why = move.get("why") or ""
+    where = _asked_for(move)
+    if phase in ("", "idle"):
+        return ""
+    if phase == "planning":
+        line = f"planning a route to {where}"
+    elif phase == "driving" and move.get("route_m") is not None:
+        count = move.get("waypoints") or 0
+        line = (f"route accepted: {move['route_m']:.2f} m "
+                f"through {count} waypoint{'' if count == 1 else 's'}")
+    elif phase == "driving":
+        line = f"driving {where}"
+    elif phase == "turning":
+        line = f"turning {where}"
+    elif phase == "replanning":
+        line = f"replanning (#{move.get('replans') or 1})"
+    elif phase == "stopping":
+        line = "stopping"
+    elif phase == "ended":
+        # The reason the navigator gives is the same vocabulary the reply uses --
+        # arrived, blocked, stopped, busy -- so the panel and the transcript agree.
+        line = str(move.get("reason") or "ended")
+        if move.get("replans"):
+            line += f", after {move['replans']} replan"
+            line += "" if move["replans"] == 1 else "s"
+    else:
+        line = phase
+    return line + (f" -- {why}" if why else "")
+
 
 class Reply:
     """One answered call, on its way back to the window."""
@@ -369,6 +478,14 @@ class Console:
         self.can_drive = False
         self.busy_since: float | None = None
         self.busy_name = ""
+        # The navigator's own count of the sentences it has published about the move
+        # it is running. Kept so that polling three times a second writes one line
+        # per thing the rover said rather than thirty. See move_sentence.
+        self.move_seq: int | None = None
+        # Set when a move's reply has been printed, and cleared again by the record
+        # that says that move ended. Everything in between is commentary the reply
+        # has already overtaken -- see _show_move.
+        self.move_answered = False
         self.poll_outstanding = False
         self.poll_at = 0.0
         self.map_outstanding = False
@@ -613,6 +730,13 @@ class Console:
             ttk.Label(legend, text=label, foreground="#444").grid(
                 row=0, column=2 * column + 1, sticky="w")
 
+        # Under the map rather than in the nav_status panel beside it, because this
+        # is the answer to the click that happens here: what the planner made of
+        # where you pressed, while it is still making it.
+        self.plan_var = tk.StringVar(value="-")
+        ttk.Label(picture, textvariable=self.plan_var, wraplength=400,
+                  foreground="#0a4f9c", justify="left").pack(anchor="w", pady=(6, 0))
+
         self.caption_var = tk.StringVar(value="")
         ttk.Label(picture, textvariable=self.caption_var, wraplength=400,
                   foreground="#444", justify="left").pack(anchor="w", pady=(4, 0))
@@ -731,6 +855,9 @@ class Console:
         self.log.tag_configure("good", foreground="#136b13")
         self.log.tag_configure("bad", foreground="#a01010")
         self.log.tag_configure("quiet", foreground="#777")
+        # Not red: a replan is the rover changing its mind, which is the system
+        # working. It still should not read like ordinary progress.
+        self.log.tag_configure("note", foreground="#8a5a00")
 
     # --- connecting -----------------------------------------------------------
     def _connect(self) -> None:
@@ -744,6 +871,9 @@ class Console:
         self.moves = self.halt = self.watch = self.picture = self.camera = None
         self.frame_outstanding = False
         self.map_outstanding = False
+        # Forgotten across a reconnect, so that a rover found mid-move says once
+        # what it is doing instead of staying silent until the next phase.
+        self.move_seq = None
         self.tools = []
         self.can_drive = False
         self.busy_since = None
@@ -811,6 +941,7 @@ class Console:
             return
         self.busy_since = time.monotonic()
         self.busy_name = name
+        self.move_answered = False      # a new move's commentary is wanted again
         self._enable_buttons(False)
         self._log_sent(name, arguments)
         self.moves.submit(name, arguments)
@@ -1002,7 +1133,10 @@ class Console:
         if self.watch is not None and not self.poll_outstanding and now - self.poll_at > POLL_S:
             self.poll_outstanding = True
             self.poll_at = now
-            self.watch.submit("nav_status")
+            # Saying which sentence about the move we already have is what makes a
+            # third-of-a-second poll safe: a replan lasts about as long as the
+            # planner takes and would otherwise come and go between two of these.
+            self.watch.submit("nav_status", {"since_seq": self.move_seq})
         # Auto-refresh leaves the rover as long to breathe as the last map took to
         # draw. Asking every two seconds for a picture that takes two and a half is
         # how you keep a single-core Pi permanently drawing maps while it is also
@@ -1091,6 +1225,10 @@ class Console:
         if moved:
             self.busy_since = None
             self.busy_name = ""
+            # The outcome is about to be printed, so anything the poll has not yet
+            # caught up with is commentary on a move the log has already finished
+            # telling. See _show_move.
+            self.move_answered = True
             self._enable_buttons(self.can_drive)
         self._log_reply(reply)
         if name == "turn_in_place":
@@ -1138,6 +1276,56 @@ class Console:
         self._heading_rad = math.radians(float(pose.get("heading_deg", 0.0)))
         self.pose_var.set("x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
             pose.get("x_m", 0.0), pose.get("y_m", 0.0), pose.get("heading_deg", 0.0)))
+        self._show_move(body.get("move") or {})
+
+    def _show_move(self, move: dict[str, Any]) -> None:
+        """The line under the map always; the transcript only when the rover has
+        said something it has not said before.
+
+        `seq` is the navigator's own counter of the sentences it has published, and
+        it is the whole reason this can be polled: without it there is no way to
+        tell a phase that has just started from the same phase read again a tenth
+        of a second later, and the log would fill with the same line.
+
+        `missed` holds anything the rover said between the last poll and this one,
+        oldest first, because a phase can be shorter than the gap between two polls
+        -- and the phase that usually is happens to be the replan, which is the one
+        worth reading. Those go to the transcript in order; only the newest reaches
+        the panel, which is a statement about now.
+
+        A move quicker than the poll is answered before any of this arrives, and its
+        commentary would then read as news about something already reported -- the
+        planning line printed underneath the outcome it led to. So once a move's
+        reply has gone into the log, what the rover said during that move is dropped
+        rather than printed late, up to and including the record that ends it.
+        Commentary about a move this window did not start is never in that state and
+        is always printed, which is how a rover being driven by something else can
+        still be watched here.
+
+        A rover too old to publish this at all sends no `move` key, and then the
+        line reads "-" and nothing is logged -- rather than the window inventing a
+        commentary from the numbers, which is the mistake this whole panel exists
+        to stop.
+        """
+        sentence = move_sentence(move)
+        self.plan_var.set(sentence or "-")
+        seq = move.get("seq")
+        if seq is None or seq == self.move_seq:
+            return
+        self.move_seq = seq
+        for record in (move.get("missed") or []) + [move]:
+            if self.move_answered:
+                # Still working through what the reply overtook. The ending is the
+                # last of it, and anything after belongs to a move not yet answered.
+                self.move_answered = record.get("phase") != "ended"
+                continue
+            self._log_move(record)
+
+    def _log_move(self, move: dict[str, Any]) -> None:
+        sentence = move_sentence(move)
+        if sentence and worth_logging(move):
+            self._say(f"{'':10}   <~ {sentence}\n",
+                      "note" if move.get("phase") in LOUD_PHASES else "quiet")
 
     def _show_map(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):

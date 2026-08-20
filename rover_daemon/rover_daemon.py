@@ -1753,7 +1753,7 @@ class Rover:
                               "from the description alone: " + str(sent.get("error")))
         return result
 
-    def _tool_nav_status(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+    def _tool_nav_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Every number the driving loop has. A control call, not a model tool.
 
         Dispatched like a tool because that is the only protocol here, and absent
@@ -1765,10 +1765,24 @@ class Rover:
 
         Written for [voice_chat/drive_console.py](../voice_chat/drive_console.py),
         which polls it a few times a second while somebody drives by hand.
+
+        `move` in the reply is the odd one out: not a number off the rover but what
+        the request currently running says it is doing -- planning, the route it
+        accepted, a replan and what provoked it, how it ended. A move is one
+        blocking call that can last a minute, so until it returns this is the only
+        account of it there is, and a plan the navigator refused shows up here
+        before the refusal itself arrives. See MoveReport in `lidar_slam/navigator.py`.
+
+        `since_seq` in the arguments is the last of those sentences the caller
+        already has; anything said since comes back under `move.missed`. A poller
+        that passes it cannot miss a phase for being briefer than its own interval,
+        which a replan routinely is.
         """
         if self.nav is None:
             return {"ok": False, "error": "this rover has no lidar attached"}
-        return {"ok": True, **self.nav.status()}
+        since = arguments.get("since_seq")
+        return {"ok": True, **self.nav.status(
+            since_seq=None if since is None else int(since))}
 
     def _tool_map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """The map as base64 PNG in the reply. A control call, not a model tool.

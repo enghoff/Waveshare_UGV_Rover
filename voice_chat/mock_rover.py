@@ -76,6 +76,32 @@ MAP_PIXELS = prompts._literal(prompts.DAEMON, "MAP_PIXELS")
 CAMERA_FOV_DEG = prompts._literal(prompts.DAEMON, "CAMERA_FOV_DEG")
 
 
+def _move_report():
+    """The navigator's own `MoveReport`, or None if `lidar_slam/` is not here.
+
+    Borrowed rather than reimplemented: it is what the real rover publishes into
+    `nav_status` while a move runs, and a mock that made up its own field names
+    would let [drive_console.py](drive_console.py) pass against this and fail
+    against the rover. Imported at first use like the planner below, because this
+    file's whole point is to run where the rover's code may not.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "lidar_slam"))
+    try:
+        from navigator import MoveReport
+    except Exception:
+        return None
+    return MoveReport()
+
+
+def _length(path) -> float:
+    """How long a route is, by the planner's own reckoning rather than a second
+    version of it here. Imported at use, like everything else out of `lidar_slam`;
+    by the time a route exists to measure, `_plan_to` has already imported it."""
+    import planner
+    return planner.length(path)
+
+
 def _wrap(radians: float) -> float:
     return (radians + math.pi) % (2 * math.pi) - math.pi
 
@@ -126,6 +152,32 @@ class Rover:
         self.trail: list[tuple[float, float]] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._lock = threading.Lock()
+        # The same running commentary the real navigator keeps, from the same
+        # class rather than a copy of its shape -- a mock that invented its own
+        # field names would let the console pass here and fail on the rover.
+        # Absent if lidar_slam is not beside this checkout, which is also the
+        # state a rover running an older daemon is in, and the console handles it.
+        self.report = _move_report()
+
+    # --- what the move is doing, for anything polling nav_status --------------
+    # Three lines around each move rather than one wrapper, because a mock's moves
+    # do not share a shape the way the navigator's do -- one of them is a loop over
+    # a real planner and the other two are arithmetic.
+
+    def _begin(self, kind: str, asked: dict[str, Any], phase: str) -> None:
+        if self.report is not None:
+            self.report.begin(kind, asked, phase)
+
+    def _say(self, phase: str, why: str = "", **fields: Any) -> None:
+        if self.report is not None:
+            self.report.say(phase, why, **fields)
+
+    def _say_end(self, reason: str, why: str, result: Any = None) -> Any:
+        """Ends the commentary and hands `result` straight back, so it can be
+        used in a `return` without a spare line."""
+        if self.report is not None:
+            self.report.finish(reason, why)
+        return result
 
     # --- the tools ----------------------------------------------------------
 
@@ -202,8 +254,11 @@ class Rover:
     def drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
         distance = float(arguments.get("distance_m", 0.5))
         speed = float(arguments.get("speed_ms") or 0.2)
+        self._begin("drive", {"distance_m": distance, "speed_ms": speed}, "driving")
         if distance <= 0.0:
-            return {"ok": False, "error": "distance_m has to be positive"}
+            return self._say_end("blocked", "distance_m has to be positive",
+                                 {"ok": False,
+                                  "error": "distance_m has to be positive"})
 
         # Walked in small steps rather than solved, so that stopping at the
         # standoff falls out of the same code that moves -- which is how the real
@@ -224,6 +279,7 @@ class Rover:
         if reason == "blocked":
             detail = (f"stopped {STANDOFF_M:.2f} m short of something after "
                       f"{travelled:.2f} m of the {distance:.2f} m asked for")
+        self._say_end(reason, detail)
         return {"ok": True, "reason": reason, "travelled_m": round(travelled, 3),
                 "turned_deg": 0.0,
                 **({"detail": detail} if detail else {}),
@@ -234,13 +290,18 @@ class Rover:
         ahead = float(arguments.get("ahead_m", 0.0) or 0.0)
         left = float(arguments.get("left_m", 0.0) or 0.0)
         speed = float(arguments.get("speed_ms") or 0.2)
+        self._begin("drive_to", {"ahead_m": round(ahead, 2), "left_m": round(left, 2)},
+                    "planning")
         range_m = math.hypot(ahead, left)
         if range_m < 0.08:
+            self._say_end("arrived", "already there")
             return {"ok": True, "reason": "arrived", "travelled_m": 0.0,
                     "turned_deg": 0.0, **self._nav_context(speed)}
         if range_m > 8.0:
-            return {"ok": False, "error": (
-                f"that is {range_m:.1f} m away and a single route is capped at 8 m")}
+            why = (f"that is {range_m:.1f} m away and a single route is "
+                   f"capped at 8 m")
+            self._say_end("blocked", why)
+            return {"ok": False, "error": why}
 
         target = (self.x + ahead * math.cos(self.heading) - left * math.sin(self.heading),
                   self.y + ahead * math.sin(self.heading) + left * math.cos(self.heading))
@@ -251,6 +312,8 @@ class Rover:
             path, last_why = self._plan_to(target)
             if not path:
                 break
+            self._say("driving", route_m=round(_length(path), 2),
+                      waypoints=len(path), replans=replans)
             blocked = False
             for wx, wy in path[1:]:
                 desired = math.atan2(wy - self.y, wx - self.x)
@@ -277,6 +340,7 @@ class Rover:
                 turned = math.degrees(_wrap(self.heading - start_heading))
                 extra = (f"replanned {replans} time"
                          f"{'' if replans == 1 else 's'}" if replans else "")
+                self._say_end("arrived", extra)
                 return {"ok": True, "reason": "arrived",
                         "travelled_m": round(travelled, 3),
                         "turned_deg": round(turned, 1),
@@ -285,7 +349,10 @@ class Rover:
             replans += 1
             if not blocked:
                 last_why = "the route did not reach that place"
+            self._say("replanning", last_why, replans=replans,
+                      route_m=None, waypoints=None)
         turned = math.degrees(_wrap(self.heading - start_heading))
+        self._say_end("blocked", last_why)
         return {"ok": False, "reason": "blocked",
                 "travelled_m": round(travelled, 3),
                 "turned_deg": round(turned, 1),
@@ -321,7 +388,9 @@ class Rover:
 
     def turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
         angle = float(arguments.get("angle_deg", 0.0))
+        self._begin("turn_in_place", {"angle_deg": round(angle, 1)}, "turning")
         self.heading = _wrap(self.heading + math.radians(angle))
+        self._say_end("arrived", "")
         return {"ok": True, "reason": "arrived", "travelled_m": 0.0,
                 "turned_deg": round(angle, 1), **self._nav_context(0.0)}
 
@@ -331,9 +400,16 @@ class Rover:
     def describe_surroundings(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, **self._nav_context(0.0), **self._described()}
 
-    def nav_status(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        """The engineering numbers, as the real daemon's control call returns them."""
-        return {"ok": True, "driving": False, "estop": False,
+    def nav_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """The engineering numbers, as the real daemon's control call returns them.
+
+        `since_seq` included, since a client that relies on it against the rover
+        has to be able to rely on it here."""
+        since = arguments.get("since_seq")
+        move = ({"move": self.report.snapshot(
+                    since_seq=None if since is None else int(since))}
+                if self.report is not None else {})
+        return {"ok": True, "driving": False, "estop": False, **move,
                 "pose": {"x_m": round(self.x, 3), "y_m": round(self.y, 3),
                          "heading_deg": round(math.degrees(self.heading), 1)},
                 "speed_ms": 0.0, "turn_dps": 0.0,

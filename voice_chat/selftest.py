@@ -903,9 +903,9 @@ def test_prompts() -> None:
     schemas = prompts.tools()
     check("every tool the daemon offers is found",
           prompts.names(schemas),
-          ["set_lights", "get_lights", "look_at", "center_camera", "count_faces",
-           "start_tracking", "stop_tracking", "track_next", "tracking_status",
-           "look"])
+          ["set_lights", "get_lights", "battery", "look_at", "center_camera",
+           "count_faces", "start_tracking", "stop_tracking", "track_next",
+           "tracking_status", "look"])
     check("look is last, where the daemon appends it",
           prompts.names(schemas)[-1], "look")
     check("without vision there is no look",
@@ -1086,6 +1086,88 @@ def test_pointing_the_camera() -> None:
         frames.server_close()
 
 
+def test_move_commentary() -> None:
+    """What the console makes of a move the rover is still in the middle of.
+
+    `drive_to` answers once, at the end, so everything a person watching a click
+    on the map wants to know arrives through nav_status while the move runs. This
+    covers both halves of that: the English, and the rule that decides which of
+    those sentences is worth a line in the transcript.
+    """
+    try:
+        import drive_console
+    except Exception as exc:
+        SKIP.append(f"move commentary ({type(exc).__name__}: needs tkinter)")
+        return
+
+    say = drive_console.move_sentence
+
+    # A rover that has not been asked for anything, and one too old to publish
+    # this at all. Neither may invent a commentary.
+    check("an idle rover says nothing", say({"phase": "idle", "seq": 0}), "")
+    check("and a rover with no move field says nothing", say({}), "")
+
+    click = {"seq": 1, "kind": "drive_to", "phase": "planning",
+             "asked": {"ahead_m": 1.2, "left_m": -0.4}}
+    check("a click is acknowledged in the units it was made in", say(click),
+          "planning a route to ahead +1.20 m, left -0.40 m")
+
+    accepted = dict(click, seq=2, phase="driving", route_m=1.86, waypoints=4,
+                    replans=0)
+    check("an accepted route says how far and how many corners", say(accepted),
+          "route accepted: 1.86 m through 4 waypoints")
+    check("...and one corner is not one corners",
+          say(dict(accepted, waypoints=1)),
+          "route accepted: 1.86 m through 1 waypoint")
+
+    # The rejection, which is the case this was asked for: a reason, not a silence
+    # followed by a rover that never moved.
+    refused = dict(click, seq=2, phase="ended", reason="blocked",
+                   why="that place is solid")
+    check("a refusal carries the planner's reason", say(refused),
+          "blocked -- that place is solid")
+
+    # Mid-route. The reason belongs to the replan and must not survive into the
+    # route that comes back from it.
+    again = dict(accepted, seq=3, phase="replanning", replans=1,
+                 route_m=None, waypoints=None,
+                 why="drifted 0.61 m off the route, so planning again from here")
+    check("a replan says what provoked it", say(again),
+          "replanning (#1) -- drifted 0.61 m off the route, so planning "
+          "again from here")
+    check("and its conclusion is the next route, with no reason attached",
+          say(dict(again, seq=4, phase="driving", route_m=1.2, waypoints=3, why="")),
+          "route accepted: 1.20 m through 3 waypoints")
+    check("an ending counts the replans it took",
+          say(dict(again, seq=5, phase="ended", reason="arrived", why="",
+                   replans=2)),
+          "arrived, after 2 replans")
+
+    check("a turn is reported in degrees",
+          say({"seq": 1, "kind": "turn_in_place", "phase": "turning",
+               "asked": {"angle_deg": -90.0}}),
+          "turning -90 deg")
+    check("a straight drive in metres",
+          say({"seq": 1, "kind": "drive", "phase": "driving",
+               "asked": {"distance_m": 0.5}}),
+          "driving 0.50 m")
+
+    # Which of those the transcript gets, as opposed to the panel, which gets all
+    # of them. The rule is whether it says anything the request line above it did
+    # not -- so the planner's verdict does and a turn restating the angle it was
+    # given does not.
+    logged = drive_console.worth_logging
+    check("the transcript takes the planning", logged(click), True)
+    check("...and the route that came of it", logged(accepted), True)
+    check("...and the replan", logged(again), True)
+    check("...but not a turn saying it is turning",
+          logged({"phase": "turning", "kind": "turn_in_place"}), False)
+    check("...nor a drive saying it is driving",
+          logged({"phase": "driving", "kind": "drive"}), False)
+    check("...nor the ending, which the move's own reply is bringing",
+          logged(refused), False)
+
+
 def test_talk_session() -> None:
     """The protocol, against a service that only writes down what it was told."""
     try:
@@ -1236,6 +1318,7 @@ def main() -> int:
     test_speaker()
     test_echo_guard()
     test_pointing_the_camera()
+    test_move_commentary()
     test_talk_session()
 
     for name in PASS:
