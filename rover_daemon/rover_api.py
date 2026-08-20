@@ -260,6 +260,29 @@ class _Gimbal:
         return status.get("pan"), status.get("tilt")
 
 
+class _Power:
+    """The battery, which is the one thing on this rover that runs out."""
+
+    def battery(self):
+        """Charge left: percent, volts, and one word for the condition.
+
+        There is no fuel gauge here -- the driver board measures the pack voltage
+        and nothing measures current -- so the percentage is a discharge curve
+        applied to a voltage taken under whatever load the rover is under. Good
+        enough to decide whether a behaviour should keep going, not good enough to
+        compare one run against another.
+        """
+        return _call("battery")
+
+    def volts(self):
+        """The pack voltage on its own, for a behaviour that logs it."""
+        return _call("battery")["volts"]
+
+    def percent(self):
+        """Charge left as a number, or None on a rover with no pack fitted."""
+        return _call("battery").get("percent")
+
+
 class _Camera:
     def jpeg(self) -> bytes:
         """One frame, as JPEG bytes.
@@ -368,6 +391,7 @@ gimbal = _Gimbal()
 camera = _Camera()
 tracking = _Tracking()
 drive = _Drive()
+power = _Power()
 
 
 def reference() -> str:
@@ -382,7 +406,7 @@ def reference() -> str:
 
     lines = [(__doc__ or "").strip().split("\n\n")[0], ""]
     for name, thing in (("lights", lights), ("gimbal", gimbal), ("camera", camera),
-                        ("tracking", tracking), ("drive", drive)):
+                        ("tracking", tracking), ("drive", drive), ("power", power)):
         doc = (thing.__class__.__doc__ or "").strip().split("\n")[0]
         lines.append(f"{name}  -- {doc}" if doc else name)
         for attr in sorted(dir(thing)):

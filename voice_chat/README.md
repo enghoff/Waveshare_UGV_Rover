@@ -380,7 +380,7 @@ ssh rpi ~/ugv/restart.sh                    # reloads the daemon, keeping its fl
 `restart.sh` kills the daemon and lets `run_daemon.sh` bring it back, because the
 supervisor is what holds `--vision`; relaunching the supervisor by hand is how a
 reload silently turns the camera off. The startup line in `rover_daemon.log` says
-which it is — `(10 tools)` with vision, `(9 tools)` without.
+which it is — `(11 tools)` with vision, `(10 tools)` without.
 
 With `VOICE_VISION=0` this is the text service it always was: no processor is
 loaded, `/frame` answers 409 with a sentence saying why, and no message in a

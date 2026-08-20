@@ -41,13 +41,23 @@ def check(name, got, want):
 class FakeLink:
     """A driver board that answers, or does not, and remembers what it was told."""
 
-    def __init__(self, works=True):
+    def __init__(self, works=True, volts=1153):
         self.sent = []
         self.works = works
+        # What its telemetry says the pack is at, in hundredths of a volt, and how
+        # many times that has been asked for. None is a board that says nothing
+        # back, which is what an unpowered one and the wrong serial port both look
+        # like from here.
+        self.volts = volts
+        self.reads = 0
 
     def send(self, command):
         self.sent.append(command)
         return self.works
+
+    def telemetry(self):
+        self.reads += 1
+        return None if self.volts is None else {"T": 1001, "v": self.volts}
 
     def describe(self):
         return "fake"
@@ -70,6 +80,73 @@ def test_levels():
             FAIL.append(f"level {bad!r} should have been refused")
         except (TypeError, ValueError):
             PASS.append(f"level {bad!r} is refused")
+
+
+def test_battery():
+    """The pack voltage, out of the one line the board sends without being asked.
+
+    Four things worth holding onto here: that a whole line is picked out of a
+    stream which starts and ends mid-message, that the percentage comes off the
+    discharge curve rather than a straight line between full and empty, that a
+    board running from USB with no pack fitted is its own answer rather than 0%,
+    and that a console polling every few seconds does not read the UART every few
+    seconds.
+    """
+    import rover_daemon
+
+    stream = (b'01,"v":1152}\n'                    # the tail of an earlier line
+              b'{"T":1001,"ax":148,"v":1153}\n'
+              b'{"T":1001,"ax":150,"v":1149}\n'
+              b'{"T":1001,"ax":1')                  # and the start of the next
+    check("the newest whole line is the one read",
+          rover_daemon._newest_telemetry(stream)["v"], 1149)
+    check("half a line is not a reading",
+          rover_daemon._newest_telemetry(b'{"T":1001,"v":11'), None)
+    check("a line that is not telemetry is passed over",
+          rover_daemon._newest_telemetry(b'{"T":1051,"v":1153}\n'), None)
+
+    # 11.53 V is 3.84 V/cell, in the flat middle of the discharge where lithium-ion
+    # spends most of its life. A straight line from 12.6 V to 9.9 V calls that 60%;
+    # the curve calls it 55%, and that gap is the whole reason there is a table.
+    check("the flat middle is read off the table",
+          rover_daemon._battery_percent(11.53), 55)
+    check("a pack off the charger is 100%", rover_daemon._battery_percent(12.6), 100)
+    check("nothing reads below zero", rover_daemon._battery_percent(6.0), 0)
+    for volts, want in ((12.5, "full"), (11.5, "ok"), (11.0, "low"),
+                        (10.5, "critical"), (0.3, "absent")):
+        check(f"{volts} V is {want}", rover_daemon._battery_state(volts), want)
+
+    link = FakeLink()
+    rover = rover_daemon.Rover(link, "unused", device=None)
+    reading = rover.call("battery", {})
+    check("the board is read", reading["ok"], True)
+    check("...in volts", reading["volts"], 11.53)
+    check("...as a percentage", reading["percent"], 55)
+    check("...and as a sentence something can say out loud",
+          "55%" in reading["summary"], True)
+    # The console polls this, and two clients may poll at once. Every poll being a
+    # read of the UART the wheels are steered down is what the cache exists to
+    # prevent.
+    for _ in range(5):
+        rover.call("battery", {})
+    check("polling does not read the board every time", link.reads, 1)
+
+    # No pack fitted: the ESP32 runs from USB alone and reports a few tenths of a
+    # volt. No percentage comes back, because there is nothing for it to be a
+    # percentage of.
+    empty = rover_daemon.Rover(FakeLink(volts=31), "unused",
+                               device=None).call("battery", {})
+    check("a board with no pack says so", empty["state"], "absent")
+    check("...and offers no percentage", "percent" in empty, False)
+    check("...in words that do not sound like a flat battery",
+          "no battery pack" in empty["summary"], True)
+
+    # A board that says nothing has to come back as a sentence rather than raise:
+    # this is reached from a window with a live panel on it as well as from a model.
+    silent = rover_daemon.Rover(FakeLink(volts=None), "unused",
+                                device=None).call("battery", {})
+    check("a silent board is refused rather than raising", silent["ok"], False)
+    check("...and says what it could not do", "voltage" in silent["error"], True)
 
 
 def test_schemas():
@@ -909,7 +986,7 @@ def test_the_approach_to_a_face_never_turns_back():
 
 
 def main():
-    for test in (test_levels, test_schemas, test_lights, test_gimbal,
+    for test in (test_levels, test_battery, test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,

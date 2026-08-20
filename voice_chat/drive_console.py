@@ -165,6 +165,23 @@ CLEAR_ARM_S = 4.0
 
 LIGHT_MAX = 255            # what the daemon calls full brightness
 
+# How often to ask about the battery. Far slower than anything else here, because
+# it is the slowest-moving number on the rover and the daemon caches it anyway: a
+# poll inside its cache window is answered without the board being read at all.
+BATTERY_POLL_S = 10.0
+# Past this the reading has stopped being refreshed. The daemon serves one for
+# five seconds, so anything much older than that means the board went quiet.
+BATTERY_STALE_S = 20.0
+# What each of the daemon's five words means on screen. "absent" is not a flat
+# battery and must not read like one: it is the board running from USB with the
+# pack out or the main switch off, which is something to go and look at rather
+# than something to charge.
+BATTERY_COLOURS = {"full": "#136b13", "ok": "black", "low": "#a05a10",
+                   "critical": "#a01010", "absent": "#a01010"}
+BATTERY_NOTES = {"full": "off the charger", "ok": "plenty left",
+                 "low": "getting low", "critical": "nearly flat -- charge it",
+                 "absent": "no pack fitted, or the main switch is off"}
+
 
 def _legend():
     """Swatch colours and labels for the map key, taken from the renderer itself.
@@ -368,6 +385,8 @@ class Console:
         self.track_outstanding = False
         self.track_at = 0.0
         self.light_level: int | None = None
+        self.battery_outstanding = False
+        self.battery_at = 0.0
         self.clear_armed_until = 0.0
 
         root.title("rover drive console")
@@ -683,6 +702,20 @@ class Console:
         ttk.Label(lights, textvariable=self.lights_var, font=("TkFixedFont", 9)
                   ).pack(anchor="w", pady=(4, 0))
 
+        # The battery goes under the two board controls because it is the same
+        # board answering, and not into the nav_status panel beside them: that
+        # panel is the driving loop, and a rover started without a lidar has no
+        # driving loop and still has a battery worth watching.
+        battery = ttk.LabelFrame(column, text="battery", padding=8)
+        battery.pack(fill="x", pady=(10, 0))
+        self.battery_var = tk.StringVar(value="-")
+        self.battery_label = ttk.Label(battery, textvariable=self.battery_var,
+                                       font=("TkFixedFont", 12))
+        self.battery_label.pack(anchor="w")
+        self.battery_note = tk.StringVar(value="")
+        ttk.Label(battery, textvariable=self.battery_note, foreground="#666",
+                  wraplength=CAMERA_BOX_PX).pack(anchor="w")
+
     def _build_log(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="calls and replies", padding=(4, 4))
         frame.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
@@ -992,6 +1025,16 @@ class Console:
             self.track_outstanding = True
             self.track_at = now
             self.watch.submit("tracking_status")
+        # The battery, on the status connection and at a thirtieth of its rate.
+        # Only once the daemon has said it offers it: this arrived later than most
+        # of the tools here, so a rover still running an older daemon should show
+        # an empty panel rather than a red error every ten seconds.
+        if (self.watch is not None and "battery" in self.tools
+                and not self.battery_outstanding
+                and now - self.battery_at > BATTERY_POLL_S):
+            self.battery_outstanding = True
+            self.battery_at = now
+            self.watch.submit("battery")
         if self.clear_armed_until and now > self.clear_armed_until:
             self._disarm_clear()
 
@@ -1025,6 +1068,10 @@ class Console:
             self.frame_outstanding = False
             self.frame_cost = reply.seconds
             self._show_picture(body)
+            return
+        if name == "battery":
+            self.battery_outstanding = False
+            self._show_battery(body)
             return
         if name == "tracking_status":
             # Polled by the window rather than asked for by a person, so it updates
@@ -1154,6 +1201,33 @@ class Console:
         source = "tracking's own frame" if body.get("live") else "fresh"
         self.frame_var.set(f"{size}, {body.get('bytes', 0) / 1000:.0f} kB, {where}, "
                            f"{source}, {self.frame_cost:.1f} s")
+
+    def _show_battery(self, body: dict[str, Any]) -> None:
+        """Volts and percent, coloured by how much trouble the pack is in.
+
+        The age of the reading is shown only once it is older than the daemon's own
+        cache. Inside that window every reading is a few seconds old by design, and
+        a number that always carries a caveat is a number nobody reads; past it,
+        the board has stopped answering, which is the one thing this panel has to
+        be able to say.
+        """
+        if not body.get("ok"):
+            self.battery_var.set("-")
+            self.battery_label.configure(foreground="black")
+            self.battery_note.set(str(body.get("error", "no reading")))
+            return
+        state = body.get("state", "?")
+        percent = body.get("percent")
+        shown = _f(body.get("volts"), "{:.2f} V")
+        if percent is not None:
+            shown += f"   {percent}%"
+        self.battery_var.set(shown)
+        self.battery_label.configure(foreground=BATTERY_COLOURS.get(state, "black"))
+        note = BATTERY_NOTES.get(state, state)
+        age = body.get("reading_age_s") or 0.0
+        if age > BATTERY_STALE_S:
+            note += f", and read {age:.0f} s ago"
+        self.battery_note.set(note)
 
     def _show_tracking(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):

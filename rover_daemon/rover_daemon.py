@@ -110,6 +110,45 @@ CMD_LIGHTS = 132  # CMD_LED_CTRL, both channels driven together as one headlight
 CMD_PROBE = 130   # a harmless query; the board answers with its usual telemetry
 LIGHT_MAX = 255
 
+# The board talks back, in one JSON object per line tagged T:1001, whether or not
+# anything asked. Most of what is in that line this daemon has no use for -- a
+# 9-DoF IMU, a magnetometer and wheel encoders, all of which the lidar's scan
+# matcher beats as an odometer. The pack voltage is the exception: nothing else on
+# this rover measures it, and there is no second opinion to be had.
+TELEMETRY_T = 1001
+# How long to wait for a whole line. One arrives about every 60 ms, so this is
+# several chances at it rather than a tight budget.
+TELEMETRY_WAIT_S = 0.4
+
+# Three 18650 cells in series -- the UPS in docs/d500-lidar.md -- reported as
+# hundredths of a volt.
+BATTERY_CELLS = 3
+# Volts per cell against percentage left. A table rather than a straight line
+# because lithium-ion is nearly flat through the middle of its discharge, where
+# 40% to 70% is a tenth of a volt: interpolating from full to empty would read
+# twenty points high for most of a run.
+BATTERY_CURVE = ((3.00, 0), (3.45, 5), (3.68, 10), (3.74, 20), (3.77, 30),
+                 (3.79, 40), (3.82, 50), (3.87, 60), (3.92, 70), (3.98, 80),
+                 (4.06, 90), (4.20, 100))
+# Below this there is no pack at all: the ESP32 runs from USB alone with the
+# battery out or the main switch off, and reports a few tenths of a volt. Its own
+# state rather than 0%, because a flat battery and a missing one call for
+# different things being done about them.
+BATTERY_ABSENT_V = 6.0
+# Read off the curve above rather than picked: 11.2 V is 3.73 V/cell, which is
+# about a fifth left, and 10.8 V is 3.6 V/cell, which is nearly nothing and is
+# also where the cells start to suffer. Both trip early on a rover that is
+# driving, because a reading under load sags -- which is the right direction for
+# a warning to be wrong in.
+BATTERY_LOW_V = 11.2
+BATTERY_CRITICAL_V = 10.8
+# What a full pack reads once the rover's own draw has taken the surface charge
+# off it. Not 12.6, because the Pi, the lidar and the OAK are always pulling
+# something and every reading here is a reading under load.
+BATTERY_FULL_V = 12.45
+# How long one reading is served for before the board is asked again.
+BATTERY_MAX_AGE_S = 5.0
+
 # How long a "show me somebody else" suppression lasts, and how wide it is in
 # multiples of the face's own width. Long enough to let the sweep carry the
 # camera off the person it was on, short enough that they are not banished.
@@ -279,6 +318,76 @@ def _flag(value: Any, what: str) -> bool:
     raise ValueError(f"{what} must be true or false, not {value!r}")
 
 
+def _newest_telemetry(chatter: bytes) -> dict[str, Any] | None:
+    """The last complete T:1001 object in a chunk of the board's own chatter.
+
+    Complete, hence the dropped tail: a read of a stream lands mid-line as often
+    as not, and half an object parses as nothing. Newest rather than first,
+    because a buffer may hold a second of history and only its end is now.
+    """
+    for line in reversed(chatter.split(b"\n")[:-1]):
+        try:
+            message = json.loads(line.strip())
+        except (ValueError, UnicodeDecodeError):
+            continue     # a truncated first line, or the board's own boot noise
+        if isinstance(message, dict) and message.get("T") == TELEMETRY_T:
+            return message
+    return None
+
+
+def _battery_percent(volts: float) -> int:
+    """Roughly how much charge is left, from the pack voltage.
+
+    Rounded to five points, because the reading does not deserve more: it is taken
+    under whatever the Pi, the lidar and the servos happen to be drawing, and the
+    sag from that alone is worth several points. What is worth having is the shape
+    of the number over an afternoon, not the number.
+    """
+    per_cell = min(max(volts / BATTERY_CELLS, BATTERY_CURVE[0][0]),
+                   BATTERY_CURVE[-1][0])
+    for (low_v, low_pc), (high_v, high_pc) in zip(BATTERY_CURVE, BATTERY_CURVE[1:]):
+        if per_cell <= high_v:
+            share = (per_cell - low_v) / (high_v - low_v)
+            return int(round((low_pc + share * (high_pc - low_pc)) / 5.0) * 5)
+    return 100
+
+
+def _battery_state(volts: float) -> str:
+    """One word for the pack, for something that has to say it out loud."""
+    if volts < BATTERY_ABSENT_V:
+        return "absent"
+    if volts < BATTERY_CRITICAL_V:
+        return "critical"
+    if volts < BATTERY_LOW_V:
+        return "low"
+    if volts >= BATTERY_FULL_V:
+        return "full"
+    return "ok"
+
+
+def _battery_summary(volts: float, state: str) -> str:
+    """The reading as a sentence, since a model reads this and repeats the gist.
+
+    Written as an answer rather than as a row of fields, because the two ends of
+    the range are the ones that get repeated wrongly: a percentage on its own gets
+    read out as a fact about the rover, and "absent" gets read out as a flat
+    battery, which is a different thing to go and do something about.
+    """
+    if state == "absent":
+        return (f"There is no battery pack on this rover -- the board reads "
+                f"{volts:.1f} V, which is what it says when it is running from USB "
+                f"with the pack out or the main power switch off.")
+    percent = _battery_percent(volts)
+    if state == "full":
+        return f"The battery is full, at {percent}% and {volts:.1f} volts."
+    if state == "critical":
+        return (f"The battery is nearly flat, at {percent}% and {volts:.1f} volts. "
+                f"It needs charging now.")
+    if state == "low":
+        return f"The battery is low, at {percent}% and {volts:.1f} volts."
+    return f"The battery is at about {percent}%, or {volts:.1f} volts."
+
+
 class SerialLink:
     """JSON commands down the GPIO UART to the ESP32.
 
@@ -294,6 +403,10 @@ class SerialLink:
         self.port = port
         self.link = serial.Serial(port, BAUD, timeout=0.1)
         self._lock = threading.Lock()
+        # The input side gets a lock of its own, and that is the point of it
+        # rather than an oversight -- see `telemetry`.
+        self._read_lock = threading.Lock()
+        self._draining = False
 
     def describe(self) -> str:
         return f"{self.port} at {BAUD}"
@@ -303,12 +416,50 @@ class SerialLink:
         with self._lock:
             try:
                 self.link.write(line)
-                # The board streams T:1001 telemetry continuously at ~2.6 kB/s
-                # and nothing here reads it; left alone it fills within seconds.
-                self.link.reset_input_buffer()
+                # The board streams T:1001 telemetry continuously at ~2.6 kB/s,
+                # and left alone it fills within seconds -- so a write is also
+                # where the input side gets thrown away. Not while `telemetry` is
+                # reading it, though: this runs twenty times a second during a
+                # move, and a flush landing between the halves of a line is how a
+                # battery reading taken while driving comes back empty.
+                if not self._draining:
+                    self.link.reset_input_buffer()
                 return True
             except Exception:
                 return False
+
+    def telemetry(self) -> dict[str, Any] | None:
+        """The newest line the board has sent, or None if none arrived in time.
+
+        **This deliberately does not take the write lock.** The two directions of
+        a serial port do not interfere with each other; the waiting would. A line
+        takes up to TELEMETRY_WAIT_S to turn up, and the write lock is what the
+        navigator holds to keep PWM going to the wheels -- a rover that stops
+        steering for four tenths of a second because somebody asked about the
+        battery is a worse rover than one whose battery reading is a few seconds
+        old.
+
+        Whatever was already buffered is thrown away first. It holds up to a
+        couple of seconds of history, and the question being asked is what the
+        pack reads now.
+        """
+        with self._read_lock:
+            self._draining = True
+            try:
+                self.link.reset_input_buffer()
+                buffered = b""
+                until = time.monotonic() + TELEMETRY_WAIT_S
+                while time.monotonic() < until:
+                    buffered += self.link.read(512)   # returns on the port timeout
+                    newest = _newest_telemetry(buffered)
+                    if newest is not None:
+                        return newest
+                    buffered = buffered[-2048:]       # a line is ~150 bytes
+                return None
+            except Exception:
+                return None
+            finally:
+                self._draining = False
 
     def close(self) -> None:
         try:
@@ -335,6 +486,19 @@ class HttpLink:
         return f"http://{self.host}/js"
 
     def send(self, command: dict[str, Any]) -> bool:
+        return self._ask(command) is not None
+
+    def telemetry(self) -> dict[str, Any] | None:
+        """The easy end of the job `SerialLink.telemetry` does the hard way.
+
+        Over WiFi the reply to a command *is* the telemetry, so there is no stream
+        to catch a whole line out of and nothing to wait for beyond the request.
+        """
+        body = self._ask({"T": CMD_PROBE})
+        return None if body is None else _newest_telemetry(body + b"\n")
+
+    def _ask(self, command: dict[str, Any]) -> bytes | None:
+        """One command, and what the board said back -- None if it said nothing."""
         path = "/js?json=" + self._quote(
             json.dumps(command, separators=(",", ":")), safe="")
         with self._lock:
@@ -344,13 +508,12 @@ class HttpLink:
                         self.host, timeout=self.timeout)
                 try:
                     self.connection.request("GET", path)
-                    self.connection.getresponse().read()
-                    return True
+                    return self.connection.getresponse().read()
                 except Exception:
                     self._close()
                     if attempt == 2:
-                        return False
-        return False
+                        return None
+        return None
 
     def _close(self) -> None:
         if self.connection is not None:
@@ -473,6 +636,22 @@ TOOLS: list[dict[str, Any]] = [
                 "Report the headlight brightness as a level from 0 to 255 and "
                 "whether they are on. The board cannot be read back, so this is "
                 "the last level that was set."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "battery",
+            "description": (
+                "Read how much charge is left in the rover's battery. Use this "
+                "whenever you are asked about the battery, the charge, the power, "
+                "or how much longer the rover can keep going. It answers with a "
+                "percentage, the pack voltage, and one word for the condition: "
+                "full, ok, low, critical, or absent when no battery is fitted at "
+                "all. Say the percentage rather than the voltage unless volts were "
+                "asked for, and say plainly when it is low."
             ),
             "parameters": {"type": "object", "properties": {}},
         },
@@ -870,6 +1049,12 @@ class Rover:
         # by connecting back to this daemon like any other client. None on a
         # daemon that is not running scripts, which is what every call checks.
         self.scripts = None
+        # The last pack voltage and when it was read, because a console polls this
+        # and every fresh sample is a read of the UART. Its own lock, so that two
+        # clients asking at once are one read of the board rather than two.
+        self._battery: float | None = None
+        self._battery_at = 0.0
+        self._battery_lock = threading.Lock()
 
     # --- the board ----------------------------------------------------------
 
@@ -1121,6 +1306,57 @@ class Rover:
 
     def _tool_get_lights(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "level": self.level, "on": self.level > 0}
+
+    def _sample_battery(self) -> tuple[float | None, float]:
+        """The pack voltage, and how many seconds old that reading is.
+
+        Cached for BATTERY_MAX_AGE_S, which is what keeps a console polling every
+        few seconds from reading the UART every few seconds. A battery is the
+        slowest-moving thing on this rover -- the pack takes hours to go flat -- so
+        the staleness costs nothing, and the age goes out alongside the number, so
+        that a board which has stopped answering shows up as a reading getting old
+        rather than as a reading.
+        """
+        with self._battery_lock:
+            if (self._battery is None
+                    or time.monotonic() - self._battery_at > BATTERY_MAX_AGE_S):
+                # Asked of the link rather than assumed of it: everything that
+                # embeds this daemon in a test brings its own, and a link that
+                # cannot be read should come back as a sentence rather than as an
+                # AttributeError.
+                read = getattr(self.link, "telemetry", None)
+                message = read() if read is not None else None
+                volts = message.get("v") if isinstance(message, dict) else None
+                if isinstance(volts, (int, float)) and not isinstance(volts, bool):
+                    self._battery = float(volts) / 100.0
+                    self._battery_at = time.monotonic()
+            if self._battery is None:
+                return None, 0.0
+            return self._battery, time.monotonic() - self._battery_at
+
+    def _tool_battery(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """How much charge is left, from the one thing here that measures anything.
+
+        There is no fuel gauge on this rover, no coulomb counter and no current
+        sense. The driver board reports the pack voltage and that is the whole of
+        the evidence, so this is that voltage, read under whatever load the rover
+        happens to be under and put through a discharge curve. It answers the
+        question people actually ask -- whether to keep going -- and it will not
+        tell two runs apart.
+        """
+        volts, age = self._sample_battery()
+        if volts is None:
+            return {"ok": False,
+                    "error": "the driver board did not report a battery voltage"}
+        state = _battery_state(volts)
+        reading = {"ok": True, "volts": round(volts, 2), "state": state,
+                   "cells": BATTERY_CELLS,
+                   "volts_per_cell": round(volts / BATTERY_CELLS, 2),
+                   "reading_age_s": round(age, 1),
+                   "summary": _battery_summary(volts, state)}
+        if state != "absent":
+            reading["percent"] = _battery_percent(volts)
+        return reading
 
     def _tool_look_at(self, arguments: dict[str, Any]) -> dict[str, Any]:
         from aiming import PAN_LIMIT, TILT_LIMITS

@@ -25,6 +25,7 @@ JSON on one wire and two processes fighting for one camera.
 |---|---|
 | `set_lights(level)` | headlights, 0–255, both channels as one |
 | `get_lights()` | the last level set — the board cannot be read back |
+| `battery()` | how much charge is left: percent, volts, and a word for it |
 | `look_at(pan, tilt)` | aim the camera in degrees; stops tracking first |
 | `center_camera()` | straight ahead and level; stops tracking |
 | `count_faces()` | one look: how many people, and roughly where each is |
@@ -103,6 +104,38 @@ off MEDIA, the daemon kept posting pictures to MEDIA, and `look` failed with
 thing to debug, because nothing about the rover is broken. So a client says where
 it is listening, on every connection, with the control call below; the flag only
 decides where pictures go until somebody says otherwise.
+
+### The battery
+
+`battery` is the one tool here that reads the board rather than telling it
+something. The ESP32 streams one JSON object per line whether or not anybody asked
+— `{"T":1001, ...}`, about seventeen times a second — and `v` in it is the pack
+voltage in hundredths of a volt. Everything else in that line the daemon throws
+away: there is a 9-DoF IMU, a magnetometer and wheel encoders in there, and the
+lidar's scan matcher is a better odometer than any of them. The voltage has no
+second source at all, which is the whole reason this reads the port.
+
+Three 18650 cells in series, so 12.6 V is full and about 9.9 V is empty, and the
+percentage comes off a discharge curve rather than a straight line between the two
+— lithium-ion is nearly flat through the middle of its range, where 40% to 70% is
+a tenth of a volt per cell, and interpolating linearly reads twenty points high
+for most of a run. It is still an estimate under load and it says so: what it is
+good for is watching the number fall over an afternoon, not comparing two runs.
+
+Under 6 V there is no pack at all. The ESP32 runs perfectly well from USB with the
+battery out or the main switch off, and reports a few tenths of a volt when it
+does, so that gets its own answer — `"state": "absent"`, with no percentage
+attached — because a flat battery and a missing one are different things to go and
+do something about.
+
+**Reading the port does not take the lock that writes to it.** The two directions
+of a serial line do not interfere; the *waiting* would. A whole line can take four
+tenths of a second to turn up, and the write lock is what the navigator holds to
+keep PWM going to the wheels, so a rover that stopped steering because somebody
+asked about the battery would be a worse rover than one whose reading is a few
+seconds old. For the same reason a reading is cached for five seconds and its age
+is reported with it: a console polls this, and a board that has gone quiet should
+show up as a number getting old rather than as a number.
 
 ### `set_vision`, and why it is not a tool
 

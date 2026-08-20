@@ -47,6 +47,13 @@ import prompts
 DEFAULT_PORT = 8769
 LIGHT_MAX = 255
 
+# A pack that empties while the mock runs. Nothing like a real rover, whose pack
+# lasts hours, and that is deliberate: a panel whose number never moves cannot be
+# told apart from a panel that has stopped being updated, and telling those two
+# apart is most of what this mock is for.
+MOCK_BATTERY_FULL_V = 12.5
+MOCK_BATTERY_DROP_V_PER_MIN = 0.1
+
 # The invented room, in metres from wherever the rover started, with forward as +x
 # and left as +y -- the frame lidar_slam works in. A table sits in front and to
 # both sides of it, because a table is the thing the rover is asked to go round and
@@ -115,6 +122,7 @@ class Rover:
         self.picture = picture
         self.driving = drive
         self.x = self.y = self.heading = 0.0
+        self.started = time.monotonic()
         self.trail: list[tuple[float, float]] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._lock = threading.Lock()
@@ -130,6 +138,20 @@ class Rover:
 
     def get_lights(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "level": self.lights, "on": self.lights > 0}
+
+    def battery(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The pack, emptying as the mock runs. Same shape the daemon answers in."""
+        volts = max(9.6, MOCK_BATTERY_FULL_V
+                    - MOCK_BATTERY_DROP_V_PER_MIN
+                    * (time.monotonic() - self.started) / 60.0)
+        percent = round(max(0.0, min(100.0, (volts - 9.9) / (12.6 - 9.9) * 100)) / 5) * 5
+        state = ("full" if volts >= 12.45 else "critical" if volts < 10.8
+                 else "low" if volts < 11.2 else "ok")
+        return {"ok": True, "volts": round(volts, 2), "percent": percent,
+                "state": state, "cells": 3,
+                "volts_per_cell": round(volts / 3, 2), "reading_age_s": 0.4,
+                "summary": f"The battery is at about {percent}%, "
+                           f"or {volts:.1f} volts."}
 
     def look_at(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.pan = int(arguments.get("pan", self.pan))
