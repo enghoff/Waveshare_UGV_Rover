@@ -80,6 +80,11 @@ class Deadline(Exception):
 class _Daemon:
     """One connection to the daemon, remade once if it has gone.
 
+    Remade, and the request sent again -- but only where there was an old
+    connection to discover was closed, and never after a timeout. A timeout here
+    is a daemon that has the request and is still working on it, and a script's
+    patience is two minutes: what would be sent twice is a whole drive.
+
     Deliberately not `voice_chat/rover_tools.py`, which does the same job for the
     conversation clients: that file lives with the voice client and is not
     deployed to this Pi, and it discovers a rover across the LAN, which is
@@ -99,6 +104,7 @@ class _Daemon:
         request = json.dumps({"call": name, "arguments": arguments or {}})
         with self._lock:
             for attempt in (1, 2):
+                reused = self._sock is not None
                 try:
                     if self._sock is None:
                         self._connect()
@@ -110,7 +116,8 @@ class _Daemon:
                     return json.loads(reply)
                 except (OSError, ValueError) as error:
                     self._drop()
-                    if attempt == 2:
+                    if (attempt == 2 or not reused
+                            or isinstance(error, (socket.timeout, TimeoutError))):
                         raise RoverError(
                             f"no answer from the rover daemon: {error}") from None
         raise RoverError("unreachable")

@@ -119,7 +119,16 @@ class RoverClient:
         # Two attempts, because the first may be spent discovering that a
         # connection kept open since the last question has since been closed --
         # by a daemon restart, most often. That costs a reconnect, not a tool.
+        #
+        # Which is all the second attempt is for, so it is spent only where there
+        # was such a connection to discard, and never after a timeout. A timeout is
+        # not a connection that has gone: it is a daemon that has the request and is
+        # still working on it, and sending it again has the rover do the thing
+        # twice. One console scan was costing two -- a scan runs ~15 s on the Pi
+        # against the 12 s above -- and the same retry on a move would have driven
+        # twice.
         for attempt in (1, 2):
+            reused = self._sock is not None
             try:
                 if self._sock is None:
                     self._connect()
@@ -131,7 +140,8 @@ class RoverClient:
                 return json.loads(reply)
             except (OSError, ValueError) as error:
                 self._drop()
-                if attempt == 2:
+                if (attempt == 2 or not reused
+                        or isinstance(error, (socket.timeout, TimeoutError))):
                     raise ConnectionError(
                         f"no answer from the rover daemon at {self.describe()}: {error}")
         raise ConnectionError("unreachable")
