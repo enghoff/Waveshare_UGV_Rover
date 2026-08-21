@@ -46,6 +46,17 @@ LOW=${LOW:--78}
 # better than this one by twenty".
 FLOOR=${FLOOR:-45}
 
+# The range within which the driver's dBm is a measurement at all. -256 is the
+# "no value" sentinel this dongle keeps permanently in the noise column, and it
+# turns up in the level column too: sampled at 1 Hz for two minutes, the link held
+# between -33 and -50 dBm with three isolated -256 reads scattered through it, each
+# one a single sample with good ones either side. Read at face value that is a link
+# 200 dB down, which counts a strike -- five of them in half an hour, and "down to
+# -256 dBm" in the journal each time, drowning the faults that were real. A number
+# outside this range is therefore not a weak signal but no signal reported, which
+# is a state this script answers separately and far more calmly.
+SANE_DBM=${SANE_DBM:--110}
+
 # Consecutive failing checks before moving. Switching costs a DHCP round and every
 # TCP connection the daemon is holding, so it should take a bad link rather than
 # one bad moment: three checks at 20 s is a minute of genuinely poor signal, and
@@ -77,6 +88,23 @@ IFACE=${IFACE:-wlan0}
 # across a reboot, which is right: a fresh boot has no history worth trusting.
 STATE=${STATE:-/run/wifi-roam.state}
 
+# And the lock that says somebody else is already moving this link. `wifi_ctl.sh`
+# holds it for the length of a deliberate join, because a join takes the interface
+# down for the ten seconds it spends associating and there is nothing in /proc that
+# tells that apart from a rover which has lost the network. See the second look
+# below for what that cost.
+#
+# `flock` rather than a lock file of this script's own making: a kernel lock dies
+# with the process holding it, where a script killed between creating a file and
+# removing it would lock the rover out of its own network keeper for good. Where
+# `flock` is not installed -- the desks this self-tests on, never a rover -- the
+# checks below simply go unserialised.
+#
+# `-n` takes it too, and is the one thing a dry run does touch. Reporting a
+# decision it would never actually have taken would be the worse dishonesty of
+# the two.
+LOCK=${LOCK:-/run/wifi-roam.lock}
+
 # The three files the healthy path is read out of. Overridable so that
 # selftest.sh can hand this a rover that is not here: without that, every branch
 # below could only be exercised on a Pi with a real radio in a real house.
@@ -105,7 +133,8 @@ remember() {
 }
 
 # "assoc level heard route" -- is the radio associated, how strong is the link in
-# dBm, did the driver report a signal at all, and does the interface have a route.
+# dBm, is that number one a radio could actually have reported, and does the
+# interface have a route.
 #
 # The healthy path must not cost a single nmcli call, and barely a process either.
 # One nmcli takes 1.8 s of wall time and half a second of CPU on this Pi against
@@ -132,8 +161,10 @@ probe() {
     fi
     assoc=0
     [ "$state" = up ] && assoc=1
-    awk -v i="$IFACE" -v w="$WIRELESS" -v r="$ROUTES" -v a="$assoc" '
-        FILENAME == w && $1 == i ":"   { level = $4 + 0; heard = 1 }
+    awk -v i="$IFACE" -v w="$WIRELESS" -v r="$ROUTES" -v a="$assoc" \
+            -v s="$SANE_DBM" '
+        FILENAME == w && $1 == i ":"   { level = $4 + 0
+                                         heard = (level < 0 && level >= s + 0) }
         FILENAME == r && $1 == i       { route = 1 }
         END { printf "%d %d %d %d\n", a, level, heard, route }
     ' "$WIRELESS" "$ROUTES" 2>/dev/null
@@ -167,12 +198,59 @@ if [ "$assoc" = 1 ] && [ "$route" = 1 ] && [ "$heard" = 1 ] &&
     exit 0
 fi
 
-# Something is wrong. Which of the four things it is decides how patient to be.
+# Something is wrong -- or something else is deliberately putting it right, which
+# from /proc looks exactly the same. So before charging this to the link, take the
+# lock, and then look again.
+#
+# The lock is taken here rather than at the top of the script because the healthy
+# path -- almost every tick -- must not pay for it, and it is released by this
+# shell exiting. Failing to get it is not a fault to be charged to the link
+# either: somebody is already moving it, and the next tick will see wherever they
+# moved it to.
+if command -v flock > /dev/null 2>&1; then
+    exec 9> "$LOCK"
+    if ! flock -n 9; then
+        say "$IFACE is being changed by something else; leaving this tick alone"
+        exit 0
+    fi
+fi
+
+# The second look, and the reason this script needed one. A deliberate join to
+# another access point had been in flight for seven seconds when a tick read
+# `operstate`, found no association, called that a fault and went off to choose a
+# network of its own -- so the network somebody had picked lasted 43 seconds before
+# the rover was carried back to the one it came from. Under the lock that
+# particular race is already over; this catches the rest of them for 64 ms -- the
+# tail of a join that began before the lock was taken, and this dongle's isolated
+# bad samples.
+set -- $(probe) - - - -
+if [ "$1" != "-" ]; then
+    assoc=$1 level=$2 heard=$3 route=$4
+    if [ "$assoc" = 1 ] && [ "$route" = 1 ] && [ "$heard" = 1 ] &&
+            [ "$level" -gt "$LOW" ]; then
+        say "$IFACE is fine on a second look, at $level dBm; leaving it alone"
+        [ "$strikes" -ne 0 ] && remember 0 "$last"
+        exit 0
+    fi
+fi
+
+if [ "$assoc" = 1 ] && [ "$route" = 1 ] && [ "$heard" != 1 ]; then
+    # Associated, addressed, and the driver will not put a number to the signal.
+    # There is nothing here worth acting on: the two faults that actually take a
+    # rover off the network -- losing the association and losing the address -- are
+    # both answered above, and a link that cannot be graded is not a link to go
+    # moving on the strength of the grade. Charging no strike for it is the point,
+    # because a run of these would otherwise carry the rover off a perfectly good
+    # association. Said out loud rather than passed off as healthy, since the
+    # silent version of that is the bug probe() was rewritten for.
+    say "$IFACE is associated with an address, and ${level} is not a reading"
+    exit 0
+fi
+
+# So it is a real fault, and which of the three it is decides how patient to be.
 strikes=$((strikes + 1))
 if [ "$assoc" != 1 ]; then
     why="not associated"
-elif [ "$heard" != 1 ]; then
-    why="not reporting a signal"
 elif [ "$route" != 1 ]; then
     why="associated with no address"
 else
@@ -216,20 +294,12 @@ elif [ "$strikes" -ge "$WEDGED" ]; then
     exit 0
 fi
 
-# One thing left before spending a scan and an association, and which one depends
-# on the fault.
-if [ "$assoc" = 1 ]; then
-    # A link that is merely bad gets one last look. Three bad reads in a row is
-    # already unlikely to be noise, but this costs 64 ms against a reconnect the
-    # rover would feel, and it is the one check that catches a link that came back
-    # while the strikes were being counted.
-    set -- $(probe) - - - -
-    if [ "$1" = 1 ] && [ "$3" = 1 ] && [ "$4" = 1 ] && [ "$2" -gt "$LOW" ]; then
-        say "$IFACE came back to $2 dBm on the way to switching; staying"
-        remember 0 "$last"
-        exit 0
-    fi
-elif [ "$(nmcli radio wifi 2>/dev/null)" = disabled ]; then
+# One thing left before spending a scan and an association, and it applies only to
+# a link with no association at all. The check that used to sit beside it -- one
+# more look at a link that is merely bad -- now happens further up, on every
+# faulting tick rather than only on the third, and again below once the scan has
+# answered.
+if [ "$assoc" != 1 ] && [ "$(nmcli radio wifi 2>/dev/null)" = disabled ]; then
     # A link with no association at all may have no radio to associate with, and
     # nothing further down can help while that switch is off: a scan comes back
     # empty and there is no radio for `con up` to bring a profile up on. Worse, NM
@@ -279,6 +349,19 @@ done
 if [ "$best_sig" -lt "$FLOOR" ]; then
     say "$IFACE $why, and nothing better is audible (best $best at $best_sig)"
     remember "$strikes" "$now"
+    exit 0
+fi
+
+# The last look, and the one that costs least for what it saves. The scan is the
+# slow part of this script -- thirty-two seconds, measured, on a Pi that was also
+# running SLAM -- so by the time it answers, the fault it was sent to answer may be
+# half a minute old and long since over. Spending an association on it would take
+# down a link that is working, which is the entire cost this script exists to
+# avoid.
+set -- $(probe) - - - -
+if [ "$1" = 1 ] && [ "$3" = 1 ] && [ "$4" = 1 ] && [ "$2" -gt "$LOW" ]; then
+    say "$IFACE came good at $2 dBm while the scan ran; staying on ${cur:-it}"
+    remember 0 "$now"
     exit 0
 fi
 

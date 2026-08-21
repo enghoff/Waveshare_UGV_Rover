@@ -75,15 +75,40 @@ Both thresholds are loose for reasons measured on this dongle rather than guesse
   "is that one twenty points better than this one", so the script never compares
   the two numbers against each other. Whether to leave is decided from the driver;
   where to go is decided from the scan.
+- **Anything below −110 dBm is not a signal at all.** `−256` is the "no value"
+  sentinel this `rtl8xxxu` dongle keeps permanently in the *noise* column of
+  `/proc/net/wireless`, and it turns up in the *level* column too. Sampled at 1 Hz
+  for two minutes, the link held between −33 and −50 dBm with three isolated
+  `−256` reads scattered through it, each a single sample with good ones either
+  side. Read as a number that is a link 200 dB down, and it used to be: five
+  strikes in half an hour, `down to -256 dBm (1 of 3)` in the journal each time,
+  and three landing in a row would have carried the rover off an association
+  measuring −42. A reading outside what a radio can report is therefore not a weak
+  signal, it is **no signal reported** — which the script answers by saying so and
+  leaving the link exactly where it is. It still knows when the association or the
+  address has gone; a link it cannot grade is simply not a link to move on the
+  strength of the grade.
 
 Then there is patience, and how much of it each fault deserves.
 
 A link that is **associated but bad** has to fail three consecutive checks — about
-a minute — and the signal is read once more immediately before switching, which
-catches a link that recovered while its strikes were being counted. Switching
-costs a DHCP round and every TCP connection the daemon is holding, so it should
-take a bad link rather than one bad moment. After a move, three minutes of
-cooldown stop a rover parked in a bad spot from cycling the whole list.
+a minute. Switching costs a DHCP round and every TCP connection the daemon is
+holding, so it should take a bad link rather than one bad moment. After a move,
+three minutes of cooldown stop a rover parked in a bad spot from cycling the whole
+list.
+
+And the link is read again twice on the way to a switch, because a decision that
+was right when it was taken can be wrong by the time it is acted on:
+
+- **Once as soon as anything looks wrong**, before the strike is even counted. It
+  costs 64 ms of `/proc` against a reconnect the rover would feel, and it is what
+  makes a single bad sample cost nothing at all.
+- **Once more after the scan**, immediately before the association. This is the
+  one that matters most, because the scan is the slow part of the whole script —
+  **thirty-two seconds, measured**, on a Pi also running SLAM. A fault answered
+  half a minute late is a fault that may be long over, and spending an association
+  on it takes down a link that is working, which is the entire cost this thing
+  exists to avoid.
 
 A link that is **not associated at all** skips the strikes entirely: there is
 nothing left to protect, and it is the case this whole thing exists for. What
@@ -140,6 +165,57 @@ on top of NM's own attempt. That is not hypothetical: an earlier version started
 60 s and took the rover off the network twice in one afternoon. Nothing here
 improves on NetworkManager during its first go.
 
+## Two things move this link, and only one at a time
+
+`wifi_roam.sh` on its timer is one of them. A person at the console asking for a
+particular network, through `wifi_ctl.sh join`, is the other. They used to be able
+to run at the same moment, and the result was the fault this section exists for.
+
+`nmcli con up` takes the interface down for the ten seconds it spends
+authenticating and associating, and **nothing in `/proc` tells that apart from a
+rover that has lost the network.** So a tick landing inside that window read
+`operstate`, found no association, called it a fault — the not-associated fault,
+which skips the strikes entirely because there is supposedly nothing left to
+protect — and went off to choose a network of its own. What happened next is worth
+reading off the journal in full, because every number in it is load-bearing:
+
+```
+17:57:52  nmcli: connection-activate TheGreatViking      <- somebody asks
+17:57:59  wifi_roam.sh probes /proc: not associated      <- mid-join, reads as broken
+17:58:02  NetworkManager: TheGreatViking activated       <- the join worked
+17:58:31  wifi_roam.sh: joining TheGreatLord at 90       <- 32 s later, the scan answers
+17:58:52  NetworkManager: TheGreatLord activated         <- and undoes it
+```
+
+The chosen network lasted 43 seconds. From the outside this is exactly the
+complaint: *sometimes it joins the new network briefly and then reverts.* The
+other half of the complaint — *sometimes it drops off for a long time* — is the
+same race with the strike counter left standing, since a `con up` that fought
+another one could leave the rover on neither.
+
+Three changes, and they are ordered by how much they cover:
+
+- **`wifi_ctl.sh join` holds a lock for the length of the join**, and
+  `wifi_roam.sh` takes it the moment it stops liking the look of the link. A tick
+  that cannot get it says so and does nothing at all — not even a strike, because
+  somebody else is already moving the link and the next tick will see wherever
+  they moved it to. It is `flock`, so the lock dies with the process holding it; a
+  lock file of the script's own making would have locked the rover out of its own
+  network keeper the first time one was killed. The lock is taken where the cheap
+  path ends rather than at the top of the script, so the ticks that find nothing
+  wrong — almost all of them — still cost 64 ms and no processes.
+- **`wifi_ctl.sh join` clears the strike count and stamps the clock** before it
+  activates anything, in the same file `wifi_roam.sh` reads back. A network
+  somebody chose then gets exactly the cooldown a network the script chose gets,
+  instead of being graded on the first reading taken after it arrives.
+- **The link is read again immediately before the association**, which is
+  described above and is what catches the tail of a join that began before the
+  lock was taken.
+
+Order between the two is now decided rather than raced, and it comes out the right
+way round either way: a roamer already mid-scan is waited out and then overridden,
+and a roamer that arrives during a join stands aside. The person asking wins.
+
 ## Choosing by hand, from the console
 
 `wifi_roam.sh` is what happens when nobody is watching. When somebody is,
@@ -173,7 +249,7 @@ it is breaking; what actually happened comes back as `last_join` on the next
 ## Checking it without a rover
 
 ```bash
-./selftest.sh      # 33 assertions, anywhere: the workstation, the Pi, a VM
+./selftest.sh      # 47 assertions, anywhere: the workstation, the Pi, a VM
 ```
 
 It takes a second or two on a desk and a couple of minutes on the rover, which is
@@ -191,15 +267,26 @@ state file left half written. The interesting branches are the ones that only
 happen when something has gone wrong, and waiting for a real dongle to go wrong is
 not a test strategy.
 
-Two of those scenarios are there because they were missed once. An interface that
-is not up and a radio that is switched off both used to read as a healthy link,
-and the assertion that spans the whole file — that no scenario in it ever emits
-`radio wifi off` — is the one that keeps the rover recoverable by rebooting it.
+Four of those scenarios are there because they were missed once. An interface that
+is not up and a radio that is switched off both used to read as a healthy link;
+a `−256` in the level column used to read as a link 200 dB down; and a deliberate
+join in flight used to read as a rover that had lost the network. The assertion
+that spans the whole file — that no scenario in it ever emits `radio wifi off` — is
+the one that keeps the rover recoverable by rebooting it.
 
-One path is not covered there and was verified on the hardware instead: the second
-look at the signal just before switching. It reads the same files twice in one run,
-so a fake that answered differently the second time would only be testing the
-fake.
+The races are covered too, which needed fakes that answer differently the second
+time they are asked. Both of the script's second looks exist because a rover can
+recover between two reads of `/proc` inside one run, and a static fake cannot
+express that at all — so the fake `nmcli` rewrites the fake `/proc` while it is
+pretending to scan, which is precisely what a deliberate join finishing does. The
+lock is tested by holding it from the test itself while the script runs; that one
+needs `flock`, so it is skipped, out loud, on a desk that has none.
+
+The self-test also drives `wifi_ctl.sh`, which is not the same script but is the
+other thing allowed to move this link: that a join reaches the profile already
+holding the passphrase, that it bounds its own wait, that it leaves the stamp
+`wifi_roam.sh` reads back, and that a network with no passphrase on this rover is
+still refused without anything being brought up on the way to refusing it.
 
 ## Installing and checking it on the Pi
 

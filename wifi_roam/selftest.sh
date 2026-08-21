@@ -12,10 +12,13 @@
 # wrong is not a test strategy -- the last time one did, it took the rover off
 # the network for the afternoon.
 #
-# One path is deliberately not covered: the second look at the signal just before
-# switching, which catches a link that recovered while its strikes were counted.
-# It reads the same files twice in one run, so a fake that answers differently the
-# second time would be testing the fake. That one was verified on the hardware.
+# The races are covered too, which took a fake that answers differently the second
+# time it is asked. Both of the script's second looks -- the one under the lock and
+# the one after the scan -- exist because a rover can recover between two reads of
+# /proc in the same run, and a static fake cannot express that at all. So the fake
+# nmcli rewrites the fake /proc while it is pretending to scan, which is exactly
+# what a deliberate join finishing does, and the lock itself is tested by holding
+# it from here while the script runs.
 
 set -u
 
@@ -46,9 +49,26 @@ case "$*" in
     "radio wifi on") exit "${RADIO_ON_STATUS:-0}" ;;
     *"dev wifi list"*)
         [ -n "${SCAN_EMPTY:-}" ] && exit 0
+        # A rover that came back while the scan was running. The scan is the slow
+        # part -- thirty-two seconds, measured -- so it is the window a deliberate
+        # join finishes in, and rewriting the fake /proc here is the only way to
+        # put a script that reads it twice through that race. The paths come from
+        # the script's own environment, so this heals whatever world was set up.
+        if [ -n "${HEAL_ON_SCAN:-}" ]; then
+            echo up > "$OPERSTATE"
+            printf 'Inter-|\n face |\n wlan0: 0000   66.  -41.  -256  0 0 0 0 572 0\n' \
+                > "$WIRELESS"
+            printf 'Iface\tDestination\nwlan0\t00000000\nwlan0\t0001A8C0\n' \
+                > "$ROUTES"
+        fi
         printf '%s\n' "$SCAN"
         ;;
     *"con up"*) exit "${CON_UP_STATUS:-0}" ;;
+    # What wifi_ctl.sh checks an SSID against before it will join it.
+    "-t -f NAME,TYPE con show")
+        printf 'TheGreatLord:802-11-wireless\nTheMaharaja:802-11-wireless\n'
+        printf 'TheGreatViking:802-11-wireless\nWired connection 1:802-3-ethernet\n'
+        ;;
 esac
 exit 0
 FAKE
@@ -89,7 +109,7 @@ _run() {   # $1 = flags for the script, then any VAR=value overrides
     env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
         SCAN="$SCAN" \
         OPERSTATE="$WORK/operstate" WIRELESS="$WORK/wireless" \
-        ROUTES="$WORK/routes" STATE="$WORK/state" \
+        ROUTES="$WORK/routes" STATE="$WORK/state" LOCK="$WORK/lock" \
         "$@" sh "$HERE/wifi_roam.sh" $flags 2>&1
 }
 
@@ -196,6 +216,62 @@ check "and says so when even that will not go through" \
     "could not restart the supplicant" "$(run SYSTEMCTL_STATUS=1)"
 
 echo
+echo "a driver that will not say how strong the link is"
+rm -f "$WORK/state"
+world up -256 1
+# -256 is this dongle's "no value" sentinel, and it turns up in the level column
+# for the odd single sample -- three times in two minutes of 1 Hz sampling, with
+# good reads either side. Read as a number it is a link 200 dB down, which used to
+# put "down to -256 dBm (1 of 3)" in the journal five times in half an hour, and
+# three in a row would have carried the rover off a link measuring -42.
+check "is not read as a link 200 dB down" "is not a reading" "$(run)"
+check_silent "and nothing is scanned over it" \
+    "$(grep 'dev wifi list' "$WORK/nmcli.log" || true)"
+world up -83 1
+check "nor does it leave a strike behind it" "1 of 3" "$(run)"
+
+echo
+echo "a link that comes good while the scan is running"
+rm -f "$WORK/state"
+world dormant -41 0
+out=$(run HEAL_ON_SCAN=1)
+check "spends no association on a fault that is already over" \
+    "came good at -41 dBm" "$out"
+check_silent "and brings nothing up" \
+    "$(grep 'con up' "$WORK/nmcli.log" || true)"
+
+echo
+echo "a deliberate join already in flight"
+rm -f "$WORK/state"
+world dormant -41 0
+if command -v flock > /dev/null 2>&1; then
+    # Held by this shell on a descriptor of its own, for exactly the scenarios that
+    # need it and not a moment longer. The obvious version -- a backgrounded
+    # `flock "$WORK/lock" sleep N` -- is wrong twice over: the lock lives on the
+    # descriptor the child inherits, so killing flock does not release it, and a
+    # timeout long enough for this Pi, where a process spawn costs a hundred times
+    # what it does on a desk, is long enough to leak into the scenarios below. It
+    # did: nine seconds took out the next nine assertions in this file.
+    exec 8> "$WORK/lock"
+    if flock -n 8; then
+        check "stands aside rather than choosing a network of its own" \
+            "being changed by something else" "$(run)"
+        check_silent "and brings nothing up" \
+            "$(grep 'con up' "$WORK/nmcli.log" || true)"
+        printf '2 0\n' > "$WORK/state"
+        run > /dev/null
+        check "and charges the link no strike for somebody else's work" \
+            "2 0" "$(cat "$WORK/state")"
+    else
+        fail=$((fail + 1))
+        echo "  FAIL  could not take the lock to test it with"
+    fi
+    exec 8>&-
+else
+    echo "  --    no flock here, so the lock goes untested"
+fi
+
+echo
 echo "a radio that answers nothing"
 rm -f "$WORK/state"
 world dormant -41 0
@@ -280,6 +356,31 @@ world up -41 1
 # substituted a healthy link for a link it could not read is why a rover with its
 # radio switched off looked fine for fifteen minutes, in silence.
 check_loud "is never passed off as a healthy link" "$(run WIRELESS=$WORK)"
+
+echo
+echo "the daemon's own join, the other thing that moves this link"
+rm -f "$WORK/state"
+: > "$WORK/nmcli.log"
+ctl=$(env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" SCAN="$SCAN" \
+    STATE="$WORK/state" LOCK="$WORK/lock" \
+    sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
+check "brings up the profile that already holds the passphrase" \
+    "con up TheMaharaja" "$(cat "$WORK/nmcli.log")"
+check "and bounds the wait, so the daemon is never left guessing" \
+    "nmcli -w" "$(cat "$WORK/nmcli.log")"
+# The stamp is what gives a hand-picked network the same cooldown as one the roamer
+# picked itself. Without it the rover was moved back off it on the next bad reading.
+check "clears the roamer's strikes and stamps its clock" \
+    "0 " "$(cat "$WORK/state")"
+check_silent "and says nothing when it worked" "$ctl"
+: > "$WORK/nmcli.log"
+check "a network with no passphrase here is still refused" \
+    "no configured network called" \
+    "$(env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
+        STATE="$WORK/state" LOCK="$WORK/lock" \
+        sh "$HERE/wifi_ctl.sh" join Alister 2>&1)"
+check_silent "and brings nothing up on the way to refusing it" \
+    "$(grep 'con up' "$WORK/nmcli.log" || true)"
 
 echo
 echo "across every scenario above"
