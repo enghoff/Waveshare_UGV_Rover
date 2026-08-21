@@ -428,6 +428,39 @@ doorway is closed. A soft toll beyond the keep-out is a nudge toward the middle 
 a gap, not the thing that keeps corners at arm's length: two extra cells of path
 was a cheap price to scrape a corner when going around cost metres.
 
+**Planning is the slowest thing the rover does**, and the numbers are only visible
+on the rover: measured over seventeen plans it really made, the same call takes 2–6
+ms on a desk and 2.2–15.3 *seconds* on the Pi. A heap pop costs 1.3 µs here and
+580 µs there — a factor of 450 that no clock speed explains, and the reason is that
+A*'s flat lists blow a 128 kB L2 cache, so every `g[j]` is a pointer chase into
+SDRAM. Cost therefore follows the *size of the window searched*, not the length of
+the route (correlation +0.74), and two things follow from that:
+
+- The window is sized to the route. It used to be the two points plus a flat 2.5 m
+  either side, so a 34 cm replan searched a 5 m square and took 1.1 s of standing
+  still. It is now `CROP_MARGIN_FRACTION` of the distance, floored at two keep-out
+  radii — a window narrower than that is all keep-out once inflated and can hold no
+  route at all — and the full 2.5 m is tried again before any route is refused or
+  any clearance given up. A search that finds nothing has opened every cell it could
+  reach, so the small window is a bet: `CROP_MARGIN_WORTH` declines it unless it
+  saves enough area to be worth losing. Without that gate one 5.3 m route went from
+  two passes to three and came out 40% slower.
+- The keep-out is inflated once per distinct run length. The disc is a union of
+  horizontal runs, one per row offset, and the same length turns up on several rows;
+  growing each length out of the one below it and then placing the rows takes about
+  forty whole-array passes where offset-by-offset took 253. Same disc, bit for bit,
+  and the self-test checks it against the version it replaces.
+
+On the Pi: a 0.18 m replan 1.41 s → 0.14 s, a 0.34 m one 1.12 s → 0.15 s, and the
+long routes 1.2–1.4×. Every route is unchanged — same waypoints, same length, same
+turning, same clearance — over both the recorded grids and the room sweep.
+
+Octile distance is the tighter A* heuristic and was tried here for the same reason.
+It opened 5% fewer cells and saved 2%, and it broke ties differently: four of twelve
+test rooms came back with a different route of the *same* tolled cost, one passing
+4.7 cm closer to a table. Equally optimal is not equally good to drive, and 2% does
+not buy a change in where the rover goes, so the heuristic stays the straight line.
+
 **Then the route is pulled straight, because most of its corners are the grid and
 not the room.** A* steps in eight directions and measures in octile steps, so every
 monotone staircase between two cells costs exactly the same and which one comes

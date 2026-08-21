@@ -85,6 +85,34 @@ TURN_ESCAPE_DEG = 55.0
 # `inflate_m / resolution` cells in every direction, so anything blocked is blocked
 # in a band several cells thick, and a sample cannot land either side of it.
 LOS_STEP_CELLS = 0.5
+
+# How far either side of the straight line between the two points A* is allowed
+# to look. Wide enough to go around a table is the requirement, and 2.5 m was
+# applied to every route however short -- so a 0.34 m replan searched a 5 m
+# square and cost 2.2 seconds of standing still on the Pi. Planning time went as
+# the area of that window (correlation +0.74 over seventeen recorded plans), and
+# a short hop does not need a table's worth of detour to get around anything it
+# could reach. So the margin follows the distance, and the full 2.5 m is tried
+# again before any route is refused or any clearance given up.
+CROP_MARGIN_M = 2.5
+CROP_MARGIN_FRACTION = 0.6
+CROP_MARGIN_WORTH = 0.6    # of the full window's area, or do not bother trying
+# ...and never narrower than this many keep-out radii, whatever the distance.
+# A window only as wide as the keep-out is entirely keep-out once inflated, so
+# there is nowhere in it for a way round to be; two radii is the least that can
+# hold one. Below that the first window is not a cheap bet, it is a certain
+# waste followed by the full search anyway.
+CROP_MARGIN_MIN_KEEPOUTS = 2.0
+
+#: Refusals a wider window cannot change: they are about the goal cell itself,
+#: which is the same cell however much of the grid is searched around it.
+_CROP_PROOF = (
+    "the occupancy grid is not square",
+    "that place is off the map",
+    "the rover is off the map",
+    "that place is solid",
+    "that place has not been seen yet",
+)
 # What removing one corner is worth, as metres of path a shortcut may spend to
 # do it -- see the straightening note above. Capped in total, because a run of
 # ten corners is not a licence to take any line at all.
@@ -105,24 +133,64 @@ def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
     this frame (x forward, y left): if the heading looks into the keep-out, the
     route begins with a hop off that heading.
     """
+    near, far = _crop_margins(start_xy, goal_xy, resolution_m,
+                              max(inflate_m, preferred_m or 0.0))
     credit = KINK_CREDIT_M
     if preferred_m is not None and preferred_m > inflate_m:
-        path, _why = _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy,
-                                preferred_m, comfort_m, origin_cells, start_yaw,
-                                kink_credit_m=credit)
-        if path is not None:
-            return path, None
+        for margin in ((near, far) if far > near else (far,)):
+            path, why = _plan_once(grid, resolution_m, occupied_at, start_xy,
+                                   goal_xy, preferred_m, comfort_m, origin_cells,
+                                   start_yaw, kink_credit_m=credit,
+                                   margin_cells=margin)
+            if path is not None:
+                return path, None
+            if why in _CROP_PROOF:
+                # Nothing a wider window could reach, and nothing a smaller
+                # keep-out could either -- the goal itself is the problem.
+                return None, why
         # Only a pinch is left. This keep-out is inside the distance the follower
         # brakes at, so the toll is the last thing holding the route off the wall
         # and straightening pays full price for it -- see the note above.
         credit = 0.0
     return _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy,
                       inflate_m, comfort_m, origin_cells, start_yaw,
-                      kink_credit_m=credit)
+                      kink_credit_m=credit, margin_cells=far)
+
+
+def _crop_margins(start_xy, goal_xy, resolution_m, keepout_m):
+    """(first try, last try) in cells for how far to look either side.
+
+    Ordered, and both are returned rather than escalated inside the search,
+    because the caller has a second axis to give up on -- the keep-out -- and
+    searching further at the clearance it wants beats squeezing past at a
+    clearance it does not.
+
+    The two come back equal unless the smaller one is *much* smaller. A search
+    that finds nothing has opened every cell it could reach, so a first try that
+    fails costs its whole window and the second try then pays in full. Measured
+    over the recorded plans, a first window 7% smaller than the second turned one
+    5.3 m route from two passes into three and made it 40% slower, while the
+    windows worth trying were a fifth of the size and came out three to five
+    times faster. So the saving has to be worth the risk before the risk is
+    taken.
+    """
+    far = max(12, int(math.ceil(CROP_MARGIN_M / resolution_m)))
+    dx = abs(goal_xy[0] - start_xy[0]) / resolution_m
+    dy = abs(goal_xy[1] - start_xy[1]) / resolution_m
+    floor = int(math.ceil(CROP_MARGIN_MIN_KEEPOUTS * keepout_m / resolution_m))
+    near = min(far, max(floor, int(round(max(dx, dy) * CROP_MARGIN_FRACTION))))
+
+    def area(margin):
+        return (dx + 2 * margin + 1) * (dy + 2 * margin + 1)
+
+    if area(near) > CROP_MARGIN_WORTH * area(far):
+        return far, far
+    return near, far
 
 
 def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
-               comfort_m, origin_cells, start_yaw, kink_credit_m=0.0):
+               comfort_m, origin_cells, start_yaw, kink_credit_m=0.0,
+               margin_cells=None):
     import numpy as np
 
     grid = np.asarray(grid)
@@ -151,8 +219,9 @@ def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
         return None, "that place has not been seen yet"
 
     # Crop to the two points plus a margin, so A* is a small search rather than a
-    # walk of the whole 20 m grid. The margin is enough to go around a table.
-    margin = max(12, int(math.ceil(2.5 / resolution_m)))
+    # walk of the whole 20 m grid.
+    margin = (max(12, int(math.ceil(CROP_MARGIN_M / resolution_m)))
+              if margin_cells is None else max(1, int(margin_cells)))
     x0 = max(0, min(sx, gx) - margin)
     x1 = min(cells, max(sx, gx) + margin + 1)
     y0 = max(0, min(sy, gy) - margin)
@@ -428,23 +497,52 @@ def cells_occupied_along(grid, resolution_m, occupied_at, points, s_from,
 def _inflate(blocked, radius_cells):
     """Euclidean dilation of a boolean grid, in-place-safe (returns a copy).
 
-    One whole-array OR per offset in the disc, not one neighbourhood write per
-    blocked cell. The distinction decides whether this runs on the Pi: unknown
-    counts as blocked here, so a typical crop has *thousands* of blocked cells,
-    against ~113 offsets in a radius-6 disc -- and each OR is a single numpy pass
-    where the per-cell version paid several interpreted numpy calls per cell.
+    Whole-array ORs rather than one neighbourhood write per blocked cell. The
+    distinction decides whether this runs on the Pi: unknown counts as blocked
+    here, so a typical crop has *thousands* of blocked cells, and each OR is a
+    single numpy pass where the per-cell version paid several interpreted numpy
+    calls per cell.
+
+    One OR per offset in the disc is still 253 passes at radius 9, which measured
+    a quarter of what a route cost on the rover. But the disc is a union of
+    horizontal runs -- one per row offset -- and the same run length turns up on
+    several rows. So each distinct length is grown once, out of the length below
+    it, by repeated doubling along the row; then every row offset is a single OR
+    of the strip it wants. Radius 9 comes out at about forty passes instead of
+    253, and the result is the same disc, bit for bit -- the self-test checks it
+    against the offset-by-offset version it replaces.
     """
     if radius_cells <= 0:
         return blocked.copy()
-    out = blocked.copy()
-    h, w = blocked.shape
     r, r2 = radius_cells, radius_cells * radius_cells
+    runs = {}
     for du in range(-r, r + 1):
-        for dv in range(-r, r + 1):
-            if (du or dv) and du * du + dv * dv <= r2:
-                out[max(0, du):h + min(0, du), max(0, dv):w + min(0, dv)] |= \
-                    blocked[max(0, -du):h + min(0, -du),
-                            max(0, -dv):w + min(0, -dv)]
+        runs.setdefault(math.isqrt(r2 - du * du), []).append(du)
+    strips, grown, cur = {}, 0, blocked
+    for width in sorted(runs):
+        while grown < width:
+            step = min(grown or 1, width - grown)
+            nxt = cur.copy()
+            nxt[:, step:] |= cur[:, :-step]
+            nxt[:, :-step] |= cur[:, step:]
+            cur, grown = nxt, grown + step
+        strips[width] = cur
+    out = blocked.copy()
+    h = blocked.shape[0]
+    for width, offsets in runs.items():
+        src = strips[width]
+        for du in offsets:
+            if abs(du) >= h:
+                # A row offset past the end of the grid contributes nothing.
+                # The offset-by-offset version this replaces raised on that,
+                # which no crop is ever small enough to reach; not raising is
+                # free and the self-test compares the two only where both run.
+                continue
+            if du:
+                out[max(0, du):h + min(0, du)] |= \
+                    src[max(0, -du):h + min(0, -du)]
+            else:
+                out |= src
     return out
 
 
@@ -553,6 +651,15 @@ def _astar(blocked, start, goal, penalty=None):
     to the keep-out is a toll rather than a wall. The heuristic stays the plain
     distance, which every real cost is at least, so it stays admissible and the
     route stays optimal under the tolled costs.
+
+    The octile distance is the tighter heuristic here -- it is exact in the open
+    where the straight line underestimates a diagonal run by 29% -- and it was
+    tried. It opened 5% fewer cells and saved 2% of the time, and in exchange it
+    broke ties differently: four of twelve test rooms came back with a different
+    route of the *same* tolled cost, one of them passing 4.7 cm closer to a
+    table. Equally optimal is not equally good to drive, and 2% does not buy a
+    change in where the rover goes. The window and the inflation are where the
+    time actually was.
     """
     h, w = blocked.shape
     sx, sy = start
@@ -998,6 +1105,156 @@ def _selftest():
     assert abs(segment_end_s(corner, 0.4) - 1.0) < 1e-9
     assert abs(segment_end_s(corner, 1.0) - 2.0) < 1e-9
     assert abs(segment_end_s(corner, 1.5) - 2.0) < 1e-9
+
+    # --- the window A* looks in, and how it is grown -------------------------
+    #
+    # A first window that fails has opened every cell it could reach, so trying a
+    # small one before the full one is a bet: cheap when it pays, and a whole
+    # wasted search when it does not.
+    far_cells = int(math.ceil(CROP_MARGIN_M / res))
+    keep = 0.45
+    near, far = _crop_margins((0.0, 0.0), (0.2, 0.0), res, keep)
+    assert far == far_cells, (far, far_cells)
+    assert near < far, "a 20 cm hop still searched the full window"
+    # Two keep-out radii, in metres, whatever the constants are called: a window
+    # narrower than that is all keep-out once inflated and cannot hold a way round.
+    assert near * res >= 2.0 * keep - 1e-9, (
+        f"the first window is {near * res:.2f} m either side of a {keep:.2f} m "
+        f"keep-out, so there is nowhere in it for a route to go")
+
+    same = _crop_margins((0.0, 0.0), (5.0, 0.0), res, keep)
+    assert same == (far_cells, far_cells), (
+        "a long route was given two windows to search when the smaller one is "
+        "barely smaller -- that is the case that cost 40% and gained nothing")
+    # ...and the same refusal on the marginal case, which is the one the ratio is
+    # actually for: 4 m apart the smaller window is still 94% of the area.
+    assert _crop_margins((0.0, 0.0), (4.0, 0.0), res, keep) == (far_cells, far_cells), (
+        "took a first window that saves six percent and risks a whole extra search")
+
+    for span in (0.05, 0.5, 1.0, 2.0, 3.0, 4.0, 8.0):
+        a, b = _crop_margins((0.0, 0.0), (span, span * 0.3), res, keep)
+        assert a <= b == far_cells, (span, a, b)
+        dx, dy = span / res, span * 0.3 / res
+        if a < b:
+            assert ((dx + 2 * a + 1) * (dy + 2 * a + 1)
+                    <= CROP_MARGIN_WORTH * (dx + 2 * b + 1) * (dy + 2 * b + 1)
+                    + 1e-9), f"tried a first window that saves too little at {span} m"
+
+    # A detour wider than the first window must still be found. The wall here is
+    # 1.4 m long with the way round it well outside a short hop's window, so a
+    # planner that gave up when the small search failed would refuse a route that
+    # is plainly there.
+    res2, n2 = 0.05, 120
+    room = np.full((n2, n2), -10, dtype=np.int8)
+    o2 = n2 // 2
+
+    def at2(x, y):
+        return o2 + int(round(x / res2)), o2 + int(round(y / res2))
+
+    bx, _ = at2(0.5, 0.0)
+    y_lo, y_hi = at2(0.0, -1.4)[1], at2(0.0, 1.4)[1]
+    room[bx:bx + 3, y_lo:y_hi] = occ
+    path, why = plan(room, res2, occ, (0.0, 0.0), (1.0, 0.0), inflate_m=0.25,
+                     preferred_m=0.45)
+    assert path is not None, f"the route round the wall was lost: {why}"
+    assert max(abs(y) for _x, y in path) > 1.2, (
+        f"claimed a route that goes through the wall: {path}")
+
+    # And it must still be the *preferred* clearance. A first window too small to
+    # hold the way round does not lose the route -- the pinch pass underneath finds
+    # one at the smaller keep-out -- so the damage is silent: the rover squeezes
+    # past the end of the wall instead of going round it with room to spare.
+    solid_xy = [((ix - o2) * res2, (iy - o2) * res2)
+                for ix, iy in np.argwhere(room >= occ)]
+    closest = min(
+        min(math.dist((ax + (bx - ax) * k / 40.0, ay + (by - ay) * k / 40.0), s)
+            for s in solid_xy for k in range(41))
+        for (ax, ay), (bx, by) in zip(path, path[1:]))
+    # 0.40 m planned at the preferred keep-out against 0.22 at the pinch one --
+    # measured to cell centres, so a 0.45 m ring reads a little under.
+    assert closest > 0.32, (
+        f"the route passes {closest:.2f} m from the wall, so it was planned at the "
+        f"pinch keep-out rather than the preferred one -- widening the window was "
+        f"skipped and clearance was given up instead")
+
+    # --- the route A* returns is the cheapest one, not merely one that works ---
+    #
+    # Guarding the heuristic. It may underestimate the remaining cost as much as
+    # it likes and the answer stays optimal; the moment it overestimates, A* goes
+    # greedy and returns whatever it stumbled into. Nothing that checks only that
+    # a route exists would notice, so both halves here are about its cost. On an
+    # empty grid the cheapest 8-connected route costs the octile distance, which
+    # is a number this can be checked against without a second implementation.
+    def route_cost(cells):
+        return sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                   for a, b in zip(cells, cells[1:]))
+
+    open_grid = np.zeros((40, 40), dtype=bool)
+    for s, g in (((5, 5), (25, 17)), ((2, 30), (30, 2)), ((10, 10), (10, 31)),
+                 ((0, 0), (39, 39))):
+        cells = _astar(open_grid, s, g)
+        assert cells is not None, (s, g)
+        dx, dy = abs(g[0] - s[0]), abs(g[1] - s[1])
+        octile = max(dx, dy) + (math.sqrt(2) - 1.0) * min(dx, dy)
+        assert abs(route_cost(cells) - octile) < 1e-6, (
+            f"A* from {s} to {g} across an empty grid cost {route_cost(cells):.3f} "
+            f"where the cheapest 8-connected route costs {octile:.3f}")
+
+    # An empty grid cannot catch a heuristic that overestimates, because there is
+    # nothing to go the wrong way around: greedy and optimal walk the same line.
+    # A search that is optimal is symmetric, though -- the cheapest way there is
+    # the cheapest way back -- and a greedy one is not. Cluttered both ways round
+    # is where that shows.
+    seed = np.random.default_rng(20260821)
+    checked = 0
+    for _ in range(30):
+        clutter = seed.random((40, 40)) < 0.22
+        a, b = (1, 1), (38, 38)
+        clutter[a] = clutter[b] = False
+        there, back = _astar(clutter, a, b), _astar(clutter, b, a)
+        if there is None or back is None:
+            continue
+        checked += 1
+        assert abs(route_cost(there) - route_cost(back)) < 1e-6, (
+            f"the way there costs {route_cost(there):.2f} and the way back "
+            f"{route_cost(back):.2f} -- the search is not finding the cheapest "
+            f"route, so the heuristic is overestimating somewhere")
+    assert checked >= 10, f"only {checked} of the cluttered grids had a route at all"
+
+    # --- the inflation is the same disc, faster ------------------------------
+    def disc_by_offsets(blocked, r):
+        """The offset-by-offset dilation _inflate replaces, kept as the oracle."""
+        if r <= 0:
+            return blocked.copy()
+        out = blocked.copy()
+        h, w = blocked.shape
+        r2 = r * r
+        for du in range(-r, r + 1):
+            for dv in range(-r, r + 1):
+                if (du or dv) and du * du + dv * dv <= r2:
+                    out[max(0, du):h + min(0, du), max(0, dv):w + min(0, dv)] |= \
+                        blocked[max(0, -du):h + min(0, -du),
+                                max(0, -dv):w + min(0, -dv)]
+        return out
+
+    rng = np.random.default_rng(20260821)
+    for _ in range(6):
+        h = int(rng.integers(14, 46))
+        w = int(rng.integers(14, 46))
+        mask = rng.random((h, w)) < float(rng.choice([0.004, 0.05, 0.25]))
+        for r in range(0, 11):
+            assert np.array_equal(disc_by_offsets(mask, r), _inflate(mask, r)), (
+                f"the fast inflation is not the same disc at radius {r} "
+                f"on a {h}x{w} grid")
+    # A single cell gives the disc itself, which pins the shape rather than just
+    # agreeing with the other implementation about it.
+    dot = np.zeros((21, 21), dtype=bool)
+    dot[10, 10] = True
+    ring = _inflate(dot, 5)
+    assert ring[10, 15] and ring[10, 5] and ring[15, 10], "the disc is not 5 wide"
+    assert not ring[10, 16], "the disc reaches further than its radius"
+    assert ring[13, 14] and not ring[14, 14], (
+        "the corners are not Euclidean -- 3,4 is inside a radius of 5 and 4,4 is not")
 
     print("planner: ok")
     return 0
