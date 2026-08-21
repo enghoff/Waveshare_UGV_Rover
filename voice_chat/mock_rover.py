@@ -54,6 +54,17 @@ LIGHT_MAX = 255
 MOCK_BATTERY_FULL_V = 12.5
 MOCK_BATTERY_DROP_V_PER_MIN = 0.1
 
+# An invented neighbourhood, for the console's network panel. The three the rover
+# has passphrases for and two it has not, because "this one you can join and that
+# one you cannot" is the distinction the panel exists to draw and a list where
+# every row is joinable would not exercise it. Signals wander a few points per
+# reading for the reason the battery drains: a panel that never changes cannot be
+# told from a panel that has stopped being updated.
+MOCK_NETWORKS = (("TheGreatLord", 82, True), ("TheMaharaja", 61, True),
+                 ("TheGreatViking", 47, True), ("Alister", 66, False),
+                 ("Sandy Hall (5GHz)", 31, False))
+MOCK_WIFI_IFACE = "wlan0"
+
 # The invented room, in metres from wherever the rover started, with forward as +x
 # and left as +y -- the frame lidar_slam works in. A table sits in front and to
 # both sides of it, because a table is the thing the rover is asked to go round and
@@ -144,6 +155,12 @@ class Rover:
         self.tilt = 0
         self.tracking = False
         self.target = 0
+        # The access point it pretends to be on -- the strongest of the invented
+        # ones, so a console opened against this mock starts where a rover sitting
+        # in its usual spot would. Not `wifi_join`: that name is the method, and
+        # calls are dispatched by looking one up on this object.
+        self.wifi = MOCK_NETWORKS[0][0]
+        self._last_join: dict[str, Any] | None = None
         self.vision = vision
         self.picture = picture
         self.driving = drive
@@ -204,6 +221,66 @@ class Rover:
                 "volts_per_cell": round(volts / 3, 2), "reading_age_s": 0.4,
                 "summary": f"The battery is at about {percent}%, "
                            f"or {volts:.1f} volts."}
+
+    def wifi_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """The invented neighbourhood, in the shape the daemon answers in.
+
+        A mock of the *unscanned* case as well as the scanned one, because that is
+        the state a real rover is usually in: nothing scans while the link is
+        healthy, so NetworkManager's list decays to the access point it is on, and
+        a console that only ever saw a full list would have no reason to offer a
+        button that goes and looks.
+        """
+        scan = bool(arguments.get("scan"))
+        drift = int((time.monotonic() - self.started) / 3) % 7 - 3
+        networks = []
+        for ssid, signal, configured in MOCK_NETWORKS:
+            if not scan and ssid != self.wifi:
+                continue
+            networks.append({"ssid": ssid,
+                             "signal": max(1, min(100, signal + drift)),
+                             "security": "WPA2", "in_use": ssid == self.wifi,
+                             "configured": configured})
+        reading = {"ok": True, "interface": MOCK_WIFI_IFACE,
+                   "connected": self.wifi,
+                   # Around -45 dBm when the AP reads 82, which is roughly the
+                   # relationship the rover's dongle shows.
+                   "level_dbm": -90 + (dict((n, s) for n, s, _ in MOCK_NETWORKS)
+                                       .get(self.wifi, 50) + drift) // 2,
+                   "address": "192.168.1.47",
+                   "networks": networks,
+                   "configured": [n for n, _, c in MOCK_NETWORKS if c],
+                   "scanned": scan, "list_age_s": 0.0}
+        if self._last_join is not None:
+            reading["last_join"] = dict(self._last_join)
+        return reading
+
+    def wifi_join(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Switch networks, without the part where the connection dies.
+
+        The real one answers before it has done anything, because the switch takes
+        the link down and the reply would go out over it. This answers in the same
+        shape and then simply is on the other network, which is the one way a mock
+        of this is easier to drive than the rover: nothing here has to be
+        reconnected to.
+        """
+        ssid = arguments.get("ssid")
+        if not isinstance(ssid, str) or not ssid.strip():
+            return {"ok": False, "error": "wifi_join wants an ssid"}
+        ssid = ssid.strip()
+        configured = [n for n, _, c in MOCK_NETWORKS if c]
+        if ssid not in configured:
+            return {"ok": False,
+                    "error": f"there is no passphrase for {ssid} on this rover, so "
+                             f"it cannot join it. Configured networks: "
+                             f"{', '.join(configured)}"}
+        self.wifi = ssid
+        self._last_join = {"ssid": ssid, "ok": True, "at": round(time.time(), 1),
+                           "seconds": 8.0, "said": ""}
+        return {"ok": True, "joining": ssid,
+                "note": (f"joining {ssid}. Every connection to this rover is about "
+                         f"to drop, including this one; reconnect in a few seconds "
+                         f"and wifi_status will say how it went.")}
 
     def look_at(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.pan = int(arguments.get("pan", self.pan))

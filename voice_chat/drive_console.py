@@ -88,6 +88,25 @@ why face detection happens on another host -- and tkinter reads PNG, GIF and PPM
 OpenCV does the decode, it is already in the repo's requirements.txt, and where it
 is missing the frame is written to a file and the window says where.
 
+**Which network it is on, and moving it to another.** Under the battery there is a
+panel for the wifi, and it is there because this window keeps raising the question
+by itself: the rover drops off the LAN, every panel goes stale at once, and the
+first useful thing to know is whether it is on a weak access point or on none. The
+big number is the driver's own dBm rather than the 0-100 figure beside each row --
+measured on this dongle, consecutive scans put the *same* association anywhere
+from 74 to 88 while the driver held steady within a couple of dB, so the scan's
+number is only good for ranking the alternatives against each other.
+
+The list underneath is what NetworkManager last heard, and on a healthy rover that
+is one row: nothing polls for a scan, because a scan takes this dongle off channel
+for several seconds and it shares a weakly fused USB bus with the camera and the
+lidar. Looking around is a button, and so is joining -- offered only for the
+networks the rover holds a passphrase for, since those are the only ones it can
+get onto. A join is the one control here that breaks all five connections on
+purpose: the daemon answers it *before* acting, because the reply would otherwise
+be written into the socket the switch is about to take down, and the window
+reconnects itself twenty-five seconds later and reports what became of it.
+
 **Clearing the map** throws the occupancy grid away and stands the rover at the
 origin of an empty one. Drift here is permanent -- there is no loop closure on this
 hardware and never will be -- so a map that has come out of true with itself will
@@ -200,6 +219,39 @@ BATTERY_COLOURS = {"full": "#136b13", "ok": "black", "low": "#a05a10",
 BATTERY_NOTES = {"full": "off the charger", "ok": "plenty left",
                  "low": "getting low", "critical": "nearly flat -- charge it",
                  "absent": "no pack fitted, or the main switch is off"}
+
+# How often to ask which access point the rover is on. The signal strength in that
+# answer is live -- the daemon reads it out of /proc for nothing -- while the list
+# of networks behind it is cached for twenty seconds, so this is paced to the part
+# that moves. It never asks for a scan: that costs the rover several seconds off
+# channel and interrupts the link, so looking around is a button.
+WIFI_POLL_S = 5.0
+# What the driver's dBm means for the link, and where the panel starts to say so.
+# Not a signal ladder out of a phone: these are this rover's own numbers, which
+# sits at -35 to -44 dBm in the lab, and the wifi keeper on the Pi calls the link
+# failing at -78.
+WIFI_GOOD_DBM = -60
+WIFI_POOR_DBM = -72
+WIFI_COLOURS = {"good": "#136b13", "fair": "#a05a10", "poor": "#a01010"}
+# How long to leave the rover alone after asking it to switch networks before
+# reconnecting. The daemon answers the request immediately and *then* takes the
+# link down -- it has to, since the reply would otherwise be written into the
+# connection the switch is breaking -- so this is the association and a DHCP round,
+# measured at eight to twenty seconds on this hardware, plus room to spare.
+WIFI_REJOIN_MS = 25_000
+
+
+def _wifi_verdict(level: Any) -> str:
+    """One word for a dBm reading, or "poor" for no reading at all.
+
+    No reading means the interface is not reporting a signal, which is not a good
+    sign and must not be coloured like one.
+    """
+    if not isinstance(level, (int, float)):
+        return "poor"
+    if level >= WIFI_GOOD_DBM:
+        return "good"
+    return "fair" if level >= WIFI_POOR_DBM else "poor"
 
 
 def _legend():
@@ -504,6 +556,15 @@ class Console:
         self.light_level: int | None = None
         self.battery_outstanding = False
         self.battery_at = 0.0
+        # None until the rover has been asked once. The network calls are not in
+        # `list_tools` -- no model is offered them, since one that switched networks
+        # would be cutting the wire its own conversation arrives on -- so support is
+        # discovered by asking rather than read off the tool list, and a rover
+        # running an older daemon leaves this False and the panel quiet.
+        self.wifi_ok: bool | None = None
+        self.wifi_outstanding = False
+        self.wifi_at = 0.0
+        self.wifi_joining: str | None = None
         self.clear_armed_until = 0.0
 
         root.title("rover drive console")
@@ -840,6 +901,66 @@ class Console:
         ttk.Label(battery, textvariable=self.battery_note, foreground="#666",
                   wraplength=CAMERA_BOX_PX).pack(anchor="w")
 
+        self._build_network(column)
+
+    def _build_network(self, column: ttk.Frame) -> None:
+        """Which access point the rover is on, and the others it could be on.
+
+        Here rather than in a menu because it is the answer to a question this
+        window keeps raising by itself: the rover drops off the network, every panel
+        goes stale at once, and the useful thing to know first is whether it is on a
+        weak access point or on none. The number that answers that is the driver's
+        own dBm, so that is the big text; the list underneath is what to do about it.
+
+        **The list is only what NetworkManager last heard.** Nothing polls for a
+        scan, because a scan takes this dongle off channel for several seconds and
+        it shares a weakly fused USB bus with the camera and the lidar. So on a
+        rover that has been happily connected for an hour the list is one row -- the
+        access point it is on -- and finding out what else is in range is a button
+        somebody presses.
+        """
+        network = ttk.LabelFrame(column, text="network", padding=8)
+        network.pack(fill="x", pady=(10, 0))
+
+        self.wifi_var = tk.StringVar(value="-")
+        self.wifi_label = ttk.Label(network, textvariable=self.wifi_var,
+                                    font=("TkFixedFont", 11))
+        self.wifi_label.pack(anchor="w")
+        self.wifi_where = tk.StringVar(value="")
+        ttk.Label(network, textvariable=self.wifi_where, foreground="#666",
+                  wraplength=CAMERA_BOX_PX).pack(anchor="w")
+
+        # Signal as it was last heard, not as it is now: only the row being used
+        # has a live number, and it is in the line above. Configured networks are
+        # tagged rather than filtered out -- what is in range and unjoinable is
+        # worth seeing when the rover is somewhere it has no passphrase for.
+        self.wifi_list = ttk.Treeview(network, columns=("signal", "known"),
+                                      show="tree headings", height=4,
+                                      selectmode="browse")
+        self.wifi_list.heading("#0", text="network")
+        self.wifi_list.heading("signal", text="signal")
+        self.wifi_list.heading("known", text="")
+        self.wifi_list.column("#0", width=150, anchor="w")
+        self.wifi_list.column("signal", width=55, anchor="e")
+        self.wifi_list.column("known", width=70, anchor="w")
+        self.wifi_list.pack(fill="x", pady=(6, 0))
+        self.wifi_list.tag_configure("here", foreground="#0a4f9c")
+        self.wifi_list.tag_configure("stranger", foreground="#999")
+        self.wifi_list.bind("<<TreeviewSelect>>", lambda _e: self._show_join_button())
+
+        row = ttk.Frame(network)
+        row.pack(fill="x", pady=(6, 0))
+        self.wifi_scan_button = ttk.Button(row, text="look for networks",
+                                           command=self._wifi_scan)
+        self.wifi_scan_button.pack(side="left")
+        self.wifi_join_button = ttk.Button(row, text="join", width=8,
+                                          state="disabled", command=self._wifi_join)
+        self.wifi_join_button.pack(side="left", padx=6)
+
+        self.wifi_note = tk.StringVar(value="")
+        ttk.Label(network, textvariable=self.wifi_note, foreground="#666",
+                  wraplength=CAMERA_BOX_PX).pack(anchor="w", pady=(4, 0))
+
     def _build_log(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="calls and replies", padding=(4, 4))
         frame.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
@@ -871,6 +992,11 @@ class Console:
         self.moves = self.halt = self.watch = self.picture = self.camera = None
         self.frame_outstanding = False
         self.map_outstanding = False
+        self.wifi_outstanding = False
+        # Not forgotten across a reconnect: a reconnect is mostly what happens
+        # *because* of a join, and the panel's job at that moment is to say whether
+        # the rover came back on the network it was asked for.
+        self.wifi_ok = None
         # Forgotten across a reconnect, so that a rover found mid-move says once
         # what it is doing instead of staying silent until the next phase.
         self.move_seq = None
@@ -915,6 +1041,10 @@ class Console:
         # The board cannot be read back, so the daemon only knows the level it last
         # set. Ask once on connect and the panel starts out true rather than blank.
         self.watch.submit("get_lights")
+        # And once for the network, which is also how the window finds out whether
+        # this rover has the calls for it at all.
+        self.wifi_outstanding = True
+        self.watch.submit("wifi_status")
 
     # --- issuing calls --------------------------------------------------------
     def _watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
@@ -1169,6 +1299,15 @@ class Console:
             self.battery_outstanding = True
             self.battery_at = now
             self.watch.submit("battery")
+        # The network, on the same connection. Only once the rover has answered one
+        # of these successfully, so a daemon that has never heard of them is asked
+        # exactly once rather than every five seconds for the rest of the session.
+        if (self.watch is not None and self.wifi_ok
+                and not self.wifi_outstanding
+                and now - self.wifi_at > WIFI_POLL_S):
+            self.wifi_outstanding = True
+            self.wifi_at = now
+            self.watch.submit("wifi_status")
         if self.clear_armed_until and now > self.clear_armed_until:
             self._disarm_clear()
 
@@ -1206,6 +1345,15 @@ class Console:
         if name == "battery":
             self.battery_outstanding = False
             self._show_battery(body)
+            return
+        if name == "wifi_status":
+            self.wifi_outstanding = False
+            self._show_wifi(body)
+            # A scan is somebody pressing a button and waiting several seconds for
+            # an answer, so it goes in the transcript; the five-second poll behind
+            # it does not, or the log would be nothing else.
+            if reply.arguments.get("scan"):
+                self._log_reply(reply)
             return
         if name == "tracking_status":
             # Polled by the window rather than asked for by a person, so it updates
@@ -1416,6 +1564,140 @@ class Console:
         if age > BATTERY_STALE_S:
             note += f", and read {age:.0f} s ago"
         self.battery_note.set(note)
+
+    def _show_wifi(self, body: dict[str, Any]) -> None:
+        """The access point, its strength, and what else was last heard.
+
+        The strength is the driver's dBm rather than the 0-100 figure beside each
+        row in the list, and the difference is not cosmetic: measured on this
+        rover's dongle, consecutive scans put the *same* association anywhere from
+        74 to 88 while the driver held steady within a couple of dB. So the number
+        that gets a colour and a verdict is the one worth trusting, and the column
+        in the list is only there to rank the alternatives against each other.
+        """
+        if not body.get("ok"):
+            error = str(body.get("error", "no answer"))
+            if "no such tool" in error:
+                # An older daemon. Say so once, in the panel, and stop asking.
+                self.wifi_ok = False
+                self.wifi_var.set("-")
+                self.wifi_where.set("this rover's daemon does not offer the "
+                                    "network calls yet")
+                self.wifi_scan_button.configure(state="disabled")
+                return
+            self.wifi_ok = True          # it knows the call; it just could not answer
+            self.wifi_var.set("-")
+            self.wifi_where.set(error)
+            return
+
+        self.wifi_ok = True
+        ssid = body.get("connected")
+        level = body.get("level_dbm")
+        if ssid is None:
+            self.wifi_var.set("not associated")
+            self.wifi_label.configure(foreground=WIFI_COLOURS["poor"])
+        else:
+            shown = str(ssid)
+            if isinstance(level, (int, float)):
+                shown += f"   {level:.0f} dBm"
+            self.wifi_var.set(shown)
+            self.wifi_label.configure(foreground=WIFI_COLOURS[_wifi_verdict(level)])
+
+        where = []
+        address = body.get("address")
+        # An association with no address is the failure worth naming: every panel in
+        # this window has gone blank and the rover looks connected from the outside.
+        where.append(str(address) if address else "no address -- DHCP has not answered")
+        age = body.get("list_age_s")
+        if isinstance(age, (int, float)) and age > WIFI_POLL_S:
+            where.append(f"list heard {age:.0f} s ago")
+        join = body.get("last_join")
+        if isinstance(join, dict):
+            got = join.get("ssid")
+            where.append(f"joined {got}" if join.get("ok")
+                         else f"could not join {got}")
+        self.wifi_where.set(", ".join(where))
+
+        # Rebuilt rather than updated, and the selection put back afterwards: the
+        # list is short, and a person part-way through choosing a network should not
+        # lose the row they clicked to a poll that arrived a moment later.
+        chosen = self._wifi_chosen()
+        self.wifi_list.delete(*self.wifi_list.get_children())
+        for entry in body.get("networks") or []:
+            name = str(entry.get("ssid", "?"))
+            tags = ("here",) if entry.get("in_use") else (
+                () if entry.get("configured") else ("stranger",))
+            self.wifi_list.insert(
+                "", "end", iid=name, text=name,
+                values=(entry.get("signal", "-"),
+                        "on it" if entry.get("in_use") else
+                        ("" if entry.get("configured") else "no passphrase")),
+                tags=tags)
+        if chosen and self.wifi_list.exists(chosen):
+            self.wifi_list.selection_set(chosen)
+        self._show_join_button()
+
+    def _wifi_chosen(self) -> str | None:
+        selection = self.wifi_list.selection()
+        return selection[0] if selection else None
+
+    def _show_join_button(self) -> None:
+        """Joinable means configured and not already the one in use."""
+        chosen = self._wifi_chosen()
+        joinable = False
+        if chosen is not None and self.wifi_list.exists(chosen):
+            values = self.wifi_list.item(chosen, "values")
+            note = values[1] if len(values) > 1 else ""
+            joinable = note not in ("on it", "no passphrase")
+        self.wifi_join_button.configure(
+            state=("normal" if joinable and self.wifi_joining is None else "disabled"))
+
+    def _wifi_scan(self) -> None:
+        """Ask the radio to look around, which costs the rover the link for a moment.
+
+        Said out loud in the panel before it happens, because it is several seconds
+        of a rover that answers nothing -- including a stop -- and a button that
+        appears to have done nothing for four seconds is a button people press
+        again.
+        """
+        if self.watch is None:
+            self._say("not connected, so no scan was sent\n", "bad")
+            return
+        self.wifi_note.set("scanning -- the rover is off channel for a few seconds")
+        self.wifi_outstanding = True
+        self.wifi_at = time.monotonic()
+        self._log_sent("wifi_status", {"scan": True})
+        self.watch.submit("wifi_status", {"scan": True})
+
+    def _wifi_join(self) -> None:
+        """Move the rover onto the selected network, and expect to lose it.
+
+        The daemon answers this before it acts, so the reply arriving means the
+        request was accepted and nothing more. What follows is the link going down
+        under all five connections, so the window schedules its own reconnect rather
+        than waiting to be told: there is nothing left to tell it on.
+        """
+        chosen = self._wifi_chosen()
+        if chosen is None or self.watch is None:
+            return
+        self.wifi_joining = chosen
+        self._show_join_button()
+        self.wifi_note.set(f"joining {chosen}; the rover will be unreachable for a "
+                           f"few seconds")
+        self._watch_call("wifi_join", {"ssid": chosen})
+        self.root.after(WIFI_REJOIN_MS, self._rejoined)
+
+    def _rejoined(self) -> None:
+        """Reconnect after a join, whatever became of the request.
+
+        Unconditional on purpose. The switch may have worked, may have failed and
+        left the rover where it was, or may have left it on a network this desk
+        cannot reach -- and the first two are indistinguishable from here until
+        something reconnects and asks.
+        """
+        asked, self.wifi_joining = self.wifi_joining, None
+        self.wifi_note.set(f"reconnecting after asking for {asked}")
+        self._connect()
 
     def _show_tracking(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):

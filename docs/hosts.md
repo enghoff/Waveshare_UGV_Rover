@@ -92,11 +92,20 @@ read loop that extends its deadline whenever bytes arrive never returns at all; 
 a fixed deadline.
 
 **Network.** `eth0` (`b8:27:eb:56:8a:3f`) is primary at route metric 100.
-`wlan0` comes from a Realtek RTL8188FTV USB dongle (`0bda:f179`) on SSID
-`TheGreatLord` at metric 600. Both land on the same /24, so the WiFi is a
-redundant path rather than a second network — which is what makes it worth
-having when the rover drives away from its cable. `nmcli` needs `sudo` over SSH:
-polkit only grants network control to an active local session.
+`wlan0` comes from a Realtek RTL8188FTV USB dongle (`0bda:f179`) at metric 600.
+Both land on the same /24, so the WiFi is a redundant path rather than a second
+network — which is what makes it worth having when the rover drives away from its
+cable. `nmcli` needs `sudo` over SSH: polkit only grants network control to an
+active local session.
+
+Three APs are saved, not one: `TheGreatLord`, `TheMaharaja` and `TheGreatViking`
+are three separate routers bridged onto that same /24, so the rover keeps a
+`192.168.1.x` address whichever it lands on. TheGreatViking's router *is* the
+gateway at `192.168.1.1`; the other two answer on the LAN at `.2` and `.232`.
+[`wifi_roam/`](../wifi_roam) is what chooses between them — NetworkManager
+reconnects on its own but picks by last-used time rather than by signal, and never
+leaves a fading AP at all. The dongle is 2.4 GHz only, so the `5G` twins of two of
+those SSIDs are invisible here.
 
 A rover that has driven off has no `eth0` at all, so `192.168.1.47` is the
 address that matters and `ssh rpi` — an mDNS name — is the part that is not
@@ -134,7 +143,12 @@ that work are still true of this machine and worth keeping:
 
 The dongle, the wifi dongle and the camera all share one weakly fused USB bus,
 which is the first thing to suspect if the wifi drops during a run that is also
-streaming audio and video.
+streaming audio and video. It is not a theoretical worry: a burst of forced wifi
+scans, on a box already streaming camera frames at load 3.5, took `wlan0` off the
+air and did not give it back — no address on either interface, no mDNS, nothing on
+the /24 — until the Pi was physically restarted. Scanning is the expensive
+operation here, which is why [`wifi_roam/`](../wifi_roam) will not do it while the
+link is healthy and will not do it more than once a minute while it is not.
 
 **What runs here.** `rover_daemon.py` (from `rover_daemon/` in this repo) is
 the one process that may own the UART and the camera, and everything that

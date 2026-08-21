@@ -21,6 +21,7 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 | `rover_daemon/`, `driver_board/`, `face_tracking/` | `rpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
 | `lidar_slam/` | `rpi` | `~/ugv/lidar_slam/` |
 | `oak_detect/` | `rpi` | `~/ugv/oak_detect/` |
+| `wifi_roam/` | `rpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
 | `behaviours/` | `rpi` | `~/ugv/behaviours/` — **planned, not built**; see [docs/scripting.md](docs/scripting.md). `scripting.py` and `rover_api.py`, which run scripts, deploy flat with the daemon; the agent-written store must never be overwritten by a deploy |
 | `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
 | `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/drive_console.py`, `voice_chat/mock_rover.py` | whatever desk is in use | nothing to deploy |
@@ -34,6 +35,7 @@ their keys.
 scp rover_daemon/{rover_daemon.py,selftest.py,scripting.py,rover_api.py} rpi:~/ugv/
 scp lidar_slam/*.py lidar_slam/README.md rpi:~/ugv/lidar_slam/
 scp -r oak_detect rpi:~/ugv/          # the face detector, on the OAK's VPU
+scp -r wifi_roam rpi:~/ugv/           # the wifi keeper; then its own install.sh
 ssh rpi 'cd ~/ugv && python3 selftest.py | tail -2'
 ssh rpi '~/ugv/restart.sh'          # ~35 s; prints the new tool count
 ```
@@ -63,8 +65,21 @@ ssh rpi '~/ugv/oak_detect/build.sh && python3 ~/ugv/oak_detect/selftest.py | tai
 ssh rpi '~/ugv/oak_detect/restart.sh'      # ~6 s to boot the VPU and load the graph
 ```
 
-Plain `scp` is fine here — these are `.py` files with no shebang, so CRLF does not
-bite.
+`wifi_roam/` is neither of those. It is the only thing here installed as a systemd
+unit, because scanning and switching networks need root, and its `install.sh` is
+what copies the script into `/usr/local/sbin` and the units into
+`/etc/systemd/system`. It is idempotent, so run it again after changing any of
+them:
+
+```bash
+ssh rpi 'sudo ~/ugv/wifi_roam/install.sh'      # add the passphrase on a new Pi
+ssh rpi 'systemctl list-timers --no-pager wifi-roam.timer'
+```
+
+Plain `scp` is fine for the `.py` files — no shebang, so CRLF does not bite. The
+shell scripts under `lidar_slam/`, `oak_detect/` and `wifi_roam/` do have one, and
+they are held to LF by `.gitattributes`; a CRLF checkout turns their shebang into
+an interpreter with a carriage return in its name.
 
 ## MEDIA
 

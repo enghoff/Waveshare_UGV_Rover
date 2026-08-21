@@ -15,3 +15,8 @@ oak_detect/*.blob binary
 # evidence for numbers quoted elsewhere, and rewriting the line endings of a STEP
 # file edits that evidence.
 docs/refs/** -text
+
+# wifi_roam/ is installed and run on the rover's Pi, and both shell scripts have
+# shebangs -- a CRLF checkout would make the kernel look for an interpreter with a
+# carriage return in its name, the same trap lidar_slam/build.sh fell into.
+wifi_roam/** text eol=lf

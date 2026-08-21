@@ -1,0 +1,21 @@
+[Unit]
+Description=Check the rover's wifi every 20 seconds
+
+[Timer]
+# Three minutes after boot, and not a minute. NetworkManager takes 46 s of this
+# Pi's boot by itself and the first association and DHCP land somewhere past 60 s,
+# so a timer that starts at a minute finds wlan0 not yet associated, decides that
+# is a fault, and starts scanning and activating on top of NM's own attempt. That
+# is not a hypothetical: it is what took the rover off the network twice in one
+# afternoon. Nothing here improves on NM during its first go; wait for it.
+OnBootSec=180s
+OnUnitActiveSec=20s
+# Three failing checks before a switch, so 20 s here means about a minute of bad
+# link before the rover moves. A check that finds nothing wrong costs 40 ms of
+# /proc reads and no nmcli call at all, which is what makes this cadence affordable
+# on one armv6 core that is also running SLAM.
+AccuracySec=5s
+Unit=wifi-roam.service
+
+[Install]
+WantedBy=timers.target

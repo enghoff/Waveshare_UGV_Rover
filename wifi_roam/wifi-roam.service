@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep the rover's wifi on the strongest known access point
+Documentation=file:///home/admin/ugv/wifi_roam/README.md
+After=NetworkManager.service
+Requisite=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wifi_roam.sh
+# One core, shared with SLAM and the daemon's control loop. Nothing here is
+# urgent to the millisecond, so let everything else go first.
+Nice=10

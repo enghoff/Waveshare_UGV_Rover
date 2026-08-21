@@ -182,7 +182,12 @@ def test_schemas():
                # is shown them, and four of the five are refused on anything but
                # loopback -- see LOCAL_ONLY in rover_daemon.py.
                "run_script", "start_script", "script_status", "script_stop",
-               "list_api"]
+               "list_api",
+               # And the network, which is a control call for a reason of its own:
+               # a model that moved the rover onto another access point would be
+               # cutting the wire its own conversation arrives on, and no wording
+               # of a description makes that a good idea.
+               "wifi_status", "wifi_join"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
@@ -985,12 +990,68 @@ def test_the_approach_to_a_face_never_turns_back():
           min(fast) <= min(slow) + 1.0, True)
 
 
+def test_reading_the_network():
+    """Parsing what nmcli says, and refusing a network there is no key for.
+
+    The parsing earns a check of its own because its input is a string a stranger
+    chose. An SSID may contain a colon, `nmcli -t` escapes it, and a `split(":")`
+    gets away with that until the day somebody's router is called something
+    awkward -- at which point the panel shows the wrong signal against the wrong
+    name and looks like it is working.
+
+    The rest is what happens on a machine with no wifi helper installed at all,
+    which is every machine but the rover: a refusal in words, and never a
+    traceback, because both calls are wired to live buttons in a window.
+    """
+    import rover_daemon
+
+    check("an escaped colon stays inside its field",
+          rover_daemon._terse_fields(r"*:My\:Net:84:WPA2"),
+          ["*", "My:Net", "84", "WPA2"])
+    check("an escaped backslash does too",
+          rover_daemon._terse_fields(r"\\:x:1"), ["\\", "x", "1"])
+
+    rows = "\n".join(("*:TheGreatLord:52:WPA2",
+                      " :TheGreatLord:40:WPA2",      # the same router's other radio
+                      " :TheMaharaja:84:WPA2",
+                      " :Stranger:99:WPA2",
+                      " ::70:WPA2"))                 # a hidden network
+    seen = rover_daemon._wifi_networks(rows, {"TheGreatLord", "TheMaharaja"})
+    check("one row per network, not per radio",
+          [n["ssid"] for n in seen], ["TheMaharaja", "TheGreatLord", "Stranger"])
+    check("...at the strongest signal that network was heard on",
+          [n["signal"] for n in seen if n["ssid"] == "TheGreatLord"], [52])
+    check("...still marked as the one in use",
+          [n["in_use"] for n in seen if n["ssid"] == "TheGreatLord"], [True])
+    check("...and a hidden network is not offered as a choice",
+          any(not n["ssid"] for n in seen), False)
+    check("the ones with a passphrase come first",
+          [n["configured"] for n in seen], [True, True, False])
+
+    # And the two calls themselves, which answer differently depending on where
+    # this is run -- so both worlds are checked rather than the convenient one.
+    # On the rover the helper is installed and this reads the real radio; anywhere
+    # else it is absent, and what comes back has to be a sentence rather than a
+    # traceback, because both calls are wired to live buttons in a window.
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    check("wifi_join wants an ssid", rover.call("wifi_join", {})["ok"], False)
+    asked = rover.call("wifi_status", {})
+    if asked["ok"]:
+        check("wifi_status answers with every field the panel reads",
+              [key for key in ("interface", "connected", "level_dbm", "address",
+                               "networks", "configured") if key not in asked], [])
+    else:
+        check("wifi_status without the helper says how to install it",
+              "install" in asked["error"], True)
+
+
 def main():
     for test in (test_levels, test_battery, test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_control_calls_without_hardware,
+                 test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,
                  test_scripts_run_and_say_what_happened,
                  test_one_script_at_a_time, test_where,

@@ -1303,6 +1303,87 @@ def test_talk_session() -> None:
         frames.server_close()
 
 
+def test_choosing_a_network() -> None:
+    """Which access point the rover is on, and moving it to another.
+
+    Over a real socket rather than against the class, because the shape of these
+    two answers is the whole contract between the daemon and the console's network
+    panel, and the mock is the only place that shape can be checked without a Pi
+    and three routers.
+
+    The unscanned case is the one worth pinning down. Nothing polls for a scan --
+    it takes the dongle off channel for seconds, on a bus it shares with the camera
+    -- so what a console normally sees is a list of one, and a panel that treated
+    that as "there is nothing else out there" would be wrong in the ordinary case
+    rather than the rare one.
+    """
+    try:
+        import mock_rover
+        import rover_tools
+    except Exception as exc:
+        SKIP.append(f"choosing a network ({type(exc).__name__})")
+        return
+
+    rover = mock_rover.Rover(None, None)
+    server = mock_rover.serve(rover, "127.0.0.1", 0, quiet=True)
+    client = rover_tools.RoverClient(f"127.0.0.1:{server.server_address[1]}")
+    try:
+        quiet = client.call("wifi_status", {})
+        check("it says which network it is on",
+              quiet.get("connected"), "TheGreatLord")
+        check("...with a signal from the driver, in dBm",
+              -90 <= quiet.get("level_dbm", 0) <= -20, True)
+        check("...and an address, since being associated is not being online",
+              quiet.get("address"), "192.168.1.47")
+        check("without a scan the list is only what was last heard",
+              [n["ssid"] for n in quiet["networks"]], ["TheGreatLord"])
+        check("...and that row is marked as the one in use",
+              quiet["networks"][0]["in_use"], True)
+
+        looked = client.call("wifi_status", {"scan": True})
+        check("a scan finds the neighbours", len(looked["networks"]) > 1, True)
+        check("...and says which of them this rover has a passphrase for",
+              [n["ssid"] for n in looked["networks"] if n["configured"]],
+              ["TheGreatLord", "TheMaharaja", "TheGreatViking"])
+
+        refused = client.call("wifi_join", {"ssid": "Alister"})
+        check("a network with no passphrase is refused", refused.get("ok"), False)
+        check("...by name, so the panel can say why",
+              "no passphrase for Alister" in refused.get("error", ""), True)
+        check("and so is a join with no network at all",
+              client.call("wifi_join", {}).get("ok"), False)
+
+        moved = client.call("wifi_join", {"ssid": "TheMaharaja"})
+        check("a configured network is accepted", moved.get("joining"), "TheMaharaja")
+        check("...and the answer warns that the link is about to go",
+              "drop" in moved.get("note", ""), True)
+        after = client.call("wifi_status", {})
+        check("...and afterwards it is on it", after.get("connected"), "TheMaharaja")
+        check("...with the outcome kept for whoever reconnects",
+              after.get("last_join", {}).get("ok"), True)
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+
+
+def test_signal_verdict() -> None:
+    """One word for a dBm reading, which is what gets the colour in the panel."""
+    try:
+        import drive_console
+    except Exception as exc:
+        SKIP.append(f"signal verdict ({type(exc).__name__}: needs tkinter)")
+        return
+
+    verdict = drive_console._wifi_verdict
+    check("a strong link", verdict(-41), "good")
+    check("a fading one", verdict(-68), "fair")
+    check("one the wifi keeper is about to act on", verdict(-77), "poor")
+    # No reading at all is the interface not reporting a signal, which is not good
+    # news and must not be coloured as though it were.
+    check("and no reading at all", verdict(None), "poor")
+
+
 def main() -> int:
     test_sentences()
     test_tool_sniffer()
@@ -1319,6 +1400,8 @@ def main() -> int:
     test_echo_guard()
     test_pointing_the_camera()
     test_move_commentary()
+    test_choosing_a_network()
+    test_signal_verdict()
     test_talk_session()
 
     for name in PASS:
