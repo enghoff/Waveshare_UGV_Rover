@@ -1490,7 +1490,8 @@ class Navigator:
                                (self._want_speed, self._want_turn),
                                self._chosen_deg, self._clearance,
                                (goal or {}).get("progress", 0.0),
-                               (goal or {}).get("cross", 0.0))
+                               (goal or {}).get("cross", 0.0),
+                               self._dropped)
 
         if estop or goal is None:
             if self._last_sent not in (None, (0, 0)):

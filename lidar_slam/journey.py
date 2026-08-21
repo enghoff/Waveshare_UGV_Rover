@@ -62,6 +62,7 @@ TICK_FIELDS = (
     "clearance",           # and the room it found there
     "progress",            # metres along the route
     "cross",               # metres off it
+    "dropped",             # revolutions the loop has skipped, running total
 )
 
 
@@ -142,7 +143,7 @@ class Recorder:
 
     @_guard
     def tick(self, pose, health, measured, wanted, chosen, clearance,
-             progress, cross):
+             progress, cross, dropped=0):
         if len(self.ticks) >= MAX_TICKS:
             return
         self.ticks.append([
@@ -158,6 +159,11 @@ class Recorder:
             chosen if chosen is not None else float("nan"),
             clearance if clearance is not None else float("nan"),
             progress, cross,
+            # A running total, not a rate: the interesting question afterwards
+            # is whether the gap between two matched revolutions was the sensor
+            # taking longer to come round or the loop missing one it delivered,
+            # and only the difference between two of these can say.
+            float(dropped),
         ])
 
     @_guard
@@ -480,11 +486,17 @@ def _selftest():
         # A rover driving honestly: 2 cm a revolution at 0.2 m/s.
         for k in range(10):
             rec.ticks.append([k * 0.1, k * 0.02, 0.0, 0.0, 0.9, 0.1, 0.0, 0.0, 1.0,
-                              0.2, 0.0, 0.2, 0.0, 0.0, 1.5, k * 0.02, 0.01])
+                              0.2, 0.0, 0.2, 0.0, 0.0, 1.5, k * 0.02, 0.01, 0.0])
         # ...and then the matcher changes its mind by 30 cm without the wheels
         # having turned, which is the thing this file exists to catch.
         rec.ticks.append([1.0, 0.48, 0.0, 0.0, 0.88, 0.7, 0.0, 0.0, 1.0,
-                          0.2, 0.0, 0.2, 0.0, 0.0, 1.5, 0.48, 0.01])
+                          0.2, 0.0, 0.2, 0.0, 0.0, 1.5, 0.48, 0.01, 0.0])
+        # These rows are written by hand so the poses can be chosen, which means
+        # nothing else keeps them the width of TICK_FIELDS. Say so here rather
+        # than leaving a reshape error in the writer to explain it.
+        assert all(len(row) == len(TICK_FIELDS) for row in rec.ticks), (
+            f"a hand-built tick is not {len(TICK_FIELDS)} fields wide -- a column "
+            f"was added to TICK_FIELDS without adding it here")
         rec.event("replan", "drifted 0.61 m off the route")
         rec.end("arrived", "").join(timeout=10.0)
         assert rec.broken is None, rec.broken
