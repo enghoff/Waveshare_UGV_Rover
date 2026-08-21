@@ -267,6 +267,26 @@ first healthy match, then the confirming revolution uses the ordinary tracking
 window: two independent ±60° answers can lock onto different peaks, both scoring
 beautifully, which is not the matcher agreeing with itself.
 
+**Only for a rover that was moved without being watched**, which in practice means a
+dead-reckoned turn. Narrow in translation is the right trade for that rover and the
+wrong one for a rover that lost the pose at 0.25 m/s: ±5 cm is less than a driving
+rover covers between two matched revolutions, so the sweep lands on the rim, which
+holds the map, which asks for another sweep. Five recorded drives, 999 revolutions:
+
+| the revolution matched with | outran its translation window | landed on the rim |
+|---|---|---|
+| the tracking window, ±10 cm | 0% | 11% |
+| the recovery sweep, ±5 cm | 49% | 80% |
+
+A third of every drive ran the sweep and mapping was held for 38–67% of each move,
+almost all of it that latch rather than anything wrong with the room: 334 of the 335
+vetoed revolutions were on the rim, and nothing else came close — six also scored
+below the write threshold and one was rejected outright. So the navigator now holds
+the map *without* widening the search (`WIDEN_AFTER_LOST`): a rover the matcher was
+tracking a revolution ago is a few degrees out, not tens, and the ordinary window
+reaches that. It widens after four revolutions of tracking that cannot find the
+pose — which is the case the sweep was built for — and a burst still gets it at once.
+
 Measured in the self-test, on a pose deliberately put 35° out:
 
 ```
@@ -383,6 +403,14 @@ is what lets the two failures be told apart after the fact — a rover that coul
 keep up shows dropped revolutions and an answer against the rim of the window, while
 a room that looks the same two ways round shows a rival peak and no drops at all.
 
+The rim is the one worth watching. Every pose jump over 6 cm in the recordings sat on
+it, 166 of 178 window overruns were rotation rather than travel, and it was the sole
+reason mapping was ever held. Two things feed it and both are about the loop being
+slower than the sensor: `MAX_TURN_DPS` assumed a revolution every 100 ms and the
+recordings measured 138 at the median and 236 at the ninetieth percentile, which
+turns 45°/s into 10.6° of rotation against a ±9° window — see the turn cap below —
+and the recovery sweep's ±5 cm, above.
+
 Steering is follow-the-gap — the heading with the most room, penalised for departing
 from the one asked for. Wall-following at a shallow angle falls out of that rather
 than being a special case with a threshold to tune.
@@ -400,13 +428,59 @@ doorway is closed. A soft toll beyond the keep-out is a nudge toward the middle 
 a gap, not the thing that keeps corners at arm's length: two extra cells of path
 was a cheap price to scrape a corner when going around cost metres.
 
+**Then the route is pulled straight, because most of its corners are the grid and
+not the room.** A* steps in eight directions and measures in octile steps, so every
+monotone staircase between two cells costs exactly the same and which one comes
+back is down to the order the heap popped. On empty floor that produced a four-metre
+run straight ahead followed by a 25° kink for no reason at all, and thinning cannot
+undo it — the kink is a real 40 cm departure from the straight line, and keeping
+departures that large is the whole job of thinning. So runs of corners are replaced
+by the line between their ends wherever that line is clear of the same keep-out A*
+was given and costs no more under the same toll, with a credit of 30 cm of path for
+each corner it removes: a corner past the follower's turn-in-place threshold is a
+full stop and a dead-reckoned spin, about 1.8 s for a right angle, which is more
+driving than it saves. The credit is withheld on a fallback route through a pinch,
+where the keep-out is already inside the distance the follower brakes at and the
+toll is the last thing holding the route off the wall.
+
+Over 347 routes through randomly generated rooms that is 1.1 fewer waypoints, 39° less turning and half a
+stop-and-spin per route, for 8 cm less path — and no route anywhere came out nearer
+to anything than the keep-out it was planned with, which is the invariant that makes
+shortening one safe at all.
+
 The follower's carrot stays on the current segment. Looking a metre past a vertex
-is how a route that gave a corner room still drove the chord and arrived at the
-brake distance; a sharp corner is a turn on the spot, which is the move this rover
-already has. And because turning is always legal, even with the nose in a wall, a
-heading that looks into the keep-out starts the route with a hop off that heading
-so the first thing the rover does is turn, rather than drive the chord through the
-blocked cell.
+*onto the next leg* is how a route that gave a corner room still drove the chord and
+arrived at the brake distance; a sharp corner is a turn on the spot, which is the
+move this rover already has. What it does do at a *gentle* corner, once the vertex
+has come inside 30 cm, is run the aim point on past it along the line of the leg
+being driven — which is a different thing, because extending the line the rover is
+already on cannot bend it towards the inside of the corner. Without that the carrot
+collapses onto the vertex and the bearing to it becomes pure cross-track error and
+pose wobble: 5 cm to the side of a carrot 5 cm ahead is 45° of heading error out of
+nothing, past the turn-in-place threshold, so the rover stopped and spun a hand's
+breadth short of a corner it was tracking cleanly. Two thirds of the heading a
+simulated route threw away went on exactly that.
+
+A corner past the turn-in-place threshold keeps the collapsing carrot it always had,
+and so does the last waypoint — for different reasons. At a sharp corner the rover is
+going to stop and spin whatever happens, so triggering it a few centimetres early
+costs nothing, while running on past a right angle would have it arrive at the corner
+still under power, and a corner is where the route has the least room to spare. At
+the goal the collapsing bearing is doing real work: it is what swings the rover round
+to a place it would otherwise sail past a little to one side of.
+
+Both changes were measured by driving the real `_step_goto` around simulated rooms at
+the 10 Hz it runs at, with the pose wobble the matcher really has — whole journeys,
+replans included, not single legs. Over 310 of them: four more arrivals out of 310,
+a second off the average journey, 23% less heading swing, fewer replans, and the
+committed pair's four timeouts and one "gave up replanning" gone entirely. The rover
+also ends up *further* from things rather than nearer — tightest approach 0.19 m to
+0.20 m, and half as many journeys inside 0.25 m — because the time it no longer spends
+replanning and unsticking is time it was spending close to something.
+
+And because turning is always legal, even with the nose in a wall, a heading that
+looks into the keep-out starts the route with a hop off that heading so the first
+thing the rover does is turn, rather than drive the chord through the blocked cell.
 
 The polyline is a sketch, not a promise — the live scan stays in the loop while
 following it, and the route is thrown away and planned again when the room
@@ -450,6 +524,53 @@ it, under the map you clicked on.
 `dryrun.py` exercises all of it against the real lidar with a stub link, so the
 control loop, the clearance checks and the PWM arithmetic can be tested on live scans
 with nothing reaching the motors. Run it before the first real move.
+
+### Recording a journey, when the map afterwards is not enough
+
+A route that comes out convoluted cannot be diagnosed from the map image, and it
+cannot honestly be reproduced in simulation either, because every simulation is a
+guess about which part is going wrong. There are at least four candidates and they
+call for opposite fixes: the planner drew a bad route through a good map; the map
+was ragged so no good route existed; the route was fine and the follower wove along
+it; or the rover drove straight and the *pose* moved, so the blue line is a drawing
+of the estimate rather than of the rover. That last one is not exotic here — most
+of the recent work on the matcher is about poses that are confidently wrong — and
+nothing downstream can tell it apart from the other three.
+
+So `journey.py` records the inputs and the decisions rather than the conclusions:
+the occupancy grid and pose handed to every plan, the route that came back, every
+replan with what provoked it, each dead-reckoned burst against what the matcher
+saw of it, and one row per revolution carrying the pose, the match score and
+ambiguity, what the follower asked the wheels for and what it measured them doing.
+
+**Recording is armed by making the directory and stopped by removing it**, which is
+the whole control surface — no flag, no new tool, and above all no restart, because
+the daemon's arguments live in a crontab entry and relaunching it by hand is how the
+rover silently loses them:
+
+```bash
+ssh rpi 'mkdir -p ~/ugv/journeys'     # record the next few moves
+ssh rpi 'ls ~/ugv/journeys'           # newest five are kept
+scp rpi:'~/ugv/journeys/journey-*.npz' .
+python3 journey.py journey-20260821-141332.npz            # the timeline
+python3 journey.py journey-20260821-141332.npz --replan   # replan those same maps
+ssh rpi 'rm -rf ~/ugv/journeys'       # stop
+```
+
+`--replan` is the reason the grids are kept: a change to `planner.py` can be tried
+against the rooms that actually produced a bad route, instead of against rooms
+invented to look like them.
+
+Nothing in it may throw into the control loop — a diagnostic that can stop the rover
+is worse than none — so every entry point swallows its own errors and goes quiet.
+
+The one question it exists to answer is the last of the four, and it asks it by
+arithmetic rather than by eye: between two revolutions the rover cannot have moved
+further than the faster of what it asked for and what the matcher measured, so
+anything beyond that came from the estimate changing its mind. Revolutions spanning
+a dead-reckoned burst are excluded, because a burst suspends matching and re-seeds
+the heading on purpose — 53° of legitimate step across a 60° burst, and counting it
+would make every healthy turn look broken.
 
 ## Telling a model where it is
 
@@ -625,6 +746,7 @@ mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
 run_slam.py   mapping on its own: pose, clearance, a PGM
 dryrun.py     the whole driving stack on live scans, with nothing wired to the motors
 calibrate_turn.py  measures real turns against the lidar profile, outside the matcher
+journey.py    records what a move was handed and what it decided, and reads it back
 ```
 
 `libslam2d.so` and `selftest` are build products and are not committed.

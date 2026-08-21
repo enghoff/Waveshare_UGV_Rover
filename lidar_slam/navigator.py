@@ -33,6 +33,7 @@ import time
 
 import serial
 
+import journey
 import planner
 from slam2d import Slam2D, default_config
 
@@ -93,6 +94,32 @@ CRAWL_SPEED_MS = 0.12      # when something ahead is unknown rather than clear
 # window instead of failing visibly. Staying well under it is not politeness, it is
 # what keeps the measurement honest while the rover turns.
 MAX_TURN_DPS = 45.0
+# ...but 45 only holds if a revolution really is 100 ms. Measured over five
+# recorded journeys it is not: the loop delivers a *matched* revolution every
+# 138 ms at the median and 236 ms at the ninetieth percentile, because the Pi is
+# oversubscribed while driving and drops roughly four revolutions in ten. What
+# the window cares about is degrees per match, not degrees per second, so 45
+# deg/s is 6.2 degrees at the median gap and 10.6 at the ninetieth -- and the
+# coarse pass only spans 9. Past that the true pose is outside the lattice, the
+# winner can only land on its rim, and the pose steps sideways: in those
+# recordings every single jump over 6 cm happened on a revolution flagged
+# `match_edge`, and 166 of the 178 window overruns were rotation rather than
+# travel.
+#
+# So the cap is computed per revolution from the window and the interval the
+# loop is actually managing, rather than assumed once at 10 Hz.
+#
+# The fraction is half the window, which is not a new judgement: 45 deg/s *is*
+# half of the 90 the window allows at 100 ms, so this reproduces the existing
+# limit exactly when the loop is keeping up and only bites when it is not. The
+# headroom is there because the rover turns a little further than it is asked to
+# -- momentum, and a turn scale that is itself being learned -- so the window has
+# to cover the overshoot as well as the command. Raising this is the lever if
+# turns feel slow, but the cheaper one by far is the drop rate: at a true 10 Hz
+# this allows 45 deg/s, and at the 6 Hz the recordings measured it allows 33.
+TURN_WINDOW_USE = 0.5
+MIN_TURN_DPS = 12.0        # below this a turn stops being a move; take the risk
+MAX_MATCH_GAP_S = 0.5      # a stale interval means the loop has stopped, not slowed
 # How fast the commanded rate may rise. Without a ramp the first command of a turn
 # is full differential, and the rover is briefly past the window before the rate
 # loop has seen anything at all -- which is the moment tracking is most likely to be
@@ -155,6 +182,21 @@ RESEED_MAX_AMBIGUITY = 0.60  # was there an equally good answer somewhere else.
 RESEED_CONFIRM_M = 0.05    # pose must stay put this close across the pair
 RESEED_CONFIRM_DEG = 5.0   # of confirming revolutions, wrap-aware
 REACQUIRE_GOOD_SCANS = 2   # consecutive agreeing matches before the map is trusted again
+# Revolutions of ordinary tracking to try before falling back on the +/-60 degree
+# sweep, when the pose was lost while driving rather than to a dead-reckoned turn.
+#
+# The sweep is wide in heading and deliberately *narrow* in translation -- +/-5 cm
+# against the tracking window's +/-10 -- because it was sized for a rover standing
+# still after a turn, where the error is tens of degrees and a centimetre or two of
+# position. A rover doing 0.25 m/s covers 5 cm in one revolution, so asking for the
+# sweep while driving lands the winner on the rim, which holds the map, which asks
+# for another sweep. Over five recorded drives an ordinary match outran its
+# translation window on 0% of revolutions and hit the rim on 11%; the sweep outran
+# its own on 49% and hit the rim on 80%, and mapping was held for 39-67% of every
+# move as a result. So: try the window that fits a driving rover first, and widen
+# only once it has failed often enough to mean the rover really is tens of degrees
+# out rather than a few.
+WIDEN_AFTER_LOST = 4
 SLAM_EVENTS = 20           # how much of the recent history of all this to keep
 
 # Turning is never refused. It used to be, whenever something sat inside the
@@ -188,6 +230,23 @@ MAX_REPLANS = 8
 GOTO_ARRIVE_M = 0.16       # close enough; the pose is not a millimetre thing
 GOTO_CORRIDOR_M = 0.55     # off the polyline by more than this means replan
 GOTO_LOOKAHEAD_M = 0.80    # carrot along the current segment, not past the corner
+# ...but never at a point nearer than this, at a corner gentle enough to drive
+# through. A carrot that has collapsed onto the vertex it is clamped to turns a
+# centimetre of cross-track error into tens of degrees of heading error, and the
+# rover stops and spins a hand's breadth short of a corner it was tracking
+# cleanly. Past this the aim point runs on along the line of the leg being
+# driven, which cannot bend towards the inside of the corner -- see
+# planner.carrot_at, which also says why a corner past GOTO_TURN_DEG keeps the
+# collapsing carrot instead.
+#
+# 0.30 m is the standoff, and it is enough: the tracking error to steer out is a
+# few centimetres of pose wobble on top of maybe 10 cm of drift off the line, and
+# 10 cm at 30 cm is 18 degrees -- well inside GOTO_TURN_DEG, where the same error
+# at 5 cm is 63 and stops the rover dead. Simulated over 253 trips, 0.25, 0.30
+# and 0.40 m were indistinguishable in heading swing and arrivals, so this is the
+# smallest of them that does the job and the least departure from aiming at the
+# vertex itself.
+GOTO_CARROT_MIN_M = 0.30
 GOTO_SLACK_M = 0.35        # progress may slide back this far without rewinding
 GOTO_TURN_DEG = 40.0       # more heading error than this: stop and turn
 GOTO_ALIGN_DEG = 12.0      # then drive once the nose is this close
@@ -199,6 +258,13 @@ GOTO_RECHECK_S = 1.5       # how often to notice the map along the route changin
 GOTO_UNSTICK_S = 2.5
 GOTO_REPLAN_MIN_S = 1.0
 GOTO_REPLAN_MIN_MOVE_M = 0.10
+# ...or this much turned on the spot, which is the same question asked of the one
+# move a cornered rover always still has. The planner reads the heading -- a nose
+# pointing into the keep-out starts the route with a hop off it -- so a rover that
+# has only turned is not asking the same question again. 20 degrees swings the
+# 0.45 m the heading test looks along by 15 cm, three cells, which is enough for it
+# to answer differently.
+GOTO_REPLAN_MIN_TURN_DEG = 20.0
 UNKNOWN_AHEAD_SECTORS = 3  # +/-30 degrees at 36 sectors
 # How many recent revolutions the "is anything touching us" test looks back over.
 # One is not enough: a thin or dark object near the sensor's 0.12 m floor comes and
@@ -466,6 +532,10 @@ class Navigator:
         self._trim = 0.0            # left/right imbalance, so straight is straight
         self._last_pose = None
         self._last_at = None
+        #: Seconds between matched revolutions, smoothed. The turn cap is derived
+        #: from it -- see MAX_TURN_DPS. Starts at the sensor's nominal period so
+        #: the first move is not throttled by a figure nothing has measured yet.
+        self._match_gap = 0.1
         # Heading that accumulates instead of wrapping. The pose's own heading is
         # kept in (-pi, pi], which is right for reporting and wrong for counting a
         # turn: overshoot 180 and the difference flips sign, so "10 degrees left to
@@ -483,7 +553,10 @@ class Navigator:
         # from _suspend_slam, which stops the matching too: this one keeps matching
         # so the rover can find its way back, and only holds off writing.
         self._map_paused = False
-        self._need_recovery = False  # wide search until the first healthy match
+        self._need_recovery = False  # search until the first healthy match, and
+        self._wide_recovery = False  # whether that search is the +/-60 deg sweep
+                                     # rather than the ordinary tracking window
+        self._lost_run = 0           # consecutive unhealthy revolutions while paused
         self._confirm_pose = None    # first of the confirming pair, or None
         self._recovery_this_scan = False
         self._hold_confirm = False   # True while a burst is still coasting
@@ -492,6 +565,10 @@ class Navigator:
         self._health = {}            # how the last match was won, for status
         self._events = []            # a short history of losing and regaining the pose
         self._trail = []
+        #: The journey being recorded, or None. Armed by the presence of a
+        #: directory rather than a flag -- see journey.py. Nothing in the control
+        #: loop may depend on it, and nothing it does may reach the wheels.
+        self._journey = None
         self._heartbeat_set = False
 
     # --- lifecycle ------------------------------------------------------------
@@ -532,9 +609,23 @@ class Navigator:
         Blocks until it is done and says why it stopped. Avoidance may steer
         around obstacles, and will say so.
         """
-        self.report.begin("drive", {"distance_m": distance_m, "speed_ms": speed_ms},
-                          "driving")
-        return self._ended(self._drive(distance_m, speed_ms, seconds))
+        asked = {"distance_m": distance_m, "speed_ms": speed_ms}
+        self.report.begin("drive", asked, "driving")
+        # Recorded like the other two. This one has no route at all -- it aims at
+        # whatever is roomiest within 40 degrees of the nose, every revolution,
+        # and that becomes the new nose -- so if a wandering trail came from here
+        # then no amount of planner work was ever going to straighten it, and the
+        # recording is the only thing that says which tool drew the line.
+        self._journey = journey.Recorder.if_armed()
+        if self._journey:
+            self._journey.begin("drive", asked, self.slam.pose)
+        try:
+            outcome = self._ended(self._drive(distance_m, speed_ms, seconds))
+        finally:
+            recording, self._journey = self._journey, None
+        if recording:
+            recording.end(outcome.reason, outcome.detail)
+        return outcome
 
     def _drive(self, distance_m, speed_ms, seconds):
         if self._estop:
@@ -568,10 +659,19 @@ class Navigator:
         It reports through `report`: the plan being drawn, the route it came back
         with or the reason there is none, and every replan with what provoked it.
         """
-        self.report.begin("drive_to", {"ahead_m": round(float(ahead_m), 2),
-                                       "left_m": round(float(left_m), 2)},
-                          "planning")
-        return self._ended(self._drive_to(ahead_m, left_m, speed_ms))
+        asked = {"ahead_m": round(float(ahead_m), 2),
+                 "left_m": round(float(left_m), 2)}
+        self.report.begin("drive_to", asked, "planning")
+        self._journey = journey.Recorder.if_armed()
+        if self._journey:
+            self._journey.begin("drive_to", asked, self.slam.pose)
+        try:
+            outcome = self._ended(self._drive_to(ahead_m, left_m, speed_ms))
+        finally:
+            recording, self._journey = self._journey, None
+        if recording:
+            recording.end(outcome.reason, outcome.detail)
+        return outcome
 
     def _drive_to(self, ahead_m, left_m, speed_ms):
         if self._estop:
@@ -681,11 +781,20 @@ class Navigator:
             pose = self.slam.pose
             res = self.slam.config.resolution_m
             occupied_at = self.slam.config.occupied_at
-        return planner.plan(grid, res, occupied_at, (pose[0], pose[1]), target_xy,
-                            inflate_m=PLAN_INFLATE_M,
-                            preferred_m=PLAN_PREFERRED_M,
-                            comfort_m=PLAN_COMFORT_M,
-                            start_yaw=pose[2])
+        began = time.monotonic()
+        path, why = planner.plan(grid, res, occupied_at, (pose[0], pose[1]),
+                                 target_xy,
+                                 inflate_m=PLAN_INFLATE_M,
+                                 preferred_m=PLAN_PREFERRED_M,
+                                 comfort_m=PLAN_COMFORT_M,
+                                 start_yaw=pose[2])
+        if self._journey:
+            # The grid is handed over rather than copied again: this is the copy
+            # taken above, and nothing writes to it after the planner has read it.
+            self._journey.plan(grid, pose, target_xy, PLAN_INFLATE_M,
+                               PLAN_PREFERRED_M, PLAN_COMFORT_M, path, why,
+                               time.monotonic() - began)
+        return path, why
 
     @_one_move_at_a_time
     def turn_in_place(self, angle_deg, speed_dps=None):
@@ -713,9 +822,22 @@ class Navigator:
         If the lidar is not reporting, the commanded figure is returned and said to
         be dead-reckoned rather than passed off as a measurement.
         """
-        self.report.begin("turn_in_place", {"angle_deg": round(float(angle_deg), 1)},
-                          "turning")
-        return self._ended(self._turn_in_place(angle_deg, speed_dps))
+        asked = {"angle_deg": round(float(angle_deg), 1)}
+        self.report.begin("turn_in_place", asked, "turning")
+        # Recorded like a route is, because a turn is where the pose is most
+        # likely to move without the rover having gone anywhere: each burst runs
+        # with matching suspended and ends in a re-seed that is a guess. A trail
+        # cannot be read without knowing which of its kinks were those.
+        self._journey = journey.Recorder.if_armed()
+        if self._journey:
+            self._journey.begin("turn_in_place", asked, self.slam.pose)
+        try:
+            outcome = self._ended(self._turn_in_place(angle_deg, speed_dps))
+        finally:
+            recording, self._journey = self._journey, None
+        if recording:
+            recording.end(outcome.reason, outcome.detail)
+        return outcome
 
     def _turn_in_place(self, angle_deg, speed_dps):
         if self._estop:
@@ -770,7 +892,18 @@ class Navigator:
                 if not ok:
                     lost = health
                     break
-                remaining = angle - self._heading_change(start_accum)
+                measured = self._heading_change(start_accum)
+                if self._journey:
+                    # What the burst was told to do against what the matcher says
+                    # it did. Bursts beyond ceil(angle / TURN_BURST_MAX_DEG) are
+                    # corrections, and how many there are is the honest measure of
+                    # whether TURN_RATES still describes this floor and battery.
+                    self._journey.event(
+                        "burst",
+                        f"asked {piece:+.0f} deg at PWM {pwm}, reckoned "
+                        f"{stepped:+.0f}, matcher says {measured:+.0f} of "
+                        f"{angle:+.0f} so far")
+                remaining = angle - measured
                 if abs(remaining) <= TURN_TOLERANCE_DEG:
                     break
 
@@ -928,6 +1061,8 @@ class Navigator:
         self._good_run = 0
         self._confirm_pose = None
         self._need_recovery = True
+        self._wide_recovery = True     # a burst is the error the sweep is for
+        self._lost_run = 0
         deadline = time.monotonic() + within_s
         seen = self._scans
         good = 0
@@ -977,8 +1112,16 @@ class Navigator:
             health["ambiguity"] = recovery_amb
         return False, health
 
-    def _pause_mapping(self, why):
-        """Match, but write nothing, until something confirms where the rover is."""
+    def _pause_mapping(self, why, wide=True):
+        """Match, but write nothing, until something confirms where the rover is.
+
+        `wide` is whether getting the pose back needs the +/-60 degree sweep. A
+        dead-reckoned turn does: the heading can be tens of degrees out and the
+        tracking window spans nine. A revolution that merely landed on the rim while
+        driving does not, and asking for the sweep there makes matters worse rather
+        than better -- see WIDEN_AFTER_LOST for what it costs. It widens on its own
+        if ordinary tracking turns out not to find the pose either.
+        """
         if not self._map_paused:
             self._log_event("map held", why)
         with self.slam.lock:
@@ -987,6 +1130,8 @@ class Navigator:
         self._good_run = 0
         self._confirm_pose = None
         self._need_recovery = True
+        self._wide_recovery = wide
+        self._lost_run = 0
 
     def _resume_mapping(self, why):
         if self._map_paused:
@@ -1000,6 +1145,8 @@ class Navigator:
         self._good_run = 0
         self._confirm_pose = None
         self._need_recovery = False
+        self._wide_recovery = False
+        self._lost_run = 0
 
     def _log_event(self, what, why, **fields):
         """A short history of losing and regaining the pose, for whoever asks later.
@@ -1016,6 +1163,10 @@ class Navigator:
         self._events.append(event)
         if len(self._events) > SLAM_EVENTS:
             del self._events[0]
+        # This list is a short ring for status(); a journey keeps the lot, because
+        # the interesting question afterwards is which re-seed the pose jumped on.
+        if self._journey:
+            self._journey.event(what, why)
 
     def _note_match(self):
         """Record how the last match went, and hold or heal the map from it.
@@ -1041,18 +1192,31 @@ class Navigator:
             self._good_run = 0
             self._confirm_pose = None
             if matched and not health["map_ok"]:
-                self._pause_mapping(_why_lost(health))
+                # Not the dead-reckoned case: the rover is driving and the matcher
+                # was tracking it a revolution ago, so it is a few degrees out, not
+                # tens. The ordinary window reaches that and the sweep would not.
+                self._pause_mapping(_why_lost(health), wide=False)
             return
 
         if not health["map_ok"] or pose is None:
             self._good_run = 0
             self._confirm_pose = None
             self._need_recovery = True
+            self._lost_run += 1
+            if self._lost_run >= WIDEN_AFTER_LOST and not self._wide_recovery:
+                # Tracking has had its go and cannot find it, so this is the error
+                # the sweep exists for after all.
+                self._wide_recovery = True
+                self._log_event("searching wide",
+                                f"the ordinary window has not found the pose in "
+                                f"{self._lost_run} revolutions, so the search "
+                                f"widens to +/-60 degrees")
             return
 
         if self._confirm_pose is None or not _pose_close(pose, self._confirm_pose):
             self._confirm_pose = pose
             self._good_run = 1
+            self._lost_run = 0
             # Next revolution tracks rather than searching +/-60 deg again, so a
             # flip to a rival peak 90 deg away cannot masquerade as confirmation.
             self._need_recovery = False
@@ -1141,6 +1305,8 @@ class Navigator:
         if g is None:
             return Outcome("stopped", 0.0, 0.0, "cancelled")
         reason, detail = g["done"] or ("stopped", "")
+        if self._journey:
+            self._journey.event(reason, detail)
         return Outcome(reason, g["travelled"], g["turned"], detail)
 
     def _begin_driving(self):
@@ -1251,7 +1417,8 @@ class Navigator:
                 if revolutions and not self._suspend_slam:
                     self._dropped += revolutions - 1
                     self._recovery_this_scan = False
-                    if self._map_paused and self._need_recovery:
+                    if (self._map_paused and self._need_recovery
+                            and self._wide_recovery):
                         # Nothing is being written, so the pose is all there is to
                         # get back, and the ordinary window cannot reach it from
                         # tens of degrees out. Asked for until the first healthy
@@ -1317,6 +1484,14 @@ class Navigator:
             goal = self._goal
             estop = self._estop
 
+        if self._journey:
+            self._journey.tick(pose, self._match_health(),
+                               (self._measured_speed, self._measured_turn),
+                               (self._want_speed, self._want_turn),
+                               self._chosen_deg, self._clearance,
+                               (goal or {}).get("progress", 0.0),
+                               (goal or {}).get("cross", 0.0))
+
         if estop or goal is None:
             if self._last_sent not in (None, (0, 0)):
                 self._halt()
@@ -1337,11 +1512,19 @@ class Navigator:
         else:
             self._step_drive(goal, pose, now)
 
+
     def _measure(self, pose, now):
         """Speed and turn rate from the scan matcher, since nothing else measures
         them on this rover."""
         if self._last_pose is not None and self._last_at is not None:
             dt = now - self._last_at
+            if 1e-3 < dt <= MAX_MATCH_GAP_S:
+                # Smoothed hard, because the cap it feeds should follow how the
+                # loop is doing over a second or so and not flinch at one late
+                # revolution. Intervals longer than MAX_MATCH_GAP_S are the loop
+                # having stopped rather than slowed, and are not evidence of a
+                # rate to plan around.
+                self._match_gap += (dt - self._match_gap) * 0.2
             if dt > 1e-3:
                 dx, dy = pose[0] - self._last_pose[0], pose[1] - self._last_pose[1]
                 # Signed along the heading we had, so reversing reads negative
@@ -1358,6 +1541,25 @@ class Navigator:
                 self._measured_turn += 0.5 * (math.degrees(dth) / dt
                                               - self._measured_turn)
         self._last_pose, self._last_at = pose, now
+
+    def _turn_limit(self):
+        """The fastest turn the scan matcher can still follow, right now.
+
+        The coarse pass searches a fixed number of degrees either side of where
+        the rover was, so what it can tolerate is a rotation *per matched
+        revolution*, not per second. Divide the window by the interval the loop
+        is actually delivering and that becomes a rate -- one that rises when the
+        Pi is keeping up and falls when it is not, instead of a constant that was
+        only ever right at 10 Hz.
+
+        Floored at MIN_TURN_DPS: if the loop has fallen so far behind that even a
+        crawl would outrun the window, refusing to turn is worse than turning
+        badly, because turning is the move a cornered rover always still has.
+        """
+        window = float(self.slam.config.coarse_ang_deg
+                       * self.slam.config.coarse_ang_steps)
+        gap = min(max(self._match_gap, 1e-3), MAX_MATCH_GAP_S)
+        return _clamp(window * TURN_WINDOW_USE / gap, MIN_TURN_DPS, MAX_TURN_DPS)
 
     def _headroom(self, curvature, comfort=False):
         half = self.slam.config.rover_width_m * 0.5 + (
@@ -1495,7 +1697,8 @@ class Navigator:
         speed = min(goal["speed"], limit)
         # Turn towards the chosen heading; the divisor is how many seconds it should
         # take to get the nose there.
-        turn = _clamp(chosen / 0.8, -MAX_TURN_DPS, MAX_TURN_DPS)
+        cap = self._turn_limit()
+        turn = _clamp(chosen / 0.8, -cap, cap)
         self._drive_pwm(speed, turn)
 
     def _step_goto(self, goal, pose, now):
@@ -1503,12 +1706,15 @@ class Navigator:
 
         Progress is the closest point on the path, allowed to slide back a little
         so a weave beside the line is not a rewind. The carrot stays on the current
-        segment: looking past a vertex is how a route that gave a corner room still
-        drove the chord and arrived at the brake distance. A sharp corner is a turn
-        on the spot, which is the move this rover already has; the rest is the same
-        follow-the-gap drive as a straight move, aimed at the carrot. Replan rather
-        than fight when the line is blocked, the rover has left the corridor, or
-        the map has grown a wall on the remaining route.
+        segment: looking past a vertex onto the next leg is how a route that gave a
+        corner room still drove the chord and arrived at the brake distance. At a
+        gentle corner it does run on along the line of the leg being driven once
+        the vertex is too near to steer at, which is a different thing -- see
+        planner.carrot_at. A sharp corner is a turn on the spot, which is the move
+        this rover already has; the rest is the same follow-the-gap drive as a
+        straight move, aimed at the carrot. Replan rather than fight when the line
+        is blocked, the rover has left the corridor, or the map has grown a wall on
+        the remaining route.
         """
         path = goal["path"]
         tx, ty = goal["target"]
@@ -1529,6 +1735,7 @@ class Navigator:
 
         s, cross = planner.project(path, (x, y), goal["progress"], GOTO_SLACK_M)
         goal["progress"] = s
+        goal["cross"] = cross
         goal["travelled"] = goal.get("travelled_before", 0.0) + s
         if cross > GOTO_CORRIDOR_M and self._replan_could_differ(goal, now):
             goal["done"] = ("replan",
@@ -1547,8 +1754,8 @@ class Navigator:
                 self._drive_pwm(0.0, 0.0)
                 return
 
-        end_s = planner.segment_end_s(path, s)
-        carrot = planner.point_at(path, min(s + GOTO_LOOKAHEAD_M, end_s))
+        carrot = planner.carrot_at(path, s, GOTO_LOOKAHEAD_M, GOTO_CARROT_MIN_M,
+                                   GOTO_TURN_DEG)
         want = math.degrees(math.atan2(carrot[1] - y, carrot[0] - x) - th)
         want = (want + 180.0) % 360.0 - 180.0
 
@@ -1556,7 +1763,8 @@ class Navigator:
         # the matcher used to lose the room; stopping and spinning is the move
         # this rover already has.
         if abs(want) > GOTO_TURN_DEG:
-            turn = _clamp(want / 0.6, -MAX_TURN_DPS, MAX_TURN_DPS)
+            cap = self._turn_limit()
+            turn = _clamp(want / 0.6, -cap, cap)
             self._drive_pwm(0.0, turn)
             self._chosen_deg, self._clearance = want, None
             return
@@ -1577,7 +1785,8 @@ class Navigator:
             if now - stuck_since < GOTO_UNSTICK_S:
                 best, best_clear = self._roomiest()
                 self._chosen_deg, self._clearance = best, best_clear
-                self._drive_pwm(0.0, _clamp(best / 0.6, -MAX_TURN_DPS, MAX_TURN_DPS))
+                cap = self._turn_limit()
+                self._drive_pwm(0.0, _clamp(best / 0.6, -cap, cap))
                 return
             if self._replan_could_differ(goal, now):
                 goal["done"] = ("replan",
@@ -1597,7 +1806,8 @@ class Navigator:
         if abs(want) > GOTO_ALIGN_DEG:
             limit = min(limit, CRAWL_SPEED_MS)
         speed = min(goal["speed"], limit)
-        turn = _clamp(chosen / 0.8, -MAX_TURN_DPS, MAX_TURN_DPS)
+        cap = self._turn_limit()
+        turn = _clamp(chosen / 0.8, -cap, cap)
         self._drive_pwm(speed, turn)
 
     def _replan_could_differ(self, goal, now):
@@ -1609,11 +1819,32 @@ class Navigator:
         eight replans and a "gave up" used to fit inside nine tenths of a second,
         with the rover standing still throughout and the caller told it had been
         tried eight times.
+
+        **Heading counts as having moved.** It did not use to, and it did not need
+        to: when this guard was written the planner took a position and nothing
+        else, so a rover that had only turned really would get the same polyline
+        back. Then `start_yaw` became an input -- a heading that looks into the
+        keep-out starts the route with a hop off it -- and this went on reading
+        position alone. The cost of that lands exactly where it hurts: the move
+        that gets a cornered rover out is a turn on the spot, `_step_goto` spends
+        GOTO_UNSTICK_S doing precisely that, and then asks here whether to replan.
+        Turning changes no coordinate, so the answer was no, and the rover reported
+        itself blocked from a heading it had just spent two and a half seconds
+        changing. What it should do -- what a person would do -- is turn until it
+        is pointing somewhere that has room, and ask again from there.
+
+        The guard against replan storms is still the clock. Each replan restarts
+        the leg, so GOTO_REPLAN_MIN_S puts a second between them however much the
+        rover has turned, and eight of them can no longer fit in under a second.
         """
-        sx, sy, _th = goal["start_pose"]
-        x, y, _ = self.slam.pose
-        return (now - goal["started_at"] >= GOTO_REPLAN_MIN_S
-                and math.hypot(x - sx, y - sy) >= GOTO_REPLAN_MIN_MOVE_M)
+        if now - goal["started_at"] < GOTO_REPLAN_MIN_S:
+            return False
+        sx, sy, sth = goal["start_pose"]
+        x, y, th = self.slam.pose
+        if math.hypot(x - sx, y - sy) >= GOTO_REPLAN_MIN_MOVE_M:
+            return True
+        turned = abs(math.degrees((th - sth + math.pi) % (2 * math.pi) - math.pi))
+        return turned >= GOTO_REPLAN_MIN_TURN_DEG
 
     def _roomiest(self):
         """The heading with the most room anywhere the rover can turn to.
@@ -1821,6 +2052,8 @@ class Navigator:
             self._good_run = 0
             self._confirm_pose = None
             self._need_recovery = False
+            self._wide_recovery = False
+            self._lost_run = 0
             self._hold_confirm = False
             self._log_event("map resumed", "the map was cleared and rebuilt")
             return {"cleared": True,
@@ -1903,6 +2136,165 @@ def _selftest():
     assert fresh["seq"] > ended["seq"], "the counter went backwards"
     assert fresh["reason"] is None and fresh["replans"] == 0, fresh
     assert fresh["route_m"] is None and fresh["why"] == "", fresh
+
+    # A rover that has spent GOTO_UNSTICK_S turning on the spot has changed the
+    # one thing the planner reads besides the map, so asking again can come back
+    # with something new. Reading position alone is how a turn-to-get-free ended
+    # in "blocked" instead of a route -- see _replan_could_differ.
+    class _Standing:
+        """Just enough Navigator to ask the replan question of."""
+        def __init__(self, pose):
+            self.slam = type("S", (), {"pose": pose})()
+
+    goal = {"start_pose": (1.0, 2.0, 0.0), "started_at": 0.0}
+    at_once = _Standing((1.0, 2.0, 0.0))
+    assert not Navigator._replan_could_differ(at_once, goal, 0.5), (
+        "replanned before the leg was a second old")
+    assert not Navigator._replan_could_differ(at_once, goal, 2.0), (
+        "replanned having neither moved nor turned")
+
+    shuffled = _Standing((1.15, 2.0, 0.0))
+    assert Navigator._replan_could_differ(shuffled, goal, 2.0), (
+        "15 cm of travel is a new question and was refused")
+
+    turned = _Standing((1.0, 2.0, math.radians(35)))
+    assert Navigator._replan_could_differ(turned, goal, 2.0), (
+        "the rover turned 35 degrees on the spot and was still told nothing "
+        "could have changed -- this is the blocked-instead-of-turning bug")
+
+    nudged = _Standing((1.0, 2.0, math.radians(5)))
+    assert not Navigator._replan_could_differ(nudged, goal, 2.0), (
+        "five degrees of pose wobble is not a turn and must not spend a replan")
+
+    wrapped = _Standing((1.0, 2.0, math.radians(-179)))
+    goal_near_pi = {"start_pose": (1.0, 2.0, math.radians(179)), "started_at": 0.0}
+    assert not Navigator._replan_could_differ(wrapped, goal_near_pi, 2.0), (
+        "two degrees across the heading wrap read as most of a revolution")
+
+    # The turn cap is a rotation the matcher can follow, expressed as a rate --
+    # so it has to move with the interval the loop is actually delivering. The
+    # recordings that motivated it measured 138 ms at the median and 236 at the
+    # ninetieth percentile, against a coarse window of 3 deg x 3 steps.
+    class _Paced:
+        """Just enough Navigator to ask what turn rate it would allow."""
+        def __init__(self, gap):
+            self._match_gap = gap
+            self.slam = type("S", (), {"config": type("C", (), {
+                "coarse_ang_deg": 3.0, "coarse_ang_steps": 3})()})()
+
+    window = 3.0 * 3
+    nominal = Navigator._turn_limit(_Paced(0.100))
+    assert abs(nominal - MAX_TURN_DPS) < 1e-6, (
+        f"at the sensor's own 10 Hz this must come out at the limit that was "
+        f"there before, and it came out {nominal:.1f}")
+
+    at_median = Navigator._turn_limit(_Paced(0.138))
+    at_p90 = Navigator._turn_limit(_Paced(0.236))
+    assert at_median > at_p90, "a slower loop must not permit a faster turn"
+    assert at_p90 * 0.236 <= window + 1e-6, (
+        f"{at_p90:.0f} deg/s over a 236 ms gap is {at_p90 * 0.236:.1f} deg, past "
+        f"the {window:.0f} the coarse pass can search")
+
+    # Never above the PWM ceiling, and never so low that turning stops being a
+    # move -- a cornered rover has nothing else left.
+    assert Navigator._turn_limit(_Paced(0.001)) == MAX_TURN_DPS
+    assert Navigator._turn_limit(_Paced(9.9)) == MIN_TURN_DPS, (
+        "a loop that has stopped must still leave the rover able to turn")
+
+    # Losing the pose while driving is not the same accident as losing it to a
+    # dead-reckoned turn, and the search that finds it again is not the same
+    # search. The sweep gives up translation to buy heading -- +/-5 cm against the
+    # tracking window's +/-10 -- which suits a rover standing still and is less
+    # than a driving one covers in a revolution. Asking for it there is what turned
+    # one bad revolution into fifteen seconds of held map.
+    class _Tracking:
+        """Just enough Navigator to run the map-hold state machine on scripted
+        revolutions, without a lidar or a floor."""
+
+        def __init__(self):
+            self._map_paused = False
+            self._need_recovery = False
+            self._wide_recovery = False
+            self._lost_run = 0
+            self._good_run = 0
+            self._confirm_pose = None
+            self._hold_confirm = False
+            self._health = {}
+            self._events = []
+            self._dropped = 0
+            self._journey = None
+            self.health = {}
+            self.slam = type("S", (), {"lock": threading.Lock(),
+                                       "mapping": True})()
+
+        def _match_health(self):
+            return dict(self.health)
+
+        _log_event = Navigator._log_event
+        _pause_mapping = Navigator._pause_mapping
+        _resume_mapping = Navigator._resume_mapping
+        _note_match = Navigator._note_match
+
+    def _rev(nav, ok, pose=(0.0, 0.0, 0.0)):
+        nav.health = {"score": 0.9 if ok else 0.9, "edge": 0 if ok else 1,
+                      "ambiguity": 0.0, "rejected": False, "pose": pose,
+                      "recovery": False, "map_ok": ok}
+        nav._note_match()
+
+    nav = _Tracking()
+    _rev(nav, True)
+    assert not nav._map_paused, "a healthy revolution held the map"
+
+    _rev(nav, False)
+    assert nav._map_paused and nav._need_recovery, "a rim hit did not hold the map"
+    assert not nav._wide_recovery, (
+        "a rim hit while driving asked for the +/-60 degree sweep, whose "
+        "translation window is half the one the rover just outran")
+
+    _rev(nav, False)
+    assert not nav._wide_recovery, (
+        "two bad revolutions is not evidence that the ordinary window cannot "
+        "find the pose, and widening that soon is the old behaviour under a "
+        "new name")
+    for _ in range(WIDEN_AFTER_LOST - 2):
+        _rev(nav, False)
+    assert not nav._wide_recovery, (
+        f"widened after fewer than {WIDEN_AFTER_LOST} revolutions of tracking")
+    _rev(nav, False)
+    assert nav._wide_recovery, (
+        f"tracking failed {WIDEN_AFTER_LOST} revolutions running and the search "
+        f"never widened, so a genuinely lost rover would stay lost")
+    assert any(e["what"] == "searching wide" for e in nav._events), (
+        "the search widened without saying so")
+
+    # Two agreeing healthy revolutions put it back, and put the sweep away with it.
+    _rev(nav, True, (1.0, 0.0, 0.0))
+    _rev(nav, True, (1.0, 0.0, 0.0))
+    assert not nav._map_paused, "an agreeing pair did not resume the map"
+    assert not nav._wide_recovery and nav._lost_run == 0, (
+        "the wide search outlived the hold it was for")
+
+    # A revolution the tracking window did find is evidence that it can, so the
+    # count starts again. Without that, a rover matching every other revolution
+    # accumulates its way to a sweep it never needed.
+    patchy = _Tracking()
+    _rev(patchy, False)
+    for _ in range(WIDEN_AFTER_LOST - 2):
+        _rev(patchy, False)
+    _rev(patchy, True, (2.0, 0.0, 0.0))
+    for _ in range(WIDEN_AFTER_LOST - 1):
+        _rev(patchy, False)
+    assert not patchy._wide_recovery, (
+        "the failures either side of a revolution that matched were added "
+        "together, so an intermittent match widens the search on its own")
+
+    # The burst path is the one the sweep was built for and must still get it at
+    # once: after a dead-reckoned turn the heading can be tens of degrees out, and
+    # the tracking window spans nine.
+    after_burst = _Tracking()
+    after_burst._pause_mapping("a turn was dead reckoned")
+    assert after_burst._wide_recovery, (
+        "a dead-reckoned turn was left to find itself with the tracking window")
 
     print("navigator: ok")
     return 0
