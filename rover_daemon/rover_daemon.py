@@ -172,6 +172,12 @@ WIFI_MAX_AGE_S = 20.0
 # caller holding a socket that the switch is about to break.
 WIFI_SCAN_TIMEOUT_S = 20.0
 WIFI_JOIN_TIMEOUT_S = 60.0
+# And how long the list of networks this rover holds a passphrase for is served
+# for. Minutes, not seconds, because it changes only when somebody installs a new
+# passphrase -- while asking costs another 2.6 s of nmcli, which was being spent on
+# top of every scan and took one scan to 15.2 s, past the patience of the console
+# that asked for it.
+WIFI_PROFILE_MAX_AGE_S = 300.0
 
 # How long a "show me somebody else" suppression lasts, and how wide it is in
 # multiples of the face's own width. Long enough to let the sweep carry the
@@ -1225,6 +1231,8 @@ class Rover:
         # thing behind it is answered three times a minute at most.
         self._wifi: list[dict[str, Any]] | None = None
         self._wifi_at = 0.0
+        self._wifi_profiles: set[str] | None = None
+        self._wifi_profiles_at = 0.0
         self._wifi_lock = threading.Lock()
         # What the last switch did, since the caller who asked for it cannot be
         # told: the switch takes the link down, and the reply would have gone out
@@ -1543,20 +1551,38 @@ class Rover:
     # good idea. A person at a console, who can see which network they are on and
     # will notice the reconnect, is a different matter.
 
-    def _wifi_configured(self) -> set[str]:
-        """The networks this rover holds a passphrase for."""
-        ok, said = _wifi_ctl("profiles", timeout=WIFI_SCAN_TIMEOUT_S)
-        return {line.strip() for line in said.splitlines() if line.strip()} if ok \
-            else set()
+    def _wifi_configured(self, now: float) -> set[str]:
+        """The networks this rover holds a passphrase for, remembered for minutes.
+
+        Kept far longer than the list of access points because it answers a
+        different kind of question: the neighbours come and go, while this changes
+        only when somebody runs `wifi_roam/install.sh`. It is worth remembering
+        because it is not free -- 2.6 s of nmcli here -- and it was being paid on
+        top of every scan, which is most of what made a scan too slow to wait for.
+
+        A helper that fails leaves the last good answer standing rather than
+        replacing it with an empty set, which would label every network in the
+        panel as one there is no passphrase for.
+        """
+        if (self._wifi_profiles is None
+                or now - self._wifi_profiles_at > WIFI_PROFILE_MAX_AGE_S):
+            ok, said = _wifi_ctl("profiles", timeout=WIFI_SCAN_TIMEOUT_S)
+            if not ok:
+                return self._wifi_profiles or set()
+            self._wifi_profiles = {line.strip() for line in said.splitlines()
+                                   if line.strip()}
+            self._wifi_profiles_at = now
+        return self._wifi_profiles
 
     def _tool_wifi_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Which access point the rover is on, and what else it can hear.
 
         The strength of the current link is read fresh every time, out of
         `/proc/net/wireless`, because that is the number that changes as the rover
-        drives and it costs a file read. Everything else -- the list, which
-        networks are configured -- is cached for WIFI_MAX_AGE_S, since it comes
-        from nmcli and nmcli costs 1.8 s here.
+        drives and it costs a file read. The list of access points comes from nmcli,
+        which costs 1.8 s here, so it is cached for WIFI_MAX_AGE_S; which networks
+        have a passphrase is another nmcli call again, and is cached for far longer
+        than that, since it only changes when one is installed.
 
         `scan` asks the radio to look again rather than reporting what
         NetworkManager already knew. It is not the default and nothing polls it: a
@@ -1581,7 +1607,8 @@ class Rover:
                     if self._wifi is None:
                         return {"ok": False, "error": said}
                 else:
-                    self._wifi = _wifi_networks(said, self._wifi_configured())
+                    self._wifi = _wifi_networks(said,
+                                                self._wifi_configured(now))
                     self._wifi_at = now
             networks = list(self._wifi or [])
             age = now - self._wifi_at

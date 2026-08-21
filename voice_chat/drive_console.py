@@ -226,6 +226,15 @@ BATTERY_NOTES = {"full": "off the charger", "ok": "plenty left",
 # that moves. It never asks for a scan: that costs the rover several seconds off
 # channel and interrupts the link, so looking around is a button.
 WIFI_POLL_S = 5.0
+# And how long to wait for that button, which is its own connection's worth of
+# patience. Measured on the Pi itself, over loopback where nothing can be blamed
+# on the radio being off channel: 15.2 s for a scan through the daemon, of which
+# nmcli's rescan is 9.8 s. That is past the 12 s the rest of these calls get, so
+# every scan a console asked for timed out and the panel reported a rover that was
+# in fact answering. It is also why the scan is not on the status connection: the
+# daemon holds one lock across it, so the five-second polls queued behind a scan
+# would take the whole status column down with it.
+WIFI_SCAN_TIMEOUT_S = 45.0
 # What the driver's dBm means for the link, and where the panel starts to say so.
 # Not a signal ladder out of a phone: these are this rover's own numbers, which
 # sits at -35 to -44 dBm in the lab, and the wifi keeper on the Pi calls the link
@@ -510,7 +519,7 @@ class Channel:
 
 
 class Console:
-    """The window, and the four channels behind it."""
+    """The window, and the channels behind it."""
 
     def __init__(self, root: tk.Tk, address: str | None, half_extent: float,
                  map_size: int) -> None:
@@ -524,6 +533,7 @@ class Console:
         self.watch: Channel | None = None     # status, questions, tool list
         self.picture: Channel | None = None   # the map, which is slow enough to matter
         self.camera: Channel | None = None    # frames, which are slower still
+        self.scanner: Channel | None = None   # one scan, which is slower than all of them
         self.channels: list[Channel] = []
 
         self.tools: list[str] = []
@@ -990,6 +1000,7 @@ class Console:
         # already returned, so the map simply never came back and the "one at a time"
         # flag stayed set for good.
         self.moves = self.halt = self.watch = self.picture = self.camera = None
+        self.scanner = None
         self.frame_outstanding = False
         self.map_outstanding = False
         self.wifi_outstanding = False
@@ -1035,7 +1046,12 @@ class Console:
         self.watch = Channel("watch", address, self.replies)
         self.picture = Channel("map", address, self.replies)
         self.camera = Channel("camera", address, self.replies)
-        self.channels = [self.moves, self.halt, self.watch, self.picture, self.camera]
+        # Its own connection because a scan outlasts everything else here by a
+        # factor of three, and its own patience because it outlasts the default.
+        self.scanner = Channel("scan", address, self.replies,
+                               timeout=WIFI_SCAN_TIMEOUT_S)
+        self.channels = [self.moves, self.halt, self.watch, self.picture,
+                         self.camera, self.scanner]
         self.link_var.set(f"{address}: asking what it can do")
         self.watch.submit("list_tools")
         # The board cannot be read back, so the daemon only knows the level it last
@@ -1351,9 +1367,20 @@ class Console:
             self._show_wifi(body)
             # A scan is somebody pressing a button and waiting several seconds for
             # an answer, so it goes in the transcript; the five-second poll behind
-            # it does not, or the log would be nothing else.
+            # it does not, or the log would be nothing else. The note has been
+            # saying a scan is in flight all that time, so it is also what says how
+            # it went -- until it did, a panel went on claiming to be scanning for
+            # the rest of the session.
             if reply.arguments.get("scan"):
                 self._log_reply(reply)
+                if body.get("ok"):
+                    heard = len(body.get("networks") or [])
+                    self.wifi_note.set(
+                        f"heard {heard} network{'' if heard == 1 else 's'} "
+                        f"in {reply.seconds:.0f} s")
+                else:
+                    self.wifi_note.set(f"the scan did not come back: "
+                                       f"{body.get('error', 'no answer')}")
             return
         if name == "tracking_status":
             # Polled by the window rather than asked for by a person, so it updates
@@ -1636,6 +1663,10 @@ class Console:
         if chosen and self.wifi_list.exists(chosen):
             self.wifi_list.selection_set(chosen)
         self._show_join_button()
+        # And the scan button comes back on here rather than off the scan's own
+        # reply, because a scan whose link died mid-answer never gets one: the
+        # first poll after the reconnect is what should hand the button back.
+        self.wifi_scan_button.configure(state="normal")
 
     def _wifi_chosen(self) -> str | None:
         selection = self.wifi_list.selection()
@@ -1655,19 +1686,26 @@ class Console:
     def _wifi_scan(self) -> None:
         """Ask the radio to look around, which costs the rover the link for a moment.
 
-        Said out loud in the panel before it happens, because it is several seconds
+        Said out loud in the panel before it happens, because it is fifteen seconds
         of a rover that answers nothing -- including a stop -- and a button that
-        appears to have done nothing for four seconds is a button people press
-        again.
+        appears to have done nothing for that long is a button people press again.
+        Which is also why it goes out until the answer arrives: pressing it twice
+        buys two scans and half a minute off channel, not a quicker one.
+
+        The five-second poll is held off for the same span, by `wifi_outstanding`.
+        The daemon serves all of this behind one lock, so a poll queued behind a
+        scan would wait out the whole scan on the connection the status panels
+        share.
         """
-        if self.watch is None:
+        if self.scanner is None:
             self._say("not connected, so no scan was sent\n", "bad")
             return
         self.wifi_note.set("scanning -- the rover is off channel for a few seconds")
         self.wifi_outstanding = True
         self.wifi_at = time.monotonic()
+        self.wifi_scan_button.configure(state="disabled")
         self._log_sent("wifi_status", {"scan": True})
-        self.watch.submit("wifi_status", {"scan": True})
+        self.scanner.submit("wifi_status", {"scan": True})
 
     def _wifi_join(self) -> None:
         """Move the rover onto the selected network, and expect to lose it.
