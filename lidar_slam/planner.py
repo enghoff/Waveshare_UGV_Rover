@@ -9,8 +9,9 @@ for another one when the room disagrees.
 
 What comes out is a short polyline. A* runs at cell resolution so it can thread a
 gap; the caller does not want a hundred 5 cm hops, so the path is then thinned to
-the corners that actually change heading. Following that is a handful of turns and
-straight segments, which is what the rover can do.
+the corners that actually change heading, and then pulled straight -- most of the
+corners a grid search reports are the grid talking, not the room. Following that is
+a handful of turns and straight segments, which is what the rover can do.
 """
 from __future__ import annotations
 
@@ -41,6 +42,35 @@ import math
 # looks into the keep-out, the route starts from a free cell off that heading
 # and keeps the hop as a waypoint, so the first thing the rover does is turn.
 
+# Most of the corners in a grid route are the grid, not the room. A* moves in
+# eight directions and measures in octile steps, so every monotone staircase
+# between two cells costs exactly the same and which one comes back is decided
+# by the order the heap happened to pop. On empty floor that produced a 4 m run
+# straight ahead and then a 25 degree kink, and thinning cannot undo it: the
+# kink is a real 40 cm departure from the straight line, and keeping departures
+# that large is what thinning is for.
+#
+# So after thinning the route is pulled straight -- runs of corners are replaced
+# by the line between their ends wherever that line is clear of the same
+# keep-out A* used and is not a worse trade under the same proximity toll. Both
+# halves of that test matter. Clearance is what makes it safe: the line is
+# walked against the inflated mask, so a straightened route keeps every metre of
+# room the cornered one had. The toll is what keeps it honest: a chord that
+# scrapes a corner to save a few centimetres costs more toll than it saves in
+# length and is refused, so the middle of a gap stays preferred.
+#
+# A corner is not free to the rover, though, so the comparison credits the ones
+# a shortcut removes. Anything past the follower's turn-in-place threshold is a
+# full stop and a dead-reckoned spin -- around 1.8 s for a right-angle at the
+# fine PWM, once its settle is counted, which is 0.4 m of driving at the speed
+# a route is followed at -- and even a shallow corner drops the rover to crawl
+# speed until the nose comes round. KINK_CREDIT_M is that in metres of path, so
+# a straighter route may be a little longer or run a little nearer the toll and
+# still win. Only on the roomy attempt: on the fallback through a pinch the
+# keep-out is already inside the distance the follower brakes at, so the toll is
+# the last thing holding the route off the wall and nothing is credited against
+# it.
+
 # What a step next to the keep-out costs, on top of its length: 1 + this, fading
 # linearly to 1 at comfort_m. This is a nudge toward the middle of a gap, not
 # the thing that keeps corners at arm's length -- `preferred_m` is.
@@ -50,6 +80,16 @@ COMFORT_COST = 2.0
 SIMPLIFY_M = 0.12
 # Off-axis enough that the follower's turn-in-place threshold (40 deg) sees it.
 TURN_ESCAPE_DEG = 55.0
+# How finely a candidate straight line is walked when asking whether it is clear,
+# in cells. Half a cell cannot step over the keep-out: that mask is a dilation by
+# `inflate_m / resolution` cells in every direction, so anything blocked is blocked
+# in a band several cells thick, and a sample cannot land either side of it.
+LOS_STEP_CELLS = 0.5
+# What removing one corner is worth, as metres of path a shortcut may spend to
+# do it -- see the straightening note above. Capped in total, because a run of
+# ten corners is not a licence to take any line at all.
+KINK_CREDIT_M = 0.30
+KINK_CREDIT_MAX_M = 1.00
 
 
 def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
@@ -65,17 +105,24 @@ def plan(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
     this frame (x forward, y left): if the heading looks into the keep-out, the
     route begins with a hop off that heading.
     """
+    credit = KINK_CREDIT_M
     if preferred_m is not None and preferred_m > inflate_m:
         path, _why = _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy,
-                                preferred_m, comfort_m, origin_cells, start_yaw)
+                                preferred_m, comfort_m, origin_cells, start_yaw,
+                                kink_credit_m=credit)
         if path is not None:
             return path, None
+        # Only a pinch is left. This keep-out is inside the distance the follower
+        # brakes at, so the toll is the last thing holding the route off the wall
+        # and straightening pays full price for it -- see the note above.
+        credit = 0.0
     return _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy,
-                      inflate_m, comfort_m, origin_cells, start_yaw)
+                      inflate_m, comfort_m, origin_cells, start_yaw,
+                      kink_credit_m=credit)
 
 
 def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
-               comfort_m, origin_cells, start_yaw):
+               comfort_m, origin_cells, start_yaw, kink_credit_m=0.0):
     import numpy as np
 
     grid = np.asarray(grid)
@@ -138,11 +185,13 @@ def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
         if escaped is not None:
             lsx, lsy = escaped
 
+    true_gx, true_gy = gx - x0, gy - y0
     if inflated[lgx, lgy]:
         snapped = _nearest_free(inflated, lgx, lgy, search)
         if snapped is None:
             return None, "there is no room to stand at that place"
         lgx, lgy = snapped
+    goal_snapped = (lgx, lgy) != (true_gx, true_gy)
 
     comfort_cells = int(math.ceil(max(0.0, comfort_m - inflate_m) / resolution_m))
     penalty = _proximity_penalty(inflated, comfort_cells)
@@ -163,7 +212,21 @@ def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
     else:
         world[0] = tuple(start_xy)
     world[-1] = tuple(goal_xy)
-    return _simplify_pinned(world, SIMPLIFY_M, pin_hop), None
+    thinned = _simplify_pinned(world, SIMPLIFY_M, pin_hop)
+
+    def to_local(x, y):
+        """World metres -> fractional cells in the cropped frame."""
+        return x / resolution_m + ox - x0, y / resolution_m + oy - y0
+
+    # A goal inside the keep-out was snapped for the search and then put back, so
+    # the last leg already ends by driving into that ring. Straightening is
+    # allowed the same exemption and no more: `inflate_m` around the goal, which
+    # is shorter than the leg it replaces.
+    exempt = (inflate_m / resolution_m) if goal_snapped else 0.0
+    return _straighten(thinned, inflated, penalty, to_local,
+                       first=1 if pin_hop else 0, exempt_cells=exempt,
+                       credit_cells=kink_credit_m / resolution_m,
+                       credit_cap_cells=KINK_CREDIT_MAX_M / resolution_m), None
 
 
 def length(points):
@@ -251,6 +314,90 @@ def segment_end_s(points, s):
             return walked + step
         walked += step
     return walked
+
+
+def carrot_at(points, s, lookahead_m, min_m, max_turn_deg):
+    """The point to steer at from `s` metres along the route.
+
+    `lookahead_m` ahead normally, and never past the vertex at the end of the
+    segment being driven -- see `segment_end_s` for why looking onto the next leg
+    drives the chord.
+
+    But a vertex that is 3 cm away cannot be steered at. The bearing to a point
+    that close is all cross-track error and pose wobble: 5 cm to the side of a
+    carrot 5 cm ahead is 45 degrees of heading error out of nothing, which is past
+    the follower's turn-in-place threshold, so the rover stops and spins a hand's
+    breadth short of a corner it was tracking perfectly. Two thirds of the heading
+    a simulated route threw away went on exactly that.
+
+    So at a *shallow* vertex -- one the follower would drive through rather than
+    stop and spin at, which is what `max_turn_deg` names -- the aim point runs on
+    past it once it comes inside `min_m`, along this segment's own line and not
+    the next one. That distinction is the whole safety of it: extending the line
+    the rover is already driving cannot bend it towards the inside of the corner.
+
+    A sharp vertex keeps the collapsing carrot it always had. There the rover is
+    going to stop and turn whatever happens, so an early trigger costs a few
+    centimetres of approach and nothing else -- while running on past a right
+    angle would have it arrive at the corner still under power, and a corner is
+    exactly where the route has the least room to spare.
+
+    The last waypoint is left alone for a different reason: there the collapsing
+    bearing is doing real work, swinging the rover round to a goal it would
+    otherwise sail past a little to one side of.
+    """
+    if len(points) < 2:
+        return points[0] if points else (0.0, 0.0)
+    s = max(0.0, s)
+    end_s = segment_end_s(points, s)
+    if end_s - s >= min_m or end_s >= length(points) - 1e-6:
+        return point_at(points, min(s + lookahead_m, end_s))
+    seg = _segment_at(points, s)
+    if seg is None or abs(_turn_after(points, end_s)) >= max_turn_deg:
+        return point_at(points, end_s)
+    (ax, ay), (bx, by), step = seg
+    extra = min_m - (end_s - s)
+    return bx + (bx - ax) / step * extra, by + (by - ay) / step * extra
+
+
+def _turn_after(points, end_s):
+    """Degrees the route turns at the vertex `end_s` metres along, 0 at the last.
+
+    `walked` is the distance at the *start* of each segment, so the segment it
+    matches is the one leaving the vertex and `heading` is still the one arriving.
+    """
+    heading = None
+    walked = 0.0
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        step = math.hypot(bx - ax, by - ay)
+        if step < 1e-9:
+            continue
+        leg = math.atan2(by - ay, bx - ax)
+        if heading is not None and abs(walked - end_s) <= 1e-6:
+            return math.degrees((leg - heading + math.pi) % (2 * math.pi) - math.pi)
+        heading = leg
+        walked += step
+    return 0.0
+
+
+def _segment_at(points, s):
+    """The segment being driven at `s`: its ends and its length.
+
+    Same boundary rule as `segment_end_s`: progress sitting exactly on a vertex
+    belongs to the segment leaving it.
+    """
+    walked = 0.0
+    eps = 1e-6
+    last = None
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        step = math.hypot(bx - ax, by - ay)
+        if step < 1e-9:
+            continue
+        last = ((ax, ay), (bx, by), step)
+        if s < walked + step - eps:
+            return last
+        walked += step
+    return last
 
 
 def cells_occupied_along(grid, resolution_m, occupied_at, points, s_from,
@@ -470,6 +617,104 @@ def _reconstruct(came, w, start_i, goal_i):
     return None
 
 
+def _straighten(points, inflated, penalty, to_local, first=0, exempt_cells=0.0,
+                credit_cells=0.0, credit_cap_cells=float("inf")):
+    """Replace runs of corners with the line between their ends, where it is as good.
+
+    Two sweeps over what is by now a handful of waypoints, not the cell path: a
+    greedy one that jumps as far along the route as a clear line will reach, and
+    then a removal sweep that drops any remaining corner whose neighbours can see
+    each other. The greedy pass collapses a staircase in one go; the sweep catches
+    the corner the greedy jump landed on and then did not need.
+
+    A run is only replaced when the straight line is clear of `inflated` -- the
+    same keep-out A* was given -- and costs no more under `penalty` than the run
+    it replaces, less `credit_cells` for each corner it removes (capped at
+    `credit_cap_cells`, and zero on a route squeezing through a pinch). `first`
+    is the index before which nothing may be shortcut, which is how the
+    turn-off-a-wall hop survives. `exempt_cells` is a radius around the final
+    waypoint inside which blockage is ignored, for a goal that stands in the
+    keep-out.
+
+    Flat lists rather than numpy arrays for the same reason `_astar` uses them: this
+    is thousands of single-element reads, which is where a numpy scalar read costs
+    several times a list index.
+    """
+    if len(points) < 3:
+        return list(points)
+    h, w = inflated.shape
+    solid = inflated.ravel().tolist()
+    toll = None if penalty is None else penalty.ravel().tolist()
+    local = [to_local(x, y) for x, y in points]
+    last = len(points) - 1
+
+    def walk(a, b):
+        """Sample a straight line at half-cell steps: (t, flat index, step) each."""
+        au, av = a
+        bu, bv = b
+        span = math.hypot(bu - au, bv - av)
+        steps = max(1, int(math.ceil(span / LOS_STEP_CELLS)))
+        for k in range(steps + 1):
+            t = k / steps
+            iu = int(round(au + (bu - au) * t))
+            iv = int(round(av + (bv - av) * t))
+            inside = 0 <= iu < h and 0 <= iv < w
+            yield t, (iu * w + iv if inside else -1), span / steps
+
+    def clear(a, b, exempt):
+        for t, i, _step in walk(a, b):
+            if exempt > 0.0 and (1.0 - t) * math.hypot(b[0] - a[0],
+                                                       b[1] - a[1]) <= exempt:
+                continue
+            if i < 0 or solid[i]:
+                return False
+        return True
+
+    def tolled(a, b):
+        """Length of the straight line in cells, with the proximity toll on it."""
+        total = 0.0
+        first_sample = True
+        for _t, i, step in walk(a, b):
+            if first_sample:          # the sample at t=0 is the previous segment's end
+                first_sample = False
+                continue
+            total += step * (1.0 + (0.0 if toll is None or i < 0 else toll[i]))
+        return total
+
+    # Tolled length along the route as it stands, cumulative, so comparing a
+    # shortcut against the run it would replace is a subtraction.
+    cum = [0.0]
+    for i in range(last):
+        cum.append(cum[-1] + tolled(local[i], local[i + 1]))
+
+    def reach(i, j):
+        if not clear(local[i], local[j], exempt_cells if j == last else 0.0):
+            return False
+        credit = min(credit_cells * (j - i - 1), credit_cap_cells)
+        return tolled(local[i], local[j]) <= cum[j] - cum[i] + credit + 1e-9
+
+    kept = list(range(first + 1))
+    i = first
+    while i < last:
+        j = last
+        while j > i + 1 and not reach(i, j):
+            j -= 1
+        kept.append(j)
+        i = j
+
+    changed = True
+    while changed and len(kept) > max(2, first + 2):
+        changed = False
+        k = first + 1
+        while k < len(kept) - 1:
+            if reach(kept[k - 1], kept[k + 1]):
+                del kept[k]
+                changed = True
+            else:
+                k += 1
+    return [points[i] for i in kept]
+
+
 def _simplify_pinned(points, epsilon_m, pin_first_hop):
     """Thin the route, keeping the first hop when that hop is the turn off a wall."""
     if pin_first_hop and len(points) >= 3:
@@ -619,6 +864,125 @@ def _selftest():
                      inflate_m=0.25, preferred_m=0.45, start_yaw=0.0)
     assert path is not None, why
     assert all(abs(y) < 0.15 for _, y in path), f"yaw forced a detour: {path}"
+
+    # Straightening. On empty floor a route to anywhere is one segment: every
+    # monotone staircase A* could have returned costs the same, and the corner it
+    # picked between them is the grid talking. This is the case the whole thing
+    # exists for -- before it, this route came back as a 4.25 m run straight ahead
+    # and then a 25 degree kink.
+    empty = np.full((160, 160), -10, dtype=np.int8)
+    for goal in ((3.0, 0.8), (3.0, 2.0), (2.0, 3.0), (3.0, -1.7)):
+        line, why = plan(empty, res, occ, (-3.0, 0.0), goal, inflate_m=0.25,
+                         preferred_m=0.45, comfort_m=0.55)
+        assert line is not None, why
+        assert len(line) == 2, f"empty floor to {goal} came back with {line}"
+        direct = math.hypot(goal[0] + 3.0, goal[1])
+        assert abs(length(line) - direct) < 0.02, (
+            f"straight route is {length(line):.2f} m, direct is {direct:.2f} m")
+
+    # But it is a shortcut only where there is nothing in the way. The same skew
+    # trip with a wall across the middle keeps the corner that gets round it, and
+    # keeps its distance from the end of that wall.
+    walled = np.full((160, 160), -10, dtype=np.int8)
+    o2 = 80
+    wcol = o2 + int(round(0.0 / res))
+    walled[wcol, :o2 + int(round(1.5 / res))] = occ   # wall along x=0, y < 1.5
+    bent, why = plan(walled, res, occ, (-3.0, 0.0), (3.0, 2.0), inflate_m=0.25,
+                     preferred_m=0.45, comfort_m=0.55)
+    assert bent is not None, why
+    assert len(bent) >= 3, f"straightened through a wall: {bent}"
+    assert corner_distance(bent, 0.0, 1.5) >= 0.40, (
+        f"straightening grazed the wall end at "
+        f"{corner_distance(bent, 0.0, 1.5):.2f} m")
+
+    # And it never crosses the keep-out anywhere, which is the promise that makes
+    # it safe to shorten a route at all.
+    def min_clearance(pts, grid_, from_m=0.0, to_m=None):
+        cells = grid_.shape[0]
+        og = cells // 2
+        solid = np.argwhere(grid_ >= occ)
+        xs = (solid[:, 0] - og) * res
+        ys = (solid[:, 1] - og) * res
+        best, s2 = 1e9, from_m
+        stop = length(pts) if to_m is None else to_m
+        while s2 <= stop + 1e-9:
+            px, py = point_at(pts, s2)
+            best = min(best, float(np.min(np.hypot(xs - px, ys - py))))
+            s2 += 0.02
+        return best
+
+    assert min_clearance(bent, walled) >= 0.44, (
+        f"straightened route runs {min_clearance(bent, walled):.3f} m from a wall, "
+        f"inside the 0.45 m ring it was planned with")
+
+    # The turn-off-a-wall hop is not a corner to be shortcut away. Straightening
+    # the route from the pose onto that first free cell is exactly the chord
+    # through the wall that the hop exists to prevent.
+    hopped, why = plan(faced, res, occ, (0.0, 0.0), (1.2, 0.0),
+                       inflate_m=0.25, preferred_m=0.45, start_yaw=0.0)
+    assert hopped is not None, why
+    first_hop = math.atan2(hopped[1][1] - hopped[0][1],
+                           hopped[1][0] - hopped[0][0])
+    assert abs(first_hop) > math.radians(50), (
+        f"straightening ate the turn-first hop: {hopped[:3]}")
+
+    # carrot_at. Far from a vertex it is the plain lookahead...
+    square = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0)]      # a right angle
+    bend = [(0.0, 0.0), (2.0, 0.0), (3.0, 0.5)]        # 27 degrees, driven through
+    cx, cy = carrot_at(square, 0.5, 0.80, 0.40, 40.0)
+    assert abs(cx - 1.3) < 1e-6 and abs(cy) < 1e-6, (cx, cy)
+    # ...and it never aims onto the next leg, which is what drives the chord.
+    cx, cy = carrot_at(square, 1.6, 0.80, 0.0, 40.0)
+    assert abs(cx - 2.0) < 1e-6 and abs(cy) < 1e-6, (cx, cy)
+    # At a gentle corner it runs on along this leg's own line rather than
+    # collapsing onto a vertex 5 cm away -- and stays on that line, not the next.
+    cx, cy = carrot_at(bend, 1.95, 0.80, 0.40, 40.0)
+    assert abs(cy) < 1e-6, f"the carrot bent onto the next leg: {(cx, cy)}"
+    assert abs(cx - 2.35) < 1e-6, (cx, cy)
+    assert math.hypot(cx - 1.95, cy) >= 0.40 - 1e-9, "carrot still inside the minimum"
+    # A corner the rover is going to stop and spin at keeps the carrot it had.
+    # Running on past a right angle arrives at the corner still under power, and
+    # a corner is where the route has the least room to spare.
+    cx, cy = carrot_at(square, 1.95, 0.80, 0.40, 40.0)
+    assert abs(cx - 2.0) < 1e-6 and abs(cy) < 1e-6, (
+        f"the carrot ran on past a right angle: {(cx, cy)}")
+    # And the last waypoint is left alone, or a rover a little to one side of the
+    # goal would be steered past it instead of round to it.
+    cx, cy = carrot_at(square, 3.9, 0.80, 0.40, 40.0)
+    assert abs(cx - 2.0) < 1e-6 and abs(cy - 2.0) < 1e-6, (
+        f"the carrot ran on past the goal: {(cx, cy)}")
+    assert abs(_turn_after(square, 2.0) - 90.0) < 1e-6, _turn_after(square, 2.0)
+    assert abs(_turn_after(bend, 2.0) - 26.565) < 1e-3, _turn_after(bend, 2.0)
+    assert _turn_after(square, length(square)) == 0.0, "a last vertex turns nowhere"
+
+    # The two things straightening promises that a route through a clean room
+    # does not exercise, checked on the function itself: that it will not shortcut
+    # across the turn-off-a-wall hop, and that the corner credit is what decides a
+    # shortcut which is straighter but runs nearer the toll.
+    free = np.zeros((60, 60), dtype=bool)
+    toll_field = np.zeros((60, 60), dtype=np.float32)
+    toll_field[25:36, 28:33] = 0.8          # something to give a wide berth to
+
+    def cellwise(x, y):
+        return x / res + 30, y / res + 30
+
+    dogleg = [(-1.0, 0.0), (0.0, -0.5), (1.0, 0.0)]
+    tight = _straighten(dogleg, free, toll_field, cellwise, credit_cells=0.0,
+                        credit_cap_cells=20.0)
+    assert tight == dogleg, (
+        f"took a more tolled line for nothing: {tight}")
+    paid = _straighten(dogleg, free, toll_field, cellwise,
+                       credit_cells=KINK_CREDIT_M / res,
+                       credit_cap_cells=KINK_CREDIT_MAX_M / res)
+    assert paid == [dogleg[0], dogleg[-1]], (
+        f"the corner was worth more than the detour and was kept anyway: {paid}")
+
+    # `first` holds the hop even where the line past it is perfectly clear.
+    hop = [(0.0, 0.0), (0.0, 0.5), (1.0, 0.5)]
+    assert _straighten(hop, free, None, cellwise, first=0) == [hop[0], hop[-1]], (
+        "nothing was shortcut on an empty floor")
+    assert _straighten(hop, free, None, cellwise, first=1) == hop, (
+        "the hop that turns the rover off a wall was shortcut away")
 
     # Progress along a path does not rewind for a small sideways weave.
     line = [(0.0, 0.0), (2.0, 0.0)]
