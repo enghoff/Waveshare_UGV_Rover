@@ -1,0 +1,721 @@
+<!doctype html>
+<!--
+  The drive console's window. Served by drive_web.py, which is what talks to the
+  rover; nothing here knows a socket from a hole in the ground.
+
+  The layout is the reason this file exists. The tkinter console it replaces put
+  every panel at a fixed size and a fixed place, so the transcript and the turns
+  table -- much of the point of the thing -- sat below the bottom edge of a 1080p
+  screen with no way to scroll to them, and a wider window only added empty space
+  beside the camera. Here the panels are cards in three stacks that pack to their
+  own contents and wrap when the window can no longer hold them side by side: three
+  columns on a monitor, two on a laptop, one on a phone, in that order down the
+  page, with the transcript and the turns table on a line of their own at the
+  bottom because they are read across rather than down. The page scrolls like a
+  page.
+
+  Stacks rather than one grid of cards, and that is not a preference. In a grid
+  every card in a row is as tall as the tallest one in it, so a map eight hundred
+  pixels high leaves eight hundred pixels of nothing under the driving buttons
+  beside it -- the same complaint as the tkinter window, arrived at from the other
+  direction.
+
+  Two things are pinned rather than scrolled, and both are pinned for the same
+  reason: the stop button and the in-flight timer are the controls you reach for
+  without looking, and a stop button that has scrolled off the top of the window is
+  not a stop button.
+
+  There is no state in here. Everything on screen is drawn from the last state the
+  server pushed, and every control posts an action and then waits to be told what
+  happened -- so two browsers open on one rover agree with each other and with the
+  room, and a button never claims a thing the rover refused.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rover drive console</title>
+<style>
+  :root {
+    --bg: #eef0f3; --card: #ffffff; --ink: #1b1e22; --dim: #6b7280;
+    --line: #dde1e7; --accent: #0a4f9c; --good: #136b13; --warn: #9a5510;
+    --bad: #a01010; --note: #8a5a00; --stop: #b02020; --sunken: #f7f8fa;
+    --shadow: 0 1px 2px rgba(16, 20, 26, .06), 0 1px 8px rgba(16, 20, 26, .04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131619; --card: #1b2026; --ink: #e5e8ec; --dim: #98a2ad;
+      --line: #2a313a; --accent: #79b3f0; --good: #5cba5c; --warn: #d79a45;
+      --bad: #f07070; --note: #d0a45a; --stop: #c0392b; --sunken: #161a1f;
+      --shadow: none;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scrollbar-gutter: stable; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+  /* --- the bar that never scrolls away ---------------------------------- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    padding: 8px 14px; background: var(--card);
+    border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  header .grow { flex: 1 1 12px; }
+  #link { color: var(--dim); }
+  #link.up { color: var(--good); }
+  #link.down { color: var(--bad); }
+  #busy { font-weight: 600; font-variant-numeric: tabular-nums; }
+  #watchers { color: var(--dim); font-size: 12px; }
+  #stop {
+    background: var(--stop); color: #fff; border: 0; border-radius: 6px;
+    padding: 9px 26px; font-size: 15px; font-weight: 700; letter-spacing: .04em;
+    cursor: pointer;
+  }
+  #stop:active { transform: translateY(1px); }
+
+  /* --- the layout, which is the whole point ------------------------------ */
+  /* Columns of cards rather than a grid of them, and the difference is not
+     cosmetic. In a grid every card in a row is as tall as the tallest, so a map
+     panel eight hundred pixels high leaves eight hundred pixels of nothing under
+     the driving buttons beside it. These are independent stacks that each pack to
+     their own contents, and the row they sit in wraps when the window can no
+     longer hold them -- so the same markup is three columns on a monitor, two on a
+     laptop and one on a phone, in that order down the page. */
+  main {
+    display: flex; flex-wrap: wrap; gap: 12px; padding: 12px;
+    align-items: flex-start;
+  }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  /* The numbers and the controls each want a readable column and no more; the map
+     is the picture and takes what is left. The bases are what decide when the row
+     wraps, and the growth is what shares out the slack once it has not. */
+  .side { flex: 1 1 290px; }
+  .hero { flex: 3 1 400px; }
+  /* Past three comfortable columns there is nothing more to show, only wider
+     columns to show it in, so the slack goes to the picture. */
+  @media (min-width: 1400px) { .side { max-width: 460px; } }
+  /* The transcript and the turns table are read across rather than down, and a
+     basis of the whole width is what puts them on a line of their own however many
+     columns the rest came out as. */
+  .full { flex: 1 1 100%; }
+
+  section {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px 12px; box-shadow: var(--shadow); min-width: 0;
+  }
+  h2 {
+    margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  .hint { color: var(--dim); font-size: 12px; margin: 4px 0 0; }
+
+  button, input, select {
+    font: inherit; color: inherit; background: var(--card);
+    border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  input[type=text] { background: var(--sunken); }
+  label.check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .row + .row { margin-top: 6px; }
+  .row label { color: var(--dim); min-width: 62px; }
+  .row input.num { width: 74px; text-align: right; }
+
+  .turns-pad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .turns-pad button { padding: 8px 4px; }
+
+  /* --- nav_status ------------------------------------------------------- */
+  #statusRows { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; }
+  #statusRows .k { color: var(--dim); }
+  #statusRows .v { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #statusRows .v.alarm { color: var(--bad); font-weight: 700; }
+  #pose { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+
+  /* --- the two pictures -------------------------------------------------- */
+  .shot {
+    position: relative; width: 100%; background: var(--sunken);
+    border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+    display: grid; place-items: center;
+  }
+  /* Square, because the map is, but capped: on a wide monitor the column is
+     700-odd pixels and a picture that tall pushes the controls under it off the
+     screen. Past the cap the picture is letterboxed by object-fit rather than
+     cropped, and the click arithmetic already allows for that. */
+  #mapShot { aspect-ratio: 1 / 1; cursor: crosshair; max-height: min(68vh, 700px); }
+  /* Capped rather than filling its column: when the window is narrow enough that
+     this stack is alone on a row, a frame stretched across the whole page is a
+     wall of carpet, not more information. */
+  #cameraShot { aspect-ratio: 4 / 3; max-width: 460px; }
+  .shot img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* The map is 5 cm squares drawn with no antialiasing, so scaling it up wants
+     to keep the squares square rather than smear them into a photograph. */
+  #mapImg { image-rendering: pixelated; }
+  .shot .empty {
+    position: absolute; padding: 0 16px; text-align: center; color: var(--dim);
+    font-size: 13px;
+  }
+  .shot.busy::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(-45deg, transparent 0 12px,
+                rgba(125,140,160,.10) 12px 24px);
+  }
+
+  #legend { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 8px; }
+  #legend span { display: inline-flex; align-items: center; gap: 5px;
+                 color: var(--dim); font-size: 12px; }
+  #legend i { width: 12px; height: 12px; border: 1px solid rgba(128,128,128,.5);
+              border-radius: 2px; display: inline-block; }
+  #plan { margin: 8px 0 0; color: var(--accent); }
+  #caption, #mapNote { margin: 4px 0 0; color: var(--dim); font-size: 12px; }
+  #mapError, #frameError { color: var(--bad); font-size: 13px; }
+
+  /* --- readings ---------------------------------------------------------- */
+  .big { font-family: ui-monospace, Consolas, monospace; font-size: 20px; }
+  .reading { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
+  .good { color: var(--good); } .warn { color: var(--warn); }
+  .bad { color: var(--bad); } .fair { color: var(--warn); } .poor { color: var(--bad); }
+
+  /* --- tables ------------------------------------------------------------ */
+  .scroller { overflow: auto; max-height: 46vh; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 3px 8px; white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--card); color: var(--dim);
+       font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line); }
+  tbody tr:nth-child(even) { background: var(--sunken); }
+  td.num { font-family: ui-monospace, Consolas, monospace; text-align: right; }
+  td.wrap { white-space: normal; }
+  #wifiList td { padding: 4px 6px; }
+  #wifiList tr.here td { color: var(--accent); }
+  #wifiList tr.stranger td { color: var(--dim); }
+  #wifiList button { padding: 2px 10px; font-size: 12px; }
+
+  /* --- the transcript ---------------------------------------------------- */
+  #log {
+    max-height: 44vh; overflow: auto; background: var(--sunken);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  #log div.sent { color: var(--accent); }
+  #log div.good { color: var(--good); }
+  #log div.bad { color: var(--bad); }
+  #log div.quiet { color: var(--dim); }
+  #log div.note { color: var(--note); }
+
+  kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+        border: 1px solid var(--line); border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 5px; margin-right: 4px; }
+  .keys { font-size: 12px; color: var(--dim); }
+  .keys div { margin-top: 3px; }
+
+  /* The map's caption is written for the model that reads it out loud, so it is a
+     paragraph rather than a label. Folded away by default: it explains a picture
+     that is on screen, and the same explanation every two seconds is furniture. */
+  details { margin-top: 6px; font-size: 12px; color: var(--dim); }
+  summary { cursor: pointer; }
+  details p { margin: 4px 0 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <strong>rover</strong>
+  <input type="text" id="address" size="18" placeholder="find it" autocomplete="off">
+  <button id="connect">connect</button>
+  <span id="link">not connected</span>
+  <span class="grow"></span>
+  <span id="watchers"></span>
+  <span id="busy"></span>
+  <button id="stop" title="space or escape">STOP</button>
+</header>
+
+<main>
+<div class="stack side">
+  <section id="driveCard">
+    <h2>drive</h2>
+    <div class="turns-pad" id="turnPad"></div>
+    <div class="row" style="margin-top:8px">
+      <label for="angle">turn</label>
+      <input class="num mono" type="text" id="angle" value="90">
+      <span class="hint" style="margin:0">deg</span>
+      <button data-move="turn">go</button>
+    </div>
+    <div class="row">
+      <label for="distance">distance</label>
+      <input class="num mono" type="text" id="distance" value="0.5">
+      <span class="hint" style="margin:0">m</span>
+      <button data-move="drive">go</button>
+    </div>
+    <div class="row">
+      <label for="speed">speed</label>
+      <input class="num mono" type="text" id="speed" placeholder="auto">
+      <span class="hint" style="margin:0">m/s, blank for auto</span>
+    </div>
+    <p class="hint">Positive is left. Every move is bounded and watched by the
+      lidar the whole way; there is no continuous teleop here.</p>
+    <div class="keys" style="margin-top:8px">
+      <div><kbd>space</kbd>stop, even while typing a distance</div>
+      <div><kbd>&uarr;</kbd>drive the distance above</div>
+      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd>turn by the angle above</div>
+      <div><kbd>+</kbd><kbd>&minus;</kbd>the map closer or wider</div>
+      <div>click the map to drive there</div>
+    </div>
+  </section>
+
+  <section id="statusCard">
+    <h2>nav_status</h2>
+    <div id="statusRows"></div>
+    <div id="pose" class="mono">-</div>
+    <p class="hint" id="statusError"></p>
+  </section>
+</div>
+
+<div class="stack hero">
+  <section id="mapCard">
+    <h2>map &mdash; click to drive there</h2>
+    <div class="shot" id="mapShot">
+      <img id="mapImg" alt="the rover's map" hidden>
+      <span class="empty" id="mapEmpty">no map yet</span>
+    </div>
+    <div id="legend"></div>
+    <p id="plan">-</p>
+    <p id="mapNote"></p>
+    <p id="mapError"></p>
+    <details><summary>what the picture means</summary><p id="caption"></p></details>
+    <div class="row" style="margin-top:8px">
+      <label>across</label>
+      <button data-zoom="-1">closer</button>
+      <button data-zoom="1">wider</button>
+      <label style="min-width:auto;margin-left:8px">size</label>
+      <button data-size="-1">smaller</button>
+      <button data-size="1">bigger</button>
+      <button id="refreshMap" style="margin-left:8px">refresh</button>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="mapAuto"> auto</label>
+      <label class="check"><input type="checkbox" id="mapFit"> fit the panel</label>
+      <label class="check"><input type="checkbox" id="roverUp"> rover up</label>
+    </div>
+    <div class="row">
+      <button id="describe">describe surroundings</button>
+      <button id="clearMap">clear map</button>
+    </div>
+    <p class="hint">Clearing empties the grid and stands the rover at the origin of
+      an empty one. There is no loop closure on this hardware, so a map that has
+      come out of true with itself will stay that way.</p>
+  </section>
+</div>
+
+<div class="stack side">
+  <section id="cameraCard">
+    <h2>camera</h2>
+    <div class="shot" id="cameraShot">
+      <img id="frameImg" alt="what the camera can see" hidden>
+      <span class="empty" id="frameEmpty">no picture yet</span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="takePicture">take a picture</button>
+      <label class="check"><input type="checkbox" id="cameraAuto"> every few seconds</label>
+    </div>
+    <p id="frameNote" class="hint"></p>
+    <p id="frameError"></p>
+  </section>
+
+  <section id="boardCard">
+    <h2>face tracking</h2>
+    <div class="row">
+      <button data-track="start_tracking">start</button>
+      <button data-track="stop_tracking">stop</button>
+      <span id="tracking" class="mono">-</span>
+    </div>
+    <p class="hint">Driving stops it: the tracking loop and SLAM cannot share this
+      one core.</p>
+    <h2 style="margin-top:14px">headlights</h2>
+    <div class="row">
+      <button data-light="on">on</button>
+      <button data-light="off">off</button>
+      <span id="lights" class="mono">-</span>
+    </div>
+    <h2 style="margin-top:14px">battery</h2>
+    <div id="battery" class="reading">-</div>
+    <p id="batteryNote" class="hint"></p>
+  </section>
+
+  <section id="networkCard">
+    <h2>network</h2>
+    <div id="wifi" class="reading">-</div>
+    <p id="wifiWhere" class="hint"></p>
+    <div class="scroller" style="max-height:30vh;margin-top:6px">
+      <table><tbody id="wifiList"></tbody></table>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="wifiScan">look for networks</button>
+    </div>
+    <p id="wifiNote" class="hint"></p>
+    <p class="hint">The list is what NetworkManager last heard. Nothing polls for a
+      scan: it takes the dongle off channel for several seconds, on a bus it shares
+      with the camera and the lidar.</p>
+  </section>
+</div>
+
+<div class="stack full">
+  <section id="turnsCard">
+    <h2>turns: asked against achieved</h2>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>asked</th><th>turned</th><th>ratio</th><th>seconds</th>
+          <th>reason</th></tr></thead>
+        <tbody id="turnsList"></tbody>
+      </table>
+    </div>
+    <p class="hint">A turn is the one move whose result you cannot judge by watching
+      the rover. A column of ratios makes a systematic shortfall obvious in three
+      attempts instead of ten.</p>
+  </section>
+
+  <section id="logCard">
+    <h2>calls and replies</h2>
+    <div id="log"></div>
+  </section>
+</div>
+</main>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+let setup = null;          // the ladders and the colour key, fetched once
+let state = null;          // the last thing the server said
+let mapGen = -1, frameGen = -1, wifiPrint = "", turnsPrint = "";
+
+// --- talking to the server --------------------------------------------------
+
+function post(action) {
+  fetch("/do", {method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(action)}).catch(() => {});
+}
+
+// What the boxes currently say, sent with the action rather than remembered by
+// the server: they are the only things on this page that are genuinely local,
+// because a half-typed distance is not a fact about the rover.
+const number = (id) => $(id).value.trim();
+
+function listen() {
+  const stream = new EventSource("/events");
+  stream.addEventListener("state", (event) => render(JSON.parse(event.data)));
+  stream.addEventListener("log", (event) => append(JSON.parse(event.data)));
+  stream.onerror = () => {
+    // EventSource reconnects by itself; say so rather than looking frozen.
+    $("link").textContent = "lost the console server -- reconnecting";
+    $("link").className = "down";
+  };
+}
+
+// --- drawing it -------------------------------------------------------------
+
+function render(next) {
+  state = next;
+
+  const link = $("link");
+  link.textContent = next.link.text;
+  link.className = next.link.connected ? "up" : "down";
+  if (document.activeElement !== $("address")) $("address").value = next.link.address;
+  $("busy").textContent = next.busy
+    ? `${next.busy.name}  ${next.busy.seconds.toFixed(1)} s` : "";
+  $("watchers").textContent = next.watching > 1
+    ? `${next.watching} browsers watching` : "";
+
+  drawStatus(next.status);
+  $("plan").textContent = next.plan;
+
+  drawPicture($("mapShot"), $("mapImg"), $("mapEmpty"), "/map.png", next.map.gen,
+              () => mapGen, (g) => mapGen = g, next.map.drawing, next.map.error);
+  if (next.map.width) {
+    $("mapShot").style.aspectRatio = `${next.map.width} / ${next.map.height}`;
+  }
+  $("caption").textContent = next.map.caption;
+  $("mapNote").textContent = next.map.drawing ? "drawing..."
+    : [next.map.settings, next.map.note].filter(Boolean).join(" -- ");
+  $("mapError").textContent = next.map.error || "";
+  $("mapAuto").checked = next.map.auto;
+  $("mapFit").checked = next.map.fit;
+  $("roverUp").checked = next.map.rover_up;
+  $("clearMap").textContent = next.clear_armed
+    ? "clear map -- press again" : "clear map";
+
+  drawPicture($("cameraShot"), $("frameImg"), $("frameEmpty"), "/frame.jpg",
+              next.frame.gen, () => frameGen, (g) => frameGen = g,
+              next.frame.taking, next.frame.error);
+  $("frameNote").textContent = next.frame.note;
+  $("frameError").textContent = next.frame.error || "";
+  $("cameraAuto").checked = next.frame.auto;
+
+  $("tracking").textContent = next.tracking;
+  $("lights").textContent = next.lights.text;
+
+  $("battery").textContent = next.battery.text;
+  $("battery").className = "reading " + verdictOf(next.battery.state);
+  $("batteryNote").textContent = next.battery.note;
+
+  drawWifi(next.wifi);
+  drawTurns(next.turns);
+
+  // Only the moves go out while one is running; stop, the map and the camera
+  // stay live, which is the whole reason they have their own connections.
+  for (const button of document.querySelectorAll("[data-move],[data-track]")) {
+    button.disabled = !next.link.can_drive || next.busy !== null;
+  }
+  $("clearMap").disabled = !next.link.connected || next.busy !== null;
+}
+
+const verdictOf = (state) =>
+  ({full: "good", ok: "", low: "warn", critical: "bad", absent: "bad"})[state] || "";
+
+function drawStatus(status) {
+  const holder = $("statusRows");
+  if (holder.childElementCount !== status.rows.length * 2) {
+    holder.replaceChildren();
+    for (const row of status.rows) {
+      const key = document.createElement("div");
+      key.className = "k"; key.textContent = row[0];
+      const value = document.createElement("div");
+      value.className = "v";
+      holder.append(key, value);
+    }
+  }
+  status.rows.forEach((row, index) => {
+    const value = holder.children[index * 2 + 1];
+    if (value.textContent !== row[1]) value.textContent = row[1];
+    value.className = row[2] ? "v alarm" : "v";
+  });
+  $("pose").textContent = status.pose;
+  $("statusError").textContent = status.error || "";
+}
+
+function drawPicture(shot, img, empty, url, gen, get, set, busy, error) {
+  shot.classList.toggle("busy", !!busy);
+  if (gen && gen !== get()) {
+    set(gen);
+    // The generation is in the URL, so the browser fetches each picture once and
+    // never has to be told not to cache the last one.
+    img.src = `${url}?gen=${gen}`;
+    img.hidden = false;
+    empty.hidden = true;
+  } else if (!gen) {
+    empty.textContent = error || empty.textContent;
+  }
+}
+
+function drawWifi(wifi) {
+  $("wifi").textContent = wifi.text;
+  $("wifi").className = "reading " + (wifi.verdict || "");
+  $("wifiWhere").textContent = wifi.where;
+  $("wifiNote").textContent = wifi.note;
+  $("wifiScan").disabled = wifi.scanning || wifi.supported === false;
+  $("wifiScan").textContent = wifi.scanning ? "scanning..." : "look for networks";
+
+  // Rebuilt only when it has actually changed, so that a five-second poll does
+  // not tear the rows out from under a finger reaching for one of them.
+  const print = JSON.stringify(wifi.networks);
+  if (print === wifiPrint) return;
+  wifiPrint = print;
+  const list = $("wifiList");
+  list.replaceChildren();
+  for (const network of wifi.networks) {
+    const row = document.createElement("tr");
+    row.className = network.in_use ? "here" : (network.configured ? "" : "stranger");
+    const name = document.createElement("td");
+    name.textContent = network.ssid;
+    const signal = document.createElement("td");
+    signal.className = "num"; signal.textContent = network.signal;
+    const action = document.createElement("td");
+    if (network.joinable) {
+      const join = document.createElement("button");
+      join.textContent = "join";
+      join.onclick = () => post({do: "wifi_join", ssid: network.ssid});
+      join.disabled = !!wifi.joining;
+      action.append(join);
+    } else {
+      action.textContent = network.note;
+      action.className = "wrap";
+    }
+    row.append(name, signal, action);
+    list.append(row);
+  }
+}
+
+function drawTurns(turns) {
+  const print = JSON.stringify(turns);
+  if (print === turnsPrint) return;
+  turnsPrint = print;
+  const list = $("turnsList");
+  list.replaceChildren();
+  for (const turn of turns) {
+    const row = document.createElement("tr");
+    for (const [key, cls] of [["asked", "num"], ["turned", "num"], ["ratio", "num"],
+                              ["secs", "num"], ["reason", "wrap"]]) {
+      const cell = document.createElement("td");
+      cell.className = cls; cell.textContent = turn[key];
+      row.append(cell);
+    }
+    list.append(row);
+  }
+}
+
+function append(lines) {
+  const log = $("log");
+  // Only follow the tail if the tail is where you were: somebody scrolled back to
+  // read a reply should not be yanked to the bottom by the next status line.
+  const following = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  for (const line of lines) {
+    const div = document.createElement("div");
+    div.className = line.tag; div.textContent = line.text.replace(/\n$/, "");
+    log.append(div);
+  }
+  while (log.childElementCount > 500) log.firstElementChild.remove();
+  if (following) log.scrollTop = log.scrollHeight;
+}
+
+// --- the controls -----------------------------------------------------------
+
+function wire() {
+  $("stop").onclick = () => post({do: "stop"});
+  $("connect").onclick = () => post({do: "connect", address: $("address").value});
+  $("address").onkeydown = (e) => {
+    if (e.key === "Enter") post({do: "connect", address: $("address").value});
+  };
+
+  // The preset turns bind their own angle in start(); only these two read a box.
+  $("driveCard").querySelector('[data-move="drive"]').onclick = () => drive();
+  $("driveCard").querySelector('[data-move="turn"]').onclick = () => turn();
+  for (const button of document.querySelectorAll("[data-zoom]")) {
+    button.onclick = () => post({do: "map", zoom: +button.dataset.zoom});
+  }
+  for (const button of document.querySelectorAll("[data-size]")) {
+    button.onclick = () => post({do: "map", size: +button.dataset.size});
+  }
+  for (const button of document.querySelectorAll("[data-track]")) {
+    button.onclick = () => post({do: "track", name: button.dataset.track});
+  }
+  for (const button of document.querySelectorAll("[data-light]")) {
+    button.onclick = () => post({do: "lights",
+      level: button.dataset.light === "on" ? setup.light_max : 0});
+  }
+  $("refreshMap").onclick = () => post({do: "map"});
+  $("mapAuto").onchange = () => post({do: "map", auto: $("mapAuto").checked});
+  $("mapFit").onchange = () => post({do: "map", fit: $("mapFit").checked});
+  $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
+  $("describe").onclick = () => post({do: "describe"});
+  $("clearMap").onclick = () => post({do: "clear_map"});
+  $("takePicture").onclick = () => post({do: "picture"});
+  $("cameraAuto").onchange = () => post({do: "camera_auto",
+                                         on: $("cameraAuto").checked});
+  $("wifiScan").onclick = () => post({do: "wifi_scan"});
+
+  $("mapImg").onclick = (event) => {
+    // The picture is scaled to whatever width the panel came out at, so a click
+    // has to be divided back into the picture's own pixels before it goes to the
+    // server -- which is the only arithmetic this page does about the map. The
+    // metres are the renderer's business, on the other end.
+    const img = event.currentTarget;
+    const box = img.getBoundingClientRect();
+    // object-fit: contain, so the picture is centred in whatever letterboxing the
+    // panel's aspect ratio leaves over.
+    const scale = Math.min(box.width / img.naturalWidth,
+                           box.height / img.naturalHeight);
+    const col = (event.clientX - box.left - (box.width - img.naturalWidth * scale) / 2)
+                / scale;
+    const row = (event.clientY - box.top - (box.height - img.naturalHeight * scale) / 2)
+                / scale;
+    if (col < 0 || row < 0 || col >= img.naturalWidth || row >= img.naturalHeight) return;
+    post({do: "tap", col: col, row: row, speed_ms: number("speed")});
+  };
+}
+
+const drive = () => post({do: "drive", distance_m: number("distance"),
+                          speed_ms: number("speed")});
+const turn = (angle) => post({do: "turn",
+                              angle_deg: angle === undefined ? number("angle") : angle});
+
+function keys() {
+  addEventListener("keydown", (event) => {
+    if (event.key === " " || event.key === "Escape") {
+      // Stop is the one key that works while a distance is being typed. Nothing
+      // else does: without that guard, typing 0.5 sends an arrow to the motors on
+      // the way to the decimal point.
+      event.preventDefault();
+      post({do: "stop"});
+      return;
+    }
+    if (event.target.tagName === "INPUT") return;
+    const angle = Number(number("angle")) || 90;
+    const moves = {
+      ArrowUp: () => drive(),
+      ArrowLeft: () => turn(angle),
+      ArrowRight: () => turn(-angle),
+      // Plus zooms in, the way it does everywhere else, which means asking for a
+      // smaller extent -- a step down the ladder, not up it.
+      "+": () => post({do: "map", zoom: -1}),
+      "=": () => post({do: "map", zoom: -1}),
+      "-": () => post({do: "map", zoom: 1}),
+    };
+    if (moves[event.key]) { event.preventDefault(); moves[event.key](); }
+  });
+}
+
+function watchTheWidth() {
+  // What the map panel came out as, so the server can ask the rover for a picture
+  // that size. Debounced, and hard: dragging a window edge fires this on every
+  // frame, and a map request per frame is a minute of a single ARMv6 core spent
+  // on one drag. The server drops it again unless the rung actually changed.
+  let timer = null;
+  const tell = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => post({do: "panel",
+      map_px: Math.round($("mapShot").getBoundingClientRect().width)}), 400);
+  };
+  new ResizeObserver(tell).observe($("mapShot"));
+  tell();
+}
+
+async function start() {
+  setup = await (await fetch("/setup")).json();
+  const pad = $("turnPad");
+  // Positive is left in this whole repository, and left is the left column, so a
+  // button's place on screen matches the way the rover is about to go.
+  for (const magnitude of setup.presets_deg) {
+    for (const sign of [1, -1]) {
+      const button = document.createElement("button");
+      button.dataset.move = "preset";
+      button.textContent = `${magnitude} ${sign > 0 ? "left" : "right"}`;
+      button.onclick = () => turn(sign * magnitude);
+      pad.append(button);
+    }
+  }
+  const legend = $("legend");
+  for (const [colour, label] of setup.legend) {
+    const item = document.createElement("span");
+    const swatch = document.createElement("i");
+    swatch.style.background = colour;
+    item.append(swatch, document.createTextNode(label));
+    legend.append(item);
+  }
+  wire();
+  keys();
+  watchTheWidth();
+  listen();
+}
+
+start();
+</script>
+</body>
+</html>

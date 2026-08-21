@@ -147,13 +147,16 @@ speech out, with those tools attached — and [`face_detect/`](face_detect/READM
 is the detector both tracking loops call, deliberately on a CPU so that the rover
 does not stop seeing while somebody is talking to it.
 
-`voice_chat/drive_console.py` is the same daemon with the model taken out: a
-window of buttons for the driving tools, the navigator's own numbers polled beside
-them, and the lidar map on screen. It is there because a conversation cannot
-measure a move — a model asked to turn ninety degrees reports what it believed
-happened, and what you need is what the navigator returned next to what you asked
-for. `python voice_chat\mock_rover.py --drive` gives it an invented room to drive
-in when there is no rover to hand.
+The drive console is the same daemon with the model taken out: buttons for the
+driving tools, the navigator's own numbers polled beside them, and the lidar map on
+screen. It is there because a conversation cannot measure a move — a model asked to
+turn ninety degrees reports what it believed happened, and what you need is what
+the navigator returned next to what you asked for. `voice_chat/drive_web.py` serves
+it as a browser page and is the one to use; `voice_chat/drive_console.py` is the
+original tkinter window and needs no browser. Both are desk programs talking to the
+daemon over TCP, and both draw on `voice_chat/console_model.py`, which is where the
+pacing and the wording actually live. `python voice_chat\mock_rover.py --drive`
+gives either of them an invented room to drive in when there is no rover to hand.
 
 ## Documentation
 

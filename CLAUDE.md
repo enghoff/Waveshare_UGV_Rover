@@ -24,7 +24,12 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 | `wifi_roam/` | `rpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
 | `behaviours/` | `rpi` | `~/ugv/behaviours/` — **planned, not built**; see [docs/scripting.md](docs/scripting.md). `scripting.py` and `rover_api.py`, which run scripts, deploy flat with the daemon; the agent-written store must never be overwritten by a deploy |
 | `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
-| `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/drive_console.py`, `voice_chat/mock_rover.py` | whatever desk is in use | nothing to deploy |
+| `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/drive_console.py`, `voice_chat/drive_web.py`, `voice_chat/drive_web.html`, `voice_chat/console_model.py`, `voice_chat/mock_rover.py` | whatever desk is in use | nothing to deploy |
+
+`drive_web.py` serves a browser page and is still a desk program: the HTTP is at
+the desk end and the Pi answers the same six TCP connections it always has. There
+is nothing to put on the rover for it, and nothing about it that the rover can
+afford to run.
 
 See [docs/hosts.md](docs/hosts.md) for what these machines are, their addresses and
 their keys.

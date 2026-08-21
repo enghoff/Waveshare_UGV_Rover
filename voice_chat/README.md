@@ -23,11 +23,14 @@ below for why.
 The local GPU stack on MEDIA ([server.py](server.py)) is still in this directory.
 It has no desk client anymore.
 
-A second program has no model in it at all.
-[drive_console.py](drive_console.py) is a tkinter window with the rover's driving
-tools wired to buttons, and it exists because a conversation is the wrong
+A second program has no model in it at all. The drive console is the rover's
+driving tools wired to buttons, and it exists because a conversation is the wrong
 instrument for measuring one: when a turn comes back short you need the number,
-not a paraphrase of it several seconds later. See [Driving it by hand](#driving-it-by-hand).
+not a paraphrase of it several seconds later. There are two windows onto it and
+they share nearly everything — [drive_web.py](drive_web.py) serves it as a browser
+page and is the one to use, [drive_console.py](drive_console.py) is the original
+tkinter one. See [Driving it by hand](#driving-it-by-hand) and
+[In a browser instead](#in-a-browser-instead).
 
 It also carries **tools**: the model can switch the headlights, aim the camera,
 look through it, count the people it can see and start or stop face tracking.
@@ -894,6 +897,12 @@ python voice_chat\drive_console.py --rover rpi.local:8769
 python voice_chat\mock_rover.py --drive                # ...with no rover at all
 ```
 
+Everything below is true of both windows: the six connections, the pacing, the
+commentary and the two map ladders all live in
+[console_model.py](console_model.py) and neither window owns them. What the
+browser version does differently — and why the layout is the reason it exists —
+is [In a browser instead](#in-a-browser-instead).
+
 It exists because a conversation is the wrong instrument for measuring a move.
 Asking a model to turn ninety degrees and listening to what it says afterwards
 tells you what the model believed; what you need is the number the navigator
@@ -1031,6 +1040,93 @@ track slip, no coast after the power comes off and no lidar that browns out when
 the motors pull, and those are the four things that make real driving hard. It
 exercises a client; it measures nothing. Turn accuracy is measured on the rover,
 with [lidar_slam/calibrate_turn.py](../lidar_slam/calibrate_turn.py).
+
+### In a browser instead
+
+[drive_web.py](drive_web.py) is the same console as a web page, and it is the one
+to reach for. It exists because the tkinter window cannot fit on a screen: every
+panel in it is at a fixed size in a fixed place, so on a 1080p display the turns
+table and the transcript — much of the reason the thing was built — sat below the
+bottom edge with no scrollbar anywhere to reach them, and widening the window only
+added empty space beside the camera. A page scrolls, and its panels rewrap to as
+many columns as the window can hold at a readable width, which on a phone comes
+out as one column in the right order.
+
+```powershell
+python voice_chat\drive_web.py                      # finds the rover, opens a tab
+python voice_chat\drive_web.py --rover 192.168.1.47:8769
+python voice_chat\drive_web.py --bind 0.0.0.0       # ...and let the phone in
+```
+
+**The server runs on the desk, not on the rover**, and that is the whole answer to
+whether a Pi 1 can afford a web console. It cannot, and it is never asked to. What
+is on the Pi is `rover_daemon.py`, unchanged, answering the same six TCP
+connections with the same JSON as before; the HTTP, the event stream and the page
+are all at this end. Nothing is deployed to the rover for this and nothing needs
+restarting there. Measured against the actual rover, a map still costs it 0.5 s to
+draw and a warm `camera_jpeg` 0.6 s — the same numbers the tkinter console gets,
+because it is the same call.
+
+**The browser gives two things back.** It reads JPEG, so a frame goes straight
+into an `<img>` — which deletes the one dependency the tkinter console had. That
+console needs OpenCV solely because Tk reads PNG, GIF and PPM and the rover can
+only send JPEG, and it carries a fallback that writes the frame to a file and
+tells you where when the import fails. All of that is gone. And a browser scales
+pictures, so the map can be drawn at whatever size the Pi can afford and then
+fitted to the panel with `image-rendering: pixelated`, which on 5 cm squares drawn
+without antialiasing loses nothing.
+
+That makes the map's size an answer rather than a guess. The tkinter version has
+"smaller" and "bigger" and a box of a fixed size to put the result in; here the
+page reports what its column actually came out as and the server asks for the rung
+*below* that width — rounded down, because a picture costs the rover roughly its
+own area to draw and anything past the panel is thrown away by the scaler.
+Measured on the rover: a 812 px panel asks for 800 and gets 484 px back at 4
+px/cell, because at 12 m across a cell is already down to three pixels and the
+console says so rather than leaving "bigger" looking broken. Pressing the size
+buttons by hand turns the fitting off, or the next window resize would undo the
+press.
+
+**The page holds no state of its own.** Everything on screen is drawn from one
+JSON object the server pushes down a `text/event-stream`, and every control posts
+an action and then waits to be told what happened. That is the same rule that
+makes face tracking polled rather than remembered: a button that greys itself out
+because you pressed it lies the moment the rover refuses. It also means two
+browsers can be open on one rover and agree with each other — the header says how
+many are watching.
+
+The pictures do not travel in that stream. A map is tens of kilobytes of base64
+and the stream carries a fresh state ten times a second, so the map and the frame
+are ordinary HTTP resources — `/map.png`, `/frame.jpg` — and the state carries a
+counter that goes up when a new one arrives. The page changes the `src` when the
+counter moves, the browser fetches it once, and everything in between is a few
+kilobytes of numbers.
+
+**Closing the tab stops the rover.** The tkinter window promises that from
+`WM_DELETE_WINDOW`; a browser tab that goes away says nothing at all and the
+server outlives it. So the promise is kept from the server's side: the event
+stream *is* the browser being present, and losing the last one for more than a
+couple of seconds while a move is running sends the stop on the connection that
+carries nothing else. A reload drops the stream for a fraction of that and is
+covered by the grace; two tabs open means the count never reaches zero. Ctrl-C
+does the same.
+
+`--bind 0.0.0.0` puts it on the LAN so a phone can drive the rover, and there is
+no password on it. Anyone who can reach the port can drive.
+
+**What both consoles share** is [console_model.py](console_model.py): the six
+channels, every polling interval, the status fields and their alarms, and the
+sentences the navigator's mid-move commentary is turned into. Almost nothing that
+matters about either window is tkinter or HTML — which connection a call goes down
+and what "replanning (#2) — the corridor closed" is made of are questions about a
+rover. The browser is sent that English already assembled rather than being given
+a copy of the rules to apply itself, for the same reason the clients fetch tool
+schemas from the daemon instead of keeping their own: two copies of a rule
+disagree eventually, and the disagreement is invisible because both sides look
+plausible.
+
+The tkinter console stays. It is the one that measured all of this, it needs no
+browser, and `selftest.py` covers the shared model either way.
 
 ## Tuning
 
@@ -1594,7 +1690,10 @@ hours, announced by the socket closing.
 
 `selftest.py` covers the pieces where a bug is silent rather than loud: the
 sentence splitter, the endpointer, history trimming, the sniffer that keeps a
-tool call from being spoken aloud, the line to the rover daemon, and — for the
+tool call from being spoken aloud, the line to the rover daemon, the drive
+consoles’ shared model — the mid-move commentary, the status alarms, which map to
+ask for at a given panel width, and the rule that stops a rover once the last
+browser has gone — and, for the
 hosted path — the prompt reader, the `/frame` server, the playback bookkeeping a
 barge-in depends on, and the session protocol against a service that only writes
 down what it was told. What the daemon *does* with a call has its own checks, in

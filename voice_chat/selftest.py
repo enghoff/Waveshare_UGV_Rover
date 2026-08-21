@@ -1095,12 +1095,12 @@ def test_move_commentary() -> None:
     those sentences is worth a line in the transcript.
     """
     try:
-        import drive_console
+        import console_model
     except Exception as exc:
-        SKIP.append(f"move commentary ({type(exc).__name__}: needs tkinter)")
+        SKIP.append(f"move commentary ({type(exc).__name__})")
         return
 
-    say = drive_console.move_sentence
+    say = console_model.move_sentence
 
     # A rover that has not been asked for anything, and one too old to publish
     # this at all. Neither may invent a commentary.
@@ -1156,7 +1156,7 @@ def test_move_commentary() -> None:
     # of them. The rule is whether it says anything the request line above it did
     # not -- so the planner's verdict does and a turn restating the angle it was
     # given does not.
-    logged = drive_console.worth_logging
+    logged = console_model.worth_logging
     check("the transcript takes the planning", logged(click), True)
     check("...and the route that came of it", logged(accepted), True)
     check("...and the replan", logged(again), True)
@@ -1370,18 +1370,181 @@ def test_choosing_a_network() -> None:
 def test_signal_verdict() -> None:
     """One word for a dBm reading, which is what gets the colour in the panel."""
     try:
-        import drive_console
+        import console_model
     except Exception as exc:
-        SKIP.append(f"signal verdict ({type(exc).__name__}: needs tkinter)")
+        SKIP.append(f"signal verdict ({type(exc).__name__})")
         return
 
-    verdict = drive_console._wifi_verdict
+    verdict = console_model.wifi_verdict
     check("a strong link", verdict(-41), "good")
     check("a fading one", verdict(-68), "fair")
     check("one the wifi keeper is about to act on", verdict(-77), "poor")
     # No reading at all is the interface not reporting a signal, which is not good
     # news and must not be coloured as though it were.
     check("and no reading at all", verdict(None), "poor")
+
+
+def test_map_size_for_a_panel() -> None:
+    """Which map to ask the rover for once the browser has said how wide its panel
+    turned out to be.
+
+    Rounded *down* the ladder, and that is not a detail: the picture costs the Pi
+    roughly its own area to draw, so a panel a few pixels over a rung must not buy
+    the rung above it. Everything the browser gains by asking for more it throws
+    away again scaling the picture back into the panel.
+    """
+    try:
+        from console_model import size_for_panel
+    except Exception as exc:
+        SKIP.append(f"map size for a panel ({type(exc).__name__})")
+        return
+
+    check("a panel exactly on a rung takes that rung", size_for_panel(480), 480)
+    check("...and one just over it does not take the next", size_for_panel(639), 480)
+    check("...until it reaches it", size_for_panel(640), 640)
+    # A phone in one column, or a window dragged narrow. There is no rung below the
+    # smallest, and asking for nothing is not an option.
+    check("a panel narrower than any rung takes the smallest", size_for_panel(210), 320)
+    check("and a very wide one stops at the largest", size_for_panel(4000), 800)
+
+
+def test_web_console() -> None:
+    """The browser console's model, with no browser and no rover.
+
+    Everything the page draws comes out of `Session`, so these are the panels
+    themselves: the alarms that make a silent lidar unmissable, which networks are
+    offered a join button, and how the map's two ladders answer a resized window.
+    None of it needs a socket -- `Session` connects when its pump runs, and the pump
+    is not started here.
+    """
+    try:
+        import drive_web
+    except Exception as exc:
+        SKIP.append(f"web console ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+
+    # The status panel. The formatting is shared with the tkinter console; what is
+    # tested here is that the alarm flag reaches the page, because a lidar that has
+    # gone silent under motor load makes every other number on that panel a lie.
+    session.show_status({"ok": True, "lidar_live": False, "lidar_ok": False,
+                         "estop": False, "position_trusted": True, "speed_ms": 0.0,
+                         "pose": {"x_m": 1.0, "y_m": -0.5, "heading_deg": 90.0}})
+    rows = dict((row[0], row) for row in session.status_rows)
+    check("a silent lidar says so in capitals", rows["lidar"][1], "SILENT")
+    check("...and is flagged so the page can colour it", rows["lidar"][2], True)
+    check("a stale match is not an alarm on its own", rows["matched"][2], False)
+    check("and the pose reads as a place",
+          session.pose_text, "x +1.00  y -0.50  +90.0 deg")
+
+    # A status the rover could not answer must blank the numbers rather than leave
+    # the last good ones on screen looking current.
+    session.show_status({"ok": False, "error": "no navigator"})
+    check("a refused status blanks the rows",
+          set(row[1] for row in session.status_rows), {"-"})
+    check("...and says why", session.status_error, "no navigator")
+
+    # The network list. Joinable means configured and not the one already in use --
+    # a network the rover holds no passphrase for is worth seeing in the list and is
+    # not worth a button.
+    session.show_wifi({"ok": True, "connected": "Sonic", "level_dbm": -42,
+                       "address": "192.168.1.47", "networks": [
+                           {"ssid": "Sonic", "signal": 80, "in_use": True,
+                            "configured": True},
+                           {"ssid": "Sonic5", "signal": 61, "in_use": False,
+                            "configured": True},
+                           {"ssid": "next door", "signal": 44, "in_use": False,
+                            "configured": False}]})
+    offered = [n["ssid"] for n in session.wifi["networks"] if n["joinable"]]
+    check("only a network it has a passphrase for is offered", offered, ["Sonic5"])
+    check("the one it is on is named as such",
+          session.wifi["networks"][0]["note"], "on it")
+    check("and the strong link is coloured as one", session.wifi["verdict"], "good")
+
+    # An older daemon has none of these calls. Say so once and stop asking, rather
+    # than painting the panel red every five seconds for the rest of the session.
+    quiet = drive_web.Session(None, 3.0, 480)
+    quiet.show_wifi({"ok": False, "error": "no such tool: wifi_status"})
+    check("a daemon too old for the network calls is asked once",
+          quiet.wifi_ok, False)
+
+    # Stepping the size by hand has to turn "fit the panel" off, or the next window
+    # resize would silently undo the press.
+    session.map_settings({"fit": True})
+    session.panel_px = 700.0
+    session.fit_map()
+    check("fitting the panel picks the rung below its width", session.map_size, 640)
+    session.map_settings({"size": -1})
+    check("...and pressing smaller steps down from there", session.map_size, 480)
+    check("...and stops the panel choosing", session.map_fit, False)
+
+    # The map is square and the daemon says how big it came out, but a mock or an
+    # older daemon may not -- and the page sets the panel's aspect ratio from this
+    # number, so a wrong one puts a click somewhere else in the room.
+    header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + (484).to_bytes(4, "big")
+    check("the size can always be read off the picture itself",
+          drive_web._png_width(header), 484)
+
+
+def test_stopping_an_unwatched_rover() -> None:
+    """The browser console's answer to a tab being closed mid-move.
+
+    The tkinter window sends a stop from its close handler. A browser tab that goes
+    away says nothing at all and the server outlives it, so the promise is kept from
+    the server's side instead: the event stream is the browser being present, and
+    losing the last one while a move is running is treated as closing the window.
+
+    The grace is the part worth testing. A reload tears the stream down and puts it
+    back inside a few hundred milliseconds, and a console that stopped the rover for
+    that would be unreloadable during the only minute it is interesting.
+    """
+    try:
+        import drive_web
+    except Exception as exc:
+        SKIP.append(f"stopping an unwatched rover ({type(exc).__name__})")
+        return
+
+    class Fake:
+        """A channel that records rather than connects."""
+
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append(name)
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.halt = Fake()
+    session.busy_since = 100.0
+    session.busy_name = "drive"
+
+    # Somebody is looking, so nothing happens however long the move runs.
+    session.listeners = 1
+    session.mind_the_watchers(100.0)
+    session.mind_the_watchers(200.0)
+    check("a watched move is left alone", session.halt.sent, [])
+
+    # The stream goes. Inside the grace this is a reload, not a departure.
+    session.listeners = 0
+    session.mind_the_watchers(200.0)
+    session.mind_the_watchers(200.0 + drive_web.ORPHAN_GRACE_S / 2)
+    check("a reload does not stop the rover", session.halt.sent, [])
+
+    session.mind_the_watchers(200.0 + drive_web.ORPHAN_GRACE_S + 0.1)
+    check("but a closed tab does", session.halt.sent, ["stop_driving"])
+    # Once, not once per tick: the pump runs ten times a second, and a stop resent
+    # ten times a second would bury the transcript meant to explain it.
+    session.mind_the_watchers(260.0)
+    check("...and only once", session.halt.sent, ["stop_driving"])
+
+    # A rover doing nothing is not stopped for being unwatched. There is nothing to
+    # stop, and the line it would write in the transcript would be a lie.
+    idle = drive_web.Session(None, 3.0, 480)
+    idle.halt = Fake()
+    idle.mind_the_watchers(300.0)
+    idle.mind_the_watchers(400.0)
+    check("an idle rover is not stopped for being alone", idle.halt.sent, [])
 
 
 def main() -> int:
@@ -1402,6 +1565,9 @@ def main() -> int:
     test_move_commentary()
     test_choosing_a_network()
     test_signal_verdict()
+    test_map_size_for_a_panel()
+    test_web_console()
+    test_stopping_an_unwatched_rover()
     test_talk_session()
 
     for name in PASS:
