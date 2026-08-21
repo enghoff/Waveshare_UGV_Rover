@@ -80,7 +80,16 @@ STATE=${STATE:-/run/wifi-roam.state}
 # The three files the healthy path is read out of. Overridable so that
 # selftest.sh can hand this a rover that is not here: without that, every branch
 # below could only be exercised on a Pi with a real radio in a real house.
-CARRIER=${CARRIER:-/sys/class/net/$IFACE/carrier}
+#
+# `operstate` and not `carrier`, which is the more direct question and is a trap:
+# reading `carrier` on an interface that is not administratively up fails with
+# EINVAL rather than answering 0. That killed the awk below, which left probe()
+# printing nothing, which handed this script the healthy defaults -- so a rover
+# whose radio was switched off read as a perfect link, three times a minute, with
+# nothing in the journal. `operstate` is a word rather than a flag and is readable
+# in every state: "up" once associated, "dormant" while the supplicant is looking,
+# "down" when the interface is not up at all.
+OPERSTATE=${OPERSTATE:-/sys/class/net/$IFACE/operstate}
 WIRELESS=${WIRELESS:-/proc/net/wireless}
 ROUTES=${ROUTES:-/proc/net/route}
 
@@ -95,9 +104,8 @@ remember() {
     [ -n "$DRY" ] || printf '%s %s\n' "$1" "$2" > "$STATE"
 }
 
-# "carrier level heard route" -- is the radio associated, how strong is the link
-# in dBm, did the driver report a signal at all, and does the interface have a
-# route.
+# "assoc level heard route" -- is the radio associated, how strong is the link in
+# dBm, did the driver report a signal at all, and does the interface have a route.
 #
 # The healthy path must not cost a single nmcli call, and barely a process either.
 # One nmcli takes 1.8 s of wall time and half a second of CPU on this Pi against
@@ -105,28 +113,44 @@ remember() {
 # SLAM on the one armv6 core. That is not tuning; it is what makes a 20-second
 # timer affordable here.
 #
+# The state word is read by the shell rather than handed to the awk below, which
+# costs nothing -- a builtin, no process, one file fewer for awk to open -- and
+# buys the difference between "not associated" and "cannot tell", deterministically:
+# a `read` from a path that is missing, is a directory or errors simply fails,
+# where the same file inside awk is a fatal error to mawk and a skipped argument
+# with a warning to gawk, and this self-tests on both.
+#
 # A route rather than an address, because it comes free in the same /proc pass: a
 # wlan0 entry in /proc/net/route only exists once the interface has an address, so
 # its absence is the associated-but-DHCP-failed case.
 probe() {
-    if [ -r "$CARRIER" ]; then
-        awk -v i="$IFACE" -v c="$CARRIER" -v w="$WIRELESS" -v r="$ROUTES" '
-            FILENAME == c                  { carrier = $1 + 0 }
-            FILENAME == w && $1 == i ":"   { level = $4 + 0; heard = 1 }
-            FILENAME == r && $1 == i       { route = 1 }
-            END { printf "%d %d %d %d\n", carrier, level, heard, route }
-        ' "$CARRIER" "$WIRELESS" "$ROUTES" 2>/dev/null
-    else
-        # No such interface: the dongle is out, or the kernel renamed it.
+    if ! read -r state 2>/dev/null < "$OPERSTATE"; then
+        # No such interface: the dongle is out, or the kernel renamed it. Not a
+        # reason to keep quiet -- it is the plainest fault there is.
         echo "0 0 0 0"
+        return
     fi
+    assoc=0
+    [ "$state" = up ] && assoc=1
+    awk -v i="$IFACE" -v w="$WIRELESS" -v r="$ROUTES" -v a="$assoc" '
+        FILENAME == w && $1 == i ":"   { level = $4 + 0; heard = 1 }
+        FILENAME == r && $1 == i       { route = 1 }
+        END { printf "%d %d %d %d\n", a, level, heard, route }
+    ' "$WIRELESS" "$ROUTES" 2>/dev/null
 }
 
-# The four trailing values are defaults for an awk that printed nothing at all,
-# and they say "healthy" on purpose: a watchdog that cannot read the system should
-# stay out of the way rather than thrash a link it knows nothing about.
-set -- $(probe) 1 0 1 1
-carrier=$1 level=$2 heard=$3 route=$4
+# A dash where the awk printed nothing at all, which now takes /proc itself being
+# unreadable rather than merely a radio that is off. Reading nothing still means
+# doing nothing -- a watchdog that cannot read the system should stay out of the
+# way rather than thrash a link it knows nothing about -- but it says so now
+# instead of substituting a healthy link, because the silent version of this is
+# what let a rover with its radio switched off look fine for fifteen minutes.
+set -- $(probe) - - - -
+if [ "$1" = "-" ]; then
+    say "cannot read the state of $IFACE; leaving the link alone"
+    exit 0
+fi
+assoc=$1 level=$2 heard=$3 route=$4
 
 strikes=0
 last=0
@@ -136,7 +160,7 @@ last=0
 case $strikes in '' | *[!0-9]*) strikes=0 ;; esac
 case $last in '' | *[!0-9]*) last=0 ;; esac
 
-if [ "$carrier" = 1 ] && [ "$route" = 1 ] && [ "$heard" = 1 ] &&
+if [ "$assoc" = 1 ] && [ "$route" = 1 ] && [ "$heard" = 1 ] &&
         [ "$level" -gt "$LOW" ]; then
     # Nothing to do, and nothing to say: the journal would be nothing else.
     [ "$strikes" -ne 0 ] && remember 0 "$last"
@@ -145,7 +169,7 @@ fi
 
 # Something is wrong. Which of the four things it is decides how patient to be.
 strikes=$((strikes + 1))
-if [ "$carrier" != 1 ]; then
+if [ "$assoc" != 1 ]; then
     why="not associated"
 elif [ "$heard" != 1 ]; then
     why="not reporting a signal"
@@ -159,7 +183,7 @@ now=$(date +%s)
 since=$((now - last))
 remember "$strikes" "$last"
 
-if [ "$carrier" = 1 ]; then
+if [ "$assoc" = 1 ]; then
     if [ "$strikes" -lt "$STRIKES" ]; then
         say "$IFACE $why ($strikes of $STRIKES)"
         exit 0
@@ -172,31 +196,58 @@ elif [ "$since" -lt "$RETRY" ]; then
     say "$IFACE $why, and it last looked around ${since}s ago"
     exit 0
 elif [ "$strikes" -ge "$WEDGED" ]; then
-    # Minutes of nothing at all. Taking the radio down and up costs nothing that
-    # is working, and it clears a supplicant that has lost track of its interface
-    # -- the cheap half of what a power cycle does. A dongle that has genuinely
-    # fallen off the USB bus needs the other half, and a person.
-    say "$IFACE $why after $strikes checks; cycling the radio"
+    # Minutes of nothing at all. Restarting the supplicant clears one that has
+    # lost track of its interface -- the cheap half of what a power cycle does --
+    # and it costs nothing that is working, because nothing is. A dongle that has
+    # genuinely fallen off the USB bus needs the other half, and a person.
+    #
+    # This used to take the radio down and up instead, and that is the one mistake
+    # in here worth naming: `nmcli radio wifi off` writes NetworkManager's own
+    # state file, which NM restores at boot. A power cut in the three seconds
+    # before the `on` -- or an `on` that simply failed, which nothing checked --
+    # therefore left the rover soft-blocked on that boot and on every boot after,
+    # with no radio to reach it by and no journal surviving the reboot to say why.
+    # Restarting a service leaves behind nothing that a boot does not undo.
+    say "$IFACE $why after $strikes checks; restarting the supplicant"
     remember 0 "$now"
-    if [ -z "$DRY" ]; then
-        nmcli radio wifi off
-        sleep 3
-        nmcli radio wifi on
+    if [ -z "$DRY" ] && ! systemctl try-restart wpa_supplicant.service; then
+        say "could not restart the supplicant"
     fi
     exit 0
 fi
 
-# One last look before spending a scan and an association on it. Three bad reads
-# in a row is already unlikely to be noise, but this costs 64 ms against a
-# reconnect the rover would feel, and it is the one check that catches a link that
-# came back while the strikes were being counted.
-if [ "$carrier" = 1 ]; then
-    set -- $(probe) 1 0 1 1
+# One thing left before spending a scan and an association, and which one depends
+# on the fault.
+if [ "$assoc" = 1 ]; then
+    # A link that is merely bad gets one last look. Three bad reads in a row is
+    # already unlikely to be noise, but this costs 64 ms against a reconnect the
+    # rover would feel, and it is the one check that catches a link that came back
+    # while the strikes were being counted.
+    set -- $(probe) - - - -
     if [ "$1" = 1 ] && [ "$3" = 1 ] && [ "$4" = 1 ] && [ "$2" -gt "$LOW" ]; then
         say "$IFACE came back to $2 dBm on the way to switching; staying"
         remember 0 "$last"
         exit 0
     fi
+elif [ "$(nmcli radio wifi 2>/dev/null)" = disabled ]; then
+    # A link with no association at all may have no radio to associate with, and
+    # nothing further down can help while that switch is off: a scan comes back
+    # empty and there is no radio for `con up` to bring a profile up on. Worse, NM
+    # keeps the switch in a state file and restores it at boot, so an
+    # `nmcli radio wifi off` from any source -- an older copy of this script, a
+    # hand at a console -- outlives every reboot until something turns it back on.
+    #
+    # This is that something, and turning it on is the only thing in this script
+    # that touches that switch at all. Nothing here ever turns it off.
+    #
+    # Asked here rather than at the top because it costs an nmcli call, so only a
+    # rover that is already off the air pays for it, at most once a minute.
+    say "$IFACE $why, and the radio is switched off; turning it on"
+    remember 0 "$now"
+    if [ -z "$DRY" ] && ! nmcli radio wifi on; then
+        say "could not turn the radio on"
+    fi
+    exit 0
 fi
 
 # One scan, and it answers two questions at once: the IN-USE row names the AP we

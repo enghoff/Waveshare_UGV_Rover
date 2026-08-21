@@ -61,7 +61,7 @@ fi
 install -m 755 "$HERE/wifi_roam.sh" /usr/local/sbin/wifi_roam.sh
 install -m 755 "$HERE/wifi_ctl.sh" /usr/local/sbin/wifi_ctl.sh
 install -m 644 "$HERE/wifi-roam.service" "$HERE/wifi-roam.timer" \
-    /etc/systemd/system/
+    "$HERE/wifi-radio-on.service" /etc/systemd/system/
 
 # The daemon runs as `admin` and needs two privileged things -- a scan and a
 # switch -- for the console's network panel. This is the narrow way to give it
@@ -86,5 +86,12 @@ else
 fi
 rm -f "$tmp"
 systemctl daemon-reload
+
+# The radio switch first, and `--now` on purpose: NetworkManager restores that
+# switch from a state file at boot, so a rover found with its wifi off stays off
+# however healthy everything else is, and running this script is then the repair
+# as well as the install.
+systemctl enable --now wifi-radio-on.service
 systemctl enable --now wifi-roam.timer
+echo "radio: $(nmcli radio wifi)"
 systemctl list-timers --no-pager wifi-roam.timer

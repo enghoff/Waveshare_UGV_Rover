@@ -34,13 +34,28 @@ gitignored.
 `wifi_roam.sh` runs once per tick and asks two questions in order.
 
 **Is anything wrong?** Answered without touching NetworkManager at all, out of
-`/sys/class/net/wlan0/carrier`, `/proc/net/wireless` and `/proc/net/route` in a
-single `awk` pass: is the interface associated, does it have a route — which it
-only has once DHCP has answered — and is the signal above −78 dBm. If all three
-hold, the script exits without a word, in about 64 ms. Going through `nmcli`
-instead would cost 1.8 seconds of wall time and half a second of CPU on this Pi,
-three times a minute, on the one armv6 core that is also running SLAM. The cheap
-path is not an optimisation; it is the reason the timer can run this often.
+`/sys/class/net/wlan0/operstate`, `/proc/net/wireless` and `/proc/net/route`: is
+the interface associated, does it have a route — which it only has once DHCP has
+answered — and is the signal above −78 dBm. If all three hold, the script exits
+without a word, in about 64 ms. Going through `nmcli` instead would cost 1.8
+seconds of wall time and half a second of CPU on this Pi, three times a minute, on
+the one armv6 core that is also running SLAM. The cheap path is not an
+optimisation; it is the reason the timer can run this often.
+
+`operstate`, and not `carrier`, which is the more obvious question and took the
+rover off the network for an evening. Reading `carrier` on an interface that is not
+administratively up fails with `EINVAL` rather than answering `0`: the `awk` that
+read it died on the spot, printed nothing, and the fallback for an `awk` that
+printed nothing was four values meaning *healthy* — on the sound principle that a
+watchdog unable to read the system should leave the link alone rather than thrash
+it. The result was a flawless link reported for a rover whose radio was switched
+off, three times a minute, with not one line in the journal. `operstate` is a word
+rather than a flag and is readable in every state: `up` once associated, `dormant`
+while the supplicant is looking, `down` when the interface is not up at all. It is
+read by the shell rather than handed to `awk`, which costs nothing — a builtin, and
+one file fewer to open — and turns "no such interface" into a plain answer instead
+of an error. The fallback is still there for a `/proc` that cannot be read, but it
+now says so out loud instead of assuming the best.
 
 **Where should it go?** Only reached when something is wrong. It scans, and takes
 the strongest of the three networks other than the one it is on, provided that one
@@ -80,10 +95,42 @@ this was being written. Hammering a radio that is already down, three times a
 minute, is how a rover that would have recovered on its own stays offline instead.
 
 And after three minutes of nothing working at all, the script stops trying to
-choose and tries to repair: it takes the radio down and up, which costs nothing
-that is working and clears a supplicant that has lost track of its interface. That
-is the cheap half of what a power cycle does. A dongle that has genuinely fallen
-off the USB bus needs the other half, and a person.
+choose and tries to repair: it restarts `wpa_supplicant`, which costs nothing that
+is working and clears a supplicant that has lost track of its interface. That is
+the cheap half of what a power cycle does. A dongle that has genuinely fallen off
+the USB bus needs the other half, and a person.
+
+## The radio switch, and why nothing here turns it off
+
+That repair used to be `nmcli radio wifi off`, three seconds, and `nmcli radio
+wifi on`. What that cost is worth writing down, because what replaced it is a rule
+rather than a patch.
+
+`nmcli radio wifi off` is not a transient act. NetworkManager keeps the switch in
+`/var/lib/NetworkManager/NetworkManager.state` and restores it at every boot —
+`rfkill: Wi-Fi enabled by radio killswitch; disabled by state file` is the line it
+logs while doing so. So a power cut inside those three seconds, or an `on` that
+merely failed, which nothing checked, left the rover soft-blocked on that boot and
+on every boot after it: hardware killswitch enabled, `wlan0` parked at
+`unavailable`, NetworkManager not even attempting to associate. The only other way
+into a rover is an ethernet cable, and that is unplugged the moment it drives off.
+This Pi has no console, and its journal lives in RAM, so the reboot that made the
+fault permanent also took away the evidence for it.
+
+Two changes, so that neither half of that can happen again:
+
+- **Nothing in `wifi_roam.sh` turns the radio off.** The only thing it does to
+  that switch is turn it *on*, which it checks for whenever the link has no
+  association at all — one `nmcli` call, on a path that is already broken, at most
+  once a minute. Nothing else it could do would work while the switch is off
+  anyway: the scan comes back empty and there is no radio for `con up` to bring a
+  profile up on. The self-test asserts the absence across every scenario in the
+  file, not only in the repair.
+- **`wifi-radio-on.service` asks for the radio on at every boot.** One `nmcli`
+  call, ordered after NetworkManager, idempotent and silent on a radio that is
+  already on. It is what makes the guarantee independent of how the switch came to
+  be off — this script, an older copy of it, or a hand at a console: no setting of
+  that switch survives a reboot.
 
 The timer also waits **three minutes after boot** before its first check, for the
 same reason. NetworkManager takes 46 seconds of this Pi's boot on its own and the
@@ -126,21 +173,28 @@ it is breaking; what actually happened comes back as `last_join` on the next
 ## Checking it without a rover
 
 ```bash
-./selftest.sh      # 24 assertions, anywhere: the workstation, the Pi, a VM
+./selftest.sh      # 33 assertions, anywhere: the workstation, the Pi, a VM
 ```
 
 It takes a second or two on a desk and a couple of minutes on the rover, which is
 not a hang: it runs the script thirty-odd times, and on that Pi a process spawn
 under load costs a hundred times what it does here.
 
-Every input the script reads and the one command it acts through are overridable,
-so the self-test hands it a fake `/proc` and a fake `nmcli` and drives it through
-all of it: healthy, fading, recovering, associated with no address, off the air,
-off the air and staying that way, a radio that answers an empty scan, an
-association that fails, a neighbourhood with nothing worth moving to, and a state
-file left half written. The interesting branches are the ones that only happen
-when something has gone wrong, and waiting for a real dongle to go wrong is not a
-test strategy.
+Every input the script reads and both commands it acts through are replaceable,
+so the self-test hands it a fake `/proc`, a fake `nmcli` and a fake `systemctl`,
+and drives it through all of it: healthy, fading, recovering, associated with no
+address, off the air, off the air and staying that way, an interface that is not
+even up, no interface at all, a radio somebody switched off, a switch that will
+not move, a radio that answers an empty scan, an association that fails, a
+neighbourhood with nothing worth moving to, a `/proc` that cannot be read, and a
+state file left half written. The interesting branches are the ones that only
+happen when something has gone wrong, and waiting for a real dongle to go wrong is
+not a test strategy.
+
+Two of those scenarios are there because they were missed once. An interface that
+is not up and a radio that is switched off both used to read as a healthy link,
+and the assertion that spans the whole file — that no scenario in it ever emits
+`radio wifi off` — is the one that keeps the rover recoverable by rebooting it.
 
 One path is not covered there and was verified on the hardware instead: the second
 look at the signal just before switching. It reads the same files twice in one run,
@@ -160,7 +214,13 @@ set is `autoconnect-retries 0`, unlimited: NetworkManager's default of four
 attempts blocks a profile after a handful of failures, which is precisely what a
 rover parked out of range does before somebody carries it back inside.
 
+It installs two units, not one: `wifi-roam.timer`, which runs the script, and
+`wifi-radio-on.service`, which asks for the radio on at boot. Both are enabled
+with `--now`, so running `install.sh` is also the repair for a rover found with
+its radio switched off.
+
 ```bash
+ssh rpi 'nmcli radio wifi'                                 # enabled, or nothing works
 ssh rpi 'systemctl list-timers --no-pager wifi-roam.timer'
 ssh rpi 'journalctl -u wifi-roam --since -1h --no-pager'   # silent when all is well
 ssh rpi 'sudo wifi_roam.sh -n'                             # one check, changes nothing

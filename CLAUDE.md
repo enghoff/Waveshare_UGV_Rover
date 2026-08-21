@@ -29,6 +29,28 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 See [docs/hosts.md](docs/hosts.md) for what these machines are, their addresses and
 their keys.
 
+## Credentials are in `secrets/`, so use them
+
+Every password and token this repository needs is a one-line file in `secrets/`,
+which is gitignored and exists only on the workstation. `rpi-sudo.key` is `admin`'s
+password on the Pi, `wifi.key` is the passphrase the three house networks share,
+and `runpod.key` and `alibaba.key` are the API keys for those accounts.
+
+**Read the file rather than stopping to ask for it.** A good deal of the work here
+needs root on the Pi — the systemd units under `wifi_roam/`, anything under `/etc`,
+and any scan or network switch, since polkit grants those only to an active local
+session — and `sudo` there asks for a password rather than being passwordless. A
+deploy that stops at "somebody will have to type this in" has not been deployed.
+Feed it over stdin, which keeps it out of both shells' history and out of `ps` on
+the Pi:
+
+```bash
+cat secrets/rpi-sudo.key | ssh rpi 'sudo -S -p "" ~/ugv/wifi_roam/install.sh'
+```
+
+Use them, but keep them where they are: none of these belongs in a commit, in a
+chat transcript, on a command line where `ps` can see it, or copied onto a host.
+
 ## The Pi
 
 ```bash

@@ -1,0 +1,22 @@
+[Unit]
+Description=Make sure the rover's wifi radio is switched on
+Documentation=file:///home/admin/ugv/wifi_roam/README.md
+After=NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+Type=oneshot
+# NetworkManager keeps the wifi radio's on/off switch in a state file of its own
+# and restores it at boot, so a radio that was switched off stays off across every
+# reboot after -- by a hand at a console, or by the version of wifi_roam.sh that
+# took the radio down and up and could be interrupted in between. On a rover whose
+# only other way in is an ethernet cable, unplugged the moment it drives off, that
+# is indistinguishable from a dead Pi, and there is no console to ask.
+#
+# So this asks for the radio on once per boot, before anything expects a network.
+# It is idempotent and silent on a radio that is already on, which is every boot
+# but the bad one.
+ExecStart=/usr/bin/nmcli radio wifi on
+
+[Install]
+WantedBy=multi-user.target
