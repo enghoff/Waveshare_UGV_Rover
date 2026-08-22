@@ -89,7 +89,23 @@ struct slam2d {
 
 void slam2d_default_config(slam2d_config *cfg)
 {
-    cfg->grid_cells   = 400;        /* 20 m square at 5 cm */
+    /* 40 m square at 5 cm. The rover starts at the centre, so this is what it is
+     * really saying: 20 m of reach in every direction from wherever it was switched
+     * on. It was 400 cells -- 10 m of reach -- and a run down a hallway and into the
+     * next room reached the edge, at which point everything past it reads as
+     * never-seen on the map because there is nowhere to write it down. On the
+     * picture that is a dead straight line with the room cut off along it.
+     *
+     * Cheap to widen, and the reason is worth knowing before widening it further: a
+     * revolution's work is the scan, not the map. Every beam is walked a cell at a
+     * time and a hit stamps a small kernel around itself, so the cost follows the
+     * ranges the sensor reported and does not care how much grid is sitting around
+     * them; the only passes over the whole thing are the calloc here and the memset
+     * on clear. What growing this does spend is memory -- two bytes a cell, so 320 kB
+     * becomes 1.3 MB -- and a wider row stride for the matcher to stride over, which
+     * is why test_timing reports the cost per revolution on the host it was built
+     * on. Read it after changing this. */
+    cfg->grid_cells   = 800;
     cfg->resolution_m = 0.05f;
 
     cfg->mount_deg    = 90.0f;      /* this rover; matches lidar/lidar_view.py */

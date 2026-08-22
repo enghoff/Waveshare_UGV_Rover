@@ -219,7 +219,7 @@ def _plan_once(grid, resolution_m, occupied_at, start_xy, goal_xy, inflate_m,
         return None, "that place has not been seen yet"
 
     # Crop to the two points plus a margin, so A* is a small search rather than a
-    # walk of the whole 20 m grid.
+    # walk of the whole grid.
     margin = (max(12, int(math.ceil(CROP_MARGIN_M / resolution_m)))
               if margin_cells is None else max(1, int(margin_cells)))
     x0 = max(0, min(sx, gx) - margin)

@@ -975,7 +975,7 @@ and two accounts of one ending, a tenth of a second apart, read like two things
 having happened.
 
 **The map zooms, and zooming does not resize it.** "Across" is how many metres are
-in frame; `-` and `+` step it through a fixed ladder from 1.5 m to 12 m so the same
+in frame; `-` and `+` step it through a fixed ladder from 1.5 m to 24 m so the same
 extents come back and one picture can be compared with an earlier one. "Size" is how
 big a picture to ask for, which is a different question, and it is the one that costs
 the rover — the area goes as its square and drawing is interpreted Python on a Pi 1.
@@ -985,8 +985,20 @@ two rather than taking it as an argument, because a client that picks the
 magnification gets a picture that changes size every time the view widens, which is
 rescaling the window rather than zooming. Asked for 480 px, the ladder comes back
 465–492 px from 1.5 m across to 12 m; the same ladder at a fixed magnification ran
-240 px to 1200 px. It stops at 12 m because a cell must be a whole number of pixels
-and by then it is down to two. The line under the buttons says what actually arrived.
+240 px to 1200 px.
+
+The top two rungs — 16 m and 24 m across — break that promise, and are there anyway.
+A cell has to be a whole number of pixels, and past 12 m across it is already down to
+two, so the widest views come back smaller and coarser than the size asked for rather
+than larger: 642 px at 2 px/cell and 481 px at 1, against the 640 requested. That is
+the honest trade for being able to see a floor of a house at once instead of a room,
+and the line under the buttons says what actually arrived. Read the wide rungs for the
+shape of a place and the way back through it; read the close ones for anything the
+rover is about to drive into. The pose still drifts, which is the real reason not to
+plan a route home off the widest picture, and the caption says so too. Neither rung
+costs the rover more than the middle of the ladder — measured on the rover, 2.3 s and
+2.5 s against 2.4 s at 12 m across, because the cost follows the size of the picture
+and the wide rungs make it smaller.
 
 The size itself is an answer rather than a guess, because a browser scales pictures:
 the map can be drawn at whatever the Pi can afford and then fitted to the panel with

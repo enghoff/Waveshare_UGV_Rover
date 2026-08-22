@@ -76,6 +76,25 @@ ends of it will not meet. Everything downstream should treat the pose as good
 locally and untrustworthy globally: fine for "is there a wall 40 cm ahead", wrong
 for "return to where I started".
 
+**An unbounded map.** The grid is allocated once at a fixed size — 800×800 cells at
+5 cm, so 40 m square with the rover starting at the middle of it, which is 20 m of
+reach in every direction from wherever it was switched on. Past that edge a room is
+driven through and not written down: the beams fall outside the array and are
+dropped, so the map shows a dead straight line with never-seen grey beyond it. That
+line is the map running out, not a wall.
+
+It is a fixed size rather than a growing one because there is nothing to gain from
+growing it. A revolution's work is the scan and not the map — each beam is walked a
+cell at a time and each hit stamps a small kernel around itself, so the cost follows
+the ranges the sensor reported and not how much grid is lying around them. Widening
+it therefore costs memory and nothing else: two bytes a cell, 1.3 MB at this size,
+against 474 MB of RAM. Measured on the Pi, doubling the grid from 400 cells moved the
+cost per revolution from 58.23 ms to 58.10 ms, which is to say not at all — the
+matcher's working set is the room around the rover either way. So it is set large
+enough for a floor of a house and left alone. `run_slam.py --cells` changes it for a
+run; `slam2d_default_config` is where a rover that needs a different one should say
+so, and `test_timing` in `selftest.c` is what to read afterwards.
+
 ## Building and running
 
 The library is compiled per-machine and is not committed — nothing else in this
@@ -899,7 +918,7 @@ revolutions are mapped and matched.
 holds still and the arrow turns, or the heading it has now, so the arrow holds still
 and the room turns underneath it. The second needs the grid *sampled* through a
 rotation rather than sliced, which incidentally fixed something the slicing got wrong
-— a crop running off the edge of the 20 m grid used to come back as a smaller, and
+— a crop running off the edge of the grid used to come back as a smaller, and
 sometimes not even square, picture. Off-grid now reads as never-seen, which is what
 it is. A rotation is exactly the sort of thing that looks plausible while being a
 quarter turn or a mirror out, so `python mapimg.py` checks it against a wall whose

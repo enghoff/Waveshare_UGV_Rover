@@ -57,14 +57,18 @@ TURN_PRESETS_DEG = (15, 45, 90)
 
 # How far each way the map covers, as a ladder rather than a zoom multiplier, so the
 # same handful of extents come back and one picture can be compared with an earlier
-# one.
+# one. The steps go up by a third and then by a half, alternately, which is a
+# noticeable change in what is in frame without being a jump.
 #
-# It stops at 6 m -- twelve metres across -- for two reasons. The pose drifts, so a
-# wider map invites planning a route home that the map cannot support; and past there
-# the picture can no longer be held at a steady size, because a cell must be a whole
-# number of pixels and at 12 m across it is already down to two. The daemon will go
-# to 10 m for a caller that asks, and says how big what it drew came out.
-MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
+# The top two rungs are for finding your way around a whole floor rather than a
+# room, and they cost something the ones below them do not. A cell must be a whole
+# number of pixels, so past about 6 m the picture can no longer be held at the size
+# that was asked for and comes back smaller and coarser -- two pixels a cell at 16 m
+# across, and the note under the map says so. Read them for the shape of the place
+# and the way back; read the close rungs for anything the rover is about to drive
+# into. The pose still drifts over a long run, which is the real reason not to plan a
+# route home off the widest picture, and the caption says that too.
+MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
 
 # How big a picture to ask for. This is a separate control from the zoom, and the
 # separation is the point: widening the view must show more room in the same picture,

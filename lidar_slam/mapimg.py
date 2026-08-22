@@ -370,7 +370,7 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
     """The map around the rover as PNG bytes, plus what it shows.
 
     `half_extent_m` is how far each way to include -- a few metres, deliberately,
-    rather than the whole 20 m grid: the pose drifts, so a picture that invites
+    rather than the whole 40 m grid: the pose drifts, so a picture that invites
     global planning is a picture that misleads. `scale` is screen pixels per cell.
 
     `rover_up` picks which way is up. False, the default, points the page the way the
@@ -419,7 +419,7 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
     # the arrangement write_pgm uses and the one to_px below inverts.
     #
     # Sampling also fixes something slicing got wrong: a crop running off the edge of
-    # the 20 m grid used to come back as a smaller picture. Off-grid now reads as
+    # the grid used to come back as a smaller picture. Off-grid now reads as
     # never-seen, which it is, and the picture is the size that was asked for.
     ahead = (half_cells - np.arange(span))[:, None]
     left = (half_cells - np.arange(span))[None, :]

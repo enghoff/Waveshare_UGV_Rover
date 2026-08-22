@@ -266,8 +266,8 @@ SNAPSHOT_FRAMES = 3
 # navigator prefers the /dev/serial/by-id name, which carries the serial number.
 DEFAULT_LIDAR = "auto"
 # How much of the map goes into a picture for the model. A few metres, not the whole
-# 20 m grid: the pose drifts over a long run, so a picture wide enough to invite
-# planning a route home is a picture that will mislead.
+# grid: the pose drifts over a long run, so a picture wide enough to invite planning
+# a route home is a picture that will mislead.
 MAP_HALF_EXTENT_M = 3.0
 MAP_SCALE = 3
 # What a hand-driven client may ask for, so the window can zoom.
@@ -298,7 +298,11 @@ MAP_SCALE = 3
 # `--camera-fov` is there for a rover wearing a different lens.
 CAMERA_FOV_DEG = 130.0
 
-MAP_MAX_HALF_EXTENT_M = 10.0
+# Twelve, which is 24 m across, because the grid is 40 m across and a view has to
+# be able to hold a whole run rather than the middle of one. It was 10 while the grid
+# was 20 m, where asking for the ceiling asked for the entire map and got a picture
+# whose outer ring could only ever be off-grid grey.
+MAP_MAX_HALF_EXTENT_M = 12.0
 MAP_MAX_SCALE = 16
 MAP_MIN_PIXELS = 200
 MAP_MAX_PIXELS = 1200
@@ -2790,6 +2794,18 @@ def main() -> int | str:
             # after cron has run this, so insisting on it now would mean every
             # reboot came up without the driving tools.
             rover.nav.start()
+            # Said out loud because it is the one property of the map that decides
+            # where the rover can still be driven and nothing else reports it. The
+            # rover starts at the centre, so half of this is the reach in any
+            # direction from wherever it was switched on -- past that a room is
+            # driven through and not written down, and the map shows a straight edge
+            # with nothing beyond it.
+            cfg = rover.nav.slam.config
+            print(f"[rover] mapping {cfg.grid_cells}x{cfg.grid_cells} cells at "
+                  f"{cfg.resolution_m * 100:.0f} cm, "
+                  f"{cfg.grid_cells * cfg.resolution_m:.0f} m across, "
+                  f"{cfg.grid_cells * cfg.resolution_m / 2:.0f} m of reach from "
+                  f"where it started", flush=True)
         except Exception as error:
             # Not fatal. A rover that cannot drive itself is still a rover that can
             # light up, aim its camera and hold a conversation, and the driving tools
