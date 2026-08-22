@@ -35,6 +35,7 @@ import serial
 
 import journey
 import planner
+import usbreset
 from odometry import Odometry
 from slam2d import Slam2D, default_config
 
@@ -46,6 +47,30 @@ LIDAR_BAUD = 230400
 # and describe_surroundings went on confidently reporting the room as it had been.
 LIDAR_STALE_S = 1.0
 LIDAR_REOPEN_S = 2.0
+
+# Getting a sensor that has stopped talking to start again, as a ladder: each rung
+# is a bigger act than the one before it, and none of them is taken while the wheels
+# are turning.
+#
+# The first is closing the port and opening it again, which fixes the case the by-id
+# name was introduced for -- the adapter re-enumerated under a running daemon and
+# left this holding a handle to a device that no longer exists. Six seconds is sixty
+# missed revolutions, well past any hiccup.
+LIDAR_SILENT_S = 6.0
+# The second is resetting the USB device, and it is a different kind of act: when
+# the branch the lidar is on fails to enumerate, there is no port to open and no
+# amount of reopening will make one. Held back to half a minute because the reset
+# that reaches a wedged port is a reset of the hub above it, and that takes the
+# camera and the OAK down with it for a few seconds -- see usbreset.py. Half a
+# minute of blindness is already far past anything recoverable by waiting.
+LIDAR_RESET_AFTER_S = 30.0
+# How long to leave it before trying that again, and how far that backs off. A lidar
+# that is genuinely unplugged cannot be helped by any of this, and resetting the hub
+# every minute for the rest of the afternoon would knock the camera out each time
+# for nothing. So: a minute, then two, then four, up to a quarter of an hour, and
+# back to the start the moment a revolution arrives.
+LIDAR_RESET_COOLDOWN_S = 60.0
+LIDAR_RESET_MAX_COOLDOWN_S = 900.0
 
 # --- what "do not hit anything" means -------------------------------------------
 STANDOFF_M = 0.30          # the rule: never closer than this to anything seen
@@ -548,6 +573,28 @@ class Navigator:
         # reporting whether or not anything is being done with what it says.
         self._last_scan_at = None       # last revolution that matched and was mapped
         self._last_packet_at = None     # last revolution parsed at all
+        #: Where the lidar's adapter sits on the USB bus, as a sysfs name, kept from
+        #: the last time the port opened. Kept because it is the one thing that
+        #: cannot be looked up once the device has gone: a reset then has to be
+        #: aimed at the hub the device *was* under, and nothing on the bus still
+        #: remembers that.
+        self._lidar_usb = ""
+        #: The recovery ladder's state: when the loop started caring, when the next
+        #: reset is allowed, how long to wait after this one, how many have been
+        #: issued, and what the last one said. The last two are reported in
+        #: nav_status, because a rover that has reset its own lidar four times in an
+        #: hour has a cable problem and nobody would otherwise find out.
+        self._lidar_watch_from = None
+        self._reset_at = 0.0
+        self._reset_wait = LIDAR_RESET_COOLDOWN_S
+        self._resets = 0
+        self._reset_note = ""
+        #: How far up the bus the next reset reaches. Counted rather than decided,
+        #: because a reset can succeed and change nothing -- the ioctl returns fine
+        #: against a device that is enumerated but dead -- and without this the
+        #: recovery would spend all afternoon resetting the one thing that has
+        #: already been shown not to answer. Nothing came back, so reach higher.
+        self._reset_rung = 0
 
         #: Called with no arguments just before the wheels first move, and again
         #: once they have stopped. The daemon uses these to put face tracking down
@@ -1548,6 +1595,11 @@ class Navigator:
             self.lidar = None
             return False
         self.lidar_path = path
+        # Where it is on the bus, for the recovery that has to work after it is no
+        # longer anywhere. Best-effort: a port that is not a USB device at all --
+        # somebody testing over a pty -- simply leaves this empty and the ladder
+        # stops one rung short, which it says.
+        self._lidar_usb = usbreset.usb_path_for(path) or self._lidar_usb
         # The sensor has been spinning the whole time. The first wrap we see is a
         # remnant of the revolution we joined in the middle of; without this it
         # was stamped as the seed and later full scans would not match it, so
@@ -1563,6 +1615,95 @@ class Navigator:
             pass
         self.lidar = None
         self.lidar_path = None
+
+    def quiet_for(self):
+        """Seconds since the sensor last said anything at all, or None if it is not
+        being waited for yet.
+
+        Measured from the loop starting rather than from the first packet, so that a
+        rover whose lidar was already missing when the daemon came up is not treated
+        as a rover whose lidar has never been due. That is the case the recovery is
+        most needed in: a Pi that rebooted with the port already wedged.
+        """
+        since = self._last_packet_at or self._lidar_watch_from
+        return None if since is None else time.monotonic() - since
+
+    def _mind_the_lidar(self, now):
+        """Get the sensor talking again, escalating as far as it takes.
+
+        Called from the read loop, which is the only place that knows how long it
+        has been since anything arrived. Never during a move and never during a
+        dead-reckoned turn: the first because resetting a hub mid-drive takes the
+        camera with it and the move is already being stopped by the watchdog for
+        the same silence, the second because a suspended map is silence by design.
+        """
+        if self._driving or self._suspend_slam:
+            return
+        quiet = self.quiet_for()
+        if quiet is None or quiet < LIDAR_SILENT_S:
+            return
+
+        # Rung one: an open port that has gone quiet is a handle to something that
+        # is no longer there often enough to be worth trying first, and it costs a
+        # reopen.
+        if self.lidar is not None and quiet < LIDAR_RESET_AFTER_S:
+            self._log_event("lidar silent",
+                            f"nothing for {quiet:.0f} s, reopening the port")
+            self._drop_lidar()
+            return
+
+        # Rung two: the device, or the nearest hub above where it was.
+        if quiet < LIDAR_RESET_AFTER_S or now < self._reset_at:
+            return
+        self._drop_lidar()
+        attempt = usbreset.revive(self._lidar_usb, self._reset_rung)
+        self._resets += 1
+        self._reset_note = attempt.why
+        self._log_event("lidar reset" if attempt.ok else "lidar reset refused",
+                        f"silent for {quiet:.0f} s: {attempt.why}")
+        # Escalate first, back off second. While there is something bigger left to
+        # try, the next attempt comes at the same interval and reaches one rung
+        # higher -- resetting the device that did not answer a second time is not a
+        # second attempt at anything. Once the ladder is out, the wait doubles, so a
+        # lidar that is genuinely unplugged is not knocking the camera out every
+        # minute for the rest of the afternoon.
+        self._reset_at = now + self._reset_wait
+        if attempt.more:
+            self._reset_rung += 1
+        else:
+            self._reset_wait = min(LIDAR_RESET_MAX_COOLDOWN_S, self._reset_wait * 2)
+        # Straight away, rather than after the ordinary reopen wait: the device is
+        # a second or two from re-enumerating and there is nothing else to do until
+        # it does.
+        self._reopen_at = 0.0
+
+    def reset_lidar(self):
+        """Reset the lidar's USB device now, because somebody asked.
+
+        The same act the ladder above reaches on its own, exposed so that a person
+        watching a scan age climb does not have to wait out the cooldown -- and so
+        that the thing which fixes it is in the console rather than in an ssh
+        session. Refused while driving, for the reason the ladder does not do it
+        either: the reset takes the camera down with it.
+        """
+        if self._driving:
+            return {"ok": False, "error": "not while the rover is driving"}
+        self._drop_lidar()
+        attempt = usbreset.revive(self._lidar_usb, self._reset_rung)
+        self._resets += 1
+        self._reset_note = attempt.why
+        self._log_event("lidar reset" if attempt.ok else "lidar reset refused",
+                        f"asked for: {attempt.why}")
+        if attempt.more:
+            self._reset_rung += 1
+        self._reopen_at = 0.0
+        # The wait starts over: an asked-for reset is a fresh judgement that this is
+        # worth doing, and it should not be followed by a quarter of an hour of the
+        # automatic ladder declining to.
+        self._reset_wait = LIDAR_RESET_COOLDOWN_S
+        self._reset_at = time.monotonic() + LIDAR_RESET_COOLDOWN_S
+        return {"ok": attempt.ok, "reset": attempt.what, "reason": attempt.why,
+                "resets": self._resets, "more_to_try": attempt.more}
 
     def scan_age(self):
         """Seconds since the last revolution that matched and was mapped, or None if
@@ -1591,9 +1732,13 @@ class Navigator:
         return time.monotonic() - self._last_packet_at <= LIDAR_STALE_S
 
     def _loop(self):
+        # When this started waiting to hear from the sensor. Not the same as the
+        # first packet, which on a rover whose lidar is already missing never comes.
+        self._lidar_watch_from = time.monotonic()
         while self._run.is_set():
             if not self._open_lidar():
                 self._watchdog()
+                self._mind_the_lidar(time.monotonic())
                 time.sleep(0.05)
                 continue
             try:
@@ -1609,6 +1754,12 @@ class Navigator:
                 revolutions = self.slam.feed(chunk)
                 if revolutions:
                     self._last_packet_at = time.monotonic()
+                    # The sensor is talking, so whatever it took to get it talking
+                    # worked: the next silence starts from patience again, and from
+                    # the gentlest rung of the ladder rather than the one that
+                    # happened to be reached this time.
+                    self._reset_wait = LIDAR_RESET_COOLDOWN_S
+                    self._reset_rung = 0
                 if revolutions and not self._suspend_slam:
                     self._dropped += revolutions - 1
                     self._recovery_this_scan = False
@@ -1642,6 +1793,7 @@ class Navigator:
                         self._scans += 1
                         self._on_scan()
             self._watchdog()
+            self._mind_the_lidar(time.monotonic())
             # Keep the board's heartbeat fed even when the PWM has not changed, or
             # it stops the base mid-move.
             if (self._driving and self._last_sent
@@ -2230,6 +2382,13 @@ class Navigator:
             # what tells a healthy suspended map apart from a sensor that has died.
             "lidar_live": self.lidar_live(),
             "lidar_port": self.lidar_path,
+            "lidar_usb": self._lidar_usb,
+            # How many times this rover has had to reset its own sensor, and what
+            # came of the last one. Reported rather than merely logged because a
+            # count that climbs over an afternoon is a cable working loose, and the
+            # console is where somebody would notice.
+            "lidar_resets": self._resets,
+            "lidar_reset_note": self._reset_note,
             "scan_age_s": None if self.scan_age() is None
                           else round(self.scan_age(), 2),
         }
@@ -2694,6 +2853,144 @@ def _selftest():
     _drove(calibrating, 1.0, reason="blocked")
     assert calibrating._odom.status()["drives_measured"] == before, (
         "a drive that swung right round, or never arrived, was fitted anyway")
+
+    # --- getting a silent lidar back ----------------------------------------
+    #
+    # The ladder is the part worth checking without hardware, because every rung of
+    # it is a decision about how big an act to take and the biggest one takes the
+    # camera down with it. What cannot be checked here is whether the reset works --
+    # that is a property of the bus, and it was measured on the rover: a hub reset
+    # brought a lidar that had been gone for sixteen minutes back in four seconds.
+    issued = []
+
+    class _Blind:
+        """Just enough Navigator to ask what it would do about a quiet sensor."""
+
+        def __init__(self, quiet_s, port=True, driving=False, suspended=False):
+            self._driving, self._suspend_slam = driving, suspended
+            self.lidar = object() if port else None
+            self._last_packet_at = time.monotonic() - quiet_s
+            self._lidar_watch_from = self._last_packet_at
+            self._lidar_usb = "1-1.3.3.2"
+            self._reset_at, self._reset_wait = 0.0, LIDAR_RESET_COOLDOWN_S
+            self._resets, self._reset_note = 0, ""
+            self._reset_rung = 0
+            self._reopen_at = 999.0
+            self.dropped = 0
+
+        quiet_for = Navigator.quiet_for
+        mind = Navigator._mind_the_lidar
+
+        def _drop_lidar(self):
+            self.lidar = None
+            self.dropped += 1
+
+        def _log_event(self, what, why, **_fields):
+            pass
+
+    def _pretend_reset(known="", rung=0, ids=None, rungs=3):
+        """A bus with three things to reset, none of which ever helps -- which is
+        the case the escalation exists for and the one a real bus cannot be asked
+        to reproduce on demand."""
+        issued.append((known, rung))
+        return usbreset.Attempt(True, f"{known}@{rung}", f"reset {known} rung {rung}",
+                                rung=min(rung, rungs - 1), rungs=rungs)
+
+    was, usbreset.revive = usbreset.revive, _pretend_reset
+    try:
+        talking = _Blind(0.2)
+        talking.mind(time.monotonic())
+        assert talking.dropped == 0 and not issued, "a sensor that is talking was reset"
+
+        # Rung one: reopen the port. Cheap, and it is the fix for the failure the
+        # by-id name exists for -- a handle to an adapter that has re-enumerated.
+        stuck = _Blind(LIDAR_SILENT_S + 1)
+        stuck.mind(time.monotonic())
+        assert stuck.dropped == 1, "a port that went quiet was not reopened"
+        assert not issued, "the USB was reset before the port had even been reopened"
+
+        # Rung two: there is no port to reopen, and there has not been for a while.
+        gone = _Blind(LIDAR_RESET_AFTER_S + 1, port=False)
+        now = time.monotonic()
+        gone.mind(now)
+        assert issued == [("1-1.3.3.2", 0)], f"no reset was issued: {issued}"
+        assert gone._resets == 1 and gone._reset_note, "the reset went unrecorded"
+        assert gone._reopen_at == 0.0, (
+            "the port was not looked for again straight after the reset, so the "
+            "rover waits out a reopen delay while its lidar is already back")
+
+        # Once, not once per pass through the loop. The loop runs thousands of times
+        # a second and the device needs seconds to re-enumerate.
+        issued.clear()
+        gone.mind(now + 0.1)
+        assert not issued, "a second reset was issued inside the cooldown"
+        assert gone._reset_rung == 1, (
+            "the next attempt would reset the same device again, having just been "
+            "shown that resetting it did not bring the sensor back")
+
+        # A reset that succeeds and changes nothing is the trap this ladder is built
+        # around: the ioctl returns fine against a device that is enumerated but
+        # dead, so a recovery that only ever resets the same device would spend the
+        # afternoon doing the one thing already shown not to work. Nothing came
+        # back, so reach higher -- and only start backing off once there is nothing
+        # higher left.
+        issued.clear()
+        climbing = _Blind(LIDAR_RESET_AFTER_S + 1, port=False)
+        at = time.monotonic()
+        for _ in range(2):
+            climbing.mind(at)
+            at += climbing._reset_wait + 0.1
+        assert [rung for _where, rung in issued] == [0, 1], (
+            f"the recovery did not escalate: {issued}")
+        assert climbing._reset_wait == LIDAR_RESET_COOLDOWN_S, (
+            "it backed off while it still had something bigger to try, which spends "
+            "a quarter of an hour not doing the thing that would have worked")
+
+        # The top rung is the last thing software can do, and that is where waiting
+        # longer starts being the right answer rather than a delay.
+        climbing.mind(at)
+        at += climbing._reset_wait + 0.1
+        assert [rung for _where, rung in issued] == [0, 1, 2], issued
+        assert climbing._reset_wait > LIDAR_RESET_COOLDOWN_S, (
+            "the ladder ran out and it went on trying at the same rate")
+
+        # And then it does back off, rather than knocking the camera out every
+        # minute for the rest of the afternoon over a lidar that is unplugged.
+        for _ in range(12):
+            climbing.mind(at)
+            at += climbing._reset_wait + 0.1
+        assert climbing._reset_wait == LIDAR_RESET_MAX_COOLDOWN_S, (
+            f"the cooldown ran away to {climbing._reset_wait}")
+        assert climbing._reset_rung == 2, (
+            "the ladder climbed past its own top rung")
+
+
+        # Never with the wheels turning: the reset takes the camera and the OAK with
+        # it, and the watchdog is already stopping the move for the same silence.
+        issued.clear()
+        moving = _Blind(LIDAR_RESET_AFTER_S + 10, port=False, driving=True)
+        moving.mind(time.monotonic())
+        assert not issued and moving.dropped == 0, "a move was interrupted to reset USB"
+
+        # Nor during a dead-reckoned turn, where silence is the design rather than a
+        # fault -- the map is suspended and the sensor is not being read.
+        turning = _Blind(LIDAR_RESET_AFTER_S + 10, port=False, suspended=True)
+        turning.mind(time.monotonic())
+        assert not issued, "a suspended map was mistaken for a dead sensor"
+
+        # A rover that came up with the lidar already missing has no first packet to
+        # measure from, and is exactly the case this is for.
+        never = _Blind(LIDAR_RESET_AFTER_S + 1, port=False)
+        never._last_packet_at = None
+        assert never.quiet_for() > LIDAR_RESET_AFTER_S, (
+            "a lidar that has never reported reads as one that never had to")
+    finally:
+        usbreset.revive = was
+
+    # The name of the device, which is the one thing that cannot be looked up once
+    # the device has gone, is remembered from when the port was open.
+    assert list(usbreset.parents("1-1.3.3.2")) == ["1-1.3.3", "1-1.3", "1-1"], (
+        "the ladder of hubs above the lidar came out wrong")
 
     print("navigator: ok")
     return 0

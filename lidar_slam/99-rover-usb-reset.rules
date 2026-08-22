@@ -1,0 +1,26 @@
+# Let the rover daemon reset its own USB devices without being root.
+#
+# The daemon runs as `admin`, and `/dev/bus/usb/BBB/DDD` is root:root 0664 by
+# default -- readable, but the USBDEVFS_RESET ioctl needs the node open for writing.
+# So a lidar that has dropped off the bus stays off it until somebody with a shell
+# walks the rover through a replug, which is exactly the situation this is meant to
+# get out of. See usbreset.py for what the reset does and why a hub is sometimes the
+# only thing left to do it to.
+#
+# The grant is to `plugdev` rather than to a user, because that is already the group
+# for "may touch things that were plugged in", and `admin` is already in it.
+#
+# Install with lidar_slam/install-udev.sh, which puts this in /etc/udev/rules.d and
+# reloads. It is idempotent; run it again after changing anything here.
+
+# The lidar's own serial adapter. The CH343 is what is fitted; the other two are the
+# spares, so that swapping a cable does not silently take the recovery away.
+SUBSYSTEM=="usb", ATTR{idVendor}=="1a86", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="10c4", MODE="0660", GROUP="plugdev"
+
+# And the hubs, which is the part that matters. When the branch the lidar is on
+# fails to enumerate at all there is no device node to reset -- the port is wedged
+# above it, and the only thing that reaches it is a reset of the hub carrying that
+# port. usbreset.py picks the nearest one and refuses any hub with the network
+# behind it, so this line is what it needs and not more than it needs.
+SUBSYSTEM=="usb", ATTR{bDeviceClass}=="09", MODE="0660", GROUP="plugdev"

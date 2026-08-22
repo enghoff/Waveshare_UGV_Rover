@@ -275,6 +275,10 @@
     <h2>nav_status</h2>
     <div id="statusRows"></div>
     <div id="pose" class="mono">-</div>
+    <div class="row" style="margin-top:8px">
+      <button id="resetLidar">reset the lidar</button>
+    </div>
+    <p class="hint" id="lidarNote"></p>
     <p class="hint" id="statusError"></p>
   </section>
 </div>
@@ -435,6 +439,11 @@ function render(next) {
     ? `${next.watching} browsers watching` : "";
 
   drawStatus(next.status);
+  // The button is for a lidar that has stopped talking, and it costs the camera and
+  // the OAK a few seconds -- so it is offered when it would help and out of the way
+  // when it would not.
+  $("resetLidar").disabled = !next.lidar.offer;
+  $("lidarNote").textContent = next.lidar.note;
   $("plan").textContent = next.plan;
 
   drawPicture($("mapShot"), $("mapImg"), $("mapEmpty"), "/map.png", next.map.gen,
@@ -614,6 +623,7 @@ function wire() {
   $("mapAuto").onchange = () => post({do: "map", auto: $("mapAuto").checked});
   $("mapFit").onchange = () => post({do: "map", fit: $("mapFit").checked});
   $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
+  $("resetLidar").onclick = () => post({do: "reset_lidar"});
   $("describe").onclick = () => post({do: "describe"});
   $("clearMap").onclick = () => post({do: "clear_map"});
   $("takePicture").onclick = () => post({do: "picture"});

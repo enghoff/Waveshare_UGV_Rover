@@ -152,6 +152,12 @@ class Session:
 
         self.status_rows: list[list[Any]] = []
         self.status_error = ""
+        # What the rover last said about its own sensor, kept so the reset button
+        # can be offered exactly when it is worth pressing. `lidar_live` is the
+        # honest test rather than `lidar_ok`: the map is suspended through a
+        # dead-reckoned turn, so `lidar_ok` goes false on a sensor that is fine.
+        self.lidar_live: bool | None = None
+        self.lidar_note = ""
         self.pose_text = "-"
         self.plan_text = "-"
         self.heading_deg = 0.0
@@ -248,6 +254,7 @@ class Session:
             "busy": busy,
             "status": {"rows": self.status_rows, "pose": self.pose_text,
                        "error": self.status_error},
+            "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
             "plan": self.plan_text,
             "map": {"gen": self.map_gen, "width": self.map_shape[0],
                     "height": self.map_shape[1], "note": self.map_note,
@@ -493,6 +500,8 @@ class Session:
         elif what == "lights":
             self.watch_call("set_lights",
                             {"level": int(_number(action.get("level"), 0))})
+        elif what == "reset_lidar":
+            self.reset_lidar()
         elif what == "clear_map":
             self.clear_map()
         elif what == "wifi_scan":
@@ -580,6 +589,20 @@ class Session:
         self.frame_at = time.monotonic()
         self.frame_note = "taking one..."
         self.camera.submit("camera_jpeg")
+
+    def reset_lidar(self) -> None:
+        """Ask the rover to replug its own lidar.
+
+        On the watch connection rather than the move one, because the point of it is
+        to work when the rover is otherwise doing nothing useful -- and because it
+        answers immediately: the reset is issued and the device takes a second or
+        two to come back on its own, which the scan age will show.
+        """
+        if self.watch is None:
+            return
+        self.say("asking the rover to reset the lidar's USB device; the camera and "
+                 "the face detector go with it for a few seconds\n", "note")
+        self.watch_call("reset_lidar")
 
     def clear_map(self) -> None:
         """Two presses, and no dialog between them.
@@ -839,6 +862,11 @@ class Session:
                                 for _key, label, _fmt in STATUS_FIELDS]
             self.status_error = str(body.get("error", "no status"))
             self.pose_text = "-"
+            # Unknown, not dead. A rover that is not answering says nothing about
+            # its lidar, and offering to reset one over a link that is down would
+            # be a button that cannot do anything.
+            self.lidar_live = None
+            self.lidar_note = ""
             return
         self.status_error = ""
         rows = []
@@ -852,7 +880,33 @@ class Session:
         self.heading_deg = float(pose.get("heading_deg", 0.0))
         self.pose_text = "x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
             pose.get("x_m", 0.0), pose.get("y_m", 0.0), pose.get("heading_deg", 0.0))
+        self.show_lidar(body)
         self.show_move(body.get("move") or {})
+
+    def show_lidar(self, body: dict[str, Any]) -> None:
+        """Whether the sensor is talking, and what the rover has done about it.
+
+        Two states worth a sentence rather than a row. A sensor that has stopped
+        reporting is the one fault that makes every other number on the panel a
+        lie, and the rover now tries to fix it by itself -- so the line has to say
+        both how long it has been quiet and whether the fixing has been tried,
+        or an unattended reset looks like the rover having done nothing.
+        """
+        self.lidar_live = bool(body.get("lidar_live"))
+        note = body.get("lidar_reset_note") or ""
+        resets = int(body.get("lidar_resets") or 0)
+        if self.lidar_live:
+            # Only worth saying once it has happened, and then worth saying: a
+            # rover that has replugged its own lidar twice this afternoon has a
+            # cable working loose and this is the only place that would show it.
+            self.lidar_note = (f"the lidar has been reset {resets} time"
+                               f"{'' if resets == 1 else 's'} this session"
+                               if resets else "")
+            return
+        age = body.get("scan_age_s")
+        quiet = "not reporting" if age is None else f"quiet for {age:.0f} s"
+        self.lidar_note = f"the lidar is {quiet}." + (f" Last reset: {note}"
+                                                      if note else "")
 
     def show_move(self, move: dict[str, Any]) -> None:
         """The line under the map always; the transcript only when the rover has

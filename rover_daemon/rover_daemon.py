@@ -2382,6 +2382,27 @@ class Rover:
         result = self.nav.clear_map()
         return {"ok": bool(result.get("cleared")), **result}
 
+    def _tool_reset_lidar(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """Reset the lidar's USB device. A control call, not a model tool.
+
+        The rover's lidar hangs off two hubs and drops off the bus from time to
+        time, and when it goes the kernel's own port power cycle sometimes cannot
+        get it back -- at which point the rover is blind until somebody reaches
+        over and replugs it. `usbreset.py` is what does the replug in software, the
+        navigator reaches for it by itself after half a minute of silence, and this
+        is the same act on demand, so that a person watching the scan age climb has
+        a button rather than an ssh session.
+
+        Not offered to models. Not because it is dangerous -- it is the opposite,
+        it is the thing that makes a blind rover see again -- but because it takes
+        the camera and the OAK down with it for a few seconds, and a model told the
+        map is stale would reach for it in preference to waiting the two seconds the
+        ordinary reopen needs.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": "this rover has no lidar attached"}
+        return self.nav.reset_lidar()
+
     # --- scripts ------------------------------------------------------------
     #
     # Five control calls, none of them in :meth:`tools`, and all five refused on

@@ -917,6 +917,23 @@ three attempts instead of ten.
 
 Several things in it are deliberate rather than incidental.
 
+**There is a button for replugging the lidar.** The sensor drops off the USB bus
+under motor load, and when it does the kernel gives up on the port for good — so the
+rover goes blind and stays blind, with nothing to show for it but a scan age counting
+up on this panel. The navigator now reaches for a USB reset by itself after half a
+minute of silence, escalating from the adapter to the hub above it if the first does
+nothing, and `reset the lidar` is the same act on demand for somebody who is already
+watching and would rather not wait out the cooldown. It is offered only while the
+sensor is actually silent, because it takes the camera and the OAK down with it for a
+few seconds. See [`lidar_slam/README.md`](../lidar_slam/README.md) for the ladder and
+the measurements.
+
+The `usb resets` row appears once it has happened and not before. That is the point
+of it: on a healthy rover it would be a permanent zero among rows that all mean
+something, and once it is not zero it is the most interesting number on the panel —
+a count that climbs over an afternoon is a cable working loose, and nothing else here
+would ever say so.
+
 **Five connections, not one.** `drive` does not answer until the move has
 finished, and `RoverClient` serialises calls on one socket, so anything sharing
 that socket queues behind the move — including the stop meant to interrupt it. The

@@ -933,6 +933,9 @@ run_slam.py   mapping on its own: pose, clearance, a PGM
 dryrun.py     the whole driving stack on live scans, with nothing wired to the motors
 calibrate_turn.py  measures real turns against the lidar profile, outside the matcher
 journey.py    records what a move was handed and what it decided, and reads it back
+usbreset.py   replugs the lidar in software when it drops off the USB bus; self-tests
+99-rover-usb-reset.rules  what lets the daemon do that without being root
+install-udev.sh           installs that rule; needs root, once, per rover
 ```
 
 `libslam2d.so` and `selftest` are build products and are not committed.
@@ -942,6 +945,93 @@ can open. Occupied is black, free is light, and never-seen is mid grey, so an
 unexplored map reads as unknown rather than as confidently empty. One ambiguity is
 inherent to keeping a single log-odds value per cell with no visit count: a cell hit
 once and later cleared back to exactly zero is indistinguishable from one never seen.
+
+## When the lidar drops off the bus
+
+It does, and not rarely. The sensor's serial adapter hangs off a small hub, on
+another hub, on the Pi's own hub -- three deep -- and the whole branch goes away
+under motor load:
+
+```
+usb 1-1.3.3: USB disconnect, device number 17
+usb 1-1.3-port3: Cannot enable. Maybe the USB cable is bad?
+usb 1-1.3-port3: attempt power cycle
+usb 1-1.3-port3: unable to enumerate USB device
+```
+
+Read the last three lines carefully, because they are the whole reason this section
+exists: the kernel notices, tries a port power cycle of its own, fails, and **stops
+trying**. The port stays dead until something resets it. Everything above this in
+the stack behaves correctly and uselessly — `find_lidar` looks for a port that is not
+there, `lidar_ok` goes false so nothing drives on a stale pose, the console shows a
+scan age climbing — and the rover sits blind until somebody walks over and pulls the
+plug. The run that prompted this had been blind for sixteen minutes.
+
+`usbreset.py` is the plug, in software. `USBDEVFS_RESET` on a device re-enumerates
+that device; on a hub it re-enumerates the hub and everything below it, which is the
+only thing that reaches a port too wedged to enumerate at all.
+
+**The ladder is nearest-first, and it escalates only on evidence.** On this rover it
+comes out as
+
+```
+1-1.3.3.2 (USB Single Serial) -> 1-1.3.3 (USB 2.0 Hub) -> 1-1.3 (USB2.0 Hub)
+```
+
+and it stops there rather than continuing to `1-1`, which is the Pi's built-in hub
+and carries the ethernet and the wifi dongle: resetting that would cut the wire the
+request to reset arrived over. `_carries_the_network` works that out by walking each
+candidate's subtree for a net device, so re-plugging the wifi somewhere else does not
+silently make the rover cut itself off.
+
+Escalation matters as much as the ladder. A reset can succeed and change nothing —
+the ioctl returns cleanly against a device that is enumerated but dead — so a
+recovery that only ever reset the device would spend the afternoon repeating the one
+act already shown not to work. The navigator therefore counts: nothing came back, so
+reach one rung higher. Only when the ladder is exhausted does it start backing off,
+doubling from a minute to a quarter of an hour, because at that point it is a cable
+and knocking the camera out every minute will not change that.
+
+**The rungs and the thresholds.** Six seconds of silence closes the port and opens
+it again — that is sixty missed revolutions and it fixes the case the by-id name
+exists for, an adapter that re-enumerated under a running daemon. Thirty seconds
+reaches for USB. Neither happens while the wheels are turning: the reset takes the
+camera and the OAK down with it for a few seconds, and a move that has lost the
+sensor is already being stopped by the watchdog for the same silence.
+
+Measured on the rover, with the adapter taken off the bus by deauthorising it and
+nothing touched afterwards:
+
+```
+   3s  live=False age=3.06   resets=0
+  33s  live=False age=33.2   resets=1   reset 1-1.3.3.2 (USB Single Serial)
+  93s  live=False age=93.49  resets=2   reset 1-1.3.3 (USB 2.0 Hub)
+  99s  live=True  age=0.02   resets=2
+```
+
+Rung one had no effect, which is what a deauthorised device does and what a wedged
+one does; rung two brought it back, and the daemon found the port again on its own
+six seconds later.
+
+**It needs a udev rule, once per rover.** `/dev/bus/usb/BBB/DDD` is `root:root 0664`
+and the reset ioctl needs the node open for writing, so without the rule every
+attempt comes back "not allowed to reset /dev/bus/usb/001/005" and names the node it
+could not open. `install-udev.sh` puts the rule in place and reapplies it to what is
+already plugged in:
+
+```bash
+cat secrets/rpi-sudo.key | ssh rpi 'sudo -S -p "" ~/ugv/lidar_slam/install-udev.sh'
+```
+
+The action there has to be `udevadm trigger --action=add` and not `change`: udev sets
+a node's owner and mode when the node is created, and re-running the rules under
+`change` matched the rule, reported `GROUP 46, MODE 0660` in `udevadm test`, and left
+every node `root:root 0664` — which looks exactly like a rule that did not match.
+
+`nav_status` reports `lidar_resets` and what the last one said, and the console shows
+both, because the number is the diagnosis: a rover that has replugged its own lidar
+four times in an afternoon has a cable working loose, and nothing else would ever say
+so.
 
 ## What is not done yet
 

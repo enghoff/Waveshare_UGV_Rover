@@ -221,6 +221,12 @@ STATUS_FIELDS = (
     ("position_trusted", "position", lambda v: "trusted" if v else "NOT TRUSTED"),
     ("scans", "scans", lambda v: or_dash(v)),
     ("dropped_scans", "dropped", lambda v: or_dash(v)),
+    # How many times this rover has had to replug its own lidar in software. Shown
+    # only once it has happened, because on a healthy rover it is a permanent zero
+    # among rows that all mean something -- and once it is not zero it is the most
+    # interesting number on the panel: a count that climbs over an afternoon is a
+    # cable working loose, and nothing else here would ever say so.
+    ("lidar_resets", "usb resets", lambda v: or_dash(v or None)),
 )
 
 # Which fields shout when they are wrong. A silent lidar and an untrusted position

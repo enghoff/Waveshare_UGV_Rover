@@ -178,6 +178,11 @@ def test_schemas():
                       if m.startswith("_tool_"))
     control = ["set_vision", "nav_status", "map_png", "camera_jpeg", "clear_map",
                "detect_in",
+               # Replugging the lidar in software, which is a control call for the
+               # same reason wifi_join is: it is the right thing for a person
+               # watching a stale map and the wrong thing for a model, since it
+               # takes the camera down with it for a few seconds.
+               "reset_lidar",
                # The scripting calls, which are control calls twice over: no model
                # is shown them, and four of the five are refused on anything but
                # loopback -- see LOCAL_ONLY in rover_daemon.py.
