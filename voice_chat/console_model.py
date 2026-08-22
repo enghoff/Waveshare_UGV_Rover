@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
-"""What both drive consoles know: the wire, the pacing, and the English.
+"""What the drive console knows: the wire, the pacing, and the English.
 
-There are two windows onto the same daemon. [drive_console.py](drive_console.py)
-is tkinter and [drive_web.py](drive_web.py) is a browser page, and almost nothing
-that matters about either of them is tkinter or HTML. Which connection a call goes
-down, how often it is safe to ask the Pi for a map, what "replanning (#2) -- the
-corridor closed" is made of, and which of those sentences is worth a line in the
-transcript are all questions about a rover, and the answers belong in one file
-rather than two.
+[drive_web.py](drive_web.py) is a browser page, and almost nothing that matters
+about it is HTML. Which connection a call goes down, how often it is safe to ask
+the Pi for a map, what "replanning (#2) -- the corridor closed" is made of, and
+which of those sentences is worth a line in the transcript are all questions about
+a rover, and they belong on this side of the wire rather than in a page.
 
-They were in one file until the second window existed, and the temptation at that
-point is to write the sentence logic again in JavaScript because it is only twenty
-lines. That is how two windows start disagreeing about what the rover said, and
-the disagreement is invisible: both look plausible and only one is right. So the
-browser gets its English from here, over the wire, already assembled -- the same
-rule this repository applies to tool schemas, which the clients fetch from the
-daemon rather than keep a copy of.
+The temptation is to write the sentence logic again in JavaScript because it is
+only twenty lines. That is how a console starts disagreeing with itself about what
+the rover said, and the disagreement is invisible: both versions look plausible and
+only one is right. So the browser is sent its English from here, over the wire,
+already assembled -- the same rule this repository applies to tool schemas, which
+the clients fetch from the daemon rather than keep a copy of.
 
 Nothing here imports a toolkit, and nothing here touches a socket except through
 [rover_tools.py](rover_tools.py). It is covered in [selftest.py](selftest.py) for
@@ -88,10 +85,9 @@ CAMERA_AUTO_S = 3.0
 TRACK_POLL_S = 2.0
 
 # How long "clear map" stays armed after the first press. Deliberately not a
-# confirmation dialog: in tkinter a modal window stops the event loop the stop button
-# lives in, and in a browser a blocking confirm halts the same script that is meant
-# to be receiving status. A map thrown away by accident costs a minute of driving; a
-# stop button behind a dialog costs whatever the rover hits.
+# confirmation dialog: a blocking confirm halts the same script that is meant to be
+# receiving status. A map thrown away by accident costs a minute of driving; a stop
+# button behind a dialog costs whatever the rover hits.
 CLEAR_ARM_S = 4.0
 
 LIGHT_MAX = 255            # what the daemon calls full brightness
@@ -141,7 +137,7 @@ WIFI_COLOURS = {"good": "#136b13", "fair": "#a05a10", "poor": "#a01010"}
 # connection the switch is breaking -- so this is the association and a DHCP round,
 # measured at eight to twenty seconds on this hardware, plus room to spare.
 WIFI_REJOIN_S = 25.0
-WIFI_REJOIN_MS = int(WIFI_REJOIN_S * 1000)   # tkinter's `after` counts milliseconds
+WIFI_REJOIN_MS = int(WIFI_REJOIN_S * 1000)   # browser timers count milliseconds
 
 
 def wifi_verdict(level: Any) -> str:

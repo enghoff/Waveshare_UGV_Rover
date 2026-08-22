@@ -1483,8 +1483,8 @@ def test_web_console() -> None:
 
     session = drive_web.Session(None, 3.0, 480)
 
-    # The status panel. The formatting is shared with the tkinter console; what is
-    # tested here is that the alarm flag reaches the page, because a lidar that has
+    # The status panel. The formatting lives in console_model.py; what is tested
+    # here is that the alarm flag reaches the page, because a lidar that has
     # gone silent under motor load makes every other number on that panel a lie.
     session.show_status({"ok": True, "lidar_live": False, "lidar_ok": False,
                          "estop": False, "position_trusted": True, "speed_ms": 0.0,
@@ -1548,7 +1548,7 @@ def test_web_console() -> None:
 def test_stopping_an_unwatched_rover() -> None:
     """The browser console's answer to a tab being closed mid-move.
 
-    The tkinter window sends a stop from its close handler. A browser tab that goes
+    A desktop window sends a stop from its close handler. A browser tab that goes
     away says nothing at all and the server outlives it, so the promise is kept from
     the server's side instead: the event stream is the browser being present, and
     losing the last one while a move is running is treated as closing the window.

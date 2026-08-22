@@ -184,8 +184,8 @@ leaves its dock and starts answering on wlan0. See `local_address` in
 
 Five things are dispatched exactly like tools and are deliberately absent from
 `list_tools`, so no model is ever offered one: `set_vision` above, and four written
-for [voice_chat/drive_console.py](../voice_chat/drive_console.py), the window
-somebody drives this rover from by hand.
+for [voice_chat/drive_web.py](../voice_chat/drive_web.py), the console somebody
+drives this rover from by hand.
 
 | call | what it does |
 |---|---|

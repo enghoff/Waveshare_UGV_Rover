@@ -38,7 +38,7 @@ itself is one. `set_vision` says where `look` should post its pictures:
     <- {"ok": true, "vision": "http://192.168.1.7:8767/frame", "tools": [...]}
 
 The last two are for driving the rover by hand rather than by conversation, and
-exist for [voice_chat/drive_console.py](../voice_chat/drive_console.py):
+exist for [voice_chat/drive_web.py](../voice_chat/drive_web.py):
 `nav_status` returns every number the driving loop has, and `map_png` returns the
 map as base64 in the reply instead of posting it away. Both are things a person
 watching a move needs and a model asked to narrate one does not.
@@ -2079,8 +2079,8 @@ class Rover:
         last scan is. That is what tells you why a move went wrong, and it is of no
         use whatsoever to something that has to say the answer out loud.
 
-        Written for [voice_chat/drive_console.py](../voice_chat/drive_console.py),
-        which polls it a few times a second while somebody drives by hand.
+        Written for [voice_chat/drive_web.py](../voice_chat/drive_web.py), which
+        polls it a few times a second while somebody drives by hand.
 
         `move` in the reply is the odd one out: not a number off the rover but what
         the request currently running says it is doing -- planning, the route it

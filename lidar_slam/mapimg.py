@@ -28,7 +28,7 @@ import zlib
 OCCUPIED, FREE, UNKNOWN, DIM = 0, 240, 128, 176
 ROVER, TRACK, SCALE = 0, 60, 0
 
-# The same map in colour, for the human watching drive_console. Greyscale asked the
+# The same map in colour, for the human watching the drive console. Greyscale asked the
 # reader to tell four shades apart, and the two that matter most -- where the rover
 # has been and where it is now -- were the two hardest, because both were dark
 # pixels drawn over dark obstacles. So hue carries what is drawn on top and

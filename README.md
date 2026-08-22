@@ -152,11 +152,10 @@ driving tools, the navigator's own numbers polled beside them, and the lidar map
 screen. It is there because a conversation cannot measure a move — a model asked to
 turn ninety degrees reports what it believed happened, and what you need is what
 the navigator returned next to what you asked for. `voice_chat/drive_web.py` serves
-it as a browser page and is the one to use; `voice_chat/drive_console.py` is the
-original tkinter window and needs no browser. Both are desk programs talking to the
-daemon over TCP, and both draw on `voice_chat/console_model.py`, which is where the
+it as a browser page from the desk, talking to the daemon over the same TCP the
+model client uses, and it draws on `voice_chat/console_model.py`, which is where the
 pacing and the wording actually live. `python voice_chat\mock_rover.py --drive`
-gives either of them an invented room to drive in when there is no rover to hand.
+gives it an invented room to drive in when there is no rover to hand.
 
 ## Documentation
 

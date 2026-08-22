@@ -551,8 +551,8 @@ replan with what provoked it, and how it ended. `MoveReport` holds it, one sente
 at a time rather than a queue — a watcher that misses a phase wants the one
 happening now, not a backlog — and each carries a counter, which is what lets a
 console poll this three times a second and still write one line per thing the rover
-said. [voice_chat/drive_console.py](../voice_chat/drive_console.py) is what reads
-it, under the map you clicked on.
+said. [voice_chat/drive_web.py](../voice_chat/drive_web.py) is what reads it,
+under the map you clicked on.
 
 `dryrun.py` exercises all of it against the real lidar with a stub link, so the
 control loop, the clearance checks and the PWM arithmetic can be tested on live scans
@@ -651,8 +651,8 @@ for the rover, tip forward, with a yellow dot at the exact pose, and a blue line
 the path. The arrow replaced a dot with a whisker off it, which at three pixels per
 cell was two pixels wide and left the heading to be guessed. Nothing on the rover can
 draw text, so the caption names the colours for the model and
-[voice_chat/drive_console.py](../voice_chat/drive_console.py) builds its key out of
-this file's palette rather than its own.
+[voice_chat/drive_web.py](../voice_chat/drive_web.py) builds its key out of this
+file's palette rather than its own.
 
 A client can zoom, and zooming keeps the picture the size it was. `map_png` in the
 daemon takes how many metres to show and how big a picture to send back, and works

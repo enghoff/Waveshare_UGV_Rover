@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Drive the rover from a browser: the same console, in a window that resizes.
+"""Drive the rover from a browser: the driving tools, in a window that resizes.
 
-[drive_console.py](drive_console.py) is the tkinter version of this and it is the
-one that measured everything -- five connections, the pacing, the sentences the
-navigator publishes mid-move. What it could never do is fit on a screen. Its
-panels are laid out at fixed sizes because tk has no notion of reflowing them, so
-the log and the turns table sat below the bottom edge of a 1080p display with no
-scrollbar to reach them, and widening the window only added empty space to the
-right of the camera. A browser solves that in about ten lines of CSS, and solves
-it properly: the page scrolls, the columns rewrap as the window narrows, and on a
-phone it comes out as one column in the right order.
+This began as a tkinter window, and that window is where everything here was
+measured -- five connections, the pacing, the sentences the navigator publishes
+mid-move. What it could never do is fit on a screen. Its panels were laid out at
+fixed sizes because tk has no notion of reflowing them, so the log and the turns
+table sat below the bottom edge of a 1080p display with no scrollbar to reach
+them, and widening the window only added empty space to the right of the camera. A
+browser solves that in about ten lines of CSS, and solves it properly: the page
+scrolls, the columns rewrap as the window narrows, and on a phone it comes out as
+one column in the right order.
 
     python voice_chat/drive_web.py                      # finds the rover, opens a tab
     python voice_chat/drive_web.py --rover rpi.local:8769
@@ -21,13 +21,13 @@ whether the Pi can afford a web console.** It cannot afford one and it is never
 asked to. What is on the Pi is `rover_daemon.py`, exactly as before, answering the
 same six TCP connections with the same JSON it has always answered; the HTTP, the
 event stream and the page are all at this end. The rover cannot tell that the
-thing calling `nav_status` three times a second is a browser rather than a tkinter
-window, because in the only sense that matters to a 700 MHz ARMv6 core running
-SLAM, it is not.
+thing calling `nav_status` three times a second is a browser rather than a desk
+program with a window in it, because in the only sense that matters to a 700 MHz
+ARMv6 core running SLAM, it is not.
 
 **And the browser gives two things back for free.** It reads JPEG, so the frame
-from the camera goes straight into an `<img>` -- which deletes the one dependency
-the tkinter console had, the OpenCV decode that existed solely because tk reads
+from the camera goes straight into an `<img>` -- which deleted the one dependency
+this console used to have, the OpenCV decode that existed solely because tk reads
 PNG, GIF and PPM and nothing else, along with the fallback that wrote the frame to
 a file and told you where. It also scales pictures, so the map can be drawn at
 whatever size the Pi can afford and then fitted to whatever width the panel
@@ -38,7 +38,7 @@ happens to have, with `image-rendering: pixelated` -- which on a picture made of
 JSON object this server pushes down a `text/event-stream`, and every button posts
 an action back and renders nothing until the state says so. That is not a taste in
 architectures: it is the same reason face tracking is polled rather than
-remembered in the tkinter console. A button that greys itself out because you
+remembered. A button that greys itself out because you
 pressed it is a button that lies when the rover refuses, and here there can be two
 browsers open on the same rover, so a page that believed its own clicks would
 disagree with the room.
@@ -50,8 +50,8 @@ the state carries a counter that goes up when a new one arrives. The page change
 the `src` when the counter moves, the browser fetches it once, and everything in
 between is a few kilobytes of numbers.
 
-**Closing the tab stops the rover**, which is the promise the tkinter window makes
-on `WM_DELETE_WINDOW` and is harder to keep here: a browser tab that goes away
+**Closing the tab stops the rover**, which a desktop window gets almost for free
+from its close handler and is harder to keep here: a browser tab that goes away
 says nothing, and the server outlives it. So the rule is on this side instead --
 when the last event stream has been gone for a couple of seconds and a move is
 still running, the stop goes out on the connection that carries nothing else. A
@@ -90,10 +90,10 @@ from console_model import (
     or_dash, rung, size_for_panel, tap_to_relative, wifi_verdict, worth_logging)
 
 # How often the pump wakes: drain what came back, decide what to ask for next, and
-# publish the state if it changed. The tkinter console runs its loop at the same
-# rate for the same reason -- it is fast enough that the in-flight timer reads like
-# a stopwatch, and slow enough that a state pushed on every tick is ten a second
-# rather than a thousand.
+# publish the state if it changed. The tkinter window this grew out of ran its loop
+# at the same rate for the same reason -- fast enough that the in-flight timer
+# reads like a stopwatch, and slow enough that a state pushed on every tick is ten
+# a second rather than a thousand.
 TICK_S = 0.1
 # A comment line down an idle stream, so that a proxy or a laptop suspending itself
 # is noticed rather than leaving a page that has quietly stopped updating.
@@ -112,9 +112,9 @@ class Session:
 
     Every field is written by the pump thread and read under a lock by whichever
     HTTP thread is serving an event stream. Actions arrive the other way, on a
-    queue, and are executed by the pump -- so there is exactly one writer, which is
-    what the tkinter console gets for free by living in the tk event loop and what
-    would otherwise be the first thing to go wrong here.
+    queue, and are executed by the pump -- so there is exactly one writer, which a
+    single-threaded GUI event loop would have given for free and which would
+    otherwise be the first thing to go wrong here.
     """
 
     def __init__(self, address: str | None, half_extent: float,
@@ -169,8 +169,8 @@ class Session:
         self.map_caption = ""
         self.map_auto = True
         # Whether the size asked for follows the panel. On, because the whole reason
-        # this console exists in a browser is that the panel has a size and tk's did
-        # not; off is for pinning a size to compare two pictures at.
+        # this console is a page is that the panel has a size and the fixed box it
+        # replaced did not; off is for pinning a size to compare two pictures at.
         self.map_fit = True
         self.panel_px = 0.0
         # Which way is up. Off, the page keeps the heading the rover started with, so
@@ -351,7 +351,7 @@ class Session:
     def mind_the_watchers(self, now: float) -> None:
         """Stop the rover once the last browser has been gone a couple of seconds.
 
-        The tkinter console sends a stop from `WM_DELETE_WINDOW`, and a closed tab
+        A desktop window sends a stop from its close handler, and a closed tab
         has no equivalent -- it simply stops reading, and this process carries on
         driving a rover nobody is looking at. So the promise is kept from this side:
         the event stream is the browser being present, and losing the last one while
@@ -585,10 +585,10 @@ class Session:
         """Two presses, and no dialog between them.
 
         `confirm()` blocks the page's script, which is the script receiving status
-        and holding the stop button -- the same objection the tkinter console has to
-        a modal window, for the same reason. Arming the button costs one extra press
-        and takes nothing away. It disarms itself after CLEAR_ARM_S, so a press
-        forgotten about does not lie in wait.
+        and holding the stop button -- the same objection a desktop window has to a
+        modal dialog sitting on its event loop, for the same reason. Arming the
+        button costs one extra press and takes nothing away. It disarms itself
+        after CLEAR_ARM_S, so a press forgotten about does not lie in wait.
         """
         now = time.monotonic()
         if now > self.clear_armed_until:
@@ -636,11 +636,12 @@ class Session:
     def fit_map(self) -> bool:
         """Match the size asked for to the width the panel turned out to have.
 
-        This is the part the tkinter console could not do at all: its map sat in a
-        box of a fixed size, so the only way to fill a wider window was to press
-        "bigger" and hope. Here the page reports what the column came out as and the
-        rung below it is asked for -- rounded down, because the picture costs the
-        rover its own area to draw and the browser scales what arrives.
+        This is the part the tkinter window this replaced could not do at all: its
+        map sat in a box of a fixed size, so the only way to fill a wider window
+        was to press "bigger" and hope. Here the page reports what the column came
+        out as and the rung below it is asked for -- rounded down, because the
+        picture costs the rover its own area to draw and the browser scales what
+        arrives.
 
         Only when the rung actually changes, and that matters more than it looks:
         dragging a window edge produces a resize event per frame, and a map request
@@ -940,12 +941,12 @@ class Session:
     def show_picture(self, body: dict[str, Any]) -> None:
         """The frame, straight through to an `<img>`.
 
-        The tkinter console needs OpenCV at this point, because the rover can only
-        send JPEG -- there is no image library on that Pi, which is the same reason
-        face detection runs on another host -- and tk reads PNG, GIF and PPM. A
-        browser reads JPEG, so the decode, the resize, the BGR-to-RGB and the
-        fallback that wrote the frame to a file and said where all go away, and the
-        console stops having a dependency.
+        The tkinter window this replaced needed OpenCV at this point, because the
+        rover can only send JPEG -- there is no image library on that Pi, which is
+        the same reason face detection runs on another host -- and tk reads PNG, GIF
+        and PPM. A browser reads JPEG, so the decode, the resize, the BGR-to-RGB and
+        the fallback that wrote the frame to a file and said where all went away,
+        and the console stopped having a dependency.
         """
         if not body.get("ok"):
             self.frame_error = str(body.get("error", "no picture"))
@@ -1113,9 +1114,9 @@ class Session:
 
         The number is what lets a browser that has been open for an hour and one
         that just arrived be served from the same list: each stream remembers how
-        far it has read and is sent the rest. Trimmed from the front for the same
-        reason the tkinter console trims its text widget -- this is meant to be left
-        open for an afternoon of test moves.
+        far it has read and is sent the rest. Trimmed from the front for the reason
+        any log window is -- this is meant to be left open for an afternoon of test
+        moves.
         """
         with self.lock:
             self.log_seq += 1
@@ -1238,8 +1239,8 @@ class Handler(BaseHTTPRequestHandler):
             action = {}
         # Queued, never executed here. Two browsers and a keyboard shortcut can all
         # post at once, and the pump is the only thread allowed to touch the rover's
-        # state -- which is what the tkinter console gets for nothing by living in
-        # the tk event loop.
+        # state -- which a single-threaded GUI event loop would have given for
+        # nothing.
         if isinstance(action, dict):
             self.session.actions.put(action)
         self._send(b'{"ok":true}', "application/json; charset=utf-8")

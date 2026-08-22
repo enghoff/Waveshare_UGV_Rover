@@ -219,7 +219,7 @@ and a roamer that arrives during a join stands aside. The person asking wins.
 ## Choosing by hand, from the console
 
 `wifi_roam.sh` is what happens when nobody is watching. When somebody is,
-[drive_console.py](../voice_chat/drive_console.py) has a panel that shows which
+[drive_web.py](../voice_chat/drive_web.py) has a panel that shows which
 access point the rover is on and offers the others, and it reaches them through
 two calls on the daemon — `wifi_status` and `wifi_join`.
 
