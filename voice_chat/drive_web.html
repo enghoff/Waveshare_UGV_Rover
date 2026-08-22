@@ -52,6 +52,11 @@
   }
 
   * { box-sizing: border-box; }
+  /* `hidden` has to keep meaning hidden. The browser's own rule for it is only
+     `[hidden] { display: none }`, which any `display` in here outranks -- and both
+     pictures and both of their placeholders set one. So `empty.hidden = true` left
+     "no map yet" sitting on top of the map it was there to stand in for. */
+  [hidden] { display: none !important; }
   html { scrollbar-gutter: stable; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
@@ -146,22 +151,41 @@
     border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
     display: grid; place-items: center;
   }
-  /* Square, because the map is, but capped: on a wide monitor the column is
-     700-odd pixels and a picture that tall pushes the controls under it off the
-     screen. Past the cap the picture is letterboxed by object-fit rather than
-     cropped, and the click arithmetic already allows for that. */
-  #mapShot { aspect-ratio: 1 / 1; cursor: crosshair; max-height: min(68vh, 700px); }
+  /* Square, because the map is, and capped in *both* directions by the same
+     number: on a wide monitor the column is 700-odd pixels and a picture that tall
+     pushes the controls under it off the screen. Capping only the height is what
+     put the rover off centre. The rover is drawn dead centre of the picture, so it
+     lands in the middle of the panel only if the whole picture is on screen -- and
+     in a panel that aspect-ratio made 900 wide while max-height held it to 650, the
+     square picture was laid out at its full 900 and lost its bottom quarter to
+     `overflow: hidden`, which pushed the rover a quarter of the way down from the
+     middle and hid the room behind it. Same cap both ways means the panel is always
+     square, so the picture always fits it exactly, with nothing cropped and nothing
+     letterboxed. On a wide column the panel is narrower than the card and centred
+     in it. */
+  #mapShot { --cap: min(68vh, 700px);
+             aspect-ratio: 1 / 1; cursor: crosshair;
+             max-width: var(--cap); max-height: var(--cap);
+             margin-inline: auto; }
   /* Capped rather than filling its column: when the window is narrow enough that
      this stack is alone on a row, a frame stretched across the whole page is a
      wall of carpet, not more information. */
   #cameraShot { aspect-ratio: 4 / 3; max-width: 460px; }
-  .shot img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* Taken out of the flow so that the picture's box is exactly the panel's box,
+     whatever arithmetic the panel's own size came out of. As a grid item its
+     `height: 100%` resolved against the height `aspect-ratio` asked for rather
+     than the smaller one `max-height` allowed, which is the overflow described
+     above; against a definite containing block there is no such question. */
+  .shot img { position: absolute; inset: 0; width: 100%; height: 100%;
+              object-fit: contain; display: block; }
   /* The map is 5 cm squares drawn with no antialiasing, so scaling it up wants
      to keep the squares square rather than smear them into a photograph. */
   #mapImg { image-rendering: pixelated; }
+  /* Centred by its own insets rather than by the panel's grid, which has nothing
+     left in the flow to centre now that the picture is positioned. */
   .shot .empty {
-    position: absolute; padding: 0 16px; text-align: center; color: var(--dim);
-    font-size: 13px;
+    position: absolute; inset: 0; display: grid; place-items: center;
+    padding: 0 16px; text-align: center; color: var(--dim); font-size: 13px;
   }
   .shot.busy::after {
     content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -452,8 +476,16 @@ function render(next) {
     $("mapShot").style.aspectRatio = `${next.map.width} / ${next.map.height}`;
   }
   $("caption").textContent = next.map.caption;
-  $("mapNote").textContent = next.map.drawing ? "drawing..."
-    : [next.map.settings, next.map.note].filter(Boolean).join(" -- ");
+  // How old the picture is, said out loud. The rover takes a couple of seconds to
+  // draw one and the auto-refresh paces itself off that, so what is on screen is
+  // always a moment ago rather than now -- and without a number there is no telling
+  // a map that is two seconds behind from one that stopped arriving a minute ago.
+  const drawn = next.map.age_s === null ? ""
+    : next.map.age_s < 1 ? "just now" : `${next.map.age_s.toFixed(0)} s ago`;
+  $("mapNote").textContent = next.map.drawing
+    ? (drawn ? `drawing... (showing one from ${drawn})` : "drawing...")
+    : [drawn && `drawn ${drawn}`, next.map.settings, next.map.note]
+        .filter(Boolean).join(" -- ");
   $("mapError").textContent = next.map.error || "";
   $("mapAuto").checked = next.map.auto;
   $("mapFit").checked = next.map.fit;
@@ -515,7 +547,11 @@ function drawPicture(shot, img, empty, url, gen, get, set, busy, error) {
   if (gen && gen !== get()) {
     set(gen);
     // The generation is in the URL, so the browser fetches each picture once and
-    // never has to be told not to cache the last one.
+    // never has to be told not to cache the last one. It carries the console's own
+    // run with it -- `?gen=8f3a1c02-7` rather than `?gen=7` -- because the counter
+    // alone starts again at 1 in every new console, and these are cached for a
+    // year: the plain number handed a browser the *previous* run's pictures back in
+    // order, which reads as a recorded run replaying over a live rover.
     img.src = `${url}?gen=${gen}`;
     img.hidden = false;
     empty.hidden = true;

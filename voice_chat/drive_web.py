@@ -74,6 +74,7 @@ import os
 import queue
 import socket
 import sys
+import uuid
 import tempfile
 import threading
 import time
@@ -136,6 +137,19 @@ class Session:
         self.half_extent = half_extent
         self.map_size = map_size
         self.wanted_address = address or ""
+        #: Unique to this console process, and mixed into the URL of every picture
+        #: it publishes. Without it the pictures of one run are served at exactly
+        #: the URLs of the last one -- `/map.png?gen=1`, `?gen=2` -- because the
+        #: counter starts again at 1 in every new process. They are sent
+        #: `immutable` for a year, so a browser that has seen a run does not ask
+        #: about those URLs again: it draws the *previous* run's pictures, in order,
+        #: as the new counter climbs past the numbers it already holds. That is a
+        #: whole recorded run played back over a live rover, the same one every
+        #: time, and nothing about it is cleared by restarting or rebooting -- it is
+        #: on disk in the browser's cache. Reproduced against the mock and the real
+        #: rover in turn: the second console served a different picture at
+        #: `?gen=1` and the browser never asked it for one.
+        self.run_id = uuid.uuid4().hex[:8]
         self.replies: queue.Queue = queue.Queue()
         self.actions: queue.Queue = queue.Queue()
 
@@ -195,6 +209,12 @@ class Session:
         self.map_outstanding = False
         self.map_wanted = False        # the view moved while one was already in flight
         self.map_at = 0.0
+        # When the picture on screen was drawn, as against when one was last asked
+        # for. The two differ by however long the rover took, and the page shows the
+        # first: a map is a photograph of a moment, and a console that displays one
+        # without saying how old it is invites reading a stale picture as the room
+        # the rover is in now.
+        self.map_drawn_at = 0.0
         self.map_cost = 0.0            # how long the rover said the last one took
         self.map_png: bytes = b""
         self.map_gen = 0
@@ -264,6 +284,15 @@ class Session:
         self.stopped_orphan = False
         self.running = True
 
+    def tag(self, count: int) -> str:
+        """The name a picture is published under: this run, and which picture.
+
+        Empty while there is no picture, because the page reads a falsy generation
+        as "nothing to show yet" and would otherwise ask for a map that has never
+        been drawn.
+        """
+        return f"{self.run_id}-{count}" if count else ""
+
     # --- what the browser sees ------------------------------------------------
     def snapshot(self) -> dict[str, Any]:
         """Everything on screen, as JSON. Rebuilt whole on every tick and compared
@@ -286,16 +315,18 @@ class Session:
                        "error": self.status_error},
             "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
             "plan": self.plan_text,
-            "map": {"gen": self.map_gen, "width": self.map_shape[0],
+            "map": {"gen": self.tag(self.map_gen), "width": self.map_shape[0],
                     "height": self.map_shape[1], "note": self.map_note,
                     "caption": self.map_caption, "error": self.map_error,
                     "drawing": self.map_outstanding,
                     "half_extent_m": self.half_extent, "size_px": self.map_size,
                     "rover_up": self.rover_up, "auto": self.map_auto,
                     "fit": self.map_fit,
+                    "age_s": (None if not self.map_gen
+                              else round(time.monotonic() - self.map_drawn_at, 1)),
                     "settings": f"{2 * self.half_extent:.0f} m across, "
                                 f"{self.map_size} px picture, {facing}"},
-            "frame": {"gen": self.frame_gen, "note": self.frame_note,
+            "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
                       "error": self.frame_error, "auto": self.frame_auto,
                       "taking": self.frame_outstanding},
             "tracking": self.track_text,
@@ -1059,6 +1090,7 @@ class Session:
             return
         self.map_error = ""
         self.map_gen += 1
+        self.map_drawn_at = time.monotonic()
         # The daemon says how big what it drew came out, under `pixels`. Where it
         # does not -- an older daemon, or the mock -- the PNG says so itself in its
         # header, which is where the daemon reads it from too. The page needs a real

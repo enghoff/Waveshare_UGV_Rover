@@ -1804,6 +1804,47 @@ def test_one_console_at_a_time() -> None:
           drive_web.Console.allow_reuse_address, False)
 
 
+def test_pictures_are_not_replayed() -> None:
+    """Two consoles must never publish a picture at the same URL.
+
+    They did, and it was the worst-looking bug in this thing. Each map is served at
+    `/map.png?gen=N` with N counting from 1 and a year of `immutable` on it, and N
+    starts again at 1 in every new process -- so the second console handed a browser
+    exactly the URLs the first had already filled its cache with, in the same order.
+    The browser never asked about them again and drew the earlier run's pictures back
+    frame by frame, over a live rover, the same run every time. Restarting did not
+    help and neither did rebooting: the pictures were on disk in the browser profile.
+
+    Reproduced by pointing one console at the mock rover and the next at the real one
+    and logging what the server was asked for: the second console served a different
+    picture at that URL and the browser fetched it zero times. So the guard is that
+    the name of a picture belongs to the run that drew it.
+    """
+    try:
+        import drive_web
+    except Exception as exc:
+        SKIP.append(f"pictures are not replayed ({type(exc).__name__})")
+        return
+
+    one = drive_web.Session(None, 3.0, 480)
+    two = drive_web.Session(None, 3.0, 480)
+
+    check("a console with no picture yet publishes no name", one.tag(0), "")
+    check("...which is what the page reads as nothing to show", bool(one.tag(0)),
+          False)
+    check("the first picture of a run is named", bool(one.tag(1)), True)
+    check("...and pictures within one run differ", one.tag(1) != one.tag(2), True)
+
+    # The whole point: same counter, different run, different URL.
+    check("two consoles do not name their first picture the same",
+          one.tag(1) != two.tag(1), True)
+    check("...nor their tenth", one.tag(10) != two.tag(10), True)
+
+    # And the header that made it permanent is only honest once that holds.
+    check("a picture is still cacheable for a year",
+          "immutable" in io.open(drive_web.__file__, encoding="utf-8").read(), True)
+
+
 def main() -> int:
     test_sentences()
     test_tool_sniffer()
@@ -1828,6 +1869,7 @@ def main() -> int:
     test_finding_the_rover_again()
     test_a_browser_leaving()
     test_one_console_at_a_time()
+    test_pictures_are_not_replayed()
     test_talk_session()
 
     for name in PASS:

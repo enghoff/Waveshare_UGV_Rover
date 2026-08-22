@@ -960,6 +960,29 @@ reconnect. Closing the old connections is handed to a thread of its own, because
 closing one waits for whatever call is in flight on it: six of those on the pump
 thread is twelve seconds during which the page does not read the stop button.
 
+**A picture is named by the run that drew it, and this was not a small bug.** Each
+map is published at `/map.png?gen=N` and served `public, max-age=31536000,
+immutable`, so a browser fetches each one exactly once and never revalidates. The
+query is only a cache key — the handler returns whatever map it is holding now — and
+for a while N was a plain counter starting at 1 in every new console process.
+
+So the second console handed the browser exactly the URLs the first had already
+filled its disk cache with, in the same order. The browser, told those URLs could
+never change, drew the *earlier* run's pictures back frame by frame as the new
+counter climbed past the numbers it already held. From the outside that is a
+recorded run replaying over a live rover: the same run every time, controls
+apparently doing nothing, and neither restarting the console nor rebooting the
+machine making any difference — because the run was on disk in the browser profile,
+not in anything that gets restarted.
+
+Reproduced by pointing one console at the mock rover and the next at the real one,
+with each console logging what it was asked for: the second served a different
+picture at that URL and the browser fetched it **zero** times. The name now carries
+the console's own run — `?gen=8d815e86-1` — so a run's pictures live at URLs no cache
+has ever seen, and the same experiment now logs the fetch. It also makes `immutable`
+true rather than merely convenient, and it cures a poisoned cache without anyone
+having to clear anything, since the stale entries are simply never asked for again.
+
 **One console at a time, and it is enforced twice.** Two consoles are not two
 windows onto one rover — they are two clients of it. Each polls three times a second
 and each asks for a map that costs the Pi's single core two and a half seconds to
@@ -1068,11 +1091,38 @@ the map can be drawn at whatever the Pi can afford and then fitted to the panel 
 nothing. The page reports what its column actually came out as and the server asks
 for the rung *below* that width — rounded down, because a picture costs the rover
 roughly its own area to draw and anything past the panel is thrown away by the
-scaler. Measured on the rover: an 812 px panel asks for 800 and gets 484 px back at
+scaler. Measured on the rover: a 700 px panel asks for 640 and gets 484 px back at
 4 px/cell, because at 12 m across a cell is already down to three pixels and the
 console says so rather than leaving "bigger" looking broken. Pressing the size
 buttons by hand turns the fitting off, or the next window resize would undo the
 press.
+
+**The map says how old it is.** A map is a photograph of a moment, and the rover
+takes a couple of seconds to take one — so what is on screen is always a moment ago
+rather than now, and while the next one is being drawn it is the *previous* one you
+are looking at. Without a number there is no telling a picture that is two seconds
+behind from one that stopped arriving a minute ago, which is exactly the doubt that
+makes somebody ask whether the console is showing a recording. So the line under the
+map reads `drawn 2 s ago` and, mid-draw, `drawing... (showing one from 2 s ago)`.
+
+It is the second of three freshness numbers on the page and they mean different
+things, which is worth keeping straight: `scan age` in nav_status is how long since
+the *sensor* was heard from, this one is how long since the *picture* was drawn, and
+the in-flight timer at the top is how long the rover has been busy with whatever was
+asked of it.
+
+**The panel is square because the map is.** The rover is drawn dead centre of every
+picture the renderer produces, at every extent, which means it is in the middle of
+the panel only if the whole picture is on screen. That is worth stating because it
+was not true for a while: the panel took its shape from `aspect-ratio: 1 / 1` and its
+limit from `max-height`, so on a wide monitor it came out 900 wide and 650 tall, the
+square picture inside it was laid out at its full 900, and `overflow: hidden` took the
+bottom quarter off. The rover sat a quarter of the way below the middle of the panel
+with the room behind it hidden — which reads exactly like a map that has run out, and
+is the sort of thing that gets diagnosed as a renderer bug. Capping both directions
+with the same number keeps the panel square at any window size, so the picture always
+fits it exactly, with nothing cropped and nothing letterboxed, and on a wide column
+the panel is simply narrower than the card it sits in.
 
 **Which way is up.** Off, the page keeps the heading the rover started with, so the
 room holds still and the arrow turns — right for watching where the rover has got to.
