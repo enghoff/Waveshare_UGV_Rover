@@ -9,9 +9,13 @@ and only one process can.
 
     ssh rpi 'cd ~/ugv/lidar_slam && ./build.sh && python3 run_slam.py --seconds 30 --map room.pgm'
 
-Lidar-only is the supported path. The telemetry prior is wired up but its two
-scale factors have never been measured on this rover, so it stays opt-in; see
---ticks-per-metre below and the README.
+Lidar-only is the supported path. Reading the driver board as well is opt-in for
+the port's sake rather than the prior's: with `--telemetry` this measures the
+resting gyro, reports whether the gyro and the scan match agree about rotation --
+which needs no calibration and is the more useful half -- and centres the search
+window with whichever scale factors have been measured. Those live in
+`odometry.json` once a confirmed turn or drive has produced them; the flags below
+override them for an experiment.
 """
 import argparse
 import json
@@ -22,38 +26,42 @@ import time
 
 import serial
 
+from odometry import MAX_SAMPLE_GAP_S, MAX_TICK_STEP, Odometry
 from slam2d import Slam2D, default_config
 
 LIDAR_BAUD = 230400
 TELEM_BAUD = 115200
+# What counts as the rover standing still, so the resting gyro can be measured.
+# The matcher's own numbers, so loose enough to clear its noise.
+REST_MAX_DPS = 2.0
+REST_MAX_MS = 0.02
 
 
-class Telemetry:
-    """The driver board's T:1001 stream, accumulated into a motion prior.
+class BoardStream:
+    """The driver board's `T:1001` stream, accumulated into running totals.
 
-    Both scale factors are arguments rather than constants because neither has been
-    measured on this rover: the encoders' counts-per-metre depends on the gearbox
-    and wheel, and the gyro's LSB-per-deg/s depends on which full-scale range the
-    firmware selected. Guessing either would produce a prior that looks plausible
-    and quietly drags the scan match off true, which is worse than no prior at all.
+    Reading only. What the numbers mean -- the resting bias, the two scale
+    factors, whether the gyro agrees with the scan match -- lives in
+    `odometry.Odometry`, which this hands raw totals to. That split is why the
+    same interpretation serves this script and the daemon: on the rover proper
+    `rover_daemon.py` owns `/dev/ttyAMA0` and does this accumulation in its own
+    reader thread, and only one process may have the port. The shape of what
+    crosses the boundary -- `motion()` returning those totals -- is deliberately
+    the same in both, and is the only thing that has to stay in step.
     """
 
-    def __init__(self, port, ticks_per_metre, gyro_lsb_per_dps, bias_samples=34):
-        # timeout=0 so this never blocks the lidar loop; the stream is continuous at
-        # ~2.6 kB/s and a read loop here that waited for a quiet moment would wait
-        # for ever.
+    def __init__(self, port):
+        # timeout=0 so this never blocks the lidar loop; the stream is continuous
+        # at ~2.6 kB/s and a read loop here that waited for a quiet moment would
+        # wait for ever.
         self.ser = serial.Serial(port, TELEM_BAUD, timeout=0)
-        self.ticks_per_metre = ticks_per_metre
-        self.gyro_lsb_per_dps = gyro_lsb_per_dps
         self.buf = bytearray()
-        self.gz_bias = None
-        self._bias_acc, self._bias_n, self._bias_want = 0, 0, bias_samples
-        self.last_ticks = None
-        self.last_t = None
-        self.d_forward = 0.0
-        self.d_yaw = 0.0
         self.lines = 0
         self.volts = None
+        self._at = None
+        self._gz_lsb_s = 0.0
+        self._ticks = None
+        self._breaks = 0
 
     def pump(self):
         """Drain whatever has arrived. Reads in bulk on purpose: this host drops
@@ -77,35 +85,29 @@ class Telemetry:
         self.lines += 1
         self.volts = msg.get("v")
         now = time.monotonic()
-
+        previous, self._at = self._at, now
+        span = None if previous is None else now - previous
         gz = msg.get("gz")
-        if gz is not None:
-            if self.gz_bias is None:
-                # The rover has to be still for this first second: an un-biased
-                # yaw rate integrates into invented rotation faster than anything
-                # else here.
-                self._bias_acc += gz
-                self._bias_n += 1
-                if self._bias_n >= self._bias_want:
-                    self.gz_bias = self._bias_acc / self._bias_n
-            elif self.last_t is not None and self.gyro_lsb_per_dps:
-                dps = (gz - self.gz_bias) / self.gyro_lsb_per_dps
-                self.d_yaw += math.radians(dps) * (now - self.last_t)
-
+        if isinstance(gz, (int, float)):
+            if span is not None and 0.0 < span <= MAX_SAMPLE_GAP_S:
+                self._gz_lsb_s += gz * span
+            elif span is not None:
+                # A yaw rate multiplied by a gap nothing was awake for is invented
+                # rotation. Counted rather than integrated, so a consumer can
+                # refuse the span it falls in. See Span.intact.
+                self._breaks += 1
         odl, odr = msg.get("odl"), msg.get("odr")
-        if odl is not None and odr is not None and self.ticks_per_metre:
+        if isinstance(odl, (int, float)) and isinstance(odr, (int, float)):
             mean = (odl + odr) / 2.0
-            if self.last_ticks is not None:
-                self.d_forward += (mean - self.last_ticks) / self.ticks_per_metre
-            self.last_ticks = mean
+            if self._ticks is not None and abs(mean - self._ticks) > MAX_TICK_STEP:
+                self._breaks += 1        # the board restarted its counters
+            self._ticks = mean
 
-        self.last_t = now
-
-    def take(self):
-        """The prior since the last call, and reset."""
-        out = (self.d_forward, self.d_yaw)
-        self.d_forward = self.d_yaw = 0.0
-        return out
+    def motion(self):
+        if not self.lines:
+            return None
+        return {"at": self._at, "gz_lsb_s": self._gz_lsb_s, "ticks": self._ticks,
+                "samples": self.lines, "breaks": self._breaks}
 
     def close(self):
         self.ser.close()
@@ -134,11 +136,12 @@ def main(argv=None):
                          "Off by default: rover_daemon.py owns that port and only "
                          "one process can.")
     ap.add_argument("--ticks-per-metre", type=float, default=None,
-                    help="encoder scale. UNMEASURED on this rover -- without it the "
-                         "prior carries no translation.")
+                    help="encoder scale, overriding odometry.json. Without either, "
+                         "the prior carries no translation.")
     ap.add_argument("--gyro-lsb-per-dps", type=float, default=None,
-                    help="gyro scale. UNMEASURED on this rover -- without it the "
-                         "prior carries no rotation.")
+                    help="gyro scale, overriding odometry.json. Without either, "
+                         "the prior carries no rotation. Signed: it carries which "
+                         "way round a positive gz is.")
     ap.add_argument("--seconds", type=float, default=30.0,
                     help="how long to run, 0 for until interrupted")
     ap.add_argument("--map", metavar="FILE.pgm", default=None,
@@ -164,19 +167,23 @@ def main(argv=None):
     signal.signal(signal.SIGINT, lambda *_: stopping.append(True))
 
     lidar = serial.Serial(args.lidar, LIDAR_BAUD, timeout=0.05)
-    telem = None
+    telem = odo = None
     if args.telemetry:
         try:
-            telem = Telemetry(args.telemetry, args.ticks_per_metre,
-                              args.gyro_lsb_per_dps)
+            telem = BoardStream(args.telemetry)
         except serial.SerialException as e:
             print(f"telemetry port unavailable ({e}); continuing on lidar alone",
                   file=sys.stderr)
         else:
-            if not (args.ticks_per_metre or args.gyro_lsb_per_dps):
-                print("telemetry open but neither scale factor given, so the prior "
-                      "stays zero -- reading it only for the battery voltage",
-                      file=sys.stderr)
+            odo = Odometry(telem)
+            if args.gyro_lsb_per_dps:
+                odo.gyro_lsb_per_dps = args.gyro_lsb_per_dps
+            if args.ticks_per_metre:
+                odo.ticks_per_metre = args.ticks_per_metre
+            if not (odo.gyro_lsb_per_dps or odo.ticks_per_metre):
+                print("telemetry open and no scale factor measured yet, so the "
+                      "prior stays zero -- the gyro is still read, and still says "
+                      "whether it agrees the rover turned", file=sys.stderr)
 
     print(f"lidar {args.lidar} at {LIDAR_BAUD}, map "
           f"{cfg.grid_cells}x{cfg.grid_cells} at {cfg.resolution_m*100:.0f} cm "
@@ -185,7 +192,7 @@ def main(argv=None):
     started = time.monotonic()
     deadline = started + args.seconds if args.seconds > 0 else float("inf")
     next_report = started + 1.0 / args.report_hz
-    dropped = processed = rejects = 0
+    dropped = processed = rejects = disagreements = 0
     worst_loop = 0.0
     bytes_in = 0
 
@@ -206,11 +213,32 @@ def main(argv=None):
                     # slam2d kept only the newest, which is the right choice but has
                     # to be visible rather than silent.
                     dropped += revs - 1
-                    if telem:
-                        slam.set_prior(*telem.take())
+                    span = None
+                    if odo:
+                        # Before the match, because centring the search window is
+                        # the whole of what a prior does.
+                        span = odo.span()
+                        slam.set_prior(*odo.prior(span))
+                    was = slam.pose
                     if slam.update():
                         processed += 1
                         rejects += slam.rejected
+                        if odo:
+                            moved = slam.pose
+                            dth = (moved[2] - was[2] + math.pi) % (2*math.pi) - math.pi
+                            step = math.hypot(moved[0]-was[0], moved[1]-was[1])
+                            # Standing still is where the gyro's zero and the
+                            # spread around it are measured, and it is what this
+                            # script mostly does. Judged by the matcher, since
+                            # nothing here knows whether something else is
+                            # driving the rover.
+                            if (abs(math.degrees(dth)) < REST_MAX_DPS * 0.2
+                                    and step < REST_MAX_MS * 0.2):
+                                odo.learn_rest(span)
+                            why = odo.disagreement(span, dth)
+                            if why:
+                                disagreements += 1
+                                print(f"  !! {why}")
 
             worst_loop = max(worst_loop, time.monotonic() - loop_t0)
 
@@ -240,10 +268,19 @@ def main(argv=None):
         print(f"\n{processed} revolutions in {elapsed:.1f}s "
               f"({processed/max(elapsed,1e-9):.1f} Hz), {dropped} dropped, "
               f"{rejects} matches rejected, worst loop {worst_loop*1000:.1f} ms")
-        if telem:
+        if odo:
+            state = odo.status()
             print(f"telemetry: {telem.lines} T:1001 lines "
-                  f"({telem.lines/max(elapsed,1e-9):.0f} Hz), "
-                  f"gyro bias {telem.gz_bias}")
+                  f"({telem.lines/max(elapsed,1e-9):.0f} Hz), gyro bias "
+                  f"{state['gyro_bias_lsb']} LSB, resting spread "
+                  f"{state['gyro_noise_lsb']} LSB over {state['rest_spans']} spans")
+            bar = odo.threshold_lsb()
+            print(f"           the gyro will vouch for rotation past "
+                  f"{'unmeasured' if bar is None else f'{bar:.1f} LSB'}; "
+                  f"scale factors gyro={state['gyro_lsb_per_dps']} "
+                  f"ticks={state['ticks_per_metre']}")
+            print(f"           {disagreements} revolutions where the gyro and the "
+                  f"scan match could not both be right")
         x, y, th = slam.pose
         print(f"final pose x={x:+.3f} m y={y:+.3f} m heading {math.degrees(th):+.1f} deg")
 

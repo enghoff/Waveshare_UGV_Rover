@@ -296,7 +296,16 @@ and says so: the winner sat on the rim of the window                           o
   recovery window                              0.5 deg out, score 0.90
 ```
 
-## The motion prior, and the two numbers nobody has measured
+## The gyro: a prior, and a witness
+
+The driver board's `T:1001` telemetry has always carried rather more than the lidar
+can offer — a 9-DoF IMU in `ax/ay/az`, `gx/gy/gz`, a magnetometer in `mx/my/mz` that
+the OAK-D-Lite's BMI270 does not have, and wheel encoders in `odl`/`odr` — and for a
+long time nothing read any of it. [`odometry.py`](odometry.py) reads it now, and does
+two jobs with it that are worth keeping apart, because they have opposite requirements
+and only one of them was ever blocked on a measurement.
+
+### As a prior, which needs a scale factor
 
 The prior only centres the search window, so it is genuinely optional — at a walking
 crawl the true motion is inside the coarse window anyway, and every measurement above
@@ -309,28 +318,171 @@ where the prior stops being optional:
   with prior        worst x error 0.000 m
 ```
 
-The driver board's `T:1001` telemetry has everything needed to supply it, and rather
-more than the lidar alone can offer: a 9-DoF IMU in `ax/ay/az`, `gx/gy/gz` and —
-unlike the OAK-D-Lite's BMI270 — a magnetometer in `mx/my/mz`, plus wheel encoders
-in `odl`/`odr`.
+**Two scale factors are needed**: the encoders' counts per metre, which depends on
+gearbox and wheel, and the gyro's LSB per deg/s, which depends on the full-scale range
+the firmware picked. Guessing either produces a prior that looks plausible while
+quietly dragging the match off true — strictly worse than no prior — so until they
+have been measured the prior is exactly zero and the rover drives as it always has.
 
-**Two scale factors are needed and neither has been measured on this rover**: the
-encoders' counts per metre, which depends on gearbox and wheel, and the gyro's LSB
-per deg/s, which depends on the full-scale range the firmware picked. `run_slam.py`
-therefore takes them as `--ticks-per-metre` and `--gyro-lsb-per-dps` and contributes
-nothing to the prior without them. Guessing either would produce a prior that looks
-plausible while quietly dragging the match off true — strictly worse than no prior.
+They measure themselves, out of moves the rover makes anyway, and that is the pleasing
+part: the scan matcher's heading is the absolute reference the gyro has never had, so
+a `turn_in_place` the rover made for its own reasons is also a calibration. `_refind`
+already confirms every burst — a recovery sweep and the tracking revolution after it
+landing within 5° and 5 cm of each other — and it is that confirmation, not the size
+of the turn or how close it came to what was asked, that makes the heading a
+measurement rather than the re-seed repeating itself back. Drives do the same for the
+wheels. The numbers land in `~/ugv/odometry.json`, outside `lidar_slam/` so that
+`scp lidar_slam/*.py` cannot overwrite a measurement, and the moves behind each fit
+are saved with it so a restart continues the measurement instead of starting a new
+one from whatever the next three moves happen to be.
 
-Two further things are known about that stream and worth planning around. It runs at
-**~20 Hz**, measured at 19.9 by draining `in_waiting` in bulk — a `readline` loop
-with a 0.2 s timeout reports 17, and the missing sixth is the reader's fault, not the
-firmware's. Even 20 Hz is slow for a gyro: a 60°/s turn advances 3° between samples.
-And the bias is worth removing — `Telemetry` averages the first ~34 samples, about
-1.7 s, with the rover held still. It measured 6.9 LSB on `gz`.
+The gyro's scale is kept **signed**, and the sign is the point: nothing on this rover
+documents whether a positive `gz` is a left turn or a right one. It turns out to be
+counter-clockwise, the same way round as the pose, and the first confirmed turn
+settles that along with the magnitude.
 
-There is a pleasing way out of the calibration problem, not implemented here: once
-scan matching works, *its* heading is the reference the gyro lacks, so the rover can
-calibrate its own gyro scale by turning on the spot and comparing.
+**A drive is measured against the path, not against the distance between its ends.**
+That was the difference between measuring the wheels and never measuring them: this
+chassis wanders, and a 1.5 m drive that arrives 23° off its start heading had its
+`travelled` — the straight line — refused by a curvature gate for three attempts
+running. The wheels rolled every centimetre of the wander, so what they should be
+compared against is the path the matcher traced, accumulated a revolution at a time
+along the heading of the moment. Signed along the heading rather than as a distance,
+because taking the absolute value of each step rectifies the matcher's own
+few-millimetre noise into centimetres of travel that never happened.
+
+**Neither fit is published until its moves differ from each other**, which mattered
+more than how many there were. Three 175° turns the same way round agreed with each
+other to 2% and disagreed with a mixed set by 10% — the residual was measuring how
+well three near-identical manoeuvres repeat, which is a different question from
+whether they are right. So a fit is held back until its moves either go both ways or
+differ in size by a factor of 1.8, and `nav_status` reports `gyro_varied` and
+`ticks_varied` beside the values.
+
+### What the rover actually measured
+
+Driven on 2026-08-22, five varied turns and five varied drives:
+
+```
+gyro   15.34 LSB per deg/s   5 turns,  worst residual 8.7%
+wheels  108   ticks/metre     5 drives, worst residual 14.5%
+```
+
+Both are far better than the prior needs. Its job is to centre a window spanning
+±9° and ±10 cm, so a 9% error on a 5° step is half a degree — the accuracy that
+matters here is "within a fraction of the window", not "to the last percent".
+
+Two structures are visible in the raw pairs, and both are worth knowing before
+anybody tries to tighten these numbers:
+
+- **The gyro-to-matcher ratio depends on which way the rover turns.** The two
+  left turns read 16.5 and 16.7 LSB per deg/s; the two right turns read 14.5 and
+  14.2. That is not scatter, it is a sign asymmetry, and a single signed slope
+  averages it to 15.3 and is then about 8% wrong in each direction, alternating.
+  Fixing it means two scale factors, or finding out whether the asymmetry is in the
+  gyro or in the matcher's own heading.
+- **Short drives read long.** 0.51 m came out at 124 ticks/metre and 1.49 m at 103,
+  monotonically in between. That is a fixed overhead per drive — the slip while the
+  wheels break away and while they stop — being divided by a shorter distance. The
+  fit is weighted by move size and so lands near the long-drive asymptote, which is
+  the right answer for a rover that is driving rather than starting. Modelling it
+  properly means fitting an offset as well as a slope, rather than a ratio through
+  the origin.
+
+This is also why the first attempt at the wheel scale was nonsense: three 0.5 m hops
+gave 223 ticks/metre and five gave 117, because a hop that short is mostly overhead.
+Long drives were what settled it.
+
+### As a witness, which needs nothing
+
+This is the more valuable half. The match score cannot detect a scan that has snapped
+onto a wrong-but-self-consistent alignment — scoring high is precisely why that pose
+won — and once the map is stamped from the bad pose the map agrees with the error and
+the score *recovers*. That is the whole mechanism behind a room welded in twice at an
+angle, and every number the matcher produces is downstream of the same search, so none
+of them can contradict it. The gyro is the only thing on this rover that is not the
+scan matcher.
+
+It needs no scale factor for this, only a threshold, and the threshold measures itself
+while the rover stands still — which is most of what it does. Measured live on the
+rover on 2026-08-22: a resting bias of **7.3 to 7.6 LSB** on `gz`, consistent with the
+6.9 recorded a week earlier, and a resting spread of **1.8 to 2.3 LSB**, learnt over
+several hundred stationary revolutions within a few seconds of start-up. Six of those
+spreads is the bar for believing the chassis turned. The bias is re-learnt
+continuously and deliberately *not* saved between runs, because it drifts with
+temperature and a stale one would be believed.
+
+Two contradictions are checked, and the second is the one that is easy to miss:
+
+- **A jump.** The match moves the heading five degrees or more in one revolution
+  while the chassis, according to the gyro, did not turn at all.
+- **A creep.** The match accumulates fifteen degrees across at least eight
+  consecutive revolutions the chassis spent standing still. Two degrees a revolution
+  never trips the first test and is twenty degrees wrong in ten seconds. An honest
+  match's own noise is a few tenths of a degree and cancels rather than accumulating,
+  so it does not reach the bar.
+
+A third, comparing the *direction* the two report, lights up once a turn has
+established the sign convention.
+
+The response to any of them is deliberately the one a weak match already gets: hold
+the map, keep matching, resume when two revolutions agree. A disagreement does not say
+which of the two is wrong, only that they cannot both be right, and holding the map is
+the safe reading of that. The witness is only consulted while the map is being written
+and no recovery sweep ran — a sweep and a post-turn re-seed both move the heading tens
+of degrees over a stationary chassis quite legitimately, and both live on the
+already-paused side of that test.
+
+`unknown` is a third answer and is not a failure: no threshold learnt yet, a hole in
+the telemetry, a board on WiFi with no stream to integrate. A caller reading it as
+"the chassis was still" would manufacture the very disagreement this exists to detect,
+on every revolution, from a cold start.
+
+### Reading the board without paying for it
+
+The stream runs at **~20 Hz**, measured at 19.9 by draining `in_waiting` in bulk — a
+`readline` loop with a 0.2 s timeout reports 17, and the missing sixth is the reader's
+fault rather than the firmware's. Even 20 Hz is slow for a gyro: a 60°/s turn advances
+3° between samples.
+
+Getting that stream onto this host cost more thought than reading it did, and the
+numbers are worth keeping because the obvious design is the expensive one. The core is
+single and the scan matcher has most of it, so what a second reader costs is not the
+work it does but the number of times it wakes: every wakeup preempts the matching loop
+and forces a hand-off of the interpreter lock. Measured against the rover's real rate,
+40 seconds a round, daemon otherwise idle:
+
+| how the board's stream is drained | scan rate | revolutions dropped |
+|---|---|---|
+| nothing reads it, as it was before | 9.6 Hz | 2% |
+| a read that returns as soon as a byte lands | 8.7 Hz | 10% |
+| drained on a 50 ms clock | 9.34 Hz | 5% |
+| drained by the navigator's own loop | 9.34 Hz | 5% |
+
+The second row looks like the attentive design and is the trap: at 115200 baud a line
+takes 13 ms to clock in, so a reader that returns the moment a byte arrives spends
+that whole 13 ms going round again for the next one, twenty times a second — 12% of
+the core spent re-reading a line still in flight. What ships drains from the
+navigator's loop, which was going to run anyway and so costs no wakeup at all, with a
+250 ms thread as a backstop for a daemon started without `--lidar`, where the pack
+voltage is all anyone wants out of the stream.
+
+**So reading the gyro costs about 3% of the scan rate**, and that is the standing
+price of everything above.
+
+Two details in the folding are load-bearing rather than tidy. Lines drained together
+share the elapsed interval between them rather than each being stamped when it was
+parsed: the board samples on its own fixed clock, so two lines pulled from the buffer
+at once were taken 50 ms apart however close together they were read, and stamping on
+arrival would hand the first one the whole interval and the second none of it. And an
+interval nothing was awake for is *counted* rather than integrated, because a yaw rate
+multiplied by a gap is rotation that never happened; a span containing one of those is
+refused outright by both the prior and the witness. An interval of zero is neither a
+gap nor a sample — two pumpers share this port, so two drains landing in the same
+instant are ordinary, and calling one a hole would quietly switch off the prior and
+the witness for the span around it. That last one only showed up on the Pi: the same
+test passed on the workstation, which was fast enough that the two drains never landed
+in the same microsecond.
 
 ## Driving
 
@@ -774,6 +926,7 @@ selftest.c    correctness against a synthetic room and a synthetic table
 build.sh      builds libslam2d.so and selftest, on the machine that runs them
 slam2d.py     ctypes binding, and describe(); checks its struct layout each load
 navigator.py  the drive controller: avoidance, steering, speed, PWM; `python3 navigator.py` self-tests the move commentary
+odometry.py   the board's gyro and wheel counts, as a prior and as a witness; self-tests
 planner.py    a route through the occupancy grid, as a few corners; `python3 planner.py` self-tests
 mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
 run_slam.py   mapping on its own: pose, clearance, a PGM
@@ -800,20 +953,21 @@ once and later cleared back to exactly zero is indistinguishable from one never 
   clamped tight because at 10 Hz anything eager will oscillate — expect to tune it,
   and expect the straight-line trim to matter, since equal PWM is not equal speed on
   this chassis.
-- **The gyro and the magnetometer are still unused**, and this is now the largest
-  thing left. The two scale factors in
-  [The motion prior](#the-motion-prior-and-the-two-numbers-nobody-has-measured) remain
-  unmeasured, and `turn_in_place` calibrates the gyro for free by comparing its
-  integral against the matcher's heading over a confirmed turn — which is a
-  measurement the re-find now produces on every turn anyway.
-  
-  Worth separating two uses of it, because they have very different requirements. As
-  a *prior* the gyro needs its scale factor, or it drags the match off true. As a
-  *detector* it needs nothing: an uncalibrated gyro still says, unambiguously,
-  whether the rover physically rotated at all while the pose claims nine degrees of
-  yaw, and sign disagreement is scale-free too. It is the only witness to rotation
-  that is not the thing under suspicion, and the daemon is already parsing the
-  `T:1001` lines it arrives in for the battery voltage.
+- **The magnetometer is still unused.** `mx/my/mz` is the one absolute heading
+  reference on this rover — the OAK-D-Lite's BMI270 has no equivalent — and it is the
+  obvious answer to a pose whose heading drifts for ever, subject to the usual caution
+  about the rover's own motors distorting it. The gyro beside it is read now; see
+  [The gyro](#the-gyro-a-prior-and-a-witness).
+- **The gyro's scale is one number where the rover wants two**, and the wheels' is a
+  ratio where the rover wants a ratio and an offset. Both are measured and both are
+  good enough for a prior; see [What the rover actually
+  measured](#what-the-rover-actually-measured) for the asymmetry and the overhead
+  that a single figure each is averaging over.
+- **The turns undershoot, consistently.** Asked for 175° the rover managed 159;
+  asked for 140 it managed 127; asked for 45 it managed 11. That is the open-loop
+  `TURN_RATES` table being optimistic, which was already known — but the gyro now
+  makes it measurable independently of the matcher, so re-deriving that table is a
+  smaller job than it was.
 - **The map picture has not been seen by the model.** The frame server stashes bytes
   without decoding and the upload declares no media type, so a PNG ought to be as
   acceptable as a JPEG — but that is reasoning, not a test. If it turns out to be

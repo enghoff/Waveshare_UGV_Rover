@@ -1060,8 +1060,170 @@ def test_reading_the_network():
               "install" in asked["error"], True)
 
 
+class FakePort:
+    """A serial port that hands over exactly what it has been given."""
+
+    def __init__(self):
+        self.pending = bytearray()
+        self.closed = False
+
+    def feed(self, text):
+        self.pending += text.encode()
+
+    @property
+    def in_waiting(self):
+        return len(self.pending)
+
+    def read(self, n):
+        out, self.pending = bytes(self.pending[:n]), bytearray(self.pending[n:])
+        return out
+
+    def write(self, data):
+        return len(data)
+
+    def reset_input_buffer(self):
+        self.pending = bytearray()
+
+    def close(self):
+        self.closed = True
+
+
+def _link_over(port):
+    """A SerialLink around a fake port, with its backstop thread never started.
+
+    Constructed without running __init__, because that opens a real port and
+    starts a thread -- neither of which this wants. What is under test is the
+    draining and the folding, which are ordinary methods.
+    """
+    import rover_daemon
+
+    link = rover_daemon.SerialLink.__new__(rover_daemon.SerialLink)
+    link.port = "fake"
+    link.link = port
+    link._lock = rover_daemon.threading.Lock()
+    link._motion_lock = rover_daemon.threading.Lock()
+    link._pump_lock = rover_daemon.threading.Lock()
+    link._newest = None
+    link._newest_at = 0.0
+    link._sample_at = None
+    link._gz_lsb_s = 0.0
+    link._ticks = None
+    link._samples = 0
+    link._breaks = 0
+    link._buffered = bytearray()
+    link._drained_at = None
+    link._stop = rover_daemon.threading.Event()
+    link._reader = rover_daemon.threading.Thread(target=lambda: None)
+    return link
+
+
+LINE = ('{{"T":1001,"L":0,"R":0,"ax":104,"ay":-132,"az":8392,'
+        '"gx":8,"gy":5,"gz":{gz},"mx":190,"my":346,"mz":1468,'
+        '"odl":{odl},"odr":{odr},"v":1208}}\n')
+
+
+def test_reading_the_board():
+    """The gyro and the wheel counts, picked out of the board's own chatter.
+
+    This parsing is hand-rolled rather than left to json.loads, because on the
+    rover it runs at the board's rate rather than a human's -- so it is exactly
+    the sort of thing that works on the happy line and quietly returns nothing on
+    a real one. See _field_number.
+    """
+    import rover_daemon
+
+    line = LINE.format(gz=-650, odl=9222, odr=8883).encode()
+    check("the yaw rate comes out of a raw line",
+          rover_daemon._field_number(line, b'"gz":'), -650.0)
+    check("and so does a wheel count",
+          rover_daemon._field_number(line, b'"odl":'), 9222.0)
+    check("a field the board did not send is absent, not zero",
+          rover_daemon._field_number(line, b'"nope":'), None)
+    check("a field at the end of the line still parses",
+          rover_daemon._field_number(line, b'"v":'), 1208.0)
+    check("a float field parses as one",
+          rover_daemon._field_number(b'{"T":1001,"L":0.19,"R":0}', b'"L":'), 0.19)
+
+    # The board's own boot noise, and half a line, are both ordinary here.
+    port = FakePort()
+    link = _link_over(port)
+    port.feed("garbage that is not json\n")
+    check("noise on the port folds to nothing", link.pump(), 0)
+    port.feed('{"T":1002,"other":1}\n')
+    check("another message type is not telemetry", link.pump(), 0)
+    check("and none of it counted as a sample", link.motion(), None)
+
+    port.feed(LINE.format(gz=10, odl=100, odr=100)[:40])
+    check("half a line is not a sample yet", link.pump(), 0)
+    port.feed(LINE.format(gz=10, odl=100, odr=100)[40:])
+    check("and is one once the rest arrives", link.pump(), 1)
+    check("the wheel count is the mean of the two sides",
+          link.motion()["ticks"], 100.0)
+
+    # The first drain has nothing to measure an interval against, so it cannot
+    # integrate -- and must not invent an interval to do it with.
+    check("the first line integrates nothing", link.motion()["gz_lsb_s"], 0.0)
+
+    # Two lines drained together were taken at the board's own spacing, not at the
+    # instant they happened to be read. Sharing the interval between them is what
+    # keeps that true; stamping on arrival would give the first one all of it.
+    port.feed(LINE.format(gz=100, odl=110, odr=110))
+    port.feed(LINE.format(gz=100, odl=120, odr=120))
+    before = link.motion()["gz_lsb_s"]
+    # The expected figure is derived from the interval the fold actually saw, not
+    # from the one asked for here. Two Python statements are not 100 ms apart to
+    # any particular precision on the rover's Pi, and a tolerance loose enough to
+    # cover that would stop checking the arithmetic.
+    started = rover_daemon.time.monotonic() - 0.1
+    link._drained_at = started
+    check("both lines of a batch are counted", link.pump(), 2)
+    turned = link.motion()["gz_lsb_s"] - before
+    want = 100.0 * (link.motion()["at"] - started)
+    check("a batch integrates its whole interval at the rate reported",
+          abs(turned - want) < 1e-6, True)
+    check("and that interval was about the 100 ms asked for",
+          0.09 < link.motion()["at"] - started < 0.5, True)
+    check("and the newest wheel count is the one kept",
+          link.motion()["ticks"], 120.0)
+
+    # A gap this thread was not awake for is the one thing that must not be
+    # integrated: a yaw rate multiplied by it is rotation that never happened.
+    breaks = link.motion()["breaks"]
+    port.feed(LINE.format(gz=500, odl=130, odr=130))
+    link._drained_at = rover_daemon.time.monotonic() - 30.0
+    link.pump()
+    check("a thirty-second hole is counted, not integrated",
+          link.motion()["breaks"], breaks + 1)
+
+    # Two drains in the same instant are ordinary -- the navigator's loop and the
+    # backstop thread share this port -- and must not read as a hole. Calling one
+    # of those a hole marks the span untrustworthy, which switches off the prior
+    # and the witness for it.
+    breaks = link.motion()["breaks"]
+    port.feed(LINE.format(gz=0, odl=140, odr=140))
+    link._drained_at = rover_daemon.time.monotonic()
+    link.pump()
+    check("two drains at the same instant are not a hole",
+          link.motion()["breaks"], breaks)
+
+    # A board that has restarted begins its counters again, and the difference
+    # across that is metres of travel that never happened.
+    breaks = link.motion()["breaks"]
+    port.feed(LINE.format(gz=0, odl=9000, odr=9000))
+    link.pump()
+    check("a board that restarted its counters is caught",
+          link.motion()["breaks"], breaks + 1)
+
+    # The battery still comes out of the same stream, parsed only when asked.
+    port.feed(LINE.format(gz=0, odl=0, odr=0))
+    link.pump()
+    check("the pack voltage survives the cheap path",
+          link.telemetry()["v"], 1208)
+
+
 def main():
-    for test in (test_levels, test_battery, test_schemas, test_lights, test_gimbal,
+    for test in (test_levels, test_battery, test_reading_the_board,
+                 test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,

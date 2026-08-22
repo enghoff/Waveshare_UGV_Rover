@@ -35,6 +35,7 @@ import serial
 
 import journey
 import planner
+from odometry import Odometry
 from slam2d import Slam2D, default_config
 
 LIDAR_BAUD = 230400
@@ -198,6 +199,23 @@ REACQUIRE_GOOD_SCANS = 2   # consecutive agreeing matches before the map is trus
 # out rather than a few.
 WIDEN_AFTER_LOST = 4
 SLAM_EVENTS = 20           # how much of the recent history of all this to keep
+
+# --- the gyro, which is the only witness here that is not the scan matcher -------
+# What counts as standing still, for the purpose of learning what the resting gyro
+# reads. Loose rather than tight: these are the *matcher's* numbers, so they carry
+# its own few-millimetre noise, and a bar below that noise would never be met and
+# the witness would never get a threshold at all. Anything the rover does on
+# purpose is an order of magnitude above both.
+REST_MAX_DPS = 2.0
+REST_MAX_MS = 0.02
+# A drive that has swung further round than this was not a drive in a direction,
+# and whatever the wheels did over it is not a measurement of anything. Generous,
+# because what used to be the worry here -- that a curved drive measures the wheels
+# against a chord -- is now handled properly by measuring against the path the
+# matcher actually traced rather than the straight line between its ends. This
+# chassis wanders 23 degrees over a metre and a half, so a tight bar here refused
+# every drive there was.
+CALIBRATE_MAX_DRIVE_TURN_DEG = 60.0
 
 # Turning is never refused. It used to be, whenever something sat inside the
 # chassis' circumscribed radius, and that was the wrong call: a rover that has got
@@ -483,6 +501,38 @@ class Navigator:
                  on_drive_start=None, on_drive_end=None):
         self.link = link
         self.slam = Slam2D(config or default_config())
+        #: The driver board's gyro and wheel counts, which until now nothing read.
+        #: Two jobs: it centres the scan matcher's search window on where the rover
+        #: thinks it went, and it is the one witness on this rover that is not the
+        #: scan matcher and can therefore contradict it. See odometry.py -- the
+        #: first of those waits on a scale factor, the second does not.
+        self._odom = Odometry(link)
+        #: The board's account of the interval the newest revolution covers, kept
+        #: because _note_match and _on_scan both want it and only _loop is in a
+        #: position to take it -- a span may only be consumed once.
+        self._span = None
+        #: Held across a whole drive, the way a turn's mark is, so the wheel counts
+        #: can be measured against the distance the matcher says was covered.
+        self._drive_mark = None
+        #: Revolutions whose match was rejected outright -- the scan fitted nothing
+        #: anywhere -- counted since the daemon started. A move that saw one is a
+        #: move whose distance is fiction, which is the bar a wheel measurement has
+        #: to clear. Deliberately not the same bar as the map's: a winner against
+        #: the rim of the window is a pose a few centimetres short, not a lost one,
+        #: and refusing to measure over one of those refuses every drive, since
+        #: stopping is when the window is outrun.
+        self._rejects = 0
+        self._edges = 0
+        self._drive_marked_at = None
+        #: Distance the matcher says the rover has travelled along its own heading,
+        #: accumulated a revolution at a time and never reset. This is what the
+        #: wheel counts are measured against, and it has to be the path rather than
+        #: the straight line between the ends of a move: the wheels roll every
+        #: centimetre of a wander and a chord does not. Signed along the heading, so
+        #: a revolution's worth of match noise cancels instead of accumulating --
+        #: taking the absolute value of each step would rectify that noise into
+        #: centimetres of travel that never happened.
+        self._path_m = 0.0
         # Opened by the loop rather than here, and reopened whenever it goes away.
         # At boot this matters: the lidar enumerates 93 s after the kernel starts on
         # this Pi, long after cron has run the daemon, so constructing this used to
@@ -619,10 +669,16 @@ class Navigator:
         self._journey = journey.Recorder.if_armed()
         if self._journey:
             self._journey.begin("drive", asked, self.slam.pose)
+        self._drive_mark = self._odom.mark()
+        self._drive_marked_at = (self._rejects, self._edges, self._path_m)
         try:
             outcome = self._ended(self._drive(distance_m, speed_ms, seconds))
         finally:
             recording, self._journey = self._journey, None
+        # Every straight drive the rover makes is also a measurement of its wheels,
+        # for the same reason every turn measures its gyro: the scan matcher is the
+        # ruler neither of them has on board.
+        self._calibrate_drive(outcome)
         if recording:
             recording.end(outcome.reason, outcome.detail)
         return outcome
@@ -856,6 +912,11 @@ class Navigator:
             # merely reported: a measured 181 against a requested 180 wraps to -179
             # and reads as a rover that has gone the wrong way round.
             start_accum = self._heading_accum
+            # Held across the whole turn, bursts and re-finds and all, because what
+            # calibrates the gyro is one long rotation measured two ways -- and the
+            # running mark underneath is being consumed a revolution at a time by
+            # the prior. See Odometry.mark.
+            odo_mark = self._odom.mark()
             had_lidar = self.lidar_live()
             done = 0.0            # what dead reckoning was told to do, in degrees
             remaining = angle
@@ -932,6 +993,14 @@ class Navigator:
                                f"until it sees something it recognises. {map_bit}")
 
             turned = self._heading_change(start_accum)
+            # Every burst of this turn was confirmed -- a recovery sweep and the
+            # tracking revolution after it landed within 5 degrees and 5 cm of each
+            # other, or the loop above would have come back `lost`. That is what
+            # makes `turned` a measurement rather than a re-seed repeating itself,
+            # and it is the whole reason a scale factor may be fitted to it. How
+            # far the turn fell short of what was *asked* is a different question
+            # and does not bear on this one.
+            self._calibrate_turn(turned, odo_mark)
             error = angle - turned
             detail = ""
             if gentle:
@@ -995,6 +1064,12 @@ class Navigator:
                 # too, with a `turned` the rover never completed -- which the recovery
                 # search undoes like any other bad guess.
                 self.slam.pose = (x, y, th + math.radians(turned))
+            # The board has been reporting throughout the burst, and the running
+            # span has not been consumed since nothing matched. Left alone, the
+            # first revolution after this would be handed a prior covering the
+            # whole turn. The turn's own span is kept separately by the caller --
+            # see _turn_in_place -- so nothing is lost by starting again here.
+            self._odom.reset()
             self._pause_mapping("a turn was dead reckoned and nothing has "
                                 "confirmed where it ended yet")
         finally:
@@ -1147,6 +1222,11 @@ class Navigator:
         self._need_recovery = False
         self._wide_recovery = False
         self._lost_run = 0
+        # Whatever the pose did while the map was held -- a recovery sweep, a
+        # re-seed, tens of degrees of legitimate correction -- is not the matcher
+        # creeping away from a still chassis, and carrying it into the creep test
+        # would accuse a rover that has just proved itself. See odometry.py.
+        self._odom.forget_quiet()
 
     def _log_event(self, what, why, **fields):
         """A short history of losing and regaining the pose, for whoever asks later.
@@ -1182,6 +1262,10 @@ class Navigator:
         """
         health = self._match_health()
         self._health = health
+        if health["rejected"]:
+            self._rejects += 1
+        if health["edge"]:
+            self._edges += 1
         if self._hold_confirm:
             return
         pose = health.get("pose")
@@ -1196,6 +1280,18 @@ class Navigator:
                 # was tracking it a revolution ago, so it is a few degrees out, not
                 # tens. The ordinary window reaches that and the sweep would not.
                 self._pause_mapping(_why_lost(health), wide=False)
+                return
+            # Everything above judges the match by the search that produced it, and
+            # there is one failure that search cannot see: a scan that has snapped
+            # onto a wrong-but-self-consistent alignment scores *high*, because
+            # scoring high is why that pose won. The gyro is the only thing here
+            # that is not the matcher, so it is the only thing that can disagree.
+            #
+            # Only in this branch. A recovery sweep legitimately moves the heading
+            # tens of degrees with the chassis standing still, and so does the
+            # re-seed after a dead-reckoned turn; both live on the paused-map side
+            # of this test, where the machinery is already doing the right thing.
+            self._witness(health)
             return
 
         if not health["map_ok"] or pose is None:
@@ -1225,6 +1321,105 @@ class Navigator:
         self._good_run += 1
         if self._good_run >= REACQUIRE_GOOD_SCANS:
             self._resume_mapping("the scan fits the map again")
+
+    def _calibrate_turn(self, degrees, mark):
+        """Fit the gyro's scale to a turn the matcher has confirmed.
+
+        The pleasing part of this arrangement is that it costs no manoeuvre of its
+        own. Every `turn_in_place` the rover makes for its own reasons is also a
+        measurement, because the matcher's heading is the absolute reference the
+        gyro has never had -- so the scale factor arrives by driving rather than by
+        ceremony, and goes on being refined for as long as the rover turns.
+        """
+        span = self._odom.between(mark, self._odom.mark())
+        taken, why = self._odom.note_turn(degrees, span)
+        state = self._odom.status()
+        if taken:
+            self._log_event("gyro measured",
+                            f"a confirmed {degrees:+.0f} degree turn against what "
+                            f"the gyro integrated over it",
+                            gyro_lsb_per_dps=state["gyro_lsb_per_dps"],
+                            turns_measured=state["turns_measured"])
+        else:
+            self._log_event("gyro not measured", why,
+                            turns_measured=state["turns_measured"])
+
+    def _calibrate_drive(self, outcome):
+        """Fit the wheels' scale to a drive the matcher has confirmed.
+
+        Straight ones only. The wheel counts measure the arc the wheels rolled and
+        `travelled` is the straight line between the ends, so a drive that steered
+        round something is measuring two different lengths and would fit the scale
+        short.
+        """
+        mark, since = self._drive_mark, self._drive_marked_at
+        self._drive_mark = self._drive_marked_at = None
+        if mark is None or outcome.reason != "arrived":
+            return                      # not a drive that measured anything
+        if abs(outcome.turned_deg) > CALIBRATE_MAX_DRIVE_TURN_DEG:
+            self._log_event("wheels not measured",
+                            f"the drive curved {outcome.turned_deg:+.0f} degrees, so "
+                            f"the wheels rolled an arc and the matcher measured the "
+                            f"chord")
+            return
+        rejected = 0 if since is None else self._rejects - since[0]
+        edges = 0 if since is None else self._edges - since[1]
+        if rejected:
+            self._log_event("wheels not measured",
+                            f"{rejected} revolutions of that drive fitted the map "
+                            f"nowhere, so the distance it reports is not a "
+                            f"measurement")
+            return
+        # The path the matcher traced, not the straight line between the ends. On a
+        # drive that wandered 23 degrees those differ by more than the measurement
+        # is worth, and the wheels rolled the path.
+        path = self._path_m - since[2]
+        span = self._odom.between(mark, self._odom.mark())
+        taken, why = self._odom.note_drive(path, span)
+        state = self._odom.status()
+        if taken:
+            self._log_event("wheels measured",
+                            f"a confirmed {path:.2f} m of travel -- "
+                            f"{outcome.travelled_m:.2f} m of it in a straight line "
+                            f"-- against the wheel counts over it",
+                            # The two raw sides of the fit, so a scale factor that
+                            # disagrees with what the prior does per revolution can
+                            # be taken apart rather than argued about.
+                            path_m=round(path, 3),
+                            ticks=None if span is None else span.ticks,
+                            seconds=None if span is None else round(span.dt, 2),
+                            ticks_per_metre=state["ticks_per_metre"],
+                            drives_measured=state["drives_measured"],
+                            # Each of these is a revolution whose pose came back a
+                            # few centimetres short, so a drive with several of them
+                            # measures the wheels slightly long. Reported rather
+                            # than refused, and the fit's own spread is the check.
+                            window_overruns=edges)
+        else:
+            self._log_event("wheels not measured", why,
+                            drives_measured=state["drives_measured"])
+
+    def _witness(self, health):
+        """Let the gyro contradict the scan match, and hold the map if it does.
+
+        The response is deliberately the same one a weak match gets -- pause the
+        map and go looking -- rather than anything new. A disagreement does not say
+        which of the two is wrong, only that they cannot both be right, and the
+        safe reading of that is the one this code already has a mechanism for:
+        stop drawing, keep matching, and resume when two revolutions agree.
+
+        Cheap enough to run every revolution: it is a subtraction and a compare
+        against a threshold the resting rover measured for itself.
+        """
+        pose = health.get("pose")
+        if pose is None or self._last_pose is None or self._span is None:
+            return
+        # _measure has not run for this revolution yet -- _loop calls this first --
+        # so _last_pose is still the previous revolution's and this is the step.
+        dth = (pose[2] - self._last_pose[2] + math.pi) % (2 * math.pi) - math.pi
+        why = self._odom.disagreement(self._span, dth)
+        if why:
+            self._pause_mapping(why, wide=False)
 
     def _heading_change(self, since_accum):
         """Degrees turned since a mark taken from the accumulating heading."""
@@ -1426,6 +1621,21 @@ class Navigator:
                         # wide sweep is free to pick a different peak.
                         self.slam.request_recovery()
                         self._recovery_this_scan = True
+                    # The prior goes in before the match, because centring the
+                    # search window is the whole of what it does. Zero until the
+                    # scale factors have been measured, which is a legitimate
+                    # prior rather than a fallback -- see odometry.py.
+                    # Drained here rather than by a thread of its own. The
+                    # board's stream has to be read at something like its own
+                    # rate for the gyro's timing to mean anything, and a read
+                    # folded into a loop that was going to run anyway costs no
+                    # wakeup -- which on this one core is the whole cost. See
+                    # TELEMETRY_POLL_S in rover_daemon.py.
+                    pump = getattr(self.link, "pump", None)
+                    if pump is not None:
+                        pump()
+                    self._span = self._odom.span()
+                    self.slam.set_prior(*self._odom.prior(self._span))
                     if self.slam.update():
                         self._last_scan_at = time.monotonic()
                         self._note_match()
@@ -1473,6 +1683,18 @@ class Navigator:
         now = time.monotonic()
         pose = self.slam.pose
         self._measure(pose, now)
+
+        # A gyro's zero drifts with temperature, and the witness's threshold is a
+        # spread around that zero -- so both have to be learnt from the rover
+        # standing still, and re-learnt as the afternoon goes on. Standing still is
+        # most of what this rover does, so there is no ceremony in it. Both tests
+        # matter: `_driving` is false while a script waits or a conversation runs,
+        # and the matcher's own numbers catch the rover being pushed, which would
+        # otherwise teach the gyro to expect that push.
+        if (not self._driving and self._span is not None
+                and abs(self._measured_turn) < REST_MAX_DPS
+                and abs(self._measured_speed) < REST_MAX_MS):
+            self._odom.learn_rest(self._span)
 
         # Kept every revolution, driving or not, so a move that is about to start
         # already has half a second of history to be cautious with.
@@ -1538,6 +1760,7 @@ class Navigator:
                 self._heading_accum += dth
                 # Lightly smoothed: one revolution of match noise is a few
                 # millimetres and would otherwise fight the speed loop.
+                self._path_m += along
                 self._measured_speed += 0.5 * (along / dt - self._measured_speed)
                 self._measured_turn += 0.5 * (math.degrees(dth) / dt
                                               - self._measured_turn)
@@ -1985,8 +2208,22 @@ class Navigator:
             "mapping": not self._map_paused,
             "slam_events": [dict(e, age_s=round(time.monotonic() - e["at"], 1))
                             for e in self._events[-6:]],
+            # The gyro and the wheels: what the board's own sensors are being
+            # believed for. `witness` says whether the gyro yet has a resting
+            # threshold to judge rotation by -- it learns one within a few seconds
+            # of standing still -- and `prior` whether either scale factor has been
+            # measured well enough to centre the search window with.
+            "odometry": self._odom.status(),
             "scans": self._scans,
             "dropped_scans": self._dropped,
+            # Running totals since the daemon started, which is what makes them
+            # useful: a rate is what says whether the search window is the right
+            # size for how fast the rover is being driven, and one revolution's
+            # `match_edge` above cannot. An overrun is a pose that came back short
+            # because the rover moved further than one revolution's search covers;
+            # a rejection is a scan that fitted the map nowhere at all.
+            "window_overruns": self._edges,
+            "rejected_matches": self._rejects,
             "pwm": self._last_sent,
             "lidar_ok": self.lidar_ok(),
             # Both, because they disagree during a dead-reckoned turn and the pair is
@@ -2208,6 +2445,8 @@ def _selftest():
     # tracking window's +/-10 -- which suits a rover standing still and is less
     # than a driving one covers in a revolution. Asking for it there is what turned
     # one bad revolution into fifteen seconds of held map.
+    from odometry import _Board
+
     class _Tracking:
         """Just enough Navigator to run the map-hold state machine on scripted
         revolutions, without a lidar or a floor."""
@@ -2225,6 +2464,17 @@ def _selftest():
             self._dropped = 0
             self._journey = None
             self.health = {}
+            # A blind odometry by default: no source, so the witness has nothing to
+            # say and every assertion below is about the matcher alone, the way it
+            # was before the gyro was read at all.
+            self._odom = Odometry(object(), load=False)
+            self._span = None
+            self._last_pose = None
+            self._drive_mark = None
+            self._drive_marked_at = None
+            self._rejects = 0
+            self._edges = 0
+            self._path_m = 0.0
             self.slam = type("S", (), {"lock": threading.Lock(),
                                        "mapping": True})()
 
@@ -2235,6 +2485,9 @@ def _selftest():
         _pause_mapping = Navigator._pause_mapping
         _resume_mapping = Navigator._resume_mapping
         _note_match = Navigator._note_match
+        _witness = Navigator._witness
+        _calibrate_turn = Navigator._calibrate_turn
+        _calibrate_drive = Navigator._calibrate_drive
 
     def _rev(nav, ok, pose=(0.0, 0.0, 0.0)):
         nav.health = {"score": 0.9 if ok else 0.9, "edge": 0 if ok else 1,
@@ -2296,6 +2549,151 @@ def _selftest():
     after_burst._pause_mapping("a turn was dead reckoned")
     assert after_burst._wide_recovery, (
         "a dead-reckoned turn was left to find itself with the tracking window")
+
+    # --- the gyro contradicting the matcher ---------------------------------
+    # Everything above judges a match by the search that produced it, which cannot
+    # see the failure that matters most: a scan snapped onto a wrong alignment
+    # scores high, because scoring high is why it won. These revolutions are all
+    # healthy by every measure the matcher has. The only thing wrong with them is
+    # that the chassis did not move.
+    def _witnessed(board):
+        nav = _Tracking()
+        nav._odom = Odometry(board, load=False)
+        nav._odom.reset()
+        for _ in range(80):                    # a few seconds of standing still
+            board.advance(0.1, noise=1.5)
+            nav._odom.learn_rest(nav._odom.span())
+        assert nav._odom.rest_known, "the resting gyro never produced a threshold"
+        return nav
+
+    def _witness_rev(nav, board, pose, seconds=0.1, dps=0.0):
+        nav._last_pose = nav.health.get("pose") if nav.health else nav._last_pose
+        board.advance(seconds, dps=dps, noise=1.5)
+        nav._span = nav._odom.span()
+        _rev(nav, True, pose)
+
+    board = _Board()
+    caught = _witnessed(board)
+    _witness_rev(caught, board, (0.0, 0.0, 0.0))
+    assert not caught._map_paused, "a healthy revolution held the map"
+    # The matcher swings the heading 20 degrees. The gyro sat still throughout.
+    _witness_rev(caught, board, (0.0, 0.0, math.radians(20.0)))
+    assert caught._map_paused, (
+        "the matcher moved the heading 20 degrees over a chassis the gyro says "
+        "never turned, and the map went on being written from it -- which is the "
+        "whole mechanism behind a room stamped in twice at an angle")
+    assert any("gyro" in e["why"] for e in caught._events), (
+        "the map was held without saying the gyro was what disagreed")
+
+    # And the other way round, which matters just as much: a rover that really is
+    # turning must not have its map held every revolution for doing so.
+    honest = _witnessed(_Board())
+    board2 = honest._odom.source
+    heading = 0.0
+    for _ in range(10):
+        heading += math.radians(4.0)
+        _witness_rev(honest, board2, (0.0, 0.0, heading), dps=40.0)
+    assert not honest._map_paused, (
+        "a rover turning 40 degrees a second, with the gyro agreeing that it was, "
+        "had its map held anyway")
+
+    # A gyro with no threshold yet says "unknown", and unknown must not read as
+    # "the chassis was still" -- that would manufacture the very disagreement this
+    # exists to detect, on every revolution, from a cold start.
+    cold = _Tracking()
+    cold._odom = Odometry(_Board(), load=False)
+    cold._odom.reset()
+    cold._odom.source.advance(0.1)
+    cold._span = cold._odom.span()
+    cold._last_pose = (0.0, 0.0, 0.0)
+    _rev(cold, True, (0.0, 0.0, math.radians(30.0)))
+    assert not cold._map_paused, (
+        "a gyro that has not yet learnt what rest looks like was allowed to "
+        "contradict the matcher, so every cold start holds the map")
+
+    # --- calibrating out of moves the rover made anyway ---------------------
+    # Against a real Outcome, which is the point of this one: the first version
+    # read `outcome.travelled` and `outcome.turned`, and the object calls them
+    # `travelled_m` and `turned_deg`. Nothing offline noticed, because nothing
+    # offline built one -- the rover found it, on the floor, at the end of a drive
+    # that had already happened.
+    calibrating = _Tracking()
+    board = _Board()
+    import tempfile
+    store = os.path.join(tempfile.mkdtemp(), "odometry.json")
+    calibrating._odom = Odometry(board, store=store, load=False)
+    calibrating._odom.reset()
+    for _ in range(80):
+        board.advance(0.1, noise=1.5)
+        calibrating._odom.learn_rest(calibrating._odom.span())
+
+    for degrees in (90.0, -90.0, 180.0):
+        mark = calibrating._odom.mark()
+        board.advance(abs(degrees) / 60.0, dps=60.0 * (1 if degrees > 0 else -1))
+        calibrating._calibrate_turn(degrees, mark)
+    measured = calibrating._odom.gyro_lsb_per_dps
+    assert measured is not None, "three confirmed turns measured no gyro scale"
+    assert abs(measured - board.lsb_per_dps) < 0.5, (
+        f"the gyro scale came out {measured} against a board built at "
+        f"{board.lsb_per_dps}")
+
+    def _drove(nav, metres, turned=2.0, reason="arrived", rejects=0, edges=0):
+        """A drive of `metres` along the path, with the board rolling to match.
+
+        `rejects` and `edges` happen *during* the drive, which is the only place
+        they mean anything: bumping them before the mark is taken leaves the
+        difference at zero and tests nothing, which is how the first version of
+        these two assertions passed without exercising either gate.
+        """
+        nav._drive_mark = nav._odom.mark()
+        nav._drive_marked_at = (nav._rejects, nav._edges, nav._path_m)
+        nav._odom.source.advance(metres / 0.25, ms=0.25)
+        nav._path_m += metres
+        nav._rejects += rejects
+        nav._edges += edges
+        # The straight-line figure is deliberately shorter than the path, which is
+        # the whole point: a wandering drive rolls more wheel than it displaces.
+        nav._calibrate_drive(Outcome(reason, metres * 0.95, turned))
+
+    for metres in (0.5, 1.0, 0.8):
+        _drove(calibrating, metres)
+    ticks = calibrating._odom.ticks_per_metre
+    assert ticks is not None, "three confirmed drives measured no wheel scale"
+    assert abs(ticks - board.ticks_per_metre) < 20.0, (
+        f"the wheel scale came out {ticks} against a board built at "
+        f"{board.ticks_per_metre}")
+
+    # A drive that ended with the pose against the rim of the search window is
+    # still a measurement. That bar had to be found on the floor: gating on the map
+    # being written refused *every* drive, because stopping is exactly when the
+    # rover outruns one revolution's search and the map is held for a moment.
+    before = calibrating._odom.status()["drives_measured"]
+    calibrating._map_paused = True
+    _drove(calibrating, 1.0, edges=2)
+    assert calibrating._odom.status()["drives_measured"] == before + 1, (
+        "a drive that ended on the rim of the window was refused, which refuses "
+        "every drive there is")
+    calibrating._map_paused = False
+
+    # A rejected revolution is different in kind: the scan fitted nothing anywhere,
+    # so the distance the matcher reports for that drive is fiction.
+    before = calibrating._odom.status()["drives_measured"]
+    _drove(calibrating, 1.0, rejects=1)
+    assert calibrating._odom.status()["drives_measured"] == before, (
+        "a drive the matcher lost the pose during was fitted to the wheel scale")
+
+    # A wander of twenty-odd degrees is now measured rather than refused, because
+    # the path is what the wheels rolled. Only a drive that has swung right round,
+    # or one that never arrived, has nothing to say.
+    before = calibrating._odom.status()["drives_measured"]
+    _drove(calibrating, 1.0, turned=25.0)
+    assert calibrating._odom.status()["drives_measured"] == before + 1, (
+        "a drive that wandered 25 degrees was refused, and this chassis wanders")
+    before = calibrating._odom.status()["drives_measured"]
+    _drove(calibrating, 1.0, turned=120.0)
+    _drove(calibrating, 1.0, reason="blocked")
+    assert calibrating._odom.status()["drives_measured"] == before, (
+        "a drive that swung right round, or never arrived, was fitted anyway")
 
     print("navigator: ok")
     return 0
