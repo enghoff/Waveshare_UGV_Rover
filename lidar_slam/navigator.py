@@ -267,8 +267,22 @@ MAX_MOVE_S = 8.0
 # A route to a tap is not one 8 s hop: it is a handful of segments and the turns
 # between them, and it is allowed to take the time that actually takes. The voice
 # service will still cut a spoken call short; the console waits.
-MAX_GOTO_S = 75.0
-MAX_GOTO_M = 8.0
+#
+# The two numbers belong together and the distance is the one that moved. It was
+# 8 m, which was the old grid's honest limit -- 10 m of reach from where the rover
+# started, less the standoff -- and on a 40 m grid it was refusing places the map
+# can show: a tap 11.2 m away came back "capped at 8 m" with the room it pointed at
+# plainly drawn. 15 m is a route across a floor of a house rather than across a
+# room, and still well inside the 20 m the grid reaches in any direction.
+#
+# The time follows from it. 15 m at the default 0.22 m/s is 68 s before a single
+# corner is turned, and a route is a polyline rather than a straight line, so this
+# is the same allowance the per-leg limit below makes -- a little over twice what
+# the distance would take, which at the far end of the cap is a little over three
+# minutes. It is a backstop and not the thing that gives up: a move that has gone
+# wrong is ended by that per-leg limit, or by MAX_REPLANS, long before this.
+MAX_GOTO_S = 200.0
+MAX_GOTO_M = 15.0
 MAX_REPLANS = 8
 GOTO_ARRIVE_M = 0.16       # close enough; the pose is not a millimetre thing
 GOTO_CORRIDOR_M = 0.55     # off the polyline by more than this means replan

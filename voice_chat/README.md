@@ -1034,7 +1034,7 @@ The camera earned the fifth for the same reason one step worse: opening the came
 and waiting for its first buffer takes the rover up to four seconds.
 
 **Clicking the map is answered while it is being acted on.** A click sends
-`drive_to`, and that is one blocking call which can last a minute: plan a route,
+`drive_to`, and that is one blocking call which can last minutes: plan a route,
 drive a leg, lose the corridor, plan again, drive the rest. It does not return
 until all of that is over, so a click used to buy a stopwatch and nothing else —
 and a route the planner had refused outright looked exactly like a route still

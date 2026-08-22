@@ -85,6 +85,10 @@ MAP_MIN_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MIN_PIXELS")
 MAP_MAX_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MAX_PIXELS")
 MAP_PIXELS = prompts._literal(prompts.DAEMON, "MAP_PIXELS")
 CAMERA_FOV_DEG = prompts._literal(prompts.DAEMON, "CAMERA_FOV_DEG")
+# And the navigator's cap on a single route, for the same reason: a mock that
+# refused at its own distance would let a console pass its tests against a limit
+# the rover does not have.
+MAX_GOTO_M = prompts._literal(prompts.NAVIGATOR, "MAX_GOTO_M")
 
 
 def _move_report():
@@ -374,9 +378,9 @@ class Rover:
             self._say_end("arrived", "already there")
             return {"ok": True, "reason": "arrived", "travelled_m": 0.0,
                     "turned_deg": 0.0, **self._nav_context(speed)}
-        if range_m > 8.0:
+        if range_m > MAX_GOTO_M:
             why = (f"that is {range_m:.1f} m away and a single route is "
-                   f"capped at 8 m")
+                   f"capped at {MAX_GOTO_M:.0f} m")
             self._say_end("blocked", why)
             return {"ok": False, "error": why}
 

@@ -599,6 +599,19 @@ doorway is closed. A soft toll beyond the keep-out is a nudge toward the middle 
 a gap, not the thing that keeps corners at arm's length: two extra cells of path
 was a cheap price to scrape a corner when going around cost metres.
 
+**A single route is capped at 15 m**, and the cap is a property of the map rather
+than a policy: the grid reaches 20 m in every direction from where the rover was
+switched on, and a route is allowed most of that. It was 8 m, which was honest while
+the grid was 20 m across and reached 10 m, and on the wider grid it refused places
+the map plainly showed — a tap 11.2 m away came back *that is 11.2 m away and a
+single route is capped at 8 m* with the room it pointed at drawn on screen. The time
+budget moves with the distance: 200 s, because 15 m at the default 0.22 m/s is 68 s
+of driving before a single corner is turned and a route is a polyline rather than a
+straight line. Planning grows with the length but only linearly, since the margin
+either side is capped at 2.5 m rather than being a fraction of the run — a 15 m route
+searches a 20 × 5 m window against a 5 m route's 10 × 5 m, which is twice the cells
+and not nine times.
+
 **Planning is the slowest thing the rover does**, and the numbers are only visible
 on the rover: measured over seventeen plans it really made, the same call takes 2–6
 ms on a desk and 2.2–15.3 *seconds* on the Pi. A heap pop costs 1.3 µs here and

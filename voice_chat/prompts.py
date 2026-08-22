@@ -27,6 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DAEMON = ROOT / "rover_daemon" / "rover_daemon.py"
+NAVIGATOR = ROOT / "lidar_slam" / "navigator.py"
 VOICE = Path(__file__).resolve().parent / "server.py"
 
 

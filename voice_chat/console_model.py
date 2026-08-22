@@ -42,9 +42,12 @@ POLL_S = 0.3               # how often to ask for nav_status while connected
 MAP_AUTO_S = 2.0           # how often to refresh the map when auto is on
 LOG_LINES = 500            # trimmed, so an afternoon of testing does not grow forever
 TURN_ROWS = 40
-# drive_to can take a minute of segments and turns; the default client timeout is
-# 12 s, which is right for a single hop and wrong for a route.
-MOVE_TIMEOUT_S = 90.0
+# drive_to can take minutes of segments and turns -- the navigator allows a route
+# 15 m and 200 s -- while the default client timeout is 12 s, which is right for a
+# single hop and wrong for a route. Comfortably past the navigator's own budget, so
+# that a route which ran out of time is reported by the rover rather than abandoned
+# by the console, which cannot tell the two apart.
+MOVE_TIMEOUT_S = 240.0
 
 # Preset turns, as magnitudes, laid out with the left turns in one column and the
 # right turns in the other so a button's place on screen matches the way the rover

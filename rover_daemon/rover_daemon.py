@@ -1252,18 +1252,18 @@ NAV_TOOLS: list[dict[str, Any]] = [
                 "Always says how far it actually got and why it stopped. Prefer "
                 "this over a series of drive and turn calls when you know where "
                 "you want to end up. It cannot see steps, drops, or table tops. "
-                "This can take tens of seconds."
+                "This can take minutes over a long route."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "ahead_m": {
-                        "type": "number", "minimum": -8.0, "maximum": 8.0,
+                        "type": "number", "minimum": -15.0, "maximum": 15.0,
                         "description": "Metres forward of the rover; negative is "
                                        "behind.",
                     },
                     "left_m": {
-                        "type": "number", "minimum": -8.0, "maximum": 8.0,
+                        "type": "number", "minimum": -15.0, "maximum": 15.0,
                         "description": "Metres to the rover's left; negative is "
                                        "right.",
                     },
