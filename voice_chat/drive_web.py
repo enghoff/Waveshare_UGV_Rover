@@ -74,6 +74,7 @@ import os
 import queue
 import socket
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -101,6 +102,19 @@ KEEPALIVE_S = 15.0
 # How long the last browser has to come back before a move in flight is stopped.
 # A reload takes a fraction of this; a closed tab never comes back.
 ORPHAN_GRACE_S = 2.0
+# How long after a search that found nothing to look again, multiplied by the number
+# of tries and held at the ceiling. Two seconds so that opening the page a moment
+# before the daemon is up costs nothing, fifteen so that a rover switched off for the
+# evening is not being dialled all night.
+RECONNECT_S = 2.0
+RECONNECT_MAX_S = 15.0
+# How long the rover may leave the status poll unanswered before the six connections
+# are thrown away and remade. Well past a wifi hiccup on purpose: the client under
+# each connection already remakes its own socket per call, so a link that merely
+# stumbled needs nothing from here. What needs the reconnect is a rover that came
+# back *different* -- restarted, or on another address -- because the tool list and
+# the light level are asked once, on connect, and would otherwise stay stale.
+LINK_LOST_S = 8.0
 DEFAULT_HTTP_PORT = 8770
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drive_web.html")
@@ -149,6 +163,22 @@ class Session:
         self.move_answered = False
         self.poll_outstanding = False
         self.poll_at = 0.0
+        # The search for the rover, which runs on its own thread and is tried again
+        # for as long as it keeps failing -- see mind_the_link. `find_at` is when the
+        # last one started, `find_tries` how many have failed in a row, and
+        # `said_lost` whether the log has been told, so that a rover switched off for
+        # an hour costs one line rather than one line every fifteen seconds.
+        self.find_outstanding = False
+        self.find_at = 0.0
+        self.find_tries = 0
+        self.said_lost = False
+        # When the status poll was last answered. Measured from the answer rather
+        # than from the failure, because a rover that has been unplugged does not
+        # refuse the call -- the socket sits there until it times out twelve seconds
+        # later, and a clock started then finds out about it twenty seconds late. The
+        # poll goes out three times a second, so anything past a few seconds of this
+        # is silence whether or not a refusal has arrived to prove it.
+        self.answered_at = 0.0
 
         self.status_rows: list[list[Any]] = []
         self.status_error = ""
@@ -352,8 +382,47 @@ class Session:
             self.rejoined()
         if self.clear_armed_until and now > self.clear_armed_until:
             self.clear_armed_until = 0.0
+        self.mind_the_link(now)
         self.mind_the_watchers(now)
         self.publish()
+
+    def retry_in(self) -> float:
+        """How long to leave it before looking for the rover again."""
+        return min(RECONNECT_MAX_S, RECONNECT_S * max(1, self.find_tries))
+
+    def mind_the_link(self, now: float) -> None:
+        """Keep looking for the rover instead of waiting to be asked again.
+
+        There are two ways this console loses its rover and neither is the user's
+        doing. It may never have had one -- the page opens before the daemon is up,
+        or before the Pi has finished enumerating its lidar 93 seconds into a boot
+        -- and it may lose one mid-session, which for a rover driving around a house
+        on wifi is ordinary rather than exceptional. Both used to end at "no daemon
+        answered" and a connect button, which is the wrong thing to need at the
+        moment the stop button has stopped working.
+
+        So a search that found nothing is tried again, backing off to every fifteen
+        seconds, and a link that has gone quiet for LINK_LOST_S is thrown away so
+        that the search picks it up. Not while a move is in flight: the move channel
+        waits longer than this does, and remaking the connections under it would
+        abandon the one reply that says what the rover did. A move that is genuinely
+        gone ends at its own timeout, and the reconnect follows a tick later.
+        """
+        if self.wifi_joining or self.rejoin_at:
+            # A join takes the rover off this network deliberately, and `rejoined`
+            # is already scheduled to reconnect whatever came of it.
+            return
+        if self.channels:
+            if (self.busy_since is None
+                    and now - self.answered_at > LINK_LOST_S):
+                self.say(f"no answer from the rover for "
+                         f"{now - self.answered_at:.0f} s, so reconnecting\n", "bad")
+                self.said_lost = True
+                self.find_tries = 0
+                self.connect()
+            return
+        if not self.find_outstanding and now - self.find_at > self.retry_in():
+            self.connect()
 
     def mind_the_watchers(self, now: float) -> None:
         """Stop the rover once the last browser has been gone a couple of seconds.
@@ -393,9 +462,19 @@ class Session:
 
     # --- connecting -----------------------------------------------------------
     def connect(self) -> None:
-        for channel in self.channels:
-            channel.close()
-        self.channels = []
+        # Dropped on a thread of their own, because closing one of these can block
+        # for as long as the call in flight on it. The socket lock is held by the
+        # thread waiting on the reply, so closing a connection to a rover that has
+        # been unplugged waits out the twelve-second read timeout first -- six times
+        # over, on the pump thread, which is the thread that reads the stop button.
+        # That is the wrong thing to be doing at the moment the rover has vanished.
+        # Nothing refers to these once `channels` is emptied below, so they can be
+        # left to die in their own time; the worst of it is a reply from the old link
+        # arriving after the new one is up, which the next tick asks again for anyway.
+        abandoned, self.channels = self.channels, []
+        if abandoned:
+            threading.Thread(target=lambda: [c.close() for c in abandoned],
+                             daemon=True, name="rover-abandon").start()
         # All of them, including the two an earlier reconnect path left pointing at a
         # closed socket: a submit on a closed channel is queued to a thread that has
         # already returned, so the map simply never comes back and the "one at a
@@ -416,6 +495,11 @@ class Session:
         self.can_drive = False
         self.busy_since = None
         self.link_text = "looking for the rover..."
+        self.find_outstanding = True
+        self.find_at = time.monotonic()
+        # A fresh link is given the same patience as an established one, counted
+        # from now: the first poll cannot be answered before it has been sent.
+        self.answered_at = self.find_at
 
         wanted = self.wanted_address.strip()
 
@@ -758,12 +842,24 @@ class Session:
         name, body = reply.name, reply.body
 
         if name == "__found__":
+            self.find_outstanding = False
             if body.get("ok"):
+                if self.said_lost:
+                    self.say(f"the rover answered again on {body['address']}\n",
+                             "good")
+                self.said_lost = False
+                self.find_tries = 0
                 self.connected(body["address"])
-            else:
-                self.link_text = "no daemon answered"
+                return
+            self.find_tries += 1
+            self.link_text = (f"no daemon answered; looking again every "
+                              f"{self.retry_in():.0f} s")
+            # Once, however long the outage lasts. The link line is what says this
+            # is still trying, and a line per try would bury everything else.
+            if not self.said_lost:
+                self.said_lost = True
                 self.say("no rover daemon answered. Is it running, and is the "
-                         "address right?\n", "bad")
+                         "address right? This will keep looking.\n", "bad")
             return
         if name == "nav_status":
             self.poll_outstanding = False
@@ -868,6 +964,9 @@ class Session:
             self.lidar_live = None
             self.lidar_note = ""
             return
+        # The rover is there. Only a reply that says something resets this, so a
+        # refusal does not read as an answer -- see mind_the_link.
+        self.answered_at = time.monotonic()
         self.status_error = ""
         rows = []
         for key, label, fmt in STATUS_FIELDS:
@@ -1349,6 +1448,121 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+class Console(ThreadingHTTPServer):
+    """The HTTP server, with one thing changed: a browser leaving is not an error.
+
+    `socketserver` prints a full traceback for any exception that reaches it out of
+    a handler, and a browser closing a kept-alive connection reaches it as one. On
+    Windows it arrives as `ConnectionAbortedError [WinError 10053]` from the read of
+    the *next* request line, which is nobody's bug: the page was reloaded, or the tab
+    was closed, or this process was stopped, and the connection did what connections
+    do. Elsewhere it is `ConnectionResetError` or a `TimeoutError` from the idle
+    handler timeout, for the same reasons.
+
+    Left alone it printed twenty lines of traceback per reload into the window
+    somebody is watching the rover in, and that is worse than untidy: it teaches
+    whoever is watching to scroll past tracebacks, in the one window where a real one
+    would appear. So the ordinary disconnects are swallowed and everything else is
+    still printed exactly as it was.
+    """
+
+    # Not reusable, deliberately, and this is the one place where the usual advice
+    # is backwards. On Windows `SO_REUSEADDR` does not mean "reclaim a port left in
+    # TIME_WAIT", it means *share*: a second process binds the same port happily and
+    # which of the two a given connection reaches is anyone's guess. So the browser
+    # is served its page by one console and posts its buttons to the other, which is
+    # not a confusing console -- it is two consoles, one of them showing an earlier
+    # session's transcript and map while the rover ignores everything you press.
+    # `talk.py` found this on the frame server first; the same answer, for the same
+    # reason: refuse to start, and say so.
+    allow_reuse_address = False
+
+    def handle_error(self, request, client_address) -> None:
+        kind = sys.exc_info()[0]
+        if kind is not None and issubclass(kind, (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
+
+class OnlyOne:
+    """An exclusive lock held for as long as this process lives, so that there is
+    only ever one drive console on this machine.
+
+    The port guard above catches the same command typed twice. It does not catch the
+    same command typed twice with different ports, and that is the worse case rather
+    than the safer one: two consoles on two ports are two clients of one rover, each
+    polling three times a second and each asking for a map that costs the Pi's single
+    core two and a half seconds to draw. Measured with three of them attached, the
+    daemon sat at 48% of the core drawing maps for windows nobody was looking at, and
+    a rover that is busy drawing maps is a rover that answers slowly when told to
+    stop.
+
+    An OS lock rather than a pid file, because the interesting case is the console
+    that died without tidying up: a lock is dropped by the kernel when the process
+    goes, however it goes, where a file has to be deleted by something still running.
+    The pid is written into the file as *content*, outside the locked region, purely
+    so the refusal can name what to close.
+    """
+
+    #: Locked a long way past any content, so that reading the pid never contends
+    #: with the lock itself. Windows locks byte ranges; nothing reads this one.
+    REGION = 1 << 20
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self._fd: int | None = None
+
+    def claim(self) -> str:
+        """"" if this process now holds it, or a sentence about who does."""
+        try:
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+        except OSError as error:
+            # A desk that will not let us make a lock file is not a reason to
+            # refuse to drive a rover.
+            print(f"note: cannot use {self.path} to check for another console "
+                  f"({error})", file=sys.stderr)
+            return ""
+        try:
+            self._take(fd)
+        except OSError:
+            held = self._whoever()
+            os.close(fd)
+            return (f"another drive console is already running on this machine"
+                    f"{held}. Two of them are two clients of one rover, each asking "
+                    f"a single-core Pi for maps, and the browser cannot tell which "
+                    f"one it is talking to. Close that one first.")
+        os.ftruncate(fd, 0)
+        os.write(fd, f"{os.getpid()}\n".encode())
+        self._fd = fd
+        return ""
+
+    def _take(self, fd: int) -> None:
+        """The lock itself, which is the one part that is not the same on both."""
+        if os.name == "nt":
+            import msvcrt
+
+            os.lseek(fd, self.REGION, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            os.lseek(fd, 0, os.SEEK_SET)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _whoever(self) -> str:
+        try:
+            with open(self.path) as handle:
+                pid = int(handle.read().split()[0])
+        except (OSError, ValueError, IndexError):
+            return ""
+        return f" (process {pid})"
+
+    def release(self) -> None:
+        if self._fd is not None:
+            os.close(self._fd)          # which drops the lock with it
+            self._fd = None
+
+
 def setup() -> dict[str, Any]:
     """The handful of things the page needs once and never again: the preset turns
     it draws buttons for, what the daemon calls full brightness, and the colour key
@@ -1380,13 +1594,23 @@ def main(argv=None) -> int | str:
                         help="log every HTTP request")
     args = parser.parse_args(argv)
 
+    # Before the session, and before the port: a console that is about to refuse to
+    # run should not have opened six connections to the rover on its way to finding
+    # out.
+    alone = OnlyOne(os.path.join(tempfile.gettempdir(), "rover-drive-console.lock"))
+    taken = alone.claim()
+    if taken:
+        return taken
+
     session = Session(args.rover, args.half_extent, args.map_size)
     Handler.session = session
     Handler.verbose = args.verbose
     try:
-        server = ThreadingHTTPServer((args.bind, args.port), Handler)
+        server = Console((args.bind, args.port), Handler)
     except OSError as error:
-        return f"cannot serve on {args.bind}:{args.port}: {error}"
+        alone.release()
+        return (f"cannot serve on {args.bind}:{args.port}: {error}. Something else "
+                f"is on that port -- another console, or another program.")
     # Every event stream is a thread that blocks until its browser goes away, so
     # they have to be daemons or Ctrl-C would wait for every open tab to close.
     server.daemon_threads = True
@@ -1406,6 +1630,7 @@ def main(argv=None) -> int | str:
     finally:
         session.close()
         server.shutdown()
+        alone.release()
     return 0
 
 

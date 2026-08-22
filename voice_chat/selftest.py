@@ -18,6 +18,7 @@ board. The models themselves are not covered here; they need the card.
 
 from __future__ import annotations
 
+import io
 import os
 import sys
 
@@ -1605,6 +1606,204 @@ def test_stopping_an_unwatched_rover() -> None:
     check("an idle rover is not stopped for being alone", idle.halt.sent, [])
 
 
+def test_finding_the_rover_again() -> None:
+    """A console that has lost its rover goes looking, without being asked.
+
+    The button is the thing being tested away. A rover on wifi that has driven
+    behind the boiler, or been power-cycled, or come back on another address, used
+    to leave the page reading "no daemon answered" until somebody noticed and
+    clicked -- which is the wrong thing to require at the moment the stop button has
+    stopped working. So the clock and the decision are both here, driven with an
+    explicit `now` rather than a sleep.
+    """
+    try:
+        import drive_web
+    except Exception as exc:
+        SKIP.append(f"finding the rover again ({type(exc).__name__})")
+        return
+
+    def recording(session):
+        """A session whose `connect` records instead of opening sockets."""
+        session.tried = []
+        session.connect = lambda: session.tried.append("connect")
+        return session
+
+    # --- a link that is up ---------------------------------------------------
+    live = recording(drive_web.Session(None, 3.0, 480))
+    live.channels = ["a channel"]          # only its emptiness is ever read
+    live.answered_at = 100.0
+    live.mind_the_link(100.0 + drive_web.LINK_LOST_S / 2)
+    check("a rover that is answering is left alone", live.tried, [])
+
+    live.mind_the_link(100.0 + drive_web.LINK_LOST_S + 0.1)
+    check("one that has gone quiet is reconnected", live.tried, ["connect"])
+
+    # A move in flight owns the link: the move channel waits longer than this does,
+    # and pulling the connections out from under it would throw away the one reply
+    # that says what the rover did.
+    driving = recording(drive_web.Session(None, 3.0, 480))
+    driving.channels = ["a channel"]
+    driving.answered_at = 100.0
+    driving.busy_since = 100.0
+    driving.mind_the_link(200.0)
+    check("a move in flight is not interrupted to reconnect", driving.tried, [])
+
+    # A join takes the rover off this network on purpose, and `rejoined` is already
+    # scheduled to pick the pieces up.
+    joining = recording(drive_web.Session(None, 3.0, 480))
+    joining.channels = ["a channel"]
+    joining.answered_at = 100.0
+    joining.wifi_joining = "upstairs"
+    joining.mind_the_link(200.0)
+    check("a network join is left to finish", joining.tried, [])
+
+    # --- a link that is down -------------------------------------------------
+    down = recording(drive_web.Session(None, 3.0, 480))
+    down.find_at = 100.0
+    down.find_tries = 1
+    down.mind_the_link(100.0 + drive_web.RECONNECT_S / 2)
+    check("a search is not repeated the instant it fails", down.tried, [])
+    down.mind_the_link(100.0 + drive_web.RECONNECT_S + 0.1)
+    check("...and is repeated once the wait is up", down.tried, ["connect"])
+
+    # One at a time. The search runs on a thread and takes seconds on a name that
+    # does not resolve; a retry per tick would be ten threads a second.
+    flying = recording(drive_web.Session(None, 3.0, 480))
+    flying.find_at = 100.0
+    flying.find_outstanding = True
+    flying.mind_the_link(500.0)
+    check("a search already running is not started again", flying.tried, [])
+
+    # Backing off, and stopping backing off. A rover switched off for the evening
+    # should not be dialled every two seconds all night, and one switched off for a
+    # moment should not take a minute to be noticed.
+    waits = [recording(drive_web.Session(None, 3.0, 480)) for _ in range(3)]
+    for tries, session in zip((0, 1, 50), waits):
+        session.find_tries = tries
+    check("the first wait is the short one",
+          waits[0].retry_in(), drive_web.RECONNECT_S)
+    check("...and so is the wait after one failure",
+          waits[1].retry_in(), drive_web.RECONNECT_S)
+    check("...and it never grows past the ceiling",
+          waits[2].retry_in(), drive_web.RECONNECT_MAX_S)
+
+    # --- what the log and the link line say ----------------------------------
+    talking = drive_web.Session("rpi.local:8769", 3.0, 480)
+    talking.connected = lambda address: None          # no sockets in a selftest
+    for _ in range(3):
+        talking.handle(drive_web.Reply(
+            "__found__", {}, {"ok": False, "address": None}, 0.0))
+    said = [line["text"] for line in talking.log]
+    check("a rover that is not there is reported once, not once a try",
+          sum("no rover daemon answered" in text for text in said), 1)
+    check("...and the line says it is still looking",
+          "keep looking" in " ".join(said), True)
+    check("...as does the link", "looking again" in talking.link_text, True)
+    check("...and the tries were counted", talking.find_tries, 3)
+
+    talking.handle(drive_web.Reply(
+        "__found__", {}, {"ok": True, "address": "rpi.local:8769"}, 0.0))
+    check("coming back is worth a line", any("answered again" in line["text"]
+                                             for line in talking.log), True)
+    check("...and the count starts over", talking.find_tries, 0)
+
+
+def test_a_browser_leaving() -> None:
+    """A closed tab is not an error, and everything else still is.
+
+    `socketserver` prints a full traceback for anything that reaches it out of a
+    handler, and a browser closing a kept-alive connection reaches it as one --
+    `ConnectionAbortedError [WinError 10053]` from the read of the next request
+    line. Every reload printed twenty lines about it. That is worth a test rather
+    than a comment because the fix is a suppression, and a suppression that grows
+    to cover a real fault is how a console stops reporting the thing it is for.
+    """
+    try:
+        import drive_web
+    except Exception as exc:
+        SKIP.append(f"a browser leaving ({type(exc).__name__})")
+        return
+
+    def printed(error):
+        """What the server would write to stderr while `error` is being handled."""
+        caught = io.StringIO()
+        was, sys.stderr = sys.stderr, caught
+        try:
+            try:
+                raise error
+            except type(error):
+                # An instance without its __init__, so no socket is bound to ask
+                # the question of -- the whole decision is which exception is in
+                # flight, and `super()` inside it needs a real instance to reach
+                # the printing it falls back to.
+                server = drive_web.Console.__new__(drive_web.Console)
+                server.handle_error(None, ("127.0.0.1", 1))
+        except Exception as exc:        # the real handler's own failure, if any
+            caught.write(f"handle_error raised {type(exc).__name__}")
+        finally:
+            sys.stderr = was
+        return caught.getvalue()
+
+    for error in (ConnectionAbortedError(10053, "aborted"),
+                  ConnectionResetError(10054, "reset"),
+                  BrokenPipeError(32, "broken pipe"),
+                  TimeoutError("the handler's idle timeout")):
+        check(f"{type(error).__name__} is a tab closing, not an error",
+              printed(error), "")
+
+    # And the other half, which is the half that matters: a genuine fault in a
+    # handler still lands in the window somebody is watching.
+    shouted = printed(ValueError("the map arrived as a duck"))
+    check("a real fault is still printed", "ValueError" in shouted, True)
+    check("...with the traceback that says where it came from",
+          "Traceback" in shouted, True)
+
+
+def test_one_console_at_a_time() -> None:
+    """A second drive console must not start, on any port.
+
+    Two consoles are not two windows onto one rover, they are two clients of it:
+    each polls three times a second and each asks for a map that costs the Pi's
+    single core two and a half seconds to draw. Measured with three attached, the
+    daemon sat at 48% of the core drawing maps for windows nobody was looking at.
+    Worse on Windows, where `SO_REUSEADDR` means *share* rather than *reclaim*, so
+    the second one binds the same port happily and the browser is served its page by
+    one console while its buttons post to the other -- which reads as a rover that
+    has stopped listening and a map from some earlier session.
+    """
+    try:
+        import drive_web
+    except Exception as exc:
+        SKIP.append(f"one console at a time ({type(exc).__name__})")
+        return
+
+    import tempfile
+
+    path = os.path.join(tempfile.mkdtemp(prefix="rover-lock-"), "console.lock")
+    first, second = drive_web.OnlyOne(path), drive_web.OnlyOne(path)
+    try:
+        check("the first console gets the lock", first.claim(), "")
+        refused = second.claim()
+        check("...and the second is refused", bool(refused), True)
+        check("...and told which process to close",
+              str(os.getpid()) in refused, True)
+
+        # A lock the kernel holds, not a file somebody has to remember to delete:
+        # the console that matters here is the one that died without tidying up, and
+        # a stale lock nobody can clear is a console nobody can run.
+        first.release()
+        check("once the first goes, the next one starts", second.claim(), "")
+    finally:
+        first.release()
+        second.release()
+
+    # The port guard is the other half, and it is a property of the class rather
+    # than of a running server: on Windows the default would let two consoles share
+    # one port without either of them finding out.
+    check("the server refuses to share its port",
+          drive_web.Console.allow_reuse_address, False)
+
+
 def main() -> int:
     test_sentences()
     test_tool_sniffer()
@@ -1626,6 +1825,9 @@ def main() -> int:
     test_map_size_for_a_panel()
     test_web_console()
     test_stopping_an_unwatched_rover()
+    test_finding_the_rover_again()
+    test_a_browser_leaving()
+    test_one_console_at_a_time()
     test_talk_session()
 
     for name in PASS:

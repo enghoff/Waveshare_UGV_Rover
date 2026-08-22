@@ -934,6 +934,68 @@ something, and once it is not zero it is the most interesting number on the pane
 a count that climbs over an afternoon is a cable working loose, and nothing else here
 would ever say so.
 
+**The link looks after itself.** A rover on wifi that has driven behind a wall, or
+been power-cycled, or come back on another address, used to leave the page reading
+*no daemon answered* until somebody noticed and pressed connect — which is the wrong
+thing to require at the moment the stop button has stopped working. So the search is
+now retried on its own, backing off from two seconds to fifteen, and the page says
+which it is doing; the transcript gets one line when the rover goes and one when it
+comes back, however long the gap.
+
+Underneath, most of a dropped link needs nothing: `RoverClient` remakes its own
+socket per call, so a connection that merely stumbled recovers by itself. What needs
+a reconnect is a rover that came back *different* — restarted, or somewhere else —
+because the tool list and the light level are asked once, on connect, and would
+otherwise stay stale for the rest of the session. So silence is measured, and eight
+seconds of it throws the six connections away and starts looking. Measured from the
+last answer rather than from the first refusal, deliberately: an unplugged rover does
+not refuse a call, the socket sits there until it times out twelve seconds later, and
+a clock started then finds out about it twenty seconds late.
+
+Two things it will not do. It will not reconnect under a move in flight — the move
+connection waits longer than eight seconds, and pulling it out would throw away the
+one reply that says what the rover did — and it will not interfere with a network
+join, which takes the rover off this network on purpose and already schedules its own
+reconnect. Closing the old connections is handed to a thread of its own, because
+closing one waits for whatever call is in flight on it: six of those on the pump
+thread is twelve seconds during which the page does not read the stop button.
+
+**One console at a time, and it is enforced twice.** Two consoles are not two
+windows onto one rover — they are two clients of it. Each polls three times a second
+and each asks for a map that costs the Pi's single core two and a half seconds to
+draw, so with three of them attached the daemon sat at 48% of the core drawing maps
+for windows nobody was looking at, and a rover busy drawing maps answers slowly when
+told to stop.
+
+On Windows it is worse than slow. `SO_REUSEADDR` there does not mean "reclaim a port
+left in TIME_WAIT", it means *share*: a second console binds 8770 happily and which
+of the two a given connection reaches is undefined. The browser is then served its
+page by one console and posts its buttons to the other, so the screen shows an
+earlier session's transcript and map while every button appears to do nothing. That
+reads as a rover that has stopped listening, or as a console replaying a recording,
+and it is neither. `talk.py` hit the same thing on the frame server first; this is
+the same answer, for the same reason.
+
+So the server no longer sets `allow_reuse_address`, which stops the second console on
+the same port, and `OnlyOne` holds an exclusive lock for the life of the process,
+which stops it on any other port too. The refusal names the process to close. The
+lock is an OS one rather than a pid file, because the console that matters is the one
+that died without tidying up: the kernel drops a lock however the process goes, where
+a file has to be deleted by something still running.
+
+**A closed tab is not an error.** `socketserver` prints a full traceback for
+anything that reaches it out of a handler, and a browser closing a kept-alive
+connection reaches it as one — on Windows as `ConnectionAbortedError [WinError
+10053]` from the read of the *next* request line, elsewhere as a reset or as the
+handler's own idle timeout. Nobody's bug: the page was reloaded, or the tab was
+closed, and the connection did what connections do. Left alone it printed twenty
+lines of traceback per reload into the window somebody is watching the rover in,
+which is worse than untidy — it teaches whoever is watching to scroll past
+tracebacks, in the one window where a real one would appear. The server subclass
+swallows exactly those four exceptions and prints everything else unchanged, and the
+selftest checks both halves, because a suppression that quietly grows to cover a
+real fault is how a console stops reporting the thing it exists to report.
+
 **Five connections, not one.** `drive` does not answer until the move has
 finished, and `RoverClient` serialises calls on one socket, so anything sharing
 that socket queues behind the move — including the stop meant to interrupt it. The
