@@ -77,9 +77,6 @@ ROTATION_SIGMAS = 6.0
 #: so this is the smallest spread that is physically meaningful.
 MIN_NOISE_LSB = 1.0
 
-#: Turns and drives smaller than these teach the scale factors nothing worth
-#: having: the matcher's own few-millimetre, few-tenths-of-a-degree noise is a
-#: large fraction of them, and a ratio of two small noisy numbers is noise.
 #: How much heading the matcher may accumulate across revolutions where the gyro
 #: said the chassis never turned, before that is a contradiction in itself. This is
 #: the slow half of the witness and the harder one to see: a match that creeps two
@@ -90,6 +87,9 @@ QUIET_CREEP_DEG = 15.0
 #: And not from a handful of revolutions, where that walk has not averaged out.
 QUIET_CREEP_SPANS = 8
 
+#: Turns and drives smaller than these teach the scale factors nothing worth
+#: having: the matcher's own few-millimetre, few-tenths-of-a-degree noise is a
+#: large fraction of them, and a ratio of two small noisy numbers is noise.
 MIN_TURN_DEG = 20.0
 MIN_DRIVE_M = 0.30
 #: Enough agreeing moves to hand a scale factor over.
