@@ -1649,7 +1649,7 @@ class Rover:
         if not isinstance(ssid, str) or not ssid.strip():
             return {"ok": False, "error": "wifi_join wants an ssid"}
         ssid = ssid.strip()
-        configured = self._wifi_configured()
+        configured = self._wifi_configured(time.monotonic())
         if configured and ssid not in configured:
             known = ", ".join(sorted(configured)) or "none"
             return {"ok": False,

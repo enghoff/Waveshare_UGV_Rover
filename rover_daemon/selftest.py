@@ -1035,6 +1035,21 @@ def test_reading_the_network():
     # traceback, because both calls are wired to live buttons in a window.
     rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
     check("wifi_join wants an ssid", rover.call("wifi_join", {})["ok"], False)
+    # And one *with* a name, which is the only path a console button ever takes and
+    # the only one that reaches the rest of the call. The check above returns two
+    # lines in, so it was covering none of it -- which is how a wifi_join that
+    # raised TypeError before it did anything went unnoticed on a rover that had
+    # been asked to switch networks by hand. `call` turns that into a sentence like
+    # any other refusal, so it reads as the rover declining rather than as a bug.
+    #
+    # A name no rover holds a passphrase for, so this is safe to run on the rover
+    # itself: there it is refused before the radio is touched, and on a desk, where
+    # there is no helper to ask, the request is accepted and the thread behind it
+    # finds nothing to run.
+    named = rover.call("wifi_join", {"ssid": "NoSuchNetworkHere"})
+    check("wifi_join with a name is answered rather than raising",
+          named.get("ok") is True or "no passphrase" in str(named.get("error", "")),
+          True)
     asked = rover.call("wifi_status", {})
     if asked["ok"]:
         check("wifi_status answers with every field the panel reads",
