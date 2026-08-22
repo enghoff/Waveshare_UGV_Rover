@@ -93,12 +93,56 @@ class RoverClient:
         self._sock: socket.socket | None = None
         self._file = None
         self._lock = threading.Lock()
+        # Where `self.host` last turned out to be, as the (family, sockaddr) pair
+        # needed to dial it again. Kept across reconnects; see `_connect`.
+        self._resolved: tuple[int, Any] | None = None
 
     def describe(self) -> str:
         return f"{self.host}:{self.port}"
 
     def _connect(self) -> None:
+        """Open a connection, reusing whatever address the name last led to.
+
+        `rpi.local` is answered by mDNS, and mDNS is multicast UDP with nothing
+        retransmitting it, so it is the first thing to go when the rover's wifi
+        turns marginal -- while the TCP underneath a tool call retries and rides
+        the same bad moment out. Looking the name up on every reconnect therefore
+        turned a link that was merely weak into a rover that was missing: one lost
+        multicast packet, and the console said "no answer from the rover daemon" on
+        all six of its panels at once, against a daemon that was up and answering
+        throughout. The rover measured -68 dBm and 671 missed beacons while that
+        was happening, where this link sits at -35 to -44 dBm in the lab.
+
+        So the name is asked once and the answer kept. It is kept *as well as* the
+        name and never instead of it: the rover genuinely does change address,
+        serving on `eth0` while it is docked and on `wlan0` once it has driven
+        off, and dialling where it used to be is the bug docs/hosts.md exists to
+        warn about. A remembered address that stops answering is how this finds
+        out it moved, and it is the only occasion that needs a lookup. Being wrong
+        costs one refused connection before the lookup that would have happened
+        anyway, once, on the call that discovers the move.
+        """
+        if self._resolved is not None:
+            family, sockaddr = self._resolved
+            sock = socket.socket(family, socket.SOCK_STREAM)
+            try:
+                sock.settimeout(self._connect_timeout)
+                sock.connect(sockaddr)
+            except OSError:
+                sock.close()
+                self._resolved = None
+            else:
+                self._adopt(sock)
+                return
         sock = socket.create_connection((self.host, self.port), self._connect_timeout)
+        # Read back off the socket rather than resolved a second time, and kept
+        # whole rather than as a string: an IPv6 address is not redialable without
+        # the scope id sitting beside it in the same tuple.
+        self._resolved = (sock.family, sock.getpeername())
+        self._adopt(sock)
+
+    def _adopt(self, sock: socket.socket) -> None:
+        """The settings both ways in share, and the file the exchange talks over."""
         sock.settimeout(self.timeout)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._sock = sock

@@ -568,10 +568,68 @@ def test_rover_client() -> None:
         # cannot touch the rover again until it is restarted too.
         client.call("hang_up", {})
         check("a dropped connection is remade", client.call("ping", {})["ok"], True)
+
+        # And remaking it must not send the client back to the name. `rpi.local`
+        # is answered by mDNS -- multicast UDP, with nothing retransmitting it --
+        # so on a rover whose wifi has gone weak the lookup is what fails first,
+        # while the connection it was wanted for would have worked. Re-resolving
+        # on every reconnect is what made a merely weak link read as an absent
+        # rover on all six panels of the console at once.
+        real_lookup = socket.getaddrinfo
+        lookups = []
+
+        def counted(*args, **kwargs):
+            lookups.append(args[0])
+            return real_lookup(*args, **kwargs)
+
+        socket.getaddrinfo = counted
+        try:
+            client.call("hang_up", {})
+            remade = client.call("ping", {})
+        finally:
+            socket.getaddrinfo = real_lookup
+        check("a dropped connection is remade on the address already known",
+              remade["ok"], True)
+        check("...without asking for the name a second time", lookups, [])
     finally:
         client.close()
         server.shutdown()
         server.server_close()
+
+    # A remembered address is not a hardcoded one. The rover answers on eth0 while
+    # it is docked and on wlan0 once it has driven off, so an address that stops
+    # answering is exactly how a client finds out it has moved, and it has to ask
+    # the name again rather than go on dialling where the rover used to be. That is
+    # the bug docs/hosts.md is about; remembering an address without this would be
+    # a fresh way of writing it.
+    first = Server(("127.0.0.1", 0), Fake)
+    threading.Thread(target=first.serve_forever, daemon=True).start()
+    second = Server(("127.0.0.1", 0), Fake)
+    threading.Thread(target=second.serve_forever, daemon=True).start()
+    now_at = ["127.0.0.1", first.server_address[1]]
+    real_lookup = socket.getaddrinfo
+
+    def mdns(host, port, *args, **kwargs):
+        # Stands in for mDNS: one name, answered with wherever the rover is now.
+        if host == "rover.invalid":
+            host, port = now_at
+        return real_lookup(host, port, *args, **kwargs)
+
+    socket.getaddrinfo = mdns
+    client = rover_tools.RoverClient(f"rover.invalid:{first.server_address[1]}")
+    try:
+        check("the rover is reached by name", client.probe(), True)
+        client.call("hang_up", {})       # so the next call has to open a new one
+        first.shutdown()
+        first.server_close()
+        now_at[1] = second.server_address[1]
+        check("...and followed once the address it remembered stops answering",
+              client.call("ping", {})["ok"], True)
+    finally:
+        socket.getaddrinfo = real_lookup
+        client.close()
+        second.shutdown()
+        second.server_close()
 
     # Where this machine is, as the rover sees it. Taken off the socket rather
     # than guessed, because a desk has several addresses and only one of them is
