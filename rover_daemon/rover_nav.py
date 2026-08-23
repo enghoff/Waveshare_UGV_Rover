@@ -18,6 +18,18 @@ from rover_util import _flag, _number
 # ttyACM0, still answering questions from a scan that had stopped updating. The
 # navigator prefers the /dev/serial/by-id name, which carries the serial number.
 DEFAULT_LIDAR = "auto"
+
+# What every tool here says when there is no navigator behind it. One sentence
+# rather than nine, and it no longer names the lidar: there are two backends now,
+# the daemon's own planner behind `--lidar` and Nav2 behind `--ros-nav`, and from
+# the caller's side either one missing means the same thing. It used to say "this
+# rover has no lidar attached", which on a rover whose lidar is plugged in and
+# spinning -- but belongs to the ROS stack, with the daemon started without either
+# flag -- is a sentence that sends somebody to check a cable.
+NO_DRIVING = ("this rover is not set up to drive or map itself, so it has no "
+              "driving tools. The daemon needs either --lidar, which gives it "
+              "the sensor and its own planner, or --ros-nav, which points it at "
+              "the ROS 2 stack")
 # How much of the map goes into a picture for the model. A few metres, not the whole
 # grid: the pose drifts over a long run, so a picture wide enough to invite planning
 # a route home is a picture that will mislead.
@@ -98,8 +110,7 @@ class RoverNav:
 
     def _tool_drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar, so it will not "
-                                          "drive itself"}
+            return {"ok": False, "error": NO_DRIVING}
         distance = _number(arguments.get("distance_m", 0.5), "distance_m")
         speed = arguments.get("speed_ms")
         outcome = self.nav.drive(distance_m=distance,
@@ -122,8 +133,7 @@ class RoverNav:
         `drive_to` in `lidar_slam/nav_drive.py` for why that distinction matters.
         """
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar, so it will not "
-                                          "drive itself"}
+            return {"ok": False, "error": NO_DRIVING}
         x, y = arguments.get("x_m"), arguments.get("y_m")
         if (x is None) != (y is None):
             return {"ok": False, "error": "a place on the map needs both x_m and "
@@ -141,8 +151,7 @@ class RoverNav:
 
     def _tool_turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar, so it will not "
-                                          "drive itself"}
+            return {"ok": False, "error": NO_DRIVING}
         angle = _number(arguments.get("angle_deg", 0.0), "angle_deg")
         outcome = self.nav.turn_in_place(angle)
         return {"ok": outcome.reason == "arrived", **outcome.asdict(),
@@ -163,7 +172,7 @@ class RoverNav:
 
     def _tool_describe_surroundings(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar attached"}
+            return {"ok": False, "error": NO_DRIVING}
         return {"ok": True, **self.nav.describe()}
 
     def _camera_cone(self) -> tuple[float, float] | None:
@@ -186,7 +195,7 @@ class RoverNav:
 
     def _tool_show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar attached"}
+            return {"ok": False, "error": NO_DRIVING}
         if self.vision is None:
             return {"ok": False, "error": "there is nowhere to send a picture"}
         png, caption = self.nav.map_png(MAP_HALF_EXTENT_M, MAP_SCALE,
@@ -229,7 +238,7 @@ class RoverNav:
         which a replan routinely is.
         """
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar attached"}
+            return {"ok": False, "error": NO_DRIVING}
         since = arguments.get("since_seq")
         return {"ok": True, **self.nav.status(
             since_seq=None if since is None else int(since))}
@@ -258,7 +267,7 @@ class RoverNav:
         request would be describing a picture that does not exist.
         """
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar attached"}
+            return {"ok": False, "error": NO_DRIVING}
         half = _number(arguments.get("half_extent_m", MAP_HALF_EXTENT_M),
                        "half_extent_m")
         resolution = self.nav.slam.config.resolution_m
@@ -302,7 +311,7 @@ class RoverNav:
         followed is: see `clear_map` there.
         """
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar attached"}
+            return {"ok": False, "error": NO_DRIVING}
         result = self.nav.clear_map()
         return {"ok": bool(result.get("cleared")), **result}
 
@@ -324,7 +333,7 @@ class RoverNav:
         ordinary reopen needs.
         """
         if self.nav is None:
-            return {"ok": False, "error": "this rover has no lidar attached"}
+            return {"ok": False, "error": NO_DRIVING}
         return self.nav.reset_lidar()
 
     # --- scripts ------------------------------------------------------------

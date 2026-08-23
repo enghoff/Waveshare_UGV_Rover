@@ -43,6 +43,7 @@ from rclpy.node import Node
 from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
                        QoSReliabilityPolicy)
 from sensor_msgs.msg import Imu
+from std_msgs.msg import String
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -333,6 +334,18 @@ class BaseNode(Node):
         self.tf = TransformBroadcaster(self)
         self.create_subscription(Twist, "cmd_vel", self.on_cmd_vel, 10)
 
+        # What is actually on the motors, and what the gyro is being corrected by.
+        # Neither has a standard message and neither belongs in `/odom`: the PWM
+        # pair is the single most useful number on the drive console for this
+        # chassis -- it is what says whether a rover that will not move is being
+        # asked to move at all -- and the bias is the correction that stopped the
+        # map from rotating on its own. Latched, and at a fifth of the control
+        # rate, because a console reads it and nothing steers on it.
+        latched = QoSProfile(reliability=QoSReliabilityPolicy.RELIABLE,
+                             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                             history=QoSHistoryPolicy.KEEP_LAST, depth=1)
+        self.state_pub = self.create_publisher(String, "base_state", latched)
+
         self.publish_static_transforms()
 
         # Pose in the odom frame. It starts at the origin by definition -- odom is
@@ -349,7 +362,10 @@ class BaseNode(Node):
         self._cmd_at = 0.0
         self._commanded = None
         self._heartbeat_at = 0.0
-        self._no_board_since = None
+        # When a motion record last arrived, on this machine's clock. The
+        # board's own timestamp cannot answer that question -- it says when the
+        # ESP32 took the reading, not whether the ESP32 is still there.
+        self._motion_at = 0.0
         self._warned_ticks = False
         self._bias = None
         self._bias_samples = 0
@@ -383,6 +399,32 @@ class BaseNode(Node):
                 "no measured speed curve -- assuming PWM is proportional to speed. "
                 "Run ros_nav/calibrate_chassis.py")
         self.create_timer(30.0, self.report_bias)
+        self.create_timer(0.2, self.publish_state)
+
+    def publish_state(self):
+        """The PWM pair and the gyro correction, for whoever is watching.
+
+        Skipped when nothing subscribes, which is the ordinary case when the rover
+        is navigating with nobody looking at a console.
+        """
+        if self.state_pub.get_subscription_count() == 0:
+            return
+        state = {
+            "pwm": list(self._commanded) if self._commanded else None,
+            "gyro_bias_dps": None if self._bias is None
+                             else round(math.degrees(self._bias), 3),
+            "bias_samples": self._bias_samples,
+            "ticks_per_metre": self.calibration["ticks_per_metre"],
+            # Whether the board is still talking. At about 17 Hz a whole second
+            # of silence is seventeen missed readings, and a rover whose driver
+            # board has stopped answering is one where every other number here is
+            # the last one that arrived rather than the current one.
+            "board_ok": self._motion_at > 0.0
+                        and time.monotonic() - self._motion_at < 1.0,
+            "commanded": [round(self._cmd[0], 3), round(self._cmd[1], 3)],
+        }
+        self.state_pub.publish(
+            String(data=json.dumps(state, separators=(",", ":"))))
 
     def report_bias(self):
         if self._bias is None:
@@ -525,6 +567,7 @@ class BaseNode(Node):
             return
         previous = self._last_at
         self._last_at = at
+        self._motion_at = time.monotonic()
         self.integrate(motion, record,
                        dt=(at - previous) if previous is not None else None)
 

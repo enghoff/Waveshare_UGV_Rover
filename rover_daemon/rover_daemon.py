@@ -104,6 +104,11 @@ PORT = 8769
 # this daemon, 8770 the depth camera and 8771 the drive console, so the next one
 # along. See board_bridge.py for why it is not simply another tool here.
 BRIDGE_PORT = 8772
+# And the one after that, going the other way: where the ROS 2 stack lends its
+# navigation back. The pair is the whole interface between the two halves of this
+# rover -- 8772 is hardware going out, 8773 is goals, the map and the pose coming
+# in. See ros_navigator.py and ros_nav/nav_bridge.py.
+ROS_NAV_PORT = 8773
 
 # Calls that run code rather than perform an act, and are therefore refused from
 # anywhere but this machine. Nothing on this port authenticates -- the same trade
@@ -201,6 +206,16 @@ def main() -> int | str:
                              "the picture, drawn on the map as the gimbal's cone. "
                              "The default is a guess -- measure it by panning until "
                              "a known object just leaves the frame.")
+    parser.add_argument("--ros-nav", nargs="?", default=None, const=ROS_NAV_PORT,
+                        type=int, metavar="PORT",
+                        help="offer the driving and mapping tools, backed by the "
+                             "ROS 2 stack reached on this loopback port (bare flag "
+                             f"means {ROS_NAV_PORT}). The alternative to --lidar "
+                             "and not a companion to it: that one drives with the "
+                             "daemon's own planner and needs the lidar port, this "
+                             "one drives with Nav2 and needs the lidar to be "
+                             "ROS's. Goes together with --board-bridge, which is "
+                             "how the ROS side reaches the wheels.")
     parser.add_argument("--board-bridge", nargs="?", default=None, const=BRIDGE_PORT,
                         type=int, metavar="PORT",
                         help="lend the driver board to the ROS 2 stack on this "
@@ -210,6 +225,17 @@ def main() -> int | str:
     parser.add_argument("--bind", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
+
+    # Both would set `rover.nav`, and the second would silently win. They are also
+    # not merely redundant: --lidar opens the lidar's serial port here, and only
+    # one process can hold it, so a daemon running both would take the port that
+    # ROS's own lidar node is waiting for and slam_toolbox would sit for ever
+    # waiting for a scan with nothing reporting an error.
+    if args.lidar and args.ros_nav:
+        return ("--lidar and --ros-nav are two different ways to offer the same "
+                "tools and only one can be used at a time. --lidar drives with "
+                "the daemon's own planner and needs the lidar port; --ros-nav "
+                "drives with Nav2 and needs the lidar to belong to ROS.")
 
     try:
         link = open_link(args.serial, args.host)
@@ -266,6 +292,27 @@ def main() -> int | str:
             print(f"[rover] no driving or mapping: {error}", file=sys.stderr,
                   flush=True)
 
+    if args.ros_nav:
+        # Nothing is opened and nothing is waited for. The ROS stack and this
+        # daemon are started by the same crontab and the stack takes the best part
+        # of a minute, so anything that insisted on it being up would mean every
+        # reboot came back without the driving tools. Each tool connects when it is
+        # called, and says so plainly when there is nothing to connect to.
+        try:
+            from ros_navigator import RosNavigator
+
+            rover.nav = RosNavigator(port=args.ros_nav,
+                                     on_drive_start=rover.park_tracking,
+                                     on_drive_end=rover.unpark_tracking)
+            rover.nav.start()
+            up = "answering" if rover.nav.reachable else "not up yet"
+            print(f"[rover] driving through ROS 2 on 127.0.0.1:{args.ros_nav} "
+                  f"({up})", flush=True)
+        except Exception as error:
+            rover.nav = None
+            print(f"[rover] no driving or mapping: {error}", file=sys.stderr,
+                  flush=True)
+
     # The board, lent out. Started before the tool server rather than after, so
     # that a ROS stack brought up by the same crontab does not have to race it --
     # and failing to start it is not fatal for the same reason a missing lidar is
@@ -293,10 +340,19 @@ def main() -> int | str:
 
     server = Server((args.bind, args.port), Handler)
     server.rover = rover
+    # Which navigator is behind the driving tools, because "lidar: auto" said
+    # nothing about who owns the sensor and the two arrangements fail in opposite
+    # ways. With --ros-nav the port belongs to ROS and this daemon never opens it.
+    if rover.nav is None:
+        driving = "off"
+    elif args.ros_nav:
+        driving = f"ros2 on 127.0.0.1:{args.ros_nav}"
+    else:
+        driving = f"own planner, lidar {rover.nav.lidar_path or 'waiting for it'}"
     print(f"rover daemon on {args.bind}:{args.port} -- board {rover.describe()}, "
           f"camera {args.device if args.camera else 'none'}, detector {args.service}, "
           f"vision {rover.vision.describe() if rover.vision else 'off'}, "
-          f"lidar {(rover.nav.lidar_path or 'waiting for it') if rover.nav else 'off'}, "
+          f"driving {driving}, "
           f"board shared {bridge.describe() if bridge else 'no'} "
           f"({len(rover.tools())} tools)",
           flush=True)

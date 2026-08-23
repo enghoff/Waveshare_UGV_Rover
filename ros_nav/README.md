@@ -42,7 +42,22 @@ recoveries, and a standard set of topics that any ROS tool can look at.
         |
         v
   Nav2          --> /cmd_vel  (back to base_node, and out to the wheels)
+        |
+        v
+  nav_bridge.py                        loopback TCP 8773
+        |                              goals in; the map, the pose and the
+        |                              room out
+        v
+  rover_daemon --ros-nav               drive, drive_to, turn_in_place,
+                                       stop_driving, describe_surroundings,
+                                       show_map, map_png, nav_status, clear_map
 ```
+
+The two loopback ports are the whole interface between the two halves of this
+rover, and they run in opposite directions: **8772 is the daemon lending hardware
+out, and 8773 is the daemon borrowing navigation back.** Neither is on the LAN,
+because either one would put the wheels in front of something that authenticates
+nothing.
 
 The daemon keeps the board because it is also everything else the board does.
 Only one process can hold a UART, so `board_bridge.py` inside the daemon lends out
@@ -58,6 +73,76 @@ half-conversations, and the daemon would win.
 `Slam2D` from `lidar_slam/` and uses it as a parser only — `feed()` in, `scan_xy()`
 out — because that code already reads this sensor in 0.3 ms where Python takes 25.
 `update()`, which is the scan match and the occupancy grid, is never called.
+
+It does use one more thing from that library, and for the same reason: `describe()`,
+which turns a revolution into walls, free-standing objects and the gaps between
+them. That is what `describe_surroundings` answers with, and a language model can
+say something useful about it where it would cheerfully hallucinate over a list of
+360 ranges. It goes out on `/surroundings` as JSON in a `std_msgs/String`, twice a
+second and only while something subscribes. What that library cannot supply is the
+pose — it never runs the matcher — so the bridge replaces it, along with the match
+score and the scan count, rather than letting three plausible-looking zeroes reach
+a console.
+
+## The nav bridge, and why the daemon's tools work again
+
+The daemon cannot import `rclpy`. It runs under the board's system Python because
+that is what has the serial port, the camera and OpenCV; ROS 2 is a conda
+environment with its own Python, and there is no making them one process. So
+`nav_bridge.py` serves the stack on loopback 8773 and
+[`rover_daemon/ros_navigator.py`](../rover_daemon/ros_navigator.py) is the client,
+duck-typed to the `Navigator` the daemon used to drive with. Nothing in
+`rover_nav.py`, in the tool schemas, or in either console had to change.
+
+**Every move is a Nav2 action, not something written here.** That is the point of
+the migration — the rover used to carry its own planner and its own follower and
+both are now somebody else's problem:
+
+| daemon tool | Nav2 action | what it gets from Nav2 |
+|---|---|---|
+| `drive` | `DriveOnHeading`, or `BackUp` backwards | drives straight, aborts on a collision the local costmap can see |
+| `turn_in_place` | `Spin` | rotates on the spot, collision-checked through the sweep |
+| `drive_to` | `NavigateToPose` | a planned route, a follower, and the recovery behaviours |
+| `stop_driving` | goal cancel, plus a zero `Twist` | the cancel is the correct act, the Twist is the quick one |
+| `clear_map` | `/slam_toolbox/reset` | throws the pose graph away |
+
+`drive` is a narrower promise than it used to be, and the tool description says so:
+it goes straight and stops, where the old one wove around obstacles. Weaving now
+belongs to `drive_to`, which has a planner behind it.
+
+Nav2's result codes are translated into the words the daemon's `Outcome` has always
+used, in [`nav_codes.py`](nav_codes.py), and every code is listed there rather than
+computed. They look systematic and are not: `BackUp` numbers invalid input 713 and
+a collision 714, while `DriveOnHeading` numbers a collision 723 and invalid input
+724 — the same two meanings, swapped, in adjacent blocks. A version of this that
+did arithmetic on the last digit passed its tests and reported a rover stopped by a
+wall as one that had timed out. The selftest checks the table against the
+`.action` files themselves when it is run on the rover.
+
+The map is drawn on the daemon's side. The bridge ships the occupancy grid as the
+bytes it arrived as — zlib'd, which takes a room-sized map from 28 kB to under 2 —
+and [`lidar_slam/mapimg.py`](../lidar_slam/mapimg.py) renders it, because that is
+the renderer that already draws this rover's arrow, its track, the camera's cone
+and the caption a model needs in order to read the picture. A second renderer on
+the ROS side would have become a second, slowly diverging, picture of one room.
+
+Two conversions happen on the way and both are invisible when wrong. ROS packs its
+grid `[y][x]` and the renderer indexes `[forward][left]`; map `+x` is forward and
+map `+y` is left on this rover, so the arrays agree once transposed. And
+slam_toolbox's origin is wherever the map has grown to and is not a whole number of
+cells from anywhere, so placing it rounds to the nearest — two and a half
+centimetres, half the resolution of the thing being drawn. Checked two ways: a
+self-test with a deliberately asymmetric mark, so a transpose cannot pass, and on
+the rover against the lidar's own wall bearings, where every feature the map
+contained preferred the placement as written and the nearest agreed to 2 cm.
+
+**What is genuinely lost.** A pose graph has no per-revolution match score and a
+velocity controller has no chosen steering arc, so `nav_status` reports None for
+the first and the consoles show a dash. That is no loss: `position_trusted` now
+means "slam_toolbox is still publishing where we are", which is the failure the old
+number was really being watched for. `steering_deg` is filled in from the planned
+route instead — the bearing to a point a lookahead ahead — which is a fair reading
+of which way the rover is trying to go.
 
 ## Installing it
 
@@ -126,11 +211,39 @@ ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGrap
 
 ## Sending it somewhere
 
-With Nav2 running (`install-boot.sh --nav`, or `run_ros_nav.sh --nav`):
+The ordinary way is the drive console at `http://<rover>:8771/` — tap the map — or
+a conversation with the voice chat. Both reach the same tools, and both need the
+daemon started with `--ros-nav`; without it the rover offers 11 tools instead of 17
+and the console shows a map it cannot drive on.
+
+Underneath, from the rover itself, either through the daemon — which is what the
+consoles do, and which also hands face tracking over for the duration — or straight
+at Nav2, which skips both:
 
 ```bash
+python3 - <<'EOF'
+import json, socket
+s = socket.create_connection(("127.0.0.1", 8769))
+s.sendall(json.dumps({"call": "drive_to",
+                      "arguments": {"ahead_m": 2.0, "left_m": 0.0}}).encode() + b"\n")
+print(s.makefile("r").readline())
+EOF
+
+. ~/ugv/ros_nav/env.sh
 ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
     "{pose: {header: {frame_id: map}, pose: {position: {x: 2.0, y: 0.0}}}}"
+```
+
+The bridge itself can be poked directly, which is the quickest way to tell a broken
+daemon from a broken stack:
+
+```bash
+python3 - <<'EOF'
+import json, socket
+s = socket.create_connection(("127.0.0.1", 8773))
+s.sendall(b'{"op": "status"}\n')
+print(json.dumps(json.loads(s.makefile("r").readline()), indent=1))
+EOF
 ```
 
 ## The calibrations, and why they were not optional
@@ -361,19 +474,65 @@ by absolute path, so deployment is `scp` and there is no build step to forget.
 `lidar_slam/` already has one of those, and a stale `libslam2d.so` is the rover
 running last week's code with this week's file next to it on disk.
 
+**Nav2 behind the daemon's `drive`.** `DriveOnHeading` goes straight and stops; it
+does not weave. That is a real reduction from what the daemon's own follower did,
+and it was chosen rather than papered over: the honest place to want obstacle
+avoidance is a call that has a planner behind it, which is `drive_to`. A `drive`
+that quietly did its own steering underneath Nav2 would be two controllers with
+different ideas of the room.
+
+**A speed for `turn_in_place`.** Nav2's `Spin` takes an angle and a time
+allowance, not a rate, so the old tool's "it turns more slowly when something is
+within about 25 cm" is now the behaviour server's collision check rather than a
+rate this rover chooses. The turn is still refused only if the rotation itself
+would sweep through something, which is what mattered: rotating is how a rover
+that has got too close to a wall gets away from it.
+
 ## Going back
 
-The old stack is untouched and one crontab line away:
+The old stack is untouched and two crontab edits away:
 
 ```bash
 ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --off'
-ssh bpi-m4zero "crontab -l | sed 's/--board-bridge/--lidar/' | crontab - && sync"
+ssh bpi-m4zero "crontab -l | sed 's/--board-bridge --ros-nav/--lidar/' | crontab - && sync"
 ssh bpi-m4zero "pkill -f 'ugv/run_daemon[.]sh'; ~/ugv/restart.sh"
 ```
 
-That is deliberate and should stay true until Nav2 has driven the rover around
-the house enough times to have earned the trade. The daemon's own driving and
-mapping tools — `drive_to`, `show_map`, `describe_surroundings` and the rest, which
-the voice chat and the drive console call — come back with `--lidar` and are
-**not** available while ROS owns the lidar. Giving them a Nav2 backend is the next
-piece of work, and until it is done this rover maps well and is driven from ROS.
+That is deliberate and should stay true until Nav2 has driven the rover around the
+house enough times to have earned the trade. Both arrangements now offer the same
+17 tools and the same replies, so the consoles and the voice chat cannot tell them
+apart — which is the point, and also the thing to be careful about. **Check which
+one is running before drawing a conclusion about either.** The daemon's startup
+line says so:
+
+```
+driving ros2 on 127.0.0.1:8773        # Nav2 behind the tools
+driving own planner, lidar /dev/...   # the daemon's own, behind the same tools
+```
+
+The two flags are mutually exclusive and the daemon refuses to start with both,
+because `--lidar` opens the serial port that ROS's own lidar node needs — the
+daemon would win it silently and `slam_toolbox` would wait for a scan that never
+arrives.
+
+## Reloading it after a deploy
+
+```bash
+ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'                # new nodes or config
+ssh bpi-m4zero '~/ugv/ros_nav/restart.sh --supervisor'    # new run_ros_nav.sh
+```
+
+**The second form is not optional when `run_ros_nav.sh` itself has changed**, and
+the reason is worth knowing because the failure is silent and convincing. bash
+parses a function once, when the script starts, and that supervisor runs for weeks.
+The sweep that takes the previous launch's nodes down therefore used to be a stale
+copy — so adding `nav_bridge` to it changed nothing, the old bridge survived the
+reload, the new one could not bind port 8773 and died in the log, and the stack came
+back answering every question with the *previous* deploy's code while the reload
+reported one of each node running and nothing wrong.
+
+Two things came out of that. The sweep is now [`sweep.sh`](sweep.sh), a separate
+file read from disk every time it is called, so anything that adds a node to this
+stack adds it there. And `restart.sh` no longer trusts a process count: it also
+looks for a death in the log after the launch started, which is what a node losing
+a port looks like from outside.

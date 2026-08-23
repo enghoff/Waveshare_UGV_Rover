@@ -32,6 +32,7 @@ from test_aiming import (
     test_the_approach_to_a_face_never_turns_back,
 )
 from test_harness import FAIL, PASS, SKIP, check
+from test_ros_nav import TESTS as ROS_NAV_TESTS
 
 
 class FakeLink:
@@ -1248,7 +1249,8 @@ def main():
                  test_one_script_at_a_time, test_where,
                  test_map_view, test_flags, test_aiming_through_a_missed_frame,
                  test_one_move_puts_a_face_in_the_middle,
-                 test_the_approach_to_a_face_never_turns_back):
+                 test_the_approach_to_a_face_never_turns_back,
+                 *ROS_NAV_TESTS):
         try:
             test()
         except Exception as exc:

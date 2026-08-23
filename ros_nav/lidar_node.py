@@ -19,6 +19,7 @@ closure, and running both would be paying twice for the worse answer.
 
 import argparse
 import glob
+import json
 import math
 import os
 import sys
@@ -29,6 +30,7 @@ from rclpy.node import Node
 from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
                        QoSReliabilityPolicy)
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
 
 import serial
 
@@ -101,6 +103,24 @@ class LidarNode(Node):
                          history=QoSHistoryPolicy.KEEP_LAST, depth=1)
         self.pub = self.create_publisher(LaserScan, args.topic, qos)
 
+        # The room in words, for the daemon's `describe_surroundings` tool.
+        #
+        # Published from here because this is where the answer already is. The
+        # library holding the current revolution can also turn it into walls,
+        # free-standing objects and the gaps between them -- `slam2d.describe()`,
+        # in C over the same 450 points -- and that is the description a language
+        # model can say something useful about, as opposed to a list of 360
+        # ranges, which it will cheerfully hallucinate over. Recomputing it
+        # anywhere else would mean either a second copy of that code or shipping
+        # the raw scan to somewhere that has one.
+        #
+        # Latched, so a bridge that restarts is handed the last description
+        # immediately instead of waiting out the interval.
+        latched = QoSProfile(reliability=QoSReliabilityPolicy.RELIABLE,
+                             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                             history=QoSHistoryPolicy.KEEP_LAST, depth=1)
+        self.room_pub = self.create_publisher(String, args.room_topic, latched)
+
         self.port = None
         self.port_path = None
         self.revolutions = 0
@@ -119,6 +139,7 @@ class LidarNode(Node):
         # on this board that is the difference between about half a core and
         # about a quarter of one, for no change in the delivered scan rate.
         self.timer = self.create_timer(args.poll, self.poll)
+        self.room_timer = self.create_timer(args.describe, self.describe)
         self.get_logger().info(
             "publishing %s in frame '%s', %d bins, %.2f-%.1f m"
             % (args.topic, self.frame_id, self.bins, args.range_min, args.range_max))
@@ -264,6 +285,48 @@ class LidarNode(Node):
         msg.ranges = ranges
         return msg
 
+    def describe(self):
+        """Publish the room in words, if anybody is listening.
+
+        The pose in this is the origin and the match score is zero, because the
+        matcher in this library is never run -- see the module docstring. Both are
+        replaced by the nav bridge with the answers slam_toolbox and the transform
+        tree have, which is where they belong: this node knows the shape of the
+        room around the rover and genuinely does not know where the rover is.
+
+        Skipped when nothing subscribes, so running this node on its own to look
+        at a scan costs nothing extra. It runs on the same thread as `poll`, so
+        the parser cannot be halfway through a revolution while this reads it.
+        """
+        if self.room_pub.get_subscription_count() == 0:
+            return
+        if self.port is None:
+            return
+        try:
+            room = self.slam.describe()
+        except Exception as exc:                # never take the scan down with it
+            self.get_logger().warn("cannot describe the room: %s" % exc)
+            return
+        # What only this node knows, alongside it: which port the sensor turned up
+        # on, and how many revolutions came back too thin to publish. The second
+        # is the honest reading of "dropped scans" now -- a blocked sensor or a
+        # parser that has just resynced, rather than a mapper falling behind.
+        room["port"] = self.port_path
+        room["thin"] = self.thin
+        room["bins"] = self.bins
+        # Dropped rather than sent, because all three are answers this node is in
+        # no position to give and all three arrive looking perfectly plausible.
+        # The pose and the match score come from a scan matcher that is never run,
+        # so they are the origin and zero; `scans` counts revolutions that matcher
+        # has processed, which is none of them. A zero in a console row labelled
+        # "scans" on a rover whose lidar is spinning happily is exactly the kind
+        # of number somebody debugs for an hour. The bridge fills all three in
+        # from slam_toolbox and the transform tree, which do know.
+        room.pop("match_score", None)
+        room.pop("pose", None)
+        room.pop("scans", None)
+        self.room_pub.publish(String(data=json.dumps(room, separators=(",", ":"))))
+
     def report(self):
         if self.args.quiet:
             return
@@ -294,6 +357,12 @@ def parse_args(argv):
                    help="below this a revolution is treated as blocked, not empty")
     p.add_argument("--poll", type=float, default=0.010,
                    help="seconds between serial reads; the cost knob on this node")
+    p.add_argument("--room-topic", default="surroundings",
+                   help="where the room is published in words, for the daemon's "
+                        "describe_surroundings tool")
+    p.add_argument("--describe", type=float, default=0.5,
+                   help="seconds between those descriptions; skipped entirely "
+                        "when nothing subscribes")
     p.add_argument("--quiet", action="store_true")
     return p.parse_args(strip_ros_args(argv))
 

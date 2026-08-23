@@ -13,9 +13,16 @@ when no package is named, so nothing is lost but the `ros2 run` shorthand.
 
 What comes up, and why in this order:
 
-  lidar_node   the D500 as /scan
+  lidar_node   the D500 as /scan, and the room in words as /surroundings
   base_node    the driver board as /odom and the odom -> base_link transform
   slam_toolbox /scan plus that transform as /map, and map -> odom on top
+  nav_bridge   all of the above, served to the rover daemon on loopback 8773
+
+The bridge is here rather than in nav.launch.py on purpose. Most of what it hands
+over -- the map, the pose, what is around the rover -- exists as soon as
+slam_toolbox does, so a rover brought up for mapping alone still gives its
+console a live map and a description of the room. What it cannot do without Nav2
+is drive, and asked to, it says exactly that.
 
 slam_toolbox is asynchronous rather than synchronous. The synchronous node
 guarantees every scan reaches the mapper and blocks until it has, which is the
@@ -40,6 +47,7 @@ def generate_launch_description():
     params = LaunchConfiguration("params")
     lidar_port = LaunchConfiguration("lidar_port")
     bridge_port = LaunchConfiguration("bridge_port")
+    nav_port = LaunchConfiguration("nav_port")
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -51,6 +59,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "bridge_port", default_value="8772",
             description="the daemon's board bridge"),
+        DeclareLaunchArgument(
+            "nav_port", default_value="8773",
+            description="where the daemon reaches this stack; it must match the "
+                        "daemon's own --ros-nav"),
 
         Node(executable=os.path.join(HERE, "lidar_node.py"),
              name="lidar_node", output="screen",
@@ -62,6 +74,14 @@ def generate_launch_description():
 
         Node(package="slam_toolbox", executable="async_slam_toolbox_node",
              name="slam_toolbox", output="screen", parameters=[params]),
+
+        # Not a lifecycle node and deliberately started before slam_toolbox has
+        # finished coming up: everything it serves it serves by subscription, so
+        # the worst a client gets in the first few seconds is an honest "the map
+        # has not arrived yet".
+        Node(executable=os.path.join(HERE, "nav_bridge.py"),
+             name="nav_bridge", output="screen",
+             arguments=["--port", nav_port]),
 
         # slam_toolbox is a *lifecycle* node in Jazzy, and it comes up
         # `unconfigured`: the process runs, answers `ros2 node list`, and has

@@ -10,12 +10,18 @@
 # unit needs `loginctl enable-linger`, which needs the same. cron is already
 # running and needs neither.
 #
-# It also checks the *daemon's* entry, because the two are a pair now. The rover
-# daemon must run with `--board-bridge` or the base node has no odometry, and it
-# must run without `--lidar` or the two stacks fight over one serial port -- the
-# daemon would win, silently, and slam_toolbox would wait for a scan that never
-# comes. Getting that wrong is the single most likely way to install this and
-# find nothing works, so it is checked here rather than left to be discovered.
+# It also checks the *daemon's* entry, because the two are a pair now. Three
+# things have to be true of it and each fails differently:
+#
+#   --board-bridge   or the base node has no odometry at all
+#   --ros-nav        or the daemon offers no driving tools, so the drive console
+#                    and the voice chat can watch the rover and not move it
+#   no --lidar       or the two stacks fight over one serial port; the daemon
+#                    wins, silently, and slam_toolbox waits for a scan that never
+#                    comes
+#
+# Getting any of them wrong is the most likely way to install this and find
+# nothing works, so they are checked here rather than left to be discovered.
 
 set -eu
 
@@ -62,6 +68,15 @@ elif printf '%s' "$daemon_line" | grep -q -- '--lidar'; then
 elif ! printf '%s' "$daemon_line" | grep -q -- '--board-bridge'; then
     echo "!! the daemon does not start with --board-bridge, so the base node will"
     echo "   have nothing to read the wheels and gyro from. Add it to that entry."
+elif ! printf '%s' "$daemon_line" | grep -q -- '--ros-nav'; then
+    echo "!! the daemon starts without --ros-nav, so it will come up with no"
+    echo "   driving or mapping tools -- 11 of them instead of 17. The drive"
+    echo "   console will show a rover it cannot move and a map it cannot fetch."
+    echo "   Add it to that entry, and note that changing the crontab is not"
+    echo "   enough on its own: the running supervisor is holding the old"
+    echo "   arguments, so it has to be replaced."
+    echo "     crontab -l | sed 's|run_daemon.sh --vision --board-bridge|& --ros-nav|' | crontab - && sync"
+    echo "     pkill -f 'ugv/run_daemon[.]sh' ; sleep 1 ; ~/ugv/restart.sh"
 else
-    echo "== the daemon's entry is right: --board-bridge, and no --lidar"
+    echo "== the daemon's entry is right: --board-bridge --ros-nav, and no --lidar"
 fi

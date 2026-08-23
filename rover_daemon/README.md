@@ -278,6 +278,23 @@ ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --host 192.168.1.22'   # board
 ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --lidar --camera-fov 58'
 ```
 
+**Two ways to have the driving and mapping tools, and they are mutually
+exclusive.** `--lidar` opens the lidar here and drives with the planner in
+[lidar_slam/](../lidar_slam); `--ros-nav` leaves the lidar to the ROS 2 stack and
+drives with Nav2 through a loopback socket, which is what the rover actually runs
+now:
+
+```bash
+python3 rover_daemon.py --vision --board-bridge --ros-nav
+```
+
+The daemon refuses both together, because only one process can hold the lidar's
+serial port and this one would win it silently. Either way the same 17 tools are
+offered with the same names and the same replies, so nothing that calls them can
+tell which is behind them -- the startup line is what says. See
+[ros_navigator.py](ros_navigator.py) and
+[ros_nav/README.md](../ros_nav/README.md).
+
 It centres the gimbal at startup, like every other script that commands it: the
 angles are a model kept true by putting the camera where the code thinks it is,
 since the firmware's `getGimbalFeedback()` is not reachable over JSON.

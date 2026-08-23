@@ -1,6 +1,6 @@
 #!/bin/bash
 # Keep the ROS 2 mapping and navigation stack running, and bring it back after a
-# reboot. Installed as a `@reboot` crontab entry by install-crontab.sh.
+# reboot. Installed as a `@reboot` crontab entry by install-boot.sh.
 #
 #     ~/ugv/ros_nav/run_ros_nav.sh              # mapping only
 #     ~/ugv/ros_nav/run_ros_nav.sh --nav        # mapping and Nav2
@@ -35,42 +35,30 @@ while ! (exec 3<>/dev/tcp/127.0.0.1/8772) 2>/dev/null && [ $i -lt 40 ]; do
 done
 exec 3<&- 2>/dev/null
 
-# Kill anything this script has ever started that is still about.
+# Taking the previous launch's nodes down is `sweep.sh`, and it lives in its own
+# file rather than in a function here. That is not a style choice, it is a bug
+# that was paid for.
 #
-# This is not tidiness, it is the difference between a working rover and a broken
-# one. `ros2 launch` does **not** reliably take its nodes down with it: killed
-# with SIGTERM it exits and its children keep running, so every reload left
-# another lidar_node behind. Three of them accumulated once, all reading the same
-# serial port -- Linux allows that -- and each got a third of the packets. The
-# symptom was /scan arriving at 18 Hz from a 10 Hz sensor, with three publishers
-# nobody had asked for. Nothing errored anywhere.
+# bash parses a function once, when the script starts. This supervisor runs for
+# weeks. So a sweep written as a function is whichever copy was on disk the last
+# time the supervisor started, and adding a node to it does nothing at all until
+# the supervisor itself is replaced -- while every visible sign says the deploy
+# worked. That happened with `nav_bridge`: it was not swept, the old one survived
+# the reload, the new one could not bind port 8773 and died in the log, and the
+# stack came back running the previous deploy's code while `restart.sh` counted
+# one of each and reported everything fine.
 #
-# The patterns carry $DIR, so they name the deployed paths and cannot match this
-# script's own command line.
-cleanup() {
-    pkill -f "$DIR/lidar_node.py" 2>/dev/null
-    pkill -f "$DIR/base_node.py" 2>/dev/null
-    pkill -f 'async_slam_toolbox_node' 2>/dev/null
-    pkill -f 'nav2_lifecycle_manager/lifecycle_manager' 2>/dev/null
-    pkill -f 'nav2_controller/controller_server' 2>/dev/null
-    pkill -f 'nav2_planner/planner_server' 2>/dev/null
-    pkill -f 'nav2_bt_navigator/bt_navigator' 2>/dev/null
-    pkill -f 'nav2_behaviors/behavior_server' 2>/dev/null
-    pkill -f 'nav2_smoother/smoother_server' 2>/dev/null
-    pkill -f 'nav2_waypoint_follower/waypoint_follower' 2>/dev/null
-    pkill -f 'nav2_velocity_smoother/velocity_smoother' 2>/dev/null
-    # The lidar and the wheels need a moment to actually let go of their handles.
-    sleep 2
-}
+# A separate script is read from disk every time it is called. Anything that adds
+# a node to this stack adds it to sweep.sh.
 
 # Same rule as run_daemon.sh: stop when *this* is signalled, never because a
 # child was. `restart.sh` reloads by killing the launch, and a supervisor that
 # quit on that would be no supervisor at all. What is different here is that
-# stopping must also sweep -- see cleanup().
+# stopping must also sweep, because the launch will not.
 stop() {
     echo "--- run_ros_nav.sh signalled at $(date -Is), stopping ---" >> "$LOG"
     kill "$child" 2>/dev/null
-    cleanup
+    bash "$DIR/sweep.sh" >> "$LOG" 2>&1
     exit 0
 }
 trap stop INT TERM
@@ -82,8 +70,12 @@ echo "--- run_ros_nav.sh starting $LAUNCH at $(date -Is) ---" >> "$LOG"
 while true; do
     # Before every launch, not just the first. This is what makes a reload
     # idempotent: whatever the previous launch left holding the lidar is gone
-    # before the new one goes looking for it.
-    cleanup
+    # before the new one goes looking for it. `bash` in front of it because a
+    # checkout that arrived by scp is mode 644 and the shebang is never consulted.
+    if ! bash "$DIR/sweep.sh" >> "$LOG" 2>&1; then
+        echo "--- sweep left something running at $(date -Is); launching anyway, "\
+             "expect a port clash or a shared serial port ---" >> "$LOG"
+    fi
     ros2 launch "$DIR/$LAUNCH" "$@" >> "$LOG" 2>&1 &
     child=$!
     wait "$child"

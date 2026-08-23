@@ -229,10 +229,11 @@ NAV_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "drive",
             "description": (
-                "Drive the rover forward. It watches its lidar the whole way and "
-                "stops itself rather than hitting anything, steering around "
-                "obstacles when it can. Always says how far it actually got and why "
-                "it stopped, which will often be less than asked for. Pauses face "
+                "Drive the rover straight forward. It watches its lidar the "
+                "whole way and stops itself rather than hitting anything, but it "
+                "does not steer around obstacles -- use drive_to for that, which "
+                "plans a route. Always says how far it actually got and why it "
+                "stopped, which will often be less than asked for. Pauses face "
                 "tracking while it moves and resumes it afterwards. It cannot see "
                 "steps, drops, or anything above or below the height of its lidar, "
                 "so do not drive it near a stair or a table edge on the strength of "
@@ -242,13 +243,31 @@ NAV_TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "distance_m": {
+                        # Forward only, even though the ROS backend can reverse --
+                        # Nav2's BackUp behaviour is what `drive` uses for a
+                        # negative distance and it is wired up. The schema is
+                        # shared with the daemon's own planner behind `--lidar`,
+                        # whose drive loop is forward-only, and a schema that
+                        # promises reverse on a rover configured the other way is
+                        # worse than one that does not offer it. `drive_to` with a
+                        # negative `ahead_m` backs up on either.
                         "type": "number", "minimum": 0.05, "maximum": 3.0,
                         "description": "How far to go, in metres.",
                     },
                     "speed_ms": {
-                        "type": "number", "minimum": 0.05, "maximum": 0.35,
+                        # 0.5 rather than 0.35, and the old ceiling was not a
+                        # ceiling at all. Measured on this chassis by
+                        # ros_nav/calibrate_chassis.py, the slowest PWM the motors
+                        # will turn at already does 0.33 m/s and PWM 140 does
+                        # 0.68 -- so 0.35 was very nearly this rover's *minimum*,
+                        # and every request was being pinned to the bottom of the
+                        # range with no speed control left over.
+                        "type": "number", "minimum": 0.05, "maximum": 0.5,
                         "description": "Metres per second. Leave it out for a "
-                                       "sensible walking crawl.",
+                                       "sensible walking pace. This chassis will "
+                                       "not move below about a third of a metre a "
+                                       "second, so anything smaller is treated as "
+                                       "that.",
                     },
                 },
                 "required": ["distance_m"],
@@ -286,9 +305,19 @@ NAV_TOOLS: list[dict[str, Any]] = [
                                        "right.",
                     },
                     "speed_ms": {
-                        "type": "number", "minimum": 0.05, "maximum": 0.35,
+                        # 0.5 rather than 0.35, and the old ceiling was not a
+                        # ceiling at all. Measured on this chassis by
+                        # ros_nav/calibrate_chassis.py, the slowest PWM the motors
+                        # will turn at already does 0.33 m/s and PWM 140 does
+                        # 0.68 -- so 0.35 was very nearly this rover's *minimum*,
+                        # and every request was being pinned to the bottom of the
+                        # range with no speed control left over.
+                        "type": "number", "minimum": 0.05, "maximum": 0.5,
                         "description": "Metres per second. Leave it out for a "
-                                       "sensible walking crawl.",
+                                       "sensible walking pace. This chassis will "
+                                       "not move below about a third of a metre a "
+                                       "second, so anything smaller is treated as "
+                                       "that.",
                     },
                 },
                 "required": ["ahead_m", "left_m"],

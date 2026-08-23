@@ -609,6 +609,225 @@ def test_configs_agree():
               "do_loop_closing: true" in slam_text, True)
 
 
+# --- the navigation bridge ----------------------------------------------------
+# Stand-ins for nav_bridge.py, which cannot be imported without rclpy. The same
+# arrangement as the drive model above, and for the same reason: a sign flip in a
+# bearing does not need a radio to be wrong.
+#
+# The result-code table is the exception, and it is imported rather than copied.
+# It is a table and not arithmetic, so a stand-in could agree with itself
+# perfectly while disagreeing with the bridge -- which is how the first version of
+# it shipped a mapping that read a blocked drive as a timeout. `nav_codes.py`
+# has no ROS in it precisely so that this file can read the real thing.
+sys.path.insert(0, HERE)
+from nav_codes import PHRASES, REASONS, phrase_for, reason_for   # noqa: E402
+
+
+def wrap(radians):
+    """A copy of nav_bridge.wrap."""
+    return math.atan2(math.sin(radians), math.cos(radians))
+
+
+def yaw_of_zw(z, w):
+    """A copy of nav_bridge.yaw_of, taking the two components that matter."""
+    return math.atan2(2.0 * w * z, 1.0 - 2.0 * z * z)
+
+
+def steering(where, poses, lookahead=1.0):
+    """A copy of nav_bridge.NavBridge.steering, over plain (x, y) tuples."""
+    if where is None or not poses:
+        return None
+    x, y, yaw = where
+    for px, py in poses:
+        if math.hypot(px - x, py - y) >= lookahead:
+            return round(math.degrees(wrap(math.atan2(py - y, px - x) - yaw)), 1)
+    px, py = poses[-1]
+    if math.hypot(px - x, py - y) < 0.05:
+        return None
+    return round(math.degrees(wrap(math.atan2(py - y, px - x) - yaw)), 1)
+
+
+def test_nav2_error_codes():
+    """Nav2's result codes, as the words the daemon's `Outcome` already uses.
+
+    The whole reason `nav_codes.py` lists every code instead of doing arithmetic
+    on it: the numbers look systematic and are not. BackUp's 713 is invalid input
+    and its 714 is a collision; DriveOnHeading's 723 is a collision and its 724 is
+    invalid input -- the same two meanings, swapped, in adjacent blocks. A version
+    of this that matched on the last digit passed every test written for it and
+    reported a rover stopped by a wall as one that had timed out.
+    """
+    section("Nav2 result codes read as English")
+    check("zero is an arrival", reason_for(0), "arrived")
+    check("701, Spin timing out", reason_for(701), "timed out")
+    check("703, Spin into something", reason_for(703), "blocked")
+    check("713, BackUp given a nonsense distance", reason_for(713), "refused")
+    check("714, BackUp into something", reason_for(714), "blocked")
+    check("723, DriveOnHeading into something -- note it is not 724",
+          reason_for(723), "blocked")
+    check("724, DriveOnHeading given a nonsense distance",
+          reason_for(724), "refused")
+    check("702, a transform failure, which is being lost",
+          reason_for(702), "lost")
+    check("208, the planner finding no route, is being blocked",
+          reason_for(208), "blocked")
+    check("206, a goal with something in it, is a refusal",
+          reason_for(206), "refused")
+    check("105, the controller stuck, is being blocked",
+          reason_for(105), "blocked")
+    # 700 is Spin's UNKNOWN, and it caught the last-digit version red-handed:
+    # 700 % 10 is 0, so a behaviour that failed for a reason it could not name was
+    # reported as having arrived. The rover would have said it had turned.
+    check("700 -- plain unknown -- is a failure and not an arrival",
+          reason_for(700), "failed")
+    check("a code nobody has heard of falls back rather than raising",
+          reason_for(795), "failed")
+    check("...and specifically not to an arrival, so a Nav2 upgrade that adds a "
+          "failure does not have it read as a success",
+          reason_for(795) == "arrived", False)
+
+    # Every reason has to be one the daemon's callers understand, because
+    # `_tool_drive` decides `ok` by testing the word.
+    known = {"arrived", "blocked", "timed out", "lost", "refused", "failed"}
+    check("every code maps to a word Outcome's readers know",
+          sorted(set(REASONS.values()) - known), [])
+    check("every phrase belongs to a code that exists",
+          sorted(set(PHRASES) - set(REASONS)), [])
+    check("Nav2's own words win over ours when it gives any",
+          phrase_for(723, "the local costmap says no"),
+          "the local costmap says no")
+    check("...and ours are there for when it does not",
+          phrase_for(723, "  ") != "", True)
+    check("a code with neither says nothing rather than something made up",
+          phrase_for(700, ""), "")
+
+
+def test_nav2_error_codes_match_the_installed_nav2():
+    """On the rover, check the numbers against the .action files themselves.
+
+    The table was copied by hand out of `share/nav2_msgs/action/`, and a Nav2
+    upgrade that renumbered anything would leave it quietly describing the
+    previous version. Skipped where there is no ROS, which is most machines.
+    """
+    section("the code table matches the Nav2 that is installed")
+    import glob
+    import re as _re
+
+    roots = glob.glob(os.path.expanduser(
+        "~/miniforge3/envs/*/share/nav2_msgs/action"))
+    if not roots:
+        print("  .... skipped, no nav2_msgs on this machine")
+        return
+    wanted = {"UNKNOWN": "failed", "TIMEOUT": "timed out", "TF_ERROR": "lost",
+              "COLLISION_AHEAD": "blocked", "INVALID_INPUT": "refused",
+              "NO_VALID_PATH": "blocked", "GOAL_OCCUPIED": "refused",
+              "START_OCCUPIED": "blocked", "GOAL_OUTSIDE_MAP": "refused",
+              "START_OUTSIDE_MAP": "lost", "FAILED_TO_MAKE_PROGRESS": "blocked",
+              "NO_VALID_CONTROL": "blocked", "PATIENCE_EXCEEDED": "blocked",
+              "CONTROLLER_TIMED_OUT": "timed out",
+              "INVALID_CONTROLLER": "refused", "INVALID_PLANNER": "refused",
+              "INVALID_PATH": "refused"}
+    interesting = ("Spin", "BackUp", "DriveOnHeading", "FollowPath",
+                   "ComputePathToPose")
+    for name in interesting:
+        path = os.path.join(roots[0], "%s.action" % name)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            declared = _re.findall(r"^uint16 ([A-Z_]+)=(\d+)",
+                                   fh.read(), _re.MULTILINE)
+        for label, number in declared:
+            if label == "NONE":
+                continue
+            code = int(number)
+            if label not in wanted:
+                check("%s.%s (%d) is a meaning this table has an opinion about"
+                      % (name, label, code), label, "one of %s" % sorted(wanted))
+                continue
+            check("%s.%s is %d and reads as '%s'" % (name, label, code,
+                                                     wanted[label]),
+                  reason_for(code), wanted[label])
+
+
+def test_heading_arithmetic():
+    """Wrapping, and reading a yaw back out of a quaternion.
+
+    Both are one line and both have a failure that looks like the rover being
+    possessed: an unwrapped difference turns "ten degrees to the left" into "three
+    hundred and fifty to the right", and a quaternion read with the wrong sign
+    turns every heading in the map upside down.
+    """
+    section("headings wrap and quaternions come back out")
+    check("just under half a turn stays positive",
+          math.degrees(wrap(math.radians(179))), 179.0, tolerance=0.001)
+    check("just over half a turn comes back as the short way round",
+          math.degrees(wrap(math.radians(181))), -179.0, tolerance=0.001)
+    check("a full turn is no turn",
+          math.degrees(wrap(math.radians(360))), 0.0, tolerance=0.001)
+    check("two and a bit turns anticlockwise is still ten degrees",
+          math.degrees(wrap(math.radians(730))), 10.0, tolerance=0.001)
+    for degrees in (-179.0, -90.0, -1.0, 0.0, 45.0, 90.0, 179.0):
+        half = math.radians(degrees) / 2.0
+        check("a yaw of %+.0f survives the round trip" % degrees,
+              math.degrees(yaw_of_zw(math.sin(half), math.cos(half))),
+              degrees, tolerance=0.001)
+
+
+def test_steering_bearing():
+    """Which way the rover is trying to go, off its own nose.
+
+    This replaced a number the old follower could name directly, because it chose
+    between candidate arcs. A velocity controller chooses no such thing, so the
+    honest substitute is the bearing to the route a lookahead ahead -- and the one
+    thing it must get right is the sign, because a panel that says "left" while
+    the rover goes right is worse than a panel that says nothing.
+    """
+    section("steering points at the route, on the correct side")
+    # Facing along +x at the origin, with a route that turns left.
+    route = [(0.2, 0.0), (0.6, 0.1), (1.2, 0.6)]
+    check("a route bending left reads as a left bearing",
+          steering((0.0, 0.0, 0.0), route) > 0, True)
+    check("...and the same route mirrored reads as a right one",
+          steering((0.0, 0.0, 0.0), [(x, -y) for x, y in route]) < 0, True)
+    check("a route straight ahead is zero degrees",
+          steering((0.0, 0.0, 0.0), [(2.0, 0.0)]), 0.0)
+    # Facing +y now: a point at (0, 2) is dead ahead rather than 90 degrees off.
+    check("the bearing is relative to the rover, not to the map",
+          steering((0.0, 0.0, math.pi / 2), [(0.0, 2.0)]), 0.0)
+    check("a route entirely underneath the rover says nothing at all",
+          steering((0.0, 0.0, 0.0), [(0.01, 0.0)]), None)
+    check("no route at all says nothing", steering((0.0, 0.0, 0.0), []), None)
+    check("no pose says nothing", steering(None, route), None)
+
+
+def test_the_two_halves_agree_on_the_port():
+    """The bridge's port is written in four files and nothing links them.
+
+    A mismatch is the quietest failure in this whole stack: the daemon offers
+    every driving tool, each one connects to a port nothing is listening on, and
+    every tool call comes back "the ROS navigation stack is not answering" on a
+    rover where it plainly is.
+    """
+    section("both halves agree where the bridge is")
+    wanted = "8773"
+    places = {
+        "ros_nav/nav_bridge.py": ("PORT = " + wanted),
+        "rover_daemon/ros_navigator.py": ("PORT = " + wanted),
+        "rover_daemon/rover_daemon.py": ("ROS_NAV_PORT = " + wanted),
+        "ros_nav/slam.launch.py": ('"nav_port", default_value="%s"' % wanted),
+    }
+    root = os.path.dirname(HERE)
+    for relative, needle in places.items():
+        path = os.path.join(root, relative)
+        if not os.path.exists(path):
+            # On the rover everything is deployed flat, so the repository layout
+            # is not there to check. Saying so beats a failure that means nothing.
+            print("  .... skipped, no %s" % relative)
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            check("%s says %s" % (relative, wanted), needle in fh.read(), True)
+
+
 def main():
     test_drive_model()
     test_turn_curve()
@@ -617,6 +836,11 @@ def main():
     test_odometry()
     test_scan_binning()
     test_bridge_protocol()
+    test_nav2_error_codes()
+    test_nav2_error_codes_match_the_installed_nav2()
+    test_heading_arithmetic()
+    test_steering_bearing()
+    test_the_two_halves_agree_on_the_port()
     test_calibration_store()
     test_configs_agree()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
