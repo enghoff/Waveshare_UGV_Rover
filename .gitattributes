@@ -20,3 +20,6 @@ docs/refs/** -text
 # shebangs -- a CRLF checkout would make the kernel look for an interpreter with a
 # carriage return in its name, the same trap lidar_slam/build.sh fell into.
 wifi_roam/** text eol=lf
+
+# rover_daemon's supervisor scripts have shebangs and run on the rover host.
+rover_daemon/*.sh text eol=lf

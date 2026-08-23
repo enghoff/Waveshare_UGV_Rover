@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import socket
+import subprocess
 import threading
 import time
 from typing import Any
@@ -75,11 +76,98 @@ def _wifi_level_dbm(iface: str = WIFI_IFACE) -> int | None:
                 name, _, rest = line.partition(":")
                 if name.strip() != iface:
                     continue
-                # status, link quality, signal level, noise
-                return int(float(rest.split()[2]))
+                # status, link quality, signal level, noise. Some drivers leave
+                # the dBm column at -256, which is "not filled in", not a reading.
+                level = int(float(rest.split()[2]))
+                if -120 < level < 0:
+                    return level
     except (OSError, ValueError, IndexError):
-        return None
+        pass
+    return _iw_signal_dbm(iface)
+
+
+def _iw_argv(iface: str) -> list[list[str]]:
+    return [
+        ["iwgetid", "-r", iface],
+        ["iw", "dev", iface, "link"],
+        ["/sbin/iw", "dev", iface, "link"],
+        ["/usr/sbin/iw", "dev", iface, "link"],
+    ]
+
+
+def _iw_signal_dbm(iface: str = WIFI_IFACE) -> int | None:
+    """`iw` reports dBm even when /proc/net/wireless leaves the column empty."""
+    for argv in _iw_argv(iface):
+        if argv[0].endswith("iwgetid"):
+            continue
+        try:
+            done = subprocess.run(argv, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL, timeout=2)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        for line in done.stdout.decode("utf-8", "replace").splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("signal:"):
+                continue
+            try:
+                level = int(float(stripped.split()[1]))
+            except (IndexError, ValueError):
+                continue
+            if -120 < level < 0:
+                return level
     return None
+
+
+def _wifi_ssid(iface: str = WIFI_IFACE) -> str | None:
+    """The associated SSID, without NetworkManager.
+
+    The privileged helper is how this rover lists neighbours and switches, but
+    "which network am I on" is a kernel fact and has to keep working on a host
+    that never got `wifi_roam/install.sh` -- the Banana Pi runs netplan, not
+    NetworkManager, so that helper cannot be installed as-is.
+    """
+    for argv in _iw_argv(iface):
+        try:
+            done = subprocess.run(argv, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL, timeout=2)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = done.stdout.decode("utf-8", "replace")
+        if argv[0] == "iwgetid":
+            ssid = text.strip()
+            if ssid:
+                return ssid
+            continue
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("SSID:"):
+                ssid = stripped[5:].strip()
+                if ssid:
+                    return ssid
+    return None
+
+
+def _wifi_from_kernel(iface: str = WIFI_IFACE) -> dict[str, Any] | None:
+    """What the radio is doing right now, when the helper cannot list neighbours."""
+    ssid = _wifi_ssid(iface)
+    level = _wifi_level_dbm(iface)
+    address = _iface_address(iface)
+    if ssid is None and level is None and address is None:
+        return None
+    networks = []
+    if ssid:
+        networks.append({"ssid": ssid, "signal": int(level or 0),
+                         "security": "", "in_use": True, "configured": True})
+    return {
+        "interface": iface,
+        "connected": ssid,
+        "level_dbm": level,
+        "address": address,
+        "networks": networks,
+        "configured": [ssid] if ssid else [],
+        "scanned": False,
+        "list_age_s": 0.0,
+    }
 
 
 def _iface_address(iface: str = WIFI_IFACE) -> str | None:
@@ -109,8 +197,6 @@ def _wifi_ctl(action: str, *args: str, timeout: float) -> tuple[bool, str]:
     so that a rover whose sudoers rule was never installed can still say which
     network it is on -- the panel that matters most is the one that only reads.
     """
-    import subprocess
-
     argv = [WIFI_CTL, action, *args]
     if action in ("scan", "join"):
         argv = ["sudo", "-n", *argv]
@@ -235,9 +321,15 @@ class RoverWifi:
                 if not ok:
                     # No list is not the same as no answer: the signal and the
                     # address are still worth having, and on a rover whose sudoers
-                    # rule is missing they are all that is available.
+                    # rule is missing -- or whose OS has no NetworkManager --
+                    # they are all that is available.
                     if self._wifi is None:
-                        return {"ok": False, "error": said}
+                        live = _wifi_from_kernel()
+                        if live is None:
+                            return {"ok": False, "error": said}
+                        live["ok"] = True
+                        live["note"] = said
+                        return live
                 else:
                     self._wifi = _wifi_networks(said,
                                                 self._wifi_configured(now))

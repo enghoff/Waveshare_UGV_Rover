@@ -21,8 +21,9 @@ RETRY=15
 
 # Wait for the port to exist at all. On a cold boot this is the SD card and the
 # kernel, not the board -- there is nothing to retry against until it is here.
+# ttyAMA0 is the Pi; ttyS4 is UART4 on the Banana Pi M4 Zero's 40-pin header.
 i=0
-while [ ! -e /dev/ttyAMA0 ] && [ $i -lt 40 ]; do
+while [ ! -e /dev/ttyAMA0 ] && [ ! -e /dev/ttyS4 ] && [ $i -lt 40 ]; do
     sleep 3
     i=$((i + 1))
 done

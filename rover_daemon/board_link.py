@@ -2,12 +2,26 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
 from typing import Any
 
-DEFAULT_SERIAL = "/dev/ttyAMA0"
+# Pi 1 GPIO UART is ttyAMA0. Banana Pi M4 Zero puts the same header pins on
+# UART4 as ttyS4. Prefer whichever of those exists so one default works on both
+# hosts; fall back to the Pi name so a missing port still has a name to report.
+SERIAL_CANDIDATES = ("/dev/ttyAMA0", "/dev/ttyS4")
+
+
+def default_serial() -> str:
+    for port in SERIAL_CANDIDATES:
+        if os.path.exists(port):
+            return port
+    return SERIAL_CANDIDATES[0]
+
+
+DEFAULT_SERIAL = default_serial()
 BAUD = 115200
 CMD_LIGHTS = 132  # CMD_LED_CTRL, both channels driven together as one headlight
 CMD_PROBE = 130   # a harmless query; the board answers with its usual telemetry

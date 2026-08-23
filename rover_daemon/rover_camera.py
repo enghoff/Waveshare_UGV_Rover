@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import base64
+import glob
 import json
 import math
+import os
 import socket
 import sys
 import threading
@@ -13,6 +15,34 @@ from typing import Any
 
 from rover_util import _flag, _level, _number
 from tool_schemas import LIGHT_MAX
+
+
+def default_camera() -> str:
+    """The USB camera, not whichever /dev/video0 the kernel numbered first.
+
+    On the Pi the Xitech is video0. On Allwinner boards video0 is the cedrus
+    decoder and the same camera lands later. The by-id name is the same on both
+    and stays put when another node appears.
+    """
+    named = sorted(glob.glob("/dev/v4l/by-id/*-video-index0"))
+    if named:
+        return named[0]
+    nodes = []
+    for path in glob.glob("/dev/video[0-9]*"):
+        try:
+            n = int(os.path.basename(path)[5:])
+        except ValueError:
+            continue
+        nodes.append((n, path))
+    for _n, path in sorted(nodes):
+        name = os.path.basename(path)
+        try:
+            device = os.path.realpath(f"/sys/class/video4linux/{name}/device")
+        except OSError:
+            continue
+        if "usb" in device:
+            return path
+    return "/dev/video0"
 
 # How long a "show me somebody else" suppression lasts, and how wide it is in
 # multiples of the face's own width. Long enough to let the sweep carry the

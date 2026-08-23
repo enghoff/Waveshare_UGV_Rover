@@ -253,6 +253,28 @@ def test_gimbal():
           {"ok": True, "pan": 0, "tilt": 0, "stopped_tracking": False})
 
 
+def test_default_camera():
+    import rover_camera
+
+    real_glob = rover_camera.glob.glob
+    try:
+        rover_camera.glob.glob = lambda pat: []
+        check("no camera name falls back to video0",
+              rover_camera.default_camera(), "/dev/video0")
+        rover_camera.glob.glob = lambda pat: [
+            "/dev/v4l/by-id/usb-Xitech_USB_Camera-video-index0"]
+        check("a USB by-id name is preferred",
+              rover_camera.default_camera(),
+              "/dev/v4l/by-id/usb-Xitech_USB_Camera-video-index0")
+        rover_camera.glob.glob = lambda pat: [
+            "/dev/v4l/by-id/usb-Other-video-index0",
+            "/dev/v4l/by-id/usb-Xitech_USB_Camera-video-index0"]
+        check("the first by-id name is stable",
+              rover_camera.default_camera(),
+              "/dev/v4l/by-id/usb-Other-video-index0")
+    finally:
+        rover_camera.glob.glob = real_glob
+
 
 def test_no_camera():
     import rover_daemon
@@ -566,6 +588,39 @@ def test_map_png_names_the_clock():
     check("...and names the picture size it drew", got.get("pixels"), 640)
     check("...and times the draw", isinstance(got.get("render_s"), (int, float)), True)
 
+
+def test_wifi_status_without_the_helper_still_reports_the_link():
+    """The console's network panel has to work without NetworkManager.
+
+    `wifi_ctl.sh` is the Pi helper. On a netplan host it is not installed, and
+    the page used to show only that sentence -- no SSID, no address -- even
+    though the kernel already knew both.
+    """
+    import rover_daemon
+    import rover_wifi
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    real_ctl = rover_wifi._wifi_ctl
+    real_live = rover_wifi._wifi_from_kernel
+    rover_wifi._wifi_ctl = lambda *args, **kwargs: (
+        False, "/usr/local/sbin/wifi_ctl.sh is not installed on this rover; "
+               "run wifi_roam/install.sh")
+    rover_wifi._wifi_from_kernel = lambda iface="wlan0": {
+        "interface": iface, "connected": "TheGreatLord", "level_dbm": -47,
+        "address": "192.168.1.47",
+        "networks": [{"ssid": "TheGreatLord", "signal": -47, "security": "",
+                      "in_use": True, "configured": True}],
+        "configured": ["TheGreatLord"], "scanned": False, "list_age_s": 0.0,
+    }
+    try:
+        got = rover.call("wifi_status", {})
+    finally:
+        rover_wifi._wifi_ctl = real_ctl
+        rover_wifi._wifi_from_kernel = real_live
+    check("wifi_status still answers", got.get("ok"), True)
+    check("...with the associated network", got.get("connected"), "TheGreatLord")
+    check("...and the address", got.get("address"), "192.168.1.47")
+    check("...and says the helper is missing", "install" in str(got.get("note", "")), True)
 
 
 def test_control_calls_without_hardware():
@@ -1022,10 +1077,11 @@ def test_reading_the_board():
 def main():
     for test in (test_levels, test_battery, test_reading_the_board,
                  test_schemas, test_lights, test_gimbal,
-                 test_no_camera, test_look, test_snapshot_splitting,
+                 test_no_camera, test_default_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_map_png_names_the_clock,
+                 test_wifi_status_without_the_helper_still_reports_the_link,
                  test_control_calls_without_hardware,
                  test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,

@@ -85,7 +85,7 @@ from board_link import (
     _field_number, _newest_telemetry,
 )
 from rover import Rover
-from rover_camera import VisionLink, _where
+from rover_camera import VisionLink, _where, default_camera
 from rover_util import _flag, _level, _number
 from rover_nav import (
     CAMERA_FOV_DEG, DEFAULT_LIDAR, MAP_MAX_HALF_EXTENT_M, MAP_MAX_PIXELS,
@@ -97,7 +97,7 @@ from tool_schemas import LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, TOOLS
 DEFAULT_BOARD_HOST = "192.168.1.22"
 DEFAULT_SERVICE = "local"
 DEFAULT_VISION = "192.168.1.3:8767"
-DEFAULT_DEVICE = "/dev/video0"
+DEFAULT_DEVICE = default_camera()
 HOST = "0.0.0.0"
 PORT = 8769
 
