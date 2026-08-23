@@ -237,13 +237,41 @@ def test_steering_has_a_small_end():
            steer_pwm(0.0, MEASURED_TURN, driving=False)), (0.0, 0.0))
 
 
+def test_the_simulated_chassis_is_not_the_mixer_inverted():
+    """Guard the thing that made this simulation useless the first time.
+
+    Its rover used to derive rotation from the PWM difference with the very curve
+    the mixer used to choose that difference. Plant and controller were exact
+    inverses, loop gain was 1.0 whatever either of them believed, and a mixer
+    steering on entirely the wrong curve simulated perfectly -- which is how a
+    mixer that over-responded by up to nine times passed. A simulation that
+    cannot fail is worse than none, so this asserts that it can.
+    """
+    section("the simulated chassis is measured, not the mixer turned around")
+    try:
+        import steering_sim
+    except Exception as exc:                       # pragma: no cover
+        print("  .... skipped, cannot import steering_sim: %s" % exc)
+        return
+    from drive_mixer import steer_pwm
+    worst = 0.0
+    for dps in (1.0, 2.0, 5.0, 10.0, 20.0):
+        differential = steer_pwm(dps, MEASURED_TURN, driving=True)
+        real = steering_sim.curve(steering_sim.STEER_POINTS, differential)
+        worst = max(worst, abs(real - dps) / dps)
+    check("steering on the pivot curve is visibly wrong in simulation "
+          "(worst %.0fx off)" % (1 + worst), worst > 1.0, True)
+
+
 def test_the_rover_does_not_wander_down_a_straight_line():
     """Close the loop in simulation and count how often the steering reverses.
 
-    The arithmetic above says the mixer can now ask for a gentle turn. This says
-    it matters: a follower driving the fixed mixer settles onto a straight line,
-    and the same follower driving the old one hunts about it for ever. See
-    steering_sim.py, which explains what is modelled and what is assumed.
+    Three mixers against one measured chassis. The middle one is the interesting
+    one: it is the fix for the zig-zag, it can express a gentle request, and
+    against a plant that is not its own inverse it still wanders, because the
+    amount of rotation it buys with that request is read off the wrong curve.
+    That is the state the rover was in when its trail was still visibly curved,
+    and this is the test that would have said so.
     """
     section("a simulated rover follows a straight line without hunting")
     try:
@@ -251,19 +279,24 @@ def test_the_rover_does_not_wander_down_a_straight_line():
     except Exception as exc:                       # pragma: no cover
         print("  .... skipped, cannot import steering_sim: %s" % exc)
         return
-    old = steering_sim.run(steering_sim.mix_old, MEASURED_TURN, MEASURED_DRIVE,
-                           metres=4.0, start_offset=0.10)
-    new = steering_sim.run(steering_sim.mix_new, MEASURED_TURN, MEASURED_DRIVE,
-                           metres=4.0, start_offset=0.10)
-    check("the old mixer hunts (%.1f steering reversals per metre)"
-          % old["reversals_per_m"], old["reversals_per_m"] > 2.0, True)
-    check("the fixed one settles (%.1f per metre)" % new["reversals_per_m"],
-          new["reversals_per_m"] < 1.0, True)
-    check("and wanders less once settled (%.1f cm against %.1f cm)"
-          % (new["settled_swing_m"] * 100, old["settled_swing_m"] * 100),
-          new["settled_swing_m"] < old["settled_swing_m"], True)
-    check("both still reach the line they were following",
-          max(old["final_offset_m"], new["final_offset_m"]) < 0.05, True)
+    runs = {}
+    for name, mixer in steering_sim.MIXERS:
+        runs[name] = steering_sim.run(mixer, MEASURED_TURN, MEASURED_DRIVE,
+                                      metres=4.0, start_offset=0.10)
+    floored, pivot, measured = (runs["floored"], runs["pivot-curve"],
+                                runs["measured"])
+    check("the floored mixer hunts (%.1f steering reversals per metre)"
+          % floored["reversals_per_m"], floored["reversals_per_m"] > 2.0, True)
+    check("steering on the pivot curve still wanders (%.1f cm of swing)"
+          % (pivot["settled_swing_m"] * 100),
+          pivot["settled_swing_m"] > 0.03, True)
+    check("the measured curve settles (%.1f per metre)"
+          % measured["reversals_per_m"], measured["reversals_per_m"] < 1.0, True)
+    check("and holds the line to under a centimetre (%.1f cm of swing)"
+          % (measured["settled_swing_m"] * 100),
+          measured["settled_swing_m"] < 0.01, True)
+    check("all three still reach the line they were following",
+          max(r["final_offset_m"] for r in runs.values()) < 0.05, True)
 
 
 # --- odometry -----------------------------------------------------------------
@@ -889,6 +922,7 @@ def test_the_two_halves_agree_on_the_port():
 def main():
     test_drive_model()
     test_steering_has_a_small_end()
+    test_the_simulated_chassis_is_not_the_mixer_inverted()
     test_the_rover_does_not_wander_down_a_straight_line()
     test_turn_curve()
     test_idle_behaviour()

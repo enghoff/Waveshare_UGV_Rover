@@ -511,6 +511,85 @@ in it, so that the node, the selftest and the simulation all run the same code.
 They used to carry copies. A copy of a table drifts visibly; a copy of a control
 law drifts invisibly.
 
+## The simulation that could not fail
+
+That fix was real and it took the hard zig-zag out, and the rover still curved.
+The reason it was not caught is worth more than the fix was.
+
+`steering_sim.py` closed the loop around a simulated chassis whose rotation came
+from the PWM difference *through the very curve the mixer used to choose that
+difference*. Plant and controller were exact inverses, so the loop gain was 1.0
+no matter what either of them believed. Started exactly on the line it drove a
+perfect straight line for ever — and so did the broken mixer, the one that had
+been seen zig-zagging the length of every route. Nothing could push either off
+the line except the follower choosing to.
+
+So it could detect exactly one class of fault: a mixer that cannot *express* a
+small steering request. It could not detect a mixer that expresses the request
+and then buys a completely different amount of rotation with it. A simulation
+that cannot fail is worse than no simulation, because it is reported as evidence.
+`selftest.py` now asserts that the simulated chassis and the mixer disagree.
+
+## What steering actually costs, which is not what pivoting costs
+
+`calibrate_chassis.py` measures rotation by spinning the wheels against each
+other on the spot. That is a real measurement of a real manoeuvre and it is the
+wrong one for steering, because a tracked chassis pivoting on the spot is
+dragging its whole contact patch sideways. The pivot curve implies an effective
+track width of 4.16 m at PWM 85 falling to 1.09 m at PWM 170, on a rover 0.22 m
+wide — five to nineteen times the geometry, and all of it scrub. Rolling
+forwards with one track a little faster than the other, almost none of that
+scrub is present.
+
+Measured with [`steer_gain.py`](steer_gain.py), which asks through `/cmd_vel`
+exactly as Nav2 does and reads the gyro:
+
+| asked | PWM pair | rover really turned |
+|---|---|---|
+| 2 °/s | 69, 107 | 5.8 °/s |
+| 5 °/s | 134, 42 | 20.4 °/s |
+| 10 °/s | 2, 174 | 85.6 °/s |
+| 45 °/s | −68, 180 | 111.7 °/s |
+
+Every steering request was over-served by between two and nine times. A follower
+can only answer that by correcting back, which is a weave rather than a route.
+So the store carries a second curve, `steer_pwm_points`, measured while rolling,
+and the mixer inverts *that* one whenever the rover is going anywhere. The pivot
+curve still governs turning on the spot, which is a different manoeuvre.
+
+## The rover pulls to one side, and it is the rover and not the gyro
+
+Asked for no rotation at all it curved left at about 1.1 °/s at 0.35 m/s. That
+had to be attributed before it could be corrected: a rover curves either because
+it really curved, or because its gyro said it did, and steering only fixes one
+of those. `odom → base_link` is the gyro integrated and nothing else, while
+`map → base_link` has slam_toolbox's scan matching on top, so the two are
+independent witnesses. Over six runs they agreed to 0.05 °/s. It is the chassis.
+
+`straight_bias_deg_per_m` in the store is that pull, held as degrees per metre
+driven rather than per second, because a small mismatch between two tracks is a
+constant *curvature* — go twice as fast and you turn twice as fast through the
+same arc. It was measured at one speed only, so that scaling is reasoned rather
+than observed. The mixer subtracts it from every request while driving, and not
+at all while pivoting, which is why turning left 2 °/s now takes 4 PWM of
+differential and turning right 2 °/s takes 16.
+
+Measured on the rover after the change, over six 1.4 m runs: the pull fell from
++1.14 °/s to +0.07, the steering channel from 3.7× over-response to 1.2×, and a
+2 m `drive_to` finished 1.97 m along its original heading with 7 cm of lateral
+drift.
+
+To re-measure either, on a rover with a couple of metres of clear floor:
+
+```bash
+python3 steer_gain.py --differentials 8,8,12,12,18,18,25,25,35,35,50,50 --save
+python3 steer_gain.py --straight 1.4 --repeat 6 --save
+~/ugv/ros_nav/restart.sh
+```
+
+Both return the rover to roughly where it started after every sample, and both
+refuse to move with anything inside a corridor its own width ahead.
+
 ## The footprint is the thing that decides whether `drive_to` works
 
 Measured on the rover, and worth knowing before concluding that Nav2 is broken.

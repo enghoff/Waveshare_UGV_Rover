@@ -119,6 +119,34 @@ def pwm_for(points, wanted, floor=MIN_PWM, ceiling=TURN_PWM_MAX):
     return int(round(max(floor, min(ceiling, p1 + (wanted - v1) * slope))))
 
 
+def interp(points, wanted):
+    """Invert a measured curve to a *float*, with no floors of any kind.
+
+    `pwm_for` is the right thing for a wheel starting from rest and the wrong
+    thing for a steering differential: it clamps its answer up to MIN_PWM, which
+    for a difference between two wheels means the smallest steering correction
+    available is a large one. It also rounds, and at this end of the curve the
+    difference between 4 and 5 PWM is the difference between a gentle correction
+    and a noticeable one.
+
+    Below the slowest measured point the curve runs straight to the origin, which
+    it has to pass through: no difference between the wheels is no rotation.
+    """
+    if not points or wanted <= 0:
+        return 0.0
+    if wanted <= points[0][1]:
+        return points[0][0] * wanted / points[0][1]
+    for (p0, v0), (p1, v1) in zip(points, points[1:]):
+        if wanted <= v1:
+            if v1 == v0:
+                return float(p1)
+            return p0 + (wanted - v0) / (v1 - v0) * (p1 - p0)
+    (p0, v0), (p1, v1) = points[-2], points[-1]
+    if v1 == v0:
+        return float(p1)
+    return min(float(TURN_PWM_MAX), p1 + (wanted - v1) * (p1 - p0) / (v1 - v0))
+
+
 def turn_to_pwm(dps, points=None):
     """The per-wheel PWM that turns this chassis at `dps` *from a standstill*.
 
@@ -133,40 +161,51 @@ def turn_to_pwm(dps, points=None):
     return pwm_for(points or FALLBACK_TURN_POINTS, max(wanted, MIN_TURN_DPS))
 
 
-def steer_pwm(dps, points=None, driving=False):
+def steer_pwm(dps, points=None, driving=False, steer_points=None):
     """The PWM *difference* between the wheels that turns the chassis at `dps`.
 
-    Standing still, this is `turn_to_pwm` and the floors apply. Driving, they must
-    not, and that distinction is the fix for a rover that zig-zagged every route.
+    Standing still, this is `turn_to_pwm` and the from-rest floors apply. Driving,
+    they must not -- both wheels are already well above stiction, so ten PWM
+    between them is a perfectly achievable gentle curve, and applying the
+    from-rest floor to that difference is what made every small correction come
+    out as a violent pivot.
 
-    A follower that is nearly on its path asks for a very small angular velocity,
-    and there is nothing wrong with a very small one: both wheels are already
-    turning well above stiction, so a difference of ten PWM between them is a
-    perfectly achievable gentle curve. Applying the from-rest floor to that
-    difference turned every such request into the same violent pivot -- measured,
-    on this chassis's own curves, requests of 0.5, 1, 2, 5 and 10 deg/s all came
-    out as the identical pair (-1, 177), one wheel stopped and the other at full.
-    A controller handed that cannot steer; it can only swerve, overshoot, and
-    swerve back.
+    **Driving also uses a different curve, and that is the larger of the two
+    corrections.** `points` is the pivot curve, measured by spinning the wheels
+    against each other on the spot, and a tracked chassis pivoting on the spot is
+    dragging its whole contact patch sideways. The numbers say how much: that
+    curve implies an effective track width between 1.09 m and 4.16 m on a rover
+    0.22 m wide. Almost none of that scrub is present when the rover is rolling
+    forwards and one track simply runs faster than the other, so the same
+    differential turns it very much harder.
 
-    Below the slowest measured turn the differential is interpolated straight to
-    the origin. The curve has to pass through it -- no difference between the
-    wheels is no rotation -- and the shape in between is not measured, so a
-    straight line is the least assuming thing to draw.
+    Measured on this chassis with `steer_gain.py`, the pivot curve asked for 86
+    PWM of differential to get 10 deg/s and the rover turned at 85.6. Every
+    steering request was being over-served by between two and nine times, which
+    a follower can only answer by correcting back, and that is a weave rather
+    than a route.
+
+    So `steer_points` -- the differential-to-rotation curve measured while
+    actually rolling -- is used whenever there is one. Without it this falls back
+    to the pivot curve, which is wrong by the factors above and is why
+    `base_node` says so loudly at startup.
     """
-    points = points or FALLBACK_TURN_POINTS
     wanted = abs(dps)
     if wanted < 1e-3:
         return 0.0
     if not driving:
-        return float(turn_to_pwm(wanted, points))
+        return float(turn_to_pwm(wanted, points or FALLBACK_TURN_POINTS))
+    if steer_points:
+        return interp(steer_points, wanted)
+    points = points or FALLBACK_TURN_POINTS
     slow_pwm, slow_dps = points[0]
     if wanted < slow_dps:
         return slow_pwm * wanted / slow_dps
     return float(pwm_for(points, wanted))
 
 
-def mix(linear, angular, turn_points=None, drive_points=None):
+def mix(linear, angular, turn_points=None, drive_points=None,
+        steer_points=None, straight_bias_deg_per_m=0.0):
     """A `/cmd_vel` as the firmware's left and right PWM pair.
 
     Done in PWM rather than in normalised units, because that is where both
@@ -185,6 +224,20 @@ def mix(linear, angular, turn_points=None, drive_points=None):
     that turns more slowly than it was told leaves it. The first version scaled
     both ends of the pair to fit, which reads as fair and is not -- it quietly
     reduced the rotation as well, so a commanded 45 deg/s came out as 25.
+
+    **`straight_bias_deg_per_m` is what this chassis does when asked for nothing.**
+    Told to drive straight it curves left, and both the gyro and the lidar agree
+    on it: four runs of 1.3 m measured +0.93 deg/s against +0.98 from the gyro, so
+    it is the rover and not its instruments. Left uncorrected it is a heading
+    error the controller has to keep paying off for the whole length of a route,
+    and paying it off through a steering channel that was itself over-responding
+    is most of what a weaving trail is made of.
+
+    It is held as degrees per metre driven rather than as degrees a second,
+    because a small mismatch between two wheels is a constant *curvature* -- go
+    twice as fast and you turn twice as fast through the same arc. That is the
+    physical shape of the fault, but it is worth saying it was measured at one
+    speed only, so the scaling is reasoned rather than observed.
     """
     if drive_points:
         # Clamped to the fastest speed actually measured, not to MAX_SPEED_MS.
@@ -201,9 +254,21 @@ def mix(linear, angular, turn_points=None, drive_points=None):
     if linear < 0:
         throttle = -throttle
 
-    dps = math.degrees(min(math.radians(MAX_TURN_DPS), abs(angular)))
-    turn = steer_pwm(dps, turn_points, driving=abs(throttle) > 0)
-    if angular < 0:
+    driving = abs(throttle) > 0
+    wanted_dps = math.copysign(
+        math.degrees(min(math.radians(MAX_TURN_DPS), abs(angular))), angular)
+    if driving and straight_bias_deg_per_m:
+        # Ask the chassis for the rotation wanted *less* the rotation it makes on
+        # its own, which is proportional to how fast it is going. Only while
+        # driving: this is a rolling asymmetry between the two tracks and it has
+        # nothing to say about a pivot on the spot.
+        # Signed with the direction of travel: a track that runs slow turns the
+        # rover one way going forwards and the other way going backwards.
+        wanted_dps -= straight_bias_deg_per_m * math.copysign(speed, linear)
+        wanted_dps = max(-MAX_TURN_DPS, min(MAX_TURN_DPS, wanted_dps))
+    turn = steer_pwm(abs(wanted_dps), turn_points, driving=driving,
+                     steer_points=steer_points)
+    if wanted_dps < 0:
         turn = -turn
 
     left, right = throttle - turn, throttle + turn

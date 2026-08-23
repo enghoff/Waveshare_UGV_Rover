@@ -255,6 +255,8 @@ class BaseNode(Node):
 
         self.turn_points = self.calibration["turn_pwm_points"]
         self.drive_points = self.calibration["drive_pwm_points"]
+        self.steer_points = self.calibration["steer_pwm_points"]
+        self.straight_bias = self.calibration["straight_bias_deg_per_m"]
 
         self.timer = self.create_timer(1.0 / args.rate, self.tick)
         self.get_logger().info(
@@ -280,6 +282,28 @@ class BaseNode(Node):
             self.get_logger().warn(
                 "no measured speed curve -- assuming PWM is proportional to speed. "
                 "Run ros_nav/calibrate_chassis.py")
+        if self.steer_points:
+            self.get_logger().info(
+                "steering curve measured while rolling: %s"
+                % ", ".join("%g PWM=%.1f deg/s" % (p, v)
+                            for p, v in self.steer_points))
+        else:
+            # This one is worth shouting about. Steering on the pivot curve is not
+            # an approximation, it is a different manoeuvre: measured here, asking
+            # for 10 deg/s while rolling turned the rover at 85.6.
+            self.get_logger().warn(
+                "no measured steering curve -- steering on the pivot curve, which "
+                "over-responds by between two and nine times and makes the rover "
+                "weave. Run ros_nav/steer_gain.py --save")
+        if self.straight_bias:
+            self.get_logger().info(
+                "correcting a %+.2f deg/m pull while driving straight"
+                % self.straight_bias)
+        else:
+            self.get_logger().warn(
+                "no straight-line trim -- if the rover curves when told to go "
+                "straight, run ros_nav/steer_gain.py --straight 1.3 --repeat 4 "
+                "--save")
         self.create_timer(30.0, self.report_bias)
         self.create_timer(0.2, self.publish_state)
 
@@ -328,14 +352,17 @@ class BaseNode(Node):
         `calibrate_chassis.py` to fill it in.
         """
         store = {"gyro_lsb_per_dps": None, "ticks_per_metre": None,
-                 "turn_pwm_points": None, "drive_pwm_points": None}
+                 "turn_pwm_points": None, "drive_pwm_points": None,
+                 "steer_pwm_points": None, "straight_bias_deg_per_m": 0.0}
         try:
             with open(self.args.calibration) as fh:
                 loaded = json.load(fh)
-            for key in ("gyro_lsb_per_dps", "ticks_per_metre"):
+            for key in ("gyro_lsb_per_dps", "ticks_per_metre",
+                        "straight_bias_deg_per_m"):
                 if isinstance(loaded.get(key), (int, float)):
                     store[key] = float(loaded[key])
-            for key in ("turn_pwm_points", "drive_pwm_points"):
+            for key in ("turn_pwm_points", "drive_pwm_points",
+                        "steer_pwm_points"):
                 points = loaded.get(key)
                 if isinstance(points, list) and len(points) >= 2:
                     # Sorted by the measured value, which is what pwm_for walks.
@@ -416,7 +443,8 @@ class BaseNode(Node):
             return
 
         linear, angular = self._cmd
-        pair = mix(linear, angular, self.turn_points, self.drive_points)
+        pair = mix(linear, angular, self.turn_points, self.drive_points,
+                   self.steer_points, self.straight_bias)
 
         # Only when it changes, plus a keepalive while a command is live. The
         # board's heartbeat stops the wheels if it hears nothing, so a rover that

@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
 """Drive a simulated rover down a straight line and see whether it wanders.
 
-    python3 steering_sim.py                 # both mixers, side by side
+    python3 steering_sim.py                 # all three mixers, side by side
     python3 steering_sim.py --trace         # and draw what the path looked like
 
-This exists because the rover was seen zig-zagging the whole length of every
-route, and the rover was tethered to a charger at the time. It reproduces that
-without moving anything, which is worth doing anyway: a control loop is far easier
-to understand at a thousand runs a second than at one run per battery charge.
+**Read this before trusting a number out of it.** The first version of this
+simulation could not fail. Its rover derived rotation from the PWM difference
+using the very curve the mixer used to choose that difference, so plant and
+controller were exact inverses and the loop gain was 1.0 by construction. Started
+exactly on the line it drove a perfect straight line for ever -- and so did the
+*broken* mixer, the one that had been seen zig-zagging the length of every route.
+The only thing that could push that rover off its path was the follower choosing
+to.
 
-**What is simulated and what is not.** The loop here is a pure-pursuit follower at
-10 Hz, which is not DWB -- but the fault does not depend on which controller is
-upstream. Any follower that asks for a small heading correction when it is nearly
-on the path will do, and every follower does that; DWB is one of them. What
-matters is the *plant*, and the plant here is this chassis's own measured curves
-from `~/ugv/odometry.json`.
+So it could detect exactly one class of fault: a mixer that cannot *express* a
+small steering request. That was a real fault and it was really there, and fixing
+it really did take the hard zig-zag out. It could not detect a mixer that
+expresses the request and then gets a different amount of rotation than it asked
+for, which is the larger fault underneath and the reason the rover still curved.
 
-Two assumptions are made about the plant and both are stated because the argument
-rests on them:
+The plant here is now measured independently of the mixer, by `steer_gain.py`,
+which asks for a steering request through `/cmd_vel` exactly as Nav2 does and
+reads what the gyro says came out:
 
-- **Below the slowest measured turn, the response is assumed linear to zero.** A
-  differential of nothing produces a rotation of nothing, so the curve must pass
-  through the origin; the shape between there and the slowest measured point
-  (PWM 85, 9.2 deg/s) is not measured. Linear is the least assuming choice.
-- **The rover is given a first-order lag of 0.15 s on its rotation.** The chassis
-  has real inertia -- `nav_types.py` records 9 degrees of coast at PWM 180 -- and
-  a lag makes an oscillation worse, never better. Omitting it would flatter the
-  result, so it is here.
+- **The steering curve.** How much the chassis actually rotates for a given PWM
+  difference *while rolling*. This is not the pivot curve. A tracked chassis
+  spinning on the spot is dragging its whole contact patch sideways and the pivot
+  curve is mostly a measurement of that scrub; rolling, almost none of it is
+  present. Measured, the pivot curve wanted 86 PWM of difference for 10 deg/s and
+  the rover turned at 85.6.
+- **The pull.** Asked for no rotation at all, this rover curves left at about
+  0.93 deg/s at 0.35 m/s. Four runs, and the lidar and the gyro agree to within
+  0.07 deg/s, so it is the chassis and not the instruments.
 
-Neither assumption is doing the work. The zig-zag comes from the *mixer*, which
-maps a continuum of requests onto a step: see what it prints.
+Two assumptions remain, both about dynamics rather than about gain, and both are
+swept in the output because the argument rests on them: a first-order lag of
+0.15 s on rotation, and 0.2 s of delay between measuring a pose and acting on it.
 """
 
 import argparse
@@ -45,47 +51,48 @@ for _candidate in (os.path.join(HERE, "..", "lidar_slam"),
         sys.path.insert(0, os.path.abspath(_candidate))
         break
 
-from nav_types import (MAX_TURN_DPS, MIN_TURN_DPS,               # noqa: E402
-                       TOP_PWM)
+from nav_types import MAX_TURN_DPS, MIN_TURN_DPS, TOP_PWM     # noqa: E402
 
 STORE = os.path.expanduser("~/ugv/odometry.json")
 
-# The chassis as it was measured on 2026-08-23, so this runs on a workstation with
-# no rover attached. Overridden by the store when there is one.
+# The chassis as it was measured on 2026-08-23, so this runs on a workstation
+# with no rover attached. Overridden by the store when there is one.
 TURN_POINTS = [[85, 9.1718], [90, 12.625], [95, 14.8219], [105, 24.4707],
                [120, 40.78], [145, 65.573], [170, 95.8467]]
 DRIVE_POINTS = [[85, 0.3326], [90, 0.3606], [95, 0.396], [115, 0.4851],
                 [140, 0.678]]
+#: PWM difference between the wheels against the rotation it really produces
+#: while rolling, from steer_gain.py. The points below 35 are the symmetric half
+#: of a matched left/right pair, so the chassis's own pull is not baked in.
+STEER_POINTS = [[4, 0.50], [8, 1.30], [12, 2.25], [18, 4.30], [25, 6.75],
+                [35, 14.55], [50, 32.3], [70, 60.9], [86, 84.5],
+                [100, 106.0], [124, 110.6]]
+#: Degrees of unasked-for turn per metre driven: +0.93 deg/s at 0.35 m/s.
+STRAIGHT_BIAS_DEG_PER_M = 2.66
 
 DT = 0.1                 # the controller's period; Nav2's controller_frequency
 LAG_S = 0.15             # first-order lag on rotation -- see the module docstring
 LOOKAHEAD_M = 0.6        # pure pursuit's carrot
-# How stale the pose the follower steers on is, end to end. Nav2's
-# controller at 10 Hz, the velocity smoother, the board bridge and an ESP32
-# that reports at about 17 Hz each add their share. Two tenths is a
-# conservative reading of that chain.
-DELAY_S = 0.2
+DELAY_S = 0.2            # how stale the pose the follower steers on is
 SPEED_MS = 0.35
 
 
-# --- the two mixers -------------------------------------------------------------
-# The new one is imported, not copied: it is the code that actually runs on the
-# rover, and a simulation of a different mixer would prove nothing. The old one is
-# kept here, and only here, because its whole purpose is to be the thing the fix
-# is compared against -- there is no other reason for it to exist any more.
-from drive_mixer import (TURN_PWM_MAX, mix as mix_new,           # noqa: E402
+from drive_mixer import (TURN_PWM_MAX, mix,                    # noqa: E402
                          pwm_for, steer_pwm)
 
 
-def mix_old(linear, angular, turn_points, drive_points):
-    """The mixer as it was, kept for comparison and nothing else.
+# --- the three mixers -----------------------------------------------------------
+# All three are the *same* function where they can be. `mix` is the code that
+# actually runs on the rover, and simulating a paraphrase of it would prove
+# nothing; what separates the last two is only what they have been told about the
+# chassis. The first is kept because it is what the zig-zag was.
+def mix_floored(linear, angular, turn_points, drive_points):
+    """The mixer as it was when the rover zig-zagged, kept for comparison.
 
-    Two faults, and the first is the one that made the rover wander. The steering
-    term is floored at `MIN_TURN_DPS` and then at the slowest PWM anybody ever
-    measured, so every request under 12 deg/s produces the same violent pivot.
-    The second shows at the other end: when the pair runs past the firmware's
-    ceiling both wheels are scaled to fit, which reduces the rotation as well as
-    the speed, so a commanded 45 deg/s comes out as 25.
+    The steering term is floored at `MIN_TURN_DPS` and then at the slowest PWM
+    anybody measured, so every request under 12 deg/s produces the same violent
+    pivot, and the ceiling scales both wheels so a commanded 45 deg/s arrives
+    as 25.
     """
     speed = min(drive_points[-1][1], abs(linear))
     throttle = pwm_for(drive_points, speed, ceiling=TOP_PWM)
@@ -101,6 +108,21 @@ def mix_old(linear, angular, turn_points, drive_points):
         scale = TURN_PWM_MAX / peak
         left, right = left * scale, right * scale
     return int(round(left)), int(round(right))
+
+
+def mix_pivot(linear, angular, turn_points, drive_points):
+    """The fix for the zig-zag alone: small requests survive, but the amount of
+    rotation they buy is still read off the pivot curve, and nothing corrects the
+    chassis's own pull. This is what was on the rover when the trail was still
+    visibly curved."""
+    return mix(linear, angular, turn_points, drive_points)
+
+
+def mix_measured(linear, angular, turn_points, drive_points):
+    """Steering on the curve measured while rolling, and trimmed for the pull."""
+    return mix(linear, angular, turn_points, drive_points,
+               steer_points=STEER_POINTS,
+               straight_bias_deg_per_m=STRAIGHT_BIAS_DEG_PER_M)
 
 
 # --- the chassis ----------------------------------------------------------------
@@ -123,17 +145,21 @@ def curve(points, pwm):
 
 
 class Chassis:
-    """The rover as its two measured curves, with a lag on rotation.
+    """The rover as its measured curves, with a lag on rotation and its own pull.
 
-    A PWM pair is decomposed the way the mixer composes it -- the mean advances,
-    the difference rotates -- because that decomposition is what both curves were
-    measured under: the drive curve by running both wheels together, the turn curve
-    by running them opposite.
+    **The steering curve here is a measurement, not the mixer's model.** That is
+    the whole point: if this used the same curve the mixer inverts, the loop gain
+    would be exactly one whatever either of them said, and a mixer steering on
+    entirely the wrong curve would simulate perfectly. It is what makes this able
+    to fail.
     """
 
-    def __init__(self, turn_points, drive_points, lag_s=LAG_S):
+    def __init__(self, turn_points, drive_points, lag_s=LAG_S,
+                 steer_points=None, bias_deg_per_m=STRAIGHT_BIAS_DEG_PER_M):
         self.turn_points = turn_points
         self.drive_points = drive_points
+        self.steer_points = steer_points or STEER_POINTS
+        self.bias_deg_per_m = bias_deg_per_m
         self.lag_s = lag_s
         self.x = self.y = self.yaw = 0.0
         self.rate = 0.0                       # rad/s, lagged
@@ -144,10 +170,15 @@ class Chassis:
         speed = math.copysign(curve(self.drive_points, throttle), throttle or 1.0)
         if throttle == 0:
             speed = 0.0
-        wanted = math.radians(curve(self.turn_points, differential))
+        # Rolling and pivoting are different manoeuvres on a tracked chassis, and
+        # the two curves differ by nearly an order of magnitude, so which one
+        # applies depends on whether the rover is going anywhere.
+        points = self.steer_points if throttle else self.turn_points
+        wanted = math.radians(curve(points, differential))
         if differential < 0:
             wanted = -wanted
-        # First order towards what the wheels are asking for.
+        if throttle:
+            wanted += math.radians(self.bias_deg_per_m * speed)
         alpha = dt / max(dt, self.lag_s)
         self.rate += alpha * (wanted - self.rate)
         self.yaw += self.rate * dt
@@ -162,7 +193,7 @@ def pursue(chassis, goal_x, lookahead=LOOKAHEAD_M, speed=SPEED_MS):
 
     Not DWB, and it does not need to be. What every path follower has in common is
     that it asks for a small angular velocity when it is nearly on the path, and
-    that is the request the old mixer could not deliver.
+    what happens to that request is the subject here.
     """
     cx = min(goal_x, chassis.x + lookahead)
     dx, dy = cx - chassis.x, 0.0 - chassis.y
@@ -170,7 +201,6 @@ def pursue(chassis, goal_x, lookahead=LOOKAHEAD_M, speed=SPEED_MS):
         return 0.0, 0.0
     bearing = math.atan2(dy, dx) - chassis.yaw
     bearing = math.atan2(math.sin(bearing), math.cos(bearing))
-    # The standard pure-pursuit curvature, capped at what Nav2 is allowed to ask.
     curvature = 2.0 * math.sin(bearing) / max(1e-3, math.hypot(dx, dy))
     angular = max(-math.radians(MAX_TURN_DPS),
                   min(math.radians(MAX_TURN_DPS), speed * curvature))
@@ -178,17 +208,11 @@ def pursue(chassis, goal_x, lookahead=LOOKAHEAD_M, speed=SPEED_MS):
 
 
 def run(mixer, turn_points, drive_points, metres=4.0, start_offset=0.0,
-        start_yaw=0.0, lag_s=LAG_S, delay_s=DELAY_S):
-    """Follow y=0 for `metres` and report how well. Returns the track and stats.
-
-    `delay_s` is how stale the pose the follower steers on is. The real loop has
-    several helpings of this and none of them are optional: Nav2's controller runs
-    at 10 Hz on odometry that reaches it through the velocity smoother and the
-    board bridge, and the driver board itself only speaks at about 17 Hz. Delay is
-    what turns a controller that merely overshoots into one that oscillates, so
-    leaving it out would understate the fault rather than the fix.
-    """
-    chassis = Chassis(turn_points, drive_points, lag_s)
+        start_yaw=0.0, lag_s=LAG_S, delay_s=DELAY_S, steer_points=None,
+        bias_deg_per_m=STRAIGHT_BIAS_DEG_PER_M):
+    """Follow y=0 for `metres` and report how well. Returns the track and stats."""
+    chassis = Chassis(turn_points, drive_points, lag_s, steer_points,
+                      bias_deg_per_m)
     chassis.y = start_offset
     chassis.yaw = start_yaw
     track = [(chassis.x, chassis.y)]
@@ -201,7 +225,6 @@ def run(mixer, turn_points, drive_points, metres=4.0, start_offset=0.0,
             break
         linear, angular = pursue(chassis, metres)
         queue.append(mixer(linear, angular, turn_points, drive_points))
-        # The wheels act on a command computed `held` steps ago.
         left, right = queue.pop(0) if len(queue) > held else (0, 0)
         chassis.step(left, right, DT)
         track.append((chassis.x, chassis.y))
@@ -209,10 +232,6 @@ def run(mixer, turn_points, drive_points, metres=4.0, start_offset=0.0,
 
     offsets = [abs(y) for _, y in track]
     rms = math.sqrt(sum(o * o for o in offsets) / max(1, len(offsets)))
-    # How many times the rover changed which way it was turning. This is the
-    # number that says "zig-zag" rather than "drifted": a rover following a
-    # straight line should reverse its steering a handful of times, not once a
-    # step.
     reversals = 0
     previous = 0
     for _, _, rate in commands:
@@ -222,11 +241,6 @@ def run(mixer, turn_points, drive_points, metres=4.0, start_offset=0.0,
         if sign:
             previous = sign
     travelled = track[-1][0] - track[0][0]
-    # The numbers that matter are the *settled* ones. Both mixers converge onto
-    # the line -- a follower that could not would be a different bug -- and what
-    # the rover was seen doing is wandering about it for the whole route
-    # afterwards. So the interesting window is once the initial approach is over,
-    # taken here as the last 60% of the run.
     settled = track[int(len(track) * 0.4):] or track
     settled_y = [y for _, y in settled]
     settled_rms = math.sqrt(sum(y * y for y in settled_y) / max(1, len(settled_y)))
@@ -239,8 +253,6 @@ def run(mixer, turn_points, drive_points, metres=4.0, start_offset=0.0,
         "reversals": reversals,
         "reversals_per_m": reversals / max(0.1, travelled),
         "final_offset_m": abs(track[-1][1]),
-        # What the follower asked for against what it got, which is where the
-        # fault actually lives.
         "asked_vs_got": [(math.degrees(a), d, math.degrees(r))
                          for a, d, r in commands[:6]],
     }
@@ -273,11 +285,18 @@ def load_points():
     try:
         with open(STORE) as fh:
             store = json.load(fh)
-        turn = store.get("turn_pwm_points") or TURN_POINTS
-        drive = store.get("drive_pwm_points") or DRIVE_POINTS
-        return turn, drive, STORE
+        return (store.get("turn_pwm_points") or TURN_POINTS,
+                store.get("drive_pwm_points") or DRIVE_POINTS,
+                store.get("steer_pwm_points") or STEER_POINTS,
+                store.get("straight_bias_deg_per_m", STRAIGHT_BIAS_DEG_PER_M),
+                STORE)
     except (OSError, ValueError):
-        return TURN_POINTS, DRIVE_POINTS, "the values measured on 2026-08-23"
+        return (TURN_POINTS, DRIVE_POINTS, STEER_POINTS,
+                STRAIGHT_BIAS_DEG_PER_M, "the values measured on 2026-08-23")
+
+
+MIXERS = (("floored", mix_floored), ("pivot-curve", mix_pivot),
+          ("measured", mix_measured))
 
 
 def main():
@@ -291,79 +310,81 @@ def main():
                    help="seconds of loop delay between measuring and acting")
     args = p.parse_args()
 
-    turn_points, drive_points, where = load_points()
+    turn_points, drive_points, steer_points, bias, where = load_points()
     print("chassis from %s" % where)
-    print("  turn  %s" % ", ".join("PWM %d=%.1f deg/s" % (p_, v)
-                                   for p_, v in turn_points))
-    print("  drive %s" % ", ".join("PWM %d=%.2f m/s" % (p_, v)
-                                   for p_, v in drive_points))
+    print("  turn   %s" % ", ".join("PWM %d=%.1f deg/s" % (p_, v)
+                                    for p_, v in turn_points))
+    print("  drive  %s" % ", ".join("PWM %d=%.2f m/s" % (p_, v)
+                                    for p_, v in drive_points))
+    print("  steer  %s" % ", ".join("%g=%.1f deg/s" % (p_, v)
+                                    for p_, v in steer_points[:6]))
+    print("  pull   %+.2f deg per metre driven" % bias)
     print()
 
-    print("what the mixers do with a steering request, at 0.35 m/s:")
-    print("  asked      old mixer          new mixer")
-    print("  deg/s    left right  diff    left right  diff")
-    for dps in (0.5, 1, 2, 5, 10, 15, 25, 45):
+    print("a steering request at 0.35 m/s, and what the rover would really do:")
+    print("  asked   floored          pivot-curve       measured")
+    print("  deg/s   diff  ->real     diff  ->real      diff  ->real")
+    for dps in (0.5, 1, 2, 5, 10, 20, 45):
         w = math.radians(dps)
-        ol, orr = mix_old(0.35, w, turn_points, drive_points)
-        nl, nr = mix_new(0.35, w, turn_points, drive_points)
-        print("  %5.1f    %4d %4d  %4d    %4d %4d  %4d"
-              % (dps, ol, orr, (orr - ol) // 2, nl, nr, (nr - nl) // 2))
+        cells = []
+        for _, mixer in MIXERS:
+            l, r = mixer(0.35, w, turn_points, drive_points)
+            d = (r - l) / 2.0
+            cells.append((d, curve(steer_points, d)))
+        print("  %5.1f   %5.0f %6.1f    %5.0f %6.1f     %5.0f %6.1f"
+              % (dps, cells[0][0], cells[0][1], cells[1][0], cells[1][1],
+                 cells[2][0], cells[2][1]))
     print()
 
     results = {}
-    for name, mixer in (("old", mix_old), ("new", mix_new)):
+    for name, mixer in MIXERS:
         results[name] = run(mixer, turn_points, drive_points,
                             metres=args.metres, start_offset=args.offset,
-                            lag_s=args.lag, delay_s=args.delay)
+                            lag_s=args.lag, delay_s=args.delay,
+                            steer_points=steer_points, bias_deg_per_m=bias)
 
     print("following a straight line for %.1f m, starting %.0f cm off it:"
           % (args.metres, args.offset * 100))
-    print("            once settled, the rover...")
-    print("            wanders +/-   swings over   reverses its steering")
-    for name in ("old", "new"):
+    print("               once settled, the rover...")
+    print("               wanders +/-   swings over   reverses its steering")
+    for name, _ in MIXERS:
         r = results[name]
-        print("  %-8s  %6.1f cm      %6.1f cm      %5.1f times per metre"
+        print("  %-11s  %6.1f cm      %6.1f cm      %5.1f times per metre"
               % (name, r["settled_rms_m"] * 100, r["settled_swing_m"] * 100,
                  r["reversals_per_m"]))
     print()
 
-    # How much of this rests on the one assumption that is not measured -- how much
-    # rotational lag the chassis has. If the answer moved with it, the simulation
-    # would be describing the assumption rather than the rover.
-    print("sensitivity to what is assumed rather than measured:")
-    print("  rotational lag           loop delay")
-    print("   lag    old    new       delay   old    new")
-    delays = (0.0, 0.1, 0.2, 0.3, 0.4)
-    lags = (0.05, 0.10, 0.15, 0.25, 0.40)
-    for lag, delay in zip(lags, delays):
-        a = run(mix_old, turn_points, drive_points, metres=args.metres,
-                start_offset=args.offset, lag_s=lag, delay_s=args.delay)
-        b = run(mix_new, turn_points, drive_points, metres=args.metres,
-                start_offset=args.offset, lag_s=lag, delay_s=args.delay)
-        c = run(mix_old, turn_points, drive_points, metres=args.metres,
-                start_offset=args.offset, lag_s=args.lag, delay_s=delay)
-        d = run(mix_new, turn_points, drive_points, metres=args.metres,
-                start_offset=args.offset, lag_s=args.lag, delay_s=delay)
-        print("  %.2fs %6.1f %6.1f       %.2fs %6.1f %6.1f"
-              % (lag, a["settled_swing_m"] * 100, b["settled_swing_m"] * 100,
-                 delay, c["settled_swing_m"] * 100, d["settled_swing_m"] * 100))
-    print("  (settled swing in cm; delay is what turns overshoot into oscillation)")
+    print("sensitivity to what is assumed rather than measured (settled swing, cm):")
+    print("   rotational lag                    loop delay")
+    print("   lag   floor  pivot  meas          delay  floor  pivot  meas")
+    for lag, delay in zip((0.05, 0.10, 0.15, 0.25, 0.40),
+                          (0.0, 0.1, 0.2, 0.3, 0.4)):
+        row = []
+        for held, use_lag, use_delay in ((True, lag, args.delay),
+                                         (False, args.lag, delay)):
+            for _, mixer in MIXERS:
+                row.append(run(mixer, turn_points, drive_points,
+                               metres=args.metres, start_offset=args.offset,
+                               lag_s=use_lag, delay_s=use_delay,
+                               steer_points=steer_points,
+                               bias_deg_per_m=bias)["settled_swing_m"] * 100)
+        print("  %.2fs %6.1f %6.1f %5.1f          %.2fs %6.1f %6.1f %5.1f"
+              % (lag, row[0], row[1], row[2], delay, row[3], row[4], row[5]))
     print()
+
     print("what the follower asked for, and what the wheels did (first steps):")
-    for name in ("old", "new"):
+    for name, _ in MIXERS:
         print("  %s:" % name)
         for asked, diff, got in results[name]["asked_vs_got"]:
             print("    asked %+6.1f deg/s -> differential %+6.1f -> turned %+6.1f"
                   % (asked, diff, got))
 
     if args.trace:
-        # Both drawn to the same ruler -- the old mixer's own wander -- so that the
-        # new one is not flattered by being given a bigger one.
-        span = max(0.01, results["old"]["settled_swing_m"] * 0.6)
-        for name in ("old", "new"):
+        span = max(0.01, results["pivot-curve"]["settled_swing_m"] * 0.6)
+        for name, _ in MIXERS:
             track = results[name]["track"]
             settled = track[int(len(track) * 0.4):]
-            print("\n%s mixer, the settled part of the route, %.0f cm across:"
+            print("\n%s, the settled part of the route, %.0f cm across:"
                   % (name, span * 200))
             print(trace(settled, span=span))
     return 0
