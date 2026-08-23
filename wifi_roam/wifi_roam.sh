@@ -83,6 +83,35 @@ WEDGED=${WEDGED:-9}
 
 IFACE=${IFACE:-wlan0}
 
+# Where the kernel keeps the radio switches, overridable for the same reason the
+# three /proc paths below are: so a desk with no radio can still be given one
+# that is switched off.
+RFKILL=${RFKILL:-/sys/class/rfkill}
+
+# The two privileged operations -- looking around, and moving the link -- are not
+# implemented here. They live in wifi_ctl.sh, which the daemon already calls for
+# the console's network panel, and which already speaks to both stacks: the Pi's
+# NetworkManager and the Banana Pi's netplan and wpa_supplicant. Delegating rather
+# than duplicating is what lets this script work on a board with no nmcli at all,
+# and it means the scan the roamer sees and the scan a person sees on the console
+# are the same list, on the same 0-100 scale, from the same code.
+WIFI_CTL=${WIFI_CTL:-/usr/local/sbin/wifi_ctl.sh}
+
+# Which network stack this rover has. Only two things in this script still care --
+# the radio switch and the name of the supplicant to restart -- and both differ
+# in kind rather than in wording, so neither is worth pushing into wifi_ctl.sh.
+# The override is for the self-test, so each path can be driven on a desk that has
+# neither tool installed.
+backend() {
+    if [ -n "${WIFI_BACKEND:-}" ]; then
+        echo "$WIFI_BACKEND"
+    elif command -v nmcli > /dev/null 2>&1; then
+        echo nmcli
+    else
+        echo wpa
+    fi
+}
+
 # Strike count, and the last time this spent a scan or an association attempt --
 # the two operations that cost the link something. /run is tmpfs, so this forgets
 # across a reboot, which is right: a fresh boot has no history worth trusting.
@@ -125,6 +154,56 @@ DRY=""
 [ "${1:-}" = "-n" ] && DRY=yes
 
 say() { echo "$*"; }
+
+# The supplicant that is actually holding this interface. netplan starts one per
+# interface, `wpa_supplicant@wlan0.service` is the hand-rolled convention, and
+# `wpa_supplicant.service` is both the Debian default and -- on a netplan box --
+# a dbus-activated instance that manages nothing. First one systemd calls active
+# wins; the plain unit is the fallback so a box with no systemctl at all (a desk,
+# a self-test) still names something rather than an empty string.
+supplicant_unit() {
+    for unit in "netplan-wpa-$IFACE.service" "wpa_supplicant@$IFACE.service"; do
+        if [ "$(systemctl is-active "$unit" 2>/dev/null)" = active ]; then
+            echo "$unit"
+            return
+        fi
+    done
+    echo wpa_supplicant.service
+}
+
+# Whether the radio is switched off, and the only thing here that ever turns it
+# back on. Nothing in this file switches it off, in either backend, and the
+# self-test asserts that across every scenario in it -- see the note at the
+# repair above for what a half-completed `off` once cost.
+#
+# The two stacks keep that switch in different places and both restore it across
+# a reboot, which is what makes it dangerous in the first place: NetworkManager
+# has its own state file, and on a netplan box it is rfkill, which systemd saves
+# and restores. So both are asked the same way and answered the same way.
+radio_is_off() {
+    case $(backend) in
+        nmcli) [ "$(nmcli radio wifi 2>/dev/null)" = disabled ] ;;
+        *)
+            # A soft block on any wlan rfkill switch. Read out of /sys rather than
+            # asked of the `rfkill` command, which is not installed everywhere and
+            # would be a process on a path that may be about to run three times a
+            # minute.
+            for sw in "$RFKILL"/rfkill*; do
+                [ -r "$sw/type" ] || continue
+                [ "$(cat "$sw/type" 2>/dev/null)" = wlan ] || continue
+                [ "$(cat "$sw/soft" 2>/dev/null)" = 1 ] && return 0
+            done
+            return 1
+            ;;
+    esac
+}
+
+# Turning it back on is wifi_ctl.sh's, for the same reason the scan and the join
+# are: it is a privileged operation, it differs between the two stacks, and
+# wifi-radio-on.service already calls it there at every boot. One implementation.
+radio_on() {
+    "$WIFI_CTL" radio-on
+}
 
 # Every write to the state file goes through here, so that -n really does change
 # nothing -- including the strike count a later real run would read back.
@@ -286,9 +365,17 @@ elif [ "$strikes" -ge "$WEDGED" ]; then
     # therefore left the rover soft-blocked on that boot and on every boot after,
     # with no radio to reach it by and no journal surviving the reboot to say why.
     # Restarting a service leaves behind nothing that a boot does not undo.
-    say "$IFACE $why after $strikes checks; restarting the supplicant"
+    #
+    # Which supplicant, though, is not the same question on both boards, and
+    # getting it wrong is the quietest possible failure: the Banana Pi runs one
+    # supplicant per interface from netplan and *also* has a dbus-activated
+    # `wpa_supplicant.service` that manages nothing at all. Restarting that one
+    # succeeds, logs a repair, and leaves the wedged supplicant exactly where it
+    # was. So ask which unit is actually running before restarting anything.
+    unit=$(supplicant_unit)
+    say "$IFACE $why after $strikes checks; restarting the supplicant ($unit)"
     remember 0 "$now"
-    if [ -z "$DRY" ] && ! systemctl try-restart wpa_supplicant.service; then
+    if [ -z "$DRY" ] && ! systemctl try-restart "$unit"; then
         say "could not restart the supplicant"
     fi
     exit 0
@@ -299,7 +386,7 @@ fi
 # more look at a link that is merely bad -- now happens further up, on every
 # faulting tick rather than only on the third, and again below once the scan has
 # answered.
-if [ "$assoc" != 1 ] && [ "$(nmcli radio wifi 2>/dev/null)" = disabled ]; then
+if [ "$assoc" != 1 ] && radio_is_off; then
     # A link with no association at all may have no radio to associate with, and
     # nothing further down can help while that switch is off: a scan comes back
     # empty and there is no radio for `con up` to bring a profile up on. Worse, NM
@@ -314,15 +401,18 @@ if [ "$assoc" != 1 ] && [ "$(nmcli radio wifi 2>/dev/null)" = disabled ]; then
     # rover that is already off the air pays for it, at most once a minute.
     say "$IFACE $why, and the radio is switched off; turning it on"
     remember 0 "$now"
-    if [ -z "$DRY" ] && ! nmcli radio wifi on; then
+    if [ -z "$DRY" ] && ! radio_on; then
         say "could not turn the radio on"
     fi
     exit 0
 fi
 
 # One scan, and it answers two questions at once: the IN-USE row names the AP we
-# are on, so a second nmcli call to ask that is unnecessary.
-LIST=$(nmcli -t -f IN-USE,SSID,SIGNAL dev wifi list --rescan yes 2>/dev/null)
+# are on, so a second call to ask that is unnecessary. IN-USE:SSID:SIGNAL, with
+# SIGNAL on NetworkManager's 0-100 scale whichever stack answered -- wifi_ctl.sh
+# converts the supplicant's dBm into it so that this script, the console and the
+# thresholds below all read one number.
+LIST=$("$WIFI_CTL" scan 2>/dev/null)
 cur=$(printf '%s\n' "$LIST" | awk -F: '$1 == "*" { print $2; exit }')
 
 # Not "no known network in range" but "the radio told us nothing at all", which in
@@ -371,7 +461,11 @@ if [ -n "$DRY" ]; then
     exit 0
 fi
 
-if nmcli con up "$best" ifname "$IFACE" > /dev/null 2>&1; then
+# Through wifi_ctl.sh, holding the lock this shell already has -- see
+# hold_join_lock there for why it has to be told. On the Pi that is `nmcli con
+# up`; on the Banana Pi it is select_network, a bounded wait for COMPLETED, and
+# then re-enabling the other networks so a later fade can still leave this one.
+if WIFI_LOCK_HELD=1 "$WIFI_CTL" join "$best" > /dev/null 2>&1; then
     remember 0 "$now"
 else
     # The stamp goes down even though nothing came up. It is what stops a failing

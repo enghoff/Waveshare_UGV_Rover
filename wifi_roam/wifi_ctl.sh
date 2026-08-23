@@ -7,7 +7,7 @@
 #     wifi_ctl.sh profiles       # the networks that have a passphrase on this rover
 #
 # It exists because the daemon runs as `admin` and two of these need root:
-# scanning and switching. On the Pi that is NetworkManager, and polkit grants
+# scanning and switching. On the Pi 1 that is NetworkManager, and polkit grants
 # those to an active local session, which a daemon is not. On the Banana Pi it is
 # wpa_supplicant, and the control socket is root:root. The alternative was a
 # blanket grant; this is the narrow version, and `install.sh` gives it a
@@ -223,6 +223,16 @@ scan_wpa() {
 }
 
 hold_join_lock() {
+    # The roamer calls this script rather than duplicating the privileged half of
+    # it, and by the time it does it is already holding this exact lock -- so
+    # taking it again would wait out LOCK_WAIT and then refuse the join it asked
+    # for. WIFI_LOCK_HELD is that caller saying so. It also leaves the stamp
+    # alone, because a caller that holds the lock owns the state file: the roamer
+    # writes its own strike count and clock when it hears how the join went, and
+    # a second writer here would be racing it over two fields it is mid-edit on.
+    if [ "${WIFI_LOCK_HELD:-0}" = 1 ]; then
+        return 0
+    fi
     if command -v flock > /dev/null 2>&1; then
         exec 9> "$LOCK"
         if ! flock -w "$LOCK_WAIT" 9; then
@@ -270,6 +280,13 @@ join_wpa() {
         "$wpa" -i "$IFACE" enable_network all >/dev/null || true
         return 0
     done
+    # And re-enable them just as carefully when the join did *not* work, which is
+    # the case that matters more. `select_network` disabled every other network to
+    # make this attempt; returning without undoing that would leave a wifi-only
+    # board holding one network it has just proved it cannot join and forbidden
+    # from trying the two it can -- a rover that would have recovered by itself in
+    # a minute, needing a person instead.
+    "$wpa" -i "$IFACE" enable_network all >/dev/null || true
     echo "could not associate with $ssid" >&2
     exit 1
 }
@@ -293,6 +310,23 @@ case ${1:-} in
         ;;
     profiles)
         profiles
+        ;;
+    radio-on)
+        # Asked for at every boot by wifi-radio-on.service, and by the roamer when
+        # it finds a link with no association and a switch that is off. Idempotent
+        # and silent on a radio that is already on, which is every boot but the
+        # bad one.
+        #
+        # **Nothing in this repository ever turns that switch off**, on either
+        # stack, and both of them restore it across a reboot -- NetworkManager
+        # from a state file of its own, netplan's from systemd's saved rfkill
+        # state. So an `off` that was interrupted, or that nothing checked, does
+        # not cost one boot; it costs every boot after it, on a board whose only
+        # other way in is an ethernet cable that a rover does not have.
+        case $(backend) in
+            nmcli) nmcli radio wifi on ;;
+            *)     $(find_bin rfkill /usr/sbin/rfkill) unblock wifi ;;
+        esac
         ;;
     join)
         ssid=${2:-}

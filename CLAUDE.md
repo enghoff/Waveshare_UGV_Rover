@@ -22,6 +22,7 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 | `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` |
 | `oak_depth/` | `bpi` | `~/ugv/oak_depth/`, plus `vendor/` filled by its own `install.sh` |
 | `wifi_roam/` | `bpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
+| `netwatch/` | `bpi` | `~/ugv/netwatch/`, and from there into `/usr/local/sbin`, `/usr/local/bin` and `/etc/systemd/system` by its own `install.sh`. `netprobe.py` is the desk half and is not deployed |
 | `behaviours/` | `bpi` | `~/ugv/behaviours/` — **planned, not built**; see [docs/scripting.md](docs/scripting.md). `scripting.py` and `rover_api.py`, which run scripts, deploy flat with the daemon; the agent-written store must never be overwritten by a deploy |
 | `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
 | `drive_web/`, plus `voice_chat/console_model.py` and `voice_chat/rover_tools.py` | `bpi` | `~/ugv/drive_web/` |
@@ -71,6 +72,7 @@ scp lidar_slam/*.py lidar_slam/README.md bpi-m4zero:~/ugv/lidar_slam/
 scp face_tracking/*.py face_tracking/install_opencv.sh     face_tracking/face_detection_yunet.onnx bpi-m4zero:~/ugv/   # the tracking loop and its detector
 scp -r oak_depth bpi-m4zero:~/ugv/           # the OAK as a depth camera; then its own install.sh
 scp -r wifi_roam bpi-m4zero:~/ugv/           # the wifi keeper; then its own install.sh
+scp -r netwatch bpi-m4zero:~/ugv/            # the network recorder; then its own install.sh
 ssh bpi-m4zero 'cd ~/ugv && python3 selftest.py | tail -2'
 ssh bpi-m4zero '~/ugv/restart.sh'          # ~35 s; prints the new tool count
 ```
@@ -130,12 +132,36 @@ what copies the script into `/usr/local/sbin` and the units into
 them:
 
 ```bash
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/wifi_roam/install.sh'
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install.sh'
 ssh bpi-m4zero 'systemctl list-timers --no-pager wifi-roam.timer'
 ```
 
+**Its roam timer is installed and deliberately switched off on this board**, and
+`ROAM=off` on that install line is what keeps it that way. The script drove
+`nmcli` until 2026-08-23 and the Banana Pi has none, so it has never yet chosen an
+access point here; the way it fails is a rover that needs carrying to a socket, so
+it gets armed with somebody in the building. See
+[wifi_roam/README.md](wifi_roam/README.md).
+
+`netwatch/` is the other systemd unit, and it is the one to install first on any
+board that keeps disappearing. It records the link, the load and every word the
+supplicant and the kernel say, to `/var/lib/netwatch/` rather than to `/var/log`,
+which on this board is a zram ramlog that loses exactly the minutes worth having.
+It also writes a record when it is asked to stop, which is what separates a reboot
+somebody asked for from a board that fell over:
+
+```bash
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/netwatch/install.sh'
+ssh bpi-m4zero 'netwatch-report'                 # boots, outages, and their causes
+python3 netwatch/netprobe.py --log probe.log     # the desk half; not deployed
+```
+
+Note the `sh` in front of both installers. A checkout that arrived by `scp` is
+mode 644, so the shebang is never consulted and running the path directly fails
+with "Permission denied" — which reads as a sudo problem and is not one.
+
 Plain `scp` is fine for the `.py` files — no shebang, so CRLF does not bite. The
-shell scripts under `lidar_slam/`, `oak_depth/`, `wifi_roam/` and
+shell scripts under `lidar_slam/`, `oak_depth/`, `wifi_roam/`, `netwatch/` and
 `face_tracking/` do have one, and
 they are held to LF by `.gitattributes`; a CRLF checkout turns their shebang into
 an interpreter with a carriage return in its name.

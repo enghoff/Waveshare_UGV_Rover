@@ -1,8 +1,13 @@
 [Unit]
 Description=Keep the rover's wifi on the strongest known access point
 Documentation=file:///home/admin/ugv/wifi_roam/README.md
-After=NetworkManager.service
-Requisite=NetworkManager.service
+# After whichever of these exists, and requiring none of them. `Requisite=` here
+# used to name NetworkManager, which made every tick fail outright on the Banana
+# Pi -- the board that is the rover now runs netplan and wpa_supplicant and has no
+# NetworkManager at all. The script itself is the thing that refuses to act on a
+# system it cannot read, and it is better at it than a unit dependency: it says so
+# in the journal rather than failing silently.
+After=NetworkManager.service systemd-networkd.service wpa_supplicant.service
 
 [Service]
 Type=oneshot

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Put the wifi keeper on the Pi: the three network profiles, the script, and the
+# Put the wifi keeper on the rover: the three network profiles, the script, and the
 # timer that runs it. Idempotent -- run it again after changing any of them.
 #
-#     ssh rpi 'sudo ~/ugv/wifi_roam/install.sh EverGreen'   # first time
-#     ssh rpi 'sudo ~/ugv/wifi_roam/install.sh'             # script/timer only
+#     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install.sh EverGreen'   # first time
+#     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install.sh'             # script/timer only
 #
 # The passphrase is only needed for profiles that do not exist yet; an existing
 # profile is left holding the key it already has, because a working link is not
@@ -24,10 +24,10 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 [ "$(id -u)" = 0 ] || { echo "run this with sudo"; exit 1; }
 
 # The Pi still runs NetworkManager. The Banana Pi runs netplan and
-# wpa_supplicant, and has no nmcli: the house networks already live in
-# /etc/netplan, and the roam timer cannot run here as written. The helper
-# still has to be installed -- that is what the console's "look for networks"
-# button actually calls.
+# wpa_supplicant, and has no nmcli: its house networks live in /etc/netplan, so
+# there are no profiles to add here. Everything below is installed on both, and
+# the roamer works on both -- it reaches the radio through wifi_ctl.sh, which
+# speaks whichever stack it finds.
 if command -v nmcli >/dev/null 2>&1; then
     HAS_NM=1
     for s in $NETS; do
@@ -52,7 +52,7 @@ if command -v nmcli >/dev/null 2>&1; then
     done
 else
     HAS_NM=0
-    echo "no NetworkManager; installing the scan/join helper only"
+    echo "no NetworkManager: the networks live in /etc/netplan on this board"
 fi
 
 # Prove the script on this machine before making it the one that runs, since the
@@ -98,18 +98,34 @@ fi
 rm -f "$tmp"
 systemctl daemon-reload
 
-if [ "$HAS_NM" = 1 ]; then
-    # The radio switch first, and `--now` on purpose: NetworkManager restores that
-    # switch from a state file at boot, so a rover found with its wifi off stays off
-    # however healthy everything else is, and running this script is then the repair
-    # as well as the install.
-    systemctl enable --now wifi-radio-on.service
-    systemctl enable --now wifi-roam.timer
-    echo "radio: $(nmcli radio wifi)"
-    systemctl list-timers --no-pager wifi-roam.timer
+# The radio switch first, and `--now` on purpose: both stacks restore that switch
+# across a reboot, so a rover found with its wifi off stays off however healthy
+# everything else is, and running this script is then the repair as well as the
+# install.
+systemctl enable --now wifi-radio-on.service
+
+# Then the roamer, unless somebody has asked for it to be left alone. `ROAM=off`
+# exists for one situation and it is worth naming: the first install on a board
+# this has never run on, with nobody in the building. Every fault this thing
+# answers ends in an association being spent, and an association that does not
+# come back on a wifi-only rover needs a person to walk over and power-cycle it.
+# So the code can be put in place while it is still switched off, and armed by
+# somebody who is there to watch the first hour of it:
+#
+#     systemctl enable --now wifi-roam.timer
+if [ "${ROAM:-on}" = off ]; then
+    echo "roam timer: left disabled (ROAM=off)"
+    echo "  arm it with: systemctl enable --now wifi-roam.timer"
 else
-    echo "helper: /usr/local/sbin/wifi_ctl.sh (no roam timer: no NetworkManager)"
+    systemctl enable --now wifi-roam.timer
+    systemctl list-timers --no-pager wifi-roam.timer
 fi
+
+# What the script would decide right now, without doing any of it. A dry run costs
+# 64 ms on a healthy link and is the one line of this install that proves the
+# thing can actually read this particular rover.
+echo "--- one dry run"
+/usr/local/sbin/wifi_roam.sh -n || echo "(dry run exited $?)"
 
 # <hostname>.local has to be advertised or `ssh bpi-m4zero` dies in the
 # resolver. Raspberry Pi OS already runs avahi-daemon; leave that alone.

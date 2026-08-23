@@ -1,15 +1,33 @@
 # Keeping the rover on the network
 
 A rover that drives out of one router's range and loses the network does not come
-back on its own in any useful sense. NetworkManager reconnects, eventually, to
-whichever access point it happens to pick — and the one it picks is the one it
-used most recently, not the one now shouting through the nearest wall. Worse, it
-will not leave an association at all while beacons keep arriving, so the rover can
-sit at the edge of an AP's range dropping most of its packets while a much
-stronger AP goes unused three metres away.
+back on its own in any useful sense. Neither stack this has run on chooses well:
+NetworkManager reconnects eventually to whichever access point it happens to pick
+— the one it used most recently, not the one now shouting through the nearest
+wall — and `wpa_supplicant` picks by signal but only at the moment it associates,
+and the three house networks are three *different* SSIDs, so nothing roams
+between them at all. Worse, neither will leave an association while beacons keep
+arriving, so the rover can sit at the edge of an AP's range dropping most of its
+packets while a much stronger AP goes unused three metres away.
 
-This directory is the fix: three saved network profiles, and a small script on a
-20-second timer that watches the link and moves it when it has to.
+This directory is the fix: the house networks, and a small script on a 20-second
+timer that watches the link and moves it when it has to.
+
+**On the board that is the rover today, that timer is installed and switched
+off.** The roamer was written against NetworkManager and the Banana Pi has none,
+so until 2026-08-23 it was not merely idle here — `install.sh` skipped it and the
+units it did install named `Requires=NetworkManager.service`, which would have
+failed every tick had anything started them. That is now fixed and the script
+works on both stacks, but it has never yet chosen an access point on this board
+with a person watching, and the way it fails is a rover that needs carrying back
+to a socket. So it goes on with somebody in the building:
+
+```bash
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" systemctl enable --now wifi-roam.timer'
+```
+
+Until then the rover has whatever `wpa_supplicant` does by itself, and
+[netwatch/](../netwatch) is what records how well that works.
 
 ## The three networks
 
@@ -142,6 +160,13 @@ into a rover is an ethernet cable, and that is unplugged the moment it drives of
 This Pi has no console, and its journal lives in RAM, so the reboot that made the
 fault permanent also took away the evidence for it.
 
+**Changing stacks does not retire that lesson; it only moves the state file.**
+The Banana Pi has no NetworkManager to keep a switch for it, but a soft rfkill
+block is saved and restored across reboots by systemd, so an `rfkill block wifi`
+there is exactly as permanent — and that board has no ethernet socket at all, so
+the cable that rescued the Pi does not exist. Both boards are therefore held to
+the same rule below, and the self-test asserts it for both.
+
 Two changes, so that neither half of that can happen again:
 
 - **Nothing in `wifi_roam.sh` turns the radio off.** The only thing it does to
@@ -151,9 +176,10 @@ Two changes, so that neither half of that can happen again:
   anyway: the scan comes back empty and there is no radio for `con up` to bring a
   profile up on. The self-test asserts the absence across every scenario in the
   file, not only in the repair.
-- **`wifi-radio-on.service` asks for the radio on at every boot.** One `nmcli`
-  call, ordered after NetworkManager, idempotent and silent on a radio that is
-  already on. It is what makes the guarantee independent of how the switch came to
+- **`wifi-radio-on.service` asks for the radio on at every boot.** One call
+  through `wifi_ctl.sh` — `nmcli radio wifi on` or `rfkill unblock wifi`,
+  whichever this board takes — idempotent and silent on a radio that is already
+  on. It is what makes the guarantee independent of how the switch came to
   be off — this script, an older copy of it, or a hand at a console: no setting of
   that switch survives a reboot.
 
@@ -294,6 +320,43 @@ still refused without anything being brought up on the way to refusing it.
 scp -r wifi_roam bpi-m4zero:~/ugv/
 cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/wifi_roam/install.sh EverGreen'   # passphrase only needed once
 ```
+
+`ROAM=off` installs everything and leaves the roam timer disabled, which is how
+the Banana Pi is set up today — see the note at the top of this file for why, and
+for the one command that arms it.
+
+## The same script on two quite different stacks
+
+The Pi 1 runs NetworkManager. The Banana Pi runs netplan, `systemd-networkd` and
+`wpa_supplicant`, has no `nmcli` at all, and keeps the house networks in
+`/etc/netplan` rather than in NM profiles. Three things differ, and only three:
+
+| | Pi 1 | Banana Pi |
+|---|---|---|
+| looking around, and moving the link | `nmcli dev wifi list`, `nmcli con up` | `wpa_cli scan_results`, `select_network` |
+| the radio switch | NetworkManager's own state file | rfkill, saved and restored by systemd |
+| the supplicant to restart when wedged | `wpa_supplicant.service` | `netplan-wpa-wlan0.service` |
+
+The first of those is not in `wifi_roam.sh` at all. Scanning and joining live in
+`wifi_ctl.sh`, which the daemon already calls for the console's network panel and
+which already spoke both dialects, so the roamer delegates and stays one script.
+That has a second benefit worth having: the list the roamer chooses from and the
+list a person sees on the console are the same list, from the same code, on the
+same 0–100 scale — `wifi_ctl.sh` converts the supplicant's dBm into
+NetworkManager's scale precisely so that one set of thresholds fits both boards.
+
+The last of those three is the one that would have failed quietly. A netplan box
+*also* has a `wpa_supplicant.service`, dbus-activated and managing nothing at all,
+so restarting it succeeds, logs a repair and leaves the wedged supplicant exactly
+where it was. The script asks systemd which unit is actually active before it
+restarts anything.
+
+There is also a hazard in the wpa join that is worth knowing about, because it is
+the one way this code could strand a wifi-only rover. `select_network` disables
+every *other* configured network in order to make its attempt, so a join that
+never completes would leave the rover holding one AP it has just proved it cannot
+reach and forbidden from trying the two it can. Both the success and the failure
+paths re-enable them, and the self-test asserts the failure one.
 
 `install.sh` is idempotent, and it will not touch the passphrase of a profile that
 already exists — a working link is not worth risking to a typo. What it does always

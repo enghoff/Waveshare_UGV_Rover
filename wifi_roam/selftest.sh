@@ -1,7 +1,7 @@
 #!/bin/sh
 # Drive wifi_roam.sh through every decision it can make, with no radio present.
 #
-#     ./selftest.sh          # anywhere: the workstation, the Pi, a VM
+#     ./selftest.sh          # anywhere: the workstation, the rover, a VM
 #
 # The script reads the link out of three files and acts through nmcli and
 # systemctl, and every one of those is replaceable from here, so a fake /proc, a
@@ -79,9 +79,44 @@ cat > "$WORK/bin/systemctl" <<'FAKE'
 #!/bin/sh
 echo "systemctl $*" >> "$NMCLI_LOG"
 echo "systemctl $*" >> "$NMCLI_ALL"
+# `is-active` has to answer with a word rather than a status, because that is how
+# the script picks which supplicant to restart -- and a board where netplan runs
+# one per interface is a different answer from a board where Debian's own unit is
+# the one holding the radio.
+case "$*" in
+    "is-active netplan-wpa-wlan0.service")
+        [ -n "${NETPLAN_UNIT_ACTIVE:-}" ] && echo active
+        ;;
+    "is-active "*) ;;
+esac
 exit "${SYSTEMCTL_STATUS:-0}"
 FAKE
 chmod +x "$WORK/bin/systemctl"
+
+cat > "$WORK/bin/rfkill" <<'FAKE'
+#!/bin/sh
+echo "rfkill $*" >> "$NMCLI_LOG"
+echo "rfkill $*" >> "$NMCLI_ALL"
+exit "${RFKILL_STATUS:-0}"
+FAKE
+chmod +x "$WORK/bin/rfkill"
+
+# The kernel's radio switches, as /sys presents them: one directory per switch,
+# a type and a soft-block flag. `switch off` here means the rover is soft-blocked
+# -- which on this stack survives a reboot, because systemd saves and restores it.
+switches() {   # soft-blocked: 1 or 0
+    mkdir -p "$WORK/rfkill/rfkill0" "$WORK/rfkill/rfkill1"
+    echo bluetooth > "$WORK/rfkill/rfkill0/type"
+    echo 0 > "$WORK/rfkill/rfkill0/soft"
+    echo wlan > "$WORK/rfkill/rfkill1/type"
+    echo "$1" > "$WORK/rfkill/rfkill1/soft"
+}
+switches 0
+
+# The privileged half, executable, because the roamer execs it the way systemd
+# does and a checkout that arrived by scp is not.
+cp "$HERE/wifi_ctl.sh" "$WORK/bin/wifi_ctl.sh"
+chmod +x "$WORK/bin/wifi_ctl.sh"
 
 # The cumulative log, created up front so that the assertion spanning every
 # scenario has something to read even if no fake is ever called.
@@ -106,8 +141,19 @@ _run() {   # $1 = flags for the script, then any VAR=value overrides
     flags=$1
     shift
     : > "$WORK/nmcli.log"
+    # WIFI_CTL is the real script beside this one, not a fake: the roamer's scan
+    # and join go through it now, so pointing it at the installed copy would
+    # test whatever is on this machine, and faking it would leave the two halves
+    # of the rover's wifi never once exercised together. The fake nmcli and fake
+    # wpa_cli underneath it are where the pretending happens.
+    #
+    # A copy with the mode bit set, though, rather than the file in the checkout.
+    # The roamer execs this path the way systemd will, and a checkout that
+    # arrived by scp is mode 644 -- so testing the file where it lies passes on
+    # the workstation, where every file looks executable, and fails on the rover
+    # with "the scan came back empty", which reads as a dead radio.
     env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
-        SCAN="$SCAN" \
+        SCAN="$SCAN" WIFI_CTL="$WORK/bin/wifi_ctl.sh" \
         OPERSTATE="$WORK/operstate" WIRELESS="$WORK/wireless" \
         ROUTES="$WORK/routes" STATE="$WORK/state" LOCK="$WORK/lock" \
         "$@" sh "$HERE/wifi_roam.sh" $flags 2>&1
@@ -407,7 +453,13 @@ case "$*" in
     *select_network*) echo OK ;;
     *enable_network*) echo OK ;;
     *status*)
-        printf 'wpa_state=COMPLETED\nssid=TheMaharaja\n'
+        # A supplicant that will not settle, for the one scenario that needs the
+        # join to run out of time rather than succeed.
+        if [ -n "${WPA_NEVER_JOINS:-}" ]; then
+            printf 'wpa_state=SCANNING\n'
+        else
+            printf 'wpa_state=COMPLETED\nssid=TheMaharaja\n'
+        fi
         ;;
 esac
 exit 0
@@ -466,6 +518,59 @@ check "a network with no passphrase here is still refused" \
     "$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
         STATE="$WORK/state" LOCK="$WORK/lock" \
         sh "$HERE/wifi_ctl.sh" join Alister 2>&1)"
+
+# A join that never completes is the case that can strand a wifi-only board:
+# select_network has already disabled the other two networks, and leaving them
+# that way pins the rover to the one AP it has just failed to reach.
+: > "$WORK/nmcli.log"
+failed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    STATE="$WORK/state" LOCK="$WORK/lock" JOIN_WAIT=1 WPA_NEVER_JOINS=1 \
+    sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
+check "a join that times out says so" "could not associate" "$failed"
+check "and gives the other networks back before it gives up" \
+    "enable_network all" "$(cat "$WORK/nmcli.log")"
+
+echo
+echo "the roamer itself, on the rover with no NetworkManager"
+# Everything above drove the NetworkManager path. This is the same script on the
+# board that is actually the rover now -- netplan, wpa_supplicant, no nmcli -- and
+# it is here because the roamer was nmcli-only for as long as that board has
+# existed, which is to say it has never once run on the rover it was written for.
+rm -f "$WORK/state"
+world down -90 0
+switches 0
+out=$(_run "" WIFI_BACKEND=wpa RFKILL="$WORK/rfkill" SCAN_WAIT=0 SCAN_GIVE_UP=0)
+check "goes looking on a board with no nmcli at all" "not associated" "$out"
+check "picks the strongest of ours that is not the one it is on"     "joining TheGreatViking at 64" "$out"
+check "and joins it the way a supplicant is joined"     "select_network 1" "$(cat "$WORK/nmcli.log")"
+check_silent "without ever reaching for nmcli"     "$(grep -c 'nmcli' "$WORK/nmcli.log" | grep -v '^0$' || true)"
+
+echo
+echo "a rover found with its radio switched off, on that same board"
+# The fault that has no way back: the switch survives a reboot on both stacks, so
+# a rover that is soft-blocked stays soft-blocked, and a board with no ethernet
+# has nothing else to be reached by.
+rm -f "$WORK/state"
+world down -90 0
+switches 1
+out=$(_run "" WIFI_BACKEND=wpa RFKILL="$WORK/rfkill" SCAN_WAIT=0 SCAN_GIVE_UP=0)
+check "notices the block before spending a scan on it"     "the radio is switched off" "$out"
+check "and unblocks it" "rfkill unblock wifi" "$(cat "$WORK/nmcli.log")"
+check_silent "and does not scan while it is blocked"     "$(grep 'scan_results' "$WORK/nmcli.log" || true)"
+switches 0
+
+echo
+echo "the repair, on a board that runs one supplicant per interface"
+# Restarting the wrong supplicant is the quietest failure available here: on a
+# netplan box `wpa_supplicant.service` exists, is restartable, and manages
+# nothing, so the repair would report success and change nothing at all.
+rm -f "$WORK/state"
+world dormant -90 0
+printf '9 0
+' > "$WORK/state"
+out=$(_run "" WIFI_BACKEND=wpa RFKILL="$WORK/rfkill" NETPLAN_UNIT_ACTIVE=1     SCAN_WAIT=0 SCAN_GIVE_UP=0)
+check "restarts the one that is actually holding the interface"     "netplan-wpa-wlan0.service" "$out"
+check "and does it through systemd"     "systemctl try-restart netplan-wpa-wlan0.service" "$(cat "$WORK/nmcli.log")"
 
 echo
 echo "across every scenario above"
