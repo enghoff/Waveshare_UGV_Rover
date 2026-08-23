@@ -1,10 +1,10 @@
-# `lidar_slam/` — 2D SLAM and self-driving on the rover's own Pi
+# `lidar_slam/` — 2D SLAM and self-driving on the rover's own host
 
 Scan-matched localisation, an occupancy grid, and a drive controller that will not
-run into things — from the D500 lidar alone, on the Raspberry Pi 1 bolted to the
-rover. It exists because that Pi already has both sensors wired to it and no map to
-show for them, and because a map is only worth computing somewhere that can act on
-it — which means on the rover itself.
+run into things — from the D500 lidar alone, on the Banana Pi bolted to the
+rover. It exists because that board already has both sensors wired to it and no
+map to show for them, and because a map is only worth computing somewhere that
+can act on it — which means on the rover itself.
 
 The scope is deliberately small. This finds where the rover is relative to where it
 started, keeps a grid of what is solid around it, drives it there without hitting
@@ -12,7 +12,7 @@ anything, and describes the result in terms a language model can use. It is not
 enough to close a loop and it does not try — see
 [What is deliberately missing](#what-is-deliberately-missing).
 
-Measured on the rover's Pi against the real sensor, 20 seconds, stationary:
+Measured on the rover against the real sensor, 20 seconds, stationary:
 
 ```
 198 revolutions in 20.0s (9.9 Hz), 0 dropped, 0 matches rejected, worst loop 41.9 ms
@@ -20,7 +20,7 @@ Measured on the rover's Pi against the real sensor, 20 seconds, stationary:
 
 ## Why this is C
 
-Because the host is a 700 MHz single-core ARM1176 with scalar VFP and **no NEON**:
+Because the first host was a 700 MHz single-core ARM1176 with scalar VFP and **no NEON**:
 
 ```
 Features : half thumb fastmult vfp edsp java tls
@@ -88,7 +88,7 @@ growing it. A revolution's work is the scan and not the map — each beam is wal
 cell at a time and each hit stamps a small kernel around itself, so the cost follows
 the ranges the sensor reported and not how much grid is lying around them. Widening
 it therefore costs memory and nothing else: two bytes a cell, 1.3 MB at this size,
-against 474 MB of RAM. Measured on the Pi, doubling the grid from 400 cells moved the
+against 474 MB of RAM. Measured on the Pi 1, doubling the grid from 400 cells moved the
 cost per revolution from 58.23 ms to 58.10 ms, which is to say not at all — the
 matcher's working set is the room around the rover either way. So it is set large
 enough for a floor of a house and left alone. `run_slam.py --cells` changes it for a
@@ -97,14 +97,14 @@ so, and `test_timing` in `selftest.c` is what to read afterwards.
 
 ## Building and running
 
-The library is compiled per-machine and is not committed — nothing else in this
-repository is armv6, so there is no cross-compiler and a checked-in binary would
-only ever be wrong.
+The library is compiled per-machine and is not committed — the ABI is the host's
+(aarch64 here; armv6 on the Pi 1 this first ran on), so there is no
+cross-compiler and a checked-in binary would only ever be wrong.
 
 ```bash
-scp lidar_slam/* rpi:~/ugv/lidar_slam/
-ssh rpi 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
-ssh rpi 'cd ~/ugv/lidar_slam && python3 run_slam.py --seconds 30 --sectors 37 --map room.pgm'
+scp lidar_slam/* bpi-m4zero:~/ugv/lidar_slam/
+ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
+ssh bpi-m4zero 'cd ~/ugv/lidar_slam && python3 run_slam.py --seconds 30 --sectors 37 --map room.pgm'
 ```
 
 `run_slam.py` prints a line a second and draws clearance as a bar with forward in
@@ -122,7 +122,7 @@ run that is losing its position. It is **not** a sufficient health check on its 
 is why that pose won — so see [When the match is
 wrong](#when-the-match-is-wrong-and-how-it-says-so) for the two numbers that catch
 what it cannot. `drop` counts revolutions thrown away because the loop fell behind —
-it should stay at 0, and if it does not, the Pi is oversubscribed rather than the
+it should stay at 0, and if it does not, the host is oversubscribed rather than the
 SLAM being slow.
 
 If nothing arrives at all, the rover's power switch is the first thing to check: the
@@ -137,14 +137,14 @@ Two separate serial ports, and they are easy to confuse:
 | | port | baud | what |
 |---|---|---|---|
 | lidar | `/dev/ttyACM0` | 230400 | D500 point stream, one-way, unprompted |
-| driver board | `/dev/ttyAMA0` | 115200 | `T:1001` telemetry and motor commands |
+| driver board | `/dev/ttyS4` | 115200 | `T:1001` telemetry and motor commands |
 
 The lidar is a **`ttyACM`**, not a `ttyUSB`: it is a CH343 (`1a86:55d3`) behind an
 FE1.1S hub (`1a40:0101`), and `cdc_acm` claims it. [`docs/hosts.md`](../docs/hosts.md)
-asserted for a while that this Pi had neither, which was simply wrong and is now
+asserted for a while that this host had neither, which was simply wrong and is now
 fixed.
 
-`ttyAMA0` can only have one owner, and `rover_daemon.py` normally *is* that owner.
+`ttyS4` can only have one owner, and `rover_daemon.py` normally *is* that owner.
 That is why `run_slam.py` does not touch it unless asked, and it is the main reason
 this code should eventually be called from inside the daemon rather than run beside
 it.
@@ -499,7 +499,7 @@ multiplied by a gap is rotation that never happened; a span containing one of th
 refused outright by both the prior and the witness. An interval of zero is neither a
 gap nor a sample — two pumpers share this port, so two drains landing in the same
 instant are ordinary, and calling one a hole would quietly switch off the prior and
-the witness for the span around it. That last one only showed up on the Pi: the same
+the witness for the span around it. That last one only showed up on the rover: the same
 test passed on the workstation, which was fast enough that the two drains never landed
 in the same microsecond.
 
@@ -507,7 +507,7 @@ in the same microsecond.
 
 `navigator.py` owns the lidar, the SLAM core and a 10 Hz control loop, and turns a
 request like "forward 1.5 m" into motor PWM. It does not own the driver board: the
-caller passes in something with a `.send(dict)`, which on the Pi is the daemon's
+caller passes in something with a `.send(dict)`, which on the rover is the daemon's
 `SerialLink`, so there is still exactly one owner of the UART.
 
 **The scan matcher is the encoder this rover does not have.** Driving is open-loop
@@ -628,7 +628,7 @@ and not nine times.
 
 **Planning is the slowest thing the rover does**, and the numbers are only visible
 on the rover: measured over seventeen plans it really made, the same call takes 2–6
-ms on a desk and 2.2–15.3 *seconds* on the Pi. A heap pop costs 1.3 µs here and
+ms on a desk and 2.2–15.3 *seconds* on the Pi 1. A heap pop costs 1.3 µs here and
 580 µs there — a factor of 450 that no clock speed explains, and the reason is that
 A*'s flat lists blow a 128 kB L2 cache, so every `g[j]` is a pointer chase into
 SDRAM. Cost therefore follows the *size of the window searched*, not the length of
@@ -649,7 +649,7 @@ the route (correlation +0.74), and two things follow from that:
   forty whole-array passes where offset-by-offset took 253. Same disc, bit for bit,
   and the self-test checks it against the version it replaces.
 
-On the Pi: a 0.18 m replan 1.41 s → 0.14 s, a 0.34 m one 1.12 s → 0.15 s, and the
+On the Pi 1: a 0.18 m replan 1.41 s → 0.14 s, a 0.34 m one 1.12 s → 0.15 s, and the
 long routes 1.2–1.4×. Every route is unchanged — same waypoints, same length, same
 turning, same clearance — over both the recorded grids and the room sweep.
 
@@ -749,7 +749,7 @@ replan with what provoked it, and how it ended. `MoveReport` holds it, one sente
 at a time rather than a queue — a watcher that misses a phase wants the one
 happening now, not a backlog — and each carries a counter, which is what lets a
 console poll this three times a second and still write one line per thing the rover
-said. [voice_chat/drive_web.py](../voice_chat/drive_web.py) is what reads it,
+said. [drive_web/drive_web.py](../drive_web/drive_web.py) is what reads it,
 under the map you clicked on.
 
 `dryrun.py` exercises all of it against the real lidar with a stub link, so the
@@ -780,12 +780,12 @@ the daemon's arguments live in a crontab entry and relaunching it by hand is how
 rover silently loses them:
 
 ```bash
-ssh rpi 'mkdir -p ~/ugv/journeys'     # record the next few moves
-ssh rpi 'ls ~/ugv/journeys'           # newest five are kept
-scp rpi:'~/ugv/journeys/journey-*.npz' .
+ssh bpi-m4zero 'mkdir -p ~/ugv/journeys'     # record the next few moves
+ssh bpi-m4zero 'ls ~/ugv/journeys'           # newest five are kept
+scp bpi-m4zero:'~/ugv/journeys/journey-*.npz' .
 python3 journey.py journey-20260821-141332.npz            # the timeline
 python3 journey.py journey-20260821-141332.npz --replan   # replan those same maps
-ssh rpi 'rm -rf ~/ugv/journeys'       # stop
+ssh bpi-m4zero 'rm -rf ~/ugv/journeys'       # stop
 ```
 
 `--replan` is the reason the grids are kept: a change to `planner.py` can be tried
@@ -849,7 +849,7 @@ for the rover, tip forward, with a yellow dot at the exact pose, and a blue line
 the path. The arrow replaced a dot with a whisker off it, which at three pixels per
 cell was two pixels wide and left the heading to be guessed. Nothing on the rover can
 draw text, so the caption names the colours for the model and
-[voice_chat/drive_web.py](../voice_chat/drive_web.py) builds its key out of this
+[drive_web/drive_web.py](../drive_web/drive_web.py) builds its key out of this
 file's palette rather than its own.
 
 A client can zoom, and zooming keeps the picture the size it was. `map_png` in the
@@ -1000,7 +1000,7 @@ once and later cleared back to exactly zero is indistinguishable from one never 
 ## When the lidar drops off the bus
 
 It does, and not rarely. The sensor's serial adapter hangs off a small hub, on
-another hub, on the Pi's own hub -- three deep -- and the whole branch goes away
+another hub, on the host's own hub -- three deep -- and the whole branch goes away
 under motor load:
 
 ```
@@ -1029,7 +1029,7 @@ comes out as
 1-1.3.3.2 (USB Single Serial) -> 1-1.3.3 (USB 2.0 Hub) -> 1-1.3 (USB2.0 Hub)
 ```
 
-and it stops there rather than continuing to `1-1`, which is the Pi's built-in hub
+and it stops there rather than continuing to `1-1`, which is the host's built-in hub
 and carries the ethernet and the wifi dongle: resetting that would cut the wire the
 request to reset arrived over. `_carries_the_network` works that out by walking each
 candidate's subtree for a net device, so re-plugging the wifi somewhere else does not
@@ -1071,7 +1071,7 @@ could not open. `install-udev.sh` puts the rule in place and reapplies it to wha
 already plugged in:
 
 ```bash
-cat secrets/rpi-sudo.key | ssh rpi 'sudo -S -p "" ~/ugv/lidar_slam/install-udev.sh'
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/lidar_slam/install-udev.sh'
 ```
 
 The action there has to be `udevadm trigger --action=add` and not `change`: udev sets

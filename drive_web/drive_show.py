@@ -5,6 +5,7 @@ import base64
 import time
 from typing import Any
 
+import _paths  # noqa: F401 — console_model
 from console_model import (
     ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_STALE_S, LOG_LINES,
     LOUD_PHASES, MAP_LEGEND, Reply, STATUS_FIELDS, TURN_ROWS, WIFI_POLL_S,

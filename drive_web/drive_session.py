@@ -8,6 +8,7 @@ import time
 import uuid
 from typing import Any
 
+import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
     BATTERY_POLL_S, BATTERY_STALE_S, CAMERA_AUTO_S, CLEAR_ARM_S, Channel,
@@ -48,6 +49,9 @@ LINK_LOST_S = 8.0
 # four minutes instead would be worse than giving up.
 TARGET_HANDOVER_S = 6.0
 DEFAULT_HTTP_PORT = 8770
+# On the rover. 8770 is already oak_depth's depth server; the desk still uses
+# DEFAULT_HTTP_PORT because that collision does not exist there.
+ROVER_HTTP_PORT = 8771
 
 
 class Session(SessionShow):
@@ -62,10 +66,17 @@ class Session(SessionShow):
     """
 
     def __init__(self, address: str | None, half_extent: float,
-                 map_size: int) -> None:
+                 map_size: int, idle: bool = False) -> None:
         self.half_extent = half_extent
         self.map_size = map_size
         self.wanted_address = address or ""
+        # Hosted on the rover: do not become a client until a browser is open,
+        # and stop being one when the last tab has been gone for the orphan
+        # grace. A desk process is started to drive and is killed when you are
+        # done, so it connects at once; a process that lives from boot would
+        # otherwise poll nav_status three times a second and draw a map every
+        # two, overnight, for nobody.
+        self.idle = idle
         #: Unique to this console process, and mixed into the URL of every picture
         #: it publishes. Without it the pictures of one run are served at exactly
         #: the URLs of the last one -- `/map.png?gen=1`, `?gen=2` -- because the
@@ -232,8 +243,8 @@ class Session(SessionShow):
     def snapshot(self) -> dict[str, Any]:
         """Everything on screen, as JSON. Rebuilt whole on every tick and compared
         with the last one, rather than each writer remembering to mark the state
-        dirty -- the state is a few kilobytes and this is a desk, and a missed dirty
-        flag is a panel that silently stops updating."""
+        dirty -- the state is a few kilobytes, and a missed dirty flag is a
+        panel that silently stops updating."""
         busy = None
         if self.busy_since is not None:
             busy = {"name": self.busy_name,
@@ -283,7 +294,10 @@ class Session(SessionShow):
 
     # --- the pump -------------------------------------------------------------
     def run(self) -> None:
-        self.connect()
+        if self.idle:
+            self.link_text = "waiting for a browser"
+        else:
+            self.connect()
         while self.running:
             began = time.monotonic()
             self.pump()
@@ -303,6 +317,16 @@ class Session(SessionShow):
             self.handle(reply)
 
         now = time.monotonic()
+        self.mind_the_target(now)
+        self.mind_the_watchers(now)
+        if self.idle and not self.listeners:
+            # Keep the orphan stop above, then drop the six connections so an
+            # unwatched console is not a client of the daemon overnight.
+            if (self.alone_since
+                    and now - self.alone_since > ORPHAN_GRACE_S):
+                self.rest()
+            self.publish()
+            return
         if (self.watch is not None and not self.poll_outstanding
                 and now - self.poll_at > POLL_S):
             self.poll_outstanding = True
@@ -353,9 +377,7 @@ class Session(SessionShow):
             self.rejoined()
         if self.clear_armed_until and now > self.clear_armed_until:
             self.clear_armed_until = 0.0
-        self.mind_the_target(now)
         self.mind_the_link(now)
-        self.mind_the_watchers(now)
         self.publish()
 
     def retry_in(self) -> float:
@@ -448,16 +470,19 @@ class Session(SessionShow):
             self.lock.notify_all()
 
     # --- connecting -----------------------------------------------------------
-    def connect(self) -> None:
-        # Dropped on a thread of their own, because closing one of these can block
-        # for as long as the call in flight on it. The socket lock is held by the
-        # thread waiting on the reply, so closing a connection to a rover that has
-        # been unplugged waits out the twelve-second read timeout first -- six times
-        # over, on the pump thread, which is the thread that reads the stop button.
-        # That is the wrong thing to be doing at the moment the rover has vanished.
-        # Nothing refers to these once `channels` is emptied below, so they can be
-        # left to die in their own time; the worst of it is a reply from the old link
-        # arriving after the new one is up, which the next tick asks again for anyway.
+    def abandon(self) -> None:
+        """Drop the six connections without starting a search.
+
+        Closing is on a thread of its own, because closing one of these can block
+        for as long as the call in flight on it. The socket lock is held by the
+        thread waiting on the reply, so closing a connection to a rover that has
+        been unplugged waits out the twelve-second read timeout first -- six times
+        over, on the pump thread, which is the thread that reads the stop button.
+        That is the wrong thing to be doing at the moment the rover has vanished.
+        Nothing refers to these once `channels` is emptied, so they can be left to
+        die in their own time; the worst of it is a reply from the old link arriving
+        after the new one is up, which the next tick asks again for anyway.
+        """
         abandoned, self.channels = self.channels, []
         if abandoned:
             threading.Thread(target=lambda: [c.close() for c in abandoned],
@@ -471,6 +496,22 @@ class Session(SessionShow):
         self.frame_outstanding = False
         self.map_outstanding = False
         self.wifi_outstanding = False
+        self.poll_outstanding = False
+        self.track_outstanding = False
+        self.battery_outstanding = False
+
+    def rest(self) -> None:
+        """Stop being a client. `--idle` calls this once nobody is watching."""
+        if not self.channels and not self.find_outstanding:
+            if self.link_text != "waiting for a browser":
+                self.link_text = "waiting for a browser"
+            return
+        self.abandon()
+        self.find_outstanding = False
+        self.link_text = "waiting for a browser"
+
+    def connect(self) -> None:
+        self.abandon()
         # Not forgotten across a reconnect: a reconnect is mostly what happens
         # *because* of a join, and the panel's job at that moment is to say whether
         # the rover came back on the network it was asked for.

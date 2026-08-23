@@ -27,13 +27,6 @@ from test_harness import FAIL, PASS, SKIP, check  # noqa: F401 — check is for 
 
 
 def main() -> int:
-    from test_drive_web import (
-        test_a_browser_leaving, test_a_second_click_takes_over,
-        test_choosing_a_network, test_finding_the_rover_again,
-        test_map_size_for_a_panel, test_one_console_at_a_time,
-        test_pictures_are_not_replayed, test_signal_verdict,
-        test_stopping_an_unwatched_rover, test_web_console,
-    )
     from test_server import (
         test_sentences, test_tool_sniffer, test_trim, test_vision,
     )
@@ -59,16 +52,6 @@ def main() -> int:
     test_echo_guard()
     test_pointing_the_camera()
     test_move_commentary()
-    test_choosing_a_network()
-    test_signal_verdict()
-    test_map_size_for_a_panel()
-    test_web_console()
-    test_stopping_an_unwatched_rover()
-    test_a_second_click_takes_over()
-    test_finding_the_rover_again()
-    test_a_browser_leaving()
-    test_one_console_at_a_time()
-    test_pictures_are_not_replayed()
     test_talk_session()
 
     for name in PASS:

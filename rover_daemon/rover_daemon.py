@@ -38,7 +38,7 @@ itself is one. `set_vision` says where `look` should post its pictures:
     <- {"ok": true, "vision": "http://192.168.1.7:8767/frame", "tools": [...]}
 
 The last two are for driving the rover by hand rather than by conversation, and
-exist for [voice_chat/drive_web.py](../voice_chat/drive_web.py):
+exist for [drive_web/drive_web.py](../drive_web/drive_web.py):
 `nav_status` returns every number the driving loop has, and `map_png` returns the
 map as base64 in the reply instead of posting it away. Both are things a person
 watching a move needs and a model asked to narrate one does not.

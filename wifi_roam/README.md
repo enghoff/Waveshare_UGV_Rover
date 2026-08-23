@@ -38,8 +38,8 @@ gitignored.
 the interface associated, does it have a route — which it only has once DHCP has
 answered — and is the signal above −78 dBm. If all three hold, the script exits
 without a word, in about 64 ms. Going through `nmcli` instead would cost 1.8
-seconds of wall time and half a second of CPU on this Pi, three times a minute, on
-the one armv6 core that is also running SLAM. The cheap path is not an
+seconds of wall time and half a second of CPU on the Pi 1 this first ran on,
+three times a minute, on the one armv6 core that was also running SLAM. The cheap path is not an
 optimisation; it is the reason the timer can run this often.
 
 `operstate`, and not `carrier`, which is the more obvious question and took the
@@ -115,7 +115,7 @@ nothing left to protect, and it is the case this whole thing exists for. What
 limits it instead is one attempt per minute, because **scanning is the dangerous
 operation on this hardware**. The wifi dongle shares a weakly fused USB bus with
 the camera and the lidar, and a burst of forced scans during a run that was also
-streaming camera frames is what took the Pi off the network for an afternoon while
+streaming camera frames is what took the rover off the network for an afternoon while
 this was being written. Hammering a radio that is already down, three times a
 minute, is how a rover that would have recovered on its own stays offline instead.
 
@@ -219,7 +219,7 @@ and a roamer that arrives during a join stands aside. The person asking wins.
 ## Choosing by hand, from the console
 
 `wifi_roam.sh` is what happens when nobody is watching. When somebody is,
-[drive_web.py](../voice_chat/drive_web.py) has a panel that shows which
+[drive_web.py](../drive_web/drive_web.py) has a panel that shows which
 access point the rover is on and offers the others, and it reaches them through
 two calls on the daemon — `wifi_status` and `wifi_join`.
 
@@ -249,11 +249,11 @@ it is breaking; what actually happened comes back as `last_join` on the next
 ## Checking it without a rover
 
 ```bash
-./selftest.sh      # 47 assertions, anywhere: the workstation, the Pi, a VM
+./selftest.sh      # 47 assertions, anywhere: the workstation, the rover, a VM
 ```
 
 It takes a second or two on a desk and a couple of minutes on the rover, which is
-not a hang: it runs the script thirty-odd times, and on that Pi a process spawn
+not a hang: it runs the script thirty-odd times, and on the Pi 1 a process spawn
 under load costs a hundred times what it does here.
 
 Every input the script reads and both commands it acts through are replaceable,
@@ -288,11 +288,11 @@ holding the passphrase, that it bounds its own wait, that it leaves the stamp
 `wifi_roam.sh` reads back, and that a network with no passphrase on this rover is
 still refused without anything being brought up on the way to refusing it.
 
-## Installing and checking it on the Pi
+## Installing and checking it on the rover
 
 ```bash
-scp -r wifi_roam rpi:~/ugv/
-ssh rpi 'sudo ~/ugv/wifi_roam/install.sh EverGreen'   # passphrase only needed once
+scp -r wifi_roam bpi-m4zero:~/ugv/
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/wifi_roam/install.sh EverGreen'   # passphrase only needed once
 ```
 
 `install.sh` is idempotent, and it will not touch the passphrase of a profile that
@@ -307,11 +307,10 @@ with `--now`, so running `install.sh` is also the repair for a rover found with
 its radio switched off.
 
 ```bash
-ssh rpi 'nmcli radio wifi'                                 # enabled, or nothing works
-ssh rpi 'systemctl list-timers --no-pager wifi-roam.timer'
-ssh rpi 'journalctl -u wifi-roam --since -1h --no-pager'   # silent when all is well
-ssh rpi 'sudo wifi_roam.sh -n'                             # one check, changes nothing
-ssh rpi 'sudo LOW=-20 STRIKES=1 wifi_roam.sh -n'           # force the decision path
+ssh bpi-m4zero 'systemctl list-timers --no-pager wifi-roam.timer'
+ssh bpi-m4zero 'journalctl -u wifi-roam --since -1h --no-pager'   # silent when all is well
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" wifi_roam.sh -n'   # one check, changes nothing
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" env LOW=-20 STRIKES=1 wifi_roam.sh -n'   # force the decision path
 ```
 
 Every threshold is an environment variable, so the last of those is how to see

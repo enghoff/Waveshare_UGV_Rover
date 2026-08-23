@@ -1,11 +1,13 @@
-"""Desk-side checks for the browser console."""
+"""Checks for the browser console, with no browser and no rover."""
 from __future__ import annotations
 
 import io
 import os
 import sys
 import tempfile
+import time
 
+import _paths  # noqa: F401 — drive_web, console_model, mock_rover, test_harness
 from test_harness import FAIL, PASS, SKIP, check
 
 
@@ -279,6 +281,73 @@ def test_stopping_an_unwatched_rover() -> None:
     check("an idle rover is not stopped for being alone", idle.halt.sent, [])
 
 
+def test_idle_console_waits_for_a_browser() -> None:
+    """A console hosted on the rover must not be a client overnight.
+
+    The desk process is started to drive and killed when you are done, so it
+    connects at once and polls for as long as it lives. The same process started
+    from boot would otherwise ask for nav_status three times a second and a map
+    every two, for nobody, on the same machine that is running SLAM. `--idle`
+    waits for a browser and drops the rover once the last tab has been gone for
+    the orphan grace -- long enough that a reload is not a disconnect.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"idle console waits for a browser ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append(name)
+
+        def close(self):
+            pass
+
+    quiet = drive_web.Session(None, 3.0, 480, idle=True)
+    quiet.watch = Fake()
+    quiet.picture = Fake()
+    quiet.channels = [quiet.watch]
+    quiet.poll_at = 0.0
+    quiet.map_at = 0.0
+    quiet.pump()
+    check("an idle console does not poll with nobody watching",
+          quiet.watch.sent, [])
+    check("...nor ask for a map", quiet.picture.sent, [])
+    check("...and still has the rover during a reload",
+          bool(quiet.channels), True)
+
+    quiet.alone_since = 100.0
+    quiet.pump()
+    # pump() uses time.monotonic(), so a stale alone_since from 100 is "long ago"
+    # and rest() runs. The channels list is replaced, not mutated.
+    check("once the last tab has been gone, it drops the rover",
+          quiet.channels, [])
+    check("...and says it is waiting", quiet.link_text, "waiting for a browser")
+
+    watched = drive_web.Session(None, 3.0, 480, idle=True)
+    watched.watch = Fake()
+    watched.channels = [watched.watch]
+    watched.listeners = 1
+    watched.poll_at = 0.0
+    watched.answered_at = time.monotonic()
+    watched.pump()
+    check("a watched idle console polls",
+          "nav_status" in watched.watch.sent, True)
+
+    drive_web.Handler.session = watched
+    watched.address = "127.0.0.1:8769"
+    body = drive_web.health()
+    check("health is ok while it is serving", body["ok"], True)
+    check("...and says how many browsers", body["watching"], 1)
+    check("...and where the rover is", body["rover"], "127.0.0.1:8769")
+    check("...and that it is the hosted kind", body["idle"], True)
+    drive_web.Handler.session = None
+
+
 def test_finding_the_rover_again() -> None:
     """A console that has lost its rover goes looking, without being asked.
 
@@ -361,7 +430,7 @@ def test_finding_the_rover_again() -> None:
           waits[2].retry_in(), drive_web.RECONNECT_MAX_S)
 
     # --- what the log and the link line say ----------------------------------
-    talking = drive_web.Session("rpi.local:8769", 3.0, 480)
+    talking = drive_web.Session("bpi-m4zero.local:8769", 3.0, 480)
     talking.connected = lambda address: None          # no sockets in a selftest
     for _ in range(3):
         talking.handle(drive_web.Reply(
@@ -375,7 +444,7 @@ def test_finding_the_rover_again() -> None:
     check("...and the tries were counted", talking.find_tries, 3)
 
     talking.handle(drive_web.Reply(
-        "__found__", {}, {"ok": True, "address": "rpi.local:8769"}, 0.0))
+        "__found__", {}, {"ok": True, "address": "bpi-m4zero.local:8769"}, 0.0))
     check("coming back is worth a line", any("answered again" in line["text"]
                                              for line in talking.log), True)
     check("...and the count starts over", talking.find_tries, 0)
@@ -473,8 +542,8 @@ def test_one_console_at_a_time() -> None:
     # The port guard is the other half, and it is a property of the class rather
     # than of a running server: on Windows the default would let two consoles share
     # one port without either of them finding out.
-    check("the server refuses to share its port",
-          drive_web.Console.allow_reuse_address, False)
+    check("Windows refuses to share the port; Linux reclaims TIME_WAIT",
+          drive_web.Console.allow_reuse_address, os.name != "nt")
 
 
 def test_pictures_are_not_replayed() -> None:

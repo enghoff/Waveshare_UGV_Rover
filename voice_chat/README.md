@@ -26,9 +26,8 @@ It has no desk client anymore.
 A second program has no model in it at all. The drive console is the rover's
 driving tools wired to buttons, and it exists because a conversation is the wrong
 instrument for measuring one: when a turn comes back short you need the number,
-not a paraphrase of it several seconds later. [drive_web.py](drive_web.py) serves
-it as a browser page from whatever desk is in use, and the rover sees nothing but
-the TCP calls it has always answered. See
+not a paraphrase of it several seconds later. The rover hosts it at
+`http://<rover>:8771/` — see [drive_web/](../drive_web/README.md) and
 [Driving it by hand](#driving-it-by-hand).
 
 It also carries **tools**: the model can switch the headlights, aim the camera,
@@ -885,26 +884,29 @@ what a `look`-shaped tool result carries back — see [Seeing](#seeing).
 
 ## Driving it by hand
 
-[drive_web.py](drive_web.py) is the same tools with the model taken out: a page
+[drive_web.py](../drive_web/drive_web.py) is the same tools with the model taken out: a page
 with buttons for `turn_in_place` and `drive`, a big red stop, the daemon's
 `nav_status` polled three times a second, and the lidar map on screen — with the
 camera's own picture, face tracking and the headlights beside it.
 
-```powershell
-python voice_chat\drive_web.py                      # finds the rover, opens a tab
-python voice_chat\drive_web.py --rover rpi.local:8769
-python voice_chat\drive_web.py --bind 0.0.0.0       # ...and let the phone in
-python voice_chat\mock_rover.py --drive             # ...with no rover at all
+```
+http://192.168.1.47:8771/
+http://bpi-m4zero.local:8771/
+
+python voice_chat\mock_rover.py --drive
+python drive_web\drive_web.py --no-idle --bind 127.0.0.1
 ```
 
-**The server runs on the desk, not on the rover**, and that is the whole answer to
-whether a Pi 1 can afford a web console. It cannot, and it is never asked to. What
-is on the Pi is `rover_daemon.py`, unchanged, answering the same six TCP
-connections with the same JSON as before; the HTTP, the event stream and the page
-are all at this end. Nothing is deployed to the rover for this and nothing needs
-restarting there. Measured against the actual rover, a map costs it 0.5 s to draw
-and a warm `camera_jpeg` 0.6 s, because from the daemon's side these are the calls
-it has always answered.
+**The rover hosts this.** A Pi 1 could not afford a web console and was never
+asked to; the Banana Pi M4 Zero can, and [drive_web/](../drive_web/README.md) is
+the process, on TCP 8771 (8770 is the depth camera). The HTTP, the event stream
+and the page live there; the daemon still answers the same six TCP connections
+with the same JSON. `--idle` means a process that lives from boot is not a client
+overnight -- it talks to the daemon only while a browser is open. `mock_rover.py
+--drive` plus `drive_web.py --no-idle` is how to open the same page against an
+invented room when there is no rover. Measured against the actual rover, a map
+costs it 0.5 s to draw and a warm `camera_jpeg` 0.6 s, because from the daemon's
+side these are the calls it has always answered.
 
 It exists because a conversation is the wrong instrument for measuring a move.
 Asking a model to turn ninety degrees and listening to what it says afterwards
@@ -1223,8 +1225,8 @@ of short moves, which drives worse and measures nothing. For teleop with none of
 that, [driver_board/drive_gamepad.py](../driver_board/drive_gamepad.py) talks
 straight to the ESP32 with no Pi, no SLAM and no standoff in it.
 
-`--bind 0.0.0.0` puts it on the LAN so a phone can drive the rover, and there is no
-password on it. Anyone who can reach the port can drive.
+It binds `0.0.0.0:8771` so a phone can drive the rover, and there is no password
+on it. Anyone who can reach the port can drive.
 
 **The wire, the pacing and the English live outside the page.**
 [console_model.py](console_model.py) holds the six channels, every polling interval,
@@ -1235,8 +1237,8 @@ made of are questions about a rover. The browser is sent that English already
 assembled rather than being given a copy of the rules to apply itself, for the same
 reason the clients fetch tool schemas from the daemon instead of keeping their own:
 two copies of a rule disagree eventually, and the disagreement is invisible because
-both sides look plausible. It also means `selftest.py` can cover all of it without
-opening a browser, which is a miserable place to debug a sentence.
+both sides look plausible. It also means `drive_web/selftest.py` can cover all of
+it without opening a browser, which is a miserable place to debug a sentence.
 
 `mock_rover.py` answers `camera_jpeg` with the same test card `look` posts, and
 `clear_map` by dropping the driven track — the invented room is evaluated from its own
@@ -1865,7 +1867,7 @@ turn-taking, which is the other half worth checking.
 Source of truth is this directory; the guest copy is not authoritative.
 
 ```bash
-scp voice_chat/{server.py,voice_history.py,voice_stream.py,voice_http.py,requirements.txt,selftest.py,test_harness.py,test_server.py,test_talk.py,test_drive_web.py} root@media:/opt/voice_chat/
+scp voice_chat/{server.py,voice_history.py,voice_stream.py,voice_http.py,requirements.txt,selftest.py,test_harness.py,test_server.py,test_talk.py} root@media:/opt/voice_chat/
 scp voice_chat/voice-chat.service root@media:/etc/systemd/system/
 # pillow is new with vision; the rest of the venv is unchanged.
 ssh root@media 'VIRTUAL_ENV=/opt/voice_chat/.venv /root/.local/bin/uv pip install pillow'

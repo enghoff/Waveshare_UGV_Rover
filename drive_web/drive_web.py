@@ -11,19 +11,16 @@ browser solves that in about ten lines of CSS, and solves it properly: the page
 scrolls, the columns rewrap as the window narrows, and on a phone it comes out as
 one column in the right order.
 
-    python voice_chat/drive_web.py                      # finds the rover, opens a tab
-    python voice_chat/drive_web.py --rover rpi.local:8769
-    python voice_chat/drive_web.py --bind 0.0.0.0       # ...and let the phone in
+    python3 drive_web.py                 # on the rover, from boot; page on :8771
+    python drive_web/drive_web.py --no-idle --bind 127.0.0.1 --rover 127.0.0.1:8769
     python voice_chat/mock_rover.py --drive             # ...with no rover at all
 
-**This server runs on your desk, not on the rover, and that is the whole answer to
-whether the Pi can afford a web console.** It cannot afford one and it is never
-asked to. What is on the Pi is `rover_daemon.py`, exactly as before, answering the
-same six TCP connections with the same JSON it has always answered; the HTTP, the
-event stream and the page are all at this end. The rover cannot tell that the
-thing calling `nav_status` three times a second is a browser rather than a desk
-program with a window in it, because in the only sense that matters to a 700 MHz
-ARMv6 core running SLAM, it is not.
+Started from boot by [run_drive_web.sh](run_drive_web.sh). The page is
+`http://<the rover>:8771/`. A Pi 1 could not afford this and was never asked to;
+the Banana Pi M4 Zero can. What the daemon sees is unchanged: the same six TCP
+connections, the same JSON. `--idle` (the default) is why a process that lives
+from boot is not a client overnight -- it talks to the daemon only while a
+browser is open.
 
 **And the browser gives two things back for free.** It reads JPEG, so the frame
 from the camera goes straight into an `<img>` -- which deleted the one dependency
@@ -59,43 +56,31 @@ reload drops the stream for a fraction of a second and is covered by the grace;
 two tabs open means the count never reaches zero. Ctrl-C stops it too, for the
 same reason.
 
-Only the standard library, plus [rover_tools.py](rover_tools.py) for the wire and
-[console_model.py](console_model.py) for everything both consoles agree about --
-which is nearly all of it. The page is [drive_web.html](drive_web.html) beside
+Only the standard library, plus [rover_tools.py](../voice_chat/rover_tools.py)
+for the wire and [console_model.py](../voice_chat/console_model.py) for the
+pacing and the English. The page is [drive_web.html](drive_web.html) beside
 this file, read from disk on every request so that editing it needs no restart.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
-import queue
 import socket
 import sys
-import uuid
 import tempfile
 import threading
-import time
-import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-import rover_tools
-from console_model import (
-    ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_POLL_S,
-    BATTERY_STALE_S, CAMERA_AUTO_S, CLEAR_ARM_S, Channel, LIGHT_MAX, LOG_LINES,
-    LOUD_PHASES, MAP_AUTO_S, MAP_EXTENTS_M, MAP_LEGEND, MAP_SIZES_PX,
-    MOVE_TIMEOUT_S, POLL_S, Reply, STATUS_FIELDS, TRACK_POLL_S, TURN_PRESETS_DEG,
-    TURN_ROWS, WIFI_POLL_S, WIFI_REJOIN_S, WIFI_SCAN_TIMEOUT_S, move_sentence,
-    or_dash, rung, size_for_panel, tap_to_relative, wifi_verdict, worth_logging)
-
+import _paths  # noqa: F401 — console_model, rover_tools
+from console_model import LIGHT_MAX, MAP_LEGEND, Reply, TURN_PRESETS_DEG
 from drive_session import (
-    DEFAULT_HTTP_PORT, KEEPALIVE_S, LINK_LOST_S, ORPHAN_GRACE_S,
-    RECONNECT_MAX_S, RECONNECT_S, Session, TICK_S,
+    KEEPALIVE_S, LINK_LOST_S, ORPHAN_GRACE_S, RECONNECT_MAX_S, RECONNECT_S,
+    ROVER_HTTP_PORT, Session,
 )
-from drive_show import _number, _png_width
+from drive_show import _png_width
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drive_web.html")
 
@@ -162,6 +147,9 @@ class Handler(BaseHTTPRequestHandler):
                        "public, max-age=31536000, immutable")
         elif path == "/setup":
             self._send(json.dumps(setup()).encode(),
+                       "application/json; charset=utf-8")
+        elif path == "/health":
+            self._send(json.dumps(health()).encode(),
                        "application/json; charset=utf-8")
         elif path == "/events":
             self._events()
@@ -253,16 +241,13 @@ class Console(ThreadingHTTPServer):
     still printed exactly as it was.
     """
 
-    # Not reusable, deliberately, and this is the one place where the usual advice
-    # is backwards. On Windows `SO_REUSEADDR` does not mean "reclaim a port left in
-    # TIME_WAIT", it means *share*: a second process binds the same port happily and
-    # which of the two a given connection reaches is anyone's guess. So the browser
-    # is served its page by one console and posts its buttons to the other, which is
-    # not a confusing console -- it is two consoles, one of them showing an earlier
-    # session's transcript and map while the rover ignores everything you press.
-    # `talk.py` found this on the frame server first; the same answer, for the same
-    # reason: refuse to start, and say so.
-    allow_reuse_address = False
+    # On Windows `SO_REUSEADDR` means *share*, not "reclaim TIME_WAIT": a second
+    # process binds the same port and which of the two a connection reaches is
+    # anyone's guess. On Linux it is the usual reclaim, and without it a reload
+    # fails for a minute as EADDRINUSE after the previous process has gone. So
+    # Windows refuses and Linux reclaims. OnlyOne still stops a second console
+    # on any port.
+    allow_reuse_address = os.name != "nt"
 
     def handle_error(self, request, client_address) -> None:
         kind = sys.exc_info()[0]
@@ -350,6 +335,18 @@ class OnlyOne:
             self._fd = None
 
 
+def health() -> dict[str, Any]:
+    """Whether this process is serving, how many browsers it has, and whether it
+    has the rover. Restart scripts wait on this the way oak_depth waits on its
+    own `/health` -- the page answering is not enough, because a console that
+    has not bound yet is not a console."""
+    session = Handler.session
+    if session is None:
+        return {"ok": False, "watching": 0, "rover": "", "idle": False}
+    return {"ok": True, "watching": session.listeners,
+            "rover": session.address, "idle": session.idle}
+
+
 def setup() -> dict[str, Any]:
     """The handful of things the page needs once and never again: the preset turns
     it draws buttons for, what the daemon calls full brightness, and the colour key
@@ -363,20 +360,24 @@ def setup() -> dict[str, Any]:
 
 def main(argv=None) -> int | str:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--rover", default=None, metavar="HOST[:PORT]",
-                        help="the daemon; omit to look for it (see rover_tools.py)")
+    parser.add_argument("--rover", default="127.0.0.1:8769", metavar="HOST[:PORT]",
+                        help="the daemon (default: %(default)s)")
     parser.add_argument("--half-extent", type=float, default=3.0, metavar="M",
                         help="metres each way shown in the map (default: %(default)s)")
     parser.add_argument("--map-size", type=int, default=480, metavar="PX",
                         help="how big a map to ask for before the panel has a "
                              "width to go on (default: %(default)s)")
-    parser.add_argument("--port", type=int, default=DEFAULT_HTTP_PORT,
+    parser.add_argument("--port", type=int, default=ROVER_HTTP_PORT,
                         help="where to serve the page (default: %(default)s)")
-    parser.add_argument("--bind", default="127.0.0.1", metavar="ADDRESS",
-                        help="0.0.0.0 to let other machines on the LAN drive it; "
-                             "there is no password on this (default: %(default)s)")
-    parser.add_argument("--no-browser", action="store_true",
-                        help="do not open a tab")
+    parser.add_argument("--bind", default="0.0.0.0", metavar="ADDRESS",
+                        help="0.0.0.0 lets the LAN in; there is no password on "
+                             "this (default: %(default)s)")
+    parser.add_argument("--idle", dest="idle", action="store_true", default=True,
+                        help="do not talk to the rover until a browser is open "
+                             "(default)")
+    parser.add_argument("--no-idle", dest="idle", action="store_false",
+                        help="talk to the rover even with no browser (mock / desk)")
+    parser.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--verbose", action="store_true",
                         help="log every HTTP request")
     args = parser.parse_args(argv)
@@ -389,7 +390,7 @@ def main(argv=None) -> int | str:
     if taken:
         return taken
 
-    session = Session(args.rover, args.half_extent, args.map_size)
+    session = Session(args.rover, args.half_extent, args.map_size, idle=args.idle)
     Handler.session = session
     Handler.verbose = args.verbose
     try:
@@ -405,11 +406,11 @@ def main(argv=None) -> int | str:
     threading.Thread(target=session.run, daemon=True, name="rover-pump").start()
     where = f"http://{'127.0.0.1' if args.bind == '0.0.0.0' else args.bind}:{args.port}/"
     print(f"drive console on {where}")
+    if args.idle:
+        print("    idle until a browser opens")
     if args.bind == "0.0.0.0":
         print(f"    and on http://{_lan_address()}:{args.port}/ from the LAN -- "
               f"anyone who can reach it can drive the rover")
-    if not args.no_browser:
-        threading.Thread(target=webbrowser.open, args=(where,), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

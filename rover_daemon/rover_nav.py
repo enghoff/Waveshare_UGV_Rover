@@ -213,7 +213,7 @@ class RoverNav:
         last scan is. That is what tells you why a move went wrong, and it is of no
         use whatsoever to something that has to say the answer out loud.
 
-        Written for [voice_chat/drive_web.py](../voice_chat/drive_web.py), which
+        Written for [drive_web/drive_web.py](../drive_web/drive_web.py), which
         polls it a few times a second while somebody drives by hand.
 
         `move` in the reply is the odd one out: not a number off the rover but what

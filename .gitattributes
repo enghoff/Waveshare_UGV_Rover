@@ -24,7 +24,19 @@ wifi_roam/** text eol=lf
 # rover_daemon's supervisor scripts have shebangs and run on the rover host.
 rover_daemon/*.sh text eol=lf
 
+# drive_web/ is the rover-hosted console: supervisor, restart and crontab
+# install all have shebangs, so a CRLF checkout would look for an interpreter
+# with a carriage return in its name.
+drive_web/** text eol=lf
+
 # face_tracking/install_opencv.sh runs on the rover and has a shebang, and the
 # wheel it unpacks is what the face detector imports -- a CRLF checkout would
 # leave the rover unable to see rather than unable to build.
 face_tracking/*.sh text eol=lf
+
+# netwatch/ runs on the rover as root: install.sh has a shebang, and netwatch.py
+# is installed into /usr/local/sbin and started by systemd from its own shebang.
+# A CRLF checkout would leave the kernel looking for an interpreter with a
+# carriage return in its name -- on the one program whose job is to still be
+# working when everything else on the board has stopped.
+netwatch/** text eol=lf

@@ -1,14 +1,14 @@
 # The rover daemon
 
-One process on the Pi that owns the driver board and the camera, and hands out
+One process on the Banana Pi that owns the driver board and the camera, and hands out
 what can be done with them as tools. It exists because the rover's hardware does
 not divide: there is one UART to the ESP32 and one `/dev/video0`, so two programs
 that both want to command servos or look through the lens are two programs
 corrupting each other.
 
 ```
-  root@media                              admin@rpi
-  ----------                              ---------
+  root@media                              admin@bpi-m4zero
+  ----------                              ----------------
   voice-chat  <--speech--  talk.py  --TCP 8769-->  rover_daemon.py
   face-detect <---------------- JPEG ------------- | camera
                               boxes -------------> | UART -> ESP32
@@ -57,7 +57,7 @@ filed under, in an ordinary tool result. It is the road
 [face_detect](../face_detect/README.md) frames already take, thirty times a
 second, so there is nothing new about it but the port.
 
-Nothing here decodes the picture; decoding one 640×480 JPEG costs 93 ms on this
+Nothing here decodes the picture; decoding one 640×480 JPEG costs 7 ms on this
 machine and the picture is not for us. The one thing it does check is the two
 bytes at the front: a frame read from a stream that was joined mid-picture ends
 at an end-of-image marker without starting at a start-of-image one, and sending
@@ -69,8 +69,8 @@ if that frame is more than two seconds old rather than passing off something
 stale as now.
 
 ```bash
-ssh rpi 'cd ugv && python3 rover_daemon.py --vision'              # 192.168.1.3:8767
-ssh rpi 'cd ugv && python3 rover_daemon.py --vision media.local:8767'
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --vision'              # 192.168.1.3:8767
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --vision media.local:8767'
 ```
 
 Where the camera is pointed also goes onto the map. `show_map` and the console's
@@ -136,7 +136,9 @@ safe top of that range.
 
 **What this cannot see is charging.** The board sends voltage and nothing else —
 there is no current anywhere in `T:1001` — and the INA219 on the UPS module, which
-does measure charge current, is not read here: the Pi has no I²C enabled at all. So a
+does measure charge current, is not read here: the host can see that chip on
+header I²C, but the ESP32 already owns the bus — see [docs/i2c.md](../docs/i2c.md).
+So a
 pack sitting on the charger and not taking any looks exactly like a pack at rest, and
 the only thing that tells them apart is the module's own LED — red while charging,
 green when full.
@@ -184,8 +186,9 @@ leaves its dock and starts answering on wlan0. See `local_address` in
 
 Five things are dispatched exactly like tools and are deliberately absent from
 `list_tools`, so no model is ever offered one: `set_vision` above, and four written
-for [voice_chat/drive_web.py](../voice_chat/drive_web.py), the console somebody
-drives this rover from by hand.
+for [drive_web/drive_web.py](../drive_web/drive_web.py), the console somebody
+drives this rover from by hand -- hosted on this machine at
+[drive_web/](../drive_web/README.md), TCP 8771.
 
 | call | what it does |
 |---|---|
@@ -270,10 +273,10 @@ does not feed the heartbeat, so aiming is not mistaken for driving.
 ## Running it
 
 ```bash
-ssh rpi 'cd ugv && python3 rover_daemon.py'
-ssh rpi 'cd ugv && python3 rover_daemon.py --no-camera'     # lights and gimbal only
-ssh rpi 'cd ugv && python3 rover_daemon.py --host 192.168.1.22'   # board over wifi
-ssh rpi 'cd ugv && python3 rover_daemon.py --lidar --camera-fov 58'
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py'
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --no-camera'     # lights and gimbal only
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --host 192.168.1.22'   # board over wifi
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --lidar --camera-fov 58'
 ```
 
 It centres the gimbal at startup, like every other script that commands it: the
@@ -285,8 +288,8 @@ are still standalone and still take the UART directly; the whole point of this
 is that only one thing does.
 
 Binding is `0.0.0.0:8769` with no authentication, the same trade
-[face_detect](../face_detect/README.md) makes and with the same warning. The Pi
-has no firewall in front of it.
+[face_detect](../face_detect/README.md) makes and with the same warning. The
+Banana Pi has no firewall in front of it.
 
 ## The protocol
 
@@ -340,7 +343,7 @@ obvious, and a 4B model at int4 produces all of them.
 ## Checks
 
 ```bash
-ssh rpi 'cd ugv && python3 selftest.py'    # no board and no camera
+ssh bpi-m4zero 'cd ugv && python3 selftest.py'    # no board and no camera
 python rover_daemon/selftest.py            # the same, from the repo
 ```
 
@@ -352,7 +355,7 @@ conversation, which is a poor place to find out.
 ## Deploying
 
 ```bash
-scp rover_daemon/*.py rpi:~/ugv/
+scp rover_daemon/*.py bpi-m4zero:~/ugv/
 ```
 
 Flat into `~/ugv/`, which is the layout already there and is what lets this

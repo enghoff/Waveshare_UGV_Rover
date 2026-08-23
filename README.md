@@ -2,8 +2,8 @@
 
 Tools for bringing up, driving and instrumenting a **Waveshare UGV Rover** — the
 rover platform built on Waveshare's *General Driver for Robots* board, with an
-ESP32 on the board and a single-board Linux host beside it — a Raspberry Pi 1
-first, a Banana Pi M4 Zero now.
+ESP32 on the board and a single-board Linux host beside it — a Banana Pi M4 Zero
+now, a Raspberry Pi 1 first.
 
 Half the repository is bench instruments. Each of those scripts drives exactly
 one thing — one camera socket, one sensor, one stored blob — so that when
@@ -11,10 +11,10 @@ something is wrong you can establish which component is at fault before any of
 them are combined into a robot that does something. They remain the right thing
 to reach for first when a component misbehaves.
 
-The other half is the rover actually doing something: a daemon on the Pi that
-owns the hardware and hands it out as tools, a face detector and a voice
+The other half is the rover actually doing something: a daemon on the Banana Pi
+that owns the hardware and hands it out as tools, a face detector and a voice
 assistant that call those tools, and a SLAM written in C small enough to run on
-the rover's own Pi — which is the machine that can actually act on what it
+the rover's own board — which is the machine that can actually act on what it
 computes.
 
 | Directory | What it drives | Runs on | Needs |
@@ -23,11 +23,11 @@ computes.
 | [`lidar/`](lidar) | D500 lidar, over serial via the driver board | a workstation | pyserial |
 | [`usb_cameras/`](usb_cameras) | the machine's own UVC webcams | a workstation | OpenCV only |
 | [`driver_board/`](driver_board) | the ESP32 that drives the motors, over WiFi or USB | a workstation | nothing |
-| [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | a workstation, or the Pi | OpenCV |
+| [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | a workstation, or the rover | OpenCV |
 | [`face_detect/`](face_detect) | that loop's detector as an HTTP service, for a host too slow to run it | any Linux box with spare CPU | OpenCV |
 | [`oak_depth/`](oak_depth) | the OAK as the rover's depth sensor, awake from boot | the rover's board | depthai |
-| [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the Pi | pyserial |
-| [`lidar_slam/`](lidar_slam) | the lidar as a pose, a map, and a rover that drives itself | the Pi | a C compiler |
+| [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the rover | pyserial |
+| [`lidar_slam/`](lidar_slam) | the lidar as a pose, a map, and a rover that drives itself | the rover | a C compiler |
 | [`voice_chat/`](voice_chat) | speech in, speech out, with the rover's tools attached | a Linux host with an 8 GB GPU | PyTorch |
 
 The first four are independent: any can be run with the other components
@@ -50,14 +50,14 @@ oak_camera/     probe the device, read its calibration and crash dumps, preview
 lidar/          lidar_view.py, a top-down view of the point cloud
 usb_cameras/    preview_usb_cameras.py, cycling through the host's UVC cameras;
                 calibrate_fov.py, measuring how wide a camera really sees
-driver_board/   drive_gamepad.py, teleop from a game pad, no Pi involved
+driver_board/   drive_gamepad.py, teleop from a game pad, no host involved
 face_tracking/  the control law (aiming.py) and the two programs that run it,
                 one on a workstation and one on the rover
 face_detect/    YuNet behind an HTTP request: JPEG in, boxes out, on the CPU
 oak_depth/      the OAK kept awake on the rover as a depth camera: millimetres
                 out over HTTP, and the firmware upload that being awake requires
 rover_daemon/   lights, gimbal and face tracking as tools over TCP
-lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's Pi
+lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's host
 voice_chat/     Whisper + a vision-language model + Kokoro, a desktop client, and
                 a window that drives the rover with no model in the loop
 docs/           the detail — hardware facts, measurements, failure modes;
@@ -153,11 +153,10 @@ The drive console is the same daemon with the model taken out: buttons for the
 driving tools, the navigator's own numbers polled beside them, and the lidar map on
 screen. It is there because a conversation cannot measure a move — a model asked to
 turn ninety degrees reports what it believed happened, and what you need is what
-the navigator returned next to what you asked for. `voice_chat/drive_web.py` serves
-it as a browser page from the desk, talking to the daemon over the same TCP the
-model client uses, and it draws on `voice_chat/console_model.py`, which is where the
-pacing and the wording actually live. `python voice_chat\mock_rover.py --drive`
-gives it an invented room to drive in when there is no rover to hand.
+the navigator returned next to what you asked for. The rover hosts it at
+`http://<rover>:8771/` ([drive_web/](drive_web/README.md)). The pacing and the
+wording live in `voice_chat/console_model.py`. `python voice_chat\mock_rover.py --drive`
+gives the same page an invented room when there is no rover to hand.
 
 ## Documentation
 
@@ -165,7 +164,7 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 
 | Document | Covers |
 |---|---|
-| [oak-on-the-pi.md](docs/oak-on-the-pi.md) | why this camera is not on the rover: the firmware upload, the wheel that does not exist for armv6, and the 5 V rail |
+| [oak-on-the-pi.md](docs/oak-on-the-pi.md) | why the OAK was not on the Pi 1: the firmware upload, the armv6 wheel, and the 5 V rail — kept because those three questions still apply |
 | [oak-d-lite.md](docs/oak-d-lite.md) | what the board is, each of the five tools, depth semantics, the calibration oddity |
 | [oak-usb-link.md](docs/oak-usb-link.md) | why every script pins USB2, what throughput the link allows, recovering a wedged device |
 | [depthai-version-pin.md](docs/depthai-version-pin.md) | why depthai is pinned `<3`, the evidence, upstream issues |
@@ -174,7 +173,7 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 | [driver-board.md](docs/driver-board.md) | the gamepad controls, how the ESP32 is found, what the heartbeat failsafe does and does not cover |
 | [i2c.md](docs/i2c.md) | header TWI0 is the ESP32's bus: which chips answer, what the host already has on UART, and where to put a new sensor |
 | [face-tracking.md](docs/face-tracking.md) | the calibration, the 266 ms of dead time that makes it hard, the sweep, the servo's own limits |
-| [moving-to-new-hardware.md](docs/moving-to-new-hardware.md) | what to re-measure and what to re-tune when the tracking leaves the Pi, and the five faults that all look like a camera that hunts |
+| [moving-to-new-hardware.md](docs/moving-to-new-hardware.md) | what was re-measured when tracking moved off the Pi 1, and the five faults that all look like a camera that hunts |
 | [hosts.md](docs/hosts.md) | the machines this rover shares work with here — a local-setup document, not a general one |
 | [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which GPUs are worth it, rent vs buy |
 | [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in, the safety supervisor |

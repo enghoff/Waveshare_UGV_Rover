@@ -96,7 +96,7 @@ def _move_report():
 
     Borrowed rather than reimplemented: it is what the real rover publishes into
     `nav_status` while a move runs, and a mock that made up its own field names
-    would let [drive_web.py](drive_web.py) pass against this and fail against the
+    would let [drive_web.py](../drive_web/drive_web.py) pass against this and fail against the
     rover. Imported at first use like the planner below, because this
     file's whole point is to run where the rover's code may not.
     """
@@ -876,7 +876,7 @@ def main() -> int:
                              "is drawn, if OpenCV is installed")
     parser.add_argument("--drive", action="store_true",
                         help="also offer the driving tools, in an invented room. "
-                             "For exercising a client -- drive_web.py, or a "
+                             "For exercising a client -- drive_web/drive_web.py, or a "
                              "conversation -- and not for measuring anything")
     args = parser.parse_args()
 
