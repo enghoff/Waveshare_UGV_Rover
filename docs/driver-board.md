@@ -6,6 +6,10 @@ or its USB serial port. Exercised by [`driver_board/`](../driver_board), whose
 one script `drive_gamepad.py` is the only thing in this repository that makes the
 rover move; everything else is sensing, with the rover pushed by hand.
 
+The IMU, the OLED and the pack monitor are the ESP32's too, on I2C. The 40-pin
+host header brings that same bus out on pins 3/5; it is not a vacant host bus.
+See [i2c.md](i2c.md).
+
 It needs no dependencies at all over WiFi, and pyserial only for its `--serial`
 path. A game controller needs no driver install either: any pad Windows presents
 as XInput will do, and XInput is a DLL Windows already has.
