@@ -45,6 +45,48 @@ after: a name that works is cheap, a name that does not is not, and an address
 that is not there refuses in milliseconds. The ESP32 is the exception and stays a
 number — it advertises no mDNS name.
 
+## The rover's host is a Banana Pi M4 Zero now
+
+**Read the `rpi` section below as history where the two disagree.** The rover has
+moved off the Pi 1 and onto a Banana Pi M4 Zero, reached as `bpi-m4zero.local` —
+`192.168.1.47`, wifi only, since this form factor has no Ethernet — with the same
+user `admin` and the same key `id_ed25519_rpi`. Everything about the *rover* still
+holds: the same driver board, the same camera, the same lidar, the same daemon on
+TCP 8769. What changed is the computer under it, measured 2026-08-23:
+
+| | |
+|---|---|
+| board / SoC | BananaPi BPI-M4-Zero v2, Allwinner H618 (`sun50i-h618`) |
+| CPU / RAM | 4× Cortex-A53 at 1.416 GHz, aarch64 with NEON, 3.9 GB |
+| OS | Armbian, kernel 6.18.44-current-sunxi64, Debian trixie, CPython 3.13.5 |
+| storage | 29 GB card, ext4 mounted `commit=120` |
+| the driver board | `/dev/ttyS4` — UART4 on the 40-pin header, not `ttyAMA0` |
+| temperature | 48–55 °C under four-core load, no throttling, clock stays at 1416 MHz |
+
+Three things about it are worth knowing before planning any work here.
+
+**There is no acceleration to offload to.** No NPU; the Mali-G31 is `disabled` in
+this board's device tree and `card0` is only the display engine (`sun4i-drm`), so
+there is no OpenCL or Vulkan; and the video engine (`cedrus`, `/dev/video0`)
+decodes MPEG-2, H.264, HEVC and VP8 but **not** JPEG. NEON is what makes the CPU
+fast enough to run YuNet, and OpenCV already uses it.
+
+**No `pip`, no `python3-venv`, and `secrets/rpi-sudo.key` is not this board's
+password.** `admin` is a full sudoer but every `sudo` prompts, and the only
+passwordless entry is `/usr/local/sbin/wifi_ctl.sh`. Anything needing a Python
+package is therefore a pinned wheel unpacked into a `vendor/` directory —
+`install_opencv.sh` and `oak_depth/install.sh` — and anything needing root has to
+be done by a person at a shell.
+
+**It resets under load, and `commit=120` means recent writes go with it.**
+Seventeen boots in the working day of 2026-08-23, each ending with no shutdown in
+the journal: a hard reset, no oops, nothing in `dmesg`, 48 °C. Twice it left sshd
+accepting TCP and never sending a banner while ping still answered. The practical
+consequences are that a `crontab` change needs a `sync` behind it or the next reset
+undoes it — that happened once here — and that a long remote command may simply
+stop mid-sentence. Untested hypothesis, and the one worth testing first: the 5 V
+rail, which everything on the USB tree shares.
+
 ## `rpi` — the machine on the rover
 
 A Pi 1 Model B, 700 MHz single core, 474 MB of RAM. It is slow enough that this
@@ -150,7 +192,10 @@ the /24 — until the Pi was physically restarted. Scanning is the expensive
 operation here, which is why [`wifi_roam/`](../wifi_roam) will not do it while the
 link is healthy and will not do it more than once a minute while it is not.
 
-**What runs here.** `rover_daemon.py` (from `rover_daemon/` in this repo) is
+**What runs here.** Two services and a timer, all of them started by `admin` --
+`rover_daemon.py`, `oak_depth/depth_server.py` on TCP 8770 (the OAK kept awake as a
+depth camera, from a `@reboot` crontab entry of its own), and `wifi_roam`'s systemd
+timer. `rover_daemon.py` (from `rover_daemon/` in this repo) is
 the one process that may own the UART and the camera, and everything that
 commands the rover goes through it: headlights, gimbal, face tracking, exposed as
 tools on TCP 8769. [`lidar_slam/`](../lidar_slam) is the exception that does not
