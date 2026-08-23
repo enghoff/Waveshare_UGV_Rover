@@ -20,7 +20,7 @@ little.
 | | aiming at an *angle* rather than a pixel, so a correction survives the camera moving under it | `Gimbal.track`, `keep_going` |
 | | subtracting motion already in flight, from an exposure stamp rather than a constant | `Gimbal.was_at` |
 | | which face is which, and how long a lock outlives a missed detection | `Target` |
-| | the detector protocol: JPEG in, boxes out | [`oak_detect/`](../oak_detect), [`face_detect/`](../face_detect) |
+| | the detector protocol: JPEG in, boxes out | [`face_detect/`](../face_detect), and `--service local` for a host that can run it |
 | **re-measure** | the lens: angular scale, distortion, principal point | `calibrate_fov.py`, both axes |
 | | that the aiming can actually use the lens | `calibrate_aim.py` |
 | | the servo: counts per degree, speed ceiling, travel limits | the firmware, then check it |
@@ -202,6 +202,33 @@ machine that comes in *below* one of these is telling you something.
 | servo ceiling | about 130 deg/s; 50 degrees in 422 ms |
 | gimbal travel | pan ±180, tilt −30 to +90 |
 | lens | 130 × 96 degrees, 11.82 arcmin per pixel on the axis |
+
+## What the faster hardware actually fixed
+
+Written before the move and left as written; measured after it, on 2026-08-23, on
+a Banana Pi M4 Zero — four Cortex-A53 at 1.416 GHz, 4 GB, aarch64.
+
+| | Pi 1 | Banana Pi M4 Zero |
+|---|---|---|
+| the detector | an SSD on the OAK's VPU, over loopback HTTP | YuNet in the loop's own process |
+| tracking loop | 2.3–2.4 fps | **6.6 fps** |
+| decoding the JPEG | 275–308 ms wall | **7 ms** |
+| the detection | 123–127 ms on the VPU, 190 ms through the service | **146 ms** on three of four cores |
+| age of the frame the loop acts on | median 1.33 s | **~190 ms** |
+| frames reassembled off the camera | 4.9 of 30 | 30 of 30, the loop dropping what it cannot use |
+
+Which settles the three predictions below. The frame age, the loop rate and the
+decode all came down by about a factor of seven; `GAIN` did **not** need changing,
+because 0.9 had already been reverted to 0.7 and 0.7 is the value the tuning table
+above gives for a 200 ms frame; the grace window looks after itself, since it is
+`max(LOST_GRACE_S, GRACE_FRAMES * dt)` and `dt` shrank; and the OAK did become
+unnecessary as an inference stick — it is a depth camera now, see
+[`oak_depth/`](../oak_depth).
+
+Two things the move did not fix, as predicted: the parallax at close range and the
+servo's ceiling. And one it introduced, which no amount of arithmetic here
+anticipates — the new board hard-resets under load, seventeen times in one working
+day, with nothing in the journal. A faster host is not automatically a steadier one.
 
 ## What faster hardware will and will not fix
 

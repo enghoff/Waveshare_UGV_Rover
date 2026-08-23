@@ -8,7 +8,7 @@ each other. `drive_gamepad_pi.py` takes the UART for the wheels and the lights,
 and `track_face_pi.py` takes it for the gimbal; running both means interleaved
 JSON on one wire, and nothing at all could then also want the camera.
 
-    python3 rover_daemon.py                    # ttyAMA0, camera, detector on the OAK
+    python3 rover_daemon.py                    # the board's UART, camera, YuNet here
     python3 rover_daemon.py --host 192.168.1.22    # board over WiFi instead
     python3 rover_daemon.py --no-camera        # lights and gimbal only
     python3 rover_daemon.py --vision 192.168.1.3:8767   # ...and it can be looked through
@@ -175,7 +175,7 @@ def main() -> int | str:
                         help=f"command the board over WiFi at this address instead "
                              f"(the ESP32 is {DEFAULT_BOARD_HOST})")
     parser.add_argument("--service", default=DEFAULT_SERVICE, metavar="HOST[:PORT]",
-                        help=f"the face detector: 'local' for the OAK in this "
+                        help=f"the face detector: 'local' for YuNet in this "
                              f"process, or host:port for one over HTTP "
                              f"(default {DEFAULT_SERVICE})")
     parser.add_argument("--device", default=DEFAULT_DEVICE, metavar="PATH",

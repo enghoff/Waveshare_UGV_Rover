@@ -1,8 +1,16 @@
-# Why the OAK is not on the rover
+# Why the OAK was not on the rover
+
+**Overtaken by the hardware, and kept because the reasoning is what matters.** This
+was measured against a Raspberry Pi 1. The rover now runs a Banana Pi M4 Zero —
+aarch64, four cores, its own 5 V supply — which is the machine the last section
+here says to wait for, and the OAK is on it as a depth camera:
+[`oak_depth/`](../oak_depth). The three findings below are still the three
+questions to ask of any host proposed for this camera; two of them the new board
+answers, and the third — the 5 V rail — it has not been instrumented for.
 
 Measured 2026-08-18 with the camera plugged into the Pi as the rover stood. The
-conclusion was that this camera does not go on this rover: the Pi cannot run it, and
-could not have powered it if it could.
+conclusion was that this camera does not go on *that* rover: the Pi cannot run it,
+and could not have powered it if it could.
 
 Nothing here is a verdict on the camera or on the tooling for it. It runs from a
 workstation exactly as it always has — that is what [`oak_camera/`](../oak_camera) is
@@ -84,3 +92,14 @@ tracking another 30% — already why the daemon parks tracking whenever the whee
 
 If the OAK is wanted on a rover again, the host for it is the Jetson: aarch64, where
 depthai has current wheels, with the bus and the compute to use what comes back.
+
+**What actually happened, 2026-08-23.** Not a Jetson but a Banana Pi M4 Zero, and
+the prediction held in every part that was about the architecture: depthai 2.32.0.0
+has a `cp313` aarch64 wheel, it imports, and the camera streams stereo depth at
+10 fps for 13% of one of the four cores. The parts that were about the Pi 1
+specifically all went away with it — one core, 474 MB, armv6, and a USB tree with
+no per-port current limit. What did *not* go away is that everything still hangs off
+one 480 Mbps root port, so the depth pipeline is decimated on the device to keep it
+to 1.5 MB/s rather than the 9 it would otherwise take; and the 5 V rail is still
+uninstrumented, on a board that has been resetting under load. The fear in this
+document was never that the camera would fail to open.

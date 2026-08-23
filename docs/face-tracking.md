@@ -14,10 +14,18 @@ this never starts it.
 
 Two programs run the same loop with the pieces in different places.
 `track_face.py` runs on the workstation with the camera on its own USB and the
-board over WiFi; `track_face_pi.py` runs on the rover's Pi with the camera and
-the control law there, the detector on another machine over HTTP, and the servos
-down the GPIO UART. They share every constant through `aiming.py`, because two
+board over WiFi; `track_face_pi.py` runs on the rover's own board with the camera,
+the control law and — since 2026-08-23 — the detector all there, and the servos
+down the header UART. They share every constant through `aiming.py`, because two
 copies of a calibrated control law are two different robots.
+
+**Where the detector runs has moved twice and the protocol has not.** It began on
+the workstation, went to `face_detect/` on MEDIA when the loop moved onto the
+rover, spent five days on the OAK camera's VPU because a Pi 1 could not run a CNN
+at all, and now runs in the rover's own process on four Cortex-A53 cores —
+[`face_tracking/yunet.py`](../face_tracking/yunet.py), 146 ms a frame, which is
+faster than the VPU with its loopback POST. `--service host:port` still points the
+loop at MEDIA, which is what a slower host would want again.
 
 ## Running it
 
@@ -34,14 +42,16 @@ python face_tracking\track_face.py --scan-rate 40   # sweep faster while looking
 picture and the detections before letting it move the camera; rejected detections
 are drawn thin with their scores, so it shows what was seen and passed over.
 
-From the rover instead, with a [face detection service](../face_detect/README.md)
-reachable on the network:
+From the rover instead, where the detector is in the same process by default:
 
 ```bash
-python3 track_face_pi.py                        # camera, UART, default detector
-python3 track_face_pi.py --service HOST:8768    # name the detector
+python3 track_face_pi.py                        # camera, UART, YuNet here
+python3 track_face_pi.py --service HOST:8768    # or a service elsewhere
 python3 track_face_pi.py --no-move
 ```
+
+Not while `rover_daemon.py` is running: one process at a time owns the UART and
+the camera, and the daemon runs the same loop as a tool.
 
 It finds both halves itself: the driver board the way
 [`drive_gamepad.py`](driver-board.md#finding-the-board) does, and the camera by
@@ -169,14 +179,21 @@ face at, and where it was consequently sent.
 
 ## Running the loop from the rover
 
-`track_face_pi.py` puts the camera and the control law on the Pi, the detector on
-another machine, and the servos on the GPIO UART.
+`track_face_pi.py` puts the camera, the control law and now the detector on the
+rover's own board, with the servos on the header UART.
 
-The Pi cannot detect anything itself. An ARM1176 with no NEON measures
-0.039 GFLOP/s on conv-shaped work, so YuNet would cost it about a second a frame
-against 6.5 ms on a desktop CPU. It never even decodes the picture: one 640×480
-JPEG costs it 93 ms to decode, and forwarding those exact bytes untouched costs
-30% of the core at 30 fps.
+**The Pi 1 could not detect anything itself, and that shaped everything below.** An
+ARM1176 with no NEON measures 0.039 GFLOP/s on conv-shaped work, so YuNet would
+have cost it about a second a frame against 6.5 ms on a desktop CPU. It never even
+decoded the picture: one 640×480 JPEG cost it 93 ms, and forwarding those exact
+bytes untouched cost 30% of the core at 30 fps.
+
+**The Banana Pi M4 Zero can.** Four Cortex-A53 cores with NEON run YuNet at 640×480
+in 146 ms on three of them and decode the JPEG in 7, so the detector is in the
+loop's own process and the loop measures 6.6 frames a second with SLAM running
+beside it — against 2.3 on the Pi with the detector on the OAK. Everything below
+about stamps, queues and dead time still applies; the numbers it is applied to are
+smaller by a factor of seven.
 
 Two things change for the better in the move. The dead time stops being a
 constant — V4L2 stamps every buffer at start of exposure, the stamp rides out to

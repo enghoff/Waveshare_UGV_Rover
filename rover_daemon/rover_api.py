@@ -28,11 +28,11 @@ anything else running as `admin`. What it is isolated from is the hardware, and
 what it is bounded by is a wall clock, a memory ceiling and a kill -- which are
 the three ways a program on this rover can do damage without meaning to.
 
-**Nothing here paces itself except :func:`every`.** This host has one core, and
-one `camera.faces()` is a JPEG decode plus a round trip to the OAK -- about 0.4 s
-of it. A loop that asks twice a second has taken the machine away from the scan
-matcher that is keeping the rover off the walls. Use `every`; it is also where
-the run's deadline and a stop are noticed.
+**Nothing here paces itself except :func:`every`.** One `camera.faces()` opens the
+camera, decodes a frame and runs YuNet over it -- about 0.3 s, of which 150 ms is
+three of this board's four cores at full tilt. A loop that asks twice a second has
+taken the machine away from the scan matcher that is keeping the rover off the
+walls. Use `every`; it is also where the run's deadline and a stop are noticed.
 """
 
 from __future__ import annotations

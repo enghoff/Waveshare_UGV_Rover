@@ -237,14 +237,19 @@ attribute classifier anywhere in this repo. So:
 - **"Find someone with glasses" has no model behind it.** Nor age, expression or
   anything else about a face. Adding one is a project, not an exposure.
 
-**Face tracking needs a service on another host, and will now say so.** The
-detector runs on the GPU box, on port 8768. The tracking loop is written to hold
-still through it being away rather than to die, which is right for a loop already
-running and wrong for one being started: it would start, hold still, report
-itself as tracking, and the model would say "I started tracking people" while the
-camera never moved. That is this file's own worst-case failure arriving from
-underneath the prompt written to prevent it. So `start_tracking` checks the
-detector answers before it claims anything:
+**Face tracking needs a detector, and will say so when it has not got one.** It
+runs in this process now — YuNet on the board's own four cores, see
+[face_tracking/yunet.py](../face_tracking/yunet.py) — where it used to be a
+service on the GPU box on port 8768, and briefly the OAK camera's VPU on loopback.
+`--service host:port` still puts it back on a service. The tracking loop is
+written to hold still through a detector being away rather than to die, which is
+right for a loop already running and wrong for one being started: it would start,
+hold still, report itself as tracking, and the model would say "I started tracking
+people" while the camera never moved. That is this file's own worst-case failure
+arriving from underneath the prompt written to prevent it. So `start_tracking`
+checks the detector answers before it claims anything — for the in-process one,
+that the library and the model load, which is where a rover deployed without
+OpenCV finds out:
 
 ```
 {"ok": false, "error": "the face detector at 192.168.1.3:8768 is not answering

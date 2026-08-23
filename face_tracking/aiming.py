@@ -43,10 +43,12 @@ DETECT_WIDTH = 640
 #
 # **These two are YuNet's numbers and no other detector's.** They are a property
 # of how a particular network scores this room's furniture, not of how tracking
-# should behave, so a different detector needs its own pair measured the same way
-# -- see oak_detect/local.py, where the SSD on the OAK camera scores both faces
-# and furniture lower and would never acquire anybody against a bar set here.
-# Target takes them as arguments for exactly that reason.
+# should behave, so a different detector needs its own pair measured the same way.
+# That is not hypothetical: while the rover detected on the OAK camera's VPU, the
+# SSD it ran there scored both faces and furniture lower -- a standing person came
+# out at 0.71 where nothing in an empty room passed 0.60 -- and it never acquired
+# anybody at all against a bar set here. `Target` takes the pair as arguments for
+# exactly that reason, and both callers now pass these because both now run YuNet.
 ACQUIRE_SCORE = 0.85
 KEEP_SCORE = 0.60
 NMS_THRESHOLD = 0.3
@@ -299,6 +301,13 @@ HISTORY_S = max(2.5, DEAD_TIME_S * 2)
 # the answer is not the gain: it is the frame age, and that is a property of the
 # host. At a 200 ms frame age the ranking is the one the table above describes and
 # 0.7 rings barely at all.
+#
+# **That host arrived.** On the Banana Pi M4 Zero, with YuNet detecting on its own
+# cores, the loop measured 6.6 frames a second on 2026-08-23 -- a frame about
+# 190 ms old by the time the angles are worked out, against 1.4 s on the Pi 1. So
+# this is now the frame age the table above was written for, and 0.7 is the value
+# for it rather than a compromise. It has not been re-tuned upwards: the argument
+# for going higher was always about covering ground while the picture was stale.
 GAIN = 0.7
 # Inside this fraction of a half frame, the face counts as centred and nothing is
 # sent. Servos hunting around a target they cannot quite hold is the failure this

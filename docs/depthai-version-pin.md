@@ -1,7 +1,32 @@
 # Why depthai is pinned to `<3`
 
-`requirements.txt` pins `depthai>=2.32,<3`. Do not relax it without re-running
-`preview_depth.py` and a CAM_B-only capture.
+`requirements.txt` pins `depthai>=2.32,<3`, and so does
+[`oak_depth/install.sh`](../oak_depth/install.sh) on the rover. Do not relax
+either without re-running `preview_depth.py` and a CAM_B-only capture.
+
+**This is now the rover's firmware version and not only a desk dependency.** The
+OAK is the rover's depth camera, its Myriad X has no flash, and the host uploads
+firmware out of the wheel on every open — so the pin below decides what the camera
+runs. See [oak_depth/README.md](../oak_depth/README.md).
+
+## Retested on the rover, on 3.9.0, and it is not fixed
+
+Measured 2026-08-23 on the rover's own board — Banana Pi M4 Zero, aarch64, CPython
+3.13 — against depthai **3.9.0**, the current release, each case in its own
+process:
+
+| Case | Result |
+|---|---|
+| CAM_A colour 640×400 | 30 frames, 28.0 fps |
+| CAM_C mono 640×400 | 30 frames, 28.3 fps |
+| CAM_B mono 640×400 | **0 frames**, device crash dump |
+| stereo depth | **0 frames**, `X_LINK_ERROR` on the depth stream, crash dump |
+
+Under 2.32.0.0 on that same board, the same camera streams stereo depth at 10 fps
+with 61–66% of pixels valid. So the fault is the same one 3.8.0 showed on the
+workstation eight months of releases later, and reproducing it on Linux/aarch64
+**rules out Windows and the host OS as confounds** — which the section below could
+not, having only one host to measure on.
 
 ## depthai 3.8.0 crashes this camera's left mono sensor
 
@@ -48,7 +73,8 @@ depthai wheel on every boot. The firmware version *is* the depthai version, so t
 only choice is which wheel:
 
 * **2.32.0.0 (2026-01-27)** is the newest 2.x — what is pinned here.
-* **3.8.0 (2026-07-10)** is the newest release overall — the one measured above.
+* **3.8.0 (2026-07-10)** was the newest release when this was first measured;
+  **3.9.0 (2026-08-15)** is now, and behaves identically — see above.
 
 Two open upstream issues describe the same class of fault, neither fixed as of
 2026-08-11:

@@ -5,11 +5,11 @@
 # exists. gcc would accept CRLF in the C; the shell script will not.
 lidar_slam/** text eol=lf
 
-# oak_detect/ is compiled and run on the rover's Pi too -- build.sh has a shebang,
-# and the vendored C would build fine with CRLF but the shell script would not.
-oak_detect/** text eol=lf
-oak_detect/*.mvcmd binary
-oak_detect/*.blob binary
+# oak_depth/ runs on the rover and its three shell scripts have shebangs, so the
+# same trap applies: a CRLF checkout makes the kernel look for an interpreter with
+# a carriage return in its name. (oak_detect/ was here for the same reason until
+# face detection moved onto the board's own cores; it is in the history.)
+oak_depth/** text eol=lf
 
 # docs/refs/ is vendor material kept verbatim -- a datasheet or a CAD export is
 # evidence for numbers quoted elsewhere, and rewriting the line endings of a STEP
@@ -23,3 +23,8 @@ wifi_roam/** text eol=lf
 
 # rover_daemon's supervisor scripts have shebangs and run on the rover host.
 rover_daemon/*.sh text eol=lf
+
+# face_tracking/install_opencv.sh runs on the rover and has a shebang, and the
+# wheel it unpacks is what the face detector imports -- a CRLF checkout would
+# leave the rover unable to see rather than unable to build.
+face_tracking/*.sh text eol=lf

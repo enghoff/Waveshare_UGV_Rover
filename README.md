@@ -2,7 +2,8 @@
 
 Tools for bringing up, driving and instrumenting a **Waveshare UGV Rover** — the
 rover platform built on Waveshare's *General Driver for Robots* board, with an
-ESP32 on the board and a Raspberry Pi as its host.
+ESP32 on the board and a single-board Linux host beside it — a Raspberry Pi 1
+first, a Banana Pi M4 Zero now.
 
 Half the repository is bench instruments. Each of those scripts drives exactly
 one thing — one camera socket, one sensor, one stored blob — so that when
@@ -23,8 +24,8 @@ computes.
 | [`usb_cameras/`](usb_cameras) | the machine's own UVC webcams | a workstation | OpenCV only |
 | [`driver_board/`](driver_board) | the ESP32 that drives the motors, over WiFi or USB | a workstation | nothing |
 | [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | a workstation, or the Pi | OpenCV |
-| [`face_detect/`](face_detect) | that loop's detector, as an HTTP service | any Linux box with spare CPU | OpenCV |
-| [`oak_detect/`](oak_detect) | the same detector, on the OAK camera's VPU instead | the Pi | a C compiler |
+| [`face_detect/`](face_detect) | that loop's detector as an HTTP service, for a host too slow to run it | any Linux box with spare CPU | OpenCV |
+| [`oak_depth/`](oak_depth) | the OAK as the rover's depth sensor, awake from boot | the rover's board | depthai |
 | [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the Pi | pyserial |
 | [`lidar_slam/`](lidar_slam) | the lidar as a pose, a map, and a rover that drives itself | the Pi | a C compiler |
 | [`voice_chat/`](voice_chat) | speech in, speech out, with the rover's tools attached | a Linux host with an 8 GB GPU | PyTorch |
@@ -53,7 +54,8 @@ driver_board/   drive_gamepad.py, teleop from a game pad, no Pi involved
 face_tracking/  the control law (aiming.py) and the two programs that run it,
                 one on a workstation and one on the rover
 face_detect/    YuNet behind an HTTP request: JPEG in, boxes out, on the CPU
-oak_detect/     the same request answered on the rover, on the OAK's Myriad X
+oak_depth/      the OAK kept awake on the rover as a depth camera: millimetres
+                out over HTTP, and the firmware upload that being awake requires
 rover_daemon/   lights, gimbal and face tracking as tools over TCP
 lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's Pi
 voice_chat/     Whisper + a vision-language model + Kokoro, a desktop client, and

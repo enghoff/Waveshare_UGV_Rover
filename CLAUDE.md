@@ -20,7 +20,7 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 |---|---|---|
 | `rover_daemon/`, `driver_board/`, `face_tracking/` | `rpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
 | `lidar_slam/` | `rpi` | `~/ugv/lidar_slam/` |
-| `oak_detect/` | `rpi` | `~/ugv/oak_detect/` |
+| `oak_depth/` | `rpi` | `~/ugv/oak_depth/`, plus `vendor/` filled by its own `install.sh` |
 | `wifi_roam/` | `rpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
 | `behaviours/` | `rpi` | `~/ugv/behaviours/` — **planned, not built**; see [docs/scripting.md](docs/scripting.md). `scripting.py` and `rover_api.py`, which run scripts, deploy flat with the daemon; the agent-written store must never be overwritten by a deploy |
 | `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
@@ -61,7 +61,8 @@ chat transcript, on a command line where `ps` can see it, or copied onto a host.
 ```bash
 scp rover_daemon/*.py rpi:~/ugv/
 scp lidar_slam/*.py lidar_slam/README.md rpi:~/ugv/lidar_slam/
-scp -r oak_detect rpi:~/ugv/          # the face detector, on the OAK's VPU
+scp face_tracking/*.py face_tracking/install_opencv.sh     face_tracking/face_detection_yunet.onnx rpi:~/ugv/   # the tracking loop and its detector
+scp -r oak_depth rpi:~/ugv/           # the OAK as a depth camera; then its own install.sh
 scp -r wifi_roam rpi:~/ugv/           # the wifi keeper; then its own install.sh
 ssh rpi 'cd ~/ugv && python3 selftest.py | tail -2'
 ssh rpi '~/ugv/restart.sh'          # ~35 s; prints the new tool count
@@ -72,7 +73,8 @@ rather than on an ssh command line, where it would match -- and kill -- the very
 session that typed it.
 
 `restart.sh` kills only the daemon and lets the supervisor restart it, because the
-crontab entry — `@reboot ~/ugv/run_daemon.sh --vision --lidar` — is where the
+crontab entry — `@reboot ~/ugv/run_daemon.sh --vision --lidar`, beside
+`@reboot ~/ugv/oak_depth/run_oak_depth.sh` — is where the
 arguments live. **Never relaunch `run_daemon.sh` by hand**; it drops the flags and
 the rover silently loses tools.
 
@@ -83,13 +85,24 @@ Anything touching `slam2d.c` or `slam2d.h` also needs a rebuild on the host, sin
 ssh rpi 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
 ```
 
-`oak_detect/` is the same story for the same reason — `liboak.so` is armv6 and is
-not committed. Its supervisor is a separate crontab entry, so reloading the
-detector is not the same act as reloading the daemon:
+**Two libraries the rover needs are unpacked rather than installed, and neither is
+committed.** This board's Debian has no `pip` and no `python3-venv`, and `sudo`
+here wants a password no script has, so each is a pinned wheel unzipped into a
+`vendor/` directory by its own script — idempotent, so running it again after a
+deploy costs one import check:
 
 ```bash
-ssh rpi '~/ugv/oak_detect/build.sh && python3 ~/ugv/oak_detect/selftest.py | tail -2'
-ssh rpi '~/ugv/oak_detect/restart.sh'      # ~6 s to boot the VPU and load the graph
+ssh rpi '~/ugv/install_opencv.sh'          # OpenCV 4.12, for YuNet in the daemon
+ssh rpi '~/ugv/oak_depth/install.sh'       # depthai 2.32.0.0, for the OAK's depth
+```
+
+`oak_depth/` has its own supervisor and its own crontab entry, so reloading the
+depth service is not the same act as reloading the daemon. It owns the OAK, and
+only one process can, so stop it before running anything else against the camera:
+
+```bash
+ssh rpi 'python3 ~/ugv/oak_depth/selftest.py'   # with the service stopped
+ssh rpi '~/ugv/oak_depth/restart.sh'            # ~10 s to boot the VPU and stereo
 ```
 
 `wifi_roam/` is neither of those. It is the only thing here installed as a systemd
@@ -104,7 +117,8 @@ ssh rpi 'systemctl list-timers --no-pager wifi-roam.timer'
 ```
 
 Plain `scp` is fine for the `.py` files — no shebang, so CRLF does not bite. The
-shell scripts under `lidar_slam/`, `oak_detect/` and `wifi_roam/` do have one, and
+shell scripts under `lidar_slam/`, `oak_depth/`, `wifi_roam/` and
+`face_tracking/` do have one, and
 they are held to LF by `.gitattributes`; a CRLF checkout turns their shebang into
 an interpreter with a carriage return in its name.
 

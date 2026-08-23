@@ -1,17 +1,19 @@
-"""Track a face from the rover itself: the Pi holds the loop, the OAK does the seeing.
+"""Track a face from the rover itself: the board holds the loop and does the seeing.
 
-The rover's own machine is a Pi 1 Model B -- one ARM1176 at 700 MHz with no NEON
--- and it cannot run a face detector at any useful rate. What it *can* do is hold
-a control loop, and it is the only machine wired to the ESP32, so this is where
-the loop belongs. The picture goes out to a detector and the boxes come back; the
-servo commands never leave the board.
+The rover's own machine is the only one wired to the ESP32, so the control loop
+belongs here whatever else is true. What has changed is whether it can also do the
+detecting. On a Pi 1 -- one ARM1176 at 700 MHz with no NEON -- it could not, and
+the picture had to go out to a detector and the boxes come back: first to YuNet on
+MEDIA over the network, then to the Myriad X inside the OAK camera over USB.
 
-That detector used to be YuNet on MEDIA's CPU, across the network. It is now
-oak_detect/server.py on this same Pi, running the graph on the Myriad X inside the
-OAK camera -- so the rover sees without MEDIA, or any network, being up at all.
-The protocol did not change, which is why this script did not have to.
+The rover now runs a Banana Pi M4 Zero, four Cortex-A53 cores with NEON, and YuNet
+here is faster than either of those was -- 146 ms a frame against 190 through the
+OAK's loopback service. So `--service local` runs it in this process (yunet.py)
+and that is the default; a host:port still POSTs to `face_detect/` on MEDIA, which
+is the same protocol as ever and why neither this script nor the daemon had to
+change shape when the detector moved.
 
-    python3 track_face_pi.py                          # camera, the OAK, ttyAMA0
+    python3 track_face_pi.py                          # camera, YuNet here, the UART
     python3 track_face_pi.py --service 192.168.1.3:8768   # or a detector elsewhere
     python3 track_face_pi.py --host 192.168.1.22      # command the board over WiFi
     python3 track_face_pi.py --no-move                # detect and report, command nothing
@@ -22,13 +24,15 @@ status line rather than a window. The aiming, the thresholds and the sweep are t
 same in both -- they come from aiming.py, which exists so that these two scripts
 cannot drift into being two different robots.
 
-**Nothing here decodes a picture.** The camera is asked for MJPEG and those exact
-bytes are forwarded unopened; the Pi never sees a pixel. That is not an
-optimisation, it is the design: decoding one 640x480 JPEG costs 93 ms on this
-machine, measured, which is three frames' worth of work to produce something
-nothing here needs. Forwarding them costs 30% of the core at 30 fps.
+**Whether this decodes a picture depends on where the detector is.** Against a
+service it does not: the camera is asked for MJPEG and those exact bytes are
+forwarded unopened. Against `--service local` the decode happens here, which on
+the Banana Pi is 7 ms and on the Pi 1 was 93 -- the whole reason the choice used
+to matter. The figures below were measured on the Pi 1 and are kept because they
+are what forwarding costs, and because a slow host is a thing this repository
+expects to meet again.
 
-MEASURED, on this rover, over WiFi (an RTL8188FTV dongle on wlan0):
+MEASURED on the Pi 1 rover, over WiFi (an RTL8188FTV dongle on wlan0):
 
     what                                    320x240    640x480    1280x720
     exposure to a whole frame in hand        39 ms      41 ms      43 ms
@@ -49,16 +53,22 @@ the 266 ms of dead time measured for track_face.py with the camera on the
 workstation's own USB. Moving the camera onto the rover made the loop faster, not
 slower, and the command path is now a wire rather than a radio.
 
-**Against the OAK on this Pi it is slower than that, and the reason is JPEG.**
+**Against the OAK on that Pi it was slower than that, and the reason was JPEG.**
 Measured 2026-08-18, one frame end to end over loopback: 85 ms to decode a 640x480
-MJPEG frame, 41 ms for the detection itself, and 41 ms of this machine's HTTP
+MJPEG frame, 41 ms for the detection itself, and 41 ms of that machine's HTTP
 stack, for about 190 ms a frame -- and with the scan matcher also running, the
-tracking loop settles at **2.3 fps**. Nothing there is the camera's fault: the
-inference is the cheapest part, and what costs is that the picture now has to be
-decoded on the rover instead of being handed to a 5700G. The way to get the rate
-back is to stop sending JPEG at all -- this camera offers uncompressed YUYV, and
-the graph would take those pixels directly -- which is a change to how the frame
-is captured rather than to anything about the detector.
+tracking loop settled at **2.3 fps**. The inference was the cheapest part of it,
+and what cost was that the picture had to be decoded on the rover instead of being
+handed to a 5700G.
+
+**On the Banana Pi none of that arithmetic survives, and the detector came home.**
+Measured 2026-08-23 through the daemon, which runs the same aiming and the same
+thresholds: 7 ms to decode the frame, 146 ms for YuNet on three of the four cores,
+and no HTTP at all, for **6.6 frames a second** with the scan matcher running
+beside it. The OAK is faster at nothing here -- its own inference measured 89 ms
+against YuNet's 146, but the loopback POST that carried the frame to it cost 100 ms
+of the 190 -- so the camera has stopped being a detector and become what it is
+built to be, a depth sensor. See oak_depth/.
 
 That figure was 73 ms until the detector stopped writing its replies in two
 sends: see the Nagle note in face_detect/server.py. Worth recording how that hid,
@@ -213,14 +223,14 @@ CAMERA_NICE = 10
 
 # --- the detector ---------------------------------------------------------
 
-# By address, not by name. The rover is reached by name because it has two
-# addresses and which one is live varies; MEDIA has one fixed address, so a
-# name buys no agility here and costs mDNS. Measured from the Pi, three
-# lookups of `media.local` in a row: 344 ms, **5193 ms**, 194 ms. This sits
-# in a control loop with a 1 s service timeout, so that outlier is a stall,
-# and a transient resolver failure is a frame nobody looked at. Pass
-# --service media.local:8768 to point it at a detector on another host instead.
-DEFAULT_SERVICE = "127.0.0.1:8768"  # oak_detect/server.py, on this Pi
+# "local" is YuNet in this process; anything else is host:port and is POSTed to.
+# When it is an address, give an address rather than a name. The rover is reached
+# by name because it has two addresses and which one is live varies; MEDIA has one
+# fixed address, so a name buys no agility there and costs mDNS. Measured from the
+# rover, three lookups of `media.local` in a row: 344 ms, **5193 ms**, 194 ms.
+# This sits in a control loop with a 1 s service timeout, so that outlier is a
+# stall and a transient resolver failure is a frame nobody looked at.
+DEFAULT_SERVICE = "local"  # yunet.py, on this board's own cores
 # One round trip is ~15 ms of network and detection. This is long enough that a
 # service busy with another client is waited for and short enough that a dead one
 # is noticed within a frame or two.
@@ -344,9 +354,9 @@ class Camera:
     def __init__(self, device=DEFAULT_DEVICE, size=DEFAULT_SIZE, pixelformat="MJPG"):
         self.device = device
         self.size = size
-        # MJPG or YUYV. Uncompressed exists for the detector on the rover, which
-        # can take pixels directly rather than decoding a JPEG at 85 ms a go --
-        # see oak_detect/local.py.
+        # MJPG or YUYV. Uncompressed exists for a detector that takes pixels
+        # directly rather than decoding a JPEG -- which the OAK's did, and which
+        # is worth nothing now that decoding one costs 7 ms here rather than 85.
         #
         # **On the Pi this bus does not carry it, and tracking uses MJPG.** 614 kB
         # a frame at 30 fps is 18 MB/s where the reader below drains about 7, so
@@ -884,7 +894,7 @@ def parse_size(text):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Track a face from the rover, detecting on the OAK camera's VPU.")
+        description="Track a face from the rover, detecting on its own cores.")
     parser.add_argument(
         "--service", default=DEFAULT_SERVICE, metavar="HOST[:PORT]",
         help=f"the face detector (default {DEFAULT_SERVICE})")
@@ -922,7 +932,15 @@ def main():
     stop_on_sigterm()
     camera = Camera(args.device, args.size)
     width, height = args.size
-    detector = Detector(args.service)
+    # The same choice the daemon makes in `rover_camera._open_detector`, and made
+    # the same way for the same reason: two ways of picking a detector would be
+    # two robots that see differently.
+    if args.service == "local":
+        from yunet import KEEP_SCORE, LocalDetector
+
+        detector = LocalDetector(score=KEEP_SCORE, size=args.size)
+    else:
+        detector = Detector(args.service)
     link = open_link(args)
     print(f"camera {args.device} {width}x{height} MJPG -> {detector.describe()}, "
           f"commanding {link.describe()}; Ctrl-C to stop")

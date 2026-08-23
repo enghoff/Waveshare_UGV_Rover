@@ -1,6 +1,7 @@
 # depthai 3.x crashes this camera's left mono sensor -- see
-# docs/depthai-version-pin.md. Do not relax this pin without re-testing CAM_B
-# and stereo depth.
+# docs/depthai-version-pin.md, retested on 3.9.0 on the rover itself. Do not relax
+# this pin without re-testing CAM_B and stereo depth. oak_depth/install.sh pins the
+# same version on the rover, where it is also the camera's firmware version.
 depthai>=2.32,<3
 opencv-python>=4.10
 numpy>=1.26

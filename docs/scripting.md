@@ -27,16 +27,18 @@ of this idea — hand the model the servos and let it write the control loop —
 wrong on this rover for reasons that have nothing to do with the design.
 
 The host is a Pi 1: one 700 MHz core, 474 MB, no SIMD. See [hosts.md](hosts.md).
-What is already on it, measured:
+What is already on it, measured — the left column on the Pi 1 this was written
+for, the right on the Banana Pi M4 Zero the rover moved to on 2026-08-23. The
+argument below survives the move; the margins are what changed:
 
-| | costs |
-|---|---|
-| scan-matched 2D SLAM, in C | 33.5% of the core |
-| forwarding 30 fps of 640×480 MJPEG | ~30% of the core |
-| the face-tracking loop | 2.3–2.4 frames a second |
-| of which, decoding one JPEG | 275–308 ms wall, 115–135 ms busy |
-| of which, the detection on the OAK | 123–127 ms |
-| age of the frame that loop steers by | median 1.33 s |
+| | Pi 1, one core | M4 Zero, four cores |
+|---|---|---|
+| scan-matched 2D SLAM, in C | 33.5% of the core | a core, near enough |
+| the face-tracking loop | 2.3–2.4 fps | 6.6 fps |
+| of which, decoding one JPEG | 275–308 ms wall, 115–135 busy | 7 ms |
+| of which, the detection | 123–127 ms on the OAK's VPU | 146 ms on three cores |
+| age of the frame that loop steers by | median 1.33 s | ~190 ms |
+| the OAK, now a depth camera | — | 13% of one core |
 
 The numbers are from [moving-to-new-hardware.md](moving-to-new-hardware.md),
 which also explains why the frame age is arithmetic rather than a bug: a
@@ -52,10 +54,12 @@ drive a metre, wait for a person, take one picture. Never a servo write at 30 Hz
 and never a per-frame callback.
 
 That rule also gives a script's tick rate a meaning it would not otherwise have.
-One "how many faces can you see" is a JPEG decode plus a round trip to the OAK,
-so it is about 0.4 s of the core. A script polling that every two seconds costs a
-fifth of the machine; the same script polling five times a second *is* the
-machine, and the SLAM underneath it stops keeping up. The pacing primitive is
+One "how many faces can you see" opens the camera, decodes a frame and runs YuNet
+over it — about 0.3 s, of which 150 ms has three of the four cores. A script
+polling that every two seconds costs a fifteenth of the machine; the same script
+polling five times a second *is* the machine, and the SLAM underneath it stops
+keeping up. On the Pi 1 that round trip went to the OAK and cost 0.4 s of the one
+core, so the ratio is better now and the rule is not different. The pacing primitive is
 where that shows, which is why it is a primitive and not a `time.sleep`.
 
 ## The script is a process, not a sandbox
@@ -450,7 +454,7 @@ would not benefit from being given.
 The figures in [what is built](#what-is-built-and-what-waits) and in [starting an
 interpreter](#starting-an-interpreter-costs-more-than-most-scripts-do) were taken
 on the rover on 2026-08-20, against the running daemon, the real driver board and
-the OAK. The CPU and timing figures for the tracking loop are quoted from
+the OAK as it was then — a face detector rather than the depth camera it is now. The CPU and timing figures for the tracking loop are quoted from
 [hosts.md](hosts.md) and [moving-to-new-hardware.md](moving-to-new-hardware.md),
 and the tool-selection and token figures from [talk.py](../voice_chat/talk.py)
 and the voice service's README; those were measured when those documents say, not

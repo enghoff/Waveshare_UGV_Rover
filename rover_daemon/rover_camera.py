@@ -10,7 +10,6 @@ import socket
 import sys
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
 from rover_util import _flag, _level, _number
@@ -200,10 +199,13 @@ class RoverCamera:
             return self._camera
         if self._camera is not None:
             self._camera.close()
-        # MJPEG, even though the in-process detector can take raw pixels and
-        # decoding a JPEG costs 85 ms against 14 ms to convert YUYV. Taking the
-        # cheaper conversion made the loop three times *slower*, and the reason is
-        # that the cost being compared was not the cost that mattered.
+        # MJPEG, even though the detector could take raw pixels instead of
+        # decoding one. Taking the cheaper conversion made the loop three times
+        # *slower* on the Pi, and the reason it stays MJPEG on a board that is not
+        # the Pi is the second cost below rather than the first: this board
+        # decodes a 640x480 frame in 7 ms, so the decode has stopped mattering,
+        # and 18 MB/s of uncompressed frames on a bus shared with the wifi
+        # adapter and the OAK has not.
         #
         # v4l2-ctl's stdout is a queue, not a slot. Uncompressed 640x480 at 30 fps
         # is 18 MB/s and this host's reader drains about 7, so the pipe stayed full
@@ -213,9 +215,9 @@ class RoverCamera:
         # instead of 614, the reader keeps up at the full 30 fps, and the frame in
         # hand is at most 33 ms old rather than half a second.
         #
-        # The decode is not even wasted work here: libjpeg-turbo scales while it
-        # decodes, and 640x480 at its 1/2 factor is exactly the graph's 320x240
-        # input, so no resize follows it. See oak_detect/local.py.
+        # The decode is not wasted work either: YuNet works at the frame's own 640
+        # pixels, so what comes out of libjpeg goes straight to the network with no
+        # resize between them. See yunet.py.
         #
         # The 18 MB/s had a second cost that settles the question on its own: it
         # starved the wlan adapter off the same USB controller and took the rover
@@ -245,27 +247,30 @@ class RoverCamera:
     def _open_detector(self):
         """The face detector, in this process or over HTTP.
 
-        `--service local` opens the OAK here and feeds it raw frames, which is
-        what makes the loop run at a useful rate. Anything host:port keeps the
-        old path, which is how the detector can be put back on another machine
-        without changing anything else.
+        `--service local` runs YuNet here, on this board's four cores, which is
+        both faster than the OAK's VPU was and free of the loopback round trip
+        that used to carry every frame to it -- 146 ms against 190, measured.
+        Anything host:port keeps the old path, which is how the detector can be
+        put back on `face_detect/` on MEDIA without changing anything else.
+
+        Either way the thresholds are `aiming.py`'s, because either way the
+        network is YuNet. That was not true while the OAK was here: an SSD scores
+        this room's furniture and its people both lower, so it carried its own
+        pair and the two could not be mixed up.
         """
         if self._detector is not None:
             return self._detector
-        if self.service == "local":
-            sys.path.insert(0, str(Path(__file__).resolve().parent / "oak_detect"))
-            from local import ACQUIRE_SCORE, KEEP_SCORE, LocalDetector
+        from aiming import ACQUIRE_SCORE
 
-            # This detector's own thresholds, not aiming.py's -- see local.py.
+        if self.service == "local":
+            from yunet import KEEP_SCORE, LocalDetector
+
             self._detector = LocalDetector(score=KEEP_SCORE, size=self.size)
-            self._acquire_score = ACQUIRE_SCORE
         else:
-            from aiming import ACQUIRE_SCORE
             from track_face_pi import Detector
 
-            # YuNet's bar, for YuNet behind the HTTP service.
             self._detector = Detector(self.service)
-            self._acquire_score = ACQUIRE_SCORE
+        self._acquire_score = ACQUIRE_SCORE
         return self._detector
 
     def _tool_detect_in(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -428,9 +433,10 @@ class RoverCamera:
             jpeg, at = frame
             if time.monotonic() - at > FRAME_STALE_S:
                 return None, "tracking is running but its last frame is stale"
-            # Raw when the local detector is in use, so this is where a picture
-            # gets made. Only reached when somebody asks to see one, never in the
-            # loop -- encoding costs about what decoding used to.
+            # Every frame the loop holds is already a picture, because the camera
+            # is opened in MJPEG. The encode stays as the path for a frame that is
+            # not -- a detector taking raw pixels would leave one here -- and it is
+            # only ever reached when somebody asks to see something.
             if not jpeg.startswith(b"\xff\xd8"):
                 encoder = self._detector
                 jpeg = encoder.encode_jpeg(jpeg) if encoder is not None else None
@@ -507,32 +513,33 @@ class RoverCamera:
     def _detector_ready(self) -> str:
         """Empty if the face detector answers, otherwise why not, in a sentence.
 
-        Face tracking needs the detector service, and its being away is still an
-        expected state even now that it is on this same Pi -- it holds a USB
-        device that can be unplugged, and it takes several seconds to boot that
-        device after a restart. The loop is written to hold still through that
-        rather than to die. Which is right for a loop already running
-        and wrong for one being started: the loop starts, holds still, reports
-        itself as tracking, and the model says "I started tracking people" while
-        the camera never moves. That is the failure this whole directory's prompt
-        wording exists to prevent, arriving from underneath the prompt.
+        Face tracking needs the detector, and its being away is still an expected
+        state even now that it runs in this process: OpenCV is unpacked onto this
+        board by a deploy step rather than installed by a package manager, and a
+        rover that has been rebuilt without it can see nothing at all. The loop is
+        written to hold still through a detector that is not answering rather than
+        to die. That is right for a loop already running and wrong for one being
+        started: the loop starts, holds still, reports itself as tracking, and the
+        model says "I started tracking people" while the camera never moves. That
+        is the failure this whole directory's prompt wording exists to prevent,
+        arriving from underneath the prompt.
 
         A refusal is instant and a host that is off takes the timeout, which is
-        why this is bounded rather than left to the first detect call.
+        why the socket case is bounded rather than left to the first detect call.
 
         For the detector in this process there is no socket to probe, so the
-        readiness question is whether the device opens -- which is the same
-        question, and answering it here means the several seconds of firmware and
-        graph upload are paid once, on the first call, rather than being mistaken
-        for a camera that will not answer.
+        readiness question is whether the library and the model load -- which is
+        the same question, and answering it here means the load is paid once, on
+        the first call, rather than being mistaken for a camera that will not
+        answer.
         """
         if self.service == "local":
             try:
                 self._open_detector()
                 return ""
             except Exception as error:
-                return (f"the OAK could not be opened ({error}), so tracking a "
-                        f"face is not possible right now")
+                return (f"the face detector could not be loaded ({error}), so "
+                        f"tracking a face is not possible right now")
         host, _, port = self.service.partition(":")
         try:
             with socket.create_connection((host, int(port or 8768)), DETECT_PROBE_S):
@@ -621,14 +628,13 @@ class RoverCamera:
 
         Called by the navigator the instant before anything moves, and the one place
         that decides what driving outranks. Face tracking and driving cannot both
-        run. Face tracking holds the camera and now decodes every frame here as
-        well as posting it -- measured at 64-87 ms of JPEG per frame since the
-        detector moved onto the rover, well over the 30% of this core that
-        forwarding alone used to cost -- and SLAM is another 33%; run both and the
-        scan matcher starts dropping revolutions, which degrades exactly the thing
-        that is keeping the rover off the walls. Aiming the camera while driving is also a good way
-        to be looking at somebody's face when something appears in front of the
-        tracks.
+        run. Face tracking holds the camera, decodes every frame and then runs the
+        network on it -- three of this board's four cores for 146 ms of every 160,
+        measured -- and the scan matcher needs a core of its own; run both and it
+        starts dropping revolutions, which degrades exactly the thing that is
+        keeping the rover off the walls. Aiming the camera while driving is also a
+        good way to be looking at somebody's face when something appears in front
+        of the tracks.
 
         The camera feed is released as well as the loop that was reading it, and not
         only the loop, because those are two different things and the second used to

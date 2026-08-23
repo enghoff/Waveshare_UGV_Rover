@@ -1,13 +1,22 @@
 # Face detection service
 
-YuNet on MEDIA's CPU, behind an HTTP request. JPEG in, boxes out. It exists so
-the rover can see: a Pi 1 cannot run this detector at any useful rate, but it can
-forward a picture and steer servos, which is what
-[face_tracking/track_face_pi.py](../face_tracking/track_face_pi.py) does.
+YuNet on MEDIA's CPU, behind an HTTP request. JPEG in, boxes out.
+
+**The rover no longer needs this, and that is a change of hardware rather than of
+mind.** It exists because a Pi 1 could not run this detector at any useful rate,
+while it could forward a picture and steer servos. The rover's board is now a
+Banana Pi M4 Zero and runs the same network in its own process at 146 ms a frame
+(see [face_tracking/yunet.py](../face_tracking/yunet.py)), so this service is the
+fallback rather than the path: `--service host:port` on
+[track_face_pi.py](../face_tracking/track_face_pi.py) or on the daemon points the
+loop back here, which is what any host too slow to detect for itself will want —
+including this one, if something else on the rover ever needs those three cores
+more than tracking does. The protocol has not changed through three moves of where
+the detector runs, which is why none of the callers had to.
 
 ```
-  admin@rpi (on the rover)                    root@media
-  ------------------------                    ----------
+  admin@rover (with --service media:8768)     root@media
+  ---------------------------------------     ----------
   USB camera --MJPEG--> forward, never decode
                             |  POST /detect, one frame in flight
                             |                 YuNet, 4 threads, ~6 ms

@@ -526,6 +526,55 @@ def test_counting_faces_does_not_hold_the_board():
     rover.close()
 
 
+def test_the_local_detector_scales_its_boxes_back_up():
+    """A box is measured in the copy the network saw and used in the frame's pixels.
+
+    The one piece of arithmetic in `yunet.py` that no amount of watching the rover
+    would show as wrong. Detecting on a reduced copy and forgetting to scale the
+    box back up aims the camera at a point a fixed fraction of the way towards the
+    face, on both axes, which looks exactly like a gain that is too low -- and this
+    repository has spent weeks on aiming faults that presented that way. On the
+    rover as it stands the scale is 1.0 and the bug would be invisible; it appears
+    the moment somebody captures at 720p, which is a supported mode.
+
+    Skipped where OpenCV is not installed, which is every host but the rover and
+    the desk.
+    """
+    try:
+        from yunet import LocalDetector, YuNetError
+    except ImportError as error:
+        SKIP.append(f"the local detector's boxes ({error})")
+        return
+    try:
+        detector = LocalDetector(size=(1280, 720), width=640)
+    except YuNetError as error:
+        SKIP.append(f"the local detector's boxes ({error})")
+        return
+
+    # One synthetic YuNet row: a 30x40 box at (10, 20), the five landmarks it also
+    # returns, and the score. Real detections are unavailable without a real face,
+    # and this is not about detection -- it is about what happens to a box after.
+    row = [10.0, 20.0, 30.0, 40.0] + [0.0] * 10 + [0.9]
+    faces = detector._boxes([row], 640)
+    check("a box detected on a half-scale copy is doubled",
+          faces, [[20.0, 40.0, 60.0, 80.0, 0.9]])
+    check("a box detected at the frame's own width is left alone",
+          LocalDetector(size=(640, 480))._boxes([row], 640),
+          [[10.0, 20.0, 30.0, 40.0, 0.9]])
+    check("the frame's width decides the decode ratio",
+          detector._decode(b"not a jpeg at all"), None)
+
+    # A frame that will not decode is "no faces", not "no detector". The two are
+    # different in the loop: one aims, the other holds still.
+    got = detector.detect(bytes([0xFF, 0xD8]) + b" not really a jpeg "
+                          + bytes([0xFF, 0xD9]))
+    check("an undecodable frame is no faces rather than no answer", got, [])
+    check("...and is counted as an error", detector.errors, 1)
+    check("the description says what is running and how wide",
+          detector.describe().startswith("YuNet in this process, 640px wide"), True)
+    detector.close()
+
+
 def test_camera_cone():
     """The one conversion between the gimbal's angles and the map's.
 
@@ -1186,7 +1235,8 @@ def main():
                  test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_default_camera, test_look, test_snapshot_splitting,
                  test_driving_takes_the_core,
-                 test_counting_faces_does_not_hold_the_board, test_camera_cone,
+                 test_counting_faces_does_not_hold_the_board,
+                 test_the_local_detector_scales_its_boxes_back_up, test_camera_cone,
                  test_map_png_names_the_clock,
                  test_drive_to_takes_a_place_on_the_map,
                  test_wifi_status_without_the_helper_still_reports_the_link,
