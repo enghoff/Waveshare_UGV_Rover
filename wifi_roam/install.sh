@@ -110,3 +110,11 @@ if [ "$HAS_NM" = 1 ]; then
 else
     echo "helper: /usr/local/sbin/wifi_ctl.sh (no roam timer: no NetworkManager)"
 fi
+
+# <hostname>.local has to be advertised or `ssh bpi-m4zero` dies in the
+# resolver. Raspberry Pi OS already runs avahi-daemon; leave that alone.
+# Ubuntu on the Banana Pi has systemd-resolved with MulticastDNS off and no
+# avahi, so the name existed only in ~/.ssh/config. Enabling resolved's own
+# responder is a drop-in and a restart -- no apt, and nothing that takes the
+# radio off the air.
+sh "$HERE/install-mdns.sh"
