@@ -21,3 +21,7 @@ lidar_slam/selftest
 # wheels' counts per metre. Belongs to the machine, not the repository, and
 # lives beside ~/ugv so no deploy can overwrite it. See lidar_slam/odometry.py.
 odometry.json
+
+# netprobe writes its record of what the rover looked like from a desk here.
+# It is evidence about one afternoon on one network, not source.
+netwatch/*.log

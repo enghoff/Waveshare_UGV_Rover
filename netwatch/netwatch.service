@@ -1,0 +1,32 @@
+[Unit]
+Description=netwatch -- record why the rover falls off the network
+Documentation=file:/home/admin/ugv/netwatch/README.md
+# Started after the two things it watches, but it does not need either of them:
+# a missing wpa_supplicant control socket is itself a fact worth logging, and the
+# /proc half of the sampler works whatever the network stack is doing. The point
+# of ordering it here at all is to be running before the first association, so a
+# boot that never reaches the network is recorded from the beginning.
+After=systemd-networkd.service wpa_supplicant.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/netwatch.py
+# Always, and quickly. The failure this is installed to catch takes the whole
+# board with it, so the service being back before the network is the difference
+# between recording the recovery and recording nothing.
+Restart=always
+RestartSec=5
+# Ten seconds to write the stop record and sync. That record is the only thing
+# separating "somebody rebooted it" from "it fell over", so it is worth waiting
+# for; a kill here would make every clean shutdown look like a crash.
+TimeoutStopSec=10
+KillSignal=SIGTERM
+# Polite about the CPU and deliberately not about the disk: an idle IO class
+# would let a busy board defer the fsync that is the entire point.
+Nice=10
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
