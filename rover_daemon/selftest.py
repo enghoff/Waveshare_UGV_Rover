@@ -592,9 +592,9 @@ def test_map_png_names_the_clock():
 def test_wifi_status_without_the_helper_still_reports_the_link():
     """The console's network panel has to work without NetworkManager.
 
-    `wifi_ctl.sh` is the Pi helper. On a netplan host it is not installed, and
-    the page used to show only that sentence -- no SSID, no address -- even
-    though the kernel already knew both.
+    `wifi_ctl.sh` is the privileged helper. When it is missing the page used to
+    show only that sentence -- no SSID, no address -- even though the kernel
+    already knew both.
     """
     import rover_daemon
     import rover_wifi
@@ -621,6 +621,48 @@ def test_wifi_status_without_the_helper_still_reports_the_link():
     check("...with the associated network", got.get("connected"), "TheGreatLord")
     check("...and the address", got.get("address"), "192.168.1.47")
     check("...and says the helper is missing", "install" in str(got.get("note", "")), True)
+
+
+def test_an_unfilled_signal_column_is_a_moment_not_an_answer():
+    """The M4 Zero's driver leaves /proc/net/wireless at -256 now and then.
+
+    -256 is "not filled in" rather than a reading, and the next read is usually
+    good, so it is worth re-reading before falling back. The fallback is no use on
+    this board anyway -- `iw` reports `signal: 0 dBm` here, which is not a level
+    either -- so giving up on one sample cost the console its signal entirely.
+    """
+    import rover_wifi
+
+    reads = []
+
+    def fake(iface="wlan0"):
+        reads.append(iface)
+        return None if len(reads) < 3 else -41
+
+    slept = []
+    real_proc, real_iw = rover_wifi._proc_level_dbm, rover_wifi._iw_signal_dbm
+    real_sleep = rover_wifi.time.sleep
+    rover_wifi._proc_level_dbm = fake
+    rover_wifi._iw_signal_dbm = lambda iface="wlan0": "asked iw"
+    rover_wifi.time.sleep = slept.append
+    try:
+        check("an unfilled column is read again", rover_wifi._wifi_level_dbm(), -41)
+        check("...and iw is not asked while /proc still answers", len(reads), 3)
+        # The driver refreshes the figure on a timer, so a re-read that does not
+        # wait is the same read again and cannot come back different.
+        check("...having waited between the tries", slept, [rover_wifi.PROC_LEVEL_GAP_S] * 2)
+        reads.clear()
+        del slept[:]
+        rover_wifi._proc_level_dbm = lambda iface="wlan0": reads.append(iface)
+        check("a column that never fills falls back to iw",
+              rover_wifi._wifi_level_dbm(), "asked iw")
+        check("...after trying /proc a few times",
+              len(reads), rover_wifi.PROC_LEVEL_TRIES)
+        check("...and does not wait after the last try",
+              len(slept), rover_wifi.PROC_LEVEL_TRIES - 1)
+    finally:
+        rover_wifi._proc_level_dbm, rover_wifi._iw_signal_dbm = real_proc, real_iw
+        rover_wifi.time.sleep = real_sleep
 
 
 def test_control_calls_without_hardware():
@@ -1082,6 +1124,7 @@ def main():
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_map_png_names_the_clock,
                  test_wifi_status_without_the_helper_still_reports_the_link,
+                 test_an_unfilled_signal_column_is_a_moment_not_an_answer,
                  test_control_calls_without_hardware,
                  test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,

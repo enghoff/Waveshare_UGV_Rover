@@ -23,26 +23,37 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 [ "$(id -u)" = 0 ] || { echo "run this with sudo"; exit 1; }
 
-for s in $NETS; do
-    if nmcli -t -f NAME con show | grep -qx "$s"; then
-        echo "$s: already known"
-    elif [ -z "$PSK" ]; then
-        echo "$s: missing, and no passphrase given -- skipped"
-        continue
-    else
-        nmcli con add type wifi ifname wlan0 con-name "$s" ssid "$s" \
-            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" > /dev/null
-        echo "$s: added"
-    fi
-    # Autoconnect is what reconnects the rover at all; the retry limit is what
-    # decides whether it still tries an hour later. NM's default of four attempts
-    # blocks a profile after a handful of failures, which is exactly what a rover
-    # parked out of range does before it is carried back inside.
-    nmcli con mod "$s" \
-        connection.autoconnect yes \
-        connection.autoconnect-priority 0 \
-        connection.autoconnect-retries 0
-done
+# The Pi still runs NetworkManager. The Banana Pi runs netplan and
+# wpa_supplicant, and has no nmcli: the house networks already live in
+# /etc/netplan, and the roam timer cannot run here as written. The helper
+# still has to be installed -- that is what the console's "look for networks"
+# button actually calls.
+if command -v nmcli >/dev/null 2>&1; then
+    HAS_NM=1
+    for s in $NETS; do
+        if nmcli -t -f NAME con show | grep -qx "$s"; then
+            echo "$s: already known"
+        elif [ -z "$PSK" ]; then
+            echo "$s: missing, and no passphrase given -- skipped"
+            continue
+        else
+            nmcli con add type wifi ifname wlan0 con-name "$s" ssid "$s" \
+                wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" > /dev/null
+            echo "$s: added"
+        fi
+        # Autoconnect is what reconnects the rover at all; the retry limit is what
+        # decides whether it still tries an hour later. NM's default of four attempts
+        # blocks a profile after a handful of failures, which is exactly what a rover
+        # parked out of range does before it is carried back inside.
+        nmcli con mod "$s" \
+            connection.autoconnect yes \
+            connection.autoconnect-priority 0 \
+            connection.autoconnect-retries 0
+    done
+else
+    HAS_NM=0
+    echo "no NetworkManager; installing the scan/join helper only"
+fi
 
 # Prove the script on this machine before making it the one that runs, since the
 # self-test needs no radio and takes a few seconds. A copy that arrived with CRLF
@@ -87,11 +98,15 @@ fi
 rm -f "$tmp"
 systemctl daemon-reload
 
-# The radio switch first, and `--now` on purpose: NetworkManager restores that
-# switch from a state file at boot, so a rover found with its wifi off stays off
-# however healthy everything else is, and running this script is then the repair
-# as well as the install.
-systemctl enable --now wifi-radio-on.service
-systemctl enable --now wifi-roam.timer
-echo "radio: $(nmcli radio wifi)"
-systemctl list-timers --no-pager wifi-roam.timer
+if [ "$HAS_NM" = 1 ]; then
+    # The radio switch first, and `--now` on purpose: NetworkManager restores that
+    # switch from a state file at boot, so a rover found with its wifi off stays off
+    # however healthy everything else is, and running this script is then the repair
+    # as well as the install.
+    systemctl enable --now wifi-radio-on.service
+    systemctl enable --now wifi-roam.timer
+    echo "radio: $(nmcli radio wifi)"
+    systemctl list-timers --no-pager wifi-roam.timer
+else
+    echo "helper: /usr/local/sbin/wifi_ctl.sh (no roam timer: no NetworkManager)"
+fi

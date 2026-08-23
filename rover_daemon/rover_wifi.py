@@ -62,14 +62,20 @@ def _terse_fields(line: str) -> list[str]:
     return fields
 
 
-def _wifi_level_dbm(iface: str = WIFI_IFACE) -> int | None:
-    """The driver's own idea of the link, in dBm, for the cost of one file read.
+# How many times to read /proc before believing it has nothing, and how long to
+# wait between tries. The M4 Zero's driver leaves the dBm column at -256 -- "not
+# filled in" -- for part of the time: measured at 20 ms over 8 s, 19 of 395
+# samples were unfilled, in unbroken runs of one to three samples, so the state
+# lasts 20 to 60 ms. The gap matters more than the count. Back-to-back reads
+# return the identical figure because the driver refreshes it on a timer, so four
+# reads in a row are one read repeated; four spaced 30 ms apart span 90 ms and
+# clear the longest stretch seen. Nothing waits unless the column is unfilled.
+PROC_LEVEL_TRIES = 4
+PROC_LEVEL_GAP_S = 0.03
 
-    Worth preferring over anything nmcli reports: measured on this dongle, a scan's
-    0-100 figure wandered from 74 to 88 for the same association while this held
-    steady within a couple of dB. It is also the only number here that is free, and
-    the only one that moves while the rover drives.
-    """
+
+def _proc_level_dbm(iface: str = WIFI_IFACE) -> int | None:
+    """One read of the driver's dBm column, or None if it was not filled in."""
     try:
         with open("/proc/net/wireless", encoding="ascii") as handle:
             for line in handle:
@@ -83,6 +89,23 @@ def _wifi_level_dbm(iface: str = WIFI_IFACE) -> int | None:
                     return level
     except (OSError, ValueError, IndexError):
         pass
+    return None
+
+
+def _wifi_level_dbm(iface: str = WIFI_IFACE) -> int | None:
+    """The driver's own idea of the link, in dBm, for the cost of one file read.
+
+    Worth preferring over anything nmcli reports: measured on this dongle, a scan's
+    0-100 figure wandered from 74 to 88 for the same association while this held
+    steady within a couple of dB. It is also the only number here that is free, and
+    the only one that moves while the rover drives.
+    """
+    for attempt in range(PROC_LEVEL_TRIES):
+        level = _proc_level_dbm(iface)
+        if level is not None:
+            return level
+        if attempt + 1 < PROC_LEVEL_TRIES:
+            time.sleep(PROC_LEVEL_GAP_S)
     return _iw_signal_dbm(iface)
 
 
@@ -123,8 +146,7 @@ def _wifi_ssid(iface: str = WIFI_IFACE) -> str | None:
 
     The privileged helper is how this rover lists neighbours and switches, but
     "which network am I on" is a kernel fact and has to keep working on a host
-    that never got `wifi_roam/install.sh` -- the Banana Pi runs netplan, not
-    NetworkManager, so that helper cannot be installed as-is.
+    that never got `wifi_roam/install.sh`.
     """
     for argv in _iw_argv(iface):
         try:

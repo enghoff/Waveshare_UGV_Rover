@@ -1,23 +1,22 @@
 #!/bin/sh
 # The privileged half of the rover's wifi, for the daemon to call.
 #
-#     wifi_ctl.sh list           # the access points NetworkManager already knows of
+#     wifi_ctl.sh list           # the access points last heard, without looking again
 #     wifi_ctl.sh scan           # ...after asking the radio to look again
 #     wifi_ctl.sh join <ssid>    # switch to one of the configured networks
 #     wifi_ctl.sh profiles       # the networks that have a passphrase on this rover
 #
 # It exists because the daemon runs as `admin` and two of these need root:
-# scanning and activating a connection are polkit-guarded, and polkit grants those
-# to an active local session, which a daemon is not. The alternative was to give
-# `admin` blanket control of NetworkManager through a polkit rule; this is the
-# narrow version of the same thing, and `install.sh` grants it a passwordless sudo
-# rule for this one path.
+# scanning and switching. On the Pi that is NetworkManager, and polkit grants
+# those to an active local session, which a daemon is not. On the Banana Pi it is
+# wpa_supplicant, and the control socket is root:root. The alternative was a
+# blanket grant; this is the narrow version, and `install.sh` gives it a
+# passwordless sudo rule for this one path.
 #
 # **A join can only ever reach a network that is already configured here.** The
-# SSID is checked against NetworkManager's own list of wifi profiles before it is
-# used, so the worst a caller can ask for is one of the networks somebody has
-# already put a passphrase in for. Nothing here interpolates its argument into a
-# shell command.
+# SSID is checked against the profiles this rover holds a passphrase for before
+# it is used, so the worst a caller can ask for is one of those. Nothing here
+# interpolates its argument into a shell command.
 #
 # `list` needs no privilege and is here anyway, so that the daemon has one way in
 # rather than two -- and so that the difference between a cached list and a fresh
@@ -28,6 +27,38 @@
 set -u
 
 IFACE=${IFACE:-wlan0}
+
+# The three house access points this rover is allowed to join. Used when there
+# is no NetworkManager to ask, and as the fallback when wpa_cli cannot be
+# reached unprivileged -- the control socket on the Banana Pi is root:root.
+NETS=${NETS:-"TheGreatLord TheMaharaja TheGreatViking"}
+
+# Which stack to talk to. The Pi still runs NetworkManager; the Banana Pi runs
+# netplan and wpa_supplicant. Override is for the self-test, so each path can
+# be driven without the other tool being on PATH.
+backend() {
+    if [ -n "${WIFI_BACKEND:-}" ]; then
+        echo "$WIFI_BACKEND"
+        return
+    fi
+    if command -v nmcli >/dev/null 2>&1; then
+        echo nmcli
+    else
+        echo wpa
+    fi
+}
+
+find_bin() {
+    # $1 = name, $2 = well-known fallback. Root's PATH has /sbin; admin's often
+    # does not, and `list` is the unprivileged call.
+    if command -v "$1" >/dev/null 2>&1; then
+        command -v "$1"
+    elif [ -x "$2" ]; then
+        echo "$2"
+    else
+        echo "$1"
+    fi
+}
 
 # The roamer's own lock and state file, which a deliberate join has to touch for
 # two separate reasons.
@@ -46,25 +77,219 @@ LOCK=${LOCK:-/run/wifi-roam.lock}
 STATE=${STATE:-/run/wifi-roam.state}
 
 # How long to wait for a roam tick that is already mid-scan, and how long to let
-# nmcli spend associating. Both sit inside the 60 s the daemon allows this call, so
-# a join that cannot happen says so rather than being cut off mid-sentence. The
-# wait is the larger of the two because the roamer's scan is the slow thing here --
-# thirty-two seconds, measured -- and it only ever scans when the link is genuinely
-# in trouble, so this is a queue that in practice nothing joins.
+# a join spend associating. Both sit inside the 60 s the daemon allows this call,
+# so a join that cannot happen says so rather than being cut off mid-sentence.
+# The wait is the larger of the two because the roamer's scan is the slow thing
+# here -- thirty-two seconds, measured -- and it only ever scans when the link is
+# genuinely in trouble, so this is a queue that in practice nothing joins.
 LOCK_WAIT=${LOCK_WAIT:-30}
 JOIN_WAIT=${JOIN_WAIT:-25}
 
 # NAME:TYPE, so a wifi profile can be told from the wired one and from `lo`.
-profiles() {
+profiles_nmcli() {
     nmcli -t -f NAME,TYPE con show |
         awk -F: '$2 == "802-11-wireless" { print $1 }'
 }
 
+profiles_wpa() {
+    wpa=$(find_bin wpa_cli /sbin/wpa_cli)
+    if out=$("$wpa" -i "$IFACE" list_networks 2>/dev/null); then
+        echo "$out" | awk -F'\t' 'NR > 1 && $2 != "" { print $2 }'
+        return
+    fi
+    # Unprivileged, the control socket refuses. The house nets are still the
+    # ones this rover holds a passphrase for, and the panel needs that list
+    # so it can put a join button on the ones that were heard.
+    # shellcheck disable=SC2086
+    printf '%s\n' $NETS
+}
+
+profiles() {
+    case $(backend) in
+        nmcli) profiles_nmcli ;;
+        *)     profiles_wpa ;;
+    esac
+}
+
+# `iw` dump and `wpa_cli scan_results` both become IN-USE:SSID:SIGNAL:SECURITY,
+# which is what the daemon already parses. SIGNAL is NetworkManager's 0-100
+# column, not dBm, so a Pi and a Banana Pi draw the same kind of list.
+#
+# dBm → 0-100 is 2*(dBm+100), clamped. Measured on this dongle: the associated
+# AP at -46 becomes 100, a neighbour at -68 becomes 64.
+
+parse_iw() {
+    awk -v current="$1" '
+    function esc(s) {
+        gsub(/\\/, "\\\\", s)
+        gsub(/:/, "\\:", s)
+        return s
+    }
+    function qual(dbm) {
+        q = int(2 * (dbm + 100) + 0.5)
+        if (q < 0) return 0
+        if (q > 100) return 100
+        return q
+    }
+    function emit() {
+        if (ssid == "") return
+        in_use = (ssid == current) ? "*" : " "
+        print in_use ":" esc(ssid) ":" qual(signal) ":" sec
+    }
+    /^BSS / {
+        emit()
+        ssid = ""; signal = -100; sec = ""
+        next
+    }
+    /signal:/ { signal = int($2); next }
+    /^[[:space:]]*SSID:/ {
+        sub(/^[[:space:]]*SSID:[[:space:]]*/, "")
+        ssid = $0
+        next
+    }
+    /^[[:space:]]*RSN:/ { sec = "WPA2"; next }
+    /^[[:space:]]*WPA:/ { if (sec == "") sec = "WPA"; next }
+    END { emit() }
+    '
+}
+
+parse_wpa_results() {
+    awk -F'\t' -v current="$1" '
+    function esc(s) {
+        gsub(/\\/, "\\\\", s)
+        gsub(/:/, "\\:", s)
+        return s
+    }
+    function qual(dbm) {
+        q = int(2 * (dbm + 100) + 0.5)
+        if (q < 0) return 0
+        if (q > 100) return 100
+        return q
+    }
+    NR == 1 { next }
+    NF < 5 { next }
+    {
+        ssid = $5
+        flags = $4
+        dbm = int($3)
+        sec = ""
+        if (flags ~ /WPA2|RSN/) sec = "WPA2"
+        else if (flags ~ /WPA/) sec = "WPA"
+        else if (flags ~ /WEP/) sec = "WEP"
+        if (ssid == "") next
+        in_use = (ssid == current) ? "*" : " "
+        print in_use ":" esc(ssid) ":" qual(dbm) ":" sec
+    }
+    '
+}
+
+current_ssid() {
+    iw=$(find_bin iw /sbin/iw)
+    "$iw" dev "$IFACE" link 2>/dev/null |
+        awk '/^[[:space:]]*SSID:/ { sub(/^[[:space:]]*SSID:[[:space:]]*/, ""); print; exit }'
+}
+
+list_wpa() {
+    iw=$(find_bin iw /sbin/iw)
+    current=$(current_ssid)
+    "$iw" dev "$IFACE" scan dump 2>/dev/null | parse_iw "$current"
+}
+
+scan_wpa() {
+    # Eight seconds was enough for this dongle to name TheGreatViking and a
+    # handful of neighbours; the daemon will wait twenty. Poll after the third
+    # second so a fast scan is not held for the whole budget, and give up at
+    # twelve so a neighbourhood of one is reported rather than hung.
+    wpa=$(find_bin wpa_cli /sbin/wpa_cli)
+    iw=$(find_bin iw /sbin/iw)
+    current=$(current_ssid)
+    "$wpa" -i "$IFACE" scan >/dev/null || true
+    n=0
+    wait_s=${SCAN_WAIT:-3}
+    give_s=${SCAN_GIVE_UP:-12}
+    while [ "$n" -lt "$give_s" ]; do
+        sleep 1
+        n=$((n + 1))
+        [ "$n" -lt "$wait_s" ] && continue
+        count=$("$wpa" -i "$IFACE" scan_results 2>/dev/null | awk 'NR > 1 { n++ } END { print n+0 }')
+        [ "$count" -gt 1 ] && break
+    done
+    results=$("$wpa" -i "$IFACE" scan_results 2>/dev/null || true)
+    if [ -n "$results" ]; then
+        echo "$results" | parse_wpa_results "$current"
+        return
+    fi
+    "$iw" dev "$IFACE" scan dump 2>/dev/null | parse_iw "$current"
+}
+
+hold_join_lock() {
+    if command -v flock > /dev/null 2>&1; then
+        exec 9> "$LOCK"
+        if ! flock -w "$LOCK_WAIT" 9; then
+            echo "the wifi keeper is busy checking the link; try again" >&2
+            exit 4
+        fi
+    fi
+    # Stamped before the join and not after it, so that a roam tick running the
+    # moment this releases the lock already reads a fresh clock and no strikes.
+    # Written with the same two fields wifi_roam.sh reads back, and its failure
+    # is not this command's failure: a join that worked should not be reported
+    # as broken because /run was not writable.
+    printf '0 %s\n' "$(date +%s)" > "$STATE" 2>/dev/null || true
+}
+
+join_nmcli() {
+    # Not `dev wifi connect`, which would invent a new profile and want a
+    # passphrase: the profile already exists and holds the key. `-w` so that a
+    # join which is never going to complete gives up inside the time the daemon
+    # is prepared to wait, rather than being killed at 90 s with nobody told.
+    nmcli -w "$JOIN_WAIT" con up "$1" ifname "$IFACE"
+}
+
+join_wpa() {
+    wpa=$(find_bin wpa_cli /sbin/wpa_cli)
+    ssid=$1
+    id=$("$wpa" -i "$IFACE" list_networks | awk -F'\t' -v s="$ssid" '
+        NR > 1 && $2 == s { print $1; exit }
+    ')
+    if [ -z "$id" ]; then
+        echo "no configured network called $ssid on this rover" >&2
+        exit 3
+    fi
+    if ! "$wpa" -i "$IFACE" select_network "$id" | grep -qx OK; then
+        echo "could not select $ssid" >&2
+        exit 1
+    fi
+    deadline=$(( $(date +%s) + JOIN_WAIT ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        state=$("$wpa" -i "$IFACE" status 2>/dev/null || true)
+        echo "$state" | grep -q "^wpa_state=COMPLETED$" || { sleep 1; continue; }
+        echo "$state" | grep -qxF "ssid=$ssid" || { sleep 1; continue; }
+        # Re-enable the others so a later fade can still pick them. select_network
+        # turns them off; leaving them off would pin the rover to this one AP.
+        "$wpa" -i "$IFACE" enable_network all >/dev/null || true
+        return 0
+    done
+    echo "could not associate with $ssid" >&2
+    exit 1
+}
+
 case ${1:-} in
     list|scan)
-        rescan=no
-        [ "$1" = scan ] && rescan=yes
-        nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list --rescan "$rescan"
+        case $(backend) in
+            nmcli)
+                rescan=no
+                [ "$1" = scan ] && rescan=yes
+                nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list --rescan "$rescan"
+                ;;
+            *)
+                if [ "$1" = scan ]; then
+                    scan_wpa
+                else
+                    list_wpa
+                fi
+                ;;
+        esac
         ;;
     profiles)
         profiles
@@ -81,26 +306,13 @@ case ${1:-} in
         fi
         # Nothing else may be moving the link while this does. A roamer already
         # mid-check is waited out rather than fought with; one that has got as far
-        # as its own `con up` finishes first and is then overridden by this, which
-        # is the right way round -- the person asking wins.
-        if command -v flock > /dev/null 2>&1; then
-            exec 9> "$LOCK"
-            if ! flock -w "$LOCK_WAIT" 9; then
-                echo "the wifi keeper is busy checking the link; try again" >&2
-                exit 4
-            fi
-        fi
-        # Stamped before the join and not after it, so that a roam tick running the
-        # moment this releases the lock already reads a fresh clock and no strikes.
-        # Written with the same two fields wifi_roam.sh reads back, and its failure
-        # is not this command's failure: a join that worked should not be reported
-        # as broken because /run was not writable.
-        printf '0 %s\n' "$(date +%s)" > "$STATE" 2>/dev/null || true
-        # Not `dev wifi connect`, which would invent a new profile and want a
-        # passphrase: the profile already exists and holds the key. `-w` so that a
-        # join which is never going to complete gives up inside the time the daemon
-        # is prepared to wait, rather than being killed at 90 s with nobody told.
-        nmcli -w "$JOIN_WAIT" con up "$ssid" ifname "$IFACE"
+        # as its own association finishes first and is then overridden by this,
+        # which is the right way round -- the person asking wins.
+        hold_join_lock
+        case $(backend) in
+            nmcli) join_nmcli "$ssid" ;;
+            *)     join_wpa "$ssid" ;;
+        esac
         ;;
     *)
         echo "usage: wifi_ctl.sh list|scan|profiles|join <ssid>" >&2

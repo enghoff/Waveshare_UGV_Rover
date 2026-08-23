@@ -855,6 +855,12 @@ class Session(SessionShow):
                     self.wifi["note"] = (
                         f"heard {heard} network{'' if heard == 1 else 's'} "
                         f"in {reply.seconds:.0f} s")
+                    extra = body.get("note")
+                    if isinstance(extra, str) and extra.strip():
+                        # The daemon already knows why a scan came back as one
+                        # row in no time -- helper missing, no NetworkManager --
+                        # and the panel used to throw that sentence away.
+                        self.wifi["note"] += f" -- {extra.strip()}"
                 else:
                     self.wifi["note"] = (f"the scan did not come back: "
                                          f"{body.get('error', 'no answer')}")

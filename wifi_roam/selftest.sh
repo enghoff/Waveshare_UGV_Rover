@@ -383,6 +383,91 @@ check_silent "and brings nothing up on the way to refusing it" \
     "$(grep 'con up' "$WORK/nmcli.log" || true)"
 
 echo
+echo "the same helper, on a rover with no NetworkManager"
+# The Banana Pi: netplan and wpa_supplicant, no nmcli. WIFI_BACKEND forces
+# that path even though the fake nmcli is still on PATH for the roam tests
+# above. The fakes record rather than associate, and the scan they answer
+# with is the one measured on that dongle -- TheGreatLord plus a neighbour.
+cat > "$WORK/bin/wpa_cli" <<'FAKE'
+#!/bin/sh
+echo "wpa_cli $*" >> "$NMCLI_LOG"
+case "$*" in
+    *list_networks*)
+        printf 'network id / ssid / bssid / flags\n'
+        printf '0\tTheMaharaja\tany\t\n'
+        printf '1\tTheGreatViking\tany\t\n'
+        printf '2\tTheGreatLord\tany\t[CURRENT]\n'
+        ;;
+    *scan_results*)
+        printf 'bssid / frequency / signal level / flags / ssid\n'
+        printf 'b0:19:21:b9:4e:fe\t2427\t-46\t[WPA2-PSK-CCMP][ESS]\tTheGreatLord\n'
+        printf 'e0:cc:7a:97:21:74\t2437\t-68\t[WPA2-PSK-CCMP][ESS]\tTheGreatViking\n'
+        ;;
+    *scan*) echo OK ;;
+    *select_network*) echo OK ;;
+    *enable_network*) echo OK ;;
+    *status*)
+        printf 'wpa_state=COMPLETED\nssid=TheMaharaja\n'
+        ;;
+esac
+exit 0
+FAKE
+chmod +x "$WORK/bin/wpa_cli"
+cat > "$WORK/bin/iw" <<'FAKE'
+#!/bin/sh
+echo "iw $*" >> "$NMCLI_LOG"
+case "$*" in
+    *link*)
+        printf 'Connected to b0:19:21:b9:4e:fe (on wlan0)\n\tSSID: TheGreatLord\n'
+        ;;
+    *scan\ dump*)
+        printf 'BSS b0:19:21:b9:4e:fe(on wlan0) -- associated\n'
+        printf '\tsignal: -46.00 dBm\n'
+        printf '\tSSID: TheGreatLord\n'
+        printf '\tRSN:\n'
+        ;;
+esac
+exit 0
+FAKE
+chmod +x "$WORK/bin/iw"
+
+: > "$WORK/nmcli.log"
+listed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    SCAN_WAIT=0 SCAN_GIVE_UP=0 \
+    sh "$HERE/wifi_ctl.sh" list 2>&1)
+check "lists the cached BSS without asking the radio to look" \
+    "*:TheGreatLord:100:WPA2" "$listed"
+check_silent "and does not start a scan to do it" \
+    "$(grep 'wpa_cli .*scan' "$WORK/nmcli.log" || true)"
+
+: > "$WORK/nmcli.log"
+scanned=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    SCAN_WAIT=0 SCAN_GIVE_UP=0 \
+    sh "$HERE/wifi_ctl.sh" scan 2>&1)
+check "a scan names the neighbour as well" \
+    "TheGreatViking" "$scanned"
+check "at the 0-100 figure the panel already ranks by" \
+    "TheGreatViking:64:" "$scanned"
+
+named=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    sh "$HERE/wifi_ctl.sh" profiles 2>&1)
+check "profiles are the ones wpa_supplicant already holds" \
+    "TheMaharaja" "$named"
+
+: > "$WORK/nmcli.log"
+ctl=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    STATE="$WORK/state" LOCK="$WORK/lock" \
+    sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
+check "a join selects the network that already holds the passphrase" \
+    "select_network 0" "$(cat "$WORK/nmcli.log")"
+check_silent "and says nothing when it worked" "$ctl"
+check "a network with no passphrase here is still refused" \
+    "no configured network called" \
+    "$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+        STATE="$WORK/state" LOCK="$WORK/lock" \
+        sh "$HERE/wifi_ctl.sh" join Alister 2>&1)"
+
+echo
 echo "across every scenario above"
 check_silent "the radio is never switched off, in any of them" \
     "$(grep -F 'radio wifi off' "$WORK/nmcli.all" 2>/dev/null || true)"

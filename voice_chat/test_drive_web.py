@@ -184,6 +184,23 @@ def test_web_console() -> None:
     check("a daemon too old for the network calls is asked once",
           quiet.wifi_ok, False)
 
+    # A scan that never reached the radio used to come back as "heard 1 network
+    # in 0 s" with the daemon's explanation discarded. The panel has to keep
+    # that sentence, or the next Banana Pi looks like a neighbourhood of one.
+    from console_model import Reply
+    explained = drive_web.Session(None, 3.0, 480)
+    explained.handle(Reply("wifi_status", {"scan": True}, {
+        "ok": True, "connected": "TheGreatLord",
+        "networks": [{"ssid": "TheGreatLord", "signal": -35, "in_use": True,
+                      "configured": True}],
+        "note": "/usr/local/sbin/wifi_ctl.sh is not installed on this rover; "
+                "run wifi_roam/install.sh",
+    }, 0.2))
+    check("a scan that could not look still says how many rows came back",
+          "heard 1 network" in explained.wifi["note"], True)
+    check("...and keeps the daemon's reason",
+          "install" in explained.wifi["note"], True)
+
     # Stepping the size by hand has to turn "fit the panel" off, or the next window
     # resize would silently undo the press.
     session.map_settings({"fit": True})
