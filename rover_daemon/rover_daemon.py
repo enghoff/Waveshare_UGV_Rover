@@ -100,6 +100,10 @@ DEFAULT_VISION = "192.168.1.3:8767"
 DEFAULT_DEVICE = default_camera()
 HOST = "0.0.0.0"
 PORT = 8769
+# Where the driver board is lent to the ROS 2 stack, on loopback only. 8769 is
+# this daemon, 8770 the depth camera and 8771 the drive console, so the next one
+# along. See board_bridge.py for why it is not simply another tool here.
+BRIDGE_PORT = 8772
 
 # Calls that run code rather than perform an act, and are therefore refused from
 # anywhere but this machine. Nothing on this port authenticates -- the same trade
@@ -197,6 +201,12 @@ def main() -> int | str:
                              "the picture, drawn on the map as the gimbal's cone. "
                              "The default is a guess -- measure it by panning until "
                              "a known object just leaves the frame.")
+    parser.add_argument("--board-bridge", nargs="?", default=None, const=BRIDGE_PORT,
+                        type=int, metavar="PORT",
+                        help="lend the driver board to the ROS 2 stack on this "
+                             f"loopback port (bare flag means {BRIDGE_PORT}). It is "
+                             "the board's encoders and gyro on the way out and its "
+                             "motor commands on the way in; see board_bridge.py.")
     parser.add_argument("--bind", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
@@ -256,6 +266,21 @@ def main() -> int | str:
             print(f"[rover] no driving or mapping: {error}", file=sys.stderr,
                   flush=True)
 
+    # The board, lent out. Started before the tool server rather than after, so
+    # that a ROS stack brought up by the same crontab does not have to race it --
+    # and failing to start it is not fatal for the same reason a missing lidar is
+    # not: a rover that will not share its board is still a rover.
+    bridge = None
+    if args.board_bridge:
+        try:
+            import board_bridge
+            bridge = board_bridge.BoardBridge(link, port=args.board_bridge)
+            bridge.start()
+            print(f"[rover] driver board shared on {bridge.describe()}", flush=True)
+        except Exception as error:
+            bridge = None
+            print(f"[rover] board not shared: {error}", file=sys.stderr, flush=True)
+
     # A script reaches the rover by connecting back to this daemon on loopback,
     # like any other client -- so it can be told where that is only once the port
     # is settled. Starting one stops face tracking, for the reason `look_at` does:
@@ -271,7 +296,8 @@ def main() -> int | str:
     print(f"rover daemon on {args.bind}:{args.port} -- board {rover.describe()}, "
           f"camera {args.device if args.camera else 'none'}, detector {args.service}, "
           f"vision {rover.vision.describe() if rover.vision else 'off'}, "
-          f"lidar {(rover.nav.lidar_path or 'waiting for it') if rover.nav else 'off'} "
+          f"lidar {(rover.nav.lidar_path or 'waiting for it') if rover.nav else 'off'}, "
+          f"board shared {bridge.describe() if bridge else 'no'} "
           f"({len(rover.tools())} tools)",
           flush=True)
 
