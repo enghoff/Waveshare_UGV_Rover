@@ -59,7 +59,7 @@ chat transcript, on a command line where `ps` can see it, or copied onto a host.
 ## The Pi
 
 ```bash
-scp rover_daemon/{rover_daemon.py,selftest.py,scripting.py,rover_api.py} rpi:~/ugv/
+scp rover_daemon/*.py rpi:~/ugv/
 scp lidar_slam/*.py lidar_slam/README.md rpi:~/ugv/lidar_slam/
 scp -r oak_detect rpi:~/ugv/          # the face detector, on the OAK's VPU
 scp -r wifi_roam rpi:~/ugv/           # the wifi keeper; then its own install.sh
@@ -111,7 +111,7 @@ an interpreter with a carriage return in its name.
 ## MEDIA
 
 ```bash
-scp voice_chat/{server.py,requirements.txt,selftest.py} root@media:/opt/voice_chat/
+scp voice_chat/{server.py,voice_history.py,voice_stream.py,voice_http.py,requirements.txt,selftest.py,test_harness.py,test_server.py,test_talk.py,test_drive_web.py} root@media:/opt/voice_chat/
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 ```
 

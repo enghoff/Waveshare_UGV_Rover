@@ -51,13 +51,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-import http.server
 import json
 import os
 import queue
-import struct
 import sys
-import threading
 import time
 import wave
 from pathlib import Path
@@ -90,68 +87,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import prompts
 import rover_tools
-from endpointing import BLOCK, BLOCK_MS, IN_RATE, Endpointer
-# The dot is only used where the terminal can encode it: a redirected stdout on
-# Windows is cp1252, and U+25CF would raise UnicodeEncodeError on the first
-# update -- an indicator that kills the conversation it is decorating.
-try:
-    "●○".encode(sys.stdout.encoding or "ascii")
-    STATUS = {
-        "listening": "● listening",
-        "hearing": "● hearing you",
-        "thinking": "○ thinking",
-        "speaking": "○ speaking",
-    }
-except (UnicodeEncodeError, LookupError):
-    STATUS = {
-        "listening": "[ listening ]",
-        "hearing": "[ hearing you ]",
-        "thinking": "[ thinking ]",
-        "speaking": "[ speaking ]",
-    }
-STATUS_WIDTH = max(len(text) for text in STATUS.values())
-
-
-class Indicator:
-    """One line at the bottom of the terminal saying whether the mic is open.
-
-    Rewritten in place and rubbed out before anything else prints, so the
-    transcript above it stays a transcript. Everything the conversation says goes
-    through `say` for that reason.
-
-    Silent when stdout is not a terminal: `\\r` is just a character in a log file,
-    and a status that changes forty times a second would be most of the log.
-    """
-
-    def __init__(self) -> None:
-        self.on = sys.stdout.isatty()
-        self.shown = ""
-
-    def set(self, state: str) -> None:
-        text = STATUS[state]
-        if not self.on or text == self.shown:
-            return
-        sys.stdout.write("\r" + text.ljust(STATUS_WIDTH))
-        sys.stdout.flush()
-        self.shown = text
-
-    def clear(self) -> None:
-        if self.on and self.shown:
-            sys.stdout.write("\r" + " " * STATUS_WIDTH + "\r")
-            sys.stdout.flush()
-        # Forgotten rather than remembered, so the next `set` redraws it below
-        # whatever was just printed instead of deciding nothing has changed.
-        self.shown = ""
-
-    def say(self, text: str, err: bool = False) -> None:
-        self.clear()
-        print(text, file=sys.stderr if err else sys.stdout, flush=True)
-
-    def __enter__(self) -> "Indicator":
-        return self
-
-    def __exit__(self, *_exc) -> None:
-        self.clear()
+from endpointing import BLOCK, BLOCK_MS, Endpointer, IN_RATE
+from talk_audio import (
+    OUT_RATE, Ears, Indicator, Speaker, _from_pcm16, _to_pcm16, _b64,
+)
+from talk_frames import (
+    FRAME_TTL_S, MAX_FRAME_BYTES, MAX_FRAMES, Frames, _jpeg_size,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 OPEN_TIMEOUT_S = 15.0
@@ -275,7 +217,7 @@ def instructions(*, vision: bool, model: str) -> str:
 # "Voice 'x' is not supported" and the socket closes. `Cherry` is documented and
 # refused by this model, which is how that was found out.
 VOICE = os.environ.get("QWEN_REALTIME_VOICE", "Jennifer")
-OUT_RATE = 24000  # what the model synthesises at; input stays at 16k
+
 # 0.2 for the same reason the local service uses it: whether the model *acts*
 # turned out to be a sampled decision, and at 0.7 half the tool calls that should
 # have happened did not. See the table above TEMPERATURE in server.py.
@@ -295,15 +237,6 @@ SESSION_WARN_S = SESSION_LIMIT_S - 300
 UPLOAD_MS = 100
 UPLOAD_BLOCKS = max(1, UPLOAD_MS // BLOCK_MS)
 
-# A frame is held only as long as the turn that asked for it needs, and by name
-# rather than "the latest one" -- the camera is on a gimbal that sweeps while
-# tracking runs, so last turn's picture is of somewhere the rover is no longer
-# pointing. Both numbers are the voice service's.
-FRAME_TTL_S = 60.0
-MAX_FRAMES = 4
-# The service takes JPEG up to 256KB once base64'd. The rover's camera is 640x480
-# and a frame is ~35KB, so this is a ceiling for anything else that posts.
-MAX_FRAME_BYTES = 180 * 1024
 
 # A picture cannot be put into an empty input buffer. The rule is the service's
 # and it is not negotiable -- "you must send audio data at least once before you
@@ -364,8 +297,7 @@ def point_camera_here(rover: rover_tools.RoverClient | None,
     # whole function exists to stop happening.
     print(f"  this rover daemon does not take set_vision ({answer.get('error')}).\n"
           f"  'look' will post wherever it was started pointing. To fix it:\n"
-          f"    scp rover_daemon/rover_daemon.py rpi:~/ugv/ && ssh rpi 'sudo systemctl "
-          f"restart rover-daemon'\n"
+          f"    scp rover_daemon/*.py rpi:~/ugv/ && ssh rpi '~/ugv/restart.sh'\n"
           f"  or restart the daemon with: --vision {where}", file=sys.stderr)
 
 
@@ -383,288 +315,6 @@ def api_key() -> str:
     if not key:
         raise SystemExit(f"{path} is empty")
     return key
-
-
-def _b64(raw: bytes) -> str:
-    return base64.b64encode(raw).decode("ascii")
-
-
-def _to_pcm16(audio: np.ndarray) -> bytes:
-    """Float samples as the 16kHz mono s16le the service reads."""
-    return (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
-
-
-def _from_pcm16(raw: bytes) -> np.ndarray:
-    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-
-
-def _jpeg_size(data: bytes) -> tuple[int | None, int | None]:
-    """Width and height out of a JPEG's frame header, without decoding it.
-
-    Only so the log line can say what was posted. Deliberately not PIL: this
-    client's whole dependency list is three packages, and reading two big-endian
-    shorts out of a marker is not worth a fourth.
-    """
-    index = 2
-    while index + 9 < len(data):
-        if data[index] != 0xFF:
-            index += 1
-            continue
-        marker = data[index + 1]
-        # SOF0..SOF15, skipping the four that are not start-of-frame markers.
-        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
-            height, width = struct.unpack(">HH", data[index + 5:index + 9])
-            return width, height
-        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
-            index += 2
-            continue
-        length = struct.unpack(">H", data[index + 2:index + 4])[0]
-        index += 2 + length
-    return None, None
-
-
-class Speaker:
-    """Playback that can be thrown away mid-sentence.
-
-    `sounddevice`'s blocking `write` is the obvious way to play a stream and the
-    wrong one here, because interrupting means dropping audio that has been
-    received and not yet heard -- and a blocking write has already committed it.
-    So this fills from a buffer under a callback, and :meth:`flush` is a barge-in:
-    everything not yet handed to the card stops existing.
-
-    It also counts what was actually played, which is not bookkeeping for its own
-    sake. When a reply is cut off, the model's idea of what it said is the whole
-    reply, and the only way to correct that is to tell it how many milliseconds
-    of it were audible.
-    """
-
-    def __init__(self, device: int | None = None, rate: int = OUT_RATE) -> None:
-        self.rate = rate
-        self.device = device
-        self._buffer = np.zeros(0, dtype=np.float32)
-        self._lock = threading.Lock()
-        self._queued = 0    # samples ever accepted for the current response
-        self._level = 0.0   # RMS of the last block handed to the card
-        # The card is not opened until `start`, so that the part worth testing --
-        # what is buffered, what is thrown away, and how much of a reply was
-        # audible before it was cut off -- can be tested on a machine with no
-        # sound at all. Same reason endpointing.py touches no audio device.
-        self.stream: sd.OutputStream | None = None
-
-    def _fill(self, out, frames, _time, _status) -> None:
-        with self._lock:
-            take = min(frames, len(self._buffer))
-            out[:take, 0] = self._buffer[:take]
-            out[take:, 0] = 0.0
-            block = self._buffer[:take]
-            self._buffer = self._buffer[take:]
-        self._level = float(np.sqrt(np.mean(block ** 2))) if take else 0.0
-
-    def start(self) -> None:
-        self.stream = sd.OutputStream(
-            samplerate=self.rate, channels=1, dtype="float32",
-            device=self.device, callback=self._fill)
-        self.stream.start()
-
-    def close(self) -> None:
-        if self.stream is None:
-            return
-        # Dropped and aborted rather than stopped. `stop` waits for what is
-        # queued to finish playing, and the usual reason to be closing is that
-        # somebody pressed Ctrl-C in the middle of a sentence -- which is a
-        # request to stop talking, not to finish the thought first.
-        self.flush()
-        try:
-            self.stream.abort()
-            self.stream.close()
-        except Exception:
-            pass
-        self.stream = None
-
-    def write(self, audio: np.ndarray) -> None:
-        with self._lock:
-            self._buffer = np.concatenate([self._buffer, audio])
-            self._queued += len(audio)
-
-    def begin(self) -> None:
-        """A new response is starting; what was played before it does not count."""
-        with self._lock:
-            self._queued = len(self._buffer)
-
-    @property
-    def busy(self) -> bool:
-        with self._lock:
-            return len(self._buffer) > 0
-
-    @property
-    def level(self) -> float:
-        """RMS of what is coming out of the speaker right now."""
-        return self._level
-
-    def remaining_s(self) -> float:
-        with self._lock:
-            return len(self._buffer) / self.rate
-
-    def played_ms(self) -> int:
-        """Milliseconds of the current response that reached the card."""
-        with self._lock:
-            return int(max(self._queued - len(self._buffer), 0) * 1000 / self.rate)
-
-    def flush(self) -> float:
-        """Drop everything unheard. Returns the seconds of audio thrown away."""
-        with self._lock:
-            unheard = len(self._buffer)
-            # Forgotten, not merely dropped. `played_ms` is queued-minus-waiting,
-            # so throwing audio away without also forgetting it was queued makes
-            # a barge-in report that the whole reply was heard -- which is the
-            # one thing this number exists to prevent it saying.
-            self._queued -= unheard
-            self._buffer = np.zeros(0, dtype=np.float32)
-        return unheard / self.rate
-
-
-class Frames(http.server.ThreadingHTTPServer):
-    """`POST /frame` on this machine, because the service that used to serve it is gone.
-
-    The rover's `look` does not send the picture through the conversation. It
-    posts the JPEG straight to the model's host and returns nothing but the name
-    it was filed under, which keeps a 35KB frame off the desk that only has a
-    microphone on it. That road led to MEDIA, and on this path MEDIA does not
-    exist -- so the desk becomes the host, holds the frame under a name, and
-    forwards it into the session when the tool result comes back naming it.
-
-    The contract is the voice service's, unchanged, so the daemon needs no edit:
-
-        POST /frame   body: one JPEG
-          -> {"ok": true, "image": "frame-7", "w": 640, "h": 480}
-
-    **Threading here is not about throughput.** The rover posts over one
-    kept-open connection, deliberately, and a plain `HTTPServer` handles requests
-    one at a time inside `serve_forever` -- so after a single picture it is
-    parked inside that connection's handler, blocked on a request line that will
-    not arrive until the next `look`. Nothing else can be accepted, and
-    `shutdown()` never returns, because the loop it is waiting on is the one that
-    is blocked. What that looks like from outside is a conversation that ends
-    fine until somebody asks the rover what it can see, after which Ctrl-C hangs
-    the terminal.
-    """
-
-    # Not reusable, deliberately, and this is the one place where the usual
-    # advice is backwards. On Windows SO_REUSEADDR does not mean "reclaim a port
-    # left in TIME_WAIT", it means *share*: a second process binds the same port
-    # happily and which of the two a given connection reaches is anyone's guess.
-    # A leftover client from an earlier run therefore steals the rover's
-    # pictures, and the running one is handed a frame name it is not holding.
-    # Refusing to start is the better failure, and `main` prints it.
-    allow_reuse_address = False
-    daemon_threads = True  # inherited, and load-bearing: see above
-
-    def __init__(self, port: int = 8767, host: str = "0.0.0.0") -> None:
-        super().__init__((host, port), _FrameHandler)
-        self._frames: dict[str, tuple[bytes, float]] = {}
-        self._seq = 0
-        self._lock = threading.Lock()
-        self.posted = 0
-
-    def stash(self, jpeg: bytes) -> str:
-        with self._lock:
-            now = time.monotonic()
-            for name, (_data, at) in list(self._frames.items()):
-                if now - at > FRAME_TTL_S:
-                    del self._frames[name]
-            while len(self._frames) >= MAX_FRAMES:
-                del self._frames[min(self._frames, key=lambda n: self._frames[n][1])]
-            self._seq += 1
-            self.posted += 1
-            name = f"frame-{self._seq}"
-            self._frames[name] = (jpeg, now)
-            return name
-
-    def take(self, name: str) -> bytes | None:
-        """The frame under this name, removed. One picture answers one question."""
-        with self._lock:
-            found = self._frames.pop(name, None)
-        return found[0] if found else None
-
-    def serve_in_background(self) -> None:
-        threading.Thread(target=self.serve_forever, daemon=True).start()
-
-
-class _FrameHandler(http.server.BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-    # An idle kept-open connection costs a parked thread, and a rover that is
-    # restarted a few times over an afternoon leaves one behind each time. On
-    # timeout the handler simply closes the connection, and the rover's next
-    # picture reconnects -- which its VisionLink already expects, since a stale
-    # keep-alive is a retry there rather than a lost frame.
-    timeout = 300
-
-    def log_message(self, *_args) -> None:
-        pass  # the conversation owns the terminal
-
-    def _reply(self, status: int, payload: dict) -> None:
-        body = json.dumps(payload).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_POST(self) -> None:
-        if self.path.rstrip("/") not in ("/frame", ""):
-            self._reply(404, {"ok": False, "error": "only /frame"})
-            return
-        length = int(self.headers.get("Content-Length") or 0)
-        data = self.rfile.read(length) if length else b""
-        if not data.startswith(b"\xff\xd8"):
-            self._reply(400, {"ok": False, "error": "not a JPEG"})
-            return
-        if len(data) > MAX_FRAME_BYTES:
-            self._reply(413, {"ok": False,
-                              "error": f"{len(data)} bytes is over the "
-                                       f"{MAX_FRAME_BYTES} the model accepts"})
-            return
-        name = self.server.stash(data)
-        width, height = _jpeg_size(data)
-        self._reply(200, {"ok": True, "image": name, "w": width, "h": height,
-                          "bytes": len(data)})
-
-    def do_GET(self) -> None:
-        if self.path.rstrip("/") == "/health":
-            self._reply(200, {"ok": True, "frames": self.server.posted})
-        else:
-            self._reply(404, {"ok": False, "error": "only /frame and /health"})
-
-
-class Ears:
-    """Whether a microphone block should be uploaded while the rover is talking.
-
-    This is a suppressor, not an echo canceller. It has no model of the room and
-    no reference alignment; it compares how loud the microphone is against how
-    loud the speaker is right now, and passes the microphone only when it is
-    clearly louder. That is enough to stop a rover interrupting itself at
-    conversational volume, and it is not enough for a loud room, a close speaker,
-    or a reply the user talks over quietly.
-
-    The correct fix is headphones, which Alibaba's own documentation recommends
-    for this exact failure, or an AEC -- and an AEC is a real dependency and a
-    reference signal and a delay estimate, which is a different piece of work
-    than this one. Until then the honest thing is to say which of the two you are
-    getting: `--no-echo-guard` gives you none of this and assumes headphones.
-    """
-
-    def __init__(self, speaker: Speaker | None, factor: float, on: bool = True) -> None:
-        self.speaker = speaker
-        self.factor = factor
-        self.on = on
-
-    def hears(self, rms: float) -> bool:
-        if not self.on or self.speaker is None:
-            return True
-        playing = self.speaker.level
-        if playing <= 0.0:
-            return True
-        return rms > playing * self.factor
 
 
 class Session:

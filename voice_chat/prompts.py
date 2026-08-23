@@ -1,7 +1,7 @@
 """The system prompt and the tool schemas, read out of the source that owns them.
 
 [server.py](server.py) is the one place the rover's prompt is written and
-[rover_daemon.py](../rover_daemon/rover_daemon.py) is the one place its tools are
+[tool_schemas.py](../rover_daemon/tool_schemas.py) is the one place its tools are
 described. Every sentence in both was arrived at through six-sample runs, and the
 position of one of them is worth nine points out of ninety, so a second copy here
 would be a fossil the first time somebody improved the original.
@@ -26,9 +26,11 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DAEMON = ROOT / "rover_daemon" / "rover_daemon.py"
-NAVIGATOR = ROOT / "lidar_slam" / "navigator.py"
+NAVIGATOR = ROOT / "lidar_slam" / "nav_types.py"
 VOICE = Path(__file__).resolve().parent / "server.py"
+DAEMON = ROOT / "rover_daemon" / "tool_schemas.py"
+# Map picture limits live with the tool that draws them, not with the schemas.
+ROVER_NAV = ROOT / "rover_daemon" / "rover_nav.py"
 
 
 def _assignments(tree: ast.Module) -> dict[str, ast.expr]:

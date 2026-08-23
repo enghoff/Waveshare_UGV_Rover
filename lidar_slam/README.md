@@ -957,9 +957,14 @@ slam2d.c      parser, scan matcher, occupancy and likelihood grids, segmentation
 selftest.c    correctness against a synthetic room and a synthetic table
 build.sh      builds libslam2d.so and selftest, on the machine that runs them
 slam2d.py     ctypes binding, and describe(); checks its struct layout each load
-navigator.py  the drive controller: avoidance, steering, speed, PWM; `python3 navigator.py` self-tests the move commentary
+navigator.py  Navigator facade over the mixins below; `python3 navigator.py` self-tests the move commentary
+nav_types.py  constants, Outcome, MoveReport, find_lidar
+nav_drive.py  drive, goto, turn, PWM
+nav_sense.py  pose trust and the lidar loop
+navigator_selftest.py  the move-commentary checks, run via navigator.py
 odometry.py   the board's gyro and wheel counts, as a prior and as a witness; self-tests
 planner.py    a route through the occupancy grid, as a few corners; `python3 planner.py` self-tests
+planner_selftest.py    the planner checks, run via planner.py
 mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
 run_slam.py   mapping on its own: pose, clearance, a PGM
 dryrun.py     the whole driving stack on live scans, with nothing wired to the motors

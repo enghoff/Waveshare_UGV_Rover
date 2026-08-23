@@ -1,0 +1,890 @@
+"""The rover as one object a browser can render: links, pacing, state."""
+from __future__ import annotations
+
+import json
+import queue
+import threading
+import time
+import uuid
+from typing import Any
+
+import rover_tools
+from console_model import (
+    BATTERY_POLL_S, BATTERY_STALE_S, CAMERA_AUTO_S, CLEAR_ARM_S, Channel,
+    LIGHT_MAX, MAP_AUTO_S, MAP_EXTENTS_M, MAP_SIZES_PX, MOVE_TIMEOUT_S,
+    POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
+    WIFI_SCAN_TIMEOUT_S, rung, size_for_panel, tap_to_relative,
+)
+from drive_show import SessionShow, _number, _png_width  # noqa: F401
+
+# How often the pump wakes: drain what came back, decide what to ask for next, and
+# publish the state if it changed. The tkinter window this grew out of ran its loop
+# at the same rate for the same reason -- fast enough that the in-flight timer
+# reads like a stopwatch, and slow enough that a state pushed on every tick is ten
+# a second rather than a thousand.
+TICK_S = 0.1
+# A comment line down an idle stream, so that a proxy or a laptop suspending itself
+# is noticed rather than leaving a page that has quietly stopped updating.
+KEEPALIVE_S = 15.0
+# How long the last browser has to come back before a move in flight is stopped.
+# A reload takes a fraction of this; a closed tab never comes back.
+ORPHAN_GRACE_S = 2.0
+# How long after a search that found nothing to look again, multiplied by the number
+# of tries and held at the ceiling. Two seconds so that opening the page a moment
+# before the daemon is up costs nothing, fifteen so that a rover switched off for the
+# evening is not being dialled all night.
+RECONNECT_S = 2.0
+RECONNECT_MAX_S = 15.0
+# How long the rover may leave the status poll unanswered before the six connections
+# are thrown away and remade. Well past a wifi hiccup on purpose: the client under
+# each connection already remakes its own socket per call, so a link that merely
+# stumbled needs nothing from here. What needs the reconnect is a rover that came
+# back *different* -- restarted, or on another address -- because the tool list and
+# the light level are asked once, on connect, and would otherwise stay stale.
+LINK_LOST_S = 8.0
+DEFAULT_HTTP_PORT = 8770
+
+
+class Session(SessionShow):
+    """The rover, as one object a browser can render: the six connections, the
+    pacing, and one dict that is everything on screen.
+
+    Every field is written by the pump thread and read under a lock by whichever
+    HTTP thread is serving an event stream. Actions arrive the other way, on a
+    queue, and are executed by the pump -- so there is exactly one writer, which a
+    single-threaded GUI event loop would have given for free and which would
+    otherwise be the first thing to go wrong here.
+    """
+
+    def __init__(self, address: str | None, half_extent: float,
+                 map_size: int) -> None:
+        self.half_extent = half_extent
+        self.map_size = map_size
+        self.wanted_address = address or ""
+        #: Unique to this console process, and mixed into the URL of every picture
+        #: it publishes. Without it the pictures of one run are served at exactly
+        #: the URLs of the last one -- `/map.png?gen=1`, `?gen=2` -- because the
+        #: counter starts again at 1 in every new process. They are sent
+        #: `immutable` for a year, so a browser that has seen a run does not ask
+        #: about those URLs again: it draws the *previous* run's pictures, in order,
+        #: as the new counter climbs past the numbers it already holds. That is a
+        #: whole recorded run played back over a live rover, the same one every
+        #: time, and nothing about it is cleared by restarting or rebooting -- it is
+        #: on disk in the browser's cache. Reproduced against the mock and the real
+        #: rover in turn: the second console served a different picture at
+        #: `?gen=1` and the browser never asked it for one.
+        self.run_id = uuid.uuid4().hex[:8]
+        self.replies: queue.Queue = queue.Queue()
+        self.actions: queue.Queue = queue.Queue()
+
+        self.moves: Channel | None = None     # blocking, one bounded move at a time
+        self.halt: Channel | None = None      # stop, and nothing else, ever
+        self.watch: Channel | None = None     # status, questions, tool list
+        self.picture: Channel | None = None   # the map, which is slow enough to matter
+        self.camera: Channel | None = None    # frames, which are slower still
+        self.scanner: Channel | None = None   # one scan, slower than all of them
+        self.channels: list[Channel] = []
+
+        self.address = ""
+        self.link_text = "not connected"
+        self.tools: list[str] = []
+        self.can_drive = False
+        self.busy_since: float | None = None
+        self.busy_name = ""
+        # The navigator's own count of the sentences it has published about the move
+        # it is running. Kept so that polling three times a second writes one line
+        # per thing the rover said rather than thirty. See move_sentence.
+        self.move_seq: int | None = None
+        # Set when a move's reply has been printed, and cleared again by the record
+        # that says that move ended. Everything in between is commentary the reply
+        # has already overtaken -- see _show_move.
+        self.move_answered = False
+        self.poll_outstanding = False
+        self.poll_at = 0.0
+        # The search for the rover, which runs on its own thread and is tried again
+        # for as long as it keeps failing -- see mind_the_link. `find_at` is when the
+        # last one started, `find_tries` how many have failed in a row, and
+        # `said_lost` whether the log has been told, so that a rover switched off for
+        # an hour costs one line rather than one line every fifteen seconds.
+        self.find_outstanding = False
+        self.find_at = 0.0
+        self.find_tries = 0
+        self.said_lost = False
+        # When the status poll was last answered. Measured from the answer rather
+        # than from the failure, because a rover that has been unplugged does not
+        # refuse the call -- the socket sits there until it times out twelve seconds
+        # later, and a clock started then finds out about it twenty seconds late. The
+        # poll goes out three times a second, so anything past a few seconds of this
+        # is silence whether or not a refusal has arrived to prove it.
+        self.answered_at = 0.0
+
+        self.status_rows: list[list[Any]] = []
+        self.status_error = ""
+        # What the rover last said about its own sensor, kept so the reset button
+        # can be offered exactly when it is worth pressing. `lidar_live` is the
+        # honest test rather than `lidar_ok`: the map is suspended through a
+        # dead-reckoned turn, so `lidar_ok` goes false on a sensor that is fine.
+        self.lidar_live: bool | None = None
+        self.lidar_note = ""
+        self.pose_text = "-"
+        self.plan_text = "-"
+        self.heading_deg = 0.0
+
+        self.map_outstanding = False
+        self.map_wanted = False        # the view moved while one was already in flight
+        self.map_at = 0.0
+        # When the picture on screen was drawn, as against when one was last asked
+        # for. The two differ by however long the rover took, and the page shows the
+        # first: a map is a photograph of a moment, and a console that displays one
+        # without saying how old it is invites reading a stale picture as the room
+        # the rover is in now.
+        self.map_drawn_at = 0.0
+        self.map_cost = 0.0            # how long the rover said the last one took
+        self.map_png: bytes = b""
+        self.map_gen = 0
+        self.map_shape = (0, 0)
+        self.map_view: dict[str, Any] | None = None
+        self.map_error = ""
+        self.map_note = ""
+        self.map_caption = ""
+        self.map_auto = True
+        # Whether the size asked for follows the panel. On, because the whole reason
+        # this console is a page is that the panel has a size and the fixed box it
+        # replaced did not; off is for pinning a size to compare two pictures at.
+        self.map_fit = True
+        self.panel_px = 0.0
+        # Which way is up. Off, the page keeps the heading the rover started with, so
+        # the room holds still and the arrow turns -- right for watching where the
+        # rover has got to. On, the page turns with the rover, so ahead is always up
+        # and the room swings instead, which is what you want when the question is
+        # whether it will fit through the gap in front of it.
+        self.rover_up = False
+
+        self.frame_outstanding = False
+        self.frame_at = 0.0
+        self.frame_cost = 0.0          # how long the last one took to arrive
+        self.frame_jpeg: bytes = b""
+        self.frame_gen = 0
+        self.frame_note = ""
+        self.frame_error = ""
+        self.frame_auto = False
+
+        self.track_outstanding = False
+        self.track_at = 0.0
+        self.track_text = "-"
+        self.light_level: int | None = None
+        self.battery_outstanding = False
+        self.battery_at = 0.0
+        self.battery: dict[str, Any] = {"text": "-", "state": "", "note": ""}
+
+        # None until the rover has been asked once. The network calls are not in
+        # `list_tools` -- no model is offered them, since one that switched networks
+        # would be cutting the wire its own conversation arrives on -- so support is
+        # discovered by asking rather than read off the tool list, and a rover
+        # running an older daemon leaves this False and the panel quiet.
+        self.wifi_ok: bool | None = None
+        self.wifi_outstanding = False
+        self.wifi_at = 0.0
+        self.wifi_joining: str | None = None
+        self.rejoin_at = 0.0
+        self.wifi: dict[str, Any] = {"supported": None, "text": "-", "verdict": "",
+                                     "where": "", "note": "", "networks": [],
+                                     "scanning": False, "joining": None}
+
+        self.turns: list[dict[str, str]] = []
+        self.clear_armed_until = 0.0
+
+        self.log: list[dict[str, Any]] = []
+        self.log_seq = 0
+
+        # What the browsers are told, and how they are woken. `published` is the
+        # JSON of the last state pushed, kept so that a tick which changed nothing
+        # pushes nothing.
+        self.lock = threading.Condition()
+        self.published = ""
+        self.version = 0
+        self.listeners = 0
+        self.alone_since = 0.0
+        self.stopped_orphan = False
+        self.running = True
+
+    def tag(self, count: int) -> str:
+        """The name a picture is published under: this run, and which picture.
+
+        Empty while there is no picture, because the page reads a falsy generation
+        as "nothing to show yet" and would otherwise ask for a map that has never
+        been drawn.
+        """
+        return f"{self.run_id}-{count}" if count else ""
+
+    # --- what the browser sees ------------------------------------------------
+    def snapshot(self) -> dict[str, Any]:
+        """Everything on screen, as JSON. Rebuilt whole on every tick and compared
+        with the last one, rather than each writer remembering to mark the state
+        dirty -- the state is a few kilobytes and this is a desk, and a missed dirty
+        flag is a panel that silently stops updating."""
+        busy = None
+        if self.busy_since is not None:
+            busy = {"name": self.busy_name,
+                    "seconds": round(time.monotonic() - self.busy_since, 1)}
+        facing = "rover up" if self.rover_up else "start heading up"
+        return {
+            "link": {"address": self.address or self.wanted_address,
+                     "text": self.link_text,
+                     "connected": bool(self.channels),
+                     "can_drive": self.can_drive,
+                     "tools": self.tools},
+            "busy": busy,
+            "status": {"rows": self.status_rows, "pose": self.pose_text,
+                       "error": self.status_error},
+            "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
+            "plan": self.plan_text,
+            "map": {"gen": self.tag(self.map_gen), "width": self.map_shape[0],
+                    "height": self.map_shape[1], "note": self.map_note,
+                    "caption": self.map_caption, "error": self.map_error,
+                    "drawing": self.map_outstanding,
+                    "half_extent_m": self.half_extent, "size_px": self.map_size,
+                    "rover_up": self.rover_up, "auto": self.map_auto,
+                    "fit": self.map_fit,
+                    "age_s": (None if not self.map_gen
+                              else round(time.monotonic() - self.map_drawn_at, 1)),
+                    "settings": f"{2 * self.half_extent:.0f} m across, "
+                                f"{self.map_size} px picture, {facing}"},
+            "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
+                      "error": self.frame_error, "auto": self.frame_auto,
+                      "taking": self.frame_outstanding},
+            "tracking": self.track_text,
+            "lights": {"level": self.light_level,
+                       "text": "-" if self.light_level is None else
+                               f"{'on' if self.light_level else 'off'} "
+                               f"({self.light_level})"},
+            "battery": self.battery,
+            "wifi": self.wifi,
+            "turns": self.turns,
+            "clear_armed": self.clear_armed_until > time.monotonic(),
+            "watching": self.listeners,
+        }
+
+    # --- the pump -------------------------------------------------------------
+    def run(self) -> None:
+        self.connect()
+        while self.running:
+            began = time.monotonic()
+            self.pump()
+            time.sleep(max(0.0, TICK_S - (time.monotonic() - began)))
+
+    def pump(self) -> None:
+        while True:
+            try:
+                self.act(self.actions.get_nowait())
+            except queue.Empty:
+                break
+        while True:
+            try:
+                reply = self.replies.get_nowait()
+            except queue.Empty:
+                break
+            self.handle(reply)
+
+        now = time.monotonic()
+        if (self.watch is not None and not self.poll_outstanding
+                and now - self.poll_at > POLL_S):
+            self.poll_outstanding = True
+            self.poll_at = now
+            # Saying which sentence about the move we already have is what makes a
+            # third-of-a-second poll safe: a replan lasts about as long as the
+            # planner takes and would otherwise come and go between two of these.
+            self.watch.submit("nav_status", {"since_seq": self.move_seq})
+        # Auto-refresh leaves the rover as long to breathe as the last map took to
+        # draw. Asking every two seconds for a picture that takes two and a half is
+        # how you keep a single-core Pi permanently drawing maps while it is also
+        # running the SLAM it is drawing them from.
+        if (self.picture is not None and self.map_auto and not self.map_outstanding
+                and now - self.map_at > max(MAP_AUTO_S, self.map_cost)):
+            self.refresh_map()
+        # Paced off what the last one cost, like the map: a cold camera takes seconds
+        # to produce a frame, and asking again while it is still opening would keep a
+        # single-core Pi taking pictures for the whole time it is meant to be driving.
+        if (self.camera is not None and self.frame_auto and not self.frame_outstanding
+                and now - self.frame_at > max(CAMERA_AUTO_S, self.frame_cost)):
+            self.take_picture()
+        # Asked, not remembered: the daemon parks tracking by itself when the wheels
+        # turn, so the only honest source for this panel is the daemon.
+        if (self.watch is not None and not self.track_outstanding
+                and now - self.track_at > TRACK_POLL_S):
+            self.track_outstanding = True
+            self.track_at = now
+            self.watch.submit("tracking_status")
+        # The battery, on the status connection and at a thirtieth of its rate. Only
+        # once the daemon has said it offers it, so a rover still running an older
+        # daemon shows an empty panel rather than a red error every ten seconds.
+        if (self.watch is not None and "battery" in self.tools
+                and not self.battery_outstanding
+                and now - self.battery_at > BATTERY_POLL_S):
+            self.battery_outstanding = True
+            self.battery_at = now
+            self.watch.submit("battery")
+        # The network, on the same connection. Only once the rover has answered one
+        # of these successfully, so a daemon that has never heard of them is asked
+        # exactly once rather than every five seconds for the rest of the session.
+        if (self.watch is not None and self.wifi_ok and not self.wifi_outstanding
+                and now - self.wifi_at > WIFI_POLL_S):
+            self.wifi_outstanding = True
+            self.wifi_at = now
+            self.watch.submit("wifi_status")
+        if self.rejoin_at and now > self.rejoin_at:
+            self.rejoin_at = 0.0
+            self.rejoined()
+        if self.clear_armed_until and now > self.clear_armed_until:
+            self.clear_armed_until = 0.0
+        self.mind_the_link(now)
+        self.mind_the_watchers(now)
+        self.publish()
+
+    def retry_in(self) -> float:
+        """How long to leave it before looking for the rover again."""
+        return min(RECONNECT_MAX_S, RECONNECT_S * max(1, self.find_tries))
+
+    def mind_the_link(self, now: float) -> None:
+        """Keep looking for the rover instead of waiting to be asked again.
+
+        There are two ways this console loses its rover and neither is the user's
+        doing. It may never have had one -- the page opens before the daemon is up,
+        or before the Pi has finished enumerating its lidar 93 seconds into a boot
+        -- and it may lose one mid-session, which for a rover driving around a house
+        on wifi is ordinary rather than exceptional. Both used to end at "no daemon
+        answered" and a connect button, which is the wrong thing to need at the
+        moment the stop button has stopped working.
+
+        So a search that found nothing is tried again, backing off to every fifteen
+        seconds, and a link that has gone quiet for LINK_LOST_S is thrown away so
+        that the search picks it up. Not while a move is in flight: the move channel
+        waits longer than this does, and remaking the connections under it would
+        abandon the one reply that says what the rover did. A move that is genuinely
+        gone ends at its own timeout, and the reconnect follows a tick later.
+        """
+        if self.wifi_joining or self.rejoin_at:
+            # A join takes the rover off this network deliberately, and `rejoined`
+            # is already scheduled to reconnect whatever came of it.
+            return
+        if self.channels:
+            if (self.busy_since is None
+                    and now - self.answered_at > LINK_LOST_S):
+                self.say(f"no answer from the rover for "
+                         f"{now - self.answered_at:.0f} s, so reconnecting\n", "bad")
+                self.said_lost = True
+                self.find_tries = 0
+                self.connect()
+            return
+        if not self.find_outstanding and now - self.find_at > self.retry_in():
+            self.connect()
+
+    def mind_the_watchers(self, now: float) -> None:
+        """Stop the rover once the last browser has been gone a couple of seconds.
+
+        A desktop window sends a stop from its close handler, and a closed tab
+        has no equivalent -- it simply stops reading, and this process carries on
+        driving a rover nobody is looking at. So the promise is kept from this side:
+        the event stream is the browser being present, and losing the last one while
+        a move is running is treated exactly like closing the window.
+
+        The grace matters. A reload tears the stream down and puts it back within a
+        few hundred milliseconds, and stopping a move for that would make the page
+        unreloadable during the only minute it is interesting.
+        """
+        if self.listeners:
+            self.alone_since = 0.0
+            self.stopped_orphan = False
+            return
+        if not self.alone_since:
+            self.alone_since = now
+            return
+        if (self.busy_since is not None and not self.stopped_orphan
+                and now - self.alone_since > ORPHAN_GRACE_S):
+            self.stopped_orphan = True
+            self.say("nobody is watching and a move is running, so it is being "
+                     "stopped\n", "bad")
+            self.stop()
+
+    def publish(self) -> None:
+        text = json.dumps(self.snapshot(), separators=(",", ":"))
+        with self.lock:
+            if text == self.published:
+                return
+            self.published = text
+            self.version += 1
+            self.lock.notify_all()
+
+    # --- connecting -----------------------------------------------------------
+    def connect(self) -> None:
+        # Dropped on a thread of their own, because closing one of these can block
+        # for as long as the call in flight on it. The socket lock is held by the
+        # thread waiting on the reply, so closing a connection to a rover that has
+        # been unplugged waits out the twelve-second read timeout first -- six times
+        # over, on the pump thread, which is the thread that reads the stop button.
+        # That is the wrong thing to be doing at the moment the rover has vanished.
+        # Nothing refers to these once `channels` is emptied below, so they can be
+        # left to die in their own time; the worst of it is a reply from the old link
+        # arriving after the new one is up, which the next tick asks again for anyway.
+        abandoned, self.channels = self.channels, []
+        if abandoned:
+            threading.Thread(target=lambda: [c.close() for c in abandoned],
+                             daemon=True, name="rover-abandon").start()
+        # All of them, including the two an earlier reconnect path left pointing at a
+        # closed socket: a submit on a closed channel is queued to a thread that has
+        # already returned, so the map simply never comes back and the "one at a
+        # time" flag stays set for good.
+        self.moves = self.halt = self.watch = self.picture = self.camera = None
+        self.scanner = None
+        self.frame_outstanding = False
+        self.map_outstanding = False
+        self.wifi_outstanding = False
+        # Not forgotten across a reconnect: a reconnect is mostly what happens
+        # *because* of a join, and the panel's job at that moment is to say whether
+        # the rover came back on the network it was asked for.
+        self.wifi_ok = None
+        # Forgotten across a reconnect, so that a rover found mid-move says once
+        # what it is doing instead of staying silent until the next phase.
+        self.move_seq = None
+        self.tools = []
+        self.can_drive = False
+        self.busy_since = None
+        self.link_text = "looking for the rover..."
+        self.find_outstanding = True
+        self.find_at = time.monotonic()
+        # A fresh link is given the same patience as an established one, counted
+        # from now: the first poll cannot be answered before it has been sent.
+        self.answered_at = self.find_at
+
+        wanted = self.wanted_address.strip()
+
+        def find() -> None:
+            # On a thread, because a failed name lookup costs seconds -- 7.3 of them
+            # on this LAN, measured -- and a console that freezes while it looks is
+            # a console nobody should trust with a stop button.
+            if wanted:
+                address = (wanted if ":" in wanted
+                           else f"{wanted}:{rover_tools.DEFAULT_PORT}")
+                probe = rover_tools.RoverClient(address)
+                found = address if probe.probe() else None
+                probe.close()
+            else:
+                client = rover_tools.discover()
+                found = client.describe() if client else None
+                if client:
+                    client.close()
+            self.replies.put(Reply("__found__", {},
+                                   {"ok": found is not None, "address": found}, 0.0))
+
+        threading.Thread(target=find, daemon=True, name="rover-find").start()
+
+    def connected(self, address: str) -> None:
+        self.address = address
+        self.wanted_address = address
+        self.moves = Channel("move", address, self.replies, timeout=MOVE_TIMEOUT_S)
+        self.halt = Channel("stop", address, self.replies)
+        self.watch = Channel("watch", address, self.replies)
+        self.picture = Channel("map", address, self.replies)
+        self.camera = Channel("camera", address, self.replies)
+        # Its own connection because a scan outlasts everything else here by a
+        # factor of three, and its own patience because it outlasts the default.
+        self.scanner = Channel("scan", address, self.replies,
+                               timeout=WIFI_SCAN_TIMEOUT_S)
+        self.channels = [self.moves, self.halt, self.watch, self.picture,
+                         self.camera, self.scanner]
+        self.link_text = f"{address}: asking what it can do"
+        self.watch.submit("list_tools")
+        # The board cannot be read back, so the daemon only knows the level it last
+        # set. Ask once on connect and the panel starts out true rather than blank.
+        self.watch.submit("get_lights")
+        # And once for the network, which is also how this finds out whether the
+        # rover has the calls for it at all.
+        self.wifi_outstanding = True
+        self.watch.submit("wifi_status")
+
+    # --- what the buttons ask for ---------------------------------------------
+    def act(self, action: dict[str, Any]) -> None:
+        """One posted action, run on the pump thread so that nothing else is."""
+        what = action.get("do")
+        if what == "connect":
+            self.wanted_address = str(action.get("address") or "")
+            self.connect()
+        elif what == "stop":
+            self.stop()
+        elif what == "drive":
+            arguments: dict[str, Any] = {"distance_m": _number(
+                action.get("distance_m"), 0.5)}
+            speed = _number(action.get("speed_ms"), None)
+            if speed is not None:
+                arguments["speed_ms"] = speed
+            self.move("drive", arguments)
+        elif what == "turn":
+            self.move("turn_in_place",
+                      {"angle_deg": _number(action.get("angle_deg"), 90.0)})
+        elif what == "tap":
+            self.tap(action)
+        elif what == "describe":
+            self.watch_call("describe_surroundings")
+        elif what == "map":
+            self.map_settings(action)
+        elif what == "picture":
+            self.take_picture()
+        elif what == "camera_auto":
+            self.frame_auto = bool(action.get("on"))
+        elif what == "track":
+            name = action.get("name")
+            if name in ("start_tracking", "stop_tracking"):
+                self.watch_call(name)
+                self.track_at = 0.0
+        elif what == "lights":
+            self.watch_call("set_lights",
+                            {"level": int(_number(action.get("level"), 0))})
+        elif what == "reset_lidar":
+            self.reset_lidar()
+        elif what == "clear_map":
+            self.clear_map()
+        elif what == "wifi_scan":
+            self.wifi_scan()
+        elif what == "wifi_join":
+            self.wifi_join(str(action.get("ssid") or ""))
+        elif what == "panel":
+            self.panel_px = _number(action.get("map_px"), 0.0) or 0.0
+            self.fit_map()
+
+    def watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
+        if self.watch is None:
+            self.say(f"not connected, so {name} was not sent\n", "bad")
+            return
+        self.log_sent(name, arguments or {})
+        self.watch.submit(name, arguments)
+
+    def move(self, name: str, arguments: dict[str, Any]) -> None:
+        """A bounded move, one at a time.
+
+        Refused here rather than sent and refused by the daemon. The daemon's answer
+        would be `busy`, which is correct and tells you nothing, and it would land in
+        the log between the move and its result, where it reads like the move having
+        failed.
+        """
+        if self.moves is None or not self.can_drive:
+            self.say(f"no driving tools on this rover, so {name} was not sent\n",
+                     "bad")
+            return
+        if self.busy_since is not None:
+            self.say(f"{self.busy_name} is still running; stop it or wait\n", "quiet")
+            return
+        self.busy_since = time.monotonic()
+        self.busy_name = name
+        self.move_answered = False      # a new move's commentary is wanted again
+        self.log_sent(name, arguments)
+        self.moves.submit(name, arguments)
+
+    def tap(self, action: dict[str, Any]) -> None:
+        """A click on the picture is a place relative to the rover, not a pixel.
+
+        The page sends the pixel in the picture's own coordinates -- it divides out
+        whatever CSS scaling the panel applied, which is the one piece of arithmetic
+        it does -- and the conversion into metres happens here, in the renderer's own
+        code. A browser that worked that out for itself would be a third copy of the
+        map's geometry.
+        """
+        if self.map_view is None:
+            return
+        if "drive_to" not in self.tools:
+            self.say("this rover has no drive_to tool, so the tap was not sent\n",
+                     "quiet")
+            return
+        where = tap_to_relative(_number(action.get("col"), 0.0),
+                                _number(action.get("row"), 0.0), self.map_view)
+        if where is None:
+            self.say("cannot convert a tap without mapimg\n", "bad")
+            return
+        ahead, left = where
+        arguments: dict[str, Any] = {"ahead_m": round(ahead, 2),
+                                     "left_m": round(left, 2)}
+        speed = _number(action.get("speed_ms"), None)
+        if speed is not None:
+            arguments["speed_ms"] = speed
+        self.move("drive_to", arguments)
+
+    def stop(self) -> None:
+        """Always allowed, and on the connection that carries nothing else."""
+        if self.halt is None:
+            self.say("not connected, so there was nothing to stop\n", "quiet")
+            return
+        self.log_sent("stop_driving", {})
+        self.halt.submit("stop_driving")
+
+    def take_picture(self) -> None:
+        """On its own connection, because it is the slowest call here: a camera that
+        has to be opened takes the rover up to four seconds to deliver a first
+        buffer, and while it is doing that nothing else on that socket is answered."""
+        if self.camera is None:
+            self.say("not connected, so no picture was asked for\n", "bad")
+            return
+        if self.frame_outstanding:
+            return
+        self.frame_outstanding = True
+        self.frame_at = time.monotonic()
+        self.frame_note = "taking one..."
+        self.camera.submit("camera_jpeg")
+
+    def reset_lidar(self) -> None:
+        """Ask the rover to replug its own lidar.
+
+        On the watch connection rather than the move one, because the point of it is
+        to work when the rover is otherwise doing nothing useful -- and because it
+        answers immediately: the reset is issued and the device takes a second or
+        two to come back on its own, which the scan age will show.
+        """
+        if self.watch is None:
+            return
+        self.say("asking the rover to reset the lidar's USB device; the camera and "
+                 "the face detector go with it for a few seconds\n", "note")
+        self.watch_call("reset_lidar")
+
+    def clear_map(self) -> None:
+        """Two presses, and no dialog between them.
+
+        `confirm()` blocks the page's script, which is the script receiving status
+        and holding the stop button -- the same objection a desktop window has to a
+        modal dialog sitting on its event loop, for the same reason. Arming the
+        button costs one extra press and takes nothing away. It disarms itself
+        after CLEAR_ARM_S, so a press forgotten about does not lie in wait.
+        """
+        now = time.monotonic()
+        if now > self.clear_armed_until:
+            self.clear_armed_until = now + CLEAR_ARM_S
+            return
+        self.clear_armed_until = 0.0
+        if self.picture is None:
+            self.say("not connected, so the map was not cleared\n", "bad")
+            return
+        # On the map's connection, so that a picture already being drawn comes back
+        # before the clear rather than after it. The other way round shows an empty
+        # map and then replaces it with the old one, which reads as the clear having
+        # failed.
+        self.log_sent("clear_map", {})
+        self.picture.submit("clear_map")
+
+    def map_settings(self, action: dict[str, Any]) -> None:
+        """Zoom, size and which way is up, from the buttons that step the ladders.
+
+        An extent and a size, never a magnification: the rover derives pixels per
+        cell from the two, which is what keeps the picture the same size when the
+        view widens. Asking for a magnification instead resized the picture on every
+        zoom, which is not zooming.
+        """
+        if "zoom" in action:
+            index = rung(MAP_EXTENTS_M, self.half_extent) + int(action["zoom"])
+            self.half_extent = MAP_EXTENTS_M[
+                max(0, min(len(MAP_EXTENTS_M) - 1, index))]
+        if "size" in action:
+            # Stepping the size by hand is a statement that the panel is not to
+            # choose it, or the next resize would undo the press.
+            self.map_fit = False
+            index = rung(MAP_SIZES_PX, self.map_size) + int(action["size"])
+            self.map_size = MAP_SIZES_PX[max(0, min(len(MAP_SIZES_PX) - 1, index))]
+        if "rover_up" in action:
+            self.rover_up = bool(action["rover_up"])
+        if "auto" in action:
+            self.map_auto = bool(action["auto"])
+        if "fit" in action:
+            self.map_fit = bool(action["fit"])
+            if self.map_fit and self.fit_map():
+                return
+        self.refresh_map()
+
+    def fit_map(self) -> bool:
+        """Match the size asked for to the width the panel turned out to have.
+
+        This is the part the tkinter window this replaced could not do at all: its
+        map sat in a box of a fixed size, so the only way to fill a wider window
+        was to press "bigger" and hope. Here the page reports what the column came
+        out as and the rung below it is asked for -- rounded down, because the
+        picture costs the rover its own area to draw and the browser scales what
+        arrives.
+
+        Only when the rung actually changes, and that matters more than it looks:
+        dragging a window edge produces a resize event per frame, and a map request
+        per frame would be a minute of a single ARMv6 core spent on one drag.
+        """
+        if not self.map_fit or self.panel_px <= 0:
+            return False
+        wanted = size_for_panel(self.panel_px)
+        if wanted == self.map_size:
+            return False
+        self.map_size = wanted
+        self.refresh_map()
+        return True
+
+    def refresh_map(self) -> None:
+        """On its own connection, because the map is the slowest thing here.
+
+        It shared the status connection at first, which was wrong once the cost was
+        measured: a map at the default settings takes a couple of seconds on the Pi,
+        and `RoverClient` serialises, so every refresh held up a status poll that is
+        meant to arrive three times a second. The numbers went stale exactly while
+        the picture was being drawn.
+        """
+        if self.picture is None:
+            return
+        if self.map_outstanding:
+            # One at a time, but do not lose the request: the map takes seconds, and
+            # a zoom pressed while one is in flight would otherwise be dropped on the
+            # floor -- silently, and for good if auto-refresh is off. Remember that
+            # the settings moved and ask again as soon as this one lands.
+            self.map_wanted = True
+            return
+        self.map_wanted = False
+        self.map_outstanding = True
+        self.map_at = time.monotonic()
+        self.picture.submit("map_png", {"half_extent_m": self.half_extent,
+                                        "pixels": self.map_size,
+                                        "rover_up": self.rover_up})
+
+    def wifi_scan(self) -> None:
+        """Ask the radio to look around, which costs the rover the link for a moment.
+
+        Said out loud in the panel before it happens, because it is fifteen seconds
+        of a rover that answers nothing -- including a stop -- and a button that
+        appears to have done nothing for that long is a button people press again.
+        Which is also why it goes out until the answer arrives: pressing it twice
+        buys two scans and half a minute off channel, not a quicker one.
+        """
+        if self.scanner is None:
+            self.say("not connected, so no scan was sent\n", "bad")
+            return
+        self.wifi["note"] = "scanning -- the rover is off channel for a few seconds"
+        self.wifi["scanning"] = True
+        self.wifi_outstanding = True
+        self.wifi_at = time.monotonic()
+        self.log_sent("wifi_status", {"scan": True})
+        self.scanner.submit("wifi_status", {"scan": True})
+
+    def wifi_join(self, ssid: str) -> None:
+        """Move the rover onto another network, and expect to lose it.
+
+        The daemon answers this before it acts, so the reply arriving means the
+        request was accepted and nothing more. What follows is the link going down
+        under all six connections, so the reconnect is scheduled here rather than
+        waited for: there is nothing left to be told on.
+        """
+        if not ssid or self.watch is None:
+            return
+        self.wifi_joining = ssid
+        self.wifi["joining"] = ssid
+        self.wifi["note"] = (f"joining {ssid}; the rover will be unreachable for a "
+                             f"few seconds")
+        self.watch_call("wifi_join", {"ssid": ssid})
+        self.rejoin_at = time.monotonic() + WIFI_REJOIN_S
+
+    def rejoined(self) -> None:
+        """Reconnect after a join, whatever became of the request.
+
+        Unconditional on purpose. The switch may have worked, may have failed and
+        left the rover where it was, or may have left it on a network this desk
+        cannot reach -- and the first two are indistinguishable from here until
+        something reconnects and asks.
+        """
+        asked, self.wifi_joining = self.wifi_joining, None
+        self.wifi["joining"] = None
+        self.wifi["note"] = f"reconnecting after asking for {asked}"
+        self.connect()
+
+    # --- what came back -------------------------------------------------------
+    def handle(self, reply: Reply) -> None:
+        name, body = reply.name, reply.body
+
+        if name == "__found__":
+            self.find_outstanding = False
+            if body.get("ok"):
+                if self.said_lost:
+                    self.say(f"the rover answered again on {body['address']}\n",
+                             "good")
+                self.said_lost = False
+                self.find_tries = 0
+                self.connected(body["address"])
+                return
+            self.find_tries += 1
+            self.link_text = (f"no daemon answered; looking again every "
+                              f"{self.retry_in():.0f} s")
+            # Once, however long the outage lasts. The link line is what says this
+            # is still trying, and a line per try would bury everything else.
+            if not self.said_lost:
+                self.said_lost = True
+                self.say("no rover daemon answered. Is it running, and is the "
+                         "address right? This will keep looking.\n", "bad")
+            return
+        if name == "nav_status":
+            self.poll_outstanding = False
+            self.show_status(body)
+            return
+        if name == "map_png":
+            self.map_outstanding = False
+            self.show_map(body)
+            if self.map_wanted:
+                self.refresh_map()
+            return
+        if name == "list_tools":
+            self.show_tools(body)
+            return
+        if name == "camera_jpeg":
+            self.frame_outstanding = False
+            self.frame_cost = reply.seconds
+            self.show_picture(body)
+            return
+        if name == "battery":
+            self.battery_outstanding = False
+            self.show_battery(body)
+            return
+        if name == "wifi_status":
+            self.wifi_outstanding = False
+            self.show_wifi(body)
+            # A scan is somebody pressing a button and waiting several seconds for
+            # an answer, so it goes in the transcript; the five-second poll behind
+            # it does not, or the log would be nothing else. The note has been
+            # saying a scan is in flight all that time, so it is also what says how
+            # it went -- until it did, a panel went on claiming to be scanning for
+            # the rest of the session.
+            if reply.arguments.get("scan"):
+                self.log_reply(reply)
+                self.wifi["scanning"] = False
+                if body.get("ok"):
+                    heard = len(body.get("networks") or [])
+                    self.wifi["note"] = (
+                        f"heard {heard} network{'' if heard == 1 else 's'} "
+                        f"in {reply.seconds:.0f} s")
+                else:
+                    self.wifi["note"] = (f"the scan did not come back: "
+                                         f"{body.get('error', 'no answer')}")
+            return
+        if name == "tracking_status":
+            # Polled by the console rather than asked for by a person, so it updates
+            # the panel and stays out of the transcript.
+            self.track_outstanding = False
+            self.show_tracking(body)
+            return
+        if name in ("get_lights", "set_lights"):
+            if body.get("ok"):
+                self.light_level = body.get("level")
+            if name == "get_lights":
+                return          # asked for on connect, not by a person
+
+        # What is left is something a person asked for, so it is logged.
+        moved = name in ("drive", "turn_in_place", "drive_to")
+        if moved:
+            self.busy_since = None
+            self.busy_name = ""
+            # The outcome is about to be printed, so anything the poll has not yet
+            # caught up with is commentary on a move the log has already finished
+            # telling. See show_move.
+            self.move_answered = True
+        self.log_reply(reply)
+        if name == "turn_in_place":
+            self.tally_turn(reply)
+        if name in ("start_tracking", "stop_tracking") and body.get("ok"):
+            self.show_tracking(body)
+        if moved or name == "clear_map":
+            self.refresh_map()
+

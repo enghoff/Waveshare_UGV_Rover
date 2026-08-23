@@ -1835,19 +1835,19 @@ turn-taking, which is the other half worth checking.
 Source of truth is this directory; the guest copy is not authoritative.
 
 ```bash
-scp voice_chat/{server.py,requirements.txt,selftest.py} root@media:/opt/voice_chat/
+scp voice_chat/{server.py,voice_history.py,voice_stream.py,voice_http.py,requirements.txt,selftest.py,test_harness.py,test_server.py,test_talk.py,test_drive_web.py} root@media:/opt/voice_chat/
 scp voice_chat/voice-chat.service root@media:/etc/systemd/system/
 # pillow is new with vision; the rest of the venv is unchanged.
 ssh root@media 'VIRTUAL_ENV=/opt/voice_chat/.venv /root/.local/bin/uv pip install pillow'
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 
-scp rover_daemon/{rover_daemon.py,selftest.py} rpi:~/ugv/
+scp rover_daemon/*.py rpi:~/ugv/
 ```
 
 `talk.py`, `endpointing.py` and `rover_tools.py` are not deployed anywhere —
 they run from this repo on whichever desk has the microphone. Neither are
 `prompts.py` and `mock_rover.py`, and `prompts.py` in particular
-*cannot* be: it reads `server.py` and `rover_daemon.py` off the disk beside it,
+*cannot* be: it reads `server.py`, `tool_schemas.py` and `rover_nav.py` off the disk beside it,
 so it only works from a checkout where both are present. The rover copy is
 flat in `~/ugv/` alongside the face-tracking scripts, which is the layout already
 there; nothing on the Pi needs installing.

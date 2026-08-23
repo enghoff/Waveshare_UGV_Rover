@@ -2,7 +2,8 @@
 
 There is no second copy of a schema in this directory, and that is deliberate.
 The daemon is already the one place a tool is described --
-[rover_daemon.py](../rover_daemon/rover_daemon.py) says so in its own docstring,
+[tool_schemas.py](../rover_daemon/tool_schemas.py) holds the literals
+[rover_daemon.py](../rover_daemon/rover_daemon.py) serves,
 and every word of those descriptions was arrived at through six-sample runs. A
 benchmark that pasted them here would be measuring a fossil the first time
 somebody improved one.
@@ -27,7 +28,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DAEMON = ROOT / "rover_daemon" / "rover_daemon.py"
+DAEMON = ROOT / "rover_daemon" / "tool_schemas.py"
 VOICE = ROOT / "voice_chat" / "server.py"
 
 

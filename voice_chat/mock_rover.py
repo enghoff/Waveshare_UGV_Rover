@@ -79,12 +79,12 @@ MAX_RANGE_M = 12.0
 # A mock that had its own copy of these would drift from the rover, and the whole
 # point of clamping here is that a client which shows what it *got* can be tested
 # against a rover that says no.
-MAP_MAX_HALF_EXTENT_M = prompts._literal(prompts.DAEMON, "MAP_MAX_HALF_EXTENT_M")
-MAP_MAX_SCALE = prompts._literal(prompts.DAEMON, "MAP_MAX_SCALE")
-MAP_MIN_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MIN_PIXELS")
-MAP_MAX_PIXELS = prompts._literal(prompts.DAEMON, "MAP_MAX_PIXELS")
-MAP_PIXELS = prompts._literal(prompts.DAEMON, "MAP_PIXELS")
-CAMERA_FOV_DEG = prompts._literal(prompts.DAEMON, "CAMERA_FOV_DEG")
+MAP_MAX_HALF_EXTENT_M = prompts._literal(prompts.ROVER_NAV, "MAP_MAX_HALF_EXTENT_M")
+MAP_MAX_SCALE = prompts._literal(prompts.ROVER_NAV, "MAP_MAX_SCALE")
+MAP_MIN_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_MIN_PIXELS")
+MAP_MAX_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_MAX_PIXELS")
+MAP_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_PIXELS")
+CAMERA_FOV_DEG = prompts._literal(prompts.ROVER_NAV, "CAMERA_FOV_DEG")
 # And the navigator's cap on a single route, for the same reason: a mock that
 # refused at its own distance would let a console pass its tests against a limit
 # the rover does not have.
