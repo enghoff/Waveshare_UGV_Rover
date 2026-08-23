@@ -2,7 +2,7 @@
 
 Talks to the ESP32 on the rover's General Driver board -- the only thing on the
 robot wired to the motors -- by sending it the same JSON commands its own web UI
-sends. No Raspberry Pi, no ROS, nothing else on the rover need be running.
+sends. No host board, no ROS, nothing else on the rover need be running.
 
     python drive_gamepad.py              # over WiFi: the rover's own AP, else this LAN
     python drive_gamepad.py --host 192.168.1.22  # ...straight to a known address

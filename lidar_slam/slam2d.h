@@ -1,7 +1,7 @@
 /* slam2d -- scan-matched 2D localisation and occupancy mapping for the D500.
  *
- * This is the compiled half of the Pi's SLAM. It exists in C rather than in
- * Python because the Pi 1 on the rover is a 700 MHz armv6 with scalar VFP and no
+ * This is the compiled half of the rover's SLAM. It exists in C rather than in
+ * Python because the Pi 1 this first ran on is a 700 MHz armv6 with scalar VFP and no
  * NEON, where numpy's per-call overhead dominates any array this small: the same
  * inner loops measured 231 ms per scan under numpy 2.2.4 and 22.8 ms here, and
  * CRC-checking one revolution's 42 packets is 24.7 ms against 0.05 ms. See

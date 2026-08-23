@@ -97,7 +97,7 @@ CRAWL_SPEED_MS = 0.12      # when something ahead is unknown rather than clear
 MAX_TURN_DPS = 45.0
 # ...but 45 only holds if a revolution really is 100 ms. Measured over five
 # recorded journeys it is not: the loop delivers a *matched* revolution every
-# 138 ms at the median and 236 ms at the ninetieth percentile, because the Pi is
+# 138 ms at the median and 236 ms at the ninetieth percentile, because the Pi 1 is
 # oversubscribed while driving and drops roughly four revolutions in ten. What
 # the window cares about is degrees per match, not degrees per second, so 45
 # deg/s is 6.2 degrees at the median gap and 10.6 at the ninetieth -- and the

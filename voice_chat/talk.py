@@ -6,7 +6,7 @@ no Kokoro, and no GPU.
 
     python voice_chat/talk.py                    # full duplex; wear headphones
     python voice_chat/talk.py --half-duplex      # push to talk, no barge-in
-    python voice_chat/talk.py --rover rpi.local:8769
+    python voice_chat/talk.py --rover bpi-m4zero.local:8769
 
 The split is the one this repository already has. Audio capture and playback stay
 on whatever desk has the microphone because they have to; the tools stay on the
@@ -297,7 +297,7 @@ def point_camera_here(rover: rover_tools.RoverClient | None,
     # whole function exists to stop happening.
     print(f"  this rover daemon does not take set_vision ({answer.get('error')}).\n"
           f"  'look' will post wherever it was started pointing. To fix it:\n"
-          f"    scp rover_daemon/*.py rpi:~/ugv/ && ssh rpi '~/ugv/restart.sh'\n"
+          f"    scp rover_daemon/*.py bpi-m4zero:~/ugv/ && ssh bpi-m4zero '~/ugv/restart.sh'\n"
           f"  or restart the daemon with: --vision {where}", file=sys.stderr)
 
 
@@ -1048,9 +1048,8 @@ def main() -> int:
     rover = None
     if args.rover != "none":
         # Probed rather than assumed, and searched for rather than probed at one
-        # address: the rover answers on wlan0 or eth0 depending on whether it is
-        # plugged in, and picking the wrong one looks exactly like a rover that
-        # is not there.
+        # address: the name and the wifi address can disagree, and picking the
+        # wrong one looks exactly like a rover that is not there.
         if args.rover == "auto":
             rover = rover_tools.discover()
         else:

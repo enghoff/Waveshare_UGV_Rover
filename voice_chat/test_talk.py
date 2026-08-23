@@ -60,7 +60,7 @@ def test_rover_client() -> None:
         client.call("hang_up", {})
         check("a dropped connection is remade", client.call("ping", {})["ok"], True)
 
-        # And remaking it must not send the client back to the name. `rpi.local`
+        # And remaking it must not send the client back to the name. `bpi-m4zero.local`
         # is answered by mDNS -- multicast UDP, with nothing retransmitting it --
         # so on a rover whose wifi has gone weak the lookup is what fails first,
         # while the connection it was wanted for would have worked. Re-resolving
@@ -87,12 +87,11 @@ def test_rover_client() -> None:
         server.shutdown()
         server.server_close()
 
-    # A remembered address is not a hardcoded one. The rover answers on eth0 while
-    # it is docked and on wlan0 once it has driven off, so an address that stops
-    # answering is exactly how a client finds out it has moved, and it has to ask
-    # the name again rather than go on dialling where the rover used to be. That is
-    # the bug docs/hosts.md is about; remembering an address without this would be
-    # a fresh way of writing it.
+    # A remembered address is not a hardcoded one. The wifi address can move,
+    # so an address that stops answering is exactly how a client finds out it
+    # has moved, and it has to ask the name again rather than go on dialling
+    # where the rover used to be. That is the bug docs/hosts.md is about;
+    # remembering an address without this would be a fresh way of writing it.
     first = Server(("127.0.0.1", 0), Fake)
     threading.Thread(target=first.serve_forever, daemon=True).start()
     second = Server(("127.0.0.1", 0), Fake)
@@ -150,10 +149,9 @@ def test_rover_client() -> None:
     check("...and a call to it fails as a result", result["ok"], False)
     check("...saying where it was looking", "rover daemon" in result["error"], True)
 
-    # Discovery, which is where the real bug was: the rover answers on wlan0 or
-    # eth0 depending on whether it is plugged in, and a client that knows only
-    # one of them reports no rover while the daemon is up and serving. A dead
-    # candidate must be stepped over rather than concluded from.
+    # Discovery, which is where the real bug was: a client that knows only one
+    # of the rover's addresses reports no rover while the daemon is up and
+    # serving. A dead candidate must be stepped over rather than concluded from.
     server = Server(("127.0.0.1", 0), Fake)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     live = f"127.0.0.1:{server.server_address[1]}"
@@ -173,11 +171,11 @@ def test_rover_client() -> None:
         server.shutdown()
         server.server_close()
 
-    # The name has to come first: it is the only candidate that is right whether
-    # or not the rover is plugged in, and a failed name lookup is slow enough
-    # that paying for one before an address that would have worked is a real cost.
+    # The name has to come first: it is the only candidate that stays right if
+    # the wifi address moves, and a failed name lookup is slow enough that
+    # paying for one before an address that would have worked is a real cost.
     check("the rover is looked for by name first",
-          rover_tools.DEFAULT_CANDIDATES[0], "rpi.local")
+          rover_tools.DEFAULT_CANDIDATES[0], "bpi-m4zero.local")
 
 
 def test_connect_errors() -> None:

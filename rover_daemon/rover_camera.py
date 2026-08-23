@@ -19,9 +19,9 @@ from tool_schemas import LIGHT_MAX
 def default_camera() -> str:
     """The USB camera, not whichever /dev/video0 the kernel numbered first.
 
-    On the Pi the Xitech is video0. On Allwinner boards video0 is the cedrus
-    decoder and the same camera lands later. The by-id name is the same on both
-    and stays put when another node appears.
+    On the Pi 1 the Xitech is video0. On this Allwinner board video0 is the
+    cedrus decoder and the same camera lands later. The by-id name is the same
+    on both and stays put when another node appears.
     """
     named = sorted(glob.glob("/dev/v4l/by-id/*-video-index0"))
     if named:
@@ -201,8 +201,8 @@ class RoverCamera:
             self._camera.close()
         # MJPEG, even though the detector could take raw pixels instead of
         # decoding one. Taking the cheaper conversion made the loop three times
-        # *slower* on the Pi, and the reason it stays MJPEG on a board that is not
-        # the Pi is the second cost below rather than the first: this board
+        # *slower* on the Pi 1, and the reason it stays MJPEG on a board that is
+        # not that Pi is the second cost below rather than the first: this board
         # decodes a 640x480 frame in 7 ms, so the decode has stopped mattering,
         # and 18 MB/s of uncompressed frames on a bus shared with the wifi
         # adapter and the OAK has not.

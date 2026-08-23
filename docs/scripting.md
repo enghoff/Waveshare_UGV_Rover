@@ -26,10 +26,10 @@ This is the correction that shapes everything else, because the obvious version
 of this idea — hand the model the servos and let it write the control loop — is
 wrong on this rover for reasons that have nothing to do with the design.
 
-The host is a Pi 1: one 700 MHz core, 474 MB, no SIMD. See [hosts.md](hosts.md).
-What is already on it, measured — the left column on the Pi 1 this was written
-for, the right on the Banana Pi M4 Zero the rover moved to on 2026-08-23. The
-argument below survives the move; the margins are what changed:
+The host is a Banana Pi M4 Zero: four Cortex-A53 cores, 3.9 GB, NEON. See
+[hosts.md](hosts.md). What is already on it, measured — the left column on the
+Pi 1 this was written for, the right on the Banana Pi the rover moved to on
+2026-08-23. The argument below survives the move; the margins are what changed:
 
 | | Pi 1, one core | M4 Zero, four cores |
 |---|---|---|
@@ -64,7 +64,7 @@ where that shows, which is why it is a primitive and not a `time.sleep`.
 
 ## The script is a process, not a sandbox
 
-Run the snippet as its own process on the Pi, launched and owned by the daemon,
+Run the snippet as its own process on the rover, launched and owned by the daemon,
 reaching the hardware only through the newline-delimited JSON the daemon already
 speaks on 8769.
 
@@ -132,7 +132,7 @@ The daemon gained:
 **None of them is offered to a model, and four of the five are refused on
 anything but loopback.** That is a change from what this document first said,
 and the security section below is the reason: submission is the code-execution
-path, and served on the LAN it would hand a stranger a shell on the Pi rather
+path, and served on the LAN it would hand a stranger a shell on the rover rather
 than the ability to flash the headlights. Bound to loopback it grants what an
 ssh session on this Pi already grants, and it is reached the same way — a tunnel,
 or an agent working on the rover itself. `script_status` is the exception and
@@ -260,7 +260,7 @@ Three shapes, in the order they should arrive.
 
 **Today it is the deploy path, and that is the whole integration.** The agent is
 Claude Code on a desk with the repository checked out. It writes the behaviour as
-a file, runs it against the mock rover, copies it to the Pi and watches it work
+a file, runs it against the mock rover, copies it to the rover and watches it work
 over 8769 — the same road every other file here travels, already described in
 [CLAUDE.md](../CLAUDE.md). Nothing new is built, and every behaviour that reaches
 the rover has been read by a person on the way. What it costs is that teaching
@@ -291,7 +291,7 @@ worth settling before the first one is built.
 **Where behaviours live conflicts with this repository's own rule** that the repo
 is source of truth and nothing is edited in place on a host. The resolution is
 that an agent-written behaviour is *data* rather than source: it belongs in a
-store on the Pi with its provenance attached — who asked for it, in what words,
+store on the rover with its provenance attached — who asked for it, in what words,
 when, and what it was tested against — and one that has proved itself gets
 promoted into the repo by hand, like any other code. What must not happen is the
 two drifting apart silently, which is exactly what a store that a deploy
@@ -358,7 +358,7 @@ reason to ask what is in it unless something prompts it, so either the person
 says they have taught the rover something, or whatever saves a behaviour drops a
 line into the conversation.
 
-## A code endpoint is a shell on the Pi
+## A code endpoint is a shell on the rover
 
 Port 8769 authenticates nothing, deliberately, on a home LAN — the same trade
 `face-detect` makes. The worst a stranger on that LAN can do through the tools is

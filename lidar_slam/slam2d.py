@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ctypes binding for libslam2d.so.
 
-The heavy lifting is in C because the Pi cannot afford it in Python -- see
+The heavy lifting is in C because the Pi 1 could not afford it in Python -- see
 slam2d.h -- but everything around it stays here: opening ports, unit conversion,
 and deciding what to do with a pose. This module is only the boundary.
 

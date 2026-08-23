@@ -1,11 +1,11 @@
 """Face detection as a service, on MEDIA. JPEG in, boxes out.
 
-The rover cannot do this itself. A Pi 1 is an ARM1176 at 700 MHz with **no NEON**
--- `Features: half thumb fastmult vfp edsp java tls`, scalar VFPv2 and nothing
-else -- and conv-shaped GEMMs measure 0.039 GFLOP/s there. YuNet is about
-0.12 GFLOP at 320x320, so a detection costs the rover something like a second
-even before the JPEG is decoded (93 ms at 640x480, measured). It costs 5.8 ms
-here. So the picture crosses the network and the boxes come back.
+The rover no longer needs this: a Banana Pi M4 Zero runs the same YuNet in
+process at 146 ms a frame. The service stays because a Pi 1 could not -- an
+ARM1176 at 700 MHz with **no NEON**, conv-shaped GEMMs at 0.039 GFLOP/s, YuNet
+about a second even before the JPEG was decoded (93 ms at 640x480). It costs
+5.8 ms here. `--service` on the tracking loop is how a host that cannot detect
+for itself still can.
 
 **This runs on the CPU, deliberately, and that is the whole point.** MEDIA's card
 is an 8 GB 3070 that Windows has already taken a share of, and the three model

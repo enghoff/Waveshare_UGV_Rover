@@ -2,9 +2,9 @@
 # Advertise this host as <hostname>.local so a desk can find it without an
 # address. Idempotent -- run it again after changing the drop-ins.
 #
-#     ssh rpi 'sudo ~/ugv/wifi_roam/install-mdns.sh'
+#     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install-mdns.sh'
 #
-# Raspberry Pi OS already ships avahi-daemon, which is why `rpi.local` resolves.
+# Raspberry Pi OS already ships avahi-daemon, which is why `rpi.local` resolved.
 # Ubuntu on the Banana Pi does not, and systemd-resolved has MulticastDNS off,
 # so `ssh bpi-m4zero` looked up bpi-m4zero.local and the LAN had nobody answering.
 # This is the missing half: either confirm avahi is already doing it, or turn

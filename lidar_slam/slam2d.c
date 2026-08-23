@@ -121,7 +121,7 @@ void slam2d_default_config(slam2d_config *cfg)
     /* The sensor delivers ~419 points a revolution and every one of them costs a
      * cache miss in every candidate pose, so the scan is thinned to 300. That is
      * still 1.2 deg of angular resolution against a 5 cm grid, and it bought 25 ms
-     * a revolution -- the difference between leaving the rest of the Pi some room
+     * a revolution -- the difference between leaving the rest of the host some room
      * and not. */
     cfg->max_points   = 300;
 

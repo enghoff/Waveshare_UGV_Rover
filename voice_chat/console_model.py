@@ -3,7 +3,7 @@
 
 [drive_web.py](drive_web.py) is a browser page, and almost nothing that matters
 about it is HTML. Which connection a call goes down, how often it is safe to ask
-the Pi for a map, what "replanning (#2) -- the corridor closed" is made of, and
+the rover for a map, what "replanning (#2) -- the corridor closed" is made of, and
 which of those sentences is worth a line in the transcript are all questions about
 a rover, and they belong on this side of the wire rather than in a page.
 
@@ -34,9 +34,9 @@ import rover_tools
 
 # --- how often to ask the rover for things ----------------------------------
 #
-# Every number here is a load on one 700 MHz ARMv6 core that is also running SLAM,
-# so none of them is a taste in refresh rates. They are what the Pi can answer
-# without the driving loop noticing.
+# Every number here is a load on the rover's host, which is also running SLAM,
+# so none of them is a taste in refresh rates. They are what the rover can
+# answer without the driving loop noticing.
 
 POLL_S = 0.3               # how often to ask for nav_status while connected
 MAP_AUTO_S = 2.0           # how often to refresh the map when auto is on
@@ -123,7 +123,7 @@ BATTERY_NOTES = {"full": "off the charger", "ok": "plenty left",
 # channel and interrupts the link, so looking around is a button.
 WIFI_POLL_S = 5.0
 # And how long to wait for that button, which is its own connection's worth of
-# patience. Measured on the Pi itself, over loopback where nothing can be blamed
+# patience. Measured on the rover itself, over loopback where nothing can be blamed
 # on the radio being off channel: 15.2 s for a scan through the daemon, of which
 # nmcli's rescan is 9.8 s. That is past the 12 s the rest of these calls get, so
 # every scan a console asked for timed out and the panel reported a rover that was
@@ -133,7 +133,7 @@ WIFI_POLL_S = 5.0
 WIFI_SCAN_TIMEOUT_S = 45.0
 # What the driver's dBm means for the link, and where the panel starts to say so.
 # Not a signal ladder out of a phone: these are this rover's own numbers, which
-# sits at -35 to -44 dBm in the lab, and the wifi keeper on the Pi calls the link
+# sits at -35 to -44 dBm in the lab, and the wifi keeper on the rover calls the link
 # failing at -78.
 WIFI_GOOD_DBM = -60
 WIFI_POOR_DBM = -72

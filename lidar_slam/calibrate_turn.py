@@ -14,7 +14,7 @@ incremental, and no dependence on anything the matcher did along the way.
 It drives the rover. Turning on the spot only, never forward, and it refuses to
 start without room to turn.
 
-    ssh rpi 'cd ~/ugv/lidar_slam && python3 calibrate_turn.py --angles 45,90,-90'
+    ssh bpi-m4zero 'cd ~/ugv/lidar_slam && python3 calibrate_turn.py --angles 45,90,-90'
 """
 import argparse
 import math
@@ -136,7 +136,7 @@ def main(argv=None):
                     help="instead, characterise open-loop turning at this PWM")
     ap.add_argument("--durations", default="0.4,0.8,1.2,1.6",
                     help="burst lengths in seconds for --deadreckon")
-    ap.add_argument("--serial", default="/dev/ttyAMA0")
+    ap.add_argument("--serial", default="/dev/ttyS4")
     ap.add_argument("--lidar", default=None)
     ap.add_argument("--clearance", type=float, default=0.35,
                     help="metres that must be free all round before it will turn")

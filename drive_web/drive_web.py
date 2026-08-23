@@ -27,7 +27,7 @@ from the camera goes straight into an `<img>` -- which deleted the one dependenc
 this console used to have, the OpenCV decode that existed solely because tk reads
 PNG, GIF and PPM and nothing else, along with the fallback that wrote the frame to
 a file and told you where. It also scales pictures, so the map can be drawn at
-whatever size the Pi can afford and then fitted to whatever width the panel
+whatever size the rover can afford and then fitted to whatever width the panel
 happens to have, with `image-rendering: pixelated` -- which on a picture made of
 5 cm squares with no antialiasing in it loses nothing at all.
 
@@ -263,8 +263,8 @@ class OnlyOne:
     The port guard above catches the same command typed twice. It does not catch the
     same command typed twice with different ports, and that is the worse case rather
     than the safer one: two consoles on two ports are two clients of one rover, each
-    polling three times a second and each asking for a map that costs the Pi's single
-    core two and a half seconds to draw. Measured with three of them attached, the
+    polling three times a second and each asking for a map that, on the Pi 1, cost
+    the single core two and a half seconds to draw. Measured with three of them attached, the
     daemon sat at 48% of the core drawing maps for windows nobody was looking at, and
     a rover that is busy drawing maps is a rover that answers slowly when told to
     stop.

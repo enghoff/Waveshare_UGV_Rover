@@ -12,7 +12,7 @@
 #
 # The restart loop is not belt-and-braces. The daemon exits deliberately when the
 # driver board does not answer its startup probe, and at boot that is a race it
-# can lose: the Pi is up in ~2m07s and the ESP32 comes up on its own schedule, so
+# can lose: the host is up and the ESP32 comes up on its own schedule, so
 # a daemon that started first has nothing to talk to. Retrying is the whole point.
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,7 +21,7 @@ RETRY=15
 
 # Wait for the port to exist at all. On a cold boot this is the SD card and the
 # kernel, not the board -- there is nothing to retry against until it is here.
-# ttyAMA0 is the Pi; ttyS4 is UART4 on the Banana Pi M4 Zero's 40-pin header.
+# ttyS4 is UART4 on the Banana Pi M4 Zero's 40-pin header; ttyAMA0 is the Pi 1.
 i=0
 while [ ! -e /dev/ttyAMA0 ] && [ ! -e /dev/ttyS4 ] && [ $i -lt 40 ]; do
     sleep 3

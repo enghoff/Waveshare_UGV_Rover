@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Run slam2d against the rover's real sensors and report what it makes of them.
 
-On the Pi the lidar is /dev/ttyACM0 at 230400 -- the CH343 behind the driver
+On the rover the lidar is /dev/ttyACM0 at 230400 -- the CH343 behind the driver
 board's Type-C LIDAR socket, claimed by cdc_acm, so there is no /dev/ttyUSB* to
-look for. The driver board's own telemetry is a separate port, /dev/ttyAMA0 at
-115200, and it is left alone by default because rover_daemon.py normally owns it
-and only one process can.
+look for. The driver board's own telemetry is a separate port, /dev/ttyS4 at
+115200 (ttyAMA0 on the Pi 1), and it is left alone by default because
+rover_daemon.py normally owns it and only one process can.
 
-    ssh rpi 'cd ~/ugv/lidar_slam && ./build.sh && python3 run_slam.py --seconds 30 --map room.pgm'
+    ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && python3 run_slam.py --seconds 30 --map room.pgm'
 
 Lidar-only is the supported path. Reading the driver board as well is opt-in for
 the port's sake rather than the prior's: with `--telemetry` this measures the
@@ -44,7 +44,7 @@ class BoardStream:
     factors, whether the gyro agrees with the scan match -- lives in
     `odometry.Odometry`, which this hands raw totals to. That split is why the
     same interpretation serves this script and the daemon: on the rover proper
-    `rover_daemon.py` owns `/dev/ttyAMA0` and does this accumulation in its own
+    `rover_daemon.py` owns `/dev/ttyS4` and does this accumulation in its own
     reader thread, and only one process may have the port. The shape of what
     crosses the boundary -- `motion()` returning those totals -- is deliberately
     the same in both, and is the only thing that has to stay in step.
@@ -132,7 +132,7 @@ def main(argv=None):
     ap.add_argument("--lidar", default="/dev/ttyACM0",
                     help="lidar serial port (default: %(default)s)")
     ap.add_argument("--telemetry", metavar="PORT", default=None,
-                    help="driver board port for the motion prior, e.g. /dev/ttyAMA0. "
+                    help="driver board port for the motion prior, e.g. /dev/ttyS4. "
                          "Off by default: rover_daemon.py owns that port and only "
                          "one process can.")
     ap.add_argument("--ticks-per-metre", type=float, default=None,

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Prove the depth camera on the machine that runs it, from the library up.
 
-    ssh rpi 'python3 ~/ugv/oak_depth/selftest.py'
-    ssh rpi 'python3 ~/ugv/oak_depth/selftest.py --frames 60 --png /tmp/depth.png'
+    ssh bpi-m4zero 'python3 ~/ugv/oak_depth/selftest.py'
+    ssh bpi-m4zero 'python3 ~/ugv/oak_depth/selftest.py --frames 60 --png /tmp/depth.png'
 
 Each stage is one more thing that can be wrong, in the order they fail: depthai
 imports, the udev rule is in place, the camera is on the bus, the device opens at

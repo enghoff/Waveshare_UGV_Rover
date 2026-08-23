@@ -19,7 +19,7 @@ three-sentence reply that is the difference between ~0.9s and ~3s before the
 user hears anything, and it costs nothing but a splitter.
 
 Tools are executed by the *client*, not here. The rover's hardware hangs off an
-ESP32 that only the Pi is wired to, so this service knows nothing about it: a
+ESP32 that only the rover is wired to, so this service knows nothing about it: a
 client announces what it can do when it connects, those schemas go into the
 prompt, and a call the model makes goes back down the same socket to be
 performed. A client that announces no tools gets a plain conversation, with no

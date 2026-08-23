@@ -191,7 +191,7 @@ bytes untouched cost 30% of the core at 30 fps.
 **The Banana Pi M4 Zero can.** Four Cortex-A53 cores with NEON run YuNet at 640×480
 in 146 ms on three of them and decode the JPEG in 7, so the detector is in the
 loop's own process and the loop measures 6.6 frames a second with SLAM running
-beside it — against 2.3 on the Pi with the detector on the OAK. Everything below
+beside it — against 2.3 on the Pi 1 with the detector on the OAK. Everything below
 about stamps, queues and dead time still applies; the numbers it is applied to are
 smaller by a factor of seven.
 

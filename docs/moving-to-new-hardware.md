@@ -4,8 +4,9 @@ The face tracking works, and almost none of what makes it work is visible in the
 shape of the code. It is in about thirty measured numbers, and in a handful of
 mistakes that are easy to make a second time because each of them produces the same
 symptom: a camera that will not settle on a face it can plainly see. This is a list
-of both, written while the rover still runs on a Raspberry Pi 1, for whoever moves it
-onto something faster.
+of both, written while the rover still ran on a Raspberry Pi 1, for whoever moved it
+onto something faster. The move happened on 2026-08-23; the measurements after it
+are in [What the faster hardware actually fixed](#what-the-faster-hardware-actually-fixed).
 
 The short version: **the geometry and the architecture carry over unchanged, every
 constant does not, and the tuning constants do not merely change value — they change

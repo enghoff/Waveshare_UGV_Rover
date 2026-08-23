@@ -31,7 +31,7 @@ MAP_SCALE = 3
 # and magnification separately -- which is what this did first -- resized the picture
 # every time the view widened, which is not zooming, it is rescaling the window.
 #
-# The bounds are what the Pi will attempt. Measured on this host at 5 cm cells, a
+# The bounds are what this host will attempt. Measured here at 5 cm cells, a
 # 480 px map is about half a second and a 1200 px one about three, and past that the
 # caller holds a connection open for longer than the map stays true.
 # How wide a slice of the room the camera takes in, across the picture. It is drawn

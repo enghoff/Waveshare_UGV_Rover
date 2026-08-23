@@ -2,7 +2,7 @@
 """Offline checks for the drive console. No rover and no browser.
 
     python drive_web/selftest.py
-    ssh rpi 'cd ~/ugv/drive_web && python3 selftest.py'
+    ssh bpi-m4zero 'cd ~/ugv/drive_web && python3 selftest.py'
 """
 from __future__ import annotations
 

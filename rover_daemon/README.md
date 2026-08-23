@@ -138,8 +138,7 @@ safe top of that range.
 there is no current anywhere in `T:1001` — and the INA219 on the UPS module, which
 does measure charge current, is not read here: the host can see that chip on
 header I²C, but the ESP32 already owns the bus — see [docs/i2c.md](../docs/i2c.md).
-So a
-pack sitting on the charger and not taking any looks exactly like a pack at rest, and
+So a pack sitting on the charger and not taking any looks exactly like a pack at rest, and
 the only thing that tells them apart is the module's own LED — red while charging,
 green when full.
 

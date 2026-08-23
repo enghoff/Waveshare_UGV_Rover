@@ -1,7 +1,7 @@
 """A rover that is not there, answering as though it were.
 
-The daemon owns a serial port, a camera and a gimbal, so it only runs on the Pi
-that is bolted to the rover. That makes the whole voice path -- prompt, schemas,
+The daemon owns a serial port, a camera and a gimbal, so it only runs on the
+board that is bolted to the rover. That makes the whole voice path -- prompt, schemas,
 tool dispatch, the picture -- untestable anywhere else, which is the wrong way
 round: the part most likely to be wrong is the conversation, and the conversation
 needs no hardware.

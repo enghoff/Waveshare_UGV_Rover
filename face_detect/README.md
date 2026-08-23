@@ -130,17 +130,17 @@ Until that exists, the rover can still reach the service through SSH, since it
 already has a key on MEDIA:
 
 ```bash
-ssh rpi 'ssh -f -N -L 8768:127.0.0.1:8768 media'
-ssh rpi 'cd ~/ugv && python3 track_face_pi.py --service 127.0.0.1:8768'
+ssh bpi-m4zero 'ssh -f -N -L 8768:127.0.0.1:8768 media'
+ssh bpi-m4zero 'cd ~/ugv && python3 track_face_pi.py --service 127.0.0.1:8768'
 ```
 
 That works, and it costs about **50 ms of round trip** — measured, and not the
-encryption, which the Pi does at 25 MB/s. It is the tunnel itself: a bodyless
-`GET /health` through it takes 51 ms, against 10 ms to a stub on the Pi's own
+encryption, which the Pi 1 did at 25 MB/s. It is the tunnel itself: a bodyless
+`GET /health` through it takes 51 ms, against 10 ms to a stub on the host's own
 loopback.
 
 Whole, through the tunnel, a round trip measures 85 ms and the tracking loop
-settles at **11 fps**. The parts of a direct round trip measure 13 ms (the Pi's
+settles at **11 fps**. The parts of a direct round trip measure 13 ms (the host's
 HTTP stack) + 9 (network) + 6 (detection) = 28, so the rule should roughly double
 the loop rate — but that is a sum of parts, not an end-to-end measurement, and it
 is worth re-taking once the port is open.

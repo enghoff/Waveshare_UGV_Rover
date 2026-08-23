@@ -4,7 +4,7 @@
 This owns the lidar port, the SLAM core and a 10 Hz control loop, and it turns a
 request like "forward 1.5 m" into motor PWM that will not drive into anything. It
 does not own the driver board: the caller passes in something with `.send(dict)`,
-which on the Pi is the daemon's SerialLink, so there is still exactly one owner of
+which on the rover is the daemon's SerialLink, so there is still exactly one owner of
 the UART.
 
 Three things about this rover shape the whole design.

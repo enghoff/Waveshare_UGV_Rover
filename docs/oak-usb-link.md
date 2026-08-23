@@ -89,10 +89,10 @@ shows the two states: PID `2485` is the ROM bootloader — idle and healthy — 
 PID `F63B` is the booted device, listed as a phantom whenever the camera is in ROM
 state.
 
-### The other wedge, on the Pi: healthy in `lsusb`, and still refusing to boot
+### The other wedge, on the rover: healthy in `lsusb`, and still refusing to boot
 
 There is a second failure that looks nothing like the one above, and the difference
-matters because the advice above — wait it out — does not touch it. Seen on `rpi`
+matters because the advice above — wait it out — does not touch it. Seen on the Pi 1
 after an unexpected reboot, 2026-08-19: the device enumerates perfectly as
 `03e7:2485`, nothing else has it open, `/dev/bus/usb` is writable, and every attempt
 to boot the VPU fails at the first step with

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Start the drive console at boot. Idempotent -- run it again after a deploy.
 #
-#     ssh rpi '~/ugv/drive_web/install.sh'
+#     ssh bpi-m4zero '~/ugv/drive_web/install.sh'
 #
 # This is admin's crontab, so it needs no sudo. A crontab write on this card
 # needs a `sync` behind it: commit=120, and a reset before the write lands

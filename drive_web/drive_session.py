@@ -389,7 +389,7 @@ class Session(SessionShow):
 
         There are two ways this console loses its rover and neither is the user's
         doing. It may never have had one -- the page opens before the daemon is up,
-        or before the Pi has finished enumerating its lidar 93 seconds into a boot
+        or before the rover has finished enumerating its lidar 93 seconds into a boot
         -- and it may lose one mid-session, which for a rover driving around a house
         on wifi is ordinary rather than exceptional. Both used to end at "no daemon
         answered" and a connect button, which is the wrong thing to need at the
@@ -864,7 +864,7 @@ class Session(SessionShow):
         """On its own connection, because the map is the slowest thing here.
 
         It shared the status connection at first, which was wrong once the cost was
-        measured: a map at the default settings takes a couple of seconds on the Pi,
+        measured: a map at the default settings takes a couple of seconds on the rover,
         and `RoverClient` serialises, so every refresh held up a status poll that is
         meant to arrive three times a second. The numbers went stale exactly while
         the picture was being drawn.

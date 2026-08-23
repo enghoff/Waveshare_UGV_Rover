@@ -1,9 +1,9 @@
 #!/bin/sh
 # Put depthai where depth_server.py can find it, and check the udev rule.
 #
-#     ssh rpi '~/ugv/oak_depth/install.sh'                  # fetch it from PyPI
-#     ssh rpi '~/ugv/oak_depth/install.sh /tmp/depthai.whl' # or from a local wheel
-#     ssh rpi '~/ugv/oak_depth/install.sh --force'          # unpack again over the top
+#     ssh bpi-m4zero '~/ugv/oak_depth/install.sh'                  # fetch it from PyPI
+#     ssh bpi-m4zero '~/ugv/oak_depth/install.sh /tmp/depthai.whl' # or from a local wheel
+#     ssh bpi-m4zero '~/ugv/oak_depth/install.sh --force'          # unpack again over the top
 #
 # **The version here is the camera's firmware version.** The Myriad X has no flash
 # and the host uploads firmware out of this wheel on every open, so choosing the

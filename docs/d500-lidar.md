@@ -21,7 +21,7 @@ live COM port means the switch is off, not that the cable is wrong.
 
 The header's Tx goes to an onboard USB-UART and out the Type-C port labelled
 *LIDAR* (the other Type-C is the ESP32's) — a COM port on Windows, and
-`/dev/ttyACM0` on the Pi, since the CH343 below is claimed by `cdc_acm` rather than
+`/dev/ttyACM0` on the rover, since the CH343 below is claimed by `cdc_acm` rather than
 by a `ttyUSB` driver. 230400-8-N-1, one-way: no command needed, it streams once
 powered. PWM is left unconnected, so the motor uses internal speed control at
 10 Hz.

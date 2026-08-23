@@ -11,7 +11,7 @@ in that path.
                                                 |  text + tool calls
   speakers <-- playback <--24k pcm--------------+
        |
-       +-- tool call --> rover_daemon.py on the Pi --> the board, the camera
+       +-- tool call --> rover_daemon.py on the rover --> the board, the camera
 
   the rover --- one JPEG, POST /frame --> here ---> into the session as a turn
 ```
@@ -123,7 +123,7 @@ The desk client talks to Alibaba and needs no GPU:
 ```bash
 python voice_chat/talk.py                      # full duplex; wear headphones
 python voice_chat/talk.py --half-duplex        # push to talk, no barge-in
-python voice_chat/talk.py --rover rpi.local:8769
+python voice_chat/talk.py --rover bpi-m4zero.local:8769
 ```
 
 Just talk. `Ctrl-C` to quit. `--list-devices` and `--input-device N` /
@@ -180,7 +180,7 @@ you do not own.
 ## The rover client, and why there is not one
 
 There was a second client on the rover itself — Bluetooth headset in, JBL Flip
-out, PipeWire driven through `pw-record`/`pw-play` pipes because the Pi has no
+out, PipeWire driven through `pw-record`/`pw-play` pipes because the rover has no
 PortAudio, and a hand-rolled RFC 6455 WebSocket because `apt` there needs a
 password we do not have from a script. It worked, and it was never reliable
 enough to hold a conversation through: the Pi 1 runs its Bluetooth dongle, its
@@ -194,14 +194,14 @@ everything in [rover_daemon/](../rover_daemon/), which needs no audio at all.
 Two findings from that work outlive the client and are kept, because they are
 properties of the machine rather than of the code that went:
 
-- **PipeWire on the Pi had no realtime priority**, because `admin` was not in the
+- **PipeWire on the Pi 1 had no realtime priority**, because `admin` was not in the
   `pipewire` group and so the `rtprio 95` in
   `/etc/security/limits.d/25-pw-rlimits.conf` never applied. Fixed with
   `usermod -aG pipewire admin` and a reboot. See [docs/hosts.md](../docs/hosts.md).
 - **A process waking 50 times a second breaks audio on that box, and a CPU hog
   does not.** A deliberate spin loop cost 0–2 dropouts; a 20 ms read loop cost 36
   in 15 seconds. Throughput the scheduler handles, latency it does not — so
-  anything on that Pi that reads a pipe should read it in bulk. That is why
+  anything on that board that reads a pipe should read it in bulk. That is why
   `track_face_pi.py` forwarding whole frames is fine and why its 4 kB read chunk
   would not have been.
 
@@ -213,7 +213,7 @@ that person*, *find somebody else*, *stop following*.
 
 **Nothing here performs them.** The rover's hardware is a single UART and a
 single camera, so exactly one process may own it, and that process is
-[rover_daemon.py](../rover_daemon/rover_daemon.py) on the Pi. A call travels
+[rover_daemon.py](../rover_daemon/rover_daemon.py) on the rover. A call travels
 from the model, back down this WebSocket to `talk.py`, and on to the daemon:
 
 ```
@@ -330,7 +330,7 @@ be asked what it can see. The interesting part is not the model, it is where the
 picture goes:
 
 ```
-  rpi (the camera)                desk (talk.py)              media (this)
+  rover (the camera)              desk (talk.py)              media (this)
   ----------------                --------------              ------------
                        <--{"call":"look"}--  tool call  <--{"type":"tool"}--
   one MJPEG frame ------------ POST /frame ------------------------> held as
@@ -375,7 +375,7 @@ ssh root@media 'sed -i "s/^Environment=VOICE_LLM_MODEL=.*/Environment=VOICE_LLM_
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 
 # the tool: drop --vision from the rover's crontab line, then
-ssh rpi ~/ugv/restart.sh                    # reloads the daemon, keeping its flags
+ssh bpi-m4zero ~/ugv/restart.sh                    # reloads the daemon, keeping its flags
 ```
 
 `restart.sh` kills the daemon and lets `run_daemon.sh` bring it back, because the
@@ -987,8 +987,8 @@ having to clear anything, since the stale entries are simply never asked for aga
 
 **One console at a time, and it is enforced twice.** Two consoles are not two
 windows onto one rover — they are two clients of it. Each polls three times a second
-and each asks for a map that costs the Pi's single core two and a half seconds to
-draw, so with three of them attached the daemon sat at 48% of the core drawing maps
+and each asks for a map that, on the Pi 1, cost the single core two and a half
+seconds to draw, so with three of them attached the daemon sat at 48% of the core drawing maps
 for windows nobody was looking at, and a rover busy drawing maps answers slowly when
 told to stop.
 
@@ -1028,7 +1028,7 @@ console opens one connection for moves, one for stop, one for watching, one for
 the map and one for the camera. The daemon is a `ThreadingTCPServer` and takes no
 lock across a move, so the others are answered while the first is still driving.
 
-The map earned its own once its cost was measured: drawing one takes the Pi a second
+The map earned its own once its cost was measured: drawing one takes the rover a second
 and a half at the default and several at the widest settings, and while it shared the
 watch connection every refresh held up a status poll that is meant to arrive three
 times a second — so the numbers went stale exactly while the picture was being drawn.
@@ -1118,7 +1118,7 @@ costs the rover more than the middle of the ladder — measured on the rover, 2.
 and the wide rungs make it smaller.
 
 The size itself is an answer rather than a guess, because a browser scales pictures:
-the map can be drawn at whatever the Pi can afford and then fitted to the panel with
+the map can be drawn at whatever the rover can afford and then fitted to the panel with
 `image-rendering: pixelated`, which on 5 cm squares drawn without antialiasing loses
 nothing. The page reports what its column actually came out as and the server asks
 for the rung *below* that width — rounded down, because a picture costs the rover
@@ -1429,7 +1429,7 @@ the microphone here and the rover there.
                                                 |  text + tool calls
   speakers <-- playback <--24k pcm--------------+
        |
-       +-- tool call --> rover_daemon.py on the Pi --> the board, the camera
+       +-- tool call --> rover_daemon.py on the rover --> the board, the camera
        |
   the rover --- one JPEG, POST /frame --> here ---> into the session as a turn
 ```
@@ -1446,7 +1446,7 @@ and it is in force here on the next connection.
 ```bash
 python voice_chat/talk.py                      # full duplex; wear headphones
 python voice_chat/talk.py --half-duplex        # push to talk, no barge-in
-python voice_chat/talk.py --rover rpi.local:8769
+python voice_chat/talk.py --rover bpi-m4zero.local:8769
 ```
 
 Run it with the virtualenv active. `python` outside it is whichever interpreter
@@ -1576,7 +1576,7 @@ was never sent.
 
 ### Against the actual rover
 
-Everything above is the mock. Run against `rpi.local`, the picture path works end
+Everything above is the mock. Run against `bpi-m4zero.local`, the picture path works end
 to end — a 44kB, 640×480 frame off the rover's camera, described:
 
 ```
@@ -1843,7 +1843,7 @@ dependencies are absent, so run it anywhere:
 ```bash
 python voice_chat/selftest.py               # endpointer, rover client, talk
 ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py
-ssh rpi 'cd ugv && python3 selftest.py'     # the daemon's own, on the rover
+ssh bpi-m4zero 'cd ugv && python3 selftest.py'     # the daemon's own, on the rover
 ```
 
 The hosted path has one check that is not offline, because the things it gets
@@ -1873,7 +1873,7 @@ scp voice_chat/voice-chat.service root@media:/etc/systemd/system/
 ssh root@media 'VIRTUAL_ENV=/opt/voice_chat/.venv /root/.local/bin/uv pip install pillow'
 ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 
-scp rover_daemon/*.py rpi:~/ugv/
+scp rover_daemon/*.py bpi-m4zero:~/ugv/
 ```
 
 `talk.py`, `endpointing.py` and `rover_tools.py` are not deployed anywhere —
@@ -1882,7 +1882,7 @@ they run from this repo on whichever desk has the microphone. Neither are
 *cannot* be: it reads `server.py`, `tool_schemas.py` and `rover_nav.py` off the disk beside it,
 so it only works from a checkout where both are present. The rover copy is
 flat in `~/ugv/` alongside the face-tracking scripts, which is the layout already
-there; nothing on the Pi needs installing.
+there; nothing on the rover needs installing.
 
 First start downloads ~10GB of weights. Unauthenticated HF Hub requests are rate
 limited to roughly one file per five minutes — set `HF_TOKEN` in the unit if you

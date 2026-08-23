@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The driver board's gyro and wheel counts, read two ways.
 
-The board has streamed a 9-DoF IMU and wheel odometry down `/dev/ttyAMA0` this
+The board has streamed a 9-DoF IMU and wheel odometry down the GPIO UART this
 whole time and nothing has ever read them. This is what reads them, and it does
 two quite different jobs with the same numbers -- worth separating up front,
 because they have opposite requirements and only one of them is blocked on a

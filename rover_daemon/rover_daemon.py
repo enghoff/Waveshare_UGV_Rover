@@ -60,9 +60,9 @@ everything else, so that a conversation can start and stop it.
 The client is not on this machine. Speech runs on whatever desk has a
 microphone, and [voice_chat/talk.py](../voice_chat/talk.py) reaches this over the
 LAN like any other client. That is why this binds an address rather than a Unix
-socket, and it is why forwarding frames at 30% of the Pi's core is simply the
-cost of tracking rather than something that has to be budgeted against anything
-else running here.
+socket, and it is why forwarding frames over the LAN is simply the cost of
+tracking rather than something that has to be budgeted against anything else
+running here.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ PORT = 8769
 # anywhere but this machine. Nothing on this port authenticates -- the same trade
 # `face-detect` makes and the same home LAN -- so the difference between the rest
 # of the protocol and these is the difference between a stranger flashing the
-# headlights and a stranger with a shell on the Pi. Bound to loopback they grant
+# headlights and a stranger with a shell on the rover. Bound to loopback they grant
 # what an ssh session here already grants, and are reached the same way.
 #
 # `script_status` is deliberately not among them. Watching a behaviour run is
@@ -156,11 +156,10 @@ class Server(socketserver.ThreadingTCPServer):
 def main() -> int | str:
     """Returns 0, or a message -- sys.exit prints a string and exits non-zero."""
     # `kill -USR1 <pid>` makes the daemon write a stack for every thread it has to
-    # the log. Worth the four lines: this rover has one core and a dozen threads,
+    # the log. Worth the four lines: this rover has four cores and a dozen threads,
     # and the question that keeps coming up is not what the code does but which
-    # thread is holding the core right now. From outside, a thread that is spinning
-    # and a thread that is blocked are both just a number in `top`, and there is no
-    # py-spy for armv6 to tell them apart.
+    # thread is holding a core right now. From outside, a thread that is spinning
+    # and a thread that is blocked are both just a number in `top`.
     try:
         import faulthandler
         import signal
@@ -218,7 +217,7 @@ def main() -> int | str:
 
     if args.lidar:
         # Two layouts to satisfy: in the repository this file is in rover_daemon/ and
-        # lidar_slam/ is its sibling, while the Pi's ~/ugv is flat with lidar_slam/
+        # lidar_slam/ is its sibling, while the rover's ~/ugv is flat with lidar_slam/
         # inside it. Checking for the directory rather than assuming either means a
         # deployment that moves does not silently lose the driving tools.
         here = Path(__file__).resolve().parent

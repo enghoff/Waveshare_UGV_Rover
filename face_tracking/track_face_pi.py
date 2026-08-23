@@ -129,7 +129,7 @@ from aiming import (
 DEFAULT_DEVICE = "/dev/video0"
 # The rover's USB module: 0abd:8050, MJPG at 30 fps from 160x120 to 2592x1944.
 # 640x480 because the detector works at DETECT_WIDTH and anything more is thrown
-# away after costing the Pi real CPU to forward -- see the table in the docstring.
+# away after costing the Pi 1 real CPU to forward -- see the table in the docstring.
 DEFAULT_SIZE = (DETECT_WIDTH, 480)
 # What one frame is worth waiting for before giving up on the camera entirely.
 FRAME_TIMEOUT_S = 2.0
@@ -244,7 +244,7 @@ SERVICE_RETRY_S = 1.0
 
 # --- the board ------------------------------------------------------------
 
-DEFAULT_SERIAL = "/dev/ttyAMA0"
+DEFAULT_SERIAL = "/dev/ttyS4"
 BAUD = 115200
 SERIAL_CONSOLE_HINT = ("Is a getty still on it? `systemctl status serial-getty@"
                        + DEFAULT_SERIAL.rsplit("/", 1)[-1] + "`")
@@ -358,7 +358,7 @@ class Camera:
         # directly rather than decoding a JPEG -- which the OAK's did, and which
         # is worth nothing now that decoding one costs 7 ms here rather than 85.
         #
-        # **On the Pi this bus does not carry it, and tracking uses MJPG.** 614 kB
+        # **On this host this bus does not carry it, and tracking uses MJPG.** 614 kB
         # a frame at 30 fps is 18 MB/s where the reader below drains about 7, so
         # the frames pile up in the pipe and `latest` hands out half-second-old
         # pictures; and the traffic starved the wlan adapter off the same USB
@@ -909,7 +909,7 @@ def main():
         help=f"the camera (default {DEFAULT_DEVICE})")
     parser.add_argument(
         "--size", type=parse_size, default=DEFAULT_SIZE, metavar="WxH",
-        help="capture size (default %dx%d); larger costs the Pi and buys nothing"
+        help="capture size (default %dx%d); larger costs the host and buys nothing"
              % DEFAULT_SIZE)
     parser.add_argument(
         "--no-move", dest="move", action="store_false",

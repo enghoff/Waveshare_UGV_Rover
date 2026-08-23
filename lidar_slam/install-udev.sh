@@ -1,7 +1,7 @@
 #!/bin/sh
 # Grant the daemon permission to reset its own USB devices. Needs root, once.
 #
-#   cat secrets/rpi-sudo.key | ssh rpi 'sudo -S -p "" ~/ugv/lidar_slam/install-udev.sh'
+#   cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/lidar_slam/install-udev.sh'
 #
 # Idempotent: run it again after editing the rule. Without this the recovery in
 # usbreset.py still runs and still says what it would have done -- it just comes

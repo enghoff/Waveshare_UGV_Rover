@@ -19,8 +19,8 @@ the conclusions, and `python3 journey.py <file>` reads them back.
 
 **Recording is switched on by making the directory**, and off by removing it:
 
-    ssh rpi 'mkdir -p ~/ugv/journeys'      # record the next few drive_to calls
-    ssh rpi 'rm -rf ~/ugv/journeys'        # stop
+    ssh bpi-m4zero 'mkdir -p ~/ugv/journeys'      # record the next few drive_to calls
+    ssh bpi-m4zero 'rm -rf ~/ugv/journeys'        # stop
 
 That is the whole control surface. It needs no flag, no restart and no new tool,
 which matters because the daemon's arguments live in a crontab entry and

@@ -1,11 +1,11 @@
-"""Drive the Waveshare UGV Rover from a game controller, on the Raspberry Pi.
+"""Drive the Waveshare UGV Rover from a game controller, on the rover's host.
 
 The Linux sibling of drive_gamepad.py. Same controls, same feel, same commands
 to the same ESP32 -- what differs is both ends of the pipe: the pad arrives over
 Bluetooth as a joystick device instead of through XInput, and the board is
-reached down the Pi's GPIO UART instead of over WiFi or a USB cable.
+reached down the GPIO UART instead of over WiFi or a USB cable.
 
-    python3 drive_gamepad_pi.py                    # the GPIO UART, /dev/ttyAMA0
+    python3 drive_gamepad_pi.py                    # the GPIO UART, /dev/ttyS4
     python3 drive_gamepad_pi.py --serial /dev/ttyUSB0
     python3 drive_gamepad_pi.py --host 192.168.1.22  # over the network instead
     python3 drive_gamepad_pi.py --device /dev/input/js1
@@ -26,10 +26,10 @@ axes. The parts that *are* shared -- the expo curve, the skid-steer mix, the PWM
 floor, the gimbal rates -- are duplicated below with their values kept in step.
 Change a tuning constant in one and change it in the other.
 
-Running on the Pi buys directness at the cost of reach: the UART is a wire, so
-there is no WiFi to drop between pad and motors, and the whole loop is on one
-board that rides the rover. The price is that the pad's Bluetooth link is now the
-only radio in the chain, and a Pi 1 is doing the work -- hence a 20 Hz loop that
+Running on the rover's host buys directness at the cost of reach: the UART is a
+wire, so there is no WiFi to drop between pad and motors, and the whole loop is
+on one board that rides the rover. The price is that the pad's Bluetooth link is
+now the only radio in the chain -- hence a 20 Hz loop that
 does nothing expensive, and a heartbeat that stops the base if it falls behind.
 
 The pad is read through the joystick API (`/dev/input/js*`), not evdev, for the
@@ -59,11 +59,10 @@ import struct
 import sys
 import time
 
-# The Pi's PL011 UART on the GPIO header, which is where this board's ESP32 is
-# wired -- there is no USB serial to find. /dev/serial0 is the same port under
-# the name Raspbian guarantees; ttyAMA0 is named here because that is what the
-# rest of the notes for this rover use.
-DEFAULT_SERIAL = "/dev/ttyAMA0"
+# The GPIO UART, which is where this board's ESP32 is wired -- there is no USB
+# serial to find. ttyS4 is UART4 on the Banana Pi M4 Zero's 40-pin header;
+# ttyAMA0 is the same pins on the Pi 1.
+DEFAULT_SERIAL = "/dev/ttyS4"
 BAUD = 115200
 
 # Freeing that port took disabling the serial console: a getty on it will fight
@@ -465,7 +464,7 @@ def open_link(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Drive the UGV Rover with a Bluetooth game controller, from the Pi.")
+        description="Drive the UGV Rover with a Bluetooth game controller, from the rover's host.")
     parser.add_argument("--serial", default=DEFAULT_SERIAL, metavar="PORT",
                         help=f"the ESP32's serial port (default {DEFAULT_SERIAL})")
     parser.add_argument("--host", default=None, metavar="ADDRESS",

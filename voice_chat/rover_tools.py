@@ -9,7 +9,7 @@ there is no second copy of a schema to drift out of step with the code that
 honours it.
 
     rover = RoverClient("127.0.0.1:8769")   # on the rover itself
-    rover = RoverClient("rpi.local:8769")  # from a desk on the same LAN
+    rover = RoverClient("bpi-m4zero.local:8769")  # from a desk on the same LAN
 
 [talk.py](talk.py) uses this across the LAN, from whichever desk has the
 microphone. The loopback default is for anything that ends up running on the
@@ -34,19 +34,16 @@ DEFAULT_PORT = 8769
 
 # Where to look for the rover, in order, when nobody has named it.
 #
-# The name first, because it is the only one of the three that is always right.
-# The rover has two addresses and which of them exists depends on whether it is
-# plugged in -- `eth0` is primary at route metric 100 when docked, and a rover
-# that has driven off has no `eth0` at all -- while `rpi.local` resolves to
-# whichever interface is actually up. Defaulting to the wired address was a real
-# bug: the daemon was serving all nine tools on wlan0 while the client reported
-# no rover, and the model spent the conversation insisting it had no lights.
-#
-# The addresses stay as fallbacks for a LAN with no mDNS, and they are second
-# because a *failed* name lookup is slow -- measured at 7.3s here, against
-# milliseconds for an address that simply refuses. A name that works costs
-# ~150ms. See docs/hosts.md.
-DEFAULT_CANDIDATES = ("rpi.local", "192.168.1.47", "192.168.1.4")
+# The name first, because it is the only identifier that stays right if the
+# wifi address ever moves. Defaulting to a number was a real bug on the Pi 1
+# this rover replaced -- the daemon was serving on wlan0 while the client
+# dialled the docked eth0 address, and the model spent the conversation
+# insisting it had no lights. The Banana Pi is wifi only, but the same rule
+# holds: a name that works costs ~150ms, a name that does not costs 7.3s, and
+# an address that is not there refuses in milliseconds. The number stays as
+# the fallback for a LAN with no mDNS, and it is second for that reason.
+# See docs/hosts.md.
+DEFAULT_CANDIDATES = ("bpi-m4zero.local", "192.168.1.47")
 
 # Long enough for the slowest tool. `count_faces` with the camera cold has to
 # start v4l2-ctl and wait for its first buffer, which is seconds; everything
@@ -103,21 +100,21 @@ class RoverClient:
     def _connect(self) -> None:
         """Open a connection, reusing whatever address the name last led to.
 
-        `rpi.local` is answered by mDNS, and mDNS is multicast UDP with nothing
-        retransmitting it, so it is the first thing to go when the rover's wifi
-        turns marginal -- while the TCP underneath a tool call retries and rides
-        the same bad moment out. Looking the name up on every reconnect therefore
-        turned a link that was merely weak into a rover that was missing: one lost
-        multicast packet, and the console said "no answer from the rover daemon" on
-        all six of its panels at once, against a daemon that was up and answering
-        throughout. The rover measured -68 dBm and 671 missed beacons while that
-        was happening, where this link sits at -35 to -44 dBm in the lab.
+        `bpi-m4zero.local` is answered by mDNS, and mDNS is multicast UDP with
+        nothing retransmitting it, so it is the first thing to go when the rover's
+        wifi turns marginal -- while the TCP underneath a tool call retries and
+        rides the same bad moment out. Looking the name up on every reconnect
+        therefore turned a link that was merely weak into a rover that was
+        missing: one lost multicast packet, and the console said "no answer from
+        the rover daemon" on all six of its panels at once, against a daemon that
+        was up and answering throughout. The rover measured -68 dBm and 671
+        missed beacons while that was happening, where this link sits at -35 to
+        -44 dBm in the lab.
 
-        So the name is asked once and the answer kept. It is kept *as well as* the
-        name and never instead of it: the rover genuinely does change address,
-        serving on `eth0` while it is docked and on `wlan0` once it has driven
-        off, and dialling where it used to be is the bug docs/hosts.md exists to
-        warn about. A remembered address that stops answering is how this finds
+        So the name is asked once and the answer kept. It is kept *as well as*
+        the name and never instead of it: the wifi address can move, and
+        dialling where it used to be is the bug docs/hosts.md exists to warn
+        about. A remembered address that stops answering is how this finds
         out it moved, and it is the only occasion that needs a lookup. Being wrong
         costs one refused connection before the lookup that would have happened
         anyway, once, on the call that discovers the move.
@@ -168,7 +165,7 @@ class RoverClient:
         # was such a connection to discard, and never after a timeout. A timeout is
         # not a connection that has gone: it is a daemon that has the request and is
         # still working on it, and sending it again has the rover do the thing
-        # twice. One console scan was costing two -- a scan runs ~15 s on the Pi
+        # twice. One console scan was costing two -- a scan runs ~15 s on the rover
         # against the 12 s above -- and the same retry on a move would have driven
         # twice.
         for attempt in (1, 2):
@@ -210,8 +207,7 @@ class RoverClient:
 
         Taken from the socket rather than from `gethostbyname` or a guess,
         because a desk has several addresses and only one of them is on the way
-        to the rover -- and which one that is changes with the rover, which
-        answers on eth0 while docked and on wlan0 once it has driven off. The
+        to the rover -- and which one that is changes with the route. The
         kernel already chose the right interface to make this connection; this
         just reads back what it chose.
 

@@ -8,10 +8,10 @@ import threading
 import time
 from typing import Any
 
-# Pi 1 GPIO UART is ttyAMA0. Banana Pi M4 Zero puts the same header pins on
-# UART4 as ttyS4. Prefer whichever of those exists so one default works on both
-# hosts; fall back to the Pi name so a missing port still has a name to report.
-SERIAL_CANDIDATES = ("/dev/ttyAMA0", "/dev/ttyS4")
+# Banana Pi M4 Zero puts the 40-pin UART on UART4 as ttyS4. The Pi 1 used
+# ttyAMA0 for the same header pins. Prefer whichever exists so one default
+# works on both; fall back to ttyS4 so a missing port still has a name to report.
+SERIAL_CANDIDATES = ("/dev/ttyS4", "/dev/ttyAMA0")
 
 
 def default_serial() -> str:
@@ -104,7 +104,7 @@ BATTERY_ABSENT_V = 6.0
 BATTERY_LOW_V = 11.2
 BATTERY_CRITICAL_V = 10.8
 # What a full pack reads once the rover's own draw has taken the surface charge
-# off it. Not 12.6, because the Pi, the lidar and the OAK are always pulling
+# off it. Not 12.6, because the host, the lidar and the OAK are always pulling
 # something and every reading here is a reading under load.
 BATTERY_FULL_V = 12.45
 # How long one reading is served for before the board is asked again.
@@ -153,7 +153,7 @@ def _battery_percent(volts: float) -> int:
     """Roughly how much charge is left, from the pack voltage.
 
     Rounded to five points, because the reading does not deserve more: it is taken
-    under whatever the Pi, the lidar and the servos happen to be drawing, and the
+    under whatever the host, the lidar and the servos happen to be drawing, and the
     sag from that alone is worth several points. What is worth having is the shape
     of the number over an afternoon, not the number.
     """

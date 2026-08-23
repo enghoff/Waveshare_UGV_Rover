@@ -3,7 +3,7 @@
 Millimetres out over HTTP on `127.0.0.1:8770`, from the OAK-D-Lite's mono pair,
 kept awake from boot by a `crontab` entry. This is the camera doing what it is
 built for: until 2026-08-23 it was the rover's *face detector*, because the Pi 1
-could not run one, and the board that replaced the Pi runs YuNet faster than the
+could not run one, and the Banana Pi that replaced it runs YuNet faster than the
 camera's VPU did — see [face_tracking/yunet.py](../face_tracking/yunet.py).
 
 ```
@@ -146,17 +146,17 @@ sudo password no script has, and cron needs none:
 ```
 
 ```bash
-scp -r oak_depth rpi:~/ugv/
-ssh rpi '~/ugv/oak_depth/install.sh'            # depthai, unpacked into vendor/
-ssh rpi 'python3 ~/ugv/oak_depth/selftest.py'   # with the service stopped
-ssh rpi '~/ugv/oak_depth/restart.sh'            # ~10 s; prints /health
-ssh rpi 'curl -s http://127.0.0.1:8770/depth'
+scp -r oak_depth bpi-m4zero:~/ugv/
+ssh bpi-m4zero '~/ugv/oak_depth/install.sh'            # depthai, unpacked into vendor/
+ssh bpi-m4zero 'python3 ~/ugv/oak_depth/selftest.py'   # with the service stopped
+ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'            # ~10 s; prints /health
+ssh bpi-m4zero 'curl -s http://127.0.0.1:8770/depth'
 tail -f ~/ugv/oak_depth/oak_depth.log
 ```
 
 **Use `restart.sh` rather than typing the `pkill` yourself.** The pattern that
 matches the server also matches the ssh command carrying it, so
-`ssh rpi 'pkill -f oak_depth/depth_server.py'` kills that ssh session as well —
+`ssh bpi-m4zero 'pkill -f oak_depth/depth_server.py'` kills that ssh session as well —
 the output disappears and it reads as the service failing to come back when it is
 merely restarting. This repository has now made that mistake twice, once per
 supervisor.

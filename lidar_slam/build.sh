@@ -3,7 +3,7 @@
 # the rover's Pi is armv6 and nothing else here is, so there is no cross-compiler
 # and no build cache to get stale.
 #
-#   ssh rpi 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
+#   ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
 set -e
 cd "$(dirname "$0")"
 

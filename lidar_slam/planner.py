@@ -89,7 +89,7 @@ LOS_STEP_CELLS = 0.5
 # How far either side of the straight line between the two points A* is allowed
 # to look. Wide enough to go around a table is the requirement, and 2.5 m was
 # applied to every route however short -- so a 0.34 m replan searched a 5 m
-# square and cost 2.2 seconds of standing still on the Pi. Planning time went as
+# square and cost 2.2 seconds of standing still on the Pi 1. Planning time went as
 # the area of that window (correlation +0.74 over seventeen recorded plans), and
 # a short hop does not need a table's worth of detour to get around anything it
 # could reach. So the margin follows the distance, and the full 2.5 m is tried
@@ -498,7 +498,7 @@ def _inflate(blocked, radius_cells):
     """Euclidean dilation of a boolean grid, in-place-safe (returns a copy).
 
     Whole-array ORs rather than one neighbourhood write per blocked cell. The
-    distinction decides whether this runs on the Pi: unknown counts as blocked
+    distinction decides whether this runs on the rover: unknown counts as blocked
     here, so a typical crop has *thousands* of blocked cells, and each OR is a
     single numpy pass where the per-cell version paid several interpreted numpy
     calls per cell.
@@ -644,7 +644,7 @@ def _astar(blocked, start, goal, penalty=None):
     Flat Python lists rather than numpy arrays, because the cost of A* is almost
     entirely element access and a numpy scalar read is several times the price of
     a list index -- numpy earns its keep on whole-array passes like _inflate, and
-    this is the opposite of one. Measured on the Pi it is the difference between
+    this is the opposite of one. Measured on the Pi 1 it is the difference between
     a route in well under a second and one the caller times out waiting for.
 
     `penalty` scales each step by 1 + the destination cell's value, so nearness

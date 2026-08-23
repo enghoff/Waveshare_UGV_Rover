@@ -3,7 +3,7 @@
 Two components at once, which makes this the first host-side script in the suite
 that is not a single-component instrument: the rover's USB camera module supplies
 the picture and the ESP32's two ST3215 servos are steered to keep the face in the
-middle of it. Nothing else on the rover is involved -- no Raspberry Pi, no ROS,
+middle of it. Nothing else on the rover is involved -- no host board, no ROS,
 and no OAK camera, which is not a UVC device and is not the one on the gimbal.
 
     python track_face.py                      # over WiFi: the rover's AP, else this LAN

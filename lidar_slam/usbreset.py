@@ -2,7 +2,7 @@
 """Bring a USB device back by resetting it, or the nearest hub still above it.
 
 This exists because of a failure the rover actually has. The lidar hangs off a
-CH343 serial adapter, on a small hub, on another hub, on the Pi's own hub -- three
+CH343 serial adapter, on a small hub, on another hub, on the host's own hub -- three
 deep -- and the whole branch drops off the bus from time to time:
 
     usb 1-1.3.3: USB disconnect, device number 17

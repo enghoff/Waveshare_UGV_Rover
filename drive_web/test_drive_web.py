@@ -96,7 +96,7 @@ def test_map_size_for_a_panel() -> None:
     """Which map to ask the rover for once the browser has said how wide its panel
     turned out to be.
 
-    Rounded *down* the ladder, and that is not a detail: the picture costs the Pi
+    Rounded *down* the ladder, and that is not a detail: the picture costs the rover
     roughly its own area to draw, so a panel a few pixels over a rung must not buy
     the rung above it. Everything the browser gains by asking for more it throws
     away again scaling the picture back into the panel.
@@ -505,8 +505,8 @@ def test_one_console_at_a_time() -> None:
     """A second drive console must not start, on any port.
 
     Two consoles are not two windows onto one rover, they are two clients of it:
-    each polls three times a second and each asks for a map that costs the Pi's
-    single core two and a half seconds to draw. Measured with three attached, the
+    each polls three times a second and each asks for a map that, on the Pi 1, cost
+    the single core two and a half seconds to draw. Measured with three attached, the
     daemon sat at 48% of the core drawing maps for windows nobody was looking at.
     Worse on Windows, where `SO_REUSEADDR` means *share* rather than *reclaim*, so
     the second one binds the same port happily and the browser is served its page by

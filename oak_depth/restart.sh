@@ -1,7 +1,7 @@
 #!/bin/sh
 # Reload the depth service after deploying a new depth_server.py.
 #
-#     ssh rpi ~/ugv/oak_depth/restart.sh
+#     ssh bpi-m4zero ~/ugv/oak_depth/restart.sh
 #
 # Separate from run_oak_depth.sh so that its own command line cannot match the
 # pattern it greps for. This is worth repeating in every directory that has a

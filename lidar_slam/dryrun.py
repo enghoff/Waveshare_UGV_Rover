@@ -7,7 +7,7 @@ live scans while the rover stays exactly where it is. That is the only honest wa
 to test this indoors on a desk, and it is worth doing before the first real move:
 everything except the motors is under test here.
 
-    ssh rpi 'cd ~/ugv/lidar_slam && python3 dryrun.py'
+    ssh bpi-m4zero 'cd ~/ugv/lidar_slam && python3 dryrun.py'
 """
 import argparse
 import sys
