@@ -1059,6 +1059,36 @@ and the ending, because the move's own reply is on its way with the distances in
 and two accounts of one ending, a tenth of a second apart, read like two things
 having happened.
 
+**Clicking somewhere else changes where the rover is going.** It used to be
+refused: the console saw a move in flight and answered *drive_to is still running;
+stop it or wait*, which is a console arguing with the only instruction it has —
+somebody clicking a second time on the map is saying the rover is going to the wrong
+place, and making them press STOP and click again is asking them to spell it out.
+Now the click stops what is running and takes its place. The stop goes out on the
+connection that carries nothing else, the cancelled move answers within a control
+cycle of it landing, and the new one goes then, because the running call occupies
+the move connection and the daemon would refuse a second one as busy.
+
+**That only works because a tap asks for a point on the map rather than an offset
+from the rover.** An offset is measured from wherever the rover has got to when the
+call arrives, and an interrupting click arrives late by construction — the move has
+to be stopped first, and the rover keeps driving until it is. Sent as an offset, one
+click would land most of a metre from the pixel under the cursor, and further out
+the faster it was going; sent as `x_m`/`y_m` in the map's own frame it means the same
+place however late it arrives. The pose the picture was drawn at comes back with
+every map, so the conversion is exact even on a two-second-old picture — and it is
+done by `mapimg.tap_to_point`, on the rover's side of the repository, rather than
+being a second copy of the map's geometry over here.
+
+Two things are deliberately not allowed to happen. Pressing STOP after clicking
+throws the waiting click away rather than letting the rover set off for it a moment
+later, and so does the last browser leaving, which is the same act by another route.
+And a click whose stop never landed is forgotten after six seconds rather than being
+held for the move channel's own four minutes of patience, because driving off to a
+place somebody clicked four minutes ago is a rover acting on an intention that has
+expired. All three say so in the transcript: a click that quietly evaporates is
+indistinguishable from a console that ignores clicks.
+
 **The map zooms, and zooming does not resize it.** "Across" is how many metres are
 in frame; `-` and `+` step it through a fixed ladder from 1.5 m to 24 m so the same
 extents come back and one picture can be compared with an earlier one. "Size" is how

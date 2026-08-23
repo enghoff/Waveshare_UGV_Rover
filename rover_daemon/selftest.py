@@ -589,6 +589,71 @@ def test_map_png_names_the_clock():
     check("...and times the draw", isinstance(got.get("render_s"), (int, float)), True)
 
 
+def test_drive_to_takes_a_place_on_the_map():
+    """`drive_to` will take a point on the map, and only a console is told so.
+
+    A tap on the console's map has to keep its meaning while the rover is still
+    driving: the click stops the move in flight, and the rover carries on until the
+    stop lands, so an offset from "where the rover is" is measured from somewhere
+    the cursor never was. A point in the map's own frame is not, which is why the
+    console sends every tap that way.
+
+    The second half of this is the more important one. The pair is deliberately
+    absent from the schema a model is shown, because nothing a model can see says
+    where the rover is in that frame -- the room comes back to it as bearings and
+    the map as a picture centred on itself -- so a model offered map coordinates
+    could only invent them, and an invented pair is a fifteen-metre drive to a
+    place nobody chose.
+    """
+    import rover_daemon
+    import tool_schemas
+
+    asked = []
+
+    class FakeNav:
+        class Outcome:
+            reason = "arrived"
+
+            def asdict(self):
+                return {"reason": "arrived", "travelled_m": 1.0}
+
+        def drive_to(self, **kwargs):
+            asked.append(kwargs)
+            return self.Outcome()
+
+        def describe(self):
+            return {"clear_ahead_m": 2.0, "text": "a room"}
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    rover.nav = FakeNav()
+
+    got = rover.call("drive_to", {"x_m": 3.0, "y_m": -1.25})
+    check("a place on the map is accepted", got.get("ok"), True)
+    check("...and reaches the navigator as a place",
+          (asked[-1].get("x_m"), asked[-1].get("y_m")), (3.0, -1.25))
+    check("...with no offset invented alongside it",
+          "ahead_m" in asked[-1], False)
+
+    rover.call("drive_to", {"ahead_m": 1.0, "left_m": -0.4, "speed_ms": 0.15})
+    check("an offset still reaches it as an offset",
+          (asked[-1].get("ahead_m"), asked[-1].get("left_m")), (1.0, -0.4))
+    check("...and the speed goes with it", asked[-1].get("speed_ms"), 0.15)
+
+    # Half a coordinate is not a place, and guessing the other half would drive
+    # somewhere nobody named.
+    half = rover.call("drive_to", {"x_m": 3.0})
+    check("one coordinate on its own is refused", half.get("ok"), False)
+    check("...and says what is missing", "y_m" in str(half.get("error")), True)
+
+    schema = next(s for s in tool_schemas.NAV_TOOLS
+                  if s["function"]["name"] == "drive_to")
+    offered = set(schema["function"]["parameters"]["properties"])
+    check("a model is not offered the map's coordinates",
+          offered & {"x_m", "y_m"}, set())
+    check("...only the offsets it can actually work out",
+          offered, {"ahead_m", "left_m", "speed_ms"})
+
+
 def test_wifi_status_without_the_helper_still_reports_the_link():
     """The console's network panel has to work without NetworkManager.
 
@@ -1123,6 +1188,7 @@ def main():
                  test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board, test_camera_cone,
                  test_map_png_names_the_clock,
+                 test_drive_to_takes_a_place_on_the_map,
                  test_wifi_status_without_the_helper_still_reports_the_link,
                  test_an_unfilled_signal_column_is_a_moment_not_an_answer,
                  test_control_calls_without_hardware,

@@ -276,6 +276,13 @@ def asked_for(move):
     asked = move.get("asked") or {}
     kind = move.get("kind")
     if kind == "drive_to":
+        # A tap on the map asks for a point on the map, so that the click means one
+        # place even though the rover is still moving when it is sent. Said as such:
+        # "ahead +0.00 m" for a place the rover has already driven past would be a
+        # sentence about the wrong thing entirely.
+        if asked.get("x_m") is not None:
+            return "the point x {:+.2f}, y {:+.2f} on the map".format(
+                float(asked["x_m"]), float(asked.get("y_m") or 0.0))
         return "ahead {:+.2f} m, left {:+.2f} m".format(
             float(asked.get("ahead_m") or 0.0), float(asked.get("left_m") or 0.0))
     if kind == "turn_in_place":
@@ -427,3 +434,27 @@ def tap_to_relative(col: float, row: float, view: dict):
     return mapimg.tap_to_relative(
         col, row, view["half_extent_m"], view["scale"],
         rover_up=bool(view.get("rover_up")), heading_rad=heading)
+
+
+def tap_to_point(col: float, row: float, view: dict):
+    """A pixel on the map picture as (x_m, y_m) on the map itself.
+
+    The same click as `tap_to_relative`, read as a fixed place rather than as an
+    offset from the rover. That is the difference that lets a click land while the
+    rover is still driving: an offset is measured from wherever it has got to by
+    the time the call arrives, and a place on the map stays where it was clicked
+    however long the stop takes to land.
+
+    The pose is the one the picture was drawn at, which the daemon returns with
+    every map -- so a click on a two-second-old picture means the point in the room
+    that was under the cursor, not that point translated by two seconds of driving.
+    """
+    mapimg = renderer()
+    if mapimg is None:
+        return None
+    pose = view.get("pose") or {}
+    return mapimg.tap_to_point(
+        col, row, view["half_extent_m"], view["scale"],
+        rover_up=bool(view.get("rover_up")),
+        pose=(float(pose.get("x_m", 0.0)), float(pose.get("y_m", 0.0)),
+              math.radians(float(pose.get("heading_deg", 0.0)))))

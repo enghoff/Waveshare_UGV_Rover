@@ -516,4 +516,155 @@ def test_pictures_are_not_replayed() -> None:
     # And the header that made it permanent is only honest once that holds.
     check("a picture is still cacheable for a year",
           "immutable" in io.open(drive_web.__file__, encoding="utf-8").read(), True)
+def test_a_second_click_takes_over() -> None:
+    """Clicking somewhere else while the rover is driving sends it there instead.
 
+    It used to be refused. The console saw a move in flight and answered "drive_to
+    is still running; stop it or wait", which is a console arguing with the only
+    instruction it has -- somebody clicking a second time on the map is saying the
+    rover is going to the wrong place, and the answer to that is not to make them
+    press STOP first and then click again.
+
+    Two things make it work and both are tested here. The click is sent as a point
+    on the map rather than as an offset from the rover, so it keeps its meaning
+    across the second it takes to stop what is running; an offset would be measured
+    from wherever the rover had got to by then. And the new move is held until the
+    old one answers, because the running call occupies the move connection and the
+    daemon would refuse a second one as busy -- the stop that frees it goes out on
+    the connection that carries nothing else.
+    """
+    try:
+        import drive_web
+        from console_model import Reply, asked_for, tap_to_point
+    except ImportError as exc:
+        SKIP.append(f"a second click takes over ({type(exc).__name__})")
+        return
+
+    class Fake:
+        """A channel that records rather than connects."""
+
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append((name, arguments or {}))
+
+    # The map as the rover last drew it: 3 m each way at 4 px per cell, with the
+    # rover two metres out along x and facing 90 degrees left of where it started.
+    # The rover's own pixel is then (240, 240), and 20 cells is a metre.
+    view = {"half_extent_m": 3.0, "scale": 4, "rover_up": False,
+            "pose": {"x_m": 2.0, "y_m": -1.0, "heading_deg": 90.0}}
+
+    def console():
+        """A session wired to fakes, with a map on screen and a rover that drives."""
+        session = drive_web.Session(None, 3.0, 480)
+        session.moves, session.halt = Fake(), Fake()
+        session.tools = ["drive_to", "drive", "stop_driving"]
+        session.can_drive = True
+        session.map_view = dict(view)
+        return session
+
+    if tap_to_point(240, 240, view) is None:
+        SKIP.append("a second click takes over (no mapimg beside us)")
+        return
+
+    # A click on an idle rover goes straight out, and it goes as a place. The pixel
+    # is 20 cells up the page from the rover, which with the page held to the start
+    # heading is a metre further along +x -- the rover's position plus a metre, not
+    # "a metre ahead of it", which for a rover facing +y would be somewhere else.
+    session = console()
+    session.act({"do": "tap", "col": 240, "row": 160})
+    check("a click on an idle rover is sent at once",
+          [name for name, _ in session.moves.sent], ["drive_to"])
+    first = session.moves.sent[0][1]
+    check("...as a place on the map rather than an offset",
+          sorted(first), ["x_m", "y_m"])
+    check("...and it is the place under the cursor",
+          (first["x_m"], first["y_m"]), (3.0, -1.0))
+
+    # Now the same again while that move is still running. The move connection is
+    # occupied, so nothing may go out on it yet -- but the stop must.
+    session.act({"do": "tap", "col": 160, "row": 240})
+    check("a click during a move stops what is running",
+          [name for name, _ in session.halt.sent], ["stop_driving"])
+    check("...and does not try to overtake it on the move connection",
+          len(session.moves.sent), 1)
+    check("...and says so, naming where it will go instead",
+          "new target" in session.log[-2]["text"], True)
+
+    # The rover answers the move it was told to stop. That is the wheels coming
+    # free, and the click that was waiting goes then.
+    session.handle(Reply("drive_to", first, {"ok": True, "reason": "stopped",
+                                             "travelled_m": 0.4}, 1.2))
+    check("the waiting click goes once the old move has answered",
+          [name for name, _ in session.moves.sent], ["drive_to", "drive_to"])
+    second = session.moves.sent[1][1]
+    check("...to the second place, not the first",
+          (second["x_m"], second["y_m"]), (2.0, 0.0))
+    check("...and nothing is left waiting", session.pending_target, None)
+    check("...and the console counts itself busy again",
+          session.busy_name, "drive_to")
+
+    # A third place clicked before the handover replaces the waiting one, and sends
+    # no second stop: the first one is already on its way.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "tap", "col": 240, "row": 160})
+    session.act({"do": "tap", "col": 160, "row": 240})
+    check("a further click replaces the waiting one rather than queueing behind it",
+          (session.pending_target or {}).get("y_m"), 0.0)
+    check("...without a second stop", len(session.halt.sent), 1)
+
+    # STOP after a click must not be followed by the rover setting off for it. This
+    # is the one that would be unforgivable.
+    session.act({"do": "stop"})
+    check("pressing STOP throws the waiting click away", session.pending_target,
+          None)
+    session.handle(Reply("drive_to", {}, {"ok": True, "reason": "stopped"}, 0.3))
+    check("...so the move that answers is the end of it, not the start of another",
+          session.moves.sent, [])
+
+    # The same goes for the stop that follows the last browser leaving: the target
+    # was queued by a tab that has since been closed.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive"
+    session.act({"do": "tap", "col": 240, "row": 160})
+    session.listeners = 0
+    session.mind_the_watchers(200.0)
+    session.mind_the_watchers(200.0 + drive_web.ORPHAN_GRACE_S + 0.1)
+    check("a closed tab takes its waiting click with it", session.pending_target,
+          None)
+
+    # A stop that never landed leaves the move channel silent for its own four
+    # minutes, and a click acted on that late is an intention that has expired.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "tap", "col": 240, "row": 160})
+    held = session.pending_until
+    session.mind_the_target(held - 0.1)
+    check("a waiting click is held while there is still hope",
+          session.pending_target is not None, True)
+    session.mind_the_target(held + 0.1)
+    check("...and dropped once there is not", session.pending_target, None)
+    check("...out loud, because a click that evaporates looks like a bug",
+          "dropped" in session.log[-1]["text"], True)
+
+    # A reconnect throws the move connection away, so the reply that would have
+    # handed the wheels over is never coming.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "tap", "col": 240, "row": 160})
+    session.wanted_address = ""
+    session.connect()
+    check("a remade link does not leave a click waiting for a dead connection",
+          session.pending_target, None)
+
+    # The transcript has to say where a move is going in the units it was asked
+    # for. "ahead +0.00 m" for a place the rover has already driven past would be a
+    # sentence about the wrong thing entirely.
+    check("a route to a place on the map reads as one",
+          asked_for({"kind": "drive_to", "asked": {"x_m": 3.0, "y_m": -1.0}}),
+          "the point x +3.00, y -1.00 on the map")
+    check("...and an offset still reads as an offset",
+          asked_for({"kind": "drive_to", "asked": {"ahead_m": 1.0, "left_m": -0.4}}),
+          "ahead +1.00 m, left -0.40 m")

@@ -70,8 +70,20 @@ class NavDrive:
                                "speed": speed}, limit)
 
     @_one_move_at_a_time
-    def drive_to(self, ahead_m, left_m, speed_ms=None):
-        """Go to a place relative to where the rover is now, around obstacles.
+    def drive_to(self, ahead_m=0.0, left_m=0.0, speed_ms=None,
+                 x_m=None, y_m=None):
+        """Go to a place, around obstacles.
+
+        Two ways to say where, and they are not interchangeable. `ahead_m` and
+        `left_m` are measured from wherever the rover is standing when this call
+        arrives, which is what a caller who is looking at the room wants.
+        `x_m` and `y_m` name a point on the map itself, in the frame the rover
+        started in -- the frame `nav_status` reports the pose in and the frame the
+        map picture is drawn in -- and that is what a caller wants when the rover
+        may move between choosing the place and this call running. A tap on the map
+        that interrupts a move is exactly that case: the move has to be stopped
+        first and the rover keeps driving until it is, so the same click means one
+        place absolutely and a drifting place relatively.
 
         Plans on the occupancy grid, thins the route to a few waypoints, and
         follows that polyline by looking ahead along it rather than by chasing
@@ -84,26 +96,40 @@ class NavDrive:
         It reports through `report`: the plan being drawn, the route it came back
         with or the reason there is none, and every replan with what provoked it.
         """
-        asked = {"ahead_m": round(float(ahead_m), 2),
-                 "left_m": round(float(left_m), 2)}
+        absolute = x_m is not None and y_m is not None
+        asked = ({"x_m": round(float(x_m), 2), "y_m": round(float(y_m), 2)}
+                 if absolute else
+                 {"ahead_m": round(float(ahead_m), 2),
+                  "left_m": round(float(left_m), 2)})
         self.report.begin("drive_to", asked, "planning")
         self._journey = journey.Recorder.if_armed()
         if self._journey:
             self._journey.begin("drive_to", asked, self.slam.pose)
         try:
-            outcome = self._ended(self._drive_to(ahead_m, left_m, speed_ms))
+            outcome = self._ended(
+                self._drive_to(ahead_m, left_m, speed_ms, x_m, y_m))
         finally:
             recording, self._journey = self._journey, None
         if recording:
             recording.end(outcome.reason, outcome.detail)
         return outcome
 
-    def _drive_to(self, ahead_m, left_m, speed_ms):
+    def _drive_to(self, ahead_m, left_m, speed_ms, x_m=None, y_m=None):
         if self._estop:
             return Outcome("stopped", 0.0, 0.0,
                            "the emergency stop is latched; clear it first")
-        ahead_m, left_m = float(ahead_m), float(left_m)
-        range_m = math.hypot(ahead_m, left_m)
+        # The pose is read once, here, and both the target and the distance to it
+        # come out of that one reading. Taking it twice would let a revolution land
+        # in between and put the range check on a different pose from the target.
+        x, y, th = self.slam.pose
+        if x_m is not None and y_m is not None:
+            target = (float(x_m), float(y_m))
+            range_m = math.hypot(target[0] - x, target[1] - y)
+        else:
+            ahead_m, left_m = float(ahead_m), float(left_m)
+            range_m = math.hypot(ahead_m, left_m)
+            target = (x + ahead_m * math.cos(th) - left_m * math.sin(th),
+                      y + ahead_m * math.sin(th) + left_m * math.cos(th))
         if range_m < 0.08:
             return Outcome("arrived", 0.0, 0.0, "already there")
         if range_m > MAX_GOTO_M:
@@ -116,9 +142,6 @@ class NavDrive:
 
         speed = _clamp(float(speed_ms if speed_ms is not None else 0.22),
                        0.05, MAX_SPEED_MS)
-        x, y, th = self.slam.pose
-        target = (x + ahead_m * math.cos(th) - left_m * math.sin(th),
-                  y + ahead_m * math.sin(th) + left_m * math.cos(th))
         replans = 0
         path, last_why = self._plan_route(target)
         if not path:

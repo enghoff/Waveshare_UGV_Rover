@@ -9,6 +9,10 @@ from navigator import Navigator
 from odometry import Odometry
 
 
+def _xy_close(one, two, tol=1e-6):
+    return abs(one[0] - two[0]) < tol and abs(one[1] - two[1]) < tol
+
+
 def selftest():
     """The commentary, which is the one thing in this file that can be checked
     without a lidar, a driver board or a floor.
@@ -25,6 +29,53 @@ def selftest():
     assert not _pose_close(origin, (0.0, 0.0, math.radians(20))), "twenty degrees is not"
     assert _pose_close((0.0, 0.0, math.pi - 0.02), (0.0, 0.0, -math.pi + 0.02)), \
         "heading wrap is still the same pose"
+
+    # Where a route is planned to, for the two ways of asking. An offset is read
+    # from wherever the rover is standing when the call arrives; a point is the
+    # point, whenever it arrives. The difference is what lets a tap on the console's
+    # map interrupt a move: the tap has to stop what is running first, and the rover
+    # keeps driving until the stop lands, so the same click means one fixed place
+    # absolutely and a place that has drifted by a metre relatively.
+    class _Planning:
+        """Enough of a Navigator to see what target the planner was handed."""
+
+        _estop = False
+        report = MoveReport()
+
+        class slam:
+            pose = (2.0, -1.0, math.pi / 2)     # at (2, -1), facing +y
+
+        def __init__(self):
+            self.targets = []
+
+        def _preflight(self, _kind):
+            return ""
+
+        def _plan_route(self, target_xy):
+            self.targets.append(target_xy)
+            return None, "no route, which is all this stub is for"
+
+        _drive_to = Navigator._drive_to
+
+    nav = _Planning()
+    outcome = nav._drive_to(1.0, 0.0, None)
+    assert outcome.reason == "blocked", outcome
+    assert _xy_close(nav.targets[-1], (2.0, 0.0)), (
+        "a metre ahead of a rover facing +y is not a metre along +x")
+
+    nav = _Planning()
+    nav._drive_to(None, None, None, x_m=3.0, y_m=-1.0)
+    assert _xy_close(nav.targets[-1], (3.0, -1.0)), (
+        "a point on the map was moved by the pose it was planned from")
+
+    # The distance cap and "already there" are about the target, so they have to be
+    # measured from the rover in both forms. A point at the rover's own position is
+    # already there however far from the origin the rover has driven.
+    nav = _Planning()
+    assert nav._drive_to(None, None, None, x_m=2.0, y_m=-1.0).reason == "arrived"
+    assert nav.targets == [], "a route was planned to where the rover already is"
+    far = nav._drive_to(None, None, None, x_m=2.0, y_m=-19.0)
+    assert far.reason == "blocked" and "18.0 m away" in far.detail, far
 
     report.begin("drive_to", {"ahead_m": 1.2, "left_m": -0.4}, "planning")
     first = report.snapshot()

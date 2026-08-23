@@ -291,7 +291,7 @@
       <div><kbd>&uarr;</kbd>drive the distance above</div>
       <div><kbd>&larr;</kbd><kbd>&rarr;</kbd>turn by the angle above</div>
       <div><kbd>+</kbd><kbd>&minus;</kbd>the map closer or wider</div>
-      <div>click the map to drive there</div>
+      <div>click the map to drive there, again to go somewhere else</div>
     </div>
   </section>
 
@@ -309,7 +309,7 @@
 
 <div class="stack hero">
   <section id="mapCard">
-    <h2>map &mdash; click to drive there</h2>
+    <h2>map &mdash; click to drive there, again to change your mind</h2>
     <div class="shot" id="mapShot">
       <img id="mapImg" alt="the rover's map" hidden>
       <span class="empty" id="mapEmpty">no map yet</span>
@@ -457,8 +457,12 @@ function render(next) {
   link.textContent = next.link.text;
   link.className = next.link.connected ? "up" : "down";
   if (document.activeElement !== $("address")) $("address").value = next.link.address;
+  // A superseded move is still the move in flight, so it keeps its name and its
+  // stopwatch -- but a click that has been taken and is waiting for the wheels
+  // would otherwise look for a second like a click that went nowhere.
   $("busy").textContent = next.busy
-    ? `${next.busy.name}  ${next.busy.seconds.toFixed(1)} s` : "";
+    ? `${next.busy.name}  ${next.busy.seconds.toFixed(1)} s`
+      + (next.busy.superseded ? "  \u2014 new target waiting" : "") : "";
   $("watchers").textContent = next.watching > 1
     ? `${next.watching} browsers watching` : "";
 

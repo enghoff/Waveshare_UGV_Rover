@@ -367,13 +367,37 @@ class Rover:
                 **self._nav_context(speed)}
 
     def drive_to(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Around the table, not through it -- the point of the invented room."""
-        ahead = float(arguments.get("ahead_m", 0.0) or 0.0)
-        left = float(arguments.get("left_m", 0.0) or 0.0)
+        """Around the table, not through it -- the point of the invented room.
+
+        Takes a place either way the daemon does: `ahead_m`/`left_m` from where the
+        rover is standing, or `x_m`/`y_m` as a point on the map. A console that
+        relies on the second against the rover -- which the drive console does for
+        every tap, so that a click keeps its meaning while the rover is still moving
+        -- has to be able to rely on it here.
+        """
         speed = float(arguments.get("speed_ms") or 0.2)
-        self._begin("drive_to", {"ahead_m": round(ahead, 2), "left_m": round(left, 2)},
-                    "planning")
-        range_m = math.hypot(ahead, left)
+        x_m, y_m = arguments.get("x_m"), arguments.get("y_m")
+        if (x_m is None) != (y_m is None):
+            # Refused here because it is refused on the rover, and a mock that is
+            # more forgiving than the thing it stands in for is a mock that hides
+            # the client bug it exists to catch. Half a coordinate read as an
+            # offset of zero is "already there", which is the wrong answer given
+            # confidently.
+            return {"ok": False, "error": "a place on the map needs both x_m and "
+                                          "y_m; one on its own is not a place"}
+        if x_m is not None and y_m is not None:
+            target = (float(x_m), float(y_m))
+            asked = {"x_m": round(target[0], 2), "y_m": round(target[1], 2)}
+            range_m = math.hypot(target[0] - self.x, target[1] - self.y)
+        else:
+            ahead = float(arguments.get("ahead_m", 0.0) or 0.0)
+            left = float(arguments.get("left_m", 0.0) or 0.0)
+            asked = {"ahead_m": round(ahead, 2), "left_m": round(left, 2)}
+            range_m = math.hypot(ahead, left)
+            target = (
+                self.x + ahead * math.cos(self.heading) - left * math.sin(self.heading),
+                self.y + ahead * math.sin(self.heading) + left * math.cos(self.heading))
+        self._begin("drive_to", asked, "planning")
         if range_m < 0.08:
             self._say_end("arrived", "already there")
             return {"ok": True, "reason": "arrived", "travelled_m": 0.0,
@@ -384,8 +408,6 @@ class Rover:
             self._say_end("blocked", why)
             return {"ok": False, "error": why}
 
-        target = (self.x + ahead * math.cos(self.heading) - left * math.sin(self.heading),
-                  self.y + ahead * math.sin(self.heading) + left * math.cos(self.heading))
         start_heading = self.heading
         travelled, replans = 0.0, 0
         last_why = "no clear route through what the lidar has seen"

@@ -109,15 +109,33 @@ class RoverNav:
                 **self._nav_context()}
 
     def _tool_drive_to(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Drive to a place, given either as an offset or as a point on the map.
+
+        `x_m` and `y_m` are deliberately absent from this tool's schema, so a model
+        is never shown them. Nothing a model can see says where the rover is in that
+        frame -- `describe_surroundings` and the map picture are both relative, and
+        the pose only comes back from control calls -- so a model offered a pair of
+        map coordinates has no way to arrive at one except by inventing it, and an
+        invented pair is a fifteen-metre drive to a place nobody chose. What wants
+        them is a console with the map on screen, which knows the pose the picture
+        was drawn at and can therefore name the point that was clicked. See
+        `drive_to` in `lidar_slam/nav_drive.py` for why that distinction matters.
+        """
         if self.nav is None:
             return {"ok": False, "error": "this rover has no lidar, so it will not "
                                           "drive itself"}
-        ahead = _number(arguments.get("ahead_m", 0.0), "ahead_m")
-        left = _number(arguments.get("left_m", 0.0), "left_m")
+        x, y = arguments.get("x_m"), arguments.get("y_m")
+        if (x is None) != (y is None):
+            return {"ok": False, "error": "a place on the map needs both x_m and "
+                                          "y_m; one on its own is not a place"}
+        if x is None:
+            where = {"ahead_m": _number(arguments.get("ahead_m", 0.0), "ahead_m"),
+                     "left_m": _number(arguments.get("left_m", 0.0), "left_m")}
+        else:
+            where = {"x_m": _number(x, "x_m"), "y_m": _number(y, "y_m")}
         speed = arguments.get("speed_ms")
-        outcome = self.nav.drive_to(ahead, left,
-                                    speed_ms=None if speed is None
-                                    else _number(speed, "speed_ms"))
+        outcome = self.nav.drive_to(speed_ms=None if speed is None
+                                    else _number(speed, "speed_ms"), **where)
         return {"ok": outcome.reason in ("arrived", "timed out"), **outcome.asdict(),
                 **self._nav_context()}
 

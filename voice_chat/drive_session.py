@@ -13,7 +13,7 @@ from console_model import (
     BATTERY_POLL_S, BATTERY_STALE_S, CAMERA_AUTO_S, CLEAR_ARM_S, Channel,
     LIGHT_MAX, MAP_AUTO_S, MAP_EXTENTS_M, MAP_SIZES_PX, MOVE_TIMEOUT_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
-    WIFI_SCAN_TIMEOUT_S, rung, size_for_panel, tap_to_relative,
+    WIFI_SCAN_TIMEOUT_S, rung, size_for_panel, tap_to_point,
 )
 from drive_show import SessionShow, _number, _png_width  # noqa: F401
 
@@ -42,6 +42,11 @@ RECONNECT_MAX_S = 15.0
 # back *different* -- restarted, or on another address -- because the tool list and
 # the light level are asked once, on connect, and would otherwise stay stale.
 LINK_LOST_S = 8.0
+# How long a click that interrupted a move waits for the wheels to come free. The
+# handover itself is inside a second, so this is only ever reached by a stop that
+# did not land -- see mind_the_target for why waiting out the move channel's own
+# four minutes instead would be worse than giving up.
+TARGET_HANDOVER_S = 6.0
 DEFAULT_HTTP_PORT = 8770
 
 
@@ -91,6 +96,12 @@ class Session(SessionShow):
         self.can_drive = False
         self.busy_since: float | None = None
         self.busy_name = ""
+        # A click on the map that is waiting for the move it interrupted to let go
+        # of the wheels: the `drive_to` arguments, and when to give up on them. The
+        # place is held in map coordinates rather than as an offset, so waiting does
+        # not move it -- see `tap`.
+        self.pending_target: dict[str, Any] | None = None
+        self.pending_until = 0.0
         # The navigator's own count of the sentences it has published about the move
         # it is running. Kept so that polling three times a second writes one line
         # per thing the rover said rather than thirty. See move_sentence.
@@ -226,7 +237,12 @@ class Session(SessionShow):
         busy = None
         if self.busy_since is not None:
             busy = {"name": self.busy_name,
-                    "seconds": round(time.monotonic() - self.busy_since, 1)}
+                    "seconds": round(time.monotonic() - self.busy_since, 1),
+                    # A move that has been superseded is still the move in flight,
+                    # so the panel goes on naming it -- but a second of apparently
+                    # nothing happening after a click is what makes a console look
+                    # as though it dropped the click.
+                    "superseded": self.pending_target is not None}
         facing = "rover up" if self.rover_up else "start heading up"
         return {
             "link": {"address": self.address or self.wanted_address,
@@ -337,6 +353,7 @@ class Session(SessionShow):
             self.rejoined()
         if self.clear_armed_until and now > self.clear_armed_until:
             self.clear_armed_until = 0.0
+        self.mind_the_target(now)
         self.mind_the_link(now)
         self.mind_the_watchers(now)
         self.publish()
@@ -378,6 +395,21 @@ class Session(SessionShow):
             return
         if not self.find_outstanding and now - self.find_at > self.retry_in():
             self.connect()
+
+    def mind_the_target(self, now: float) -> None:
+        """Give up on a click that the move it interrupted never made room for.
+
+        The ordinary handover is inside a second and happens in `handle`: the stop
+        goes out on its own connection, the navigator drops the goal within a
+        control cycle, and the move call answers as soon as it does. This is for the
+        stop that never landed at all -- and then the move channel says nothing for
+        as long as its own patience, which is four minutes. Driving off to a place
+        somebody clicked four minutes ago is a rover acting on an intention that has
+        expired, so the click is forgotten and the transcript says so.
+        """
+        if self.pending_target is not None and now > self.pending_until:
+            self.forget_target("the move it interrupted did not let go of the "
+                               "wheels")
 
     def mind_the_watchers(self, now: float) -> None:
         """Stop the rover once the last browser has been gone a couple of seconds.
@@ -449,6 +481,10 @@ class Session(SessionShow):
         self.tools = []
         self.can_drive = False
         self.busy_since = None
+        # The move connection has just been thrown away, so the reply that would
+        # have handed the wheels over is never coming. Said out loud rather than
+        # left to time out, because a reconnect is already a confusing minute.
+        self.forget_target("the link to the rover was remade")
         self.link_text = "looking for the rover..."
         self.find_outstanding = True
         self.find_at = time.monotonic()
@@ -580,13 +616,28 @@ class Session(SessionShow):
         self.moves.submit(name, arguments)
 
     def tap(self, action: dict[str, Any]) -> None:
-        """A click on the picture is a place relative to the rover, not a pixel.
+        """A click on the picture is a place in the room, not a pixel -- and it
+        outranks whatever the rover is doing when it lands.
 
         The page sends the pixel in the picture's own coordinates -- it divides out
         whatever CSS scaling the panel applied, which is the one piece of arithmetic
         it does -- and the conversion into metres happens here, in the renderer's own
         code. A browser that worked that out for itself would be a third copy of the
         map's geometry.
+
+        **The place is asked for in map coordinates rather than as an offset from
+        the rover, and that is what makes interrupting possible at all.** An offset
+        is measured from wherever the rover has got to when the call arrives, and a
+        click that interrupts a move arrives late by construction: the running move
+        has to be stopped first, and the rover keeps driving until the stop lands.
+        Sent as an offset, the click would mean a place most of a metre from the one
+        under the cursor, and further out the faster the rover was going. Sent as a
+        point on the map it means the same place however late it arrives.
+
+        A click while something is already running is therefore not refused. It
+        stops what is running and takes its place, because somebody clicking a
+        second time is saying the rover is going to the wrong place, and "stop it or
+        wait" is a console arguing with the only instruction it has.
         """
         if self.map_view is None:
             return
@@ -594,21 +645,71 @@ class Session(SessionShow):
             self.say("this rover has no drive_to tool, so the tap was not sent\n",
                      "quiet")
             return
-        where = tap_to_relative(_number(action.get("col"), 0.0),
-                                _number(action.get("row"), 0.0), self.map_view)
+        where = tap_to_point(_number(action.get("col"), 0.0),
+                             _number(action.get("row"), 0.0), self.map_view)
         if where is None:
             self.say("cannot convert a tap without mapimg\n", "bad")
             return
-        ahead, left = where
-        arguments: dict[str, Any] = {"ahead_m": round(ahead, 2),
-                                     "left_m": round(left, 2)}
+        x_m, y_m = where
+        arguments: dict[str, Any] = {"x_m": round(x_m, 2), "y_m": round(y_m, 2)}
         speed = _number(action.get("speed_ms"), None)
         if speed is not None:
             arguments["speed_ms"] = speed
-        self.move("drive_to", arguments)
+        if self.busy_since is None:
+            self.move("drive_to", arguments)
+            return
+        # Something is running. Stop it, and hold this until the wheels are free:
+        # the running call occupies the move connection and cannot be overtaken on
+        # it, and the daemon would refuse a second move as "busy" in any case. The
+        # stop goes out on the connection that carries nothing else, and the move it
+        # cancels answers within a control cycle of it landing, which is where the
+        # waiting target is picked up. See `handle`.
+        replacing = self.pending_target is not None
+        self.pending_target = arguments
+        self.pending_until = time.monotonic() + TARGET_HANDOVER_S
+        if replacing:
+            # The stop from the first click is already in flight, so a second one
+            # would only put another line in the transcript.
+            self.say(f"{self.new_target()} instead\n", "note")
+            return
+        self.say(f"{self.new_target()}, so the {self.busy_name} in flight is being "
+                 f"stopped first\n", "note")
+        self.stop(keep_target=True)
 
-    def stop(self) -> None:
-        """Always allowed, and on the connection that carries nothing else."""
+    def new_target(self) -> str:
+        """The waiting click as a phrase, for the transcript."""
+        target = self.pending_target or {}
+        return ("a new target at x {:+.2f}, y {:+.2f}".format(
+            float(target.get("x_m") or 0.0), float(target.get("y_m") or 0.0)))
+
+    def hand_over(self) -> None:
+        """Send the click that was waiting for the wheels, now that they are free."""
+        arguments, self.pending_target = self.pending_target, None
+        self.pending_until = 0.0
+        if arguments is not None:
+            self.move("drive_to", arguments)
+
+    def forget_target(self, why: str) -> None:
+        """Drop a waiting click, and say so. Silence is the bad outcome here: a
+        click that quietly evaporated looks exactly like a console that ignores
+        clicks."""
+        if self.pending_target is None:
+            return
+        self.say(f"{self.new_target()} was dropped: {why}\n", "quiet")
+        self.pending_target = None
+        self.pending_until = 0.0
+
+    def stop(self, keep_target: bool = False) -> None:
+        """Always allowed, and on the connection that carries nothing else.
+
+        A stop throws away a waiting click along with the move in flight, unless it
+        *is* that click's own stop. Pressing STOP after clicking somewhere and then
+        watching the rover set off for that place is the one behaviour nobody would
+        forgive -- and the same goes for the stop that follows the last browser
+        leaving, where the target was queued by a tab that has since been closed.
+        """
+        if not keep_target:
+            self.forget_target("the rover was stopped")
         if self.halt is None:
             self.say("not connected, so there was nothing to stop\n", "quiet")
             return
@@ -893,4 +994,10 @@ class Session(SessionShow):
             self.show_tracking(body)
         if moved or name == "clear_map":
             self.refresh_map()
+        # The move that was in flight has answered, so the wheels are free and a
+        # click that was waiting for them goes now. After the reply is logged, so
+        # the transcript reads as one thing ending and the next beginning rather
+        # than the new move appearing to have caused the old one's outcome.
+        if moved and self.pending_target is not None:
+            self.hand_over()
 

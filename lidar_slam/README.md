@@ -599,6 +599,20 @@ doorway is closed. A soft toll beyond the keep-out is a nudge toward the middle 
 a gap, not the thing that keeps corners at arm's length: two extra cells of path
 was a cheap price to scrape a corner when going around cost metres.
 
+**A place can be said two ways, and which one is used decides whether a click can
+interrupt a move.** `ahead_m` and `left_m` are measured from wherever the rover is
+standing when the call arrives, which is what a caller looking at the room in front
+of it wants. `x_m` and `y_m` name a point in the map's own frame — the frame the
+pose is reported in and the frame the map picture is drawn in — and that is what a
+caller wants when the rover may move between choosing the place and the call
+running. The console's map is exactly that case: a click that interrupts a move has
+to stop the move first, and the rover keeps driving until the stop lands, so the
+same pixel means one fixed place absolutely and a place adrift by most of a metre
+relatively — further out, the faster it was going. So every tap goes as a point.
+Only a console is offered the pair, because nothing a model can see says where the
+rover is in that frame; see `_tool_drive_to` in
+[rover_daemon/rover_nav.py](../rover_daemon/rover_nav.py).
+
 **A single route is capped at 15 m**, and the cap is a property of the map rather
 than a policy: the grid reaches 20 m in every direction from where the rover was
 switched on, and a route is allowed most of that. It was 8 m, which was honest while

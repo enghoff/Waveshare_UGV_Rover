@@ -554,6 +554,23 @@ def tap_to_relative(col, row, half_extent_m, scale, resolution_m=0.05,
     return ahead, left
 
 
+def tap_to_point(col, row, half_extent_m, scale, resolution_m=0.05,
+                 rover_up=False, pose=(0.0, 0.0, 0.0)):
+    """A click on the map PNG -> (x_m, y_m) in the map's own frame.
+
+    `tap_to_relative` read in the pose the picture was drawn at, which is what a
+    caller wants whenever the rover might move before the click is acted on. A
+    relative target is measured from wherever the rover has got to by the time the
+    call lands; a place on the map is the place that was clicked however late the
+    call lands, and a click that interrupts a move is late by definition -- the
+    move has to be stopped first, and the rover carries on driving until it is.
+    """
+    ahead, left = tap_to_relative(col, row, half_extent_m, scale, resolution_m,
+                                  rover_up=rover_up, heading_rad=pose[2])
+    c, s = math.cos(pose[2]), math.sin(pose[2])
+    return pose[0] + ahead * c - left * s, pose[1] + ahead * s + left * c
+
+
 def _decode(png):
     """Our own PNG back to an (h, w, 3) array, so the checks below read the picture
     that shipped rather than the maths that wrote it."""
@@ -756,6 +773,42 @@ def _check_tap():
                                   rover_up=False, heading_rad=heading)
     assert abs(ahead) < res and abs(left + 1.0) < res, (ahead, left)
     print("tap ok: rover is 0,0; up is ahead; left is left")
+
+    # The same click read as a place on the map, which is what a caller wants when
+    # the rover may move before the click is acted on. A tap on the rover itself is
+    # the rover's own position, however the page is turned.
+    pose = (2.0, -1.0, math.pi / 2)          # at (2, -1), facing +y
+    x, y = tap_to_point(rover_col, rover_row, half, scale, pose=pose)
+    assert abs(x - pose[0]) < res and abs(y - pose[1]) < res, (x, y)
+    x, y = tap_to_point(rover_col, rover_row, half, scale, rover_up=True, pose=pose)
+    assert abs(x - pose[0]) < res and abs(y - pose[1]) < res, (x, y)
+
+    # Page not turned: up the page is +x on the map, whatever the rover faces.
+    x, y = tap_to_point(rover_col, rover_row - 20 * scale, half, scale, pose=pose)
+    assert abs(x - 3.0) < res and abs(y + 1.0) < res, (x, y)
+
+    # Page turned with the rover: up the page is a metre ahead of a rover facing
+    # +y, so it is +y on the map and not +x.
+    x, y = tap_to_point(rover_col, rover_row - 20 * scale, half, scale,
+                        rover_up=True, pose=pose)
+    assert abs(x - 2.0) < res and abs(y) < res, (x, y)
+
+    # And the whole reason this exists. A click that interrupts a move is acted on
+    # only after the move has been stopped, by which time the rover has driven on.
+    # Read as a place it still means the pixel that was clicked; sent as an offset
+    # and applied from where the rover ended up, it lands a whole metre away --
+    # exactly the metre driven in between.
+    col, row = rover_col - 20 * scale, rover_row - 20 * scale
+    fixed = tap_to_point(col, row, half, scale, pose=pose)
+    later = (2.0, 0.0, math.pi / 2)          # a metre further along that heading
+    ahead, left = tap_to_relative(col, row, half, scale, heading_rad=pose[2])
+    cos_th, sin_th = math.cos(later[2]), math.sin(later[2])
+    landed = (later[0] + ahead * cos_th - left * sin_th,
+              later[1] + ahead * sin_th + left * cos_th)
+    drifted = math.hypot(landed[0] - fixed[0], landed[1] - fixed[1])
+    assert abs(drifted - 1.0) < res, (fixed, landed, drifted)
+    print("tap-to-point ok: a click is a place on the map, not an offset that "
+          "drifts with the rover")
 
 
 def _check_camera():
