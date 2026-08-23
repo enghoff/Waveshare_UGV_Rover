@@ -54,11 +54,9 @@ for _candidate in (os.path.join(_HERE, "..", "lidar_slam"),
         if _candidate not in sys.path:
             sys.path.insert(0, _candidate)
 
-# The measured drive model, imported rather than copied. If somebody re-measures
-# the chassis on a different floor, this follows.
-from nav_types import (CMD_HEARTBEAT, CMD_PWM, HEARTBEAT_MS, MAX_SPEED_MS,   # noqa: E402
-                       MAX_TURN_DPS, MIN_PWM, MIN_TURN_DPS, TOP_PWM,
-                       TURN_RATES)
+# The firmware's own protocol numbers. Everything about the *drive model* moved
+# to drive_mixer.py, which is imported below.
+from nav_types import CMD_HEARTBEAT, CMD_PWM, HEARTBEAT_MS      # noqa: E402
 
 # Where the daemon stores what it has learned about this chassis.
 ODOMETRY_STORE = os.path.expanduser("~/ugv/odometry.json")
@@ -91,128 +89,12 @@ def yaw_to_quaternion(yaw):
     return q
 
 
-def to_pwm(value):
-    """A normalised -1..1 wheel command as the firmware's PWM.
-
-    The same curve as `lidar_slam/nav_drive.py`, and deliberately so: below
-    MIN_PWM the motors buzz and do not turn, so the usable range starts there
-    rather than at zero, and a controller that has not been told this spends the
-    bottom quarter of its output commanding a noise.
-    """
-    if abs(value) < 1e-3:
-        return 0
-    magnitude = MIN_PWM + abs(value) * (TOP_PWM - MIN_PWM)
-    return int(round(magnitude if value > 0 else -magnitude))
-
-
-# The two points somebody actually measured on this chassis, from
-# lidar_slam/nav_types.py: `{180: (170.0 deg/s, 9.0 deg of coast),
-# 80: (31.6, 2.0)}`, taken by timing fixed-PWM bursts and reading the angle back
-# off the lidar. Sorted so the fit below does not depend on dict order.
-_TURN_FIT = sorted((pwm, rate) for pwm, (rate, _coast) in TURN_RATES.items())
-_TURN_LO, _TURN_HI = _TURN_FIT[0], _TURN_FIT[-1]
-# deg/s per unit of PWM: (170.0 - 31.6) / (180 - 80) = 1.384
-_TURN_SLOPE = ((_TURN_HI[1] - _TURN_LO[1]) / (_TURN_HI[0] - _TURN_LO[0])
-               if _TURN_HI[0] != _TURN_LO[0] else 1.0)
-TURN_PWM_MAX = _TURN_HI[0]
-
-
-def pwm_for(points, wanted, floor=MIN_PWM, ceiling=TURN_PWM_MAX):
-    """Invert a measured [[pwm, value], ...] curve: what PWM gives `wanted`?
-
-    Piecewise linear between the measured points, and extrapolated from the two
-    nearest ones outside them, so a curve with a knee in it is followed rather
-    than averaged away. This exists because the alternatives were both tried on
-    the rover and both failed in opposite directions:
-
-      - Scaling PWM proportionally from zero ignores that the motors deliver
-        nothing below MIN_PWM and then climb steeply. Asking for 20 deg/s gave
-        PWM 93 and a measured 25 deg/s.
-      - Fitting a straight line to the two constants in `nav_types.py` gave
-        PWM 72 and a measured 8 deg/s -- because those constants describe the
-        rover as it was, on a different board, floor and battery.
-
-    Neither model was wrong about arithmetic. Both were wrong about this chassis,
-    which is why the points come from a file that `calibrate_chassis.py` writes
-    rather than from anything in the source.
-    """
-    if not points or wanted <= 0:
-        return 0
-    # Below the slowest thing measured, the honest answer is the slowest thing
-    # measured: a PWM under it is one the motors ignore, which is a movement that
-    # never happens and a controller waiting for it.
-    if wanted <= points[0][1]:
-        return int(round(max(floor, min(ceiling, points[0][0]))))
-    for (p0, v0), (p1, v1) in zip(points, points[1:]):
-        if wanted <= v1:
-            if v1 == v0:
-                return int(round(p1))
-            share = (wanted - v0) / (v1 - v0)
-            return int(round(max(floor, min(ceiling, p0 + share * (p1 - p0)))))
-    # Past the fastest measured point: extrapolate from the last pair, but never
-    # past what the firmware was measured to take.
-    (p0, v0), (p1, v1) = points[-2], points[-1]
-    if v1 == v0:
-        return int(round(min(ceiling, p1)))
-    slope = (p1 - p0) / (v1 - v0)
-    return int(round(max(floor, min(ceiling, p1 + (wanted - v1) * slope))))
-
-
-# The fallback, used only until calibrate_chassis.py has run. Kept because a
-# rover with no calibration at all should still move, and flagged loudly at
-# startup because these numbers are known to be wrong for this chassis.
-FALLBACK_TURN_POINTS = [[pwm, rate] for pwm, rate in _TURN_FIT]
-
-
-def turn_to_pwm(dps, points=None):
-    """The per-wheel PWM magnitude that turns this chassis at `dps` degrees/s."""
-    wanted = abs(dps)
-    if wanted < 1e-3:
-        return 0
-    return pwm_for(points or FALLBACK_TURN_POINTS, max(wanted, MIN_TURN_DPS))
-
-
-def mix(linear, angular, turn_points=None, drive_points=None):
-    """A `/cmd_vel` as the firmware's left and right PWM pair.
-
-    Done in PWM rather than in normalised units, because that is where both
-    calibrations live: each curve is a measured map from PWM to motion, and mixing
-    normalised numbers and converting once at the end -- which is what
-    `lidar_slam/nav_drive.py` does -- would apply the motors' floor to the sum
-    instead of to each part.
-
-    Positive `angular.z` is counter-clockwise by REP-103, which is a left turn, so
-    the left wheel goes backwards. That is the one sign here worth checking
-    against the rover rather than against the code, and it was: a commanded
-    +20 deg/s turned it anticlockwise.
-    """
-    if drive_points:
-        # Clamped to the fastest speed actually measured, not to MAX_SPEED_MS.
-        # That constant says 0.35 m/s and this chassis was measured at 0.33 at its
-        # slowest usable PWM and 0.68 at PWM 140 -- so the "maximum" is very nearly
-        # the minimum, and clamping to it pinned every Nav2 command to the slowest
-        # PWM the motors will turn at. There was no speed control at all.
-        speed = min(drive_points[-1][1], abs(linear))
-        throttle = pwm_for(drive_points, speed, ceiling=TOP_PWM)
-    else:
-        speed = min(MAX_SPEED_MS, abs(linear))
-        throttle = to_pwm(speed / MAX_SPEED_MS)
-    if linear < 0:
-        throttle = -throttle
-
-    turn = turn_to_pwm(math.degrees(min(math.radians(MAX_TURN_DPS), abs(angular))),
-                       turn_points)
-    if angular < 0:
-        turn = -turn
-    left, right = throttle - turn, throttle + turn
-    # Scale rather than clip when the pair runs past what the firmware takes.
-    # Clipping one wheel and not the other changes the turn the caller asked for
-    # into a different one; scaling both keeps the ratio and only slows it down.
-    peak = max(abs(left), abs(right))
-    if peak > TURN_PWM_MAX:
-        scale = TURN_PWM_MAX / peak
-        left, right = left * scale, right * scale
-    return int(round(left)), int(round(right))
+# The mixer, imported rather than defined here. It is the one piece of arithmetic
+# in this stack that three separate programs need -- this node, the selftest on a
+# machine with no ROS, and steering_sim.py -- and a copy of a control law drifts
+# invisibly. See drive_mixer.py, which also explains why the steering term does
+# not get the motors' from-rest floor.
+from drive_mixer import mix                                     # noqa: E402
 
 
 class Bridge:

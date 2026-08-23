@@ -58,71 +58,28 @@ from nav_types import (MAX_SPEED_MS, MAX_TURN_DPS, MIN_PWM,           # noqa: E4
                         MIN_TURN_DPS, TOP_PWM, TURN_RATES)
 
 
-def to_pwm(value):
-    """A copy of base_node.to_pwm, so this file needs no rclpy to test it."""
-    if abs(value) < 1e-3:
-        return 0
-    magnitude = MIN_PWM + abs(value) * (TOP_PWM - MIN_PWM)
-    return int(round(magnitude if value > 0 else -magnitude))
-
+# Imported, not copied. This is the control law that drives the rover, and it now
+# lives in a module with no ROS in it precisely so that this file can test the
+# real thing. It used to be restated here, which is exactly the arrangement that
+# lets a fix land in one copy and not the other -- and a control law that has
+# drifted from its test looks like a passing test.
+sys.path.insert(0, HERE)
+from drive_mixer import (FALLBACK_TURN_POINTS, TURN_PWM_MAX,     # noqa: E402
+                         mix as cmd_to_pwm, pwm_for, steer_pwm, to_pwm,
+                         turn_to_pwm)
 
 _FIT = sorted((pwm, rate) for pwm, (rate, _c) in TURN_RATES.items())
 _LO, _HI = _FIT[0], _FIT[-1]
-_SLOPE = (_HI[1] - _LO[1]) / (_HI[0] - _LO[0])
-TURN_PWM_MAX = _HI[0]
 
-
-def pwm_for(points, wanted, floor=MIN_PWM, ceiling=None):
-    """A copy of base_node.pwm_for."""
-    ceiling = TURN_PWM_MAX if ceiling is None else ceiling
-    if not points or wanted <= 0:
-        return 0
-    if wanted <= points[0][1]:
-        return int(round(max(floor, min(ceiling, points[0][0]))))
-    for (p0, v0), (p1, v1) in zip(points, points[1:]):
-        if wanted <= v1:
-            if v1 == v0:
-                return int(round(p1))
-            share = (wanted - v0) / (v1 - v0)
-            return int(round(max(floor, min(ceiling, p0 + share * (p1 - p0)))))
-    (p0, v0), (p1, v1) = points[-2], points[-1]
-    if v1 == v0:
-        return int(round(min(ceiling, p1)))
-    slope = (p1 - p0) / (v1 - v0)
-    return int(round(max(floor, min(ceiling, p1 + (wanted - v1) * slope))))
-
-
-FALLBACK_TURN_POINTS = [[pwm, rate] for pwm, rate in _FIT]
-
-
-def turn_to_pwm(dps, points=None):
-    """A copy of base_node.turn_to_pwm."""
-    wanted = abs(dps)
-    if wanted < 1e-3:
-        return 0
-    return pwm_for(points or FALLBACK_TURN_POINTS, max(wanted, MIN_TURN_DPS))
-
-
-def cmd_to_pwm(linear, angular, turn_points=None, drive_points=None):
-    """A copy of base_node.mix, which is the part that can be wrong in a way
-    that drives the rover backwards."""
-    speed = min(MAX_SPEED_MS, abs(linear))
-    if drive_points:
-        throttle = pwm_for(drive_points, speed, ceiling=TOP_PWM)
-    else:
-        throttle = to_pwm(speed / MAX_SPEED_MS)
-    if linear < 0:
-        throttle = -throttle
-    turn = turn_to_pwm(math.degrees(min(math.radians(MAX_TURN_DPS), abs(angular))),
-                       turn_points)
-    if angular < 0:
-        turn = -turn
-    left, right = throttle - turn, throttle + turn
-    peak = max(abs(left), abs(right))
-    if peak > TURN_PWM_MAX:
-        scale = TURN_PWM_MAX / peak
-        left, right = left * scale, right * scale
-    return int(round(left)), int(round(right))
+# This chassis as calibrate_chassis.py measured it on 2026-08-23, so the steering
+# tests below run the same numbers the rover runs and do not depend on a store
+# being present. Kept beside the tests rather than read from ~/ugv/odometry.json
+# because a test that changes its own expectations when somebody re-calibrates is
+# not a test.
+MEASURED_TURN = [[85, 9.1718], [90, 12.625], [95, 14.8219], [105, 24.4707],
+                 [120, 40.78], [145, 65.573], [170, 95.8467]]
+MEASURED_DRIVE = [[85, 0.3326], [90, 0.3606], [95, 0.396], [115, 0.4851],
+                  [140, 0.678]]
 
 
 def test_turn_curve():
@@ -206,6 +163,107 @@ def test_drive_model():
     # one, so the *difference* between the wheels must survive the squeeze.
     check("...having been scaled down rather than one wheel clipped",
           abs(right - left) > 0, True)
+    # And the squeeze must come out of the speed, not out of the rotation. The
+    # first version scaled both, so a commanded 45 deg/s arrived as 25 -- fair
+    # looking, and wrong: a rover that advances too slowly still follows its
+    # route, and one that turns too slowly leaves it.
+    turn_only = cmd_to_pwm(0.0, math.radians(MAX_TURN_DPS), MEASURED_TURN,
+                           MEASURED_DRIVE)
+    both = cmd_to_pwm(0.5, math.radians(MAX_TURN_DPS), MEASURED_TURN,
+                      MEASURED_DRIVE)
+    check("asking for speed as well does not cost rotation",
+          abs(both[1] - both[0]) >= abs(turn_only[1] - turn_only[0]) - 1, True)
+
+
+def test_steering_has_a_small_end():
+    """A gentle steering request must produce a gentle turn.
+
+    This is the test that was missing, and its absence is why a rover zig-zagged
+    every route it drove for a week. Everything about the drive model was tested
+    except the regime a path follower spends nearly all of its time in: nearly on
+    the path, asking for a fraction of a degree a second of correction.
+
+    The floors are the cause. `MIN_TURN_DPS` lifts any request under 12 deg/s to
+    12, and the curve then refuses to go below the slowest PWM anybody measured --
+    both correct rules about a wheel starting from *rest*, and both wrong about the
+    difference between two wheels already turning. Measured on this chassis's own
+    curves, requests of 0.5, 1, 2, 5 and 10 deg/s all came out as the identical
+    pair (-1, 177): one wheel stopped, the other at full. A follower handed that
+    cannot steer, only swerve.
+    """
+    section("steering while driving has a small end")
+    speed = 0.35
+    pairs = [cmd_to_pwm(speed, math.radians(d), MEASURED_TURN, MEASURED_DRIVE)
+             for d in (0.5, 1.0, 2.0, 5.0, 10.0)]
+    diffs = [(r - l) / 2.0 for l, r in pairs]
+    check("five requests spanning a factor of twenty are not one output",
+          len(set(diffs)) == len(diffs), True)
+    check("...and they increase with the request", diffs == sorted(diffs), True)
+    check("half a degree a second is a gentle differential, not a pivot",
+          diffs[0] < 20, True)
+    check("...and both wheels still drive forward",
+          pairs[0][0] > 0 and pairs[0][1] > 0, True)
+    check("ten degrees a second is a firm one", diffs[-1] > 60, True)
+
+    # Continuity: no step in the output as the request crosses the old floor. A
+    # step anywhere is a request the follower cannot make, and a limit cycle
+    # around it.
+    worst, at = 0.0, 0.0
+    previous = None
+    for i in range(0, 301):
+        dps = i * 0.1
+        left, right = cmd_to_pwm(speed, math.radians(dps), MEASURED_TURN,
+                                 MEASURED_DRIVE)
+        diff = (right - left) / 2.0
+        if previous is not None and abs(diff - previous) > worst:
+            worst, at = abs(diff - previous), dps
+        previous = diff
+    check("the steering curve has no step in it (worst %.1f PWM at %.1f deg/s)"
+          % (worst, at), worst <= 6.0, True)
+
+    # Standing still is the other half of the rule, and it must not change: from
+    # rest both wheels have to clear stiction, so the floors still apply.
+    left, right = cmd_to_pwm(0.0, math.radians(1.0), MEASURED_TURN, MEASURED_DRIVE)
+    check("a turn on the spot still gets the from-rest floor",
+          abs(right - left) / 2.0 >= MEASURED_TURN[0][0], True)
+    check("...which is what steer_pwm says when it is not driving",
+          steer_pwm(1.0, MEASURED_TURN, driving=False),
+          float(turn_to_pwm(1.0, MEASURED_TURN)))
+    check("...and driving, the same request is far gentler",
+          steer_pwm(1.0, MEASURED_TURN, driving=True)
+          < steer_pwm(1.0, MEASURED_TURN, driving=False), True)
+    check("no request at all is no differential, driving or not",
+          (steer_pwm(0.0, MEASURED_TURN, driving=True),
+           steer_pwm(0.0, MEASURED_TURN, driving=False)), (0.0, 0.0))
+
+
+def test_the_rover_does_not_wander_down_a_straight_line():
+    """Close the loop in simulation and count how often the steering reverses.
+
+    The arithmetic above says the mixer can now ask for a gentle turn. This says
+    it matters: a follower driving the fixed mixer settles onto a straight line,
+    and the same follower driving the old one hunts about it for ever. See
+    steering_sim.py, which explains what is modelled and what is assumed.
+    """
+    section("a simulated rover follows a straight line without hunting")
+    try:
+        import steering_sim
+    except Exception as exc:                       # pragma: no cover
+        print("  .... skipped, cannot import steering_sim: %s" % exc)
+        return
+    old = steering_sim.run(steering_sim.mix_old, MEASURED_TURN, MEASURED_DRIVE,
+                           metres=4.0, start_offset=0.10)
+    new = steering_sim.run(steering_sim.mix_new, MEASURED_TURN, MEASURED_DRIVE,
+                           metres=4.0, start_offset=0.10)
+    check("the old mixer hunts (%.1f steering reversals per metre)"
+          % old["reversals_per_m"], old["reversals_per_m"] > 2.0, True)
+    check("the fixed one settles (%.1f per metre)" % new["reversals_per_m"],
+          new["reversals_per_m"] < 1.0, True)
+    check("and wanders less once settled (%.1f cm against %.1f cm)"
+          % (new["settled_swing_m"] * 100, old["settled_swing_m"] * 100),
+          new["settled_swing_m"] < old["settled_swing_m"], True)
+    check("both still reach the line they were following",
+          max(old["final_offset_m"], new["final_offset_m"]) < 0.05, True)
 
 
 # --- odometry -----------------------------------------------------------------
@@ -830,6 +888,8 @@ def test_the_two_halves_agree_on_the_port():
 
 def main():
     test_drive_model()
+    test_steering_has_a_small_end()
+    test_the_rover_does_not_wander_down_a_straight_line()
     test_turn_curve()
     test_idle_behaviour()
     test_gyro_bias()

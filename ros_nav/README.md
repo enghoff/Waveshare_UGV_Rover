@@ -450,6 +450,67 @@ Both of those runs predate the gyro-offset fix above, so they are the *hard* cas
 dead reckoning was carrying 38 degrees of phantom rotation and the graph removed
 it anyway. Re-run on a charged pack to see what it does now.
 
+## Why the rover zig-zagged, and how to see it without a rover
+
+It wandered the length of every route it drove, turning constantly instead of
+holding a line. The cause was in the mixer, not in Nav2, and it is worth writing
+down because it was invisible in every test that existed.
+
+`MIN_TURN_DPS` lifts any rotation request under 12 deg/s to 12, and `pwm_for`
+refuses to extrapolate below the slowest PWM anybody measured. Both are correct
+rules, and both are rules about a wheel starting **from rest**: under about PWM 40
+a stationary motor buzzes and does not turn, so asking for less than the slowest
+thing ever measured is asking for nothing to happen.
+
+Neither governs the *difference* between two wheels that are already turning. With
+the from-rest floor applied to the steering term, this is what the mixer did with
+a steering request at 0.35 m/s, on this chassis's own measured curves:
+
+| asked | old: left, right | differential | fixed: left, right | differential |
+|---|---|---|---|---|
+| 0.5 °/s | −1, 177 | 89 | 83, 93 | 5 |
+| 1 °/s | −1, 177 | 89 | 79, 97 | 9 |
+| 2 °/s | −1, 177 | 89 | 69, 107 | 19 |
+| 5 °/s | −1, 177 | 89 | 42, 134 | 46 |
+| 10 °/s | −1, 177 | 89 | 2, 174 | 86 |
+
+Five requests spanning a factor of twenty, one output: one wheel stopped and the
+other at full. A path follower spends nearly all its time nearly on the path,
+asking for a fraction of a degree a second — so nearly every command the rover
+received became a violent pivot. It could not steer, only swerve, overshoot, and
+swerve back.
+
+[`steering_sim.py`](steering_sim.py) reproduces it with nothing plugged in, which
+is how it was diagnosed while the rover was tethered to a charger. It closes the
+loop — a pure-pursuit follower, this chassis's measured curves as the plant, the
+real mixer in between — and counts how often the steering reverses:
+
+```bash
+python3 steering_sim.py --trace
+```
+
+|  | settled wander | steering reversals |
+|---|---|---|
+| old mixer | 1.1 cm | 4.0 per metre |
+| fixed | 0.3 cm | 0.2 per metre |
+
+The fix is that the floor is now conditional. Standing still, `steer_pwm` is
+`turn_to_pwm` and both floors apply, because both wheels really are starting from
+rest. Driving, the differential is interpolated straight to the origin — the curve
+has to pass through it, since no difference between the wheels is no rotation.
+
+A second fault showed at the other end while looking at this. When the pair ran
+past the firmware's ceiling the old mixer scaled *both* wheels to fit, which reads
+as fair and is not: it reduced the rotation as well as the speed, so a commanded
+45 °/s arrived as 25. Speed is now given up first and rotation kept, because a
+rover that advances too slowly still follows its route and one that turns too
+slowly leaves it.
+
+The mixer lives in [`drive_mixer.py`](drive_mixer.py), on its own and with no ROS
+in it, so that the node, the selftest and the simulation all run the same code.
+They used to carry copies. A copy of a table drifts visibly; a copy of a control
+law drifts invisibly.
+
 ## The footprint is the thing that decides whether `drive_to` works
 
 Measured on the rover, and worth knowing before concluding that Nav2 is broken.
