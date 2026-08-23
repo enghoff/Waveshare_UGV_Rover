@@ -450,6 +450,57 @@ Both of those runs predate the gyro-offset fix above, so they are the *hard* cas
 dead reckoning was carrying 38 degrees of phantom rotation and the graph removed
 it anyway. Re-run on a charged pack to see what it does now.
 
+## The footprint is the thing that decides whether `drive_to` works
+
+Measured on the rover, and worth knowing before concluding that Nav2 is broken.
+
+`robot_radius: 0.25` does two different jobs and only one of them is obvious. It
+is the collision model, and it is also the *inscribed* radius the inflation layer
+uses — so every occupied cell in the map projects a 25 cm disc in which the
+rover's centre may not be. A goal inside one is refused outright, and so is a
+start. `inflation_radius: 0.45` is not part of this: beyond the inscribed radius,
+inflation only adds preference, never prohibition.
+
+What that costs, measured against a real map of this house at 5 cm:
+
+| `robot_radius` | free floor still legal |
+|---|---|
+| 0.10 m | 89% |
+| 0.16 m | 82% |
+| 0.20 m | 76% |
+| 0.25 m | 68% |
+| 0.30 m | 63% |
+
+The compounding problem is a sparse map. An isolated speckle cell projects the
+same 50 cm disc a wall does, so a map with a few minutes' data in it is mostly
+no-go: walked along a line the lidar reported as 2.1 m of clear floor, the costmap
+read `inscribed` from 20 cm onwards while slam_toolbox's own map said `free`. That
+is not the costmap being wrong — it is 25 cm of inflation around scattered cells
+that a properly built map would have resolved into walls.
+
+So two things make `drive_to` fail in a way that looks like a broken planner and
+is not:
+
+- **A map with only a few metres of driving in it.** Build one by driving the
+  house before judging the navigation. The behaviours — `drive` and
+  `turn_in_place` — need no plan and work regardless, which is how to get out of
+  a spot the planner will not leave.
+- **A footprint radius nobody has measured.** 0.25 m was chosen as a safe guess
+  because the offset from the chassis centre to the lidar was never measured, and
+  `base_link` is at the lidar. The library already knows more than that: the
+  lidar's own returns off the rover's body span 8.5–11.2 cm behind it and
+  8.2–10.7 cm to each side, over 397 revolutions (see `body_back_m` and
+  `body_half_width_m` in [`lidar_slam/slam2d.c`](../lidar_slam/slam2d.c)). Only
+  the forward extent is unmeasured, because the lidar sees past the body that way.
+  Measuring it, and replacing the circle with the rectangle this chassis actually
+  is, would take the prohibited ring from 25 cm to about 13 cm and give back
+  roughly a seventh of the floor while modelling the corners *better* than a
+  circle does.
+
+A failed move now says how hard Nav2 tried: `blocked -- Nav2 gave up after 10
+recovery attempts`. A bare "blocked" sends somebody to look at the rover, which is
+the wrong place.
+
 ## What is deliberately not here
 
 **AMCL and the map server.** They localise against a map saved earlier, and this

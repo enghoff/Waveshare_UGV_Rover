@@ -577,6 +577,7 @@ class RosNavigator:
         shows a rover thinking and one that shows a rover stuck.
         """
         replans = 0
+        announced = False
         for raw in stream:
             raw = raw.strip()
             if not raw:
@@ -594,9 +595,23 @@ class RosNavigator:
                                     "Nav2 is trying to recover", replans=replans)
                     continue
                 fields: dict[str, Any] = {}
-                if line.get("remaining_m") is not None:
+                # The route, said once. `route_m` is what the console turns into
+                # "route accepted: 2.4 m through 48 waypoints", so it is the length
+                # of the route when it was accepted -- not how much of it is left,
+                # which has its own row on the panel. Repeating it every third of a
+                # second would have the rover announcing a fresh route all the way
+                # down the old one.
+                # ...and only when there is one. Nav2 reports zero distance and no
+                # waypoints while its planner is failing, and "route accepted:
+                # 0.00 m through 0 waypoints" is a sentence that claims the
+                # opposite of what is happening. Observed on a goal the planner
+                # refused outright, where the console cheerfully announced a route
+                # ten times over while the rover went nowhere.
+                if (not announced and float(line.get("remaining_m") or 0.0) > 0.0
+                        and int(line.get("waypoints") or 0) > 0):
+                    announced = True
                     fields["route_m"] = float(line["remaining_m"])
-                    fields["waypoints"] = 1
+                    fields["waypoints"] = int(line["waypoints"])
                 self.report.say(str(line.get("phase") or "driving"),
                                 str(line.get("why") or ""), **fields)
             elif kind == "outcome":

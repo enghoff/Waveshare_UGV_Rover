@@ -266,6 +266,35 @@ class NavBridge(Node):
             self.base_state = payload
 
     # --- where the rover is ---------------------------------------------------
+    def dead_reckoned(self):
+        """`(x, y, yaw)` in the *odom* frame, for measuring what a move did.
+
+        Not the map frame, and the difference is not academic -- it was measured
+        on the rover. `odom -> base_link` is pure dead reckoning and is never
+        corrected; `map -> odom` is the pose graph's correction on top, and it
+        moves in steps whenever slam_toolbox matches a scan.
+
+        The trap is that slam_toolbox only adds a scan once the rover has
+        travelled `minimum_travel_distance`, so a rover standing still
+        accumulates gyro drift in `odom` with nothing correcting it -- measured
+        here at about 0.1 deg/s while the bias estimate is still converging. The
+        correction for all of it then lands in one step on the first scan after
+        the rover moves. Measured in the map frame, a 0.3 m straight drive
+        therefore reported 19 degrees of turn: the drive was being charged with
+        several minutes of standing still.
+
+        So a move is measured against dead reckoning, which is what the rover did
+        relative to itself, and the map frame is used for where the rover *is*.
+        """
+        try:
+            at = self.tf_buffer.lookup_transform(
+                self.args.odom_frame, self.args.base_frame,
+                rclpy.time.Time(), rclpy.duration.Duration(seconds=0.2))
+        except Exception:
+            return None
+        t = at.transform.translation
+        return t.x, t.y, yaw_of(at.transform.rotation)
+
     def pose(self):
         """`(x, y, yaw)` in the map frame, or None if nothing has said yet.
 
@@ -563,13 +592,18 @@ class NavBridge(Node):
             time.sleep(0.02)
         return True
 
-    def run_goal(self, kind, goal_msg, limit_s, say, measure):
+    def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving"):
         """Send one Nav2 goal and narrate it until it ends.
 
         `say` publishes a progress line and `measure` turns the action's own
         feedback into the numbers the daemon reports, because each action counts
         something different -- degrees for a spin, metres for a drive, metres
         remaining for a navigation.
+
+        `motion` is the word for what the rover is doing once the goal is
+        accepted, and it is a parameter because the consoles read it: both turn
+        the phase into a sentence, and a spin narrating itself as "driving +45
+        deg" is a rover describing something it is not doing.
         """
         client = self.actions[kind]
         if not client.wait_for_server(timeout_sec=2.0):
@@ -583,11 +617,19 @@ class NavBridge(Node):
                         "detail": "the stop is latched; clear it first"}
             self.cancelled = False
 
-        started = self.pose()
+        # Dead reckoning, not the map frame: see dead_reckoned() and
+        # finish() for the 19 degrees that cost.
+        started = self.dead_reckoned()
         feedback = {}
+        recoveries = [0]
 
         def on_feedback(message):
-            feedback.update(measure(message.feedback))
+            fields = measure(message.feedback)
+            # Kept outside `feedback`, which is overwritten each time: the count
+            # only matters once the move has failed, and by then Nav2's last
+            # feedback may have reset it.
+            recoveries[0] = max(recoveries[0], int(fields.get("recoveries") or 0))
+            feedback.update(fields)
 
         say("planning", "the goal is with Nav2")
         send = client.send_goal_async(goal_msg, feedback_callback=on_feedback)
@@ -616,9 +658,18 @@ class NavBridge(Node):
                     break
                 if now - said_at > PROGRESS_S:
                     said_at = now
-                    say("driving", "", **dict(feedback))
+                    say(motion, "", **dict(feedback))
                 time.sleep(0.05)
             outcome = self.finish(result_future, started, feedback)
+            # What it tried before giving up. A bare "blocked" sends somebody to
+            # look at the rover; "blocked after 10 recoveries, and the planner
+            # could not find a route" sends them to look at the map, which is
+            # where the answer is.
+            if recoveries[0] and outcome.get("reason") != "arrived":
+                outcome["detail"] = (
+                    "%s -- Nav2 gave up after %d recovery attempt%s"
+                    % (outcome.get("detail") or "no route",
+                       recoveries[0], "" if recoveries[0] == 1 else "s"))
         finally:
             with self._lock:
                 self.active_goal = None
@@ -627,22 +678,29 @@ class NavBridge(Node):
         return outcome
 
     def finish(self, result_future, started, feedback):
-        """What the move did, from the pose it ended at rather than from its own
-        account of itself.
+        """What the move did, measured against dead reckoning.
 
-        The behaviour's feedback says how far it thinks it went, and it is not the
-        authority: it counts what the controller commanded, and the pose graph is
-        the thing that knows where the rover actually is. The exception is
-        rotation, where a wrapped heading difference cannot tell 200 degrees from
-        -160 and the feedback's accumulating count can.
+        `started` is an odom-frame pose -- see `dead_reckoned` for why it must not
+        be a map-frame one. Two refinements on top of the plain difference, and
+        both matter:
+
+        A wrapped heading difference cannot tell 200 degrees from -160, so where
+        the behaviour has been counting rotation of its own -- `Spin` does -- its
+        accumulating figure wins whenever it is the larger of the two. And a
+        straight drive is credited with the distance `DriveOnHeading` measured
+        rather than the straight line between its ends, because a rover that
+        wandered a little covers more ground than the chord between where it
+        started and where it stopped.
         """
         travelled = turned = 0.0
-        ended = self.pose()
+        ended = self.dead_reckoned()
         if started is not None and ended is not None:
             travelled = math.hypot(ended[0] - started[0], ended[1] - started[1])
             turned = math.degrees(wrap(ended[2] - started[2]))
         if "turned_deg" in feedback and abs(feedback["turned_deg"]) > abs(turned):
             turned = feedback["turned_deg"]
+        if "travelled_m" in feedback and feedback["travelled_m"] > travelled:
+            travelled = feedback["travelled_m"]
 
         with self._lock:
             cancelled = self.cancelled
@@ -714,7 +772,8 @@ class NavBridge(Node):
             "spin", goal, limit + 5.0, say,
             lambda fb: {"turned_deg": round(
                 math.copysign(math.degrees(abs(fb.angular_distance_traveled)),
-                              angle_deg), 1)})
+                              angle_deg), 1)},
+            motion="turning")
 
     def goto(self, where, yaw_deg, say):
         """Somewhere on the map, with a planner and a costmap between.
@@ -758,7 +817,12 @@ class NavBridge(Node):
         def measure(fb):
             with self._lock:
                 self.remaining_m = round(float(fb.distance_remaining), 2)
+                plan = self.plan
+            # How many poses the planner produced, so the console can say what
+            # route was accepted rather than only how far is left. Nav2's feedback
+            # does not carry it; the plan it publishes does.
             return {"remaining_m": self.remaining_m,
+                    "waypoints": len(plan.poses) if plan is not None else 0,
                     "recoveries": int(fb.number_of_recoveries)}
 
         return self.run_goal("goto", goal, limit, say, measure)
@@ -867,6 +931,7 @@ def parse_args(argv):
                    help="loopback by default, and it should stay that way")
     p.add_argument("--port", type=int, default=PORT)
     p.add_argument("--map-frame", default="map")
+    p.add_argument("--odom-frame", default="odom")
     p.add_argument("--base-frame", default="base_link")
     return p.parse_args(strip_ros_args(argv))
 
