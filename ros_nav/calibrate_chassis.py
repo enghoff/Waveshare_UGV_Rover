@@ -86,11 +86,13 @@ from nav_types import CMD_HEARTBEAT, CMD_PWM, HEARTBEAT_MS      # noqa: E402
 # few units of PWM are the difference between not moving and moving, and that is
 # where a controller asking for a gentle correction lives.
 TURN_PWMS = (75, 85, 90, 95, 105, 120, 145, 170)
-# Starting at 80, not 70: PWM 70 was measured here and the rover did not move at
-# all, which is the same stiction floor the turn sweep found at 75. A point that
-# reports zero teaches the curve nothing it does not already refuse to
-# extrapolate into.
-DRIVE_PWMS = (80, 95, 115, 140)
+# Starting at 85. PWM 70 and 80 were both measured here and neither moved the
+# rover at all -- the same stiction floor the turn sweep found -- and a point that
+# reports zero teaches the curve nothing it does not already refuse to extrapolate
+# into. The bottom two points matter more than the top ones: the slowest speed this
+# chassis can hold is what decides whether Nav2 has any speed control, and with the
+# curve starting at 0.41 m/s every request below that maps to one PWM.
+DRIVE_PWMS = (85, 90, 95, 115, 140)
 
 # How many times each point is measured, in each direction. More than one because
 # a single 1.6 s burst on a skidding chassis is noisy enough to invent an
@@ -137,6 +139,12 @@ RECENTRE_MARGIN_M = 0.45
 # and not the path, and reports too little.
 MAX_DRIVE_DRIFT_DEG = 8.0
 
+# Checking the gyro against the walls: a fast PWM so each burst covers a decent
+# angle, and a floor under how much the walls must have moved before the ratio of
+# the two means anything.
+GYRO_PWM = 120
+GYRO_MIN_TURN_DEG = 25.0
+
 
 def normalise(degrees):
     return (degrees + 180.0) % 360.0 - 180.0
@@ -175,6 +183,17 @@ class Chassis(Node):
         if self.odom is None:
             return None
         q = self.odom.pose.pose.orientation
+        return math.degrees(2.0 * math.atan2(q.z, q.w))
+
+    def map_yaw(self):
+        """Heading in degrees according to the map, which the walls decide."""
+        try:
+            t = self.buffer.lookup_transform(
+                "map", "base_link", rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=0.5))
+        except Exception:
+            return None
+        q = t.transform.rotation
         return math.degrees(2.0 * math.atan2(q.z, q.w))
 
     def pose(self):
@@ -363,6 +382,56 @@ class Chassis(Node):
                           % rate)
         return abs(rate), None
 
+    def measure_gyro(self, pwm, direction):
+        """How far the gyro thinks it turned, against how far the walls say it did.
+
+        The gyro scale in `odometry.json` was measured on the rover as it was
+        before, and it is the one constant nothing here has re-checked -- yet a
+        loop test found dead reckoning 37 degrees out over two 180-degree turns,
+        which is a 10% error. A loose tyre cannot cause that: heading in `/odom`
+        is integrated purely from the gyro, so a wheel that slips or comes off
+        does not enter into it. Either the scale is wrong or the gyro is.
+
+        The reference is `slam_toolbox`, through `map` -> `base_link`. That yaw is
+        fixed by the walls, so it is independent of the gyro in exactly the way
+        this needs -- and it is the same trick `lidar_slam/calibrate_turn.py` used
+        when it read the angle back off the lidar profile.
+
+        Returns (odom degrees, map degrees) for one burst.
+        """
+        room = self.nearest_anything()
+        if room is None:
+            return None, "no scan"
+        if room < TURN_CLEARANCE_M:
+            return None, ("only %.2f m to the nearest thing, needs %.2f to turn"
+                          % (room, TURN_CLEARANCE_M))
+        if self.map_yaw() is None:
+            return None, "no map -> base_link transform: is slam_toolbox active?"
+
+        def sample():
+            odom, mapped = self.yaw(), self.map_yaw()
+            if odom is None or mapped is None:
+                return None
+            return (odom, mapped)
+
+        left, right = (-pwm, pwm) if direction > 0 else (pwm, -pwm)
+        samples, why = self.burst(left, right, sample)
+        if samples is None:
+            return None, why
+        # Accumulated from consecutive differences in both, so neither can alias
+        # however far the rover went.
+        odom_turned = sum(normalise(b[1][0] - a[1][0])
+                          for a, b in zip(samples, samples[1:]))
+        map_turned = sum(normalise(b[1][1] - a[1][1])
+                         for a, b in zip(samples, samples[1:]))
+        if abs(map_turned) < GYRO_MIN_TURN_DEG:
+            return None, ("the walls only moved %.1f degrees -- too little to divide "
+                          "by" % map_turned)
+        if odom_turned * map_turned <= 0:
+            return None, ("they disagree about direction (%.1f against %.1f)"
+                          % (odom_turned, map_turned))
+        return (odom_turned, map_turned), None
+
     # --- the drive curve ------------------------------------------------------
     def measure_drive(self, pwm):
         """Metres per second and ticks per metre at this PWM, going forward.
@@ -429,6 +498,12 @@ class Chassis(Node):
         return (travelled / seconds, travelled, t1 - t0, drift), None
 
 
+def median(values):
+    ordered = sorted(values)
+    n = len(ordered)
+    return ordered[n // 2] if n % 2 else (ordered[n // 2 - 1] + ordered[n // 2]) / 2.0
+
+
 def fit_points(pairs):
     """Sorted [pwm, value] pairs, averaging repeats at the same PWM."""
     grouped = {}
@@ -439,6 +514,8 @@ def fit_points(pairs):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--gyro", action="store_true",
+                   help="re-check the gyro scale against the walls only")
     p.add_argument("--turns", action="store_true", help="the turn curve only")
     p.add_argument("--drives", action="store_true", help="the drive curve only")
     p.add_argument("--margin", type=float, default=0.55,
@@ -454,12 +531,14 @@ def main():
                         "only thing that shrinks the error on a skidding chassis")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
-    do_turns = args.turns or not args.drives
-    do_drives = args.drives or not args.turns
+    only = args.gyro or args.turns or args.drives
+    do_gyro = args.gyro or not only
+    do_turns = args.turns or not only
+    do_drives = args.drives or not only
 
     rclpy.init()
     node = Chassis(args)
-    turn_points, drive_points, tick_ratios = [], [], []
+    turn_points, drive_points, tick_ratios, gyro_ratios = [], [], [], []
     try:
         node.get_logger().info("waiting for the scan, the map and the board...")
         node.spin_for(5.0)
@@ -472,29 +551,53 @@ def main():
             print("dry run: everything is connected, nothing was moved")
             return 0
 
+        if do_gyro:
+            # First of the three, because everything else leans on it. The turn
+            # curve is measured *with* the gyro, and odometry's heading is nothing
+            # but the gyro -- so a scale that is 10% out puts 10% into both.
+            print("\n--- gyro scale, against what the walls say")
+            for _ in range(args.repeats):
+                for direction, name in ((+1, "anticlockwise"), (-1, "clockwise")):
+                    result, why = node.measure_gyro(GYRO_PWM, direction)
+                    if result is None:
+                        print("  %-13s skipped: %s" % (name, why))
+                        continue
+                    odom_deg, map_deg = result
+                    ratio = odom_deg / map_deg
+                    print("  %-13s gyro says %+7.1f deg, the walls say %+7.1f  "
+                          "(x%.3f)" % (name, odom_deg, map_deg, ratio))
+                    gyro_ratios.append(ratio)
+
         if do_drives:
             print("\n--- drive curve (forward, %d PWM values)" % len(DRIVE_PWMS))
             print("    first, because a forward run needs 1.3 m of floor where a")
             print("    turn needs 0.35 -- and the turn sweep drifts the rover along")
             for pwm in DRIVE_PWMS:
-                # Room for the whole run, not just its first step: the rover
-                # travels up to about 0.7 m inside a burst, and recentring only
-                # to the margin means the guard fires before the steady window
-                # has been sampled.
-                ok, why = node.recentre(node.args.margin + 1.0)
-                if not ok:
-                    print("  PWM %3d skipped: %s" % (pwm, why))
-                    continue
-                result, why = node.measure_drive(pwm)
-                if result is None:
-                    print("  PWM %3d skipped: %s" % (pwm, why))
-                    continue
-                speed, travelled, spent, drift = result
-                print("  PWM %3d  %.3f m/s  (%.3f m by the lidar, %.1f ticks, "
-                      "%.0f deg of curve)" % (pwm, speed, travelled, spent, drift))
-                drive_points.append((pwm, speed))
-                if travelled > 0.05 and abs(spent) > 1e-6:
-                    tick_ratios.append(abs(spent) / travelled)
+                speeds = []
+                for _ in range(args.repeats):
+                    # Room for the whole run, not just its first step: the rover
+                    # travels up to about 0.7 m inside a burst, and recentring
+                    # only to the margin means the guard fires before the steady
+                    # window has been sampled.
+                    ok, why = node.recentre(node.args.margin + 1.0)
+                    if not ok:
+                        print("  PWM %3d skipped: %s" % (pwm, why))
+                        continue
+                    result, why = node.measure_drive(pwm)
+                    if result is None:
+                        print("  PWM %3d skipped: %s" % (pwm, why))
+                        continue
+                    speed, travelled, spent, drift = result
+                    print("  PWM %3d  %.3f m/s  (%.3f m by the lidar, %.1f ticks, "
+                          "%.0f deg of curve)" % (pwm, speed, travelled, spent, drift))
+                    speeds.append(speed)
+                    drive_points.append((pwm, speed))
+                    if travelled > 0.05 and abs(spent) > 1e-6:
+                        tick_ratios.append(abs(spent) / travelled)
+                if len(speeds) > 1:
+                    print("  PWM %3d  mean %.3f m/s over %d runs, spread %.3f"
+                          % (pwm, sum(speeds) / len(speeds), len(speeds),
+                             max(speeds) - min(speeds)))
 
         if do_turns:
             print("\n--- turn curve (on the spot, %d PWM values, both ways, x%d)"
@@ -546,12 +649,42 @@ def main():
         pass
 
     changed = []
+    if gyro_ratios:
+        old = float(store.get("gyro_lsb_per_dps") or 0.0)
+        ratio = median(gyro_ratios)
+        if old > 0:
+            # The gyro reports gz LSB-seconds and the scale divides them into
+            # degrees, so a heading that comes out too large means the scale is
+            # too small -- by exactly the factor the two disagree.
+            store["gyro_lsb_per_dps"] = round(old * ratio, 6)
+            store["gyro_scale_was"] = round(old, 6)
+            store["gyro_checked_against_walls"] = [round(r, 4) for r in gyro_ratios]
+            changed.append("gyro_lsb_per_dps")
+            print("\n  the gyro over-reports by %.1f%%: %.4f -> %.4f LSB per deg/s"
+                  % ((ratio - 1) * 100, old, store["gyro_lsb_per_dps"]))
     if turn_points:
         store["turn_pwm_points"] = fit_points(turn_points)
         store["turns_measured"] = len(turn_points)
         changed.append("turn_pwm_points")
     if drive_points:
-        store["drive_pwm_points"] = fit_points(drive_points)
+        points = fit_points(drive_points)
+        # A curve that does not rise with PWM cannot be inverted, and the first
+        # sweep here produced exactly that -- PWM 115 apparently slower than
+        # PWM 95. `pwm_for` walks the pairs looking for the interval containing
+        # the wanted speed, so a dip means some speeds match two PWMs and others
+        # none, and which one is returned depends on the order of the list.
+        # Enforcing a rise is not cosmetic: it is what makes the stored curve a
+        # function.
+        rising, dropped = [], []
+        for pwm, value in points:
+            if rising and value <= rising[-1][1]:
+                dropped.append((pwm, value))
+                continue
+            rising.append([pwm, value])
+        if dropped:
+            print("  dropped %s: slower than a lower PWM, so the curve would not "
+                  "be invertible" % ", ".join("PWM %g" % p for p, _ in dropped))
+        store["drive_pwm_points"] = rising
         store["drives_measured"] = len(drive_points)
         changed.append("drive_pwm_points")
     if tick_ratios:

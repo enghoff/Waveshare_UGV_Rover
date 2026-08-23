@@ -265,6 +265,75 @@ def test_idle_behaviour():
           idle_sends((0, 0), 30.0), False)
 
 
+def debias_run(samples, gain=0.001, settle=1.0, still_ticks=0.5):
+    """base_node.BaseNode.debias, standing alone.
+
+    Each sample is (d_yaw, dt, ticks, commanded). Returns the corrected total and
+    the bias it settled on.
+    """
+    bias = None
+    still_for = 0.0
+    last_ticks = None
+    total = 0.0
+    for d_yaw, dt, ticks, commanded in samples:
+        rate = d_yaw / dt
+        moving = bool(commanded)
+        if ticks is not None and last_ticks is not None:
+            moving = moving or abs(ticks - last_ticks) > still_ticks
+        if not moving:
+            still_for += dt
+            if still_for > settle:
+                bias = rate if bias is None else bias + gain * (rate - bias)
+        else:
+            still_for = 0.0
+        total += d_yaw if bias is None else d_yaw - bias * dt
+        last_ticks = ticks
+    return total, bias
+
+
+def test_gyro_bias():
+    section("the gyro's zero-offset")
+    dt = 1.0 / 18.0
+    drift = math.radians(0.46)          # measured on this rover, standing still
+
+    # Standing still for two minutes with a 0.46 deg/s offset. Uncorrected that is
+    # 55 degrees of rotation that never happened.
+    still = [(drift * dt, dt, 100.0, False) for _ in range(18 * 120)]
+    raw = sum(d for d, _, _, _ in still)
+    check("uncorrected, a still rover invents %.0f degrees in two minutes"
+          % math.degrees(raw), math.degrees(raw) > 40, True)
+    total, bias = debias_run(still)
+    check("the offset is found", bias is not None, True)
+    check("...to within a twentieth of a degree per second",
+          math.degrees(bias), math.degrees(drift), tolerance=0.05)
+    check("...and most of the invented rotation is removed",
+          abs(math.degrees(total)) < abs(math.degrees(raw)) * 0.25, True)
+
+    # A real turn must survive. The rover is commanded and the wheels are moving,
+    # so nothing is learned during it and the rotation passes through.
+    warmup = [(drift * dt, dt, 100.0, False) for _ in range(18 * 60)]
+    turning = [(math.radians(25.0) * dt, dt, 100.0 + i, True) for i in range(18 * 4)]
+    # Both totals corrected, and differenced. Subtracting the *raw* warmup from a
+    # corrected total would charge the turn with the bias the warmup removed.
+    settled, _ = debias_run(warmup)
+    total, _ = debias_run(warmup + turning)
+    turned = math.degrees(total - settled)
+    check("a commanded 25 deg/s turn for 4 s still reads about 100 degrees",
+          turned, 100.0, tolerance=6.0)
+
+    # Wheels turning with nothing commanded -- somebody pushing the rover, or a
+    # game pad driving it -- must not be mistaken for stillness.
+    pushed = [(math.radians(20.0) * dt, dt, 100.0 + i * 3, False)
+              for i in range(18 * 30)]
+    _, bias = debias_run(pushed)
+    check("a pushed rover is not treated as a still one", bias, None)
+
+    # And the settle window keeps the coast out of the estimate.
+    coasting = [(math.radians(15.0) * dt, dt, 100.0, False) for _ in range(9)]
+    _, bias = debias_run(coasting)
+    check("half a second of coasting teaches it nothing", bias, None)
+
+
 def test_odometry():
     section("board counters -> pose")
     lsb, tpm = 15.0, 100.0
@@ -477,6 +546,18 @@ def test_calibration_store():
     check("the gyro scale is present and positive",
           isinstance(loaded.get("gyro_lsb_per_dps"), (int, float))
           and loaded["gyro_lsb_per_dps"] > 0, True)
+    # The measured envelope has to contain what Nav2 is allowed to ask for, or
+    # the controller spends its life commanding a speed the base cannot deliver.
+    points = loaded.get("drive_pwm_points")
+    if isinstance(points, list) and len(points) >= 2:
+        speeds = sorted(v for _, v in points)
+        check("the measured speed curve rises with PWM, so it can be inverted",
+              [v for _, v in points] == speeds, True)
+        check("Nav2's 0.50 m/s limit is inside the measured range (%.2f-%.2f)"
+              % (speeds[0], speeds[-1]), speeds[0] <= 0.50 <= speeds[-1], True)
+    else:
+        print("  ....  no drive_pwm_points yet -- run calibrate_chassis.py")
+
     ticks = loaded.get("ticks_per_metre")
     if ticks is None:
         print("  ....  ticks_per_metre is still null -- run calibrate_chassis.py on "
@@ -500,8 +581,15 @@ def test_configs_agree():
         return
     with open(path) as fh:
         text = fh.read()
-    check("Nav2's top speed matches MAX_SPEED_MS",
-          ("max_vel_x: %.2f" % MAX_SPEED_MS) in text, True)
+    # Deliberately *not* MAX_SPEED_MS. That constant is 0.35 m/s and this chassis
+    # was measured at 0.33 at its slowest usable PWM, so putting it here pins
+    # every command to the bottom of the range. What must hold is that Nav2's
+    # limit lies inside the speeds actually measured, which is checked against
+    # the store below where the store exists.
+    check("Nav2's top speed is not the stale MAX_SPEED_MS",
+          ("max_vel_x: %.2f" % MAX_SPEED_MS) in text, False)
+    check("...and is a speed this chassis can actually reach",
+          "max_vel_x: 0.50" in text, True)
     turn = math.radians(MAX_TURN_DPS)
     check("Nav2's turn limit matches MAX_TURN_DPS (%.2f rad/s)" % turn,
           abs(turn - 0.78) < 0.01, True)
@@ -525,6 +613,7 @@ def main():
     test_drive_model()
     test_turn_curve()
     test_idle_behaviour()
+    test_gyro_bias()
     test_odometry()
     test_scan_binning()
     test_bridge_protocol()

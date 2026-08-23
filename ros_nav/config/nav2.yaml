@@ -1,4 +1,5 @@
-# Nav2 on the Banana Pi. Differential drive, 0.35 m/s flat out, a 2D lidar and
+# Nav2 on the Banana Pi. Skid-steer differential drive, measured at 0.33 m/s at
+# the slowest PWM its motors will turn at and 0.68 m/s at PWM 140, a 2D lidar, and
 # four Cortex-A53 cores that are already running slam_toolbox.
 #
 # Two decisions shape everything here.
@@ -14,13 +15,18 @@
 # controller and it rolls out thousands of trajectories per tick; on this board
 # that is the whole CPU budget for a rover that also has to map. DWB with modest
 # sampling costs a fraction of it and still avoids things the planner did not know
-# about, which pure pursuit does not. 10 Hz rather than 20 because 0.35 m/s is
-# 3.5 cm per tick, and a rover that replans every 3.5 cm is not the one that hits
-# anything. If the rover feels sluggish to react, raise the frequency before
-# reaching for a bigger controller.
+# about, which pure pursuit does not. 10 Hz rather than 20 because 0.5 m/s is 5 cm
+# per tick, and a rover that replans every 5 cm is not the one that hits anything.
+# If the rover feels sluggish to react, raise the frequency before reaching for a
+# bigger controller.
 #
-# Speeds and the chassis width come from lidar_slam/nav_types.py, where they were
-# measured on this rover rather than assumed.
+# **The speeds here are not the constants in lidar_slam/nav_types.py.** Those were
+# measured on the rover as it was, on a different board and floor, and they are
+# wrong in a way that matters: MAX_SPEED_MS says 0.35 m/s, which is very nearly
+# this chassis's *minimum*. Put it here and every command lands on the slowest PWM
+# the motors will turn at, with no speed control at all. What is here comes from
+# ros_nav/calibrate_chassis.py, which measured this rover. The chassis width does
+# still come from nav_types.py -- the rover has not changed shape.
 
 bt_navigator:
   ros__parameters:
@@ -64,17 +70,24 @@ controller_server:
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: false
-      # The measured envelope: MAX_SPEED_MS and MAX_TURN_DPS from nav_types.py.
-      # 45 deg/s is 0.785 rad/s, and it is a real limit rather than a comfort
-      # setting -- past it a 100 ms lidar sweep smears across more heading change
-      # than a scan match can absorb.
+      # The measured envelope. 0.50 m/s comes from calibrate_chassis.py, which
+      # found this chassis does 0.33 m/s at the slowest PWM its motors will turn
+      # at and 0.68 at PWM 140. It is *not* MAX_SPEED_MS from nav_types.py, which
+      # says 0.35 and is therefore almost exactly the rover's minimum -- setting
+      # that here pinned every command to the slowest PWM and left no speed
+      # control whatsoever. 0.50 rather than 0.68 is a comfort setting: a house
+      # has furniture in it.
+      #
+      # 45 deg/s is 0.785 rad/s, and that one *is* a real limit rather than a
+      # comfort setting -- past it a 100 ms lidar sweep smears across more heading
+      # change than a scan match can absorb.
       min_vel_x: 0.0
-      max_vel_x: 0.35
+      max_vel_x: 0.50
       min_vel_y: 0.0
       max_vel_y: 0.0
       max_vel_theta: 0.78
       min_speed_xy: 0.0
-      max_speed_xy: 0.35
+      max_speed_xy: 0.50
       # Turning on the spot is how a skid-steer chassis changes direction, so it
       # has to be allowed rather than penalised into a wide arc it cannot drive.
       min_speed_theta: 0.0
@@ -259,8 +272,8 @@ velocity_smoother:
     smoothing_frequency: 10.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.35, 0.0, 0.78]
-    min_velocity: [-0.35, 0.0, -0.78]
+    max_velocity: [0.50, 0.0, 0.78]
+    min_velocity: [-0.50, 0.0, -0.78]
     max_accel: [0.5, 0.0, 1.5]
     max_decel: [-0.7, 0.0, -2.0]
     odom_topic: "odom"

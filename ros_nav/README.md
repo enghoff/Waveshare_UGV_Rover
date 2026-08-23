@@ -146,10 +146,41 @@ python ~/ugv/ros_nav/calibrate_chassis.py --turns     # turn curve; needs room t
 python ~/ugv/ros_nav/calibrate_chassis.py             # and the speed and tick curves
 ```
 
-**The gyro** was already calibrated over eighteen turns and is trusted:
-`gyro_lsb_per_dps` is about 15.23. Without it the base node exits rather than
-starting, because heading is the one thing dead reckoning cannot do without — a
-mapper handed a rover that appears never to turn folds the room in on itself.
+**The gyro's scale** is right, and was re-checked here against the walls rather
+than taken on trust: four bursts, `map → base_link` yaw as the reference, and the
+two agreed to within half a percent (`calibrate_chassis.py --gyro`, which nudged
+`gyro_lsb_per_dps` from 15.234 to 15.311). Without a scale the base node exits
+rather than starting, because heading is the one thing dead reckoning cannot do
+without — a mapper handed a rover that appears never to turn folds the room in on
+itself.
+
+**The gyro's zero-offset is the one that mattered, and it is not a scale at all.**
+Standing perfectly still this gyro reports **+0.47 °/s** — 1708 degrees an hour,
+more than four full rotations of pure invention. That is invisible in any short
+measurement: over a four-second calibration burst it is two degrees and vanishes
+into the noise. Over a circuit it is everything.
+
+Two loop tests over the same route left dead reckoning 37° and 34° from where the
+map put the rover. The route took about 80 seconds, and 0.47 °/s for 80 seconds is
+38°. Both, near enough exactly.
+
+Getting there meant ruling things out in order rather than guessing, and the order
+is the useful part:
+
+- **The scale was exonerated by measurement** — 0.5% against the walls, which
+  cannot produce 37° without 7000° of rotation to accumulate it over.
+- **The map was exonerated by inspection.** Either the rover really had rotated
+  40° more than the map thought, or the map was mis-rotated, and those need
+  different fixes. Saving the map settled it: straight single walls, square
+  corners, beams fanning out through doorways. A 40° mis-rotation draws the same
+  wall twice.
+- Which leaves the offset, and an order-of-magnitude check that landed on it.
+
+`base_node.debias` estimates it whenever the rover is genuinely still — nothing
+commanded *and* the wheels not turning, since a pushed rover is not a still one —
+as a slow exponential average, because the offset drifts with temperature over
+minutes. It logs what it has found every thirty seconds. This is the part of
+`robot_localization` that matters, done directly, until the full filter is fitted.
 
 **The turn curve** had to be measured, and finding that out cost two wrong
 answers. The constants in `lidar_slam/nav_types.py` say PWM 80 turns this rover at
@@ -264,6 +295,47 @@ the C library that is already parsing the packets.
 between scans and real work on a loop closure, so the average above understates
 the peaks. The number to watch is whether `map -> odom` keeps being published
 while a closure runs — async mode exists so that it does.
+
+## Proving the loop actually closes
+
+`loop_test.py` drives a closed circuit and compares two poses at the end of it:
+`odom -> base_link`, which is dead reckoning and has no idea it has been here
+before, and `map -> base_link`, which is slam_toolbox having matched every scan
+and optimised its graph. It also records `map -> odom` throughout, because that is
+the correction, and a step change in it is a closure firing.
+
+```bash
+python ~/ugv/ros_nav/loop_test.py --dry-run              # surveys the room, moves nothing
+python ~/ugv/ros_nav/loop_test.py --corners 2 --side 2.5 # an out-and-back
+python ~/ugv/ros_nav/loop_test.py --side 1.5             # a square
+```
+
+It deliberately does not use Nav2. A test of SLAM should not depend on a
+controller: if a recovery behaviour spun the rover the circuit would not be the
+circuit, and the closure error would be measuring the controller. Driving Nav2
+round the same square is a good test *of Nav2*, and a separate one.
+
+**Measured, over a 5 m out-and-back on tile:**
+
+| | position error | heading error |
+|---|---|---|
+| dead reckoning | 1.295 m | +37.1 deg |
+| the map | 0.491 m | -0.8 deg |
+
+with `map -> odom` moving 1.045 m and -38 deg over the run and a **single step of
+0.619 m** in it. A scan match nudges the pose by centimetres; a step that size is
+the pose graph bending, which is the thing `lidar_slam/` cannot do at all.
+
+Read the two columns differently, though. The heading is conclusive: 37 degrees of
+accumulated error became under one. The position is only suggestive, because
+nothing guarantees the rover physically returned to its start -- a leg cut short by
+the lidar guard means some of that 0.49 m is real distance rather than error. If a
+run reports the two errors as similar, check whether the legs completed before
+concluding that closure did not fire.
+
+Both of those runs predate the gyro-offset fix above, so they are the *hard* case:
+dead reckoning was carrying 38 degrees of phantom rotation and the graph removed
+it anyway. Re-run on a charged pack to see what it does now.
 
 ## What is deliberately not here
 

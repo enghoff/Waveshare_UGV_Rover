@@ -70,6 +70,18 @@ BRIDGE = ("127.0.0.1", 8772)
 # this process dying, and this catches the controller dying while this lives.
 CMD_TIMEOUT_S = 0.5
 
+# Estimating the gyro's zero-offset while the rover is still. See
+# BaseNode.debias, which explains why this is not optional.
+#
+# STILL_TICKS is a hair above zero rather than zero: the encoder mean is a float
+# and jitters in the last place even when nothing is moving.
+STILL_TICKS = 0.5
+STILL_SETTLE_S = 1.0
+# Slow. The offset drifts with temperature over minutes, so the average has to be
+# long compared with the noise and short compared with that drift; at ~18 samples
+# a second this is a time constant of about a minute.
+BIAS_GAIN = 0.001
+
 
 def yaw_to_quaternion(yaw):
     q = Quaternion()
@@ -173,10 +185,16 @@ def mix(linear, angular, turn_points=None, drive_points=None):
     against the rover rather than against the code, and it was: a commanded
     +20 deg/s turned it anticlockwise.
     """
-    speed = min(MAX_SPEED_MS, abs(linear))
     if drive_points:
+        # Clamped to the fastest speed actually measured, not to MAX_SPEED_MS.
+        # That constant says 0.35 m/s and this chassis was measured at 0.33 at its
+        # slowest usable PWM and 0.68 at PWM 140 -- so the "maximum" is very nearly
+        # the minimum, and clamping to it pinned every Nav2 command to the slowest
+        # PWM the motors will turn at. There was no speed control at all.
+        speed = min(drive_points[-1][1], abs(linear))
         throttle = pwm_for(drive_points, speed, ceiling=TOP_PWM)
     else:
+        speed = min(MAX_SPEED_MS, abs(linear))
         throttle = to_pwm(speed / MAX_SPEED_MS)
     if linear < 0:
         throttle = -throttle
@@ -333,6 +351,9 @@ class BaseNode(Node):
         self._heartbeat_at = 0.0
         self._no_board_since = None
         self._warned_ticks = False
+        self._bias = None
+        self._bias_samples = 0
+        self._still_for = 0.0
 
         self.turn_points = self.calibration["turn_pwm_points"]
         self.drive_points = self.calibration["drive_pwm_points"]
@@ -361,6 +382,17 @@ class BaseNode(Node):
             self.get_logger().warn(
                 "no measured speed curve -- assuming PWM is proportional to speed. "
                 "Run ros_nav/calibrate_chassis.py")
+        self.create_timer(30.0, self.report_bias)
+
+    def report_bias(self):
+        if self._bias is None:
+            self.get_logger().info("gyro bias: not estimated yet (rover not still)")
+        else:
+            self.get_logger().info(
+                "gyro bias %+.3f deg/s over %d still samples -- %+.0f deg an hour "
+                "if left uncorrected" % (math.degrees(self._bias),
+                                         self._bias_samples,
+                                         math.degrees(self._bias) * 3600))
 
     # --- what the chassis is known to do -------------------------------------
     def load_calibration(self):
@@ -496,6 +528,54 @@ class BaseNode(Node):
         self.integrate(motion, record,
                        dt=(at - previous) if previous is not None else None)
 
+    def debias(self, d_yaw, dt, ticks):
+        """Take the gyro's zero-offset out of one interval's rotation.
+
+        This is the difference between odometry that is usable over a run and
+        odometry that is not, and it is invisible in any short measurement. A
+        stationary rover here reports 0.008 rad/s on `angular.z` -- 0.46 deg/s
+        that is not happening. Over a four-second calibration burst that is two
+        degrees and disappears into the noise; over a three-minute circuit it is
+        eighty, and it was: two loop tests running the same route left dead
+        reckoning 34 and 37 degrees from where the map put it, while the gyro's
+        *scale* measured accurate to half a percent against the walls, and the
+        saved map showed straight single walls and square corners rather than the
+        doubling a mis-rotated map would have. Scale was exonerated by
+        measurement and the map by inspection, which leaves the offset.
+
+        Estimated only while the rover is genuinely still -- nothing commanded and
+        the wheels not turning -- because that is the only time the true rate is
+        known to be zero. A slow exponential average, because the offset drifts
+        with temperature over minutes and a fast one would chase the noise it is
+        supposed to be averaging out.
+
+        This is what `robot_localization` would do properly, with a filter that
+        also knows about the accelerometer. Until that is fitted, this is the part
+        of it that matters.
+        """
+        if not dt or dt <= 0:
+            return d_yaw
+        rate = d_yaw / dt
+        moving = (self._cmd_at > 0.0
+                  and time.monotonic() - self._cmd_at <= CMD_TIMEOUT_S)
+        if ticks is not None and self._last_ticks is not None:
+            moving = moving or abs(ticks - self._last_ticks) > STILL_TICKS
+        if not moving:
+            self._still_for += dt
+            # A moment's grace after stopping, so the coast is not averaged in as
+            # though it were bias.
+            if self._still_for > STILL_SETTLE_S:
+                if self._bias is None:
+                    self._bias = rate
+                else:
+                    self._bias += BIAS_GAIN * (rate - self._bias)
+                self._bias_samples += 1
+        else:
+            self._still_for = 0.0
+        if self._bias is None:
+            return d_yaw
+        return d_yaw - self._bias * dt
+
     def integrate(self, motion, record, dt=None):
         """Fold one motion sample into the pose.
 
@@ -519,6 +599,7 @@ class BaseNode(Node):
             # is degrees.
             d_yaw = math.radians((gz - self._last_gz)
                                  / self.calibration["gyro_lsb_per_dps"])
+            d_yaw = self.debias(d_yaw, dt, ticks)
         self._last_gz = gz
 
         d_s = 0.0
