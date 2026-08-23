@@ -40,3 +40,9 @@ face_tracking/*.sh text eol=lf
 # carriage return in its name -- on the one program whose job is to still be
 # working when everything else on the board has stopped.
 netwatch/** text eol=lf
+
+# ros_nav/ is ROS 2 on the rover: the installer, the supervisor and the launch
+# wrappers all have shebangs, and the environment file they source is read by
+# /bin/sh. The same carriage-return-in-the-interpreter-name trap, on the stack
+# that drives the rover.
+ros_nav/** text eol=lf

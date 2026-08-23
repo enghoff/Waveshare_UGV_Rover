@@ -1,0 +1,282 @@
+# Nav2 on the Banana Pi. Differential drive, 0.35 m/s flat out, a 2D lidar and
+# four Cortex-A53 cores that are already running slam_toolbox.
+#
+# Two decisions shape everything here.
+#
+# **There is no AMCL and no map_server.** Those localise a rover against a map
+# somebody saved earlier, and this rover is mapping as it goes -- slam_toolbox is
+# already publishing `map` -> `odom`, which is the same transform AMCL would
+# publish and the only thing Nav2 wants from either. Running them as well would
+# put two things in charge of one transform, which is the classic way to get a
+# robot that teleports.
+#
+# **The controller is DWB at 10 Hz, not MPPI at 20.** MPPI is the better
+# controller and it rolls out thousands of trajectories per tick; on this board
+# that is the whole CPU budget for a rover that also has to map. DWB with modest
+# sampling costs a fraction of it and still avoids things the planner did not know
+# about, which pure pursuit does not. 10 Hz rather than 20 because 0.35 m/s is
+# 3.5 cm per tick, and a rover that replans every 3.5 cm is not the one that hits
+# anything. If the rover feels sluggish to react, raise the frequency before
+# reaching for a bigger controller.
+#
+# Speeds and the chassis width come from lidar_slam/nav_types.py, where they were
+# measured on this rover rather than assumed.
+
+bt_navigator:
+  ros__parameters:
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    # 30 s, against a stock 1 s. This board takes visibly longer to bring a
+    # behaviour tree node up, and a timeout that fires during startup looks like
+    # a navigation failure.
+    wait_for_service_timeout: 30000
+
+controller_server:
+  ros__parameters:
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.02
+    min_theta_velocity_threshold: 0.05
+    failure_tolerance: 0.3
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      # 10 cm in 15 s. Generous, because this chassis is tracked and skids: a
+      # tight check calls a rover that is grinding round a tight corner "stuck"
+      # and triggers a recovery that makes it worse.
+      required_movement_radius: 0.10
+      movement_time_allowance: 15.0
+
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # 15 cm and 15 degrees. The pose comes from a 5 cm grid and a scan matcher,
+      # so asking for better than this is asking the rover to hunt for a
+      # precision the map does not contain.
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.26
+      stateful: true
+
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      debug_trajectory_details: false
+      # The measured envelope: MAX_SPEED_MS and MAX_TURN_DPS from nav_types.py.
+      # 45 deg/s is 0.785 rad/s, and it is a real limit rather than a comfort
+      # setting -- past it a 100 ms lidar sweep smears across more heading change
+      # than a scan match can absorb.
+      min_vel_x: 0.0
+      max_vel_x: 0.35
+      min_vel_y: 0.0
+      max_vel_y: 0.0
+      max_vel_theta: 0.78
+      min_speed_xy: 0.0
+      max_speed_xy: 0.35
+      # Turning on the spot is how a skid-steer chassis changes direction, so it
+      # has to be allowed rather than penalised into a wide arc it cannot drive.
+      min_speed_theta: 0.0
+      acc_lim_x: 0.5
+      acc_lim_theta: 1.5
+      decel_lim_x: -0.7
+      decel_lim_theta: -2.0
+      # 12 x 20 samples at 1.5 s. This is the CPU knob: the cost is the product,
+      # and 240 rollouts a tick at 10 Hz is affordable here where the stock
+      # 20 x 40 at 20 Hz is not.
+      vx_samples: 12
+      vy_samples: 1
+      vtheta_samples: 20
+      sim_time: 1.5
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.3
+      xy_goal_tolerance: 0.15
+      trans_stopped_velocity: 0.05
+      short_circuit_trajectory_evaluation: true
+      stateful: true
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+                "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      # A 3 m window at 5 cm. The lidar reaches 8 m, but the controller only
+      # plans 1.5 s ahead -- half a metre at full speed -- so a wider window is
+      # grid cells being cleared and inflated every tick for a region the
+      # trajectories never enter.
+      width: 3
+      height: 3
+      resolution: 0.05
+      # The rover is 34 cm across and `base_link` is at the *lidar*, not at the
+      # centre of the chassis -- see base_node.py for why that offset was left
+      # unmeasured rather than guessed. So the footprint is a circle big enough
+      # to contain the rover wherever inside it the sensor actually sits, which
+      # is the honest shape given what is known. Measure the offset and this can
+      # become a proper rectangle.
+      robot_radius: 0.25
+      # Send the whole grid every time, not just the cells that changed. Stock
+      # behaviour is one full costmap followed by deltas for ever, which is right
+      # for a viewer that was watching from the start and useless for one that
+      # joins later -- `ros2 topic echo /local_costmap/costmap` waits for a full
+      # message that is never coming, and the costmap looks broken when it is
+      # working. This one is 3 m square at 5 cm, so 3600 cells: cheap enough that
+      # being inspectable is worth more than the bytes.
+      #
+      # The global costmap deliberately does *not* do this. It grows with the
+      # building, and a whole floor of a house at 5 cm is a hundred kilobytes a
+      # second onto the wifi link that everything else here depends on. Look at
+      # slam_toolbox's /map instead, which is the same information.
+      always_send_full_costmap: true
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          # Best-effort, matching lidar_node's publisher. A reliable subscriber
+          # against a best-effort publisher is the incompatibility that shows up
+          # as "Subscription count: 1" and no data ever arriving.
+          data_type: "LaserScan"
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # 45 cm of inflation around a 25 cm radius rover, so there is 20 cm of
+        # cushion. Doorways in a house are about 75 cm, so this deliberately
+        # leaves a doorway passable rather than sealing it -- raise it and the
+        # rover will refuse to leave the room.
+        inflation_radius: 0.45
+        cost_scaling_factor: 3.0
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      robot_radius: 0.25
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        # slam_toolbox's live map, not a saved one. It republishes the whole grid
+        # every map_update_interval, and subscribing transiently would miss it.
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          raytrace_max_range: 8.0
+          obstacle_max_range: 6.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.45
+        cost_scaling_factor: 3.0
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      # NavFn rather than Smac. Smac's hybrid-A* respects a turning radius, which
+      # is what a car-like robot needs and this one does not have: a skid-steer
+      # chassis turns on the spot, so the extra state dimension buys nothing and
+      # costs a great deal of search. NavFn's grid Dijkstra plus a smoother is
+      # the right planner for a differential drive on a 5 cm map.
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.25
+      use_astar: true
+      allow_unknown: true
+
+smoother_server:
+  ros__parameters:
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+
+behavior_server:
+  ros__parameters:
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.2
+    # Recoveries are slower than driving on purpose. A rover that is already
+    # confused should not be the one moving quickly.
+    max_rotational_vel: 0.5
+    min_rotational_vel: 0.2
+    rotational_acc_lim: 1.5
+
+velocity_smoother:
+  ros__parameters:
+    smoothing_frequency: 10.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.35, 0.0, 0.78]
+    min_velocity: [-0.35, 0.0, -0.78]
+    max_accel: [0.5, 0.0, 1.5]
+    max_decel: [-0.7, 0.0, -2.0]
+    odom_topic: "odom"
+    odom_duration: 0.1
+    # Half a second of silence stops the wheels, matching base_node's own
+    # CMD_TIMEOUT_S. Two layers agreeing on the same number is deliberate: the
+    # smoother catches the controller stopping, and base_node catches the
+    # smoother stopping.
+    velocity_timeout: 0.5
+
+waypoint_follower:
+  ros__parameters:
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: true
+      waypoint_pause_duration: 200

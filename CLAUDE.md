@@ -19,7 +19,8 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 | Directory | Host | Lands at |
 |---|---|---|
 | `rover_daemon/`, `driver_board/`, `face_tracking/` | `bpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
-| `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` |
+| `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` — still the lidar's *parser*, which `ros_nav/` reuses; its SLAM and planner are superseded and no longer run |
+| `ros_nav/` | `bpi` | `~/ugv/ros_nav/`, plus a conda environment at `~/miniforge3` built by its own `install.sh`. ROS 2 mapping and navigation; see [ros_nav/README.md](ros_nav/README.md) |
 | `oak_depth/` | `bpi` | `~/ugv/oak_depth/`, plus `vendor/` filled by its own `install.sh` |
 | `wifi_roam/` | `bpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
 | `netwatch/` | `bpi` | `~/ugv/netwatch/`, and from there into `/usr/local/sbin`, `/usr/local/bin` and `/etc/systemd/system` by its own `install.sh`. `netprobe.py` is the desk half and is not deployed |
@@ -82,10 +83,22 @@ rather than on an ssh command line, where it would match -- and kill -- the very
 session that typed it.
 
 `restart.sh` kills only the daemon and lets the supervisor restart it, because the
-crontab entry â€” `@reboot ~/ugv/run_daemon.sh --vision --lidar`, beside
+crontab entry â€” `@reboot ~/ugv/run_daemon.sh --vision --board-bridge`, beside
 `@reboot ~/ugv/oak_depth/run_oak_depth.sh` â€” is where the
 arguments live. **Never relaunch `run_daemon.sh` by hand**; it drops the flags and
 the rover silently loses tools.
+
+**That entry no longer says `--lidar`, and the change matters.** The lidar belongs
+to `ros_nav/` now, and only one process can hold a serial port -- the daemon would
+win it silently and `slam_toolbox` would sit waiting for a scan that never comes.
+What the daemon does instead is `--board-bridge`, which lends the driver board's
+encoders, gyro and motor commands to the ROS stack over loopback TCP 8772 while
+keeping the UART, the lights, the gimbal and the pack voltage. The cost is that
+the daemon's own driving and mapping tools -- `drive_to`, `show_map`,
+`describe_surroundings` and the rest, which the voice chat and the drive console
+call -- are **not offered** (17 tools becomes 11). Giving them a Nav2 backend is
+the next piece of work. To go back, put `--lidar` in that entry instead and stop
+the ROS stack; [ros_nav/README.md](ros_nav/README.md) has the three lines.
 
 Anything touching `slam2d.c` or `slam2d.h` also needs a rebuild on the host, since
 `libslam2d.so` is built per-host (aarch64 here) and is not committed:
@@ -124,6 +137,25 @@ scp voice_chat/console_model.py voice_chat/rover_tools.py bpi-m4zero:~/ugv/drive
 ssh bpi-m4zero '~/ugv/drive_web/install.sh'    # crontab, once
 ssh bpi-m4zero '~/ugv/drive_web/restart.sh'    # prints /health
 ```
+
+`ros_nav/` is ROS 2 Jazzy, installed from RoboStack into a conda environment
+outside `~/ugv` because a deploy overwrites `~/ugv`. It has its own supervisor and
+crontab entry, and its `env.sh` **must be sourced from bash** — RoboStack's
+activation hooks use `source`, which dash has not got, and the failure names
+neither the file nor the shell:
+
+```bash
+scp -r ros_nav bpi-m4zero:~/ugv/
+ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'          # ~20 min, 4.7 GB, no sudo
+ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --nav'   # crontab; also checks the daemon's
+ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'             # ~30 s; prints the node list
+```
+
+Its `restart.sh` exists for the usual reason and one more: `ros2 launch` does
+**not** reliably take its nodes down when killed, so every reload used to leave
+another `lidar_node` behind, three of them ended up sharing one serial port, and
+`/scan` arrived at 18 Hz from a 10 Hz sensor with nothing reporting an error. The
+supervisor now sweeps before every launch and `restart.sh` counts what is running.
 
 `wifi_roam/` is neither of those. It is the only thing here installed as a systemd
 unit, because scanning and switching networks need root, and its `install.sh` is

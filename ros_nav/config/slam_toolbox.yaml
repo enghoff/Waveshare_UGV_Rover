@@ -1,0 +1,115 @@
+# slam_toolbox on the Banana Pi, tuned for four Cortex-A53 cores and a 10 Hz D500.
+#
+# The reason this exists at all is loop closure. The scan matcher it replaces --
+# lidar_slam/slam2d.c -- deliberately has none, and says so: the pose drifts
+# monotonically and for ever, so driving a circuit leaves the two ends of it in
+# different places and "return to where you started" is not a thing the rover can
+# do. slam_toolbox keeps a pose graph, notices when the rover has come back
+# somewhere it has been, and bends the whole graph to agree. That is the feature
+# being bought here, and most of what follows is about affording it.
+#
+# The defaults assume a laptop. Every value below that differs from stock is
+# either the sensor's real geometry or a deliberate purchase of CPU headroom, and
+# is commented with which.
+
+slam_toolbox:
+  ros__parameters:
+
+    # --- solver ----------------------------------------------------------------
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # --- frames ----------------------------------------------------------------
+    odom_frame: odom
+    map_frame: map
+    # base_link is at the lidar on this rover, not at the centre of the chassis --
+    # see base_node.py, which explains why an unmeasured offset is worse than none.
+    base_frame: base_link
+    scan_topic: /scan
+    mode: mapping
+
+    # --- what it costs ---------------------------------------------------------
+    debug_logging: false
+    throttle_scans: 1
+    # 20 Hz. This is the map -> odom correction, and it is cheap: it republishes a
+    # transform the optimiser has already computed. Nav2's controller runs at 20 Hz
+    # and reads it every tick, so publishing slower shows up as a rover that
+    # steers on a stale pose.
+    transform_publish_period: 0.05
+    # Two seconds, against a stock five. The occupancy grid is rebuilt from the
+    # graph each time and that is the single most expensive periodic job here, but
+    # five seconds is long enough that a person watching the map believes it has
+    # stopped.
+    map_update_interval: 2.0
+    resolution: 0.05
+    # The D500's honest reach. Past this its returns are sparse and noisy, and
+    # feeding noise to a correlative matcher costs the same as feeding it walls.
+    max_laser_range: 8.0
+    # Five scans a second out of the ten that arrive. The rover moves at 0.35 m/s
+    # flat out, so 5 Hz is 7 cm between processed scans -- finer than the 5 cm
+    # grid resolution can represent -- and processing the other five would buy
+    # nothing but heat. This is the largest single CPU saving in the file.
+    minimum_time_interval: 0.2
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+    stack_size_to_use: 40000000
+
+    # --- the mapper ------------------------------------------------------------
+    use_scan_matching: true
+    use_scan_barycenter: true
+    # How far the rover must move before a scan becomes a new node in the graph.
+    # Every node is a permanent cost -- in the optimiser, in the loop search, and
+    # in the memory this board does not have much of -- so nodes are spent on
+    # motion rather than on time. A rover parked for ten minutes adds none.
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.2
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+
+    # --- loop closure: the point of the exercise --------------------------------
+    do_loop_closing: true
+    # Three metres, against a stock 3.0 -- kept, because it is the radius within
+    # which a returning rover is considered to be "somewhere it has been", and the
+    # odometry here is a gyro and some skidding tracks. Tightening it would make
+    # closures rarer exactly when drift has made them most necessary.
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    # Fine response, raised from a stock 0.45. A false closure is unrecoverable in
+    # a way a missed one is not: it welds two different rooms together and every
+    # later scan is optimised against the lie. On a 2D lidar in a house, where one
+    # corridor looks much like another, being slow to believe is the right bias.
+    loop_match_minimum_response_fine: 0.50
+
+    # --- correlation windows ---------------------------------------------------
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # The loop search, and the one number on this board worth watching. It is an
+    # 8 m square swept at 5 cm across thirteen angles, and the note in
+    # lidar_slam/README.md worked out that the same search done naively in this
+    # repository's own C would be nineteen seconds on the Pi 1. slam_toolbox does
+    # it multi-resolution and threaded and this board is far quicker, so it lands
+    # near a second -- but it happens on the graph thread, and if closures start
+    # arriving late this is the first number to halve.
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # --- scan matcher ----------------------------------------------------------
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
