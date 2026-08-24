@@ -18,7 +18,7 @@ wired to the rover, and `media` is the only one with a GPU.
 | CPU / RAM | 4× Cortex-A53 at 1.416 GHz, aarch64 with NEON, 3.9 GB | Ryzen 7 5700G, 8 threads, 21 GB |
 | storage | 29 GB card, ext4 mounted `commit=120` | 1 TB rootfs, 45 GB used |
 | OS | Armbian, kernel 6.18.44-current-sunxi64, Debian trixie, CPython 3.13.5 | Ubuntu 22.04.5, 6.18.33.2-microsoft-standard-WSL2 |
-| address | `bpi-m4zero.local` — `192.168.1.47` (wlan0; this form factor has no Ethernet) | `media.local` — `192.168.1.3` |
+| address | `bpi-m4zero.local` — `192.168.1.139` (wlan0; this form factor has no Ethernet) | `media.local` — `192.168.1.3` |
 | key | `~/.ssh/id_ed25519_rpi` | `~/.ssh/id_ed25519` (the default one) |
 
 Both are on the same 192.168.1.0/24 home LAN as the rover's ESP32
@@ -27,7 +27,7 @@ Both are on the same 192.168.1.0/24 home LAN as the rover's ESP32
 **Address them by name, not by number.** `bpi-m4zero.local` and `media.local`
 both resolve by mDNS from the workstation, from the rover and from MEDIA, and
 the name is the only identifier that stays right if the wifi address ever
-moves. Hardcoding `192.168.1.47` is the fallback when the name will not
+moves. Hardcoding `192.168.1.139` is the fallback when the name will not
 resolve: Windows OpenSSH asks unicast DNS for `.local` and the router answers
 NXDOMAIN, which is why the `bpi-m4zero` Host entry in `~/.ssh/config` goes
 through a multicast proxy. The ESP32 is the exception and stays a number — it
@@ -82,7 +82,7 @@ firmware's. And a read loop that extends its deadline whenever bytes arrive
 never returns at all; use a fixed deadline.
 
 **Network.** Wifi only: this form factor has no Ethernet. `wlan0` is
-`192.168.1.47`. `nmcli` is not on this board — it runs netplan and
+`192.168.1.139`. `nmcli` is not on this board — it runs netplan and
 `wpa_supplicant` — and scanning or switching still needs root. Three APs are
 saved, not one: `TheGreatLord`, `TheMaharaja` and `TheGreatViking` are three
 separate routers bridged onto that same /24, so the rover keeps a
@@ -131,7 +131,8 @@ still the thing to suspect if the resets turn out to be real.
 
 **Its network is netplan, `systemd-networkd` and `wpa_supplicant` — not
 NetworkManager.** There is no `nmcli` on this board at all, and the six house
-SSIDs (three routers, each with a 5 GHz twin this 2.4 GHz dongle cannot see) live
+SSIDs (three routers, each with a 5 GHz twin, all six reachable now that the
+radio is dual-band) live
 in `/etc/netplan/30-wifi.yaml`, from which netplan renders
 `/run/netplan/wpa-wlan0.conf` and runs one supplicant per interface as
 `netplan-wpa-wlan0.service`. That is why the wifi keeper in
@@ -141,12 +142,37 @@ failed every tick had anything started them. Both are fixed as of 2026-08-23; th
 timer is installed and deliberately still switched off until somebody is there to
 watch its first hour.
 
-**The wifi is the same USB dongle the Pi had** — a Realtek RTL8188FTV
-(`0bda:f179`) on `rtl8xxxu`, moved across with everything else, sharing the one
-hub with the camera, the lidar's CH343 and the OAK. Power saving is off. The udev
-rule that tries to set it fails at every boot (`/sbin/iw dev wlan0 set power_save
-off`, exit 161) and is harmless, because the driver's default here is already off
-— but it is the first red herring anybody reading this journal will find.
+**The wifi is the board's own radio, as of 2026-08-24.** It is the onboard
+Broadcom BCM4345/6 — the AP6256 module — on `brcmfmac`, reached over SDIO and
+fitted with a proper antenna. It replaced the Realtek RTL8188FTV (`0bda:f179`)
+USB dongle carried over from the Pi, which is gone from the rover and from the
+USB tree it shared with the camera, the lidar's CH343 and the OAK. Measured on
+the same access point from the same spot, the onboard radio held −29 dBm against
+the dongle's −36 and moved 25 MB over ssh in 5.9 s against 8.0 s; being
+dual-band, it can also reach the 5 GHz halves of the house networks, which the
+dongle could not see at all.
+
+Three things on the host make that work and none of them live in this repo:
+
+- `/etc/systemd/network/10-onboard-wlan.link` pins the radio's MAC
+  (`ac:6a:a3:41:53:53`) to the name `wlan0`. That is why netplan's existing
+  `wlan0` stanza, `netwatch`, the daemon's `wifi_status` and `wifi_ctl.sh` all
+  kept working without a line of change — the file it replaced pinned the dongle
+  to that name instead, and a USB radio plugged in now lands on a `wlx…` name
+  and is simply ignored.
+- `dhcp-identifier: mac` in `/etc/netplan/30-wifi.yaml`. Left out,
+  `systemd-networkd` derives the DHCP client id from the *interface name*, so
+  renaming the radio to `wlan0` asks the router for a fresh lease and moves the
+  rover's address for no visible reason.
+- `/etc/modprobe.d/blacklist-onboard-wifi.conf`, now deleted, used to blacklist
+  `brcmfmac` outright. It is why the board looked as though it had no radio of
+  its own.
+
+Power saving is off. The udev rule that sets it (`/sbin/iw dev wlan0 set
+power_save off`) is harmless either way, since the driver's default here is
+already off, but it logs a failure whenever it fires at an interface that is
+being renamed underneath it — and that log line is the first red herring
+anybody reading this journal will find.
 
 **What runs here.** Three services and a timer, all of them started by `admin`
 — `rover_daemon.py`, `oak_depth/depth_server.py` on TCP 8770 (the OAK kept
@@ -155,10 +181,11 @@ awake as a depth camera, from a `@reboot` crontab entry of its own),
 and `wifi_roam`'s systemd timer. `rover_daemon.py` (from `rover_daemon/` in
 this repo) is the one process that may own the UART and the camera, and
 everything that commands the rover goes through it: headlights, gimbal, face
-tracking, exposed as tools on TCP 8769. [`lidar_slam/`](../lidar_slam) is the
-exception that does not conflict, because it reads the *lidar* port rather
-than the UART — but it needs the GPIO UART for its motion prior, so it belongs
-inside the daemon eventually rather than beside it. Started with `--vision` it
+tracking, exposed as tools on TCP 8769. The ROS 2 stack in
+[`ros_nav/`](../ros_nav) runs beside it and does not conflict: it takes the
+*lidar* port, which is a separate USB device, and borrows the UART's encoders,
+gyro and motor commands back from the daemon over loopback rather than opening
+it. Started with `--vision` the daemon
 offers one more, `look`, which POSTs a frame to `voice-chat` on MEDIA so the
 model can be asked what it sees; without the flag the tool is not offered at
 all. `drive_gamepad_pi.py` and `track_face_pi.py` are still standalone and

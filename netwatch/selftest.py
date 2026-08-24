@@ -205,6 +205,8 @@ def test_wpa_events():
 def test_kmsg_filter():
     keep = ["usb 3-1.1: USB disconnect, device number 4",
             "rtl8xxxu: Firmware not ready",
+            "brcmfmac: brcmf_sdio_bus_rxctl: resumed on timeout",
+            "mmc1: card 0001 removed",
             "Under-voltage detected! (0x00050005)",
             "wlan0: deauthenticating from b0:19:21:b9:4e:fe by local choice",
             "Out of memory: Killed process 981 (python3)"]

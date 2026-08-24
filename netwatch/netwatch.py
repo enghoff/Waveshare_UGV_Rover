@@ -82,12 +82,20 @@ PROC = os.environ.get("NETWATCH_PROC", "/proc")
 SYS = os.environ.get("NETWATCH_SYS", "/sys")
 
 # Kernel lines worth keeping. The USB tree is the first suspect on this board --
-# the wifi dongle, the camera, the lidar and the OAK share one weakly fused bus --
-# so every disconnect, reset and enumeration on it is evidence, as is anything
-# the wifi driver says about itself and anything the kernel says about running
-# out of memory or being late.
+# the camera, the lidar and the OAK share one weakly fused bus -- so every
+# disconnect, reset and enumeration on it is evidence, as is anything the wifi
+# driver says about itself and anything the kernel says about running out of
+# memory or being late.
+#
+# Both radio drivers are named here on purpose. The wifi moved off USB and onto
+# the board's own SDIO radio on 2026-08-24, so what the driver calls itself went
+# from `rtl8xxxu` to `brcmfmac`; a pattern that knows only the old name goes on
+# matching `wlan` and `cfg80211` and looks like it is still working, while
+# quietly dropping every line the new driver writes about firmware, SDIO and
+# association -- which is most of what this recorder exists to catch.
 KMSG_KEEP = re.compile(
-    r"usb|rtl8|wlan|cfg80211|ieee80211|voltage|undervolt|oom|Out of memory|"
+    r"usb|rtl8|brcmfmac|brcmutil|sdio|mmc[0-9]|wlan|cfg80211|ieee80211|"
+    r"voltage|undervolt|oom|Out of memory|"
     r"watchdog|hung task|thermal|brownout|xhci|ehci|dwc",
     re.I,
 )

@@ -890,7 +890,7 @@ with buttons for `turn_in_place` and `drive`, a big red stop, the daemon's
 camera's own picture, face tracking and the headlights beside it.
 
 ```
-http://192.168.1.47:8771/
+http://192.168.1.139:8771/
 http://bpi-m4zero.local:8771/
 
 python voice_chat\mock_rover.py --drive
@@ -1253,7 +1253,7 @@ up. Its turns are exact, because arithmetic is exact — the room has no floor, 
 track slip, no coast after the power comes off and no lidar that browns out when
 the motors pull, and those are the four things that make real driving hard. It
 exercises a client; it measures nothing. Turn accuracy is measured on the rover,
-with [lidar_slam/calibrate_turn.py](../lidar_slam/calibrate_turn.py).
+with [ros_nav/calibrate_chassis.py](../ros_nav/calibrate_chassis.py).
 
 ### The layout is why it is a page
 

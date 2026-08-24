@@ -94,8 +94,10 @@ Both thresholds are loose for reasons measured on this dongle rather than guesse
   the two numbers against each other. Whether to leave is decided from the driver;
   where to go is decided from the scan.
 - **Anything below −110 dBm is not a signal at all.** `−256` is the "no value"
-  sentinel this `rtl8xxxu` dongle keeps permanently in the *noise* column of
-  `/proc/net/wireless`, and it turns up in the *level* column too. Sampled at 1 Hz
+  sentinel the radio keeps permanently in the *noise* column of
+  `/proc/net/wireless`, and it turns up in the *level* column too. Measured on
+  the `rtl8xxxu` dongle and still true of the `brcmfmac` radio that replaced
+  it. Sampled at 1 Hz
   for two minutes, the link held between −33 and −50 dBm with three isolated
   `−256` reads scattered through it, each a single sample with good ones either
   side. Read as a number that is a link 200 dB down, and it used to be: five
@@ -131,17 +133,20 @@ was right when it was taken can be wrong by the time it is acted on:
 A link that is **not associated at all** skips the strikes entirely: there is
 nothing left to protect, and it is the case this whole thing exists for. What
 limits it instead is one attempt per minute, because **scanning is the dangerous
-operation on this hardware**. The wifi dongle shares a weakly fused USB bus with
-the camera and the lidar, and a burst of forced scans during a run that was also
-streaming camera frames is what took the rover off the network for an afternoon while
-this was being written. Hammering a radio that is already down, three times a
+operation on this hardware**. That was first measured when the wifi was a USB
+dongle sharing a weakly fused bus with the camera and the lidar: a burst of
+forced scans during a run that was also streaming camera frames is what took the
+rover off the network for an afternoon while this was being written. The radio
+moved off that bus on 2026-08-24 and onto the board's own SDIO one, so the
+contention is gone — but the limit stays, because a scan still takes the radio
+off channel for seconds and the link is the only way in. Hammering a radio that is already down, three times a
 minute, is how a rover that would have recovered on its own stays offline instead.
 
 And after three minutes of nothing working at all, the script stops trying to
 choose and tries to repair: it restarts `wpa_supplicant`, which costs nothing that
 is working and clears a supplicant that has lost track of its interface. That is
-the cheap half of what a power cycle does. A dongle that has genuinely fallen off
-the USB bus needs the other half, and a person.
+the cheap half of what a power cycle does. A radio the kernel has genuinely lost
+needs the other half, and a person.
 
 ## The radio switch, and why nothing here turns it off
 

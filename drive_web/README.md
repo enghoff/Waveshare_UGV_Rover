@@ -37,7 +37,7 @@ to this on deploy, because talk.py still imports them from `voice_chat/`.
 a sudo password no script has, and cron needs none:
 
 ```
-@reboot /home/admin/ugv/run_daemon.sh --vision --lidar
+@reboot /home/admin/ugv/run_daemon.sh --vision --board-bridge --ros-nav
 @reboot /home/admin/ugv/oak_depth/run_oak_depth.sh
 @reboot /home/admin/ugv/drive_web/run_drive_web.sh
 ```
@@ -55,7 +55,7 @@ matches the server also matches the ssh command carrying it.
 
 ```
 http://bpi-m4zero.local:8771/
-http://192.168.1.47:8771/
+http://192.168.1.139:8771/
 ```
 
 Windows often cannot resolve `.local`; the number works.

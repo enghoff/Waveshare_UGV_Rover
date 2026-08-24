@@ -43,7 +43,7 @@ DEFAULT_PORT = 8769
 # an address that is not there refuses in milliseconds. The number stays as
 # the fallback for a LAN with no mDNS, and it is second for that reason.
 # See docs/hosts.md.
-DEFAULT_CANDIDATES = ("bpi-m4zero.local", "192.168.1.47")
+DEFAULT_CANDIDATES = ("bpi-m4zero.local", "192.168.1.139")
 
 # Long enough for the slowest tool. `count_faces` with the camera cold has to
 # start v4l2-ctl and wait for its first buffer, which is seconds; everything

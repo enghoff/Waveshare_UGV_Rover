@@ -106,13 +106,14 @@ t=2026-08-23T15:05:44 kind=sample up=2756.6 state=up ip=192.168.1.47 gw=192.168.
 | `clock` | wall time jumped — this board has no RTC, so every timestamp before the first of these is fake-hwclock's guess |
 | `stop` | SIGTERM: somebody asked it to stop |
 
-Two fields repay knowing. `usbn` is how many devices are on the USB tree, and it
-is the one number that separates a dongle that has fallen off the bus from a
-dongle that merely cannot associate — they look identical everywhere else. And
-`sig` is empty rather than `-256` when the driver has no reading: that sentinel
-lives permanently in this dongle's noise column and turns up in the level column
-too, and averaging it into a report would manufacture outages that never
-happened.
+Two fields repay knowing. `usbn` is how many devices are on the USB tree, which
+is what separates a device that has fallen off the bus from one that is merely
+misbehaving — they look identical everywhere else. Since 2026-08-24 that no
+longer covers the wifi, which moved to the board's own SDIO radio; it still
+covers the camera, the lidar and the OAK. And `sig` is empty rather than `-256`
+when the driver has no reading: that sentinel lives permanently in the radio's
+noise column and turns up in the level column too, and averaging it into a
+report would manufacture outages that never happened.
 
 ## Checking it without a rover
 
