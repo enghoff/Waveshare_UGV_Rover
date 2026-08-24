@@ -511,6 +511,35 @@ behavior_server:
     max_rotational_vel: 0.5
     min_rotational_vel: 0.2
     rotational_acc_lim: 1.5
+    # **0.5 s rather than the stock 2, and this is the number that decides
+    # whether a wedged rover ever gets out.**
+    #
+    # `Spin` and `BackUp` are not incremental. Each cycle they project the
+    # whole remaining motion forward `cycle_frequency * simulate_ahead_time`
+    # cycles, test the footprint at every projected pose, and return FAILED
+    # for the entire behaviour the moment any one of them touches a lethal
+    # cell. They do not move as far as they safely can and stop there. At two
+    # seconds that projection is 0.5 rad/s x 1.9 s = 54 degrees for the spin
+    # and 0.15 m/s x 1.9 s = 0.29 m for the reverse -- which is the whole
+    # 0.30 m the behaviour tree asks for, so the check is all or nothing.
+    #
+    # Measured in corridor_sim.py, with a wall behind the rover: at two
+    # seconds a rover with 0.09, 0.14, 0.18 or 0.23 m of room behind it backs
+    # up exactly zero every time, and only once 0.29 m is clear does it move
+    # at all. At half a second it takes 0.04, 0.09, 0.14 and 0.20 m of that
+    # room. Reversing is the only recovery that translates -- turning on the
+    # spot cannot move a body whose *centre* is what the costmap objects to --
+    # so an all-or-nothing reverse is a rover with no way out, and that is the
+    # lock-up: the planner refuses because the free channel does not reach it,
+    # the controller refuses all thirty-three, and both recoveries report
+    # "Collision Ahead" without having moved.
+    #
+    # The margin is still real. The check runs at `cycle_frequency`, which is
+    # 10 Hz, against the true footprint on truly lethal cells, so half a
+    # second is five control cycles of warning and the rover covers 7.5 mm or
+    # 2.9 degrees in each. Shorter would recover a little more room -- 0.3 s
+    # gets 0.07 against 0.04 -- and is not worth three cycles of notice.
+    simulate_ahead_time: 0.5
 
 velocity_smoother:
   ros__parameters:
