@@ -9,27 +9,13 @@ from typing import Any
 import scripting
 from rover_util import _flag, _number
 
-# The lidar, when this daemon is asked to drive. A separate port from the driver
-# board: the board is on the GPIO UART and the lidar is a CH343 the cdc_acm driver
-# claims, so there is no /dev/ttyUSB* to look for. See docs/hosts.md.
-#
-# "auto" rather than a device node, because the node is not stable. This adapter
-# re-enumerated as ttyACM1 under a running daemon and left it holding a dead
-# ttyACM0, still answering questions from a scan that had stopped updating. The
-# navigator prefers the /dev/serial/by-id name, which carries the serial number.
-DEFAULT_LIDAR = "auto"
-
-# What every tool here says when there is no navigator behind it. One sentence
-# rather than nine, and it no longer names the lidar: there are two backends now,
-# the daemon's own planner behind `--lidar` and Nav2 behind `--ros-nav`, and from
-# the caller's side either one missing means the same thing. It used to say "this
-# rover has no lidar attached", which on a rover whose lidar is plugged in and
-# spinning -- but belongs to the ROS stack, with the daemon started without either
-# flag -- is a sentence that sends somebody to check a cable.
+# What every tool here says when there is no navigator behind it. It deliberately
+# does not name the lidar: the sensor belongs to the ROS stack now, so on a rover
+# whose lidar is plugged in and spinning "this rover has no lidar attached" is a
+# sentence that sends somebody to check a cable that is fine.
 NO_DRIVING = ("this rover is not set up to drive or map itself, so it has no "
-              "driving tools. The daemon needs either --lidar, which gives it "
-              "the sensor and its own planner, or --ros-nav, which points it at "
-              "the ROS 2 stack")
+              "driving tools. The daemon needs --ros-nav, which points it at the "
+              "ROS 2 stack")
 # How much of the map goes into a picture for the model. A few metres, not the whole
 # grid: the pose drifts over a long run, so a picture wide enough to invite planning
 # a route home is a picture that will mislead.
@@ -129,8 +115,7 @@ class RoverNav:
         map coordinates has no way to arrive at one except by inventing it, and an
         invented pair is a fifteen-metre drive to a place nobody chose. What wants
         them is a console with the map on screen, which knows the pose the picture
-        was drawn at and can therefore name the point that was clicked. See
-        `drive_to` in `lidar_slam/nav_drive.py` for why that distinction matters.
+        was drawn at and can therefore name the point that was clicked.
         """
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}
@@ -180,8 +165,8 @@ class RoverNav:
 
         **The two conventions are opposite, and this minus sign is the whole of the
         conversion.** The gimbal takes pan positive to the *right* (see `look_at`);
-        the lidar, the map and everything in [lidar_slam/](../lidar_slam) take
-        bearings positive to the *left*, counter-clockwise from straight ahead. Get
+        the lidar, the map and everything under [ros_nav/](../ros_nav) take bearings
+        positive to the *left*, counter-clockwise from straight ahead. Get
         it backwards and the map draws a perfectly ordinary cone over the wrong half
         of the room, which nothing about the picture would give away.
 
@@ -230,7 +215,7 @@ class RoverNav:
         accepted, a replan and what provoked it, how it ended. A move is one
         blocking call that can last a minute, so until it returns this is the only
         account of it there is, and a plan the navigator refused shows up here
-        before the refusal itself arrives. See MoveReport in `lidar_slam/navigator.py`.
+        before the refusal itself arrives. See MoveReport in `lidar_slam/nav_types.py`.
 
         `since_seq` in the arguments is the last of those sentences the caller
         already has; anything said since comes back under `move.missed`. A poller
@@ -240,8 +225,15 @@ class RoverNav:
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}
         since = arguments.get("since_seq")
+        # `board_reopens` comes from this daemon and not from the bridge, because
+        # this daemon is the only thing that holds the board's port. It is the same
+        # kind of number as `lidar_resets` beside it and is read the same way: not
+        # a fault on its own, but a count that has climbed over an afternoon is a
+        # connector working loose, and nothing else on this rover would say so.
         return {"ok": True, **self.nav.status(
-            since_seq=None if since is None else int(since))}
+            since_seq=None if since is None else int(since)),
+            "board_reopens": getattr(self.link, "reopens", 0),
+            "board_reopen_note": getattr(self.link, "reopen_note", None)}
 
     def _tool_map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """The map as base64 PNG in the reply. A control call, not a model tool.

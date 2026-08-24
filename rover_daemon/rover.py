@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from board_link import (
-    BATTERY_CELLS, BATTERY_MAX_AGE_S, CMD_LIGHTS, CMD_PROBE,
+    BATTERY_CELLS, BATTERY_MAX_AGE_S, CMD_LIGHTS, CMD_PROBE, PROBE_WAIT_S,
     _battery_percent, _battery_state, _battery_summary,
 )
 from rover_camera import RoverCamera, VisionLink
@@ -127,8 +127,39 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
     def describe(self) -> str:
         return self.link.describe()
 
-    def probe(self) -> bool:
-        return self.link.send({"T": CMD_PROBE})
+    def probe(self, wait_s: float = PROBE_WAIT_S) -> bool:
+        """Is the driver board actually there? Ask, then wait to be answered.
+
+        **The waiting is the whole point, and leaving it out cost an afternoon.**
+        This used to be `link.send(...)` alone, which reports whether the *write*
+        succeeded -- and a write to a serial port succeeds whether or not anything
+        is listening at the other end. So it returned True against a board that
+        was unplugged, unpowered or not yet booted, and the daemon came up
+        believing it had one.
+
+        That mattered far more than a wrong startup message, because
+        [run_daemon.sh](run_daemon.sh) is built on this returning False: the
+        daemon is meant to exit when the board does not answer, and the supervisor
+        retries every 15 s precisely because the ESP32 boots on its own schedule
+        and the `@reboot` daemon can start first. With the check vacuous that loop
+        never fired once. What actually happened at boot was a daemon holding a
+        port the board was not yet talking on, for ever -- no telemetry, so no
+        odometry, so no `odom -> base_link`, so slam_toolbox dropped every scan
+        and there was no map. Nothing anywhere reported an error.
+
+        `CMD_PROBE` is answered with the board's ordinary telemetry, so a fresh
+        line is the proof. One `telemetry()` call is a 0.4 s wait; a board that
+        needs longer than that is one this should exit over and let the supervisor
+        come back to.
+        """
+        self.link.send({"T": CMD_PROBE})
+        deadline = time.monotonic() + max(0.0, wait_s)
+        while True:
+            if self.link.telemetry() is not None:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            self.link.send({"T": CMD_PROBE})
 
     def _send_lights(self, level: int) -> bool:
         return self.link.send({"T": CMD_LIGHTS, "IO4": level, "IO5": level})

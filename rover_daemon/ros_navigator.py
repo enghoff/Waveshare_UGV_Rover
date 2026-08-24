@@ -1,18 +1,16 @@
-"""The daemon's driving tools, backed by ROS 2 instead of by the old planner.
+"""The daemon's driving tools, backed by ROS 2.
 
-`Navigator` in [lidar_slam/navigator.py](../lidar_slam/navigator.py) owned the
-lidar, a scan matcher and a 10 Hz control loop, and the daemon's driving tools
-were thin wrappers over it. All three of those jobs now belong to the ROS 2 stack
--- slam_toolbox maps with loop closure, Nav2 plans and follows -- and this is what
-takes `Navigator`'s place: the same methods, returning the same shapes, with a
-socket where the control loop used to be.
+There used to be a `Navigator` under `lidar_slam/` that owned the lidar, a scan
+matcher and a 10 Hz control loop, and the daemon's driving tools were thin
+wrappers over it. All three of those jobs belong to the ROS 2 stack now --
+slam_toolbox maps with loop closure, Nav2 plans and follows -- so that navigator
+has been deleted and this took its place: the same methods, returning the same
+shapes, with a socket where the control loop used to be.
 
-It is deliberately duck-typed rather than a subclass. There is nothing left to
-inherit: `drive` here is a sentence sent to Nav2, not a speed ramp, and the two
-implementations share no state at all. What they do share is the interface the
-daemon's tools and its two consoles already speak -- `Outcome`, `MoveReport`, and
-the field names in `nav_status` -- so those are imported from where they live
-rather than reinvented.
+What survived the deletion is the interface, because the daemon's tools and its
+two consoles already speak it: `Outcome` and `MoveReport` still live in
+`lidar_slam/nav_types.py` and are imported from there rather than reinvented, and
+the field names in `nav_status` are unchanged.
 
 **Why the map is drawn here and not on the ROS side.** The bridge hands over the
 occupancy grid as the bytes it arrived as, and this turns them into a picture with
@@ -37,7 +35,6 @@ import os
 import socket
 import sys
 import threading
-import time
 import zlib
 from typing import Any
 
@@ -108,15 +105,15 @@ class _Config:
 class _GridSlam:
     """A ROS occupancy grid wearing enough of `Slam2D` to be rendered.
 
-    `mapimg.render` asks a SLAM object for six things: a lock, the grid, the pose,
-    three numbers of configuration, and the live scan. Everything but the last is
-    in the message slam_toolbox published; the scan is fetched by the renderer and
-    then not used, so it is answered with nothing.
+    `mapimg.render` asks a map object for five things: a lock, the grid, the pose,
+    and three numbers of configuration. All five are in the message slam_toolbox
+    published. It used to ask for the live scan as well and then not use it, which
+    meant carrying an empty list here to be fetched and dropped; the renderer no
+    longer asks.
     """
 
     def __init__(self, payload: dict[str, Any] | None = None) -> None:
         self.lock = threading.Lock()
-        self.scan: list[tuple[float, float]] = []
         if not payload or not payload.get("data"):
             self.config = _Config(DEFAULT_RESOLUTION_M, GRID_CELLS,
                                   GRID_OCCUPIED_AT)
@@ -195,9 +192,6 @@ class _GridSlam:
                             dtype="int8")
         return self._grid
 
-    def scan_xy(self):
-        return self.scan
-
 
 class RosNavigator:
     """Nav2 and slam_toolbox, presented as the navigator the daemon already has.
@@ -273,12 +267,6 @@ class RosNavigator:
         """Whether the last thing said to the bridge was answered. For the startup
         banner, and not a health check: it is only as fresh as the last request."""
         return self._reachable
-
-    @property
-    def lidar_path(self) -> str | None:
-        """What the banner prints. None until the bridge has said, which reads as
-        "waiting for it" -- and that is the truth at boot."""
-        return self._lidar_port
 
     @property
     def slam(self):

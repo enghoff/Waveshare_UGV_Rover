@@ -216,9 +216,9 @@ map back in within a revolution or two; the trouble is that a model handed this 
 reach for it. Told there is no route to somewhere, the obliging thing to do is clear
 the map and try again — which throws away the only account anyone has of the room,
 including the walls the route was refused for. Whether a map has drifted past being
-worth keeping is a judgement made by looking at it. The navigator refuses while a
+worth keeping is a judgement made by looking at it. The bridge refuses while a
 move is running, because the route being followed is written in the frame the clear
-discards; see [lidar_slam/README.md](../lidar_slam/README.md).
+discards; see [ros_nav/README.md](../ros_nav/README.md).
 
 ## What it cannot do, and will not pretend to
 
@@ -275,24 +275,21 @@ does not feed the heartbeat, so aiming is not mistaken for driving.
 ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py'
 ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --no-camera'     # lights and gimbal only
 ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --host 192.168.1.22'   # board over wifi
-ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --lidar --camera-fov 58'
+ssh bpi-m4zero 'cd ugv && python3 rover_daemon.py --camera-fov 58'
 ```
 
-**Two ways to have the driving and mapping tools, and they are mutually
-exclusive.** `--lidar` opens the lidar here and drives with the planner in
-[lidar_slam/](../lidar_slam); `--ros-nav` leaves the lidar to the ROS 2 stack and
-drives with Nav2 through a loopback socket, which is what the rover actually runs
-now:
+**The driving and mapping tools need `--ros-nav`, and nothing else offers them.**
+It leaves the lidar to the ROS 2 stack and drives with Nav2 through a loopback
+socket, which is what the rover actually runs:
 
 ```bash
 python3 rover_daemon.py --vision --board-bridge --ros-nav
 ```
 
-The daemon refuses both together, because only one process can hold the lidar's
-serial port and this one would win it silently. Either way the same 17 tools are
-offered with the same names and the same replies, so nothing that calls them can
-tell which is behind them -- the startup line is what says. See
-[ros_navigator.py](ros_navigator.py) and
+There used to be a second way -- `--lidar`, which opened the lidar here and drove
+with the daemon's own planner -- and it has been deleted along with that planner.
+Without `--ros-nav` the daemon offers lights, the gimbal and the camera and says
+`driving off` in its startup line. See [ros_navigator.py](ros_navigator.py) and
 [ros_nav/README.md](../ros_nav/README.md).
 
 It centres the gimbal at startup, like every other script that commands it: the
@@ -306,6 +303,39 @@ is that only one thing does.
 Binding is `0.0.0.0:8769` with no authentication, the same trade
 [face_detect](../face_detect/README.md) makes and with the same warning. The
 Banana Pi has no firewall in front of it.
+
+### When the board does not answer
+
+Two separate mechanisms, and for a long time neither one worked, in a way that
+took a whole navigation stack down without a single error anywhere.
+
+**At startup, the daemon exits and lets the supervisor try again.** That is what
+the retry loop in [run_daemon.sh](run_daemon.sh) is for: the host and the ESP32
+boot on their own schedules, the `@reboot` daemon regularly wins that race, and
+retrying every 15 s is how it eventually finds a board. The loop was written for
+exactly this and had never once fired, because `Rover.probe` was a bare
+`link.send` — and a write to a serial port succeeds whether or not anything is
+listening at the far end, so the probe said yes to a board that was not there.
+
+What that produced was not an obvious failure. The daemon came up, offered all 17
+tools, drove the lights and the gimbal, and reported the lidar as healthy —
+because the lidar is a different device on a different port. The only casualty was
+everything downstream of the board's telemetry: no encoder or gyro readings, so
+`base_node` published no odometry, so there was no `odom -> base_link` transform,
+so `slam_toolbox` dropped every scan on its message filter and never built a map.
+The console said `position NOT TRUSTED` and drew an empty panel. `probe` now sends
+and then waits to be answered, which is the whole fix at boot.
+
+**After startup, the port is reopened.** The lidar has had a replug ladder for a
+while — see [lidar_slam/README.md](../lidar_slam/README.md) — and the board had
+nothing at all: if it stopped talking an hour in, the port stayed open, `send`
+went on succeeding into it, and the only trace was `board_ok: false` in a console
+row. `SerialLink.watch` now closes and reopens the port after three seconds of
+silence, backing off from five seconds to two minutes because reopening cannot fix
+a cable. Every attempt is logged, the count comes back in `nav_status` as
+`board_reopens` beside `lidar_resets`, and it is read the same way: not a fault on
+its own, but a number that has climbed over an afternoon is a connector working
+loose, and nothing else on this rover would say so.
 
 ## The protocol
 

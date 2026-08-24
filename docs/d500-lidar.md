@@ -118,12 +118,12 @@ not confine itself to two bearings 90° apart and never appear anywhere else.
 They matter more than a stray return should, for three reasons. They are **inside
 the rover**, since the chassis is 34 cm wide and these sit 13 cm from its centre,
 so no external object can ever be where they are. They **move with the rover**, so
-they were stamped into the occupancy grid at each new pose, painting a trail of
-phantom obstacles down the middle of the map. And because the navigator takes the
-nearest return in any direction as its clearance, and takes the *minimum* over the
-last few revolutions to be pessimistic about dropouts, a post seen in 59% of
-revolutions was effectively always the nearest thing — which held every turn down
-to the slow rate and, before turning was made unrefusable, would refuse it outright.
+they were stamped into the map at each new pose, painting a trail of phantom
+obstacles down the middle of it. And anything that takes the nearest return in a
+direction as its clearance — which Nav2's local costmap does, as the rover's own
+drive controller did before it — sees a post that appears in 59% of revolutions as
+effectively always the nearest thing, so the rover behaves as though it were boxed
+in wherever it stands.
 
 The minimum-range filter cannot do this job: at 12–16 cm the posts are well beyond
 anything it would be safe to blind the sensor to in front, where a return that
@@ -131,7 +131,7 @@ close is something the rover is about to hit. So `slam2d.c` masks a box behind t
 lidar instead — `body_back_m` deep by `body_half_width_m` either side, 16 cm by
 14 cm, fitted to the measurements above with about 5 cm of margin and still inside
 the chassis' own 17 cm half-width. It is applied where a return first enters, so
-the matcher, the map, the sector query and the feature segmentation all agree about
+the published scan, the sector query and the feature segmentation all agree about
 what is real; filtering further out would have left the map corrupted, and the map
 is the part that does not recover. `test_body_mask` in `selftest.c` feeds a ring of
 returns at 13 cm and checks that the rear half goes and the front half stays.

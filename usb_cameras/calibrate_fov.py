@@ -18,7 +18,7 @@ chassis and takes the angle from the lidar's scan match, which is measured again
 the walls rather than asked for. Running both is the point of having both -- they
 share no mechanism, so agreement means the servo is honest as well. (What vouches for
 the scan match itself is a separate measurement in the same spirit:
-[lidar_slam/calibrate_turn.py](../lidar_slam/calibrate_turn.py) cross-correlates the
+[ros_nav/calibrate_chassis.py](../ros_nav/calibrate_chassis.py) cross-correlates the
 range profile before and after a turn, which the matcher takes no part in.)
 
 **Why this fits a lens model rather than averaging pixel shifts.** The obvious

@@ -141,7 +141,7 @@ from here steers anything:
 sudo password no script has, and cron needs none:
 
 ```
-@reboot /home/admin/ugv/run_daemon.sh --vision --lidar
+@reboot /home/admin/ugv/run_daemon.sh --vision --board-bridge --ros-nav
 @reboot /home/admin/ugv/oak_depth/run_oak_depth.sh
 ```
 

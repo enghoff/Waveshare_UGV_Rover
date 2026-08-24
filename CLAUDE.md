@@ -19,7 +19,7 @@ The repo stays source of truth: edit here and push, never edit in place on a hos
 | Directory | Host | Lands at |
 |---|---|---|
 | `rover_daemon/`, `driver_board/`, `face_tracking/` | `bpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
-| `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` � still the lidar's *parser*, which `ros_nav/` reuses; its SLAM and planner are superseded and no longer run |
+| `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` — the lidar's C *parser*, the map renderer and the USB replug, all of which `ros_nav/` and the daemon reuse. Its SLAM, planner and drive controller are deleted, not merely unused |
 | `ros_nav/` | `bpi` | `~/ugv/ros_nav/`, plus a conda environment at `~/miniforge3` built by its own `install.sh`. ROS 2 mapping and navigation; see [ros_nav/README.md](ros_nav/README.md) |
 | `oak_depth/` | `bpi` | `~/ugv/oak_depth/`, plus `vendor/` filled by its own `install.sh` |
 | `wifi_roam/` | `bpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
@@ -70,7 +70,11 @@ chat transcript, on a command line where `ps` can see it, or copied onto a host.
 ```bash
 scp rover_daemon/*.py bpi-m4zero:~/ugv/     # includes ros_navigator.py, the
                                             # client half of the nav bridge
-scp lidar_slam/*.py lidar_slam/README.md bpi-m4zero:~/ugv/lidar_slam/
+# lidar_slam/ lost eleven files when its SLAM and planner went; scp adds and never
+# removes, so mirror it rather than copying into it, then rebuild -- libslam2d.so is
+# per-host and a stale one now has the wrong struct layout
+rsync -a --delete --exclude 'libslam2d.so' --exclude selftest lidar_slam/ bpi-m4zero:~/ugv/lidar_slam/
+ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2'
 scp face_tracking/*.py face_tracking/install_opencv.sh     face_tracking/face_detection_yunet.onnx bpi-m4zero:~/ugv/   # the tracking loop and its detector
 scp -r oak_depth bpi-m4zero:~/ugv/           # the OAK as a depth camera; then its own install.sh
 scp -r wifi_roam bpi-m4zero:~/ugv/           # the wifi keeper; then its own install.sh
@@ -89,27 +93,46 @@ crontab entry — `@reboot ~/ugv/run_daemon.sh --vision --board-bridge`, beside
 arguments live. **Never relaunch `run_daemon.sh` by hand**; it drops the flags and
 the rover silently loses tools.
 
-**That entry no longer says `--lidar`, and the change matters.** The lidar belongs
-to `ros_nav/` now, and only one process can hold a serial port -- the daemon would
-win it silently and `slam_toolbox` would sit waiting for a scan that never comes.
-The daemon refuses to start with both flags for that reason. What it says instead
-is `--board-bridge --ros-nav`, and the pair is the whole interface between the two
-halves of this rover, running in opposite directions:
+**There is no `--lidar` any more.** The daemon used to be able to drive with its
+own planner, holding the lidar's serial port itself; that planner has been deleted
+and the flag with it, because the lidar belongs to `ros_nav/` and only one process
+can hold a serial port -- the daemon would win it silently and `slam_toolbox` would
+sit waiting for a scan that never comes. What the entry says is `--board-bridge
+--ros-nav`, and the pair is the whole interface between the two halves of this
+rover, running in opposite directions:
 
 - `--board-bridge` lends the driver board's encoders, gyro and motor commands to
   the ROS stack over loopback TCP 8772, while keeping the UART, the lights, the
   gimbal and the pack voltage. See
   [rover_daemon/board_bridge.py](rover_daemon/board_bridge.py).
 - `--ros-nav` borrows navigation back over loopback TCP 8773, so that `drive`,
-  `drive_to`, `turn_in_place`, `show_map` and the rest are offered again -- backed
-  by Nav2 rather than by the daemon's own planner. 17 tools, the same names, the
-  same replies, so the voice chat and the drive console did not change. See
+  `drive_to`, `turn_in_place`, `show_map` and the rest are offered at all -- backed
+  by Nav2. 17 tools, with the same names and the same replies the daemon's own
+  planner used to give, so the voice chat and the drive console did not change. See
   [rover_daemon/ros_navigator.py](rover_daemon/ros_navigator.py) and
   [ros_nav/nav_bridge.py](ros_nav/nav_bridge.py).
 
-**Because both arrangements offer the same 17 tools, check which one is running
-before drawing a conclusion about either.** The daemon's startup line says: either
-`driving ros2 on 127.0.0.1:8773` or `driving own planner, lidar /dev/...`.
+Without `--ros-nav` the daemon offers no driving tools at all, and its startup line
+says `driving off` rather than `driving ros2 on 127.0.0.1:8773`.
+
+**When the map is empty, check the driver board before you check the lidar.** The
+two are on different ports and the lidar is the misleading one: it can be reporting
+happily at 10 Hz while there is no map at all. The chain is
+`board telemetry -> base_node odometry -> odom->base_link -> slam_toolbox`, and it
+breaks at the first link far more often than anywhere else -- the log says
+`Message Filter dropping message ... queue is full` over and over, which reads as a
+scan problem and is not one. One call settles it:
+
+```bash
+ssh bpi-m4zero 'python3 -c "import json,socket;s=socket.create_connection((\"127.0.0.1\",8769));s.sendall(b\"{\\\"call\\\":\\\"nav_status\\\"}\n\");print(s.makefile().readline())"'
+```
+
+`board_ok: false` there means the daemon is holding a port the ESP32 is not talking
+on. The board answers over WiFi independently -- `curl "http://192.168.1.22/js?json=%7B%22T%22%3A130%7D"` returns a
+`T:1001` line -- so that is how to tell a dead board from a dead serial link. The
+daemon now notices this itself and reopens the port, and `nav_status` counts the
+attempts as `board_reopens`; a count that climbs over an afternoon is a connector
+working loose.
 
 `--ros-nav` needs the ROS stack up, and it does not wait for it -- both are
 started by the same crontab and the stack takes the best part of a minute, so a
@@ -123,9 +146,6 @@ holding the arguments the daemon was started with, so it has to be replaced too:
 ssh bpi-m4zero "crontab -l | sed 's|--vision --board-bridge$|& --ros-nav|' | crontab - && sync"
 ssh bpi-m4zero "pkill -f 'ugv/run_daemon[.]sh'; sleep 1; ~/ugv/restart.sh"
 ```
-
-To go back to the daemon's own planner, put `--lidar` in that entry in place of
-both and stop the ROS stack; [ros_nav/README.md](ros_nav/README.md) has the lines.
 
 Anything touching `slam2d.c` or `slam2d.h` also needs a rebuild on the host, since
 `libslam2d.so` is built per-host (aarch64 here) and is not committed:

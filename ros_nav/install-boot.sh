@@ -16,9 +16,9 @@
 #   --board-bridge   or the base node has no odometry at all
 #   --ros-nav        or the daemon offers no driving tools, so the drive console
 #                    and the voice chat can watch the rover and not move it
-#   no --lidar       or the two stacks fight over one serial port; the daemon
-#                    wins, silently, and slam_toolbox waits for a scan that never
-#                    comes
+#   no --lidar       that flag was deleted along with the daemon's own planner,
+#                    so a crontab still carrying it is a daemon that will not
+#                    start at all -- argparse refuses the unknown argument
 #
 # Getting any of them wrong is the most likely way to install this and find
 # nothing works, so they are checked here rather than left to be discovered.
@@ -61,10 +61,11 @@ if [ -z "$daemon_line" ]; then
     echo "!! the rover daemon has no @reboot entry -- without it there is no board"
     echo "   bridge, so the base node will have no odometry."
 elif printf '%s' "$daemon_line" | grep -q -- '--lidar'; then
-    echo "!! the daemon still starts with --lidar, so it will take the lidar and"
-    echo "   slam_toolbox will wait for a scan that never arrives. Change that entry"
-    echo "   to --board-bridge:"
-    echo "     crontab -l | sed 's/--lidar/--board-bridge/' | crontab - && sync"
+    echo "!! the daemon still starts with --lidar. That flag no longer exists -- it"
+    echo "   went with the daemon's own planner -- so this entry does not merely"
+    echo "   fight the ROS stack for the serial port, it stops the daemon starting"
+    echo "   at all. Change it:"
+    echo "     crontab -l | sed 's/--lidar/--board-bridge --ros-nav/' | crontab - && sync"
 elif ! printf '%s' "$daemon_line" | grep -q -- '--board-bridge'; then
     echo "!! the daemon does not start with --board-bridge, so the base node will"
     echo "   have nothing to read the wheels and gyro from. Add it to that entry."

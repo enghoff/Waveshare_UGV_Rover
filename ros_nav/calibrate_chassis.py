@@ -45,9 +45,9 @@ wheels, which is what a wheel calibration requires.
 
 Rates are taken from the steady middle of each burst, not from the total angle
 divided by the total time. That is what removes the ramp at the start and the
-coast at the end without having to model either: the repository's older
-`calibrate_turn.py` separated them by timing bursts of three different lengths,
-and sampling the middle is the same information for a third of the driving.
+coast at the end without having to model either: the calibration this replaced
+separated them by timing bursts of three different lengths, and sampling the
+middle is the same information for a third of the driving.
 
 **This moves the rover.** Turning happens on the spot and needs only room to
 rotate; the forward runs need clear floor and stop the moment anything is closer
@@ -394,8 +394,8 @@ class Chassis(Node):
 
         The reference is `slam_toolbox`, through `map` -> `base_link`. That yaw is
         fixed by the walls, so it is independent of the gyro in exactly the way
-        this needs -- and it is the same trick `lidar_slam/calibrate_turn.py` used
-        when it read the angle back off the lidar profile.
+        this needs -- and it is the same trick the rover's own calibration used
+        when it read the angle back off the scan matcher's heading profile.
 
         Returns (odom degrees, map degrees) for one burst.
         """

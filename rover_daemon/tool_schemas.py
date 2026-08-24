@@ -243,14 +243,15 @@ NAV_TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "distance_m": {
-                        # Forward only, even though the ROS backend can reverse --
+                        # Forward only, even though the backend can reverse --
                         # Nav2's BackUp behaviour is what `drive` uses for a
-                        # negative distance and it is wired up. The schema is
-                        # shared with the daemon's own planner behind `--lidar`,
-                        # whose drive loop is forward-only, and a schema that
-                        # promises reverse on a rover configured the other way is
-                        # worse than one that does not offer it. `drive_to` with a
-                        # negative `ahead_m` backs up on either.
+                        # negative distance and it is wired up. This was inherited
+                        # from the daemon's own planner, whose drive loop was
+                        # forward-only, and it is a choice now rather than a
+                        # constraint: `drive` is the reflex call a model reaches
+                        # for, and a model that can ask for reverse in one word
+                        # will. `drive_to` with a negative `ahead_m` backs up, and
+                        # takes a planner and a costmap with it.
                         "type": "number", "minimum": 0.05, "maximum": 3.0,
                         "description": "How far to go, in metres.",
                     },

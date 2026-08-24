@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import threading
 import time
 from typing import Any
@@ -40,6 +41,21 @@ TELEMETRY_WAIT_S = 0.4
 # Older than this and the board has stopped talking rather than been slow, so the
 # answer is "nothing" rather than a number from before whatever went wrong.
 TELEMETRY_MAX_AGE_S = 1.0
+# How long the daemon waits at startup to be answered before deciding there is no
+# board there. Deliberately short, because it is not the whole budget: the daemon
+# exits when the probe fails and run_daemon.sh brings it back 15 s later, so the
+# real wait for an ESP32 that boots slowly is that loop rather than this number.
+PROBE_WAIT_S = 2.0
+# Silence that means the board has stopped rather than paused. It speaks at about
+# 17 Hz, so this is fifty missed lines -- long enough that a starved core or a
+# board mid-reset is not mistaken for a dead link, short enough that a rover does
+# not spend a minute driving on odometry that stopped updating.
+BOARD_SILENT_S = 3.0
+# How long to leave the reopened port alone before judging it, and the ceiling the
+# backoff climbs to. Reopening cannot fix a cable, and retrying every three
+# seconds for an hour only fills the log.
+BOARD_REOPEN_S = 5.0
+BOARD_REOPEN_MAX_S = 120.0
 # The longest gap between two lines that a yaw rate may be integrated across.
 # Lines arrive about every 50 ms; a gap ten times that is the reader having been
 # starved of the core, and multiplying a rate by it invents rotation that never
@@ -66,16 +82,16 @@ MAX_TICK_STEP = 5000
 # that whole 13 ms going round again for the next one, twenty times a second.
 #
 # Draining on a clock got most of that back, and the rest came from noticing that
-# the thread need not be the one doing it. The navigator already has a loop running
-# at the lidar's rate, and a drain folded into a loop that was going to run anyway
-# costs no wakeup at all -- so `pump` is public, the navigator calls it once a
-# revolution, and this thread drops to a slow backstop for the case where nothing
-# else is pumping. On the rover that is the daemon started without --lidar, where
-# the pack voltage is all anyone wants out of the stream.
+# the thread need not be the one doing it. Whoever already has a loop running
+# at the board's rate can fold the drain into it for no wakeup at all -- so `pump`
+# is public, and this thread drops to a slow backstop for the case where nothing
+# else is pumping. On the rover that is the board bridge, which pumps at 50 Hz for
+# the ROS side; the backstop only matters on a daemon started without
+# --board-bridge, where the pack voltage is all anyone wants out of the stream.
 #
 #   asking for bytes as soon as any arrive   8.7 Hz, 10% of revolutions dropped
 #   draining on a 50 ms clock               9.34 Hz,  5%
-#   the navigator draining, this at 250 ms   see the README
+#   a caller draining, this at 250 ms        see the README
 TELEMETRY_POLL_S = 0.25
 
 # Three 18650 cells in series -- the UPS in docs/d500-lidar.md -- reported as
@@ -217,7 +233,7 @@ class SerialLink:
     milliseconds, and a rate cannot be sampled: what it did between two looks is
     the whole of it. So lines are folded in as they arrive, into a running integral
     of yaw rate and the newest wheel counts, which `motion` hands out. See
-    `lidar_slam/odometry.py` for what reads them and what it takes to believe them.
+    `ros_nav/base_node.py` for what reads them and what it takes to believe them.
     """
 
     def __init__(self, port: str) -> None:
@@ -244,6 +260,16 @@ class SerialLink:
         self._pump_lock = threading.Lock()
         self._buffered = bytearray()
         self._drained_at = None
+        # The silence watchdog. `_spoke_at` starts at the open rather than at zero
+        # so that a board which has *never* said anything is caught by the same
+        # rule as one that stopped -- which is the case that actually happened, and
+        # the one a "time since last line" test would have missed for ever.
+        self._opened_at = time.monotonic()
+        self._spoke_at = self._opened_at
+        self._reopen_at = 0.0
+        self._reopen_wait = BOARD_REOPEN_S
+        self.reopens = 0
+        self.reopen_note: str | None = None
         self._stop = threading.Event()
         self._reader = threading.Thread(target=self._read_forever,
                                         name="telemetry", daemon=True)
@@ -279,6 +305,85 @@ class SerialLink:
         """
         while not self._stop.wait(TELEMETRY_POLL_S):
             self.pump()
+            self.watch()
+
+    def watch(self) -> bool:
+        """Reopen the port if the board has gone quiet. True if it was reopened.
+
+        **The board had no equivalent of the lidar's replug ladder, and this is
+        it.** When the lidar drops off the USB bus something notices and puts it
+        back; when the driver board stopped talking, nothing did -- the port stayed
+        open, `send` went on succeeding into it, and the only trace anywhere was
+        `board_ok: false` in a console row nobody reads until something is already
+        wrong. What that looked like in practice was a rover that lit up, aimed its
+        camera, answered every tool and could not navigate, because no telemetry
+        means no odometry, which means no transform, which means slam_toolbox
+        quietly dropping every scan it is handed.
+
+        Reopening is the whole repair, and it is enough surprisingly often: the
+        case this was written for is a daemon that opened the port before the ESP32
+        had finished booting and held a dead one from then on. It cannot fix a
+        cable, which is why it backs off rather than hammering, and why the count
+        is published -- a rover that has reopened this port four times in an
+        afternoon has a connector working loose, and nothing else would say so.
+        """
+        now = time.monotonic()
+        with self._motion_lock:
+            quiet_for = now - self._spoke_at
+        if quiet_for < BOARD_SILENT_S:
+            # Heard from. Anything the backoff had climbed to belongs to a fault
+            # that is over, and carrying it forward would leave the next one
+            # waiting two minutes for its first attempt.
+            self._reopen_wait = BOARD_REOPEN_S
+            return False
+        if now < self._reopen_at:
+            return False
+        return self._reopen(quiet_for)
+
+    def _reopen(self, quiet_for: float) -> bool:
+        import serial
+
+        self._reopen_at = time.monotonic() + self._reopen_wait
+        self._reopen_wait = min(self._reopen_wait * 2.0, BOARD_REOPEN_MAX_S)
+        # Both directions, in this order and only here. `send` takes the write lock
+        # and `pump` the read one, and neither takes the other, so this is the one
+        # place that holds both and there is no second order to deadlock against.
+        with self._lock, self._pump_lock:
+            try:
+                self.link.close()
+            except Exception:
+                pass
+            try:
+                self.link = serial.Serial(self.port, BAUD, timeout=0.1)
+            except Exception as error:
+                self.reopen_note = f"could not reopen {self.port}: {error}"
+                return False
+            self._buffered.clear()
+            # The next drain has nothing to measure an interval against, so it must
+            # not try: an elapsed time spanning the outage would multiply a yaw rate
+            # by however long the board was away and invent the rotation to match.
+            self._drained_at = None
+        with self._motion_lock:
+            # Counted rather than integrated, so anything reading the gyro across
+            # this span can see there is a hole in it.
+            self._breaks += 1
+        # `_spoke_at` is deliberately *not* touched here, and getting that wrong is
+        # what a first draft of this did. Reopening the port is not the board
+        # speaking; only `_fold` may say that. Marking it here made the next
+        # `watch` see a board that had just been heard from, which took the
+        # backoff branch and reset the interval to five seconds -- so the backoff
+        # could never grow and a rover with an unplugged cable would have reopened
+        # its port every five seconds for as long as it was switched on. Leaving it
+        # alone also makes the log read correctly: each attempt reports the total
+        # silence rather than the time since the previous attempt.
+        self.reopens += 1
+        self.reopen_note = (f"reopened {self.port} after {quiet_for:.0f}s "
+                            f"of silence")
+        print(f"[board] {self.reopen_note}", file=sys.stderr, flush=True)
+        # The board streams unprompted, so this is not what restarts it -- it just
+        # brings the first line forward from up to 60 ms away to now.
+        self.send({"T": CMD_PROBE})
+        return True
 
     def pump(self) -> int:
         """Drain whatever the board has said and fold it in. Returns lines read.
@@ -350,6 +455,7 @@ class SerialLink:
         with self._motion_lock:
             self._newest = lines[-1]
             self._newest_at = now
+            self._spoke_at = now
             self._sample_at = now
             self._samples += len(lines)
             if hole:
@@ -428,6 +534,16 @@ class SerialLink:
 
 class HttpLink:
     """JSON commands over the ESP32's own `/js` endpoint, for a board on WiFi."""
+
+    #: A board on WiFi has no port to reopen -- each request is its own
+    #: connection, so the failure this counts on the serial side cannot happen
+    #: here. Declared anyway so that whatever reports the link does not have to
+    #: know which kind it got.
+    reopens = 0
+    reopen_note = None
+
+    def watch(self) -> bool:
+        return False
 
     def __init__(self, host: str, timeout: float = 1.0) -> None:
         import http.client

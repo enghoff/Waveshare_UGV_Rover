@@ -48,7 +48,7 @@ import glob
 import os
 
 # `fcntl` is imported where it is used rather than here, and that is not tidiness:
-# it does not exist on Windows, and this module is reached from `navigator.py`,
+# it does not exist on Windows, and this module is reached from `ros_navigator.py`,
 # which the desk imports for its move commentary and its selftests. Everything else
 # in here is path and string work that runs anywhere -- a glob over `/sys` simply
 # finds nothing -- so the one Linux-only line is the one that issues the ioctl.

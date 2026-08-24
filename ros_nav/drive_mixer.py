@@ -66,7 +66,7 @@ FALLBACK_TURN_POINTS = [[pwm, rate] for pwm, rate in _TURN_FIT]
 def to_pwm(value):
     """A normalised -1..1 wheel command as the firmware's PWM.
 
-    The same curve as `lidar_slam/nav_drive.py`, and deliberately so: below
+    The same curve the rover's own drive controller used, and deliberately so: below
     MIN_PWM the motors buzz and do not turn, so the usable range starts there
     rather than at zero, and a controller that has not been told this spends the
     bottom quarter of its output commanding a noise.
@@ -210,9 +210,9 @@ def mix(linear, angular, turn_points=None, drive_points=None,
 
     Done in PWM rather than in normalised units, because that is where both
     calibrations live: each curve is a measured map from PWM to motion, and mixing
-    normalised numbers and converting once at the end -- which is what
-    `lidar_slam/nav_drive.py` does -- would apply the motors' floor to the sum
-    instead of to each part.
+    normalised numbers and converting once at the end -- which is what the rover's
+    own drive controller did -- would apply the motors' floor to the sum instead of
+    to each part.
 
     Positive `angular.z` is counter-clockwise by REP-103, which is a left turn, so
     the left wheel goes backwards. That is the one sign here worth checking

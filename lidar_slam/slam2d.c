@@ -1,10 +1,15 @@
 /* slam2d -- see slam2d.h for what this is and why it is not Python.
  *
- * Three things happen here, in order, once per revolution of the lidar:
- * the raw byte stream is turned into a list of points in the rover's frame, the
- * pose is found by sliding that list over a likelihood field until it fits, and
- * the field and the occupancy grid are updated from where the pose says the
- * points landed.
+ * Two things happen here, once per revolution of the lidar: the raw byte stream
+ * becomes a list of points in the rover's frame, and that list is segmented into
+ * walls, free-standing objects and the gaps between them.
+ *
+ * There used to be a third -- a correlative scan matcher and an occupancy grid,
+ * which is what the name is about. `slam_toolbox` does that job now, with the loop
+ * closure this could never afford, so the matcher and the map were taken out
+ * rather than left to rot beside code that no longer calls them. What is left is
+ * the part slam_toolbox has no equivalent of: an LD19 parser fast enough for this
+ * board, and the room described in words.
  */
 #include "slam2d.h"
 
@@ -26,10 +31,6 @@
                                      * it has some hope of staying in cache. */
 #define RX_CAP      16384           /* one revolution is ~1974 bytes */
 #define MAX_POINTS  2048
-#define KERN        2               /* likelihood kernel half-width, in cells */
-#define MAX_ANG_BINS 129            /* candidate headings one pass may search, so
-                                     * recover_ang_steps tops out at 64. The profile
-                                     * across them is kept for the caller. */
 
 typedef struct {
     uint16_t bearing;               /* rover-frame, centi-degrees, ccw from forward */
@@ -39,15 +40,9 @@ typedef struct {
 
 struct slam2d {
     slam2d_config cfg;
-    int   cells;
-    float inv_res;
-
-    signed char   *occ;             /* log-odds occupancy, [ix * cells + iy] */
-    unsigned char *lik;             /* likelihood field the match slides over */
 
     uint8_t crc_tab[256];
     float   lut_cos[LUT_BINS], lut_sin[LUT_BINS];
-    uint8_t kernel[2 * KERN + 1][2 * KERN + 1];
 
     unsigned char rx[RX_CAP];
     int  rx_len;
@@ -57,57 +52,17 @@ struct slam2d {
     point pts_a[MAX_POINTS], pts_b[MAX_POINTS];
     point *acc, *pend;              /* accumulating / complete */
     int    acc_n, pend_n;
-    int    pend_ready;
     /* Bearing-sorted copy of the pending scan, for slam2d_features. Per instance
      * rather than a file static: the daemon calls tools on connection threads, and
      * two descriptions at once must not share a scratch buffer. The instance as a
      * whole still needs external locking -- see slam2d.py. */
     point sorted[MAX_POINTS];
-
-    float rot_x[MAX_POINTS], rot_y[MAX_POINTS];   /* scratch for the match */
-
-    float x, y, th;                 /* pose, metres and radians */
-    float prior_fwd, prior_yaw;
-    float score;
-    int   rejected, scans;
-
-    int   seeded;                   /* a scan has been written, so there is something
-                                     * to match against */
-    int   mapping;                  /* 0 = match but write nothing to the map */
-    int   recover;                  /* one-shot: search the wide window next update */
-    int   edge;                     /* the coarse winner sat on the lattice rim */
-    float ambiguity;                /* best distant rival / winner, 0..1 */
-    /* The last coarse pass's best score at each candidate heading, and what that
-     * heading was as an offset from where the search started. Filled by the pass
-     * that is running anyway, so it costs an array and no arithmetic. */
-    int   ang_bins;
-    float ang_off[MAX_ANG_BINS];
-    long  ang_best[MAX_ANG_BINS];
 };
 
 /* ------------------------------------------------------------------ setup */
 
 void slam2d_default_config(slam2d_config *cfg)
 {
-    /* 40 m square at 5 cm. The rover starts at the centre, so this is what it is
-     * really saying: 20 m of reach in every direction from wherever it was switched
-     * on. It was 400 cells -- 10 m of reach -- and a run down a hallway and into the
-     * next room reached the edge, at which point everything past it reads as
-     * never-seen on the map because there is nowhere to write it down. On the
-     * picture that is a dead straight line with the room cut off along it.
-     *
-     * Cheap to widen, and the reason is worth knowing before widening it further: a
-     * revolution's work is the scan, not the map. Every beam is walked a cell at a
-     * time and a hit stamps a small kernel around itself, so the cost follows the
-     * ranges the sensor reported and does not care how much grid is sitting around
-     * them; the only passes over the whole thing are the calloc here and the memset
-     * on clear. What growing this does spend is memory -- two bytes a cell, so 320 kB
-     * becomes 1.3 MB -- and a wider row stride for the matcher to stride over, which
-     * is why test_timing reports the cost per revolution on the host it was built
-     * on. Read it after changing this. */
-    cfg->grid_cells   = 800;
-    cfg->resolution_m = 0.05f;
-
     cfg->mount_deg    = 90.0f;      /* this rover; matches lidar/lidar_view.py */
     cfg->min_range_m  = 0.12f;
     cfg->max_range_m  = 8.0f;
@@ -118,72 +73,21 @@ void slam2d_default_config(slam2d_config *cfg)
      * nothing this mask can hide is anywhere but on the rover itself. */
     cfg->body_back_m       = 0.16f;
     cfg->body_half_width_m = 0.14f;
-    /* The sensor delivers ~419 points a revolution and every one of them costs a
-     * cache miss in every candidate pose, so the scan is thinned to 300. That is
-     * still 1.2 deg of angular resolution against a 5 cm grid, and it bought 25 ms
-     * a revolution -- the difference between leaving the rest of the host some room
-     * and not. */
-    cfg->max_points   = 300;
-
-    /* +/-0.10 m and +/-9 deg of coarse window: 1.0 m/s and 90 deg/s at 10 Hz.
+    /* Enough to keep every return the sensor gives, which is ~419 a revolution and
+     * has been seen at 450.
      *
-     * The angular half was +/-6 and that was not enough. Rotation beyond the window
-     * does not merely go unmatched, it comes back *under-reported* -- the matcher
-     * returns the largest rotation it was allowed to consider -- and a controller
-     * closing on that measurement keeps turning to make up a difference that is not
-     * there. Commanded 90 degree turns overshot by around 40%. Three extra angles
-     * cost about 7 ms a revolution, which is worth it to stop the measurement
-     * saturating quietly.
-     *
-     * Paid for out of the linear window, which was over-generous: +/-0.15 m is
-     * 1.5 m/s and the rover's top speed is 0.35, so 3.5 cm a revolution against a
-     * 10 cm window is still a threefold margin. Cost goes as the *square* of the
-     * linear steps and only linearly in the angular ones, so trading one for the
-     * other is not even: 5x5x7 coarse plus 5x5x5 fine is 300 poses against the 370
-     * this replaces, so the angular window widens by half and the whole match gets
-     * cheaper. */
-    cfg->coarse_lin_m     = 0.05f;  cfg->coarse_lin_steps = 2;
-    cfg->coarse_ang_deg   = 3.0f;   cfg->coarse_ang_steps = 3;
-    /* The fine pass only has to beat the coarse grid, so it spans one coarse step. */
-    cfg->fine_lin_m       = 0.0125f; cfg->fine_lin_steps  = 2;
-    cfg->fine_ang_deg     = 0.75f;   cfg->fine_ang_steps  = 2;
-    cfg->min_match_score  = 0.15f;
-    cfg->min_write_score  = 0.35f;
-
-    /* +/-60 deg and +/-0.05 m of recovery window, in the same 3 deg steps as the
-     * coarse pass so the fine pass after it still fits.
-     *
-     * Wide in angle and deliberately narrow in translation. 41 headings x 9 offsets
-     * is 369 poses against the coarse pass's 175, so a recovery match costs about
-     * half as much again as a normal one rather than three times -- and it has to
-     * be affordable every revolution, because a rover that is lost goes on asking
-     * for one until it is found. Cost grows as the square of the linear steps and
-     * only linearly in the angular ones, and a rover turning on the spot errs by
-     * tens of degrees in heading and by centimetres in position, so this is where
-     * the budget belongs.
-     *
-     * 60 rather than 30 because the error being recovered from is a fraction of the
-     * whole turn: the worst seen was 48 degrees, on a 90 that physically managed
-     * 42. Wider than this starts finding rivals in an ordinary room faster than it
-     * finds the answer, which is what ambiguity_sep_deg is there to catch. */
-    cfg->recover_lin_m     = 0.05f;  cfg->recover_lin_steps = 1;
-    cfg->recover_ang_deg   = 3.0f;   cfg->recover_ang_steps = 20;
-    /* Two peaks closer together than this in heading are the same peak. 20 deg is
-     * comfortably past the shoulder of a genuine one -- a 300-point scan of a room
-     * falls off within a few degrees -- and well inside the symmetries that matter,
-     * which arrive at 90 and 180. */
-    cfg->ambiguity_sep_deg = 20.0f;
-
-    cfg->hit_inc    = 12;
-    cfg->miss_dec   = 3;            /* asymmetric on purpose: a beam that passes
-                                     * through is weaker evidence than one that
-                                     * stops, so clearing is slower than marking */
-    cfg->occupied_at = 20;
-    cfg->lik_stamp   = 255;
-    cfg->lik_decay   = 8;
+     * This was 300, and 300 was a budget rather than a measurement: every point
+     * cost a cache miss in each of 300 candidate poses, so thinning the scan bought
+     * 25 ms a revolution off the scan match. With the matcher gone the scan is no
+     * longer an input to something expensive -- it *is* the output, published as
+     * /scan for slam_toolbox and Nav2 -- and throwing away a third of it to save
+     * arithmetic nobody does any more is simply a coarser sensor. */
+    cfg->max_points   = 600;
 
     /* The UGV Rover is about 22 cm across the tracks; 0.34 leaves a hand's width
-     * either side, which is also roughly the standoff worth planning gaps around. */
+     * either side, which is also roughly the standoff worth planning gaps around.
+     * Only the gap segmentation reads it now: a gap narrower than the rover is not
+     * a way through and is not worth reporting as one. */
     cfg->rover_width_m = 0.34f;
 }
 
@@ -219,50 +123,18 @@ static void build_lut(slam2d *s)
     }
 }
 
-static void build_kernel(slam2d *s)
-{
-    /* A Gaussian at sigma = 1 cell, so a hit raises its own cell and the ring
-     * around it. The lidar is good to about +/-20 mm, far tighter than the 10 cm
-     * this smears over -- the width is not modelling the sensor, it is widening
-     * the basin the correlative match has to fall into, which is what lets the
-     * coarse pass step a whole 5 cm cell at a time without walking past the peak. */
-    for (int dx = -KERN; dx <= KERN; dx++)
-        for (int dy = -KERN; dy <= KERN; dy++) {
-            double w = exp(-(double)(dx * dx + dy * dy) / 2.0);
-            s->kernel[dx + KERN][dy + KERN] = (uint8_t)(s->cfg.lik_stamp * w + 0.5);
-        }
-}
-
 slam2d *slam2d_create(const slam2d_config *cfg)
 {
-    if (!cfg || cfg->grid_cells < 16 || cfg->grid_cells > 4096) return NULL;
-    if (cfg->resolution_m <= 0.0f || cfg->max_range_m <= cfg->min_range_m) return NULL;
+    if (!cfg || cfg->max_range_m <= cfg->min_range_m) return NULL;
 
     slam2d *s = calloc(1, sizeof *s);
     if (!s) return NULL;
     s->cfg = *cfg;
     if (s->cfg.max_points < 1) s->cfg.max_points = 1;
     if (s->cfg.max_points > MAX_POINTS) s->cfg.max_points = MAX_POINTS;
-    /* Clamped rather than rejected: the profile buffer is what sets the ceiling,
-     * and a caller asking for a wider sweep than it holds wants the widest sweep
-     * available, not a NULL handle. */
-    if (s->cfg.coarse_ang_steps  > MAX_ANG_BINS / 2) s->cfg.coarse_ang_steps  = MAX_ANG_BINS / 2;
-    if (s->cfg.recover_ang_steps > MAX_ANG_BINS / 2) s->cfg.recover_ang_steps = MAX_ANG_BINS / 2;
-    if (s->cfg.recover_ang_steps < 0) s->cfg.recover_ang_steps = 0;
-    if (s->cfg.recover_lin_steps < 0) s->cfg.recover_lin_steps = 0;
-    s->mapping = 1;
-
-    s->cells   = cfg->grid_cells;
-    s->inv_res = 1.0f / cfg->resolution_m;
-
-    size_t n = (size_t)s->cells * s->cells;
-    s->occ = calloc(n, 1);
-    s->lik = calloc(n, 1);
-    if (!s->occ || !s->lik) { slam2d_destroy(s); return NULL; }
 
     build_crc(s->crc_tab);
     build_lut(s);
-    build_kernel(s);
 
     s->acc = s->pts_a;
     s->pend = s->pts_b;
@@ -273,9 +145,6 @@ slam2d *slam2d_create(const slam2d_config *cfg)
 
 void slam2d_destroy(slam2d *s)
 {
-    if (!s) return;
-    free(s->occ);
-    free(s->lik);
     free(s);
 }
 
@@ -294,41 +163,6 @@ static void parser_resync(slam2d *s)
 void slam2d_resync(slam2d *s)
 {
     if (s) parser_resync(s);
-}
-
-void slam2d_reset(slam2d *s)
-{
-    if (!s) return;
-    size_t n = (size_t)s->cells * s->cells;
-    /* Both grids. Clearing the occupancy alone would blank the picture while the
-     * likelihood field went on holding the old room -- and the field is the half
-     * the matcher actually reads, so the rover would be localised in a map nobody
-     * could see. */
-    memset(s->occ, 0, n);
-    memset(s->lik, 0, n);
-
-    s->x = s->y = s->th = 0.0f;
-    /* The prior is a movement not yet accounted for, measured between two poses
-     * that have both just ceased to mean anything. */
-    s->prior_fwd = s->prior_yaw = 0.0f;
-    s->score = 0.0f;
-    s->rejected = 0;
-    /* The last match described a room that no longer exists. */
-    s->edge = 0;
-    s->ambiguity = 0.0f;
-    s->ang_bins = 0;
-    s->recover = 0;
-    /* A map somebody has just asked to be rebuilt is by definition one they want
-     * written, and leaving mapping suspended here would hand back an empty grid
-     * that stayed empty however long the rover stood in the room. */
-    s->mapping = 1;
-    /* Back to unseeded so the next update takes its first-scan branch and stamps
-     * the pending revolution straight in. It has to: there is nothing to match
-     * against, and matching an empty field would score zero and reject every scan
-     * that followed, leaving the rover dead-reckoning inside a map that never got
-     * written. */
-    s->seeded = 0;
-    s->scans = 0;
 }
 
 /* ----------------------------------------------------------------- parsing */
@@ -350,7 +184,6 @@ static void finish_revolution(slam2d *s)
         n = s->cfg.max_points;
     }
     s->pend_n = n;
-    s->pend_ready = 1;
     s->acc_n = 0;
 }
 
@@ -456,333 +289,7 @@ int slam2d_feed_lidar(slam2d *s, const unsigned char *buf, int n)
     return revolutions;
 }
 
-/* ------------------------------------------------------------ scan matching */
-
-/* Sum the likelihood field under the scan, with the points already rotated into
- * world bearings *and converted to grid units* by rotate_scan, so the candidate
- * translation (ox, oy metres) folds to one add per axis here. This is the hot
- * loop: at the defaults it runs 5 x 5 x 7 coarse plus 5 x 5 x 5 fine times a
- * revolution over every point, so everything that can be hoisted out has been --
- * the metres-to-cells multiply used to be in here, once per point per pose, and
- * moving it into the once-per-angle rotation measured 12% off the whole match
- * (19.7 -> 17.3 ms in selftest on the rover's Pi). */
-static long score_pose(const slam2d *s, float ox, float oy)
-{
-    const int cells = s->cells;
-    const float fcells = (float)cells;
-    const float dx = ox * s->inv_res, dy = oy * s->inv_res;
-    const unsigned char *lik = s->lik;
-    const float *rx = s->rot_x, *ry = s->rot_y;
-    long sum = 0;
-
-    for (int i = 0; i < s->pend_n; i++) {
-        /* Already biased by half the map (in rotate_scan), so the conversion
-         * floors correctly either side of the origin instead of folding -0.5 and
-         * +0.5 into the same cell; the bounds test is on the float for the same
-         * reason. */
-        float fx = rx[i] + dx;
-        float fy = ry[i] + dy;
-        if (fx < 0.0f || fx >= fcells || fy < 0.0f || fy >= fcells) continue;
-        sum += lik[(int)fx * cells + (int)fy];
-    }
-    return sum;
-}
-
-static void rotate_scan(slam2d *s, float th)
-{
-    /* Rotated straight into grid units -- cells, biased by half the map -- so the
-     * translation search above never multiplies. The rotation itself absorbs the
-     * scaling for free: it is the same multiply-add either way. */
-    const float ct = cosf(th) * s->inv_res, st = sinf(th) * s->inv_res;
-    const float half = (float)(s->cells / 2);
-    for (int i = 0; i < s->pend_n; i++) {
-        float px = s->pend[i].x, py = s->pend[i].y;
-        s->rot_x[i] = px * ct - py * st + half;
-        s->rot_y[i] = px * st + py * ct + half;
-    }
-}
-
-/* Search a lattice around (cx, cy, cth), leaving the best pose in place.
- *
- * Two things come out besides the pose, and both exist because the score does not
- * say how the match was won. `edge` reports that the winner sat on the rim of the
- * lattice, which means the answer was most likely outside it and what came back is
- * the boundary of what was searched rather than a fit. `profile`, when given, gets
- * the best score found at each candidate heading -- the correlation curve against
- * rotation, which is what tells a window too narrow apart from a room with two
- * answers in it.
- *
- * Ties now go to the centre, and the centre is the prior. The previous version
- * started from -1 and kept the first candidate evaluated, so anywhere every
- * candidate scores the same -- ground the map has never seen, where they are all
- * zero -- it returned a corner of its own lattice rather than the pose it was
- * handed, and would now report that corner as having hit the edge.
- */
-static long match_pass(slam2d *s, float *cx, float *cy, float *cth,
-                       float lin, int lin_steps, float ang_deg, int ang_steps,
-                       int *edge, long *profile)
-{
-    const float centre_th = *cth;
-    float bx = *cx, by = *cy, bth = centre_th;
-    int bu = 0, bv = 0, ba = 0;
-
-    rotate_scan(s, centre_th);
-    long best = score_pose(s, *cx, *cy);
-
-    for (int a = -ang_steps; a <= ang_steps; a++) {
-        float th = centre_th + a * ang_deg * (float)(M_PI / 180.0);
-        rotate_scan(s, th);                 /* hoisted: once per angle, not per pose */
-        long top = -1;
-        for (int u = -lin_steps; u <= lin_steps; u++)
-            for (int v = -lin_steps; v <= lin_steps; v++) {
-                float ox = *cx + u * lin, oy = *cy + v * lin;
-                long sc = score_pose(s, ox, oy);
-                if (sc > top) top = sc;
-                if (sc > best) {
-                    best = sc; bx = ox; by = oy; bth = th;
-                    bu = u; bv = v; ba = a;
-                }
-            }
-        if (profile) profile[a + ang_steps] = top;
-    }
-    *cx = bx; *cy = by; *cth = bth;
-    if (edge)
-        *edge = ((lin_steps > 0 && (abs(bu) == lin_steps || abs(bv) == lin_steps))
-                 || (ang_steps > 0 && abs(ba) == ang_steps));
-    return best;
-}
-
-/* The best peak in the heading profile far enough from the winner to be a rival
- * answer rather than the shoulder of the same one, as a fraction of the winner.
- *
- * Zero when the pass was never wide enough to hold anything that far out, which is
- * every ordinary tracking revolution -- the number is worth reading after a
- * recovery search and nowhere else. */
-static float rival_ratio(const slam2d *s, float ang_deg)
-{
-    if (s->ang_bins < 3 || ang_deg <= 0.0f) return 0.0f;
-
-    int sep = (int)(s->cfg.ambiguity_sep_deg / ang_deg + 0.999f);
-    if (sep < 1) sep = 1;
-
-    int win = 0;
-    for (int i = 1; i < s->ang_bins; i++)
-        if (s->ang_best[i] > s->ang_best[win]) win = i;
-    long top = s->ang_best[win];
-    if (top <= 0) return 0.0f;
-
-    long rival = 0;
-    for (int i = 0; i < s->ang_bins; i++)
-        if (abs(i - win) >= sep && s->ang_best[i] > rival) rival = s->ang_best[i];
-    return (float)rival / (float)top;
-}
-
-/* ---------------------------------------------------------------- mapping */
-
-static void stamp_hit(slam2d *s, int ix, int iy)
-{
-    const int cells = s->cells;
-    signed char *o = &s->occ[ix * cells + iy];
-    int v = *o + s->cfg.hit_inc;
-    *o = (signed char)(v > 127 ? 127 : v);
-
-    /* Max, not add: the field is a likelihood, so seeing the same wall on twenty
-     * consecutive revolutions should not make it twenty times more attractive than
-     * a wall seen once. Decay on the clearing pass is what brings it back down. */
-    for (int dx = -KERN; dx <= KERN; dx++) {
-        int jx = ix + dx;
-        if (jx < 0 || jx >= cells) continue;
-        for (int dy = -KERN; dy <= KERN; dy++) {
-            int jy = iy + dy;
-            if (jy < 0 || jy >= cells) continue;
-            unsigned char w = s->kernel[dx + KERN][dy + KERN];
-            unsigned char *l = &s->lik[jx * cells + jy];
-            if (w > *l) *l = w;
-        }
-    }
-}
-
-static void integrate(slam2d *s)
-{
-    const int cells = s->cells;
-    const float inv = s->inv_res, half = (float)(cells / 2);
-    float ct = cosf(s->th), st = sinf(s->th);
-
-    for (int i = 0; i < s->pend_n; i++) {
-        float px = s->pend[i].x, py = s->pend[i].y;
-        float hx = s->x + px * ct - py * st;
-        float hy = s->y + px * st + py * ct;
-
-        /* Walk the beam a cell at a time and clear what it passed through, stopping
-         * one step short so the clearing pass never fights the hit it belongs to.
-         * Step count scales with range, unlike a fixed sample count, which would
-         * leave gaps in cleared space at 8 m and waste work at 30 cm. */
-        float dx = hx - s->x, dy = hy - s->y;
-        int steps = (int)(sqrtf(dx * dx + dy * dy) * inv);
-        if (steps > 1) {
-            float sx = dx / steps, sy = dy / steps;
-            for (int k = 0; k < steps - 1; k++) {
-                float fx = (s->x + sx * k) * inv + half;
-                float fy = (s->y + sy * k) * inv + half;
-                if (fx < 0.0f || fx >= cells || fy < 0.0f || fy >= cells) continue;
-                int idx = (int)fx * cells + (int)fy;
-                int v = s->occ[idx] - s->cfg.miss_dec;
-                s->occ[idx] = (signed char)(v < -127 ? -127 : v);
-                int l = s->lik[idx] - s->cfg.lik_decay;
-                s->lik[idx] = (unsigned char)(l < 0 ? 0 : l);
-            }
-        }
-
-        float fx = hx * inv + half, fy = hy * inv + half;
-        if (fx < 0.0f || fx >= cells || fy < 0.0f || fy >= cells) continue;
-        stamp_hit(s, (int)fx, (int)fy);
-    }
-}
-
-/* ----------------------------------------------------------------- driving */
-
-void slam2d_set_prior(slam2d *s, float d_forward_m, float d_yaw_rad)
-{
-    if (!s) return;
-    s->prior_fwd = d_forward_m;
-    s->prior_yaw = d_yaw_rad;
-}
-
-void slam2d_set_mapping(slam2d *s, int on)
-{
-    if (s) s->mapping = on ? 1 : 0;
-}
-
-void slam2d_request_recovery(slam2d *s)
-{
-    if (s) s->recover = 1;
-}
-
-int slam2d_update(slam2d *s)
-{
-    if (!s || !s->pend_ready) return 0;
-    s->pend_ready = 0;
-
-    const int recovering = s->recover;
-    s->recover = 0;
-
-    /* Apply the prior first: drive forward along the heading we had, then turn.
-     * This is only the centre of the search window, so its errors are corrected by
-     * the match rather than accumulated -- until the match is rejected. */
-    float px = s->x + s->prior_fwd * cosf(s->th);
-    float py = s->y + s->prior_fwd * sinf(s->th);
-    float pth = s->th + s->prior_yaw;
-    s->prior_fwd = s->prior_yaw = 0.0f;
-
-    if (!s->seeded || s->pend_n == 0) {
-        /* Nothing to match against until a scan has been written: the map is where
-         * the first scan is put, and the pose it defines is the origin by
-         * definition. Keyed on the map having been seeded rather than on the scan
-         * count, because mapping can be suspended -- and counting a suspended
-         * revolution as the first one would leave every later scan matching against
-         * an empty field, scoring zero and being rejected for ever. */
-        s->x = px; s->y = py; s->th = pth;
-        s->score = 0.0f;
-        s->rejected = 0;
-        s->edge = 0;
-        s->ambiguity = 0.0f;
-        s->ang_bins = 0;
-    } else {
-        /* One window for tracking, a much wider one for re-finding a pose the
-         * caller has moved itself. See the recovery block in slam2d.h. */
-        const float lin   = recovering ? s->cfg.recover_lin_m     : s->cfg.coarse_lin_m;
-        const int   lsteps= recovering ? s->cfg.recover_lin_steps : s->cfg.coarse_lin_steps;
-        const float ang   = recovering ? s->cfg.recover_ang_deg   : s->cfg.coarse_ang_deg;
-        const int   asteps= recovering ? s->cfg.recover_ang_steps : s->cfg.coarse_ang_steps;
-
-        float mx = px, my = py, mth = pth;
-        match_pass(s, &mx, &my, &mth, lin, lsteps, ang, asteps,
-                   &s->edge, s->ang_best);
-        s->ang_bins = 2 * asteps + 1;
-        for (int i = 0; i < s->ang_bins; i++)
-            s->ang_off[i] = (float)(i - asteps) * ang;
-
-        long best = match_pass(s, &mx, &my, &mth,
-                               s->cfg.fine_lin_m, s->cfg.fine_lin_steps,
-                               s->cfg.fine_ang_deg, s->cfg.fine_ang_steps,
-                               NULL, NULL);
-
-        float peak = (float)s->pend_n * s->cfg.lik_stamp;
-        s->score = peak > 0.0f ? (float)best / peak : 0.0f;
-        s->ambiguity = rival_ratio(s, ang);
-        s->rejected = s->score < s->cfg.min_match_score;
-        if (s->rejected) {
-            /* Believe the prior instead. Dead reckoning drifts; a bad match can
-             * teleport the rover and corrupt the map it then matches against. */
-            s->x = px; s->y = py; s->th = pth;
-        } else {
-            s->x = mx; s->y = my; s->th = mth;
-        }
-    }
-
-    /* Keep the heading in (-pi, pi] so it stays comparable and printable. */
-    while (s->th > (float)M_PI)  s->th -= (float)(2.0 * M_PI);
-    while (s->th <= -(float)M_PI) s->th += (float)(2.0 * M_PI);
-
-    /* Written only from a pose this code is prepared to defend. Believe and write
-     * are different: a weak or edge-of-window match may still be a better pose than
-     * the prior, but stamping it would put a wall in the likelihood field at full
-     * strength, as attractive to the next revolution as one seen all afternoon, and
-     * from then on the wrong answer has evidence for it. The first scan has nothing
-     * to match against and is the map by definition, so it is exempt -- but a
-     * revolution with no returns in range is not that scan. Letting it stand as the
-     * seed marks an empty map as seeded, and every later scan then matches an empty
-     * field, scores zero and is rejected, so nothing is ever written. Suspended
-     * mapping is the same argument made by the caller, which knows things this does
-     * not: that it has just dead-reckoned a turn and cannot yet vouch for the pose. */
-    int write = s->mapping && !s->rejected && s->pend_n > 0;
-    if (s->seeded)
-        write = write && !s->edge && s->score >= s->cfg.min_write_score;
-    if (write) {
-        integrate(s);
-        s->seeded = 1;
-    }
-    s->scans++;
-    return 1;
-}
-
 /* ----------------------------------------------------------------- queries */
-
-void slam2d_pose(const slam2d *s, float *x, float *y, float *theta)
-{
-    if (!s) return;
-    if (x) *x = s->x;
-    if (y) *y = s->y;
-    if (theta) *theta = s->th;
-}
-
-void slam2d_set_pose(slam2d *s, float x, float y, float theta)
-{
-    if (!s) return;
-    s->x = x; s->y = y; s->th = theta;
-}
-
-float slam2d_score(const slam2d *s)    { return s ? s->score : 0.0f; }
-int   slam2d_rejected(const slam2d *s) { return s ? s->rejected : 0; }
-int   slam2d_scans(const slam2d *s)    { return s ? s->scans : 0; }
-int   slam2d_points(const slam2d *s)   { return s ? s->pend_n : 0; }
-int   slam2d_match_edge(const slam2d *s) { return s ? s->edge : 0; }
-float slam2d_ambiguity(const slam2d *s)  { return s ? s->ambiguity : 0.0f; }
-int   slam2d_mapping(const slam2d *s)    { return s ? s->mapping : 0; }
-
-int slam2d_angle_profile(const slam2d *s, float *offsets, float *scores, int max_n)
-{
-    if (!s || max_n < 1) return 0;
-    int n = s->ang_bins < max_n ? s->ang_bins : max_n;
-    /* Normalised against the same peak the score is, so a value here and the score
-     * are the same measurement and can be compared to each other. */
-    float peak = (float)s->pend_n * (float)s->cfg.lik_stamp;
-    for (int i = 0; i < n; i++) {
-        if (offsets) offsets[i] = s->ang_off[i];
-        if (scores)  scores[i]  = peak > 0.0f ? (float)s->ang_best[i] / peak : 0.0f;
-    }
-    return n;
-}
 
 void slam2d_sectors(const slam2d *s, float *out, int n_sectors)
 {
@@ -796,50 +303,6 @@ void slam2d_sectors(const slam2d *s, float *out, int n_sectors)
         int k = ((int)s->pend[i].bearing * n_sectors + 18000) / 36000 % n_sectors;
         if (out[k] < 0.0f || s->pend[i].range < out[k]) out[k] = s->pend[i].range;
     }
-}
-
-float slam2d_arc_clearance(const slam2d *s, float curvature, float half_width_m,
-                           float max_dist_m)
-{
-    if (!s || max_dist_m <= 0.0f) return 0.0f;
-    if (half_width_m <= 0.0f) half_width_m = s->cfg.rover_width_m * 0.5f;
-
-    float best = max_dist_m;
-
-    /* Straight enough that the arc maths would divide by nearly zero: a radius over
-     * 200 m across a corridor this short is a straight line by any measure. */
-    if (fabsf(curvature) < 0.005f) {
-        for (int i = 0; i < s->pend_n; i++) {
-            float px = s->pend[i].x, py = s->pend[i].y;
-            if (px <= 0.0f || fabsf(py) > half_width_m) continue;
-            if (px < best) best = px;
-        }
-        return best;
-    }
-
-    /* Turning. The rover follows a circle through the origin, tangent to its own
-     * forward axis, with the centre abeam at (0, R). Work the whole thing in the
-     * left-turning case and mirror y for a right turn, so there is one set of signs
-     * to get right rather than two. */
-    float R = 1.0f / curvature;
-    float flip = R < 0.0f ? -1.0f : 1.0f;
-    R *= flip;
-
-    for (int i = 0; i < s->pend_n; i++) {
-        float px = s->pend[i].x, py = s->pend[i].y * flip;
-        /* Radial distance from the turn centre; the corridor is an annulus. */
-        float dy = R - py;
-        float d = sqrtf(px * px + dy * dy);
-        if (fabsf(d - R) > half_width_m) continue;
-        /* Swept angle to reach it. Behind the rover is negative and irrelevant, and
-         * a whole half turn ahead is further than any corridor this short cares
-         * about. */
-        float theta = atan2f(px, dy);
-        if (theta <= 0.0f) continue;
-        float along = R * theta;
-        if (along < best) best = along;
-    }
-    return best;
 }
 
 /* --------------------------------------------------------------- features */
@@ -1101,12 +564,3 @@ int slam2d_scan_xy(const slam2d *s, float *xy, int max_pts)
     return n;
 }
 
-const signed char *slam2d_grid(const slam2d *s) { return s ? s->occ : NULL; }
-
-void slam2d_grid_origin(const slam2d *s, float *ox, float *oy)
-{
-    if (!s) return;
-    float o = -(float)(s->cells / 2) * s->cfg.resolution_m;
-    if (ox) *ox = o;
-    if (oy) *oy = o;
-}

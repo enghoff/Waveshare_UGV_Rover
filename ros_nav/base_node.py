@@ -381,7 +381,7 @@ class BaseNode(Node):
             # that never turns will fold the room in on itself. Refusing is the
             # honest failure.
             raise SystemExit(
-                "no gyro scale in %s and none given: run lidar_slam/calibrate_turn.py"
+                "no gyro scale in %s and none given: run ros_nav/calibrate_chassis.py"
                 % self.args.calibration)
         return store
 

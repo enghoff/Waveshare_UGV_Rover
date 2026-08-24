@@ -1,6 +1,6 @@
 #!/bin/sh
-# Build the SLAM core and its selftest. Run this on the machine that will run it --
-# the rover's Pi is armv6 and nothing else here is, so there is no cross-compiler
+# Build the lidar parser and its selftest. Run this on the machine that will run it --
+# libslam2d.so is per-host and is not committed, so there is no cross-compiler
 # and no build cache to get stale.
 #
 #   ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
@@ -8,10 +8,9 @@ set -e
 cd "$(dirname "$0")"
 
 CC=${CC:-gcc}
-# -O2 is worth about 6x over -O0 here and -O3 measured no better: the hot loop is
-# waiting on cache misses into the likelihood field, not on instruction count.
-# No -ffast-math: the pose search compares sums for equality of ordering, and the
-# saturating arithmetic in the map update wants predictable rounding.
+# -O2 is worth several times -O0 on the CRC and the segmentation, and -O3 measured
+# no better. No -ffast-math: the corner splitting compares deviations against a
+# threshold and wants the rounding it was tuned against.
 CFLAGS=${CFLAGS:--O2 -Wall -Wextra -std=c99 -fPIC}
 
 echo "building with $($CC --version | head -1)"

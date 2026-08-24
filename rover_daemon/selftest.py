@@ -786,15 +786,18 @@ def test_control_calls_without_hardware():
 
     Worth its own check because both are reached from a window with live buttons
     rather than from a model that would read an explanation: a daemon started
-    without `--lidar` still shows a `clear map` button, and pressing it has to come
-    back as a sentence rather than as a traceback that closes the connection.
+    without `--ros-nav` still shows a `clear map` button, and pressing it has to
+    come back as a sentence rather than as a traceback that closes the connection.
     """
     import rover_daemon
 
     rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
     blind = rover.call("clear_map", {})
-    check("clear_map with no lidar is refused", blind["ok"], False)
-    check("...and says why", "lidar" in blind["error"], True)
+    check("clear_map with nothing to drive is refused", blind["ok"], False)
+    # Deliberately not "lidar". The sensor belongs to the ROS stack, so a daemon
+    # started without --ros-nav is one whose lidar is spinning perfectly well, and
+    # a refusal that named it would send somebody to check a cable that is fine.
+    check("...and says why", "--ros-nav" in blind["error"], True)
     # camera_jpeg needs a camera and *not* a vision host, which is the whole
     # difference between it and `look`: a daemon with nowhere to post a picture can
     # still hand one back in the reply.
@@ -1231,6 +1234,128 @@ def test_reading_the_board():
           link.telemetry()["v"], 1208)
 
 
+
+def test_the_probe_waits_to_be_answered():
+    """A write is not an answer, and this is the check the whole boot rests on.
+
+    `probe` used to be `link.send(...)`, which reports whether the write left this
+    host. A serial write succeeds into an unplugged cable, so it said yes to a
+    board that was not there -- and because `run_daemon.sh` only retries when the
+    daemon *exits*, and the daemon only exits when this returns False, the retry
+    loop written for exactly this race never ran. The rover came up at boot holding
+    a port the ESP32 was not yet talking on, and stayed that way: no telemetry, no
+    odometry, no transform, and slam_toolbox dropping every scan it was given.
+    """
+    import rover_daemon
+
+    talking = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    check("a board that answers passes the probe", talking.probe(wait_s=0.2), True)
+
+    # volts=None is a link whose `telemetry()` returns nothing -- an unpowered
+    # board, the wrong serial port, and an ESP32 still booting all look like this.
+    silent = FakeLink(volts=None)
+    rover = rover_daemon.Rover(silent, "unused", device=None)
+    began = time.monotonic()
+    answered = rover.probe(wait_s=0.2)
+    check("a silent board fails it", answered, False)
+    check("...having actually waited rather than returned at once",
+          time.monotonic() - began >= 0.2, True)
+    check("...and it kept asking while it waited", silent.reads > 1, True)
+
+    # The write still succeeding is the point: nothing about the old check was
+    # broken in a way a caller could have noticed from its return value.
+    check("...even though every write to it succeeded",
+          all(rover.link.send(c) for c in ({"T": 130},)), True)
+
+
+def test_a_board_that_goes_quiet_gets_its_port_reopened():
+    """The lidar has a replug ladder; the board had nothing at all.
+
+    Reopening is not a general repair -- it cannot fix a cable -- but it is the
+    whole of the repair for the case that actually bit: a port opened before the
+    thing at the other end was ready, held open and dead from then on. What has to
+    hold is that silence is noticed, that the reopen is not attempted twice a
+    second, and that a board which is talking is left alone.
+    """
+    import board_link
+
+    class Port:
+        """A serial port that can be told to stop delivering, and counts opens."""
+
+        opens = 0
+
+        def __init__(self, *_a, **_k):
+            Port.opens += 1
+            self.closed = False
+
+        in_waiting = 0
+
+        def read(self, _n):
+            return b""
+
+        def write(self, _line):
+            return len(_line)
+
+        def reset_input_buffer(self):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    import serial
+    real, Port.opens = serial.Serial, 0
+    serial.Serial = Port
+    try:
+        link = board_link.SerialLink("/dev/null")
+        link._stop.set()                     # the reader thread is not the subject
+        check("opening the link opened the port", Port.opens, 1)
+
+        # Just opened, nothing heard yet, but not yet silent for long enough.
+        check("a port only just opened is left alone", link.watch(), False)
+
+        # Silence measured from the open, not from the last line -- a board that
+        # has never spoken is the case this exists for, and a "time since the last
+        # line" test would never fire on it.
+        link._spoke_at = time.monotonic() - (board_link.BOARD_SILENT_S + 1.0)
+        check("silence since the open is noticed", link.watch(), True)
+        check("...and the port was reopened", Port.opens, 2)
+        check("...and it is counted where a console can see it", link.reopens, 1)
+        check("...and says what it did", "silence" in (link.reopen_note or ""), True)
+        check("...and marks a hole in the gyro's integral", link._breaks >= 1, True)
+
+        # Immediately quiet again, but the backoff has not elapsed.
+        check("a second attempt waits for the backoff", link.watch(), False)
+        check("...so the port was not reopened again", Port.opens, 2)
+
+        # And the backoff really doubles across a board that never comes back.
+        # It only does so because reopening does not count as the board speaking:
+        # marking it as such made every `watch` take the "heard from it" branch and
+        # reset the interval, so a rover with an unplugged cable would have
+        # reopened its port every five seconds for as long as it was switched on.
+        waits = []
+        for _ in range(4):
+            waits.append(link._reopen_wait)
+            link._reopen_at = 0.0            # pretend the interval elapsed
+            link.watch()
+        check("the backoff doubles while the board stays silent",
+              waits, [waits[0] * 2 ** i for i in range(4)])
+        check("...and each of those was a real reopen", Port.opens, 6)
+        check("...and it is capped rather than doubling for ever",
+              min(board_link.BOARD_REOPEN_MAX_S,
+                  board_link.BOARD_REOPEN_S * 2 ** 40),
+              board_link.BOARD_REOPEN_MAX_S)
+
+        # And a board that starts talking again resets the backoff, so the next
+        # fault does not inherit a two-minute wait from the last one.
+        link._reopen_wait = board_link.BOARD_REOPEN_MAX_S
+        link._spoke_at = time.monotonic()
+        check("hearing from the board clears the backoff", link.watch(), False)
+        check("...back to the first interval",
+              link._reopen_wait, board_link.BOARD_REOPEN_S)
+    finally:
+        serial.Serial = real
+
+
 def main():
     for test in (test_levels, test_battery, test_reading_the_board,
                  test_schemas, test_lights, test_gimbal,
@@ -1243,6 +1368,8 @@ def main():
                  test_wifi_status_without_the_helper_still_reports_the_link,
                  test_an_unfilled_signal_column_is_a_moment_not_an_answer,
                  test_control_calls_without_hardware,
+                 test_the_probe_waits_to_be_answered,
+                 test_a_board_that_goes_quiet_gets_its_port_reopened,
                  test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,
                  test_scripts_run_and_say_what_happened,

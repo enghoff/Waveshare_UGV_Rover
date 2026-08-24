@@ -55,7 +55,7 @@ awake. Put feedback back with `{"T":131,"cmd":1"}` — and do it over Wi‑Fi
 
 Nothing in this repository opens `/dev/i2c-*`. The daemon's `SerialLink` drains
 the GPIO UART (`/dev/ttyS4` on the M4 Zero, `/dev/ttyAMA0` on the Pi).
-[`lidar_slam/odometry.py`](../lidar_slam/odometry.py) takes only `gz` from that
+[`ros_nav/base_node.py`](../ros_nav/base_node.py) takes only `gz` from that
 stream: as a rotation witness once rest is known, and as a motion prior once
 confirmed turns have measured the scale. Accel, the other gyro axes and the
 magnetometer stay in the line and are never parsed. Pack volts go to the

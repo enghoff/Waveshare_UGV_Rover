@@ -11,15 +11,15 @@ oak_camera/crash_dumps/
 calibration_backup_*.json
 omni_bench/runs/
 
-# lidar_slam/ is compiled per-machine on the armv6 Pi that runs it; a committed
-# binary could only ever be for the wrong architecture.
+# lidar_slam/ is compiled per-machine on the board that runs it -- aarch64 now,
+# armv6 before that; a committed binary could only ever be for the wrong one.
 lidar_slam/libslam2d.so
 lidar_slam/selftest
 *.pgm
 
 # Measured on a particular rover by driving it -- the gyro's scale and the
 # wheels' counts per metre. Belongs to the machine, not the repository, and
-# lives beside ~/ugv so no deploy can overwrite it. See lidar_slam/odometry.py.
+# lives beside ~/ugv so no deploy can overwrite it. See ros_nav/calibrate_chassis.py.
 odometry.json
 
 # netprobe writes its record of what the rover looked like from a desk here.

@@ -4,15 +4,14 @@
 The packet parsing is not done here. `lidar_slam/libslam2d.so` already reads this
 sensor -- the 47-byte packets, the CRC-8 over each of them, and the wrap that
 marks the end of a revolution -- and it does it in 0.3 ms where Python takes 25.
-So this creates a `Slam2D` purely as a parser: bytes go in with `feed()`, and the
-completed revolution comes back out of `scan_xy()` in the rover's own frame, with
-the 90-degree mount rotation already undone and the points that land on the
-rover's own body already dropped.
+So bytes go in with `feed()`, and the completed revolution comes back out of
+`scan_xy()` in the rover's own frame, with the 90-degree mount rotation already
+undone and the points that land on the rover's own body already dropped.
 
-Nothing else about that library is used. `update()` -- the scan match and the
-occupancy grid -- is never called, so the matcher costs nothing and the grid is
-never written. That work now belongs to `slam_toolbox`, which does it with loop
-closure, and running both would be paying twice for the worse answer.
+That library used to be a SLAM, which is what its name is about. The scan matcher
+and the occupancy grid are gone -- `slam_toolbox` does that job with the loop
+closure this board could never afford -- so what is left is the parser and the
+segmentation behind `describe()`.
 
     python3 lidar_node.py --help
 """
@@ -77,17 +76,14 @@ class LidarNode(Node):
         self.args = args
         self.frame_id = args.frame
 
-        # A parser, not a SLAM. `max_points` is raised well past the sensor's own
-        # ~450 because the default 300 is a budget for the scan matcher that used
-        # to live downstream of this: it keeps the strongest returns and drops the
-        # rest, which is the right trade when 300 poses are about to be scored
-        # against them and the wrong one when the scan is the output.
+        # `max_points` is raised past the sensor's own ~450 so that nothing is
+        # thinned away: the scan is the output here, and the library's default is
+        # sized for a parser rather than for the matcher it once fed.
         cfg = slam2d.default_config()
         cfg.max_points = args.max_points
         cfg.min_range_m = args.range_min
         cfg.max_range_m = args.range_max
         self.slam = slam2d.Slam2D(cfg)
-        self.slam.mapping = False
 
         self.bins = args.bins
         self.increment = 2.0 * math.pi / self.bins
@@ -288,11 +284,10 @@ class LidarNode(Node):
     def describe(self):
         """Publish the room in words, if anybody is listening.
 
-        The pose in this is the origin and the match score is zero, because the
-        matcher in this library is never run -- see the module docstring. Both are
-        replaced by the nav bridge with the answers slam_toolbox and the transform
-        tree have, which is where they belong: this node knows the shape of the
-        room around the rover and genuinely does not know where the rover is.
+        Nothing here says where the rover is, and that is deliberate: this node
+        knows the shape of the room around it and genuinely does not know its own
+        pose. The bridge adds the pose and the map from slam_toolbox and the
+        transform tree, which do.
 
         Skipped when nothing subscribes, so running this node on its own to look
         at a scan costs nothing extra. It runs on the same thread as `poll`, so
@@ -314,17 +309,6 @@ class LidarNode(Node):
         room["port"] = self.port_path
         room["thin"] = self.thin
         room["bins"] = self.bins
-        # Dropped rather than sent, because all three are answers this node is in
-        # no position to give and all three arrive looking perfectly plausible.
-        # The pose and the match score come from a scan matcher that is never run,
-        # so they are the origin and zero; `scans` counts revolutions that matcher
-        # has processed, which is none of them. A zero in a console row labelled
-        # "scans" on a rover whose lidar is spinning happily is exactly the kind
-        # of number somebody debugs for an hour. The bridge fills all three in
-        # from slam_toolbox and the transform tree, which do know.
-        room.pop("match_score", None)
-        room.pop("pose", None)
-        room.pop("scans", None)
         self.room_pub.publish(String(data=json.dumps(room, separators=(",", ":"))))
 
     def report(self):

@@ -1,10 +1,16 @@
 /* Correctness and cost of slam2d, against scans synthesised from a known room.
  *
  * The point of generating the packets rather than replaying a capture is that the
- * true pose is known, so "the pose tracks" is a measured error in millimetres
- * instead of a map that looks about right. Packets are built the way the sensor
- * builds them -- 47 bytes, real start/end angles, real CRC-8 -- so the parser is
- * under test too.
+ * room is known, so "the sensor is read correctly" is a measured error in
+ * millimetres instead of a picture that looks about right. Packets are built the
+ * way the sensor builds them -- 47 bytes, real start/end angles, real CRC-8 -- so
+ * the parser is under test rather than assumed.
+ *
+ * There used to be twice as many tests here, covering the scan matcher, the
+ * occupancy grid and the recovery search. Those went with the code they tested;
+ * `slam_toolbox` does that job now. What is left tests the two things this
+ * library still is: an LD19 parser, and the segmentation that turns a revolution
+ * into walls, objects and gaps.
  *
  *   gcc -O2 -o selftest selftest.c slam2d.c -lm && ./selftest
  */
@@ -31,10 +37,6 @@
 #define PKT_POINTS  12
 #define PKTS_PER_REV (PTS_PER_REV / PKT_POINTS)     /* 35 */
 #define MOUNT_DEG   90.0f
-/* Room for the widest angle profile the library will hand back. The library's own
- * ceiling is internal to slam2d.c, so this is that number restated where the test
- * needs it rather than exported for the sake of one caller. */
-#define PROFILE_CAP 129
 
 /* The room, axis-aligned, in metres. The rover starts at the origin facing +x, so
  * these numbers are also the distances the sector query should report. */
@@ -176,11 +178,25 @@ static unsigned char rev[PKTS_PER_REV * 47];
 /* Feed one revolution and process whatever that completed. Returns 1 if a scan was
  * processed. Note the inherent one-revolution lag: the wrap that ends revolution N
  * is only seen when revolution N+1's first packet arrives. */
+
+static unsigned char rev[PKTS_PER_REV * 47];
+
+/* How many points the last completed revolution left in the parser. There is no
+ * accessor for the count on its own, and there does not need to be: reading the
+ * scan out is what every real caller does. */
+static float xy_buf[2 * 4096];
+static int scan_points(const slam2d *s)
+{
+    return slam2d_scan_xy(s, xy_buf, 2048);
+}
+
+/* Feed one revolution's bytes. Returns the number of revolutions that completed,
+ * which is 0 or 1. Note the inherent one-revolution lag: the wrap that ends
+ * revolution N is only seen when revolution N+1's first packet arrives. */
 static int step(slam2d *s, double x, double y, double th)
 {
     int n = make_revolution(rev, x, y, th);
-    int revs = slam2d_feed_lidar(s, rev, n);
-    return revs > 0 ? slam2d_update(s) : 0;
+    return slam2d_feed_lidar(s, rev, n);
 }
 
 static void test_parser_and_room(void)
@@ -194,10 +210,10 @@ static void test_parser_and_room(void)
     slam2d *s = slam2d_create(&cfg);
 
     step(s, 0, 0, 0);                      /* primes the wrap detector */
-    step(s, 0, 0, 0);                      /* this one gets processed */
+    step(s, 0, 0, 0);                      /* this one completes a revolution */
 
-    check(slam2d_points(s) > 400, "points recovered from one revolution",
-          slam2d_points(s), PTS_PER_REV, 20);
+    check(scan_points(s) > 400, "points recovered from one revolution",
+          scan_points(s), PTS_PER_REV, 20);
 
     /* If the handedness or the mount offset were wrong, these four would be a
      * rotation or a mirror of each other rather than the room's real dimensions.
@@ -221,177 +237,21 @@ static void test_parser_and_room(void)
     close_to("4 sectors: forward one sees the corner", quad[0],
              ROOM_YMAX * M_SQRT2, 0.05);
 
-    slam2d_destroy(s);
-}
-
-static void test_stationary(void)
-{
-    puts("\n--- stationary: 30 revolutions, no prior ---");
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-
-    for (int i = 0; i < 30; i++) step(s, 0, 0, 0);
-
-    float x, y, th;
-    slam2d_pose(s, &x, &y, &th);
-    /* Half a cell is the most the match can resolve, so that is the tolerance. */
-    close_to("drift in x (m)",       x, 0.0, 0.025);
-    close_to("drift in y (m)",       y, 0.0, 0.025);
-    close_to("drift in heading (deg)", th * 180.0 / M_PI, 0.0, 1.0);
-    check(slam2d_score(s) > 0.5, "match score", slam2d_score(s), 1.0, 0.5);
-    check(!slam2d_rejected(s), "match accepted", slam2d_rejected(s), 0, 0);
+    /* The scan is the output now, so decimation is the one setting that can quietly
+     * make this sensor worse than it is. The default has to keep a whole revolution. */
+    slam2d_config full;
+    slam2d_default_config(&full);
+    full.mount_deg = MOUNT_DEG;
+    full.max_range_m = 12.0f;
+    slam2d *d = slam2d_create(&full);
+    step(d, 0, 0, 0);
+    step(d, 0, 0, 0);
+    check(scan_points(d) > 400, "the default keeps a whole revolution",
+          scan_points(d), PTS_PER_REV, 20);
+    slam2d_destroy(d);
 
     slam2d_destroy(s);
 }
-
-static void test_moving(void)
-{
-    puts("\n--- driving: 2 cm and 1.5 deg a revolution, 60 revolutions ---");
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-
-    /* Two poses have to be kept apart. `t*` is where the revolution now being fed
-     * was taken; `p*` is where the one that actually gets processed was taken. They
-     * differ because the wrap that ends a revolution only arrives with the next
-     * one's first packet, so every update is one revolution behind the feed --
-     * which is a property of the sensor, not of this test, and the real driver in
-     * run_slam.py sees the same lag. */
-    double tx = 0, ty = 0, tth = 0;
-    double px = 0, py = 0, pth = 0;
-    double worst = 0, worst_th = 0;
-    int rejects = 0, compared = 0;
-
-    for (int i = 0; i < 60; i++) {
-        int processed = step(s, tx, ty, tth);
-        if (processed && i >= 2) {
-            float x, y, th;
-            slam2d_pose(s, &x, &y, &th);
-            double e = hypot(x - px, y - py);
-            if (e > worst) worst = e;
-            double eth = fabs(th - pth) * 180.0 / M_PI;
-            if (eth > worst_th) worst_th = eth;
-            if (slam2d_rejected(s)) rejects++;
-            compared++;
-        }
-        px = tx; py = ty; pth = tth;
-        tth += 1.5 * M_PI / 180.0;
-        tx  += 0.02 * cos(tth);
-        ty  += 0.02 * sin(tth);
-    }
-    check_true(compared > 50, "revolutions actually compared");
-
-    /* No prior was supplied, so every revolution's 2 cm and 1.5 deg had to be found
-     * by the match alone -- which is the case that matters before calibration. */
-    check(worst < 0.06, "worst position error (m)", worst, 0.0, 0.06);
-    check(worst_th < 2.5, "worst heading error (deg)", worst_th, 0.0, 2.5);
-    check(rejects == 0, "rejected matches", rejects, 0, 0);
-
-    slam2d_destroy(s);
-}
-
-static void test_reset(void)
-{
-    puts("\n--- clearing the map: an empty grid, and a core that maps again ---");
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-    const signed char *g = slam2d_grid(s);
-    long written;
-    float px, py, pth;
-
-    /* Drive a metre and a half up the room, so what gets thrown away is a map
-     * built over a run and a pose that has gone somewhere -- which is the state a
-     * reset is actually asked for in. */
-    double x = 0.0;
-    for (int i = 0; i < 30; i++) { x += 0.05; step(s, x, 0.0, 0.0); }
-
-    written = 0;
-    for (long i = 0; i < n_cells; i++) if (g[i]) written++;
-    check_true(written > 100, "there is a map to throw away");
-    slam2d_pose(s, &px, &py, &pth);
-    check_true(px > 1.0, "and the rover has driven away from the origin");
-
-    slam2d_reset(s);
-
-    slam2d_pose(s, &px, &py, &pth);
-    close_to("x is back at the origin (m)", px, 0.0, 1e-6);
-    close_to("y is back at the origin (m)", py, 0.0, 1e-6);
-    close_to("heading is back at the origin (deg)", pth * 180.0 / M_PI, 0.0, 1e-6);
-    check_true(slam2d_scans(s) == 0, "the scan count starts again");
-    written = 0;
-    for (long i = 0; i < n_cells; i++) if (g[i]) written++;
-    check_true(written == 0, "every cell is empty");
-
-    /* And it maps again from where it stands, which is the half a reset gets wrong
-     * quietly: leave the scan count alone and the next revolution is matched
-     * against an empty likelihood field, scores nothing, is rejected, and the map
-     * is never written again. That looks exactly like a dead lidar and is not one. */
-    for (int i = 0; i < 12; i++) step(s, x, 0.0, 0.0);
-    written = 0;
-    for (long i = 0; i < n_cells; i++) if (g[i]) written++;
-    check_true(written > 100, "the new map is being written");
-    check(slam2d_score(s) > 0.5, "and it is matching again", slam2d_score(s), 1.0, 0.5);
-    check_true(!slam2d_rejected(s), "the match is accepted, not dead reckoned");
-    slam2d_pose(s, &px, &py, &pth);
-    close_to("standing still, it stays at the new origin (m)",
-             hypot(px, py), 0.0, 0.05);
-
-    slam2d_destroy(s);
-}
-
-static void test_prior_helps(void)
-{
-    const double STRIDE = 0.30;             /* per revolution, so 3 m/s */
-    const int REVS = 12;                    /* -1.5 m to +1.8 m, all inside the room */
-
-    puts("\n--- driving past the search window: 30 cm a revolution ---");
-    /* The coarse window spans +/-0.15 m, so a 0.30 m stride is deliberately outside
-     * anything the match can reach on its own. This is the one regime where the
-     * motion prior stops being optional, and the contrast is the test. */
-    double err[2] = {0, 0};
-    for (int use_prior = 0; use_prior <= 1; use_prior++) {
-        slam2d_config cfg;
-        slam2d_default_config(&cfg);
-        cfg.mount_deg = MOUNT_DEG;
-        slam2d *s = slam2d_create(&cfg);
-
-        /* Start at the origin, because slam2d's frame origin *is* wherever the
-         * first processed scan was taken -- start the truth anywhere else and the
-         * whole run carries that offset, which measures nothing. */
-        double tx = 0, px = 0, worst = 0;
-        for (int i = 0; i < REVS; i++) {
-            /* The prior describes motion between the two revolutions being
-             * matched, so there is none to declare before the first one is in. */
-            if (use_prior && i >= 2) slam2d_set_prior(s, (float)STRIDE, 0.0f);
-            int processed = step(s, tx, 0, 0);
-            if (processed && i >= 2) {
-                float x, y, th;
-                slam2d_pose(s, &x, &y, &th);
-                double e = fabs(x - px);
-                if (e > worst) worst = e;
-            }
-            px = tx;
-            tx += STRIDE;
-        }
-        err[use_prior] = worst;
-        printf("  %-42s worst x error %.3f m\n",
-               use_prior ? "with prior" : "without prior", worst);
-        slam2d_destroy(s);
-    }
-
-    check(err[1] < 0.06, "worst x error with prior (m)", err[1], 0.0, 0.06);
-    printf("  %-42s %.1fx\n", "ratio, without prior over with",
-           err[1] > 1e-6 ? err[0] / err[1] : 999.0);
-    check_true(err[0] > 4 * err[1] && err[0] > 0.15,
-               "and it was the prior that made the difference");
-}
-
 static void test_unknown_sectors(void)
 {
     puts("\n--- an empty sector reads unknown, not clear ---");
@@ -466,7 +326,6 @@ static void test_body_mask(void)
     slam2d_feed_lidar(s, rev, n);
     n = make_ring_revolution(rev, 0.13);
     slam2d_feed_lidar(s, rev, n);
-    slam2d_update(s);
 
     float sec[36];
     slam2d_sectors(s, sec, 36);
@@ -489,7 +348,6 @@ static void test_body_mask(void)
     slam2d_feed_lidar(s, rev, n);
     n = make_ring_revolution(rev, 0.60);
     slam2d_feed_lidar(s, rev, n);
-    slam2d_update(s);
     slam2d_sectors(s, sec, 36);
     int kept = 0;
     for (int i = 0; i < 36; i++) if (sec[i] > 0.0f) kept++;
@@ -497,44 +355,6 @@ static void test_body_mask(void)
     slam2d_destroy(s);
 }
 
-static void test_arc_clearance(void)
-{
-    puts("\n--- swept-arc clearance ---");
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-    /* Sat 0.30 m off the -x wall, facing +x: 3.70 m of room ahead, a wall right
-     * behind, and the side walls 1.5 m away. */
-    step(s, -1.7, 0, 0);
-    step(s, -1.7, 0, 0);
-
-    float half = cfg.rover_width_m * 0.5f;
-    /* From x = -1.7 to the wall at x = 4.0 is 5.70 m, not 3.70 -- the rover is 0.30 m
-     * off the *back* wall, which is behind it. */
-    close_to("straight ahead, clear to the far wall",
-             slam2d_arc_clearance(s, 0.0f, half, 8.0f), 5.70, 0.06);
-    close_to("and the cap is honoured", slam2d_arc_clearance(s, 0.0f, half, 2.0f),
-             2.00, 0.001);
-
-    /* A 0.8 m radius turn to the left curves into the +y wall at 1.5 m. Reaching it
-     * along the arc is further than the straight-line distance, which is the whole
-     * reason this is not a radius check. */
-    float left = slam2d_arc_clearance(s, 1.0f / 0.8f, half, 6.0f);
-    check_true(left > 1.5 && left < 3.0, "0.8 m left turn reaches the side wall");
-    printf("  %-42s %.2f m along the arc\n", "left turn clearance", left);
-
-    /* Symmetry: the room is symmetric about y=0 and the rover is on that axis, so a
-     * mirrored turn must give a mirrored answer. This is the check that catches a
-     * dropped sign in the right-turn branch. */
-    float right = slam2d_arc_clearance(s, -1.0f / 0.8f, half, 6.0f);
-    close_to("and mirrors for the same turn to the right", right, left, 0.05);
-
-    /* A tight enough turn stays inside the room and never leaves the corridor. */
-    check_true(slam2d_arc_clearance(s, 1.0f / 0.35f, half, 6.0f) > 1.0,
-               "a tight turn is not blocked by the wall behind");
-    slam2d_destroy(s);
-}
 
 static void test_features(void)
 {
@@ -650,345 +470,80 @@ static void test_table(void)
     }
     check_true(1, "each object sits where a leg was put");
 
-    /* The reflex layer must object to driving into the near pair, and must not object
-     * to the clear lane down the middle between them. */
-    float half = cfg.rover_width_m * 0.5f;
-    float straight = slam2d_arc_clearance(s, 0.0f, half, 6.0f);
-    printf("  %-42s %.2f m\n", "clearance straight at the gap between legs", straight);
-    check_true(straight > 3.5, "the lane between the legs is open to the far wall");
-
-    /* Aim at a leg instead -- a 3 m radius turn puts the corridor over the one at
-     * +18 degrees -- and it must be seen. */
-    float at_leg = slam2d_arc_clearance(s, 1.0f / 3.0f, half, 6.0f);
-    printf("  %-42s %.2f m\n", "clearance on an arc through a leg", at_leg);
-    check_true(at_leg < 1.6, "and swinging into a leg is not");
-
     slam2d_destroy(s);
     obstacles_on = 0;
 }
 
-/* A checksum rather than a count of written cells: the map update both marks and
- * clears, so "how many cells are non-zero" can come out identical either side of a
- * write that moved a wall. Position-weighted, so two cells swapping values show. */
-static long grid_fingerprint(const signed char *g, long n_cells)
+static void test_blind_revolution_is_not_reported(void)
 {
-    long sum = 0;
-    for (long i = 0; i < n_cells; i++) sum += (long)g[i] * (i + 1);
-    return sum;
-}
-
-static void test_rejected_scan_is_not_mapped(void)
-{
-    puts("\n--- a match that was not believed is not written down ---");
-    /* The rule, and the reason for it: a scan stamped at a pose this code has just
-     * rejected does not merely go to waste. The likelihood field takes the maximum,
-     * so it lands at full strength -- as attractive to the next revolution as a wall
-     * seen all afternoon -- and from then on the wrong answer has evidence for it.
-     * One bad stamp is enough, and with no loop closure nothing ever takes it back.
+    puts("\n--- a revolution with no returns is not a revolution ---");
+    /* A covered sensor still turns, and every packet still parses and passes its
+     * CRC -- they are full of zero distances, which is what "no echo" looks like on
+     * the wire. The parser drops those at the range filter, so the wrap arrives with
+     * an empty accumulator and is discarded rather than handed over.
      *
-     * Forced with an impossible threshold rather than by contriving a pose that
-     * scores badly, because what is under test is "rejected implies not mapped" and
-     * not any particular scan's score. */
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    /* Above 1.0, because the score is the mean likelihood per point over its own
-     * maximum and a stationary scan against its own map really does reach 1.0 --
-     * 0.99 was not the impossible threshold it looked like. */
-    cfg.min_match_score = 1.5f;
-    slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-    const signed char *g = slam2d_grid(s);
-
-    /* Two steps: the first completes no revolution, the second seeds the map. The
-     * seeding scan has nothing to match against and so is never rejected. */
-    step(s, 0, 0, 0);
-    step(s, 0, 0, 0);
-    long seeded = grid_fingerprint(g, n_cells);
-    check_true(seeded != 0, "the first scan seeded a map");
-
-    for (int i = 0; i < 10; i++) step(s, 0, 0, 0);
-    check_true(slam2d_rejected(s), "every later match is refused at this threshold");
-    check_true(grid_fingerprint(g, n_cells) == seeded,
-               "and not one of them reached the map");
-
-    slam2d_destroy(s);
-}
-
-static void test_write_is_stricter_than_believe(void)
-{
-    puts("\n--- a match can be believed and still not written ---");
-    /* min_match_score keeps the pose; min_write_score keeps the map. A threshold
-     * above 1.0 makes every later scan fail the write gate while still matching,
-     * which is the split this is testing -- not any particular real-world score. */
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    cfg.min_write_score = 1.5f;
-    slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-    const signed char *g = slam2d_grid(s);
-
-    step(s, 0, 0, 0);
-    step(s, 0, 0, 0);
-    long seeded = grid_fingerprint(g, n_cells);
-    check_true(seeded != 0, "the first scan still seeded a map");
-
-    double x = 0.0;
-    for (int i = 0; i < 10; i++) { x += 0.02; step(s, x, 0, 0); }
-    check_true(!slam2d_rejected(s), "later matches were believed");
-    check_true(grid_fingerprint(g, n_cells) == seeded,
-               "and not one of them reached the map");
-    float px, py, pth;
-    slam2d_pose(s, &px, &py, &pth);
-    close_to("the pose still followed the rover (m)", px, x, 0.06);
-
-    slam2d_destroy(s);
-}
-
-static void test_edge_match_is_not_mapped(void)
-{
-    puts("\n--- a winner against the rim of the window is not written ---");
-    /* Twelve degrees is past the coarse window (+/-9) and close enough that the
-     * rim candidate still fits, so this is an edge match that would have been
-     * believed and written before the write gate, not a rejected one. */
-    const double LIE_DEG = 12.0;
+     * The consequence is worth stating out loud, because it is not obvious from
+     * either end: **a blinded lidar is indistinguishable from a stopped one here.**
+     * Nothing is published, so the scan age climbs, `lidar_ok` goes false, and the
+     * USB replug ladder in usbreset.py will eventually fire on a sensor that is
+     * spinning perfectly well with a bag over it. That is the right trade -- an
+     * empty scan published as fact would tell slam_toolbox the room is empty, which
+     * is far worse -- but somebody debugging a rover that keeps replugging a healthy
+     * lidar should check what is in front of it before they check the cable. */
     slam2d_config cfg;
     slam2d_default_config(&cfg);
     cfg.mount_deg = MOUNT_DEG;
     slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-
-    for (int i = 0; i < 12; i++) step(s, 0, 0, 0);
-    long fingerprint = grid_fingerprint(slam2d_grid(s), n_cells);
-    check(slam2d_score(s) > 0.8, "a map to stain", slam2d_score(s), 1.0, 0.2);
-
-    slam2d_set_pose(s, 0.0f, 0.0f, (float)(LIE_DEG * M_PI / 180.0));
-    step(s, 0, 0, 0);
-    check_true(slam2d_match_edge(s), "the winner sat on the rim of the window");
-    check_true(!slam2d_rejected(s), "but the pose was still believed");
-    check_true(grid_fingerprint(slam2d_grid(s), n_cells) == fingerprint,
-               "and none of it reached the map");
-    float px, py, pth;
-    slam2d_pose(s, &px, &py, &pth);
-    double heading = pth * 180.0 / M_PI;
-    printf("  %-42s %5.1f deg (was %.0f)\n", "pose walked toward the truth",
-           heading, LIE_DEG);
-    check_true(fabs(heading) < LIE_DEG - 1.0,
-               "the window walked toward the true heading");
-
-    slam2d_destroy(s);
-}
-
-static void test_blind_revolution_does_not_seed(void)
-{
-    puts("\n--- a revolution with no returns is not the seed scan ---");
-    /* A covered sensor still completes revolutions: every packet parses, no point
-     * survives the range filter. Letting one of those stand as the first scan
-     * would mark an empty map as seeded, and every later scan would match an
-     * empty field, score zero and be rejected -- so nothing would ever be
-     * written, and the rover would dead-reckon inside a map that stayed empty
-     * however long it stood in the room. */
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-    const signed char *g = slam2d_grid(s);
 
     no_returns = 1;
-    for (int i = 0; i < 4; i++) step(s, 0, 0, 0);
+    int blind_revs = 0;
+    for (int i = 0; i < 4; i++) blind_revs += step(s, 0, 0, 0);
     no_returns = 0;
-    check_true(grid_fingerprint(g, n_cells) == 0,
-               "blind revolutions left the map empty");
+    check(blind_revs == 0, "revolutions reported from a blind sensor",
+          blind_revs, 0, 0);
+    check(scan_points(s) == 0, "and no scan was left behind", scan_points(s), 0, 0);
 
-    for (int i = 0; i < 6; i++) step(s, 0, 0, 0);
-    check_true(grid_fingerprint(g, n_cells) != 0,
-               "the first real scan still seeded it");
-    check(slam2d_score(s) > 0.8, "and tracking works on it",
-          slam2d_score(s), 1.0, 0.2);
-    check_true(!slam2d_rejected(s), "with the matches believed");
+    /* And it recovers the moment real returns come back: no resync needed, because
+     * nothing about the byte stream was ever out of step. */
+    for (int i = 0; i < 2; i++) step(s, 0, 0, 0);
+    check(scan_points(s) > 100, "the next real revolution comes back full",
+          scan_points(s), PTS_PER_REV, 400);
 
     slam2d_destroy(s);
 }
 
-static void test_midstream_join_does_not_seed(void)
+static void test_midstream_join_discards_the_remnant(void)
 {
-    puts("\n--- joining a spinning sensor does not seed a remnant ---");
+    puts("\n--- joining a spinning sensor discards the remnant ---");
     /* The port opens onto a lidar that has been turning the whole time, so the
      * first wrap is the leftover of the revolution we joined in the middle of.
-     * Stamping that remnant as the seed is how a restart left a wedge of map
-     * that later full scans would not match, so mapping froze until someone
-     * cleared it. */
+     * Publishing that as a scan hands slam_toolbox a wedge of room with two thirds
+     * of the horizon missing, which it will happily try to match. */
     slam2d_config cfg;
     slam2d_default_config(&cfg);
     cfg.mount_deg = MOUNT_DEG;
     cfg.max_range_m = 12.0f;
     slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-    const signed char *g = slam2d_grid(s);
 
     int n = make_revolution(rev, 0, 0, 0);
     int half = (PKTS_PER_REV / 2) * 47;
     slam2d_feed_lidar(s, rev + half, n - half);   /* remnant, no wrap yet */
-    check_true(grid_fingerprint(g, n_cells) == 0,
-               "a half-revolution by itself wrote nothing");
+    check(scan_points(s) == 0, "a half-revolution by itself completed nothing",
+          scan_points(s), 0, 0);
 
     check_true(step(s, 0, 0, 0) == 0,
-               "the wrap of the remnant was discarded, not processed");
-    check_true(grid_fingerprint(g, n_cells) == 0,
-               "and did not seed the map");
+               "the wrap of the remnant was discarded, not published");
+    check(scan_points(s) == 0, "and left no scan behind it", scan_points(s), 0, 0);
 
-    check_true(step(s, 0, 0, 0) != 0,
-               "the next wrap is a full revolution and is processed");
-    check_true(grid_fingerprint(g, n_cells) != 0,
-               "and that one is the seed");
+    check_true(step(s, 0, 0, 0) == 1,
+               "the next wrap is a full revolution and is published");
 
     float sec[72];
     slam2d_sectors(s, sec, 72);
-    close_to("seeded map sees the wall ahead",  sec[0],  ROOM_XMAX,  0.05);
-    close_to("and the wall behind",             sec[36], -ROOM_XMIN, 0.05);
+    close_to("that one sees the wall ahead",  sec[0],  ROOM_XMAX,  0.05);
+    close_to("and the wall behind",           sec[36], -ROOM_XMIN, 0.05);
 
     slam2d_destroy(s);
-}
-
-static void test_mapping_can_be_suspended(void)
-{
-    puts("\n--- mapping suspended: still matching, writing nothing ---");
-    /* What the caller needs after it has moved the pose itself. Matching has to go
-     * on, or the matcher can never find its way back; writing must not, or a bad
-     * re-seed is in the map before anyone has checked it. */
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-    const signed char *g = slam2d_grid(s);
-
-    double x = 0.0;
-    for (int i = 0; i < 12; i++) { x += 0.02; step(s, x, 0, 0); }
-    long before = grid_fingerprint(g, n_cells);
-    check_true(slam2d_mapping(s), "mapping is on to begin with");
-
-    slam2d_set_mapping(s, 0);
-    check_true(!slam2d_mapping(s), "and can be turned off");
-    for (int i = 0; i < 10; i++) { x += 0.02; step(s, x, 0, 0); }
-
-    check_true(grid_fingerprint(g, n_cells) == before,
-               "ten revolutions later the map is untouched");
-    check(slam2d_score(s) > 0.5, "but the scan is still being matched",
-          slam2d_score(s), 1.0, 0.5);
-    float px, py, pth;
-    slam2d_pose(s, &px, &py, &pth);
-    close_to("and the pose still followed the rover (m)", px, x, 0.06);
-
-    slam2d_set_mapping(s, 1);
-    step(s, x, 0, 0);
-    check_true(grid_fingerprint(g, n_cells) != before,
-               "turning it back on writes the map again");
-
-    slam2d_destroy(s);
-}
-
-static void test_recovery_after_a_bad_reseed(void)
-{
-    puts("\n--- re-finding a heading somebody else got wrong ---");
-    /* The failure this exists for. A dead-reckoned turn moves the pose by an
-     * open-loop guess, and one has been seen 48 degrees out on a 90 that physically
-     * managed 42. The coarse window is +/-9, so the matcher cannot climb back --
-     * and does not say so, because the largest rotation it was allowed to consider
-     * still fits the room well enough to score. Here the pose is put 35 degrees out
-     * while the rover has not moved at all. */
-    const double LIE_DEG = 35.0;
-    slam2d_config cfg;
-    slam2d_default_config(&cfg);
-    cfg.mount_deg = MOUNT_DEG;
-    slam2d *s = slam2d_create(&cfg);
-    const long n_cells = (long)cfg.grid_cells * cfg.grid_cells;
-
-    for (int i = 0; i < 12; i++) step(s, 0, 0, 0);
-    check(slam2d_score(s) > 0.8, "a map to come back to", slam2d_score(s), 1.0, 0.2);
-
-    /* Nothing below is allowed to touch the map: the whole point is that a wrong
-     * pose costs revolutions and not geometry. */
-    slam2d_set_mapping(s, 0);
-    long fingerprint = grid_fingerprint(slam2d_grid(s), n_cells);
-
-    float px, py, pth;
-    slam2d_set_pose(s, 0.0f, 0.0f, (float)(LIE_DEG * M_PI / 180.0));
-    step(s, 0, 0, 0);
-    slam2d_pose(s, &px, &py, &pth);
-    double normal_err = fabs(pth * 180.0 / M_PI);
-    printf("  %-42s %5.1f deg out, score %.2f\n", "normal window",
-           normal_err, slam2d_score(s));
-    check_true(normal_err > 15.0, "the ordinary window cannot reach the answer");
-    check_true(slam2d_match_edge(s),
-               "and says so: the winner sat on the rim of the window");
-
-    /* Same lie, one wide search. */
-    slam2d_set_pose(s, 0.0f, 0.0f, (float)(LIE_DEG * M_PI / 180.0));
-    slam2d_request_recovery(s);
-    step(s, 0, 0, 0);
-    slam2d_pose(s, &px, &py, &pth);
-    double recovered_err = fabs(pth * 180.0 / M_PI);
-    printf("  %-42s %5.1f deg out, score %.2f\n", "recovery window",
-           recovered_err, slam2d_score(s));
-    close_to("recovery finds the true heading (deg)", recovered_err, 0.0, 2.0);
-    check_true(!slam2d_match_edge(s), "well inside the window it searched");
-    check(slam2d_score(s) > 0.8, "and it fits", slam2d_score(s), 1.0, 0.2);
-    check_true(slam2d_ambiguity(s) < 0.6,
-               "with no rival heading worth worrying about");
-    check_true(grid_fingerprint(slam2d_grid(s), n_cells) == fingerprint,
-               "and none of it reached the map");
-
-    /* The profile is the artifact worth logging: it should peak where the answer
-     * is, which is LIE_DEG back from where the search was centred. */
-    float off[PROFILE_CAP], sc[PROFILE_CAP];
-    int nb = slam2d_angle_profile(s, off, sc, PROFILE_CAP);
-    int top = 0;
-    for (int i = 1; i < nb; i++) if (sc[i] > sc[top]) top = i;
-    printf("  %-42s %d headings, peak at %+.0f deg\n",
-           "angle profile", nb, off[top]);
-    close_to("the profile peaks at the true heading (deg)",
-             off[top], -LIE_DEG, 3.5);
-
-    slam2d_destroy(s);
-}
-
-static void test_ambiguity_is_reported(void)
-{
-    puts("\n--- a room that does not say which way round the rover is ---");
-    /* At the centre of a rectangle a half turn maps the room exactly onto itself,
-     * so the scan fits equally well two ways and the match picks one by rounding.
-     * That is not a low score -- both answers fit beautifully -- which is why the
-     * score cannot be the only health check, and why the rival peak is measured.
-     *
-     * The sweep has to be wide enough to hold both peaks or there is nothing to
-     * compare, which is exactly why this reads zero during ordinary tracking. */
-    const double CX = (ROOM_XMIN + ROOM_XMAX) / 2.0;
-    const double CY = (ROOM_YMIN + ROOM_YMAX) / 2.0;
-
-    double amb[2];
-    for (int centred = 0; centred <= 1; centred++) {
-        double x = centred ? CX : 0.0, y = centred ? CY : 0.0;
-        slam2d_config cfg;
-        slam2d_default_config(&cfg);
-        cfg.mount_deg = MOUNT_DEG;
-        cfg.recover_ang_steps = 60;         /* +/-180 deg, so both peaks are in it */
-        slam2d *s = slam2d_create(&cfg);
-
-        for (int i = 0; i < 12; i++) step(s, x, y, 0);
-        slam2d_set_mapping(s, 0);
-        slam2d_request_recovery(s);
-        step(s, x, y, 0);
-        amb[centred] = slam2d_ambiguity(s);
-        printf("  %-42s rival at %.2f of the winner\n",
-               centred ? "at the centre of the room" : "off centre", amb[centred]);
-        slam2d_destroy(s);
-    }
-
-    check_true(amb[1] > 0.9, "the symmetric pose reports a rival answer");
-    check_true(amb[0] < amb[1] - 0.05, "and the asymmetric one a smaller one");
 }
 
 static void test_timing(void)
@@ -997,74 +552,47 @@ static void test_timing(void)
     slam2d_config cfg;
     slam2d_default_config(&cfg);
     cfg.mount_deg = MOUNT_DEG;
+    cfg.max_range_m = 12.0f;
 
     int n = make_revolution(rev, 0, 0, 0);
 
-    /* Parse alone: feed the same revolution repeatedly. Each feed reports a wrap
-     * that is then never processed, which is exactly the parse path. */
+    /* Parse alone: feed the same revolution repeatedly. */
     slam2d *s = slam2d_create(&cfg);
     for (int i = 0; i < 4; i++) step(s, 0, 0, 0);
     double t0 = now_ms();
-    int reps = 200;
+    int reps = 500;
     for (int i = 0; i < reps; i++) slam2d_feed_lidar(s, rev, n);
     double parse = (now_ms() - t0) / reps;
-    slam2d_destroy(s);
 
-    /* Map update plus a single pose evaluation: search window collapsed to nothing. */
-    slam2d_config flat = cfg;
-    flat.coarse_lin_steps = flat.coarse_ang_steps = 0;
-    flat.fine_lin_steps = flat.fine_ang_steps = 0;
-    s = slam2d_create(&flat);
-    for (int i = 0; i < 4; i++) step(s, 0, 0, 0);
+    /* Reading the scan out, which is what the ROS node does with every revolution
+     * and the only other thing on the per-revolution path. */
     t0 = now_ms();
-    reps = 100;
-    for (int i = 0; i < reps; i++) { slam2d_feed_lidar(s, rev, n); slam2d_update(s); }
-    double integrate = (now_ms() - t0) / reps - parse;
-    slam2d_destroy(s);
+    reps = 500;
+    for (int i = 0; i < reps; i++) scan_points(s);
+    double read_out = (now_ms() - t0) / reps;
 
-    /* The real thing. */
-    s = slam2d_create(&cfg);
-    for (int i = 0; i < 4; i++) step(s, 0, 0, 0);
+    /* Segmentation. Not per-revolution -- the node runs it on a timer, and only
+     * when something is subscribed -- but it is the expensive half of this library
+     * now and it runs on the same thread as the parse. */
+    slam2d_feature f[64];
     t0 = now_ms();
-    reps = 50;
-    for (int i = 0; i < reps; i++) { slam2d_feed_lidar(s, rev, n); slam2d_update(s); }
-    double total = (now_ms() - t0) / reps;
+    reps = 200;
+    for (int i = 0; i < reps; i++) slam2d_features(s, f, 64);
+    double describe = (now_ms() - t0) / reps;
     slam2d_destroy(s);
-
-    /* The recovery sweep. Not part of the per-revolution budget -- it happens once
-     * after a dead-reckoned turn -- but it runs inside the same loop, so what it
-     * costs is what that loop stalls for. */
-    s = slam2d_create(&cfg);
-    for (int i = 0; i < 4; i++) step(s, 0, 0, 0);
-    t0 = now_ms();
-    reps = 20;
-    for (int i = 0; i < reps; i++) {
-        slam2d_feed_lidar(s, rev, n);
-        slam2d_request_recovery(s);
-        slam2d_update(s);
-    }
-    double recover = (now_ms() - t0) / reps;
-    slam2d_destroy(s);
-
-    int poses = (2 * cfg.coarse_lin_steps + 1) * (2 * cfg.coarse_lin_steps + 1)
-              * (2 * cfg.coarse_ang_steps + 1)
-              + (2 * cfg.fine_lin_steps + 1) * (2 * cfg.fine_lin_steps + 1)
-              * (2 * cfg.fine_ang_steps + 1);
 
     printf("  %-34s %7.2f ms\n", "parse + CRC, 35 packets", parse);
-    printf("  %-34s %7.2f ms\n", "map update + 1 pose", integrate);
-    printf("  %-34s %7.2f ms   (%d poses, %.3f ms each)\n",
-           "scan match", total - parse - integrate, poses,
-           (total - parse - integrate) / poses);
+    printf("  %-34s %7.2f ms\n", "reading the scan out", read_out);
     printf("  %-34s %7.2f ms   %5.1f%% of one core -> %s\n",
-           "TOTAL per revolution", total, total / 100.0 * 100.0,
-           total < 100.0 ? "fits" : "OVER BUDGET");
-    printf("  %-34s %7.2f ms   (one-off, after a dead-reckoned turn)\n",
-           "recovery sweep", recover);
-    check(total < 100.0, "total under the 100 ms budget (ms)", total, 0.0, 100.0);
-    /* One dropped revolution is the price of a recovery sweep and is affordable;
-     * three would put the rover past its own coarse window on the way back. */
-    check(recover < 200.0, "recovery sweep under 200 ms", recover, 0.0, 200.0);
+           "TOTAL per revolution", parse + read_out,
+           (parse + read_out) / 100.0 * 100.0,
+           parse + read_out < 100.0 ? "fits" : "OVER BUDGET");
+    printf("  %-34s %7.2f ms   (on a timer, only when subscribed)\n",
+           "segmentation into features", describe);
+    check(parse + read_out < 100.0, "total under the 100 ms budget (ms)",
+          parse + read_out, 0.0, 100.0);
+    /* It shares a thread with the parse, so a slow one drops revolutions. */
+    check(describe < 50.0, "segmentation under 50 ms", describe, 0.0, 50.0);
 }
 
 int main(void)
@@ -1074,23 +602,12 @@ int main(void)
            PTS_PER_REV, ROOM_XMAX - ROOM_XMIN, ROOM_YMAX - ROOM_YMIN);
 
     test_parser_and_room();
-    test_stationary();
-    test_moving();
-    test_reset();
-    test_prior_helps();
     test_unknown_sectors();
     test_body_mask();
-    test_arc_clearance();
     test_features();
     test_table();
-    test_rejected_scan_is_not_mapped();
-    test_write_is_stricter_than_believe();
-    test_edge_match_is_not_mapped();
-    test_blind_revolution_does_not_seed();
-    test_midstream_join_does_not_seed();
-    test_mapping_can_be_suspended();
-    test_recovery_after_a_bad_reseed();
-    test_ambiguity_is_reported();
+    test_blind_revolution_is_not_reported();
+    test_midstream_join_discards_the_remnant();
     test_timing();
 
     printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "all passed",

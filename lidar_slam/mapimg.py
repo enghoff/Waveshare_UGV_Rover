@@ -398,7 +398,6 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
         res = slam.config.resolution_m
         cells = slam.config.grid_cells
         occupied_at = slam.config.occupied_at
-        scan = slam.scan_xy()
 
     # Rounded, not truncated. The resolution comes out of the C config as a float32,
     # so 0.05 is really 0.050000000745 and three metres divided by it is 59.999999 --
@@ -616,9 +615,6 @@ def _render_probe(heading, wall_axis="ahead", rover_up=False, camera=None):
 
         def grid(self):
             return self._g
-
-        def scan_xy(self):
-            return []
 
     png, caption = render(_Slam(), half_extent_m=3.0, scale=3,
                           trail=[(cm / 100.0, 0.0) for cm in range(0, 201, 5)],

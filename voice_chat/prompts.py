@@ -26,7 +26,6 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-NAVIGATOR = ROOT / "lidar_slam" / "nav_types.py"
 VOICE = Path(__file__).resolve().parent / "server.py"
 DAEMON = ROOT / "rover_daemon" / "tool_schemas.py"
 # Map picture limits live with the tool that draws them, not with the schemas.

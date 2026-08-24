@@ -85,36 +85,36 @@ MAP_MIN_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_MIN_PIXELS")
 MAP_MAX_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_MAX_PIXELS")
 MAP_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_PIXELS")
 CAMERA_FOV_DEG = prompts._literal(prompts.ROVER_NAV, "CAMERA_FOV_DEG")
-# And the navigator's cap on a single route, for the same reason: a mock that
-# refused at its own distance would let a console pass its tests against a limit
-# the rover does not have.
-MAX_GOTO_M = prompts._literal(prompts.NAVIGATOR, "MAX_GOTO_M")
+# The longest single route the mock will accept. This used to be read out of the
+# rover's own navigator so the two could not drift apart; that navigator is gone
+# and Nav2 has no equivalent ceiling, so this is now simply the mock's own limit,
+# kept because a console that never sees a refusal is a console whose refusal path
+# is untested.
+MAX_GOTO_M = 15.0
 
 
 def _move_report():
-    """The navigator's own `MoveReport`, or None if `lidar_slam/` is not here.
+    """The rover's own `MoveReport`, or None if `lidar_slam/` is not beside us.
 
     Borrowed rather than reimplemented: it is what the real rover publishes into
     `nav_status` while a move runs, and a mock that made up its own field names
-    would let [drive_web.py](../drive_web/drive_web.py) pass against this and fail against the
-    rover. Imported at first use like the planner below, because this
-    file's whole point is to run where the rover's code may not.
+    would let [drive_web.py](../drive_web/drive_web.py) pass against this and fail
+    against the rover. Imported at first use, because this file's whole point is to
+    run where the rover's code may not.
     """
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "lidar_slam"))
     try:
-        from navigator import MoveReport
+        from nav_types import MoveReport
     except Exception:
         return None
     return MoveReport()
 
 
 def _length(path) -> float:
-    """How long a route is, by the planner's own reckoning rather than a second
-    version of it here. Imported at use, like everything else out of `lidar_slam`;
-    by the time a route exists to measure, `_plan_to` has already imported it."""
-    import planner
-    return planner.length(path)
+    """How long a route is: the sum of its legs."""
+    return sum(math.hypot(b[0] - a[0], b[1] - a[1])
+               for a, b in zip(path, path[1:]))
 
 
 def _wrap(radians: float) -> float:
@@ -182,8 +182,8 @@ class Rover:
 
     # --- what the move is doing, for anything polling nav_status --------------
     # Three lines around each move rather than one wrapper, because a mock's moves
-    # do not share a shape the way the navigator's do -- one of them is a loop over
-    # a real planner and the other two are arithmetic.
+    # do not share a shape the way the rover's do -- one of them is a loop over a
+    # route and the other two are arithmetic.
 
     def _begin(self, kind: str, asked: dict[str, Any], phase: str) -> None:
         if self.report is not None:
@@ -330,7 +330,7 @@ class Rover:
     # slip, no coast after the power comes off and no lidar that browns out when
     # the motors pull, and those are the four things that make real driving hard.
     # A turn here is exact because arithmetic is exact. On the rover it is not, and
-    # that is measured with lidar_slam/calibrate_turn.py, on the rover.
+    # that is measured with ros_nav/calibrate_chassis.py, on the rover.
 
     def drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
         distance = float(arguments.get("distance_m", 0.5))
@@ -461,33 +461,74 @@ class Rover:
                 "turned_deg": round(turned, 1),
                 "detail": last_why, **self._nav_context(speed)}
 
-    def _plan_to(self, target: tuple[float, float]):
-        """The invented room as an occupancy grid, then the real planner."""
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "lidar_slam"))
-        import numpy as np
-        import planner
+    def _clear_run(self, a: tuple[float, float], b: tuple[float, float]) -> bool:
+        """Can the rover go straight from a to b without fouling anything?
 
-        res, n, occ = 0.05, 120, 20
-        origin = n // 2
-        grid = np.zeros((n, n), dtype=np.int8)
-        wall = res * 1.5
-        for ix in range(n):
-            for iy in range(n):
-                wx, wy = (ix - origin) * res, (iy - origin) * res
-                inside = (-ROOM_BACK_M < wx < ROOM_FORWARD_M
-                          and -ROOM_RIGHT_M < wy < ROOM_LEFT_M)
-                on_wall = (min(abs(wx + ROOM_BACK_M), abs(wx - ROOM_FORWARD_M),
-                               abs(wy + ROOM_RIGHT_M), abs(wy - ROOM_LEFT_M)) < wall)
-                near_leg = any((wx - lx) ** 2 + (wy - ly) ** 2
-                               <= (LEG_RADIUS_M + STANDOFF_M * 0.15) ** 2
-                               for lx, ly in LEGS)
-                if near_leg or on_wall:
-                    grid[ix, iy] = occ
-                elif inside:
-                    grid[ix, iy] = -10
-        return planner.plan(grid, res, occ, (self.x, self.y), target,
-                            inflate_m=STANDOFF_M)
+        A leg counts as fouled if the segment passes within the standoff of it, and
+        the room counts as fouled if either end is outside it. Distance from a point
+        to a segment, clamped to the segment, is the whole of the test.
+        """
+        for point in (a, b):
+            if not (-ROOM_BACK_M + STANDOFF_M < point[0] < ROOM_FORWARD_M - STANDOFF_M
+                    and -ROOM_RIGHT_M + STANDOFF_M < point[1] < ROOM_LEFT_M - STANDOFF_M):
+                return False
+        ex, ey = b[0] - a[0], b[1] - a[1]
+        span = ex * ex + ey * ey
+        for leg_x, leg_y in LEGS:
+            if span < 1e-12:
+                near = a
+            else:
+                t = ((leg_x - a[0]) * ex + (leg_y - a[1]) * ey) / span
+                t = max(0.0, min(1.0, t))
+                near = (a[0] + t * ex, a[1] + t * ey)
+            if math.hypot(leg_x - near[0], leg_y - near[1]) < LEG_RADIUS_M + STANDOFF_M:
+                return False
+        return True
+
+    def _plan_to(self, target: tuple[float, float]):
+        """A route through the invented room, as (waypoints, why-not).
+
+        Deliberately not a planner. This used to call the rover's own A* over an
+        occupancy grid built from the room above, and that made sense while the
+        rover had one; Nav2 plans on the rover now, and reaching across the
+        repository for 900 lines of grid search so that a mock can draw three
+        waypoints is paying for precision nothing here measures.
+
+        What the tests actually need of a route is that it exists when the way is
+        open, that it bends round the table rather than through it, and that it
+        comes back as None with a sentence when there is no way at all -- because
+        those are the three things a console has to render. So: go straight if the
+        straight line is clear, and otherwise try one waypoint out to the side of
+        each leg in the way, nearest first.
+        """
+        start = (self.x, self.y)
+        if self._clear_run(start, target):
+            return [start, target], ""
+
+        # One detour waypoint per candidate, placed abeam a leg at a comfortable
+        # radius. Both sides of every leg are tried and the shortest route that
+        # works wins, which is a visibility graph with exactly one hop in it.
+        stand = LEG_RADIUS_M + STANDOFF_M + 0.10
+        best, best_len = None, float("inf")
+        for leg_x, leg_y in LEGS:
+            for angle in range(0, 360, 30):
+                theta = math.radians(angle)
+                via = (leg_x + stand * math.cos(theta),
+                       leg_y + stand * math.sin(theta))
+                if not (self._clear_run(start, via) and self._clear_run(via, target)):
+                    continue
+                total = _length([start, via, target])
+                if total < best_len:
+                    best, best_len = [start, via, target], total
+        if best is not None:
+            return best, ""
+
+        # Nothing reaches it. Which of the two reasons it is matters to the caller:
+        # a place inside the table is a different conversation from a place behind
+        # it that this router is simply not clever enough to reach.
+        if not self._clear_run(target, target):
+            return None, "there is no room to stand there"
+        return None, "no clear route through what the lidar has seen"
 
     def turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
         angle = float(arguments.get("angle_deg", 0.0))

@@ -13,9 +13,9 @@ to reach for first when a component misbehaves.
 
 The other half is the rover actually doing something: a daemon on the Banana Pi
 that owns the hardware and hands it out as tools, a face detector and a voice
-assistant that call those tools, and a SLAM written in C small enough to run on
-the rover's own board — which is the machine that can actually act on what it
-computes.
+assistant that call those tools, and a ROS 2 stack that maps the room and drives
+the rover through it — all of it on the rover's own board, which is the machine
+that can actually act on what it computes.
 
 | Directory | What it drives | Runs on | Needs |
 |---|---|---|---|
@@ -27,8 +27,11 @@ computes.
 | [`face_detect/`](face_detect) | that loop's detector as an HTTP service, for a host too slow to run it | any Linux box with spare CPU | OpenCV |
 | [`oak_depth/`](oak_depth) | the OAK as the rover's depth sensor, awake from boot | the rover's board | depthai |
 | [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the rover | pyserial |
-| [`lidar_slam/`](lidar_slam) | the lidar as a pose, a map, and a rover that drives itself | the rover | a C compiler |
+| [`ros_nav/`](ros_nav) | mapping and navigation: slam_toolbox and Nav2 over the rover's lidar and wheels | the rover | ROS 2 Jazzy, from RoboStack |
+| [`lidar_slam/`](lidar_slam) | the lidar's C parser, the map renderer, and the USB replug | the rover | a C compiler |
+| [`drive_web/`](drive_web) | the driving tools as a browser console, with the map on screen | the rover | nothing |
 | [`voice_chat/`](voice_chat) | speech in, speech out, with the rover's tools attached | a Linux host with an 8 GB GPU | PyTorch |
+| [`wifi_roam/`](wifi_roam), [`netwatch/`](netwatch) | keeping the rover on the network, and recording it when it is not | the rover | nothing |
 
 The first four are independent: any can be run with the other components
 unplugged or unpowered, so a result from one never needs the others to be
@@ -57,9 +60,14 @@ face_detect/    YuNet behind an HTTP request: JPEG in, boxes out, on the CPU
 oak_depth/      the OAK kept awake on the rover as a depth camera: millimetres
                 out over HTTP, and the firmware upload that being awake requires
 rover_daemon/   lights, gimbal and face tracking as tools over TCP
-lidar_slam/     scan matching and an occupancy grid in C, sized for the rover's host
+ros_nav/        ROS 2 Jazzy on the rover: the lidar as /scan, the driver board as
+                odometry and /cmd_vel, slam_toolbox mapping and Nav2 driving
+lidar_slam/     the LD19 parser in C, the map renderer, and the USB replug — what
+                is left of the rover's own SLAM, which ros_nav/ replaced
+drive_web/      the driving tools as a browser console, hosted on the rover
 voice_chat/     Whisper + a vision-language model + Kokoro, a desktop client, and
                 a window that drives the rover with no model in the loop
+wifi_roam/      the wifi keeper, as systemd units; netwatch/ records the link
 docs/           the detail — hardware facts, measurements, failure modes;
                 refs/ holds the vendor datasheets and CAD the numbers came from
 ```
@@ -150,10 +158,10 @@ is the detector both tracking loops call, deliberately on a CPU so that the rove
 does not stop seeing while somebody is talking to it.
 
 The drive console is the same daemon with the model taken out: buttons for the
-driving tools, the navigator's own numbers polled beside them, and the lidar map on
-screen. It is there because a conversation cannot measure a move — a model asked to
-turn ninety degrees reports what it believed happened, and what you need is what
-the navigator returned next to what you asked for. The rover hosts it at
+driving tools, Nav2's own numbers polled beside them, and the map on screen. It is
+there because a conversation cannot measure a move — a model asked to turn ninety
+degrees reports what it believed happened, and what you need is what the rover
+returned next to what you asked for. The rover hosts it at
 `http://<rover>:8771/` ([drive_web/](drive_web/README.md)). The pacing and the
 wording live in `voice_chat/console_model.py`. `python voice_chat\mock_rover.py --drive`
 gives the same page an invented room when there is no rover to hand.

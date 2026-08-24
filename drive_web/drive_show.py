@@ -50,11 +50,11 @@ class SessionShow:
         if not self.can_drive:
             # Said plainly, because the failure here is a page of live buttons on a
             # rover with no navigator behind them, and the cause is nearly always a
-            # daemon started without --lidar.
+            # daemon started without --ros-nav.
             self.say("this daemon is offering no driving tools. It was probably "
-                     "started without --lidar; or its lidar has not enumerated yet, "
-                     "in which case the tools appear when the sensor does and "
-                     "connecting again will pick them up.\n", "bad")
+                     "started without --ros-nav; or the ROS 2 stack is still "
+                     "coming up, which takes the best part of a minute after a "
+                     "reboot, in which case connecting again will pick them up.\n", "bad")
 
     def show_status(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):

@@ -224,18 +224,19 @@ instead of a frame.
 
 ## Do not give a script the motors
 
-Bounded navigator calls only: drive a distance, turn an angle, stop. No raw PWM.
+Bounded driving calls only: drive a distance, turn an angle, stop. No raw PWM.
 
 The reason is that the only real failsafe on this rover is the firmware's own
-heartbeat, and it is not automatic. The board's default is three seconds; the
-navigator tightens it to 500 ms when it starts a move and then keeps feeding it,
-and the board stops the base if it hears nothing for that long. Gimbal commands
-deliberately do not feed it, so aiming the camera is never mistaken for driving.
-A script issuing motor commands directly would have to reimplement all of that
-correctly, and getting it wrong is a rover still driving after the program
-steering it has died. Handing it `drive(1.0)` instead costs nothing in
-expressiveness and leaves the deadman under the navigator, where it works —
-including the watchdog that stops a move the moment the lidar goes quiet.
+heartbeat, and it is not automatic. The board's default is three seconds; whatever
+is driving tightens it to 500 ms and then keeps feeding it — that is
+`ros_nav/base_node.py` now, on the ROS side of the bridge — and the board stops
+the base if it hears nothing for that long. Gimbal commands deliberately do not
+feed it, so aiming the camera is never mistaken for driving. A script issuing
+motor commands directly would have to reimplement all of that correctly, and
+getting it wrong is a rover still driving after the program steering it has died.
+Handing it `drive(1.0)` instead costs nothing in expressiveness and leaves the
+deadman where it works — including the watchdog that stops a move the moment the
+lidar goes quiet.
 
 ## The author is not the speaker
 

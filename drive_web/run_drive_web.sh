@@ -5,7 +5,7 @@
 # same reason: a system unit would need a sudo password we do not have from a
 # script, a user unit would need `loginctl enable-linger`, and cron needs neither.
 #
-#     @reboot /home/admin/ugv/run_daemon.sh --vision --lidar
+#     @reboot /home/admin/ugv/run_daemon.sh --vision --board-bridge --ros-nav
 #     @reboot /home/admin/ugv/oak_depth/run_oak_depth.sh
 #     @reboot /home/admin/ugv/drive_web/run_drive_web.sh
 #

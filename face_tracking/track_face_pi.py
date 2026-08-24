@@ -643,7 +643,7 @@ def snapshot(device=DEFAULT_DEVICE, size=DEFAULT_SIZE, frames=SNAPSHOT_FRAMES,
     because of what opening it costs.** `Camera` above is a feed: v4l2-ctl streams
     at 30 fps for as long as it lives and the reader threads reassemble every frame
     whether or not anybody wants one. Measured on the Pi against the 10 Hz control
-    loop in [lidar_slam/navigator.py](../lidar_slam/navigator.py), with the rover
+    loop in [ros_nav/nav_bridge.py](../ros_nav/nav_bridge.py), with the rover
     standing still and one picture taken:
 
         camera closed      9.94 revolutions/s matched,  0.0% dropped, replies  16 ms

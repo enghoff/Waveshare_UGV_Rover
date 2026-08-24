@@ -74,7 +74,6 @@ import socketserver
 import sys
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
 import scripting
@@ -88,7 +87,7 @@ from rover import Rover
 from rover_camera import VisionLink, _where, default_camera
 from rover_util import _flag, _level, _number
 from rover_nav import (
-    CAMERA_FOV_DEG, DEFAULT_LIDAR, MAP_MAX_HALF_EXTENT_M, MAP_MAX_PIXELS,
+    CAMERA_FOV_DEG, MAP_MAX_HALF_EXTENT_M, MAP_MAX_PIXELS,
     _map_cells, _map_view,
 )
 from rover_wifi import _terse_fields, _wifi_networks
@@ -194,12 +193,6 @@ def main() -> int | str:
                              f"service (bare --vision means {DEFAULT_VISION})")
     parser.add_argument("--no-camera", dest="camera", action="store_false",
                         help="lights and gimbal only, for a rover with no camera fitted")
-    parser.add_argument("--lidar", nargs="?", default=None, const=DEFAULT_LIDAR,
-                        metavar="PORT",
-                        help="offer the driving and mapping tools, using the lidar on "
-                             "this port; bare --lidar finds it by its stable "
-                             "/dev/serial/by-id name. Without this the rover will "
-                             "not move itself.")
     parser.add_argument("--camera-fov", type=float, default=CAMERA_FOV_DEG,
                         metavar="DEGREES",
                         help="how wide a slice of the room the camera sees across "
@@ -210,12 +203,9 @@ def main() -> int | str:
                         type=int, metavar="PORT",
                         help="offer the driving and mapping tools, backed by the "
                              "ROS 2 stack reached on this loopback port (bare flag "
-                             f"means {ROS_NAV_PORT}). The alternative to --lidar "
-                             "and not a companion to it: that one drives with the "
-                             "daemon's own planner and needs the lidar port, this "
-                             "one drives with Nav2 and needs the lidar to be "
-                             "ROS's. Goes together with --board-bridge, which is "
-                             "how the ROS side reaches the wheels.")
+                             f"means {ROS_NAV_PORT}). Without it the rover will not "
+                             "move itself. Goes together with --board-bridge, which "
+                             "is how the ROS side reaches the wheels.")
     parser.add_argument("--board-bridge", nargs="?", default=None, const=BRIDGE_PORT,
                         type=int, metavar="PORT",
                         help="lend the driver board to the ROS 2 stack on this "
@@ -225,17 +215,6 @@ def main() -> int | str:
     parser.add_argument("--bind", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
-
-    # Both would set `rover.nav`, and the second would silently win. They are also
-    # not merely redundant: --lidar opens the lidar's serial port here, and only
-    # one process can hold it, so a daemon running both would take the port that
-    # ROS's own lidar node is waiting for and slam_toolbox would sit for ever
-    # waiting for a scan with nothing reporting an error.
-    if args.lidar and args.ros_nav:
-        return ("--lidar and --ros-nav are two different ways to offer the same "
-                "tools and only one can be used at a time. --lidar drives with "
-                "the daemon's own planner and needs the lidar port; --ros-nav "
-                "drives with Nav2 and needs the lidar to belong to ROS.")
 
     try:
         link = open_link(args.serial, args.host)
@@ -250,47 +229,6 @@ def main() -> int | str:
     # The one thing that moves before anybody asks: the gimbal angles are a model
     # kept true by putting the camera where this thinks it is, since it cannot ask.
     rover.centre_gimbal()
-
-    if args.lidar:
-        # Two layouts to satisfy: in the repository this file is in rover_daemon/ and
-        # lidar_slam/ is its sibling, while the rover's ~/ugv is flat with lidar_slam/
-        # inside it. Checking for the directory rather than assuming either means a
-        # deployment that moves does not silently lose the driving tools.
-        here = Path(__file__).resolve().parent
-        for candidate in (here.parent / "lidar_slam", here / "lidar_slam"):
-            if candidate.is_dir():
-                sys.path.insert(0, str(candidate))
-                break
-        try:
-            from navigator import Navigator
-            rover.nav = Navigator(link,
-                                  None if args.lidar == "auto" else args.lidar,
-                                  on_drive_start=rover.park_tracking,
-                                  on_drive_end=rover.unpark_tracking)
-            # The port is opened by its loop, not here, and retried until it turns
-            # up: on this Pi the lidar enumerates 93 s after the kernel starts, long
-            # after cron has run this, so insisting on it now would mean every
-            # reboot came up without the driving tools.
-            rover.nav.start()
-            # Said out loud because it is the one property of the map that decides
-            # where the rover can still be driven and nothing else reports it. The
-            # rover starts at the centre, so half of this is the reach in any
-            # direction from wherever it was switched on -- past that a room is
-            # driven through and not written down, and the map shows a straight edge
-            # with nothing beyond it.
-            cfg = rover.nav.slam.config
-            print(f"[rover] mapping {cfg.grid_cells}x{cfg.grid_cells} cells at "
-                  f"{cfg.resolution_m * 100:.0f} cm, "
-                  f"{cfg.grid_cells * cfg.resolution_m:.0f} m across, "
-                  f"{cfg.grid_cells * cfg.resolution_m / 2:.0f} m of reach from "
-                  f"where it started", flush=True)
-        except Exception as error:
-            # Not fatal. A rover that cannot drive itself is still a rover that can
-            # light up, aim its camera and hold a conversation, and the driving tools
-            # simply will not be offered.
-            rover.nav = None
-            print(f"[rover] no driving or mapping: {error}", file=sys.stderr,
-                  flush=True)
 
     if args.ros_nav:
         # Nothing is opened and nothing is waited for. The ROS stack and this
@@ -340,15 +278,8 @@ def main() -> int | str:
 
     server = Server((args.bind, args.port), Handler)
     server.rover = rover
-    # Which navigator is behind the driving tools, because "lidar: auto" said
-    # nothing about who owns the sensor and the two arrangements fail in opposite
-    # ways. With --ros-nav the port belongs to ROS and this daemon never opens it.
-    if rover.nav is None:
-        driving = "off"
-    elif args.ros_nav:
-        driving = f"ros2 on 127.0.0.1:{args.ros_nav}"
-    else:
-        driving = f"own planner, lidar {rover.nav.lidar_path or 'waiting for it'}"
+    driving = ("off" if rover.nav is None
+               else f"ros2 on 127.0.0.1:{args.ros_nav}")
     print(f"rover daemon on {args.bind}:{args.port} -- board {rover.describe()}, "
           f"camera {args.device if args.camera else 'none'}, detector {args.service}, "
           f"vision {rover.vision.describe() if rover.vision else 'off'}, "
