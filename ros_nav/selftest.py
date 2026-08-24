@@ -18,6 +18,7 @@ says how to check them on the rover.
 import json
 import math
 import os
+import re
 import socket
 import sys
 import threading
@@ -1142,6 +1143,115 @@ def test_the_two_halves_agree_on_the_port():
             check("%s says %s" % (relative, wanted), needle in fh.read(), True)
 
 
+def test_a_route_is_budgeted_on_the_route():
+    """A goal 3 m away round a wall must not be cancelled as though it were 3 m.
+
+    The numbers here are the route the planner really returned on 2026-08-24 from
+    (0.19, -11.34) to (2.74, -9.86), read off the rover: 346 poses, 8.81 m, and a
+    straight line of 2.95 m with a wall across it. The old allowance came to
+    50.6 s against about 44 s of flawless driving -- 15% of headroom on a stack
+    that replans every second and spends 15 s on each rung of its recovery ladder.
+    Three progress-checker windows is 45 s by itself, and there were three,
+    because the checker kept calling a legitimate pivot a jam.
+    """
+    section("a route is budgeted on the route, not on the straight line")
+    straight = 2.95
+    # The real route, as the eighteen waypoints it was sampled at on the rover.
+    route = [(0.19, -11.34), (-0.3, -11.3), (-0.8, -11.3), (-1.0, -11.0),
+             (-0.9, -10.7), (-0.6, -10.3), (-0.1, -10.2), (0.3, -10.1),
+             (0.8, -10.1), (1.0, -9.7), (0.9, -9.2), (0.8, -8.8), (1.1, -8.6),
+             (1.5, -8.4), (2.0, -8.3), (2.4, -8.3), (2.6, -8.8), (2.8, -9.2),
+             (2.8, -9.7), (2.74, -9.86)]
+    sys.path.insert(0, HERE)
+    try:
+        import route_cost
+    except Exception as exc:
+        print("  .... skipped, cannot import route_cost: %s" % exc)
+        return
+    metres, turning = route_cost.length_and_turning(route)
+    check("the route is longer than the straight line", metres > 2 * straight)
+    check("and it is measured as such", round(metres, 1), 8.3, tolerance=0.6)
+    check("its turning is counted, not ignored", turning > 200.0)
+
+    was = max(30.0, 6.0 * straight / 0.35)
+    now = route_cost.seconds_for(metres, turning, 0.35, 27.0, slack=3.0,
+                                 floor=45.0)
+    need = metres / 0.40 + turning / 27.0
+    # **Not "the old allowance was too short to drive the route" -- it was not.**
+    # 50.6 s against about 44 s of flawless execution is 15% of margin, and 15%
+    # is nothing on a stack that replans once a second and whose recovery ladder
+    # spends 15 s a rung. Three progress-checker windows is 45 s on its own. So
+    # what the old number lacked was not length, it was headroom, and that is what
+    # this asserts.
+    check("the old allowance left no room for a single recovery",
+          was < 1.5 * need)
+    check("the new allowance leaves room for the recovery ladder",
+          now > 2.5 * need)
+
+    # A grid staircase is not a route full of corners. This is the guard on the
+    # sampling: a dead straight line stored at 5 cm must cost no turning at all.
+    staircase = [(0.05 * k, 0.0) for k in range(60)]
+    check("a straight line asks for no turning",
+          route_cost.length_and_turning(staircase)[1], 0.0, tolerance=1.0)
+    # And the reverse guard: a real right angle must survive the sampling.
+    corner = [(0.05 * k, 0.0) for k in range(40)] +              [(1.95, 0.05 * k) for k in range(1, 40)]
+    check("a real right angle is still a right angle",
+          route_cost.length_and_turning(corner)[1], 90.0, tolerance=10.0)
+    # Nothing to budget on is not a licence to budget on nothing.
+    check("an empty plan costs nothing", route_cost.length_and_turning([]),
+          (0.0, 0.0))
+    check("and falls back to the floor",
+          route_cost.seconds_for(0.0, 0.0, 0.35, 27.0, floor=45.0), 45.0)
+
+
+def test_progress_is_not_only_translation():
+    """The progress checker has to accept a pivot, on a chassis that pivots.
+
+    `SimpleProgressChecker` measures displacement alone, and every direction
+    change this rover makes is a turn on the spot. That is what aborted a
+    perfectly good route three times in fifteen-second slices, cleared two
+    costmaps that had nothing wrong with them, and let the replan come back the
+    other way round the wall so the rover turned back -- the wiggle somebody
+    watched.
+    """
+    section("progress means moving or turning, not only moving")
+    path = os.path.join(HERE, "config", "nav2.yaml")
+    if not os.path.exists(path):
+        print("  .... skipped, no config/nav2.yaml")
+        return
+    with open(path) as fh:
+        text = fh.read()
+    # Comments stripped first, and that matters more here than anywhere else in
+    # this file: the block explaining *why* SimpleProgressChecker was replaced
+    # names it four times, so a search over the raw text finds the explanation
+    # and calls it the setting.
+    settings = settings_of(text)
+    check("the progress checker is PoseProgressChecker",
+          "nav2_controller::PoseProgressChecker" in settings)
+    check("SimpleProgressChecker is not the one configured",
+          "nav2_controller::SimpleProgressChecker" in settings, False)
+
+    def number(name):
+        found = re.search(r"^\s*%s:\s*([-\d.]+)" % name, settings,
+                          re.MULTILINE)
+        return float(found.group(1)) if found else None
+
+    angle = number("required_movement_angle")
+    allowance = number("movement_time_allowance") or 15.0
+    check("a turn counts as progress", angle is not None)
+    if angle is not None:
+        # Above the gyro's standing bias over the whole window, or a rover
+        # standing perfectly still would report progress for ever. base_node
+        # measures that bias at about +0.43 deg/s.
+        drift = math.radians(0.43 * allowance)
+        check("and the threshold clears the gyro's own drift over the window",
+              angle > 2 * drift)
+        # And well below any real turn, or a legitimate pivot would fail to
+        # register. The slowest pivot this chassis holds is about 9 deg/s.
+        check("while staying far inside the slowest real pivot",
+              angle < math.radians(9.0 * allowance) / 4.0)
+
+
 def main():
     test_drive_model()
     test_steering_has_a_small_end()
@@ -1162,6 +1272,8 @@ def main():
     test_calibration_store()
     test_configs_agree()
     test_goal_fits_before_it_is_sent()
+    test_a_route_is_budgeted_on_the_route()
+    test_progress_is_not_only_translation()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0
 

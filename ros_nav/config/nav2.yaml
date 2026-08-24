@@ -51,11 +51,42 @@ controller_server:
     controller_plugins: ["FollowPath"]
 
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
-      # 10 cm in 15 s. Generous, because this chassis is tracked and skids: a
-      # tight check calls a rover that is grinding round a tight corner "stuck"
-      # and triggers a recovery that makes it worse.
+      # **`PoseProgressChecker`, not `SimpleProgressChecker`, and the difference
+      # is the whole reason a rover on a perfectly good route got called stuck.**
+      #
+      # `SimpleProgressChecker` measures one thing: how far the rover has moved.
+      # On a chassis that steers by driving one track faster than the other, that
+      # is a fair test. On this one it is not, because this one changes direction
+      # by stopping and pivoting -- `vx_samples: 2` below means every heading
+      # change larger than a 0.5 m arc can absorb *is* a turn on the spot -- and a
+      # turn on the spot moves the rover nowhere at all. So the check cannot tell
+      # a rover pivoting to line up on the next leg of its route from a rover
+      # jammed against a chair leg.
+      #
+      # Recorded here: a goal 2.95 m away with a wall in between planned as a
+      # correct 8.81 m route that set off 91 degrees off the nose. The rover
+      # turned, which is what it should have done, and fifteen seconds of that
+      # tripped this check three times over; each failure aborted `follow_path`,
+      # cleared a costmap that had nothing wrong with it, and threw away the
+      # controller's oscillation and goal state, so the replan came back the other
+      # way round the wall and the rover turned back. That is the wiggle somebody
+      # watched it do until the move ran out of time.
+      #
+      # This plugin accepts *either* 10 cm of travel or a real turn as progress,
+      # which is the honest definition on this chassis.
+      plugin: "nav2_controller::PoseProgressChecker"
       required_movement_radius: 0.10
+      # 20 degrees, and the floor under it is the gyro rather than the chassis.
+      # `base_node.debias` corrects a standing bias of about +0.43 deg/s, which
+      # over this fifteen-second window is still six and a half degrees of pure
+      # invention if the correction were ever to lapse -- so the threshold has to
+      # sit well clear of it or a rover standing perfectly still would report
+      # progress for ever. Three times the bias, and 1.7 s of the slowest pivot
+      # this chassis can hold, so no real turn misses it.
+      required_movement_angle: 0.35
+      # 10 cm or 20 degrees in 15 s. Generous, because this chassis is tracked and
+      # skids: a tight check calls a rover that is grinding round a tight corner
+      # "stuck" and triggers a recovery that makes it worse.
       movement_time_allowance: 15.0
 
     goal_checker:

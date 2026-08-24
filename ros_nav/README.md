@@ -970,6 +970,149 @@ it is.
 abandoned the goal. The number is there in `nav_status` as `transform_age_s`; it
 is the threshold that is too loose.
 
+## The rover wiggled in one spot and then timed out, and it was doing its job
+
+A `drive_to` 2.95 m across a room ended in `timed out` after 53 seconds, with the
+rover turning back and forth on the spot for most of them. Nothing was stuck.
+
+**The straight line was through a wall.** Measured against the global costmap
+along that line, 12 of 30 steps put a *point* at 253 or worse and 27 of 30 put the
+rover's *body* in contact. So NavFn did the right thing and returned a route
+round: 346 poses, 8.81 m, out west, north, east, north again, east and then south
+to the goal — a detour of 3.0 times the direct distance, setting off 92 degrees
+off the nose.
+
+Three things then went wrong, and all three read from outside as a rover that
+could not find its way.
+
+**The time allowance was worked out from the wrong distance.** `goto` in
+`nav_bridge.py` budgeted `6 x straight-line metres / 0.35`, which for a 2.95 m
+goal is 50.6 seconds. Driving that route perfectly — no replan, no recovery —
+takes about 44: 22 seconds for the 8.81 m and 22 more for the 598 degrees of
+turning the corners ask for. It is worth being exact about what was wrong with
+that, because the easy version is a half-truth: 50.6 against 44 is not too short
+to drive the route, it is *15% of headroom* on a stack that replans once a second
+and spends fifteen seconds on each rung of its recovery ladder. The first thing to
+go wrong spends all of it.
+
+**The progress checker cannot tell a pivot from a jam.**
+`SimpleProgressChecker` measures one thing, how far the rover has moved, and every
+direction change this chassis makes is a turn on the spot — `vx_samples: 2` means
+any heading change a 0.5 m arc cannot absorb *is* a pivot. So a rover lining up on
+the next leg of its route and a rover jammed against a chair leg are the same
+event to it. It fired three times in fifteen-second slices. Each firing aborted
+`follow_path`, cleared a costmap that had nothing wrong with it, and threw away the
+controller's oscillation and goal state.
+
+**And that is where the wiggle came from.** With the controller restarted and the
+planner replanning at 1 Hz, a route whose two ways round the wall are close in cost
+comes back the *other* way, so the rover turns back. Turn, get called stuck, turn
+the other way, get called stuck. Then the bridge's allowance ran out and the
+console said `timed out`, which is the one thing that was true and the least useful
+way to say it.
+
+### What changed
+
+- **The allowance follows the route.** `route_cost.py` measures a plan's length
+  and the heading change its corners demand, and `goto` rebuilds its deadline from
+  that on every replan — pushing outwards only, so a plan that comes back shorter
+  cannot pull the deadline back past where the rover has already got to. The same
+  route now gets 141.9 seconds. There is a floor of 45 seconds under it that is set
+  by the recovery ladder rather than by any distance: two progress-checker windows,
+  a spin and a wait is about 40 seconds, and a rover cancelled before that has had
+  none of the recoveries it carries. The reply says the route length too, so a
+  timeout on 8.8 m of detour no longer reads the same as a timeout going nowhere.
+- **`PoseProgressChecker` replaces `SimpleProgressChecker`**, which counts a real
+  turn as progress as well as a real move. `required_movement_angle` is 20 degrees:
+  above the gyro's own standing bias of about +0.43 deg/s over the 15 second window,
+  which is 6.5 degrees of pure invention if `base_node`'s correction ever lapsed,
+  and far below any turn the rover actually makes.
+- **Turning is counted in the budget, not just distance.** Sampling matters and
+  does not fully converge — pose by pose that route reads 3259 degrees, every
+  0.25 m it reads 598, every metre 422 — because a 5 cm grid path's heading is
+  quantised to eight compass points and a straight run is stored as a staircase.
+  0.25 m is the setting, over-counting is the safe direction for a backstop, and
+  `route_cost.py` says all of that out loud rather than presenting one number.
+
+### `dwb_bench.py`: reading `/evaluation` without driving the rover
+
+`/evaluation` is DWB publishing its own decision — every candidate twist, what each
+critic charged it, and which won — and it is the only place that says why a rover
+that could move is standing still. Four of the faults in this stack were found in
+it and nowhere else. Reading it used to mean driving the rover into the fault first,
+in a room, with somebody watching.
+
+`dwb_bench.py` starts a *second* `controller_server` beside the live one, from this
+same `config/nav2.yaml`, subscribed to the same live `/scan` and reading the same
+live transform tree — and publishes its `/cmd_vel` into a namespace nothing is
+listening to. The real DWB, the real critics, the real room, the real pose, and the
+wheels never turn. It refuses to start if anything has subscribed to that topic.
+
+```bash
+python3 dwb_bench.py --bearing 0,20,40,60,90     # swept off the nose
+python3 dwb_bench.py --goal 2.74,-9.86           # the real planned route there
+```
+
+Given `--goal` it asks the live planner for the actual route and scores that, which
+is the only way to reproduce a particular run — a straight synthetic line answers a
+question about a path Nav2 would never have produced. It also prints the budget
+arithmetic, so "would this goal have run out of time" is answerable before anybody
+drives.
+
+What it measures is the *margin* between the best turn-on-the-spot and the best
+forward arc, because that one comparison, made ten times a second, is what decides
+whether the rover goes anywhere. Swept across the heading a straight 3 m path sets
+off at, from a rover standing in open floor:
+
+| off the nose | forward wins by | as a share |
+|---|---|---|
+| 0 deg | 9.00 | 23.1% |
+| 20 deg | 10.21 | 21.0% |
+| 40 deg | 4.81 | 10.0% |
+| 60 deg | 2.41 | 5.5% |
+| 90 deg | **−11.79** | −20.8% |
+
+So the crossover is somewhere near 70 degrees, and on the real 8.81 m route — which
+leaves 92 degrees off the nose — the pivot wins by 24% on every tick. That is
+correct behaviour and it is worth saying so: the rover *should* turn before setting
+off on that route. What was wrong was everything downstream of it deciding that a
+rover which turns is a rover which has failed.
+
+**Two cautions, both learned the hard way by this tool's own first runs.** It sets
+`bond_heartbeat_period: 0.0`, because every Nav2 lifecycle node announces itself on
+`/bond` under an id taken from its node *name* and the bench's name is
+`controller_server` too — a bench that bonded would be a second heartbeat under the
+name the live lifecycle manager is watching, and the bench exiting would read as the
+real controller dying. And it kills its whole process group: `ros2 run` is a
+launcher, so terminating it leaves an orphan holding the node name, and two nodes of
+one name make `ros2 lifecycle` silently answer for whichever it found first.
+
+### What is still open
+
+- **The pivot channel over-serves the smallest rotation the controller can ask
+  for, by four times.** DWB's sixteen rotation samples run in 5.96 deg/s steps, and
+  `drive_mixer.turn_to_pwm` lifts any pivot request below `MIN_TURN_DPS` up to it.
+  Against this chassis's own measured curve: asked 2.98 deg/s the wheels deliver
+  11.93, asked 8.94 they deliver 11.93, and everything from 14.9 up is right to
+  within 1%. `MIN_TURN_DPS = 12.0` is a constant from `lidar_slam/nav_types.py`,
+  measured on the rover as it was, and this chassis's slowest measured pivot is
+  9.17 deg/s — so the floor is 31% above what the rover can actually do, and the
+  number setting it was measured on a different machine. The *rolling* steering
+  channel is fine and was fixed earlier: it lands within 6% from 8.94 deg/s up.
+  This is not what caused the stall above — with an 0.8 s rollout executed 0.1 s at
+  a time, a plant error of four is a loop gain of a half — but it is a real defect
+  and the floor should come from the measured curve rather than from the old rover.
+- **Nothing checks that the rover can *leave* where it stands.** `goal_fit.py`
+  tests the goal against the body and moves it; the start is unguarded. Measured on
+  the rover on 2026-08-24, parked after a manual drive: its own cell read 253, the
+  body was in contact at all 24 headings tried, and `ComputePathToPose` returned
+  error 208 with zero poses. `drive_to` answers that with "there is no route", which
+  sends somebody to look at the map when what is needed is 20 cm of reverse.
+- The route being 3.0 times the direct distance is still the planner's, and the
+  note above under *Where it got to* still stands: a grid Dijkstra has no curvature
+  in it, and the `smoother_server` that is configured is never called by the stock
+  behaviour tree.
+
 ## What is deliberately not here
 
 **AMCL and the map server.** They localise against a map saved earlier, and this

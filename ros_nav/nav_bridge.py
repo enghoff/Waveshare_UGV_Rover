@@ -83,6 +83,10 @@ from nav_codes import phrase_for, reason_for
 # geometry test rather than a table, and a drifted copy of it would be a rover
 # that thinks it fits somewhere it does not.
 import goal_fit
+# And likewise: what a route costs to drive is what the time allowance is built
+# from, and dwb_bench.py reports the same figure before anybody drives, so the
+# two have to be one function.
+import route_cost
 
 # Loopback, for the same reason board_bridge.py is: this hands out the wheels,
 # and nothing on it authenticates. 8769 is the daemon, 8770 the depth camera,
@@ -127,6 +131,43 @@ TIME_ALLOWANCE_FLOOR_S = 8.0
 # speed rather than a small number.
 DEFAULT_SPEED_MS = 0.35
 DEFAULT_TURN_DPS = 45.0
+
+# **A route is as long as the route, not as long as the straight line.** This is
+# the number a 3 m goal used to time out on. `drive_to` budgeted its allowance
+# from the distance to the goal as the crow flies, and NavFn does not fly: sent
+# 2.95 m to a spot with a wall in between, it returned a perfectly correct 8.81 m
+# detour -- out west, round, and back -- and the rover was cancelled 53 seconds
+# into a route that needed about 42 seconds of driving and turning even if
+# nothing went wrong. The console reported "timed out", which reads as a rover
+# that could not find its way, and it had found its way and was driving it.
+#
+# So the budget is rebuilt from the route as soon as the planner publishes one,
+# and again on every replan, out of the two things a route costs:
+#
+#   - its length, at the speed the rover really holds, and
+#   - its corners. Every direction change on a skid-steer chassis is a stop and
+#     a pivot, and this route had six of them; at the rate DWB pivots that is
+#     about as much of the clock as the driving.
+#
+# Sampled at a quarter of a metre because a 5 cm grid path's heading is quantised
+# to eight compass points, so measuring the turns pose by pose counts a straight
+# line as a staircase and charges for 45 degrees at every step.
+# The rate the controller really pivots at. DWB's rotation samples run to
+# 44.7 deg/s and it picks one of the larger ones for a corner, but a corner is
+# also a stop, a turn and a start, so the average rate a *route* turns at is
+# lower than the peak rate a pivot reaches. Measured off the sample set the
+# config offers, this is about the middle of it.
+ROUTE_TURN_DPS = 27.0
+
+# The allowance no route goes below, and it is set by Nav2's recovery ladder
+# rather than by any distance. `SimpleProgressChecker` gives a move 15 seconds to
+# cover 10 cm; on the second failure the behaviour tree clears both costmaps, and
+# only on the third does it try the spin that might actually help. A rover
+# cancelled before then has had none of the recoveries it carries -- which is what
+# happened here: the log has three progress-checker failures, two costmap clears,
+# and no spin, because the bridge cancelled at 53 seconds. Two windows, a spin and
+# a wait is about 40 seconds, so this is the point of having recoveries at all.
+TIME_ALLOWANCE_MIN_ROUTE_S = 45.0
 
 # **How far the rover will reverse before it would rather turn round.** The lidar
 # is the only thing aboard that sees where it is going and it faces forwards, so
@@ -626,13 +667,20 @@ class NavBridge(Node):
             time.sleep(0.02)
         return True
 
-    def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving"):
+    def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving",
+                 budget=None):
         """Send one Nav2 goal and narrate it until it ends.
 
         `say` publishes a progress line and `measure` turns the action's own
         feedback into the numbers the daemon reports, because each action counts
         something different -- degrees for a spin, metres for a drive, metres
         remaining for a navigation.
+
+        `budget`, where there is one, is asked on every pass how many seconds the
+        move now deserves, and the deadline moves out to match. `drive` and
+        `turn_in_place` do not need it -- what they were asked for is what they
+        will do -- but a navigation does: the route is not known when the goal is
+        sent, and it is the route rather than the goal that has to be driven.
 
         `motion` is the word for what the rover is doing once the goal is
         accepted, and it is a parameter because the consoles read it: both turn
@@ -682,10 +730,18 @@ class NavBridge(Node):
             self.driving = True
         try:
             result_future = handle.get_result_async()
-            deadline = time.monotonic() + limit_s
+            began = time.monotonic()
+            deadline = began + limit_s
             said_at = 0.0
             while not result_future.done():
                 now = time.monotonic()
+                if budget is not None:
+                    # Re-asked every pass rather than once at the start, because
+                    # the route does not exist yet when the goal is sent and it
+                    # changes at every replan. Only ever pushed outwards: a
+                    # replan that happens to come back shorter must not pull the
+                    # deadline back past where the rover has already got to.
+                    deadline = max(deadline, began + budget())
                 if now > deadline:
                     handle.cancel_goal_async()
                     self.wait(result_future, 5.0)
@@ -982,9 +1038,30 @@ class NavBridge(Node):
         # Generous, and a backstop rather than a schedule: Nav2 may legitimately
         # spend a while backing out of a corner and trying again, and a limit tight
         # enough to be a schedule would cancel exactly the recoveries that were
-        # about to work.
+        # about to work. It starts from the straight line only because that is all
+        # there is to go on before the planner has answered; `budget` below
+        # replaces it with the route as soon as there is one. See
+        # ROUTE_SAMPLE_M for the 3 m goal that used to time out on 8.8 m of route.
         straight = math.hypot(gx - start[0], gy - start[1])
-        limit = max(30.0, 6.0 * straight / DEFAULT_SPEED_MS)
+        limit = max(TIME_ALLOWANCE_MIN_ROUTE_S,
+                    TIME_ALLOWANCE_SLACK * straight / DEFAULT_SPEED_MS)
+        # The longest route seen while this move has been running, kept rather
+        # than recomputed from the current plan alone: the plan shortens as the
+        # rover eats into it, and an allowance that shortened with it would
+        # tighten exactly as the rover ran out of time.
+        longest = [0.0, 0.0]
+
+        def budget():
+            with self._lock:
+                plan = self.plan
+            metres, turning = route_cost.from_path(plan)
+            if metres > longest[0]:
+                longest[0], longest[1] = metres, turning
+            if longest[0] <= 0.0:
+                return limit
+            return route_cost.seconds_for(
+                longest[0], longest[1], DEFAULT_SPEED_MS, ROUTE_TURN_DPS,
+                slack=TIME_ALLOWANCE_SLACK, floor=limit)
 
         def measure(fb):
             with self._lock:
@@ -995,9 +1072,18 @@ class NavBridge(Node):
             # does not carry it; the plan it publishes does.
             return {"remaining_m": self.remaining_m,
                     "waypoints": len(plan.poses) if plan is not None else 0,
+                    "route_m": round(longest[0], 2) or None,
                     "recoveries": int(fb.number_of_recoveries)}
 
-        outcome = self.run_goal("goto", goal, limit, say, measure)
+        outcome = self.run_goal("goto", goal, limit, say, measure, budget=budget)
+        # **How far the route was, said out loud.** A move that ran out of time on
+        # a route three times the length of the straight line is a different event
+        # from one that ran out of time going nowhere, and the console could not
+        # tell them apart: both said "timed out".
+        if longest[0] > straight * 1.3 and outcome.get("reason") != "arrived":
+            outcome["detail"] = (
+                "%s -- the route round was %.1f m for a goal %.1f m away"
+                % (outcome.get("detail") or "no route", longest[0], straight))
         # Said whatever happened, including on arrival: a rover that stopped 20 cm
         # from where somebody pointed has done the right thing, and the console
         # saying so is the difference between that and a rover that missed.
