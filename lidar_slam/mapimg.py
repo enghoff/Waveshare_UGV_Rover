@@ -16,8 +16,10 @@ have different readers. Occupancy is naturally a lightness ramp from solid to
 empty, so what is drawn *over* it -- where the rover is, which way it points,
 where it has been -- had nowhere to go but more shades of the same ramp, and the
 two that matter most ended up as dark pixels on dark obstacles. Colour gives them
-somewhere to live. `png_grey` stays because the encoder self-check and anything
-dumping a bare occupancy grid have no overlay to distinguish.
+somewhere to live. Empty floor the rover can actually reach from where it stands
+is green rather than cream, so a room behind a wall does not read as a place to
+go. `png_grey` stays because the encoder self-check and anything dumping a bare
+occupancy grid have no overlay to distinguish.
 """
 import math
 import struct
@@ -35,7 +37,8 @@ ROVER, TRACK, SCALE = 0, 60, 0
 # lightness is left to carry the occupancy underneath: solid to empty keeps its
 # black-to-white ramp, and nothing overlaid on it is a shade that ramp contains.
 C_OCCUPIED = (24, 24, 28)           # solid, and still the darkest thing here
-C_FREE = (247, 246, 242)            # seen to be empty
+C_FREE = (247, 246, 242)            # seen to be empty, but not reachable from here
+C_REACHABLE = (58, 162, 90)         # empty, and the rover can get there from here
 C_UNKNOWN = (129, 132, 138)         # never seen -- not empty
 C_DIM = (196, 186, 164)             # seen, but not enough times to call solid
 C_TRACK = (36, 116, 232)            # where it has been
@@ -302,6 +305,73 @@ def _draw_track(image, np, points, scale):
             image[py[inside], px[inside]] = colour
 
 
+def reachable_free(shown, origin):
+    """Free cells 4-connected to the rover, as a boolean mask the same shape as `shown`.
+
+    Free is `shown < 0`, the coding `render` already uses. Occupied, dim and
+    unseen do not transmit, so a room the lidar has seen as empty but that sits
+    behind a wall stays cream rather than turning green.
+
+    4-connected rather than 8: a one-cell diagonal crack in a wall is a common
+    occupancy-grid artefact, and treating it as a doorway would paint the far
+    room reachable when nothing the rover's width can fit through is actually
+    there. The rover's own cell need not be free -- it is often unseen or dim
+    at the start of a run -- so the flood begins at `origin` and walks *onto*
+    free cells, rather than refusing to start.
+    """
+    import numpy as np
+
+    walkable = shown < 0
+    height, width = walkable.shape
+    reach = np.zeros((height, width), dtype=bool)
+    row, col = origin
+    if not (0 <= row < height and 0 <= col < width):
+        return reach
+    if walkable[row, col]:
+        reach[row, col] = True
+    else:
+        for drow, dcol in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            nrow, ncol = row + drow, col + dcol
+            if 0 <= nrow < height and 0 <= ncol < width and walkable[nrow, ncol]:
+                reach[nrow, ncol] = True
+    if not reach.any():
+        return reach
+    # Dilate through walkable cells until the front stops moving. Each pass is
+    # four boolean ORs on the whole crop, so a 12 m view is tens of milliseconds
+    # rather than a Python walk of every cell -- and the iteration count is the
+    # longest 4-path in the picture, not the number of free cells.
+    for _ in range(height + width):
+        grown = reach.copy()
+        grown[1:, :] |= reach[:-1, :]
+        grown[:-1, :] |= reach[1:, :]
+        grown[:, 1:] |= reach[:, :-1]
+        grown[:, :-1] |= reach[:, 1:]
+        nxt = grown & walkable
+        if nxt.sum() == reach.sum():
+            return nxt
+        reach = nxt
+    return reach
+
+
+def colour_occupancy(shown, occupied_at, origin):
+    """The occupancy crop as an (h, w, 3) uint8 picture, reachable floor in green.
+
+    `origin` is the rover's cell in `shown`, row then column -- the centre of the
+    crop `render` samples, which is where the rover is. Shared with the mock
+    rover so a console looking at an invented room sees the same palette as the
+    real map, including which empty cells are green.
+    """
+    import numpy as np
+
+    rgb = np.empty(shown.shape + (3,), dtype=np.uint8)
+    rgb[...] = C_UNKNOWN
+    rgb[shown < 0] = C_FREE
+    rgb[(shown > 0) & (shown < occupied_at)] = C_DIM
+    rgb[shown >= occupied_at] = C_OCCUPIED
+    rgb[reachable_free(shown, origin)] = C_REACHABLE
+    return rgb
+
+
 def camera_caption(bearing_deg, fov_deg):
     """The sentence that tells a reader what the violet wedge is.
 
@@ -429,12 +499,9 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
     shown[on_grid] = np.asarray(grid)[gx[on_grid], gy[on_grid]]
 
     # Occupancy as three RGB planes. The state -> colour step happens here, on the
-    # small array, rather than per pixel after the scale-up.
-    rgb = np.empty(shown.shape + (3,), dtype=np.uint8)
-    rgb[...] = C_UNKNOWN
-    rgb[shown < 0] = C_FREE
-    rgb[(shown > 0) & (shown < occupied_at)] = C_DIM
-    rgb[shown >= occupied_at] = C_OCCUPIED
+    # small array, rather than per pixel after the scale-up. Reachable empty floor
+    # is green; empty that sits behind a wall stays cream.
+    rgb = colour_occupancy(shown, occupied_at, origin=(half_cells, half_cells))
 
     big = np.repeat(np.repeat(rgb, scale, axis=0), scale, axis=1)
 
@@ -520,9 +587,10 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
         f"{2 * half_extent_m:.0f} metres around the rover, built from its lidar. "
         f"{orientation} The red triangle is the rover and its tip points the way the "
         f"rover is facing, with a yellow dot at its exact position; the blue line is "
-        f"the path it has driven.{cone} Black is solid, near-white is space the lidar has "
-        f"seen to be empty, sandy beige is seen but not confirmed solid, and flat grey "
-        f"is unknown -- not empty. The bar at the bottom "
+        f"the path it has driven.{cone} Black is solid, green is empty space the rover "
+        f"can reach from where it is standing, near-white is empty but cut off from "
+        f"here by something solid, sandy beige is seen but not confirmed solid, and "
+        f"flat grey is unknown -- not empty. The bar at the bottom "
         f"left is one metre. {solid} cells are solid out of {seen} seen. Distances "
         f"here are good to a few centimetres locally, but the rover's own position "
         f"drifts over a long run, so use this to judge what is nearby rather than to "
@@ -696,6 +764,8 @@ def _check_orientation():
 
     assert "red triangle" in caption and "blue line" in caption, (
         "the caption no longer names the colours it is explaining")
+    assert "green" in caption, (
+        "the caption does not name the reachable-floor colour")
 
     # rover_up: the page turns with the rover. Where the one wall lands says which
     # way, and it has to land somewhere different for each quarter turn.
@@ -873,6 +943,98 @@ def _check_camera():
     print("camera ok: cone aims where the gimbal does, widens with the field of view")
 
 
+def _check_reachable():
+    """Green is the empty floor connected to the rover; cream is empty behind a wall.
+
+    The whole point of a second empty colour is that distinction, so a picture that
+    painted every free cell green -- or that leaked through a diagonal crack in a
+    wall -- would look right at a glance and send the rover at a room it cannot
+    enter. Checked on the occupancy array first, then on a rendered PNG, because
+    the PNG is what a person actually sees and the array is what a one-cell leak
+    is easiest to write down on.
+    """
+    import numpy as np
+
+    # A 7x7 crop: rover in the middle, a wall across the top half, free both sides.
+    shown = np.full((7, 7), -1, dtype=np.int8)
+    shown[2, :] = 60
+    origin = (5, 3)
+    reach = reachable_free(shown, origin)
+    assert reach[5, 3] and reach[6, 3], "the rover's own side of the wall is not reachable"
+    assert not reach[0, 3] and not reach[1, 3], "empty behind the wall was marked reachable"
+    assert not reach[2, 3], "the wall itself was marked reachable"
+
+    rgb = colour_occupancy(shown, occupied_at=20, origin=origin)
+    assert tuple(rgb[6, 3]) == C_REACHABLE
+    assert tuple(rgb[0, 3]) == C_FREE
+    assert tuple(rgb[2, 3]) == C_OCCUPIED
+
+    # A one-cell gap in the wall *is* a doorway: both rooms turn green.
+    gapped = shown.copy()
+    gapped[2, 3] = -1
+    through = reachable_free(gapped, origin)
+    assert through[0, 3] and through[6, 3], "a gap in the wall did not connect the two rooms"
+
+    # A checkerboard seam spans the width: 8-connected would walk the diagonals
+    # into the far room, 4-connected must not.
+    seam = np.full((6, 5), -1, dtype=np.int8)
+    seam[2, 0::2] = 60
+    seam[3, 1::2] = 60
+    leaked = reachable_free(seam, (4, 2))
+    assert leaked[4, 2] and leaked[5, 2]
+    assert not leaked[0, 2] and not leaked[1, 2], (
+        "a diagonal crack in a wall leaked reachability into the far room")
+
+    # Unseen under the rover still lets the flood walk onto neighbouring free cells.
+    unseen = np.full((5, 5), -1, dtype=np.int8)
+    unseen[2, 2] = 0
+    from_unknown = reachable_free(unseen, (2, 2))
+    assert not from_unknown[2, 2], "unseen under the rover was painted reachable"
+    assert from_unknown[2, 3] and from_unknown[1, 2]
+
+    # And the same claims on a picture `render` actually drew, so a regression that
+    # only hit the scale-up or the sampling would still fail here.
+    class _Config:
+        resolution_m, grid_cells, occupied_at, rover_width_m = 0.05, 400, 20, 0.34
+
+    class _Slam:
+        config = _Config()
+        lock = __import__("contextlib").nullcontext()
+        pose = (2.0, 0.0, 0.0)
+
+        def __init__(self, gap=False):
+            n = _Config.grid_cells
+            self._g = np.full((n, n), -1, dtype=np.int8)
+            self._g[n // 2 + 60, :] = 60          # a metre ahead of the start, full width
+            if gap:
+                self._g[n // 2 + 60, n // 2 - 1:n // 2 + 2] = -1
+
+        def grid(self):
+            return self._g
+
+    def cell(img, ahead_cells, left_cells, scale=3):
+        """The colour of one occupancy cell, sampled at its centre pixel."""
+        half = max(8, int(round(3.0 / 0.05)))
+        row = (half - ahead_cells) * scale + scale // 2
+        col = (half - left_cells) * scale + scale // 2
+        return tuple(img[row, col])
+
+    blocked, caption = render(_Slam(), half_extent_m=3.0, scale=3)
+    blocked = _decode(blocked)
+    # Wall is 1 m = 20 cells ahead of a rover at x=2 m. Sample to the side of
+    # the arrow: the triangle covers the pose itself, and a cell behind the
+    # rover is still red.
+    assert cell(blocked, 8, 8) == C_REACHABLE, cell(blocked, 8, 8)
+    assert cell(blocked, 20, 8) == C_OCCUPIED, cell(blocked, 20, 8)
+    assert cell(blocked, 24, 8) == C_FREE, cell(blocked, 24, 8)
+    assert "green" in caption and "cut off" in caption
+
+    opened, _ = render(_Slam(gap=True), half_extent_m=3.0, scale=3)
+    opened = _decode(opened)
+    assert cell(opened, 24, 8) == C_REACHABLE, cell(opened, 24, 8)
+    print("reachable ok: green is connected empty floor, cream is empty behind a wall")
+
+
 if __name__ == "__main__":
     # A synthetic check that needs no rover: a box with a gap, so the geometry and
     # the encoder can be eyeballed without the hardware, and an assertion that the
@@ -882,6 +1044,7 @@ if __name__ == "__main__":
     _check_orientation()
     _check_tap()
     _check_camera()
+    _check_reachable()
 
     c = Canvas(160, 120, UNKNOWN)
     for i in range(20, 140):

@@ -194,7 +194,9 @@ the path. The arrow replaced a dot with a whisker off it, which at three pixels 
 cell was two pixels wide and left the heading to be guessed. Nothing on the rover can
 draw text, so the caption names the colours for the model and
 [drive_web/drive_web.py](../drive_web/drive_web.py) builds its key out of this
-file's palette rather than its own.
+file's palette rather than its own. Empty floor the rover can reach from where it
+stands is green; empty that is cut off by a wall stays the cream "empty" of the
+occupancy ramp, which is why those two sit next to each other on the key.
 
 A client can zoom, and zooming keeps the picture the size it was. `map_png` in the
 daemon takes how many metres to show and how big a picture to send back, and works

@@ -670,12 +670,12 @@ class Rover:
         """
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "lidar_slam"))
+        import numpy as np
         import mapimg
 
         res = 0.05
         half = max(8, int(half_extent_m / res))
         size = half * 2 + 1
-        canvas = mapimg.Canvas(size * scale, size * scale, mapimg.C_UNKNOWN)
         ahead_cos, ahead_sin = ((math.cos(self.heading), math.sin(self.heading))
                                 if rover_up else (1.0, 0.0))
 
@@ -698,8 +698,11 @@ class Rover:
         # Filled from the cell indices rather than by rounding to_pixels back to a
         # block: the two agree to within float error, and that error is enough to
         # drop a one-pixel line between neighbouring cells, which drew a faint grid
-        # over the whole picture.
+        # over the whole picture. Occupancy is coded the way the real renderer
+        # reads it, then coloured by `colour_occupancy`, so reachable floor is
+        # green here for the same reason it is green on the rover.
         wall = res * 1.5
+        shown = np.zeros((size, size), dtype=np.int8)
         for iy in range(size):
             for ix in range(size):
                 wx, wy = at_cell(iy, ix)
@@ -709,19 +712,14 @@ class Rover:
                                abs(wy + ROOM_RIGHT_M), abs(wy - ROOM_LEFT_M)) < wall)
                 near_leg = any((wx - lx) ** 2 + (wy - ly) ** 2
                                <= (LEG_RADIUS_M + res) ** 2 for lx, ly in LEGS)
+                row, col = size - 1 - ix, size - 1 - iy
                 if near_leg or on_wall:
-                    value = mapimg.C_OCCUPIED
+                    shown[row, col] = 60
                 elif inside:
-                    value = mapimg.C_FREE
-                else:
-                    # Beyond the walls the lidar has seen nothing, and a mock that
-                    # painted that solid would be inviting the reader to read black
-                    # as "outside" rather than as "something is there".
-                    value = mapimg.C_UNKNOWN
-                col, row = (size - 1 - iy) * scale, (size - 1 - ix) * scale
-                for dy in range(scale):
-                    for dx in range(scale):
-                        canvas.put(col + dx, row + dy, value)
+                    shown[row, col] = -1
+        rgb = mapimg.colour_occupancy(shown, occupied_at=20, origin=(half, half))
+        big = np.repeat(np.repeat(rgb, scale, axis=0), scale, axis=1)
+        canvas = mapimg.Canvas.over([bytearray(row.tobytes()) for row in big], 3)
 
         prev = None
         for tx, ty in list(self.trail)[-400:]:
@@ -764,7 +762,8 @@ class Rover:
                    f"way it is facing, with a yellow dot at its exact position, and "
                    f"the blue line is the path it has driven. "
                    + mapimg.camera_caption(-self.pan, CAMERA_FOV_DEG)
-                   + " Nothing in it was measured.")
+                   + " Green is empty space the rover can reach from where it is. "
+                     "Nothing in it was measured.")
         return mapimg.png_rgb(canvas.rows), caption
 
     def set_vision(self, arguments: dict[str, Any]) -> dict[str, Any]:

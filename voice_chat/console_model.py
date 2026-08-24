@@ -189,6 +189,7 @@ def legend():
         (mapimg.C_CAMERA, "camera"),
         (mapimg.C_TRACK, "driven"),
         (mapimg.C_OCCUPIED, "solid"),
+        (mapimg.C_REACHABLE, "reachable"),
         (mapimg.C_FREE, "empty"),
         (mapimg.C_DIM, "unsure"),
         (mapimg.C_UNKNOWN, "unseen")))
