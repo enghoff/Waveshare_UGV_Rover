@@ -737,3 +737,112 @@ def test_a_second_click_takes_over() -> None:
     check("...and an offset still reads as an offset",
           asked_for({"kind": "drive_to", "asked": {"ahead_m": 1.0, "left_m": -0.4}}),
           "ahead +1.00 m, left -0.40 m")
+
+
+def test_the_audio_socket() -> None:
+    """The framing under the microphone, with no browser and no model.
+
+    This is a protocol implemented by hand -- see [wsframe.py](wsframe.py) for
+    why it is not a library -- and the two rules worth pinning are the ones whose
+    failure is silent. A length that crosses one of the header's size boundaries
+    comes out as a frame that reads fine and is one byte long; masking applied on
+    the wrong side is a connection the browser closes without saying anything.
+    Neither shows up as an exception in the place that caused it.
+    """
+    import wsframe
+
+    # RFC 6455's own example, so this is checked against the standard rather than
+    # against itself.
+    check("the handshake matches the standard's worked example",
+          wsframe.accept("dGhlIHNhbXBsZSBub25jZQ=="),
+          "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+
+    for size in (0, 1, 125, 126, 127, 65535, 65536, 70000):
+        raw = bytes(range(256)) * (size // 256) + bytes(size % 256)
+        wire = wsframe.frame(wsframe.BINARY, raw, mask=True)
+        opcode, back = wsframe.read_message(io.BytesIO(wire))
+        check(f"a {size} byte frame survives the wire", (opcode, back),
+              (wsframe.BINARY, raw))
+
+    # The server's own frames are unmasked, and a client reading them says so.
+    wire = wsframe.frame(wsframe.TEXT, b"hello")
+    check("a server frame reads back on the client side",
+          wsframe.read_message(io.BytesIO(wire), from_client=False),
+          (wsframe.TEXT, b"hello"))
+
+    for name, wire, from_client in (
+            ("an unmasked frame from a client is refused",
+             wsframe.frame(wsframe.TEXT, b"x"), True),
+            ("a masked frame from a server is refused",
+             wsframe.frame(wsframe.TEXT, b"x", mask=True), False)):
+        try:
+            wsframe.read_message(io.BytesIO(wire), from_client=from_client)
+            check(name, "accepted", "refused")
+        except wsframe.ProtocolError:
+            check(name, "refused", "refused")
+
+    # Fragments, because a browser may send them even though this never does.
+    first = wsframe.frame(wsframe.BINARY, b"one", mask=True)
+    first = bytes([first[0] & 0x7F]) + first[1:]        # clear FIN
+    rest = wsframe.frame(wsframe.CONT, b"-two", mask=True)
+    check("a fragmented message is put back together",
+          wsframe.read_message(io.BytesIO(first + rest)),
+          (wsframe.BINARY, b"one-two"))
+
+    # A close reason longer than a control frame may carry. The rover has been on
+    # the receiving end of this one: Alibaba's service once refused a session with
+    # a reason too long to be legal, and every conformant client discarded it, so
+    # the actual message was invisible.
+    payload = wsframe.close_frame(1000, "x" * 400)
+    check("a close reason is cut to what a control frame may hold",
+          len(payload) <= 125, True)
+
+
+def test_what_the_browser_heard() -> None:
+    """The playback accounting an interruption depends on.
+
+    When somebody talks over the rover, the model believes it said the whole
+    reply and the only correction available is the number of milliseconds that
+    were actually audible. On a desk that number comes off a sound card; here it
+    comes back over the wifi from a browser, which means it can be late, stale, or
+    about a reply that has already been replaced -- and each of those has a wrong
+    answer that sounds like a fault rather than looking like a bug.
+    """
+    try:
+        import numpy as np
+
+        from omni_bridge import BrowserSpeaker
+    except Exception as error:                         # noqa: BLE001
+        SKIP.append(f"the browser speaker ({type(error).__name__}: {error})")
+        return
+
+    sent: list[bytes] = []
+    control: list[dict] = []
+    speaker = BrowserSpeaker(sent.append, control.append)
+
+    speaker.begin()
+    check("a reply starts by telling the page so", control[0]["t"], "begin")
+    # A second of audio at the rate the service speaks.
+    speaker.write(np.zeros(24000, dtype=np.float32))
+    check("what was sent is a second of PCM16", len(sent[0]), 48000)
+
+    speaker.note_played(control[0]["gen"], 400)
+    check("what the page says it played is what is reported",
+          speaker.played_ms(), 400)
+    speaker.note_played(control[0]["gen"], 5000)
+    check("...but never more than was actually sent", speaker.played_ms(), 1000)
+
+    # A report about the previous reply, arriving after the next one began.
+    speaker.begin()
+    speaker.write(np.zeros(2400, dtype=np.float32))
+    speaker.note_played(control[0]["gen"], 900)
+    check("a report about a finished reply is ignored", speaker.played_ms(), 0)
+
+    speaker.note_played(control[-1]["gen"], 40)
+    dropped = speaker.flush()
+    check("an interruption tells the page to drop what is queued",
+          control[-1]["t"], "flush")
+    check("...and says how much of the reply went unheard",
+          round(dropped, 3), 0.06)
+    check("...after which what was queued is what was heard",
+          speaker.played_ms(), 40)

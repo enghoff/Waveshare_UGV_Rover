@@ -25,11 +25,31 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-VOICE = Path(__file__).resolve().parent / "server.py"
-DAEMON = ROOT / "rover_daemon" / "tool_schemas.py"
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+
+
+def _source(name: str, *repository: str) -> Path:
+    """Where a file is in the checkout, or beside this one where it was deployed.
+
+    A deploy flattens: the rover gets these modules copied into one directory,
+    with no `voice_chat/` and no `rover_daemon/` above them, so the checkout's
+    relative paths resolve to nothing there. Falling back to a sibling keeps one
+    rule -- the value is read from the file that owns it -- true in both layouts,
+    rather than making the deployed copy a second literal.
+    """
+    for candidate in (ROOT.joinpath(*repository) if repository else HERE / name,
+                      HERE / name,        # deployed next to this file
+                      ROOT / name):       # ...or one above it, where ~/ugv is flat
+        if candidate.exists():
+            return candidate
+    return HERE / name                    # the honest name for the error message
+
+
+VOICE = _source("server.py")
+DAEMON = _source("tool_schemas.py", "rover_daemon", "tool_schemas.py")
 # Map picture limits live with the tool that draws them, not with the schemas.
-ROVER_NAV = ROOT / "rover_daemon" / "rover_nav.py"
+ROVER_NAV = _source("rover_nav.py", "rover_daemon", "rover_nav.py")
 
 
 def _assignments(tree: ast.Module) -> dict[str, ast.expr]:

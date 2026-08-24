@@ -28,20 +28,32 @@ fi
 # urllib rather than curl, because python3 is the one interpreter this board is
 # certain to have. /health is this process answering, not the daemon.
 python3 - "$DIR" <<'PY'
-import json, sys, time, urllib.error, urllib.request
+import json, ssl, sys, time, urllib.error, urllib.request
 
 sys.path.insert(0, sys.argv[1])
 from drive_session import ROVER_HTTP_PORT
 
+# The console serves https where make_cert.sh has left a certificate and plain
+# http where it has not, on the same port, so this asks for both rather than
+# assuming. Verification is off deliberately: the certificate is this board's
+# own, signed by a certificate authority that exists nowhere but this board, and
+# checking it here would prove nothing about whether the console is answering --
+# which is the only thing this is asking.
+loose = ssl.create_default_context()
+loose.check_hostname = False
+loose.verify_mode = ssl.CERT_NONE
+
 for _ in range(20):
     time.sleep(1)
-    try:
-        with urllib.request.urlopen(
-                f"http://127.0.0.1:{ROVER_HTTP_PORT}/health", timeout=3) as reply:
-            print(json.dumps(json.loads(reply.read()), indent=None))
-            sys.exit(0)
-    except (urllib.error.URLError, OSError, ValueError):
-        continue
+    for scheme in ("https", "http"):
+        try:
+            with urllib.request.urlopen(
+                    f"{scheme}://127.0.0.1:{ROVER_HTTP_PORT}/health",
+                    timeout=3, context=loose) as reply:
+                print(f"{scheme}: " + json.dumps(json.loads(reply.read()), indent=None))
+                sys.exit(0)
+        except (urllib.error.URLError, OSError, ValueError):
+            continue
 print(f"the drive console did not answer within 20 s -- see "
       f"{sys.argv[1]}/drive_web.log", file=sys.stderr)
 sys.exit(1)

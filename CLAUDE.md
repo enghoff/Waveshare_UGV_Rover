@@ -180,10 +180,37 @@ in `voice_chat/` (talk.py uses them) and are copied next to it on deploy:
 
 ```bash
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md bpi-m4zero:~/ugv/drive_web/
-scp voice_chat/console_model.py voice_chat/rover_tools.py bpi-m4zero:~/ugv/drive_web/
+# the console's two, then the voice client the rover now runs itself
+scp voice_chat/{console_model,rover_tools,talk,talk_audio,talk_frames,prompts,endpointing,server}.py \
+    bpi-m4zero:~/ugv/drive_web/
 ssh bpi-m4zero '~/ugv/drive_web/install.sh'    # crontab, once
+ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'   # a pinned wheel, once
 ssh bpi-m4zero '~/ugv/drive_web/restart.sh'    # prints /health
 ```
+
+**The console is `https://<the rover>:8771/` now**, and plain http on the same
+port is redirected into it. That is not about secrecy -- there is still no
+password on the driving controls -- it is that `getUserMedia` is refused outside
+a secure context, and the page has a microphone on it. `make_cert.sh` writes the
+certificate to `~/.ugv/tls/`, `run_drive_web.sh` re-runs it at every boot because
+this board's address moves, and `~/.ugv/tls/console-ca.crt` is what to install on
+a phone or a laptop to lose the warning.
+
+**Two files on the rover are deliberately outside `~/ugv`**, which is the one
+place this repository's "credentials stay on the workstation" rule is bent, and
+it was bent knowingly: the rover holds its own conversation with Alibaba's
+realtime model now, so the key has to be reachable from the board or the desk has
+to be switched on for the rover to talk.
+
+```bash
+scp secrets/alibaba.key bpi-m4zero:~/.ugv/alibaba.key   # then chmod 600
+ssh bpi-m4zero 'cat ~/.ugv/console.token'               # gates the microphone only
+```
+
+`~/.ugv/` rather than `~/ugv/` because a deploy lands on the latter, and a key a
+deploy can overwrite is one an `scp -r` can carry back into the repository. The
+token gates the microphone and nothing else, because what is new is that the page
+can spend an account with a free tier and no pay-as-you-go under it.
 
 `ros_nav/` is ROS 2 Jazzy, installed from RoboStack into a conda environment
 outside `~/ugv` because a deploy overwrites `~/ugv`. It has its own supervisor and

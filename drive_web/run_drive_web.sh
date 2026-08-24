@@ -29,6 +29,14 @@ stop() {
 trap stop INT TERM
 
 echo "--- run_drive_web.sh starting at $(date -Is) ---" >> "$LOG"
+
+# The certificate, before the console that serves it. This is idempotent and
+# costs one openssl call when nothing has changed -- but this board is wifi-only
+# and its address moves between three house networks, and a certificate is
+# checked against the address that was typed. So the one moment worth re-checking
+# it is exactly here, after a boot that may have landed somewhere new.
+sh "$DIR/make_cert.sh" >> "$LOG" 2>&1
+
 while true; do
     python3 -u "$DIR/drive_web.py" >> "$LOG" 2>&1 &
     child=$!

@@ -358,6 +358,32 @@
     <p id="frameError"></p>
   </section>
 
+  <section id="voiceCard">
+    <h2>talk to it</h2>
+    <div class="row">
+      <button id="micButton">start talking</button>
+      <span id="voiceState" class="mono">off</span>
+    </div>
+    <p id="voiceHeard" class="hint"></p>
+    <p id="voiceSaid" class="hint"></p>
+    <p id="voiceError"></p>
+    <p id="voiceNote"></p>
+    <p class="hint">The conversation is held by the rover, not by this browser:
+      the tools it calls and the pictures it takes never leave the board. What
+      crosses the wifi is your voice and its voice. It is created when you press
+      this and closed when you press it again, when the tab goes, or after two
+      quiet minutes &mdash; the account behind it is metered.</p>
+    <details id="voiceTokenBox"><summary>token</summary>
+      <div class="row">
+        <input type="password" id="voiceToken" size="24" placeholder="from ~/.ugv/console.token">
+        <button id="voiceTokenSave">remember</button>
+      </div>
+      <p class="hint">The microphone is the one control on this page with a
+        password on it, because behind it is an account with a free tier and
+        nothing to fall back on. Driving stays as open as it has always been.</p>
+    </details>
+  </section>
+
   <section id="boardCard">
     <h2>face tracking</h2>
     <div class="row">
@@ -466,6 +492,7 @@ function render(next) {
   $("watchers").textContent = next.watching > 1
     ? `${next.watching} browsers watching` : "";
 
+  drawVoice(next.omni);
   drawStatus(next.status);
   // The button is for a lidar that has stopped talking, and it costs the camera and
   // the OAK a few seconds -- so it is offered when it would help and out of the way
@@ -524,6 +551,269 @@ function render(next) {
 
 const verdictOf = (state) =>
   ({full: "good", ok: "", low: "warn", critical: "bad", absent: "bad"})[state] || "";
+
+function drawVoice(omni) {
+  if (!omni) return;
+  const button = $("micButton"), where = $("voiceState");
+  if (!omni.available) {
+    button.disabled = true;
+    where.textContent = "not on this console";
+    $("voiceError").textContent = omni.why || "";
+    return;
+  }
+  button.disabled = false;
+  const live = omni.state === "live" || omni.state === "starting";
+  button.textContent = live ? "stop talking" : "start talking";
+  where.textContent = omni.state
+    + (omni.state === "live" && !omni.listening ? " (no microphone attached)" : "")
+    + (omni.seconds ? `  ${Math.round(omni.seconds)}s` : "");
+  where.className = "mono " + (omni.state === "live" ? "up"
+    : omni.state === "error" ? "down" : "");
+  $("voiceHeard").textContent = omni.heard ? `you: ${omni.heard}` : "";
+  $("voiceSaid").textContent = omni.said ? `rover: ${omni.said}` : "";
+  // **Only what the rover said.** This runs on every state push, which is ten
+  // times a second, and it used to write into the box the page also used for its
+  // own errors -- so "you have not entered a token" appeared and was overwritten
+  // within a tenth of a second, which reads as a button that flashes something
+  // and does nothing. The page's own messages go to #voiceNote and stay there
+  // until the next thing the person does.
+  $("voiceError").textContent = omni.error || "";
+}
+
+// --- the microphone ---------------------------------------------------------
+//
+// **The rover holds the conversation; this holds a microphone and a speaker.**
+// Audio goes up as PCM16 at setup.mic_rate and comes back as PCM16 at
+// setup.play_rate, and the only other thing on the socket is a line saying where
+// playback has actually got to -- which is what lets an interruption tell the
+// model how much of its reply was audible. Sending what was *received* instead
+// would teach it, every single time, that it said more than anybody heard.
+//
+// getUserMedia needs a secure context, which is why this console serves https at
+// all. The echo cancellation is the browser's, and it is the reason a laptop
+// with open speakers works here where the desk client wanted headphones.
+const CAPTURE = `
+class Capture extends AudioWorkletProcessor {
+  constructor() { super(); this.buffer = []; this.have = 0; }
+  process(inputs) {
+    const channel = inputs[0] && inputs[0][0];
+    if (!channel) return true;
+    this.buffer.push(new Float32Array(channel));
+    this.have += channel.length;
+    // A tenth of a second a message. A frame per 128 samples is 125 messages a
+    // second down a socket that is carrying a conversation, and the service
+    // cannot act on a block that small anyway.
+    if (this.have >= 1600) {
+      const out = new Int16Array(this.have);
+      let at = 0;
+      for (const block of this.buffer) {
+        for (let i = 0; i < block.length; i++) {
+          const clipped = Math.max(-1, Math.min(1, block[i]));
+          out[at++] = clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff;
+        }
+      }
+      this.port.postMessage(out.buffer, [out.buffer]);
+      this.buffer = []; this.have = 0;
+    }
+    return true;
+  }
+}
+registerProcessor("capture", Capture);
+`;
+
+const voice = {
+  socket: null, capture: null, play: null, media: null, node: null,
+  gen: 0, queued: 0, nextStart: 0, sources: [], ticker: null,
+  token: localStorage.getItem("omniToken") || "",
+
+  wanted() { return !!this.socket; },
+
+  note(text) { $("voiceNote").textContent = text; },
+
+  async toggle() {
+    this.note("");
+    if (this.wanted()) { this.stop(true); return; }
+    if (!this.token) {
+      // Open the box rather than pointing at it. A message about a field that is
+      // folded away is a message about something invisible.
+      $("voiceTokenBox").open = true;
+      $("voiceToken").focus();
+      this.note("This needs the token from the rover: run "
+        + "`ssh bpi-m4zero cat ~/.ugv/console.token`, paste it below and press "
+        + "remember.");
+      return;
+    }
+    this.note("opening the microphone...");
+    try {
+      await this.listen();
+    } catch (error) {
+      this.note(this.explain(error));
+      this.stop(true);
+      return;
+    }
+    this.note("");
+    post({omni: true, token: this.token});
+  },
+
+  explain(error) {
+    // The four that actually happen, said as what to do rather than as what the
+    // specification calls them. Anything else is passed through verbatim, which
+    // is more use than a sentence that guesses wrong.
+    const name = (error && error.name) || "";
+    if (!navigator.mediaDevices) {
+      return "This browser will not open a microphone for this page. That is the "
+        + "secure-context rule: it has to be https with a certificate the browser "
+        + "accepts, or localhost. Check the padlock.";
+    }
+    if (name === "NotAllowedError") {
+      return "The browser refused the microphone. Allow it from the icon in the "
+        + "address bar, then press the button again.";
+    }
+    if (name === "NotFoundError") {
+      return "This machine has no microphone the browser can see.";
+    }
+    if (name === "NotReadableError") {
+      return "Something else on this machine is holding the microphone.";
+    }
+    return `${error}`;
+  },
+
+  async listen() {
+    // The microphone first, because it is the half that asks permission and the
+    // half that fails on an http page -- and a session started before it is
+    // known to work is a session that has to be torn down again.
+    this.media = await navigator.mediaDevices.getUserMedia({
+      audio: {echoCancellation: true, noiseSuppression: true,
+              autoGainControl: true, channelCount: 1}});
+    this.capture = new AudioContext({sampleRate: setup.mic_rate});
+    await this.capture.audioWorklet.addModule(
+      URL.createObjectURL(new Blob([CAPTURE], {type: "text/javascript"})));
+    this.play = new AudioContext({sampleRate: setup.play_rate});
+    // **Both contexts are resumed by hand.** A context made inside a click
+    // handler starts running; one made after an `await` -- and asking for the
+    // microphone is an await -- may not, because the user activation that
+    // permits it can have expired by then. A suspended capture context is the
+    // quiet failure of this whole page: the graph is built, the socket is open,
+    // the session is live, and the worklet is never called, so the rover listens
+    // to silence and nobody is told anything is wrong.
+    await Promise.all([this.capture.resume(), this.play.resume()]);
+    this.queued = 0; this.nextStart = 0; this.sources = [];
+
+    // Built as a string rather than by editing a URL's protocol, which is a
+    // setter with rules about which schemes may replace which and no way to
+    // find out that it declined.
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(
+      `${scheme}//${location.host}/audio?k=${encodeURIComponent(this.token)}`);
+    socket.binaryType = "arraybuffer";
+    this.socket = socket;
+    await new Promise((ready, failed) => {
+      socket.onopen = ready;
+      socket.onerror = () => failed(new Error(
+        "The rover would not open the audio socket. Either the token is wrong, "
+        + "or this console has no microphone -- the state above says which."));
+      // A socket that is closed before it opens never fires onerror in some
+      // browsers, so the close is a failure too until the open has happened.
+      socket.onclose = () => failed(new Error(
+        "The rover closed the audio socket immediately. That is what a wrong "
+        + "token looks like from here."));
+    });
+    socket.onclose = () => this.stop(false);
+    socket.onmessage = (event) => this.heard(event.data);
+
+    const source = this.capture.createMediaStreamSource(this.media);
+    this.node = new AudioWorkletNode(this.capture, "capture");
+    this.node.port.onmessage = (event) => {
+      if (socket.readyState === WebSocket.OPEN) socket.send(event.data);
+    };
+    // The worklet has to be pulled by something for `process` to be called at
+    // all, and the destination is the only thing that pulls -- so it is
+    // connected there even though nothing is meant to come out of it. It writes
+    // nothing to its outputs, so what comes out is silence rather than the
+    // microphone played back into the room it is listening to.
+    source.connect(this.node).connect(this.capture.destination);
+
+    this.ticker = setInterval(() => this.report(), 200);
+  },
+
+  heard(data) {
+    if (typeof data === "string") { this.control(JSON.parse(data)); return; }
+    const pcm = new Int16Array(data);
+    const audio = this.play.createBuffer(1, pcm.length, setup.play_rate);
+    const channel = audio.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 0x8000;
+    const source = this.play.createBufferSource();
+    source.buffer = audio;
+    source.connect(this.play.destination);
+    // Scheduled back to back rather than played on arrival, because "play it
+    // now" for every block that lands is a seam in the middle of every word.
+    const now = this.play.currentTime;
+    if (this.nextStart < now) this.nextStart = now + 0.02;
+    source.start(this.nextStart);
+    this.nextStart += audio.duration;
+    this.queued += audio.duration;
+    this.sources.push(source);
+    source.onended = () => {
+      const at = this.sources.indexOf(source);
+      if (at >= 0) this.sources.splice(at, 1);
+    };
+  },
+
+  control(message) {
+    if (message.t === "begin") {
+      this.gen = message.gen;
+      this.queued = 0;
+      this.nextStart = 0;
+    } else if (message.t === "flush") {
+      for (const source of this.sources) { try { source.stop(); } catch (e) {} }
+      this.sources = [];
+      // Everything still in the future stops existing, so what was queued is now
+      // exactly what was played.
+      this.queued -= Math.max(0, this.nextStart - this.play.currentTime);
+      this.nextStart = this.play.currentTime;
+      this.report();
+    } else if (message.t === "evicted") {
+      this.note(message.why || "another browser took the microphone");
+      this.stop(false);
+    }
+  },
+
+  played() {
+    if (!this.play) return 0;
+    // What is still scheduled ahead of the clock has not been heard. Everything
+    // else has, whatever the network did on the way here.
+    const ahead = Math.max(0, this.nextStart - this.play.currentTime);
+    return Math.max(0, (this.queued - ahead) * 1000);
+  },
+
+  report() {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(
+        {t: "played", gen: this.gen, ms: Math.round(this.played())}));
+    }
+  },
+
+  stop(tell) {
+    if (this.ticker) { clearInterval(this.ticker); this.ticker = null; }
+    if (this.socket) {
+      const socket = this.socket;
+      this.socket = null;
+      socket.onclose = null;
+      try { socket.close(); } catch (e) {}
+    }
+    if (this.node) { try { this.node.disconnect(); } catch (e) {} this.node = null; }
+    if (this.media) {
+      for (const track of this.media.getTracks()) track.stop();
+      this.media = null;
+    }
+    for (const context of [this.capture, this.play]) {
+      if (context) { try { context.close(); } catch (e) {} }
+    }
+    this.capture = this.play = null;
+    this.sources = [];
+    if (tell) post({omni: false, token: this.token});
+  },
+};
 
 function drawStatus(status) {
   const holder = $("statusRows");
@@ -759,6 +1049,18 @@ async function start() {
     item.append(swatch, document.createTextNode(label));
     legend.append(item);
   }
+  $("voiceToken").value = voice.token;
+  $("voiceTokenSave").onclick = () => {
+    voice.token = $("voiceToken").value.trim();
+    localStorage.setItem("omniToken", voice.token);
+    voice.note(voice.token ? "token remembered -- press start talking"
+                           : "the token is empty");
+  };
+  $("micButton").onclick = () => voice.toggle();
+  // A tab that goes away takes the microphone with it, the same rule the rest of
+  // this console follows: the session on the rover is closed rather than left
+  // holding a conversation with an empty room.
+  addEventListener("pagehide", () => { if (voice.wanted()) voice.stop(true); });
   wire();
   keys();
   watchTheWidth();

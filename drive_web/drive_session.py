@@ -218,6 +218,11 @@ class Session(SessionShow):
 
         self.log: list[dict[str, Any]] = []
         self.log_seq = 0
+        # Filled in by drive_web when there is a microphone: a callable returning
+        # what the page should draw for it. A callable rather than a value because
+        # the session it reports on lives in another thread and is replaced every
+        # time somebody presses the button.
+        self.omni = None
 
         # What the browsers are told, and how they are woken. `published` is the
         # JSON of the last state pushed, kept so that a tick which changed nothing
@@ -290,6 +295,8 @@ class Session(SessionShow):
             "turns": self.turns,
             "clear_armed": self.clear_armed_until > time.monotonic(),
             "watching": self.listeners,
+            "omni": self.omni() if self.omni else {"available": False,
+                                                   "state": "off", "why": ""},
         }
 
     # --- the pump -------------------------------------------------------------
@@ -459,6 +466,20 @@ class Session(SessionShow):
             self.say("nobody is watching and a move is running, so it is being "
                      "stopped\n", "bad")
             self.stop()
+
+    def publish_soon(self) -> None:
+        """Wake the streams now rather than at the next tick.
+
+        The pump republishes ten times a second, which is right for a rover that
+        is moving and wrong for a button: pressing the microphone and watching the
+        page do nothing for a tenth of a second is exactly the lag that makes
+        somebody press it a second time. This does not build the state -- it
+        invalidates it, so the next tick is immediate rather than scheduled.
+        """
+        with self.lock:
+            self.published = ""
+            self.version += 1
+            self.lock.notify_all()
 
     def publish(self) -> None:
         text = json.dumps(self.snapshot(), separators=(",", ":"))

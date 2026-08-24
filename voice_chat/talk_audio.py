@@ -7,7 +7,15 @@ import threading
 from typing import Any
 
 import numpy as np
-import sounddevice as sd
+
+# Optional, for the same reason it is optional in talk.py: this module is
+# imported on the rover, which has no sound card, purely for `Speaker`'s
+# interface and the two PCM converters. Everything that needs the library is
+# behind `start`, which says so.
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
 
 from endpointing import IN_RATE
 
@@ -127,6 +135,12 @@ class Speaker:
         self._level = float(np.sqrt(np.mean(block ** 2))) if take else 0.0
 
     def start(self) -> None:
+        if sd is None:
+            raise RuntimeError(
+                "there is no sounddevice on this machine, so there is no sound "
+                "card to open. A Speaker that is never started still counts what "
+                "it was given, which is what the tests use and what the rover's "
+                "browser-backed speaker replaces.")
         self.stream = sd.OutputStream(
             samplerate=self.rate, channels=1, dtype="float32",
             device=self.device, callback=self._fill)
@@ -166,10 +180,6 @@ class Speaker:
     def level(self) -> float:
         """RMS of what is coming out of the speaker right now."""
         return self._level
-
-    def remaining_s(self) -> float:
-        with self._lock:
-            return len(self._buffer) / self.rate
 
     def played_ms(self) -> int:
         """Milliseconds of the current response that reached the card."""

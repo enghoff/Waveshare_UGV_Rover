@@ -68,6 +68,7 @@ import argparse
 import json
 import os
 import socket
+import ssl
 import sys
 import tempfile
 import threading
@@ -75,6 +76,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import _paths  # noqa: F401 — console_model, rover_tools
+import wsframe
 from console_model import LIGHT_MAX, MAP_LEGEND, Reply, TURN_PRESETS_DEG
 from drive_session import (
     KEEPALIVE_S, LINK_LOST_S, ORPHAN_GRACE_S, RECONNECT_MAX_S, RECONNECT_S,
@@ -83,6 +85,31 @@ from drive_session import (
 from drive_show import _png_width
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drive_web.html")
+
+# **The microphone is optional and the console is not.** `omni_bridge` pulls in
+# the voice client, which needs `websockets` and numpy, and a desk that has
+# neither should still be able to drive the rover -- that is what this console is
+# for, and it was true of every version before this one. So the import is allowed
+# to fail, the failure is kept, and the page is told why the button is not there
+# rather than being given a button that cannot work.
+try:
+    import omni_bridge
+    OMNI_MISSING = ""
+except Exception as _error:                       # noqa: BLE001 - reported to the page
+    omni_bridge = None
+    OMNI_MISSING = f"{type(_error).__name__}: {_error}"
+
+# Where make_cert.sh puts what it makes. Outside ~/ugv because a deploy lands on
+# ~/ugv, and a private key a deploy can overwrite -- or carry back off the rover
+# into the repository -- is a key in the wrong place.
+TLS_DIR = os.path.join(os.path.expanduser("~"), ".ugv", "tls")
+TLS_CERT = os.path.join(TLS_DIR, "console.crt")
+TLS_KEY = os.path.join(TLS_DIR, "console.key")
+
+# How long a connection has to say whether it is TLS before it is dropped. A
+# browser opens connections speculatively and sometimes sends nothing down them,
+# and each of those parks a thread inside the peek below until this expires.
+HANDSHAKE_S = 10.0
 
 class Handler(BaseHTTPRequestHandler):
     """The page, the stream, the two pictures, and one POST.
@@ -95,6 +122,8 @@ class Handler(BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
     session: Session = None          # type: ignore[assignment]
+    omni: Any = None                 # an omni_bridge.Omni, or None
+    token: str = ""                  # what /audio wants; see omni_bridge.token
     verbose = False
 
     def log_message(self, fmt: str, *args) -> None:
@@ -153,6 +182,8 @@ class Handler(BaseHTTPRequestHandler):
                        "application/json; charset=utf-8")
         elif path == "/events":
             self._events()
+        elif path == "/audio":
+            self._audio()
         else:
             self._missing("no such thing here")
 
@@ -165,6 +196,13 @@ class Handler(BaseHTTPRequestHandler):
             action = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             action = {}
+        # The microphone is answered here rather than queued, because the queue is
+        # the rover's: everything in it is a tool call the pump makes on the
+        # daemon's connections, in order, and starting a conversation is neither a
+        # tool call nor something to do behind a move that is still running.
+        if isinstance(action, dict) and "omni" in action:
+            self._omni(action)
+            return
         # Queued, never executed here. Two browsers and a keyboard shortcut can all
         # post at once, and the pump is the only thread allowed to touch the rover's
         # state -- which a single-threaded GUI event loop would have given for
@@ -172,6 +210,106 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(action, dict):
             self.session.actions.put(action)
         self._send(b'{"ok":true}', "application/json; charset=utf-8")
+
+    # --- the microphone -------------------------------------------------------
+    def _omni(self, action: dict) -> None:
+        """Turn the conversation on or off. The token is checked here and at
+        /audio, because these are two different doors to the same account."""
+        if Handler.omni is None:
+            self._send(json.dumps({"ok": False, "error":
+                                   f"this console has no microphone: {OMNI_MISSING}"}
+                                  ).encode(), "application/json; charset=utf-8")
+            return
+        if not self._allowed(str(action.get("token") or "")):
+            self._send(json.dumps({"ok": False, "error": "wrong or missing token"}
+                                  ).encode(), "application/json; charset=utf-8")
+            return
+        if action.get("omni"):
+            why = Handler.omni.turn_on()
+            body = {"ok": not why, "error": why}
+        else:
+            Handler.omni.turn_off()
+            body = {"ok": True, "error": ""}
+        self.session.publish_soon()
+        self._send(json.dumps(body).encode(), "application/json; charset=utf-8")
+
+    def _allowed(self, given: str) -> bool:
+        """Constant-time, because the alternative leaks the token one character at
+        a time to anything patient enough to time the answers."""
+        import hmac
+
+        return bool(Handler.token) and hmac.compare_digest(given, Handler.token)
+
+    def _audio(self) -> None:
+        """One browser's microphone and speaker, as a WebSocket on this port.
+
+        The handshake is four lines of the standard and the framing is in
+        [wsframe.py](wsframe.py); what is here is the loop, and it runs on this
+        connection's own thread for as long as the tab is open. Audio arrives as
+        binary frames -- PCM16 at MIC_RATE, already gated by the browser's echo
+        canceller -- and everything else is a JSON line, of which there is
+        currently one: where the browser's playback has actually got to.
+        """
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        given = ""
+        for part in query.split("&"):
+            if part.startswith("k="):
+                from urllib.parse import unquote
+
+                given = unquote(part[2:])
+        if Handler.omni is None:
+            return self._missing(f"no microphone here: {OMNI_MISSING}")
+        if not self._allowed(given):
+            body = b"wrong or missing token"
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        if "websocket" not in self.headers.get("Upgrade", "").lower() or not key:
+            return self._missing("/audio is a WebSocket")
+
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", wsframe.accept(key))
+        self.end_headers()
+        self.wfile.flush()
+        self.close_connection = True   # nothing follows this on the connection
+
+        wire = Wire(self.wfile)
+        Handler.omni.attach(wire)
+        self.session.publish_soon()
+        try:
+            while wire.alive:
+                opcode, data = wsframe.read_message(self.rfile)
+                if opcode == wsframe.BINARY:
+                    Handler.omni.on_audio(data)
+                elif opcode == wsframe.TEXT:
+                    self._from_page(data)
+                elif opcode == wsframe.PING:
+                    wsframe.send(self.wfile, wire.lock, wsframe.PONG, data)
+                elif opcode == wsframe.CLOSE:
+                    break
+        except (OSError, ConnectionError, wsframe.ProtocolError, ValueError):
+            pass                       # the tab went away, or spoke nonsense
+        finally:
+            wire.alive = False
+            Handler.omni.detach(wire)
+            self.session.publish_soon()
+
+    def _from_page(self, data: bytes) -> None:
+        try:
+            message = json.loads(data)
+        except ValueError:
+            return
+        if not isinstance(message, dict):
+            return
+        if message.get("t") == "played":
+            Handler.omni.on_played(int(message.get("gen") or 0),
+                                   float(message.get("ms") or 0))
 
     # --- the stream -----------------------------------------------------------
     def _events(self) -> None:
@@ -223,6 +361,40 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+class Wire:
+    """One browser's audio socket, as the session sees it.
+
+    Two threads write down this socket -- the page's own thread answering pings,
+    and the session's thread pushing the model's voice -- so every write goes
+    through one lock. Without it the frames interleave, which is not an error
+    anybody sees: the browser simply closes the connection, and the microphone
+    appears to have stopped working.
+    """
+
+    def __init__(self, wfile) -> None:
+        self.wfile = wfile
+        self.lock = threading.Lock()
+        self.alive = True
+
+    def audio(self, pcm: bytes) -> None:
+        self._send(wsframe.BINARY, pcm)
+
+    def control(self, payload: dict) -> None:
+        self._send(wsframe.TEXT, json.dumps(payload).encode())
+
+    def evict(self, why: str) -> None:
+        self.control({"t": "evicted", "why": why})
+        self.alive = False
+
+    def _send(self, opcode: int, payload: bytes) -> None:
+        if not self.alive:
+            return
+        try:
+            wsframe.send(self.wfile, self.lock, opcode, payload)
+        except (OSError, ValueError):
+            self.alive = False     # the tab went; the reader will notice too
+
+
 class Console(ThreadingHTTPServer):
     """The HTTP server, with one thing changed: a browser leaving is not an error.
 
@@ -249,11 +421,124 @@ class Console(ThreadingHTTPServer):
     # on any port.
     allow_reuse_address = os.name != "nt"
 
+    #: An `ssl.SSLContext` once a certificate has been found, None otherwise.
+    #: See :func:`tls_context` for why this console speaks TLS at all.
+    tls: "ssl.SSLContext | None" = None
+
     def handle_error(self, request, client_address) -> None:
         kind = sys.exc_info()[0]
-        if kind is not None and issubclass(kind, (ConnectionError, TimeoutError)):
+        if kind is not None and issubclass(kind, (ConnectionError, TimeoutError,
+                                                  ssl.SSLError)):
             return
         super().handle_error(request, client_address)
+
+    def finish_request(self, request, client_address) -> None:
+        """One connection, either wrapped in TLS or redirected into it.
+
+        Both schemes arrive on the same port, and which one this is can be read
+        off the first byte: a TLS connection opens with a handshake record, which
+        is 0x16, and no HTTP request line begins with that. So the byte is peeked
+        at without being consumed, and the connection either becomes TLS or is
+        sent a redirect and closed.
+
+        **The alternative was breaking every bookmark**, in the way that reads as
+        the rover being down rather than as a moved page: a browser that speaks
+        HTTP to a TLS socket gets neither a redirect nor an error page, it gets a
+        handshake failure, and the tab says the site sent an invalid response.
+        Serving both on one port costs the peek below and keeps
+        `http://<the rover>:8771/` working for as long as anyone has it written
+        down.
+
+        This runs on the connection's own thread -- `ThreadingHTTPServer` spawns
+        first and calls this second -- so a peek that blocks holds up nothing but
+        the connection waiting on it. The same work in `get_request` would block
+        the accept loop, which is the whole server.
+        """
+        if self.tls is None:
+            return super().finish_request(request, client_address)
+        try:
+            request.settimeout(HANDSHAKE_S)
+            first = request.recv(1, socket.MSG_PEEK)
+            request.settimeout(None)
+            if first != b"\x16":
+                return _redirect_to_tls(request, self.server_address[1])
+            request = self.tls.wrap_socket(request, server_side=True)
+        except (OSError, ssl.SSLError):
+            return                     # a connection that never really started
+        self.RequestHandlerClass(request, client_address, self)
+
+
+def _redirect_to_tls(request, port: int) -> None:
+    """Answer one plain-HTTP request with 308 Permanent Redirect, to https.
+
+    Deliberately not a `BaseHTTPRequestHandler`: this connection is finished
+    either way, and the only header that matters is `Host`, because the address
+    the browser typed is the one it has to be sent back to. A phone that reached
+    the rover by address and was redirected to its hostname would have to resolve
+    a name it may not have; the certificate covers both, so neither is preferred
+    here.
+    """
+    try:
+        request.settimeout(HANDSHAKE_S)
+        head = b""
+        while b"\r\n\r\n" not in head and len(head) < 8192:
+            block = request.recv(4096)
+            if not block:
+                break
+            head += block
+        lines = head.split(b"\r\n")
+        target = b"/"
+        if lines and len(lines[0].split(b" ")) >= 2:
+            target = lines[0].split(b" ")[1]
+        authority = ""
+        for line in lines[1:]:
+            if line.lower().startswith(b"host:"):
+                authority = line.split(b":", 1)[1].strip().decode("latin-1")
+                break
+        if not authority:
+            authority = f"{_lan_address()}:{port}"
+        where = f"https://{authority}{target.decode('latin-1')}"
+        body = (f"the drive console is at {where} now, because a browser will "
+                f"only open a microphone for an https page").encode()
+        request.sendall(
+            b"HTTP/1.1 308 Permanent Redirect\r\n"
+            b"Location: " + where.encode("latin-1") + b"\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+            b"Connection: close\r\n\r\n" + body)
+    except OSError:
+        pass
+    finally:
+        try:
+            request.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        request.close()
+
+
+def tls_context(cert: str, key: str) -> "ssl.SSLContext | None":
+    """The certificate make_cert.sh wrote, or None and a reason on stderr.
+
+    **A missing certificate is not a refusal to serve.** This console ran over
+    plain HTTP for months and everything on it still works that way; what a
+    certificate buys is the microphone, because `getUserMedia` is refused outside
+    a secure context and no amount of asking changes that. So a board that has
+    not run make_cert.sh gets a console with no voice in it, rather than no
+    console.
+    """
+    if not (os.path.exists(cert) and os.path.exists(key)):
+        print(f"note: no certificate at {cert}, so this is plain HTTP and no "
+              f"browser will open a microphone for it. Run make_cert.sh.",
+              file=sys.stderr)
+        return None
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+    except (ssl.SSLError, OSError) as error:
+        print(f"note: {cert} would not load ({error}), so this is plain HTTP "
+              f"and there will be no microphone", file=sys.stderr)
+        return None
+    return context
 
 
 class OnlyOne:
@@ -347,6 +632,18 @@ def health() -> dict[str, Any]:
             "rover": session.address, "idle": session.idle}
 
 
+def omni_state() -> dict[str, Any]:
+    """What the page needs to draw the microphone button, whether or not there is
+    one. `available` false with a reason beats a button that does nothing."""
+    if Handler.omni is None:
+        return {"available": False, "why": OMNI_MISSING or "not configured",
+                "state": "off"}
+    status = Handler.omni.status()
+    status["available"] = True
+    status["why"] = ""
+    return status
+
+
 def setup() -> dict[str, Any]:
     """The handful of things the page needs once and never again: the preset turns
     it draws buttons for, what the daemon calls full brightness, and the colour key
@@ -355,7 +652,12 @@ def setup() -> dict[str, Any]:
     has drifted from the picture is worse than no key at all."""
     return {"presets_deg": list(TURN_PRESETS_DEG),
             "light_max": LIGHT_MAX,
-            "legend": [list(entry) for entry in MAP_LEGEND]}
+            "legend": [list(entry) for entry in MAP_LEGEND],
+            # The audio rates come from the module that talks to the service, so
+            # that the page resamples to what is actually wanted rather than to a
+            # number written down twice.
+            "mic_rate": getattr(omni_bridge, "MIC_RATE", 16000),
+            "play_rate": getattr(omni_bridge, "PLAY_RATE", 24000)}
 
 
 def main(argv=None) -> int | str:
@@ -380,6 +682,17 @@ def main(argv=None) -> int | str:
     parser.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--verbose", action="store_true",
                         help="log every HTTP request")
+    parser.add_argument("--tls-cert", default=TLS_CERT, metavar="FILE",
+                        help="the certificate to serve (default: %(default)s, "
+                             "which is what make_cert.sh writes)")
+    parser.add_argument("--tls-key", default=TLS_KEY, metavar="FILE",
+                        help="its private key (default: %(default)s)")
+    parser.add_argument("--no-omni", action="store_true",
+                        help="do not offer the microphone at all, even where a "
+                             "key and a certificate would allow it")
+    parser.add_argument("--no-tls", dest="tls", action="store_false", default=True,
+                        help="serve plain HTTP even where a certificate exists; "
+                             "the page loads and the microphone does not")
     args = parser.parse_args(argv)
 
     # Before the session, and before the port: a console that is about to refuse to
@@ -390,8 +703,18 @@ def main(argv=None) -> int | str:
     if taken:
         return taken
 
+    context = tls_context(args.tls_cert, args.tls_key) if args.tls else None
     session = Session(args.rover, args.half_extent, args.map_size, idle=args.idle)
     Handler.session = session
+    if omni_bridge is not None and not args.no_omni:
+        Handler.token = omni_bridge.token()
+        Handler.omni = omni_bridge.Omni(
+            args.rover, lambda text, err=False: session.say(text + "\n",
+                                                            "bad" if err else "quiet"))
+        session.omni = omni_state
+    elif omni_bridge is None:
+        print(f"note: no microphone on this console ({OMNI_MISSING})",
+              file=sys.stderr)
     Handler.verbose = args.verbose
     try:
         server = Console((args.bind, args.port), Handler)
@@ -399,23 +722,34 @@ def main(argv=None) -> int | str:
         alone.release()
         return (f"cannot serve on {args.bind}:{args.port}: {error}. Something else "
                 f"is on that port -- another console, or another program.")
+    server.tls = context
     # Every event stream is a thread that blocks until its browser goes away, so
     # they have to be daemons or Ctrl-C would wait for every open tab to close.
     server.daemon_threads = True
 
     threading.Thread(target=session.run, daemon=True, name="rover-pump").start()
-    where = f"http://{'127.0.0.1' if args.bind == '0.0.0.0' else args.bind}:{args.port}/"
+    scheme = "https" if context else "http"
+    where = f"{scheme}://{'127.0.0.1' if args.bind == '0.0.0.0' else args.bind}:{args.port}/"
     print(f"drive console on {where}")
     if args.idle:
         print("    idle until a browser opens")
     if args.bind == "0.0.0.0":
-        print(f"    and on http://{_lan_address()}:{args.port}/ from the LAN -- "
+        print(f"    and on {scheme}://{_lan_address()}:{args.port}/ from the LAN -- "
               f"anyone who can reach it can drive the rover")
+    if context is not None:
+        print("    plain http on the same port is redirected here, and the "
+              "warning about the certificate is expected")
+    if Handler.omni is not None:
+        print(f"    microphone: on demand, token in {omni_bridge.TOKEN_PATH}")
+        if context is None:
+            print("    ...but no certificate, so no browser will open one")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nstopping the rover and shutting down")
     finally:
+        if Handler.omni is not None:
+            Handler.omni.close()
         session.close()
         server.shutdown()
         alone.release()

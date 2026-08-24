@@ -130,8 +130,13 @@ class _FrameHandler(http.server.BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length") or 0)
         data = self.rfile.read(length) if length else b""
-        if not data.startswith(b"\xff\xd8"):
-            self._reply(400, {"ok": False, "error": "not a JPEG"})
+        # JPEG or PNG. `look` sends the first and `show_map` sends the
+        # second, and rejecting the map here was invisible in the only way that
+        # matters: the tool still answered, with its caption and its description,
+        # and the note saying the picture had not been accepted read as a
+        # transport problem rather than as this check.
+        if not (data.startswith(b"\xff\xd8") or data.startswith(b"\x89PNG")):
+            self._reply(400, {"ok": False, "error": "not a JPEG or a PNG"})
             return
         if len(data) > MAX_FRAME_BYTES:
             self._reply(413, {"ok": False,

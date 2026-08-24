@@ -60,9 +60,21 @@ import wave
 from pathlib import Path
 from typing import Any
 
+# **`sounddevice` is optional and the other two are not**, which is a
+# distinction the rover made necessary. The desk client needs a sound card; the
+# rover runs the same `Session` with a browser where the sound card would be --
+# see [drive_web/omni_bridge.py](../drive_web/omni_bridge.py) -- and that board
+# has no audio hardware, no wheel that would build for it, and no pip to install
+# one with. Importing this module there has to work; opening a microphone on it
+# does not. Anything that actually touches `sd` is in `converse`, which is the
+# desk's path and says so if it is missing.
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
 try:
     import numpy as np
-    import sounddevice as sd
     import websockets
 except ImportError as _missing:
     # Nearly always a shell without the virtualenv on it rather than a machine
@@ -773,6 +785,11 @@ async def converse(url: str, key: str, model: str, device: int | None,
                    out_device: int | None, rover: rover_tools.RoverClient | None,
                    frames: Frames | None, duplex: bool, echo_guard: bool,
                    echo_factor: float) -> None:
+    if sd is None:
+        raise SystemExit(
+            "this needs sounddevice, and there is none on this machine. The "
+            "rover runs the same session with a browser for a sound card; see "
+            "drive_web/omni_bridge.py.")
     blocks: queue.Queue[np.ndarray] = queue.Queue()
     indicator = Indicator()
 
