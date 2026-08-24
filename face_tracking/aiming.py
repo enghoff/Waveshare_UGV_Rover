@@ -471,8 +471,6 @@ SCAN_TILT = 45
 # far it may travel between two looks instead, which leaves the measured rate
 # untouched wherever frames are plentiful.
 SCAN_RATE = 90
-# The most the sweep may cross between one look and the next.
-SCAN_DEG_PER_FRAME = 3.0
 # ...or rather, as much of a frame as may be crossed between two looks. Three
 # degrees was set as an absolute, and on a lens this wide it is absurdly timid:
 # the camera sees about 123 degrees at once, so a 3 degree step re-examines 97% of

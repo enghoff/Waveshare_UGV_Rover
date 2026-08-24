@@ -110,8 +110,6 @@ BATTERY_STALE_S = 20.0
 # battery and must not read like one: it is the board running from USB with the
 # pack out or the main switch off, which is something to go and look at rather
 # than something to charge.
-BATTERY_COLOURS = {"full": "#136b13", "ok": "black", "low": "#a05a10",
-                   "critical": "#a01010", "absent": "#a01010"}
 BATTERY_NOTES = {"full": "off the charger", "ok": "plenty left",
                  "low": "getting low", "critical": "nearly flat -- charge it",
                  "absent": "no pack fitted, or the main switch is off"}
@@ -137,14 +135,12 @@ WIFI_SCAN_TIMEOUT_S = 45.0
 # failing at -78.
 WIFI_GOOD_DBM = -60
 WIFI_POOR_DBM = -72
-WIFI_COLOURS = {"good": "#136b13", "fair": "#a05a10", "poor": "#a01010"}
 # How long to leave the rover alone after asking it to switch networks before
 # reconnecting. The daemon answers the request immediately and *then* takes the
 # link down -- it has to, since the reply would otherwise be written into the
 # connection the switch is breaking -- so this is the association and a DHCP round,
 # measured at eight to twenty seconds on this hardware, plus room to spare.
 WIFI_REJOIN_S = 25.0
-WIFI_REJOIN_MS = int(WIFI_REJOIN_S * 1000)   # browser timers count milliseconds
 
 
 def wifi_verdict(level: Any) -> str:
