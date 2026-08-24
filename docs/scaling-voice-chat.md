@@ -6,6 +6,13 @@ prices are us-east-1 on-demand and rot quickly.
 
 Nothing here is deployed. This is the shopping list and the reasoning behind it.
 
+It is also written against a client that has since gone. Where it says `talk.py`
+or `endpointing.py` below, both were deleted on 2026-08-24 when the conversation
+moved onto the rover: the microphone is a page served by the rover's own console,
+the realtime service decides where a turn ends, and the surviving client is
+[voice_chat/session.py](../voice_chat/session.py). Nothing in the argument here
+turns on which file it was.
+
 ## The number that matters is bandwidth, not FLOPs
 
 [voice_chat](../voice_chat/README.md) serves one person at a time: one utterance,
@@ -122,8 +129,8 @@ include audio-visual question answering and an audio function call.
 
 **The latency case is weak, and it is worth writing down why so nobody re-makes
 it.** STT and TTS are 0.32s of a 1.3s turn, and STT is already hidden behind
-`HANG_MS` by the speculative transcription in
-[endpointing.py](../voice_chat/endpointing.py) — see [Transcribing before the turn
+`HANG_MS` by the speculative transcription in `endpointing.py` — see
+[Transcribing before the turn
 is over](../voice_chat/README.md#transcribing-before-the-turn-is-over). So what an
 omni model recovers is Kokoro's 0.14s. That is not a reason to buy anything.
 

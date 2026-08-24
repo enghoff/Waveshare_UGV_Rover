@@ -161,9 +161,10 @@ a model that will write first and ask afterwards.
 `run_script` is offered only to a client on loopback, which is `Rover.tools`
 taking the same care it already takes over `look`: a tool that cannot do what it
 says is worse than a missing one, and a schema handed across the LAN would be
-one whose every call comes back "reach it through an ssh tunnel". So a desk
-running [talk.py](../voice_chat/talk.py) sees the seventeen tools it always saw,
-and the session on the rover sees eighteen.
+one whose every call comes back "reach it through an ssh tunnel". So anything
+holding a conversation from a desk -- there is no such client in this repository
+any more, but the daemon still serves one -- sees the seventeen tools it always
+saw, and the session on the rover sees eighteen.
 
 `list_api` follows the discipline `list_tools` already established: the daemon is
 the only thing that knows what this rover can do, so it is the only thing that
@@ -400,8 +401,9 @@ whose schema never changes, with `list_behaviours()` beside it. A behaviour save
 a minute ago is then callable immediately.
 
 That last property is not a nicety, because the alternative is genuinely awkward.
-Tools are session state on the realtime path — [talk.py](../voice_chat/talk.py)
-sends them once, in the single `session.update` it opens with — so a behaviour
+Tools are session state on the realtime path —
+[session.py](../voice_chat/session.py) sends them once, in the single
+`session.update` it opens with — so a behaviour
 saved mid-conversation is invisible until the next connection. They can be
 refreshed without reconnecting, and the machinery is already there: the client
 re-sends the whole session mid-conversation to switch turn detection off while a
@@ -568,8 +570,9 @@ interpreter](#starting-an-interpreter-costs-more-than-most-scripts-do) were take
 on the rover on 2026-08-20, against the running daemon, the real driver board and
 the OAK as it was then — a face detector rather than the depth camera it is now. The CPU and timing figures for the tracking loop are quoted from
 [hosts.md](hosts.md) and [moving-to-new-hardware.md](moving-to-new-hardware.md),
-and the tool-selection and token figures from [talk.py](../voice_chat/talk.py)
-and the voice service's README; those were measured when those documents say, not
+and the tool-selection and token figures from the realtime client -- then
+`talk.py`, now [session.py](../voice_chat/session.py) -- and the voice service's
+README; those were measured when those documents say, not
 for this one.
 
 Two assumptions remain, and both can invalidate the design rather than merely

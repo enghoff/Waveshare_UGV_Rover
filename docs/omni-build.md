@@ -90,7 +90,7 @@ untouched.
 | `Endpointer` | 130 | the audio half of the admission gate, with the speculation removed |
 | the failsafe in `drive_gamepad.py` | ~30 | the deadman that the safety supervisor is built around |
 | `parse` and `crc8` in `lidar_view.py` | ~55 | the supervisor's stop input |
-| [talk.py](../voice_chat/talk.py) | 460 | deleted, because there is no client |
+| `talk.py` | 460 | deleted, because there is no client -- and by 2026-08-24 it was, though for the other reason: the client moved onto the rover |
 | [rover_tools.py](../voice_chat/rover_tools.py) | 164 | deleted, though its discovery ordering survives as a fact worth remembering |
 
 Four of those entries deserve more than a table row.

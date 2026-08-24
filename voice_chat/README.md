@@ -182,9 +182,13 @@ enough to hold a conversation through: the Pi 1 runs its Bluetooth dongle, its
 wifi dongle and the camera off one weakly fused USB bus, and an always-open SCO
 microphone alongside A2DP is more than that radio comfortably does.
 
-It was removed on 2026-08-15 along with `wsclient.py`. Speech now happens only
-where there is a desk and a real microphone; what the rover still does is
-everything in [rover_daemon/](../rover_daemon/), which needs no audio at all.
+It was removed on 2026-08-15 along with `wsclient.py`, and for nine days after
+that speech happened only where there was a desk with a real microphone. Then it
+came back to the rover from the other direction: not a sound card on the board,
+but a browser page the board serves, with the audio crossing the wifi as PCM and
+the conversation held against a hosted model. See [The same conversation, with no
+GPU in it](#the-same-conversation-with-no-gpu-in-it). The findings below are about
+audio hardware on the Pi 1 and are untouched by that.
 
 Two findings from that work outlive the client and are kept, because they are
 properties of the machine rather than of the code that went:
@@ -502,9 +506,10 @@ do. That is the piece still missing.
 One thing worth noticing about how this one arrived: the first turn failed
 because **STT** garbled it, and everything after failed because the model had
 been handed its own bad answer. A transcript that reads as a run of tool-calling
-failures can be one STT failure and then arithmetic. `--no-early` on
-[talk.py](talk.py) turns off speculative transcription, which is the first thing
-to rule out when the words on screen are not the words that were said.
+failures can be one STT failure and then arithmetic. `--no-early` on the desk
+client turned off speculative transcription, and it was the first thing to rule
+out when the words on screen were not the words that were said; with that client
+gone, the equivalent is to put the audio through `/chat` by hand.
 
 The sweeps are `/chat` scripts, which is the whole point of that endpoint — a
 wording costs a request instead of a ~150s restart, `system` and `tools` both
@@ -1373,9 +1378,12 @@ the comments in [server.py](server.py). The ones worth knowing:
   not. The same whitespace lookahead `VOICE_MIN_SENTENCE` uses keeps "1,234"
   and "3:30" whole.
 
-Client knobs are constants at the top of [endpointing.py](endpointing.py):
-`SPEECH_FACTOR` and `SPEECH_FLOOR` for sensitivity, `HANG_MS` for how much
-silence ends a turn, and `SPECULATE_AFTER_MS` for the one below.
+Client knobs were constants at the top of `endpointing.py`: `SPEECH_FACTOR` and
+`SPEECH_FLOOR` for sensitivity, `HANG_MS` for how much silence ends a turn, and
+`SPECULATE_AFTER_MS` for the one below. That file went with the desk client on
+2026-08-24 -- the realtime service decides where a turn ends now -- so these are
+the knobs as they were, kept because the reasoning under them is what would have
+to be rebuilt if this path ever gets a client again.
 
 ### Transcribing before the turn is over
 

@@ -114,8 +114,9 @@ would still be the right answer.
 
 ## Duplex, and the part everyone gets wrong
 
-Barge-in is not "stop muting the microphone". Muting — `muted_until` in
-[talk.py](../voice_chat/talk.py) — is a symptom; AEC removes it. The real
+Barge-in is not "stop muting the microphone". Muting — then `muted_until` in
+`talk.py`, now `hold_mic` in [session.py](../voice_chat/session.py) — is a
+symptom; AEC removes it. The real
 mechanism is what happens to the **context** when someone cuts in.
 
 The model generated four sentences. One and a half of them reached a speaker
@@ -246,15 +247,22 @@ the evidence that this is a different design rather than a bigger one.
 * **STT and TTS as stages.** `distil-large-v3` and Kokoro stop existing. The
   known, chosen voice goes with them — see [what it would
   cost](scaling-voice-chat.md#what-it-would-cost-this-codebase).
-* **Speculative transcription.** [endpointing.py](../voice_chat/endpointing.py)
-  keeps its VAD role as an admission gate, but `HANG_MS`, `spoke_early` and the
-  take-it-back path exist to hide Whisper, and there is no Whisper.
+* **Speculative transcription.** `endpointing.py` kept its VAD role as an
+  admission gate, but `HANG_MS`, `spoke_early` and the take-it-back path existed
+  to hide Whisper, and there is no Whisper.
 * **The prefix cache.** `VOICE_PREFIX_CACHE` is the single largest win in the
   service today and it has no meaning in a live context — there is no prompt to
   re-prefill, because it was never torn down.
 * **The GPU lock and `switch_service.sh`.** One resident model on a card with
   room; nothing to schedule.
 * **`talk.py`.** There is no client.
+
+**Those last two happened on 2026-08-24.** `talk.py`, `talk_audio.py` and
+`endpointing.py` are deleted: the microphone is a browser page on the rover, the
+service's own VAD decides where a turn ends, and what is left of the client is
+[session.py](../voice_chat/session.py) -- the protocol and nothing else -- driven
+by [drive_web/omni_bridge.py](../drive_web/omni_bridge.py). So this section is
+now a record of what went rather than a list of what to remove.
 
 ## Build order
 
