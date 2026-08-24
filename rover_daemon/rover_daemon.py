@@ -94,7 +94,8 @@ from rover_nav import (
 )
 from rover_wifi import _terse_fields, _wifi_networks
 from tool_schemas import (
-    LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, TOOLS,
+    LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
+    STOP_SCRIPT_TOOL, TOOLS,
 )
 
 DEFAULT_BOARD_HOST = "192.168.1.22"
@@ -125,19 +126,22 @@ ROS_NAV_PORT = 8773
 # the microphone, so "loopback only" and "no model, ever" were the same sentence.
 # The rover holds its own session with Alibaba's model today -- see
 # [drive_web/omni_bridge.py](../drive_web/omni_bridge.py) -- so those tool calls
-# arrive here from 127.0.0.1 like any other local client, and `run_script` is
+# arrive here from 127.0.0.1 like any other local client, and three of these are
 # offered to the model in `list_tools` deliberately rather than by oversight. What
 # the gate still refuses is a stranger on the LAN, which is what it was for; what
 # it no longer implies is that nothing conversational can reach these.
 #
-# The other four stay unadvertised. A model that can run a program for fifteen
-# seconds and be told what it printed does not also need to start one that
-# outlives the question, and `list_api` is a catalogue whose contents are now
-# written into `run_script`'s own description anyway.
+# **The three are `run_script`, `start_script` and `script_stop`, and the second
+# two arrived together with the removal of a behaviour's time limit.** A
+# behaviour now runs until it ends or is stopped, so a model that can start one
+# and not stop one would be a model that has taken the rover's one script slot
+# with no way to give it back. `list_api` stays unadvertised: it is a catalogue
+# whose contents are written into `run_script`'s own description anyway.
 #
-# `script_status` is deliberately not among them. Watching a behaviour run is
-# what a console on a desk wants, it changes nothing, and everything else this
-# port hands out about the rover's state is already served on the LAN.
+# `script_status` is deliberately not among them either, and it is not even in
+# this tuple. Watching a behaviour run is what a console on a desk wants, it
+# changes nothing, and everything else this port hands out about the rover's
+# state is already served on the LAN.
 LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api")
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
@@ -160,8 +164,8 @@ class Handler(socketserver.StreamRequestHandler):
             else:
                 name = request.get("call")
                 if name == "list_tools":
-                    # Where the client is decides whether it is shown the one
-                    # tool it would be refused. See `Rover.tools`.
+                    # Where the client is decides whether it is shown the three
+                    # tools it would be refused. See `Rover.tools`.
                     reply = {"ok": True, "tools": rover.tools(local=local)}
                 elif not isinstance(name, str):
                     reply = {"ok": False, "error": "every request needs a 'call'"}

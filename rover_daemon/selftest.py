@@ -155,7 +155,8 @@ def test_schemas():
     # and the point of this test is that none of them lie.
     every = (rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
              + rover_daemon.NAV_TOOLS + [rover_daemon.MAP_TOOL]
-             + [rover_daemon.SCRIPT_TOOL])
+             + [rover_daemon.SCRIPT_TOOL, rover_daemon.START_SCRIPT_TOOL,
+                rover_daemon.STOP_SCRIPT_TOOL])
     # The schemas cross a network and go into a prompt, so they have to be JSON.
     json.dumps(every)
     names = [t["function"]["name"] for t in every]
@@ -181,12 +182,15 @@ def test_schemas():
                # watching a stale map and the wrong thing for a model, since it
                # takes the camera down with it for a few seconds.
                "reset_lidar",
-               # Four of the five scripting calls. `run_script` is not among them
-               # any more -- it is a model tool now, offered to a client on
-               # loopback, which since the rover started holding its own
-               # conversation includes the model. See LOCAL_ONLY in
-               # rover_daemon.py, and test_script_tool below for the gate.
-               "start_script", "script_status", "script_stop", "list_api",
+               # Two of the five scripting calls. The other three are model
+               # tools now, offered to a client on loopback -- which since the
+               # rover started holding its own conversation includes the model.
+               # `start_script` and `script_stop` joined `run_script` there when
+               # a behaviour stopped having a time limit: what ends one is being
+               # stopped, so a model able to start one has to be able to stop
+               # it. See LOCAL_ONLY in rover_daemon.py, and the script tool test
+               # below for the gate.
+               "script_status", "list_api",
                # And the network, which is a control call for a reason of its own:
                # a model that moved the rover onto another access point would be
                # cutting the wire its own conversation arrives on, and no wording
@@ -895,18 +899,23 @@ def test_scripts_run_and_say_what_happened():
         runner.close()
 
 
-def test_the_script_tool_is_offered_to_the_rover_and_not_to_the_lan():
-    """Who is shown `run_script`, and whether what they are shown is usable.
+def test_the_script_tools_are_offered_to_the_rover_and_not_to_the_lan():
+    """Who is shown the three scripting tools, and whether they are usable.
 
-    The gate is the interesting half. `run_script` is refused on anything but
-    loopback (`LOCAL_ONLY`), so a client across the LAN that was shown the schema
-    would be holding a tool whose every call comes back "reach it through an ssh
-    tunnel" -- and a model with a tool like that reports doing things it has not
-    done, which is the failure `Rover.tools` exists to prevent.
+    The gate is the interesting half. All three are refused on anything but
+    loopback (`LOCAL_ONLY`), so a client across the LAN that was shown one of the
+    schemas would be holding a tool whose every call comes back "reach it through
+    an ssh tunnel" -- and a model with a tool like that reports doing things it
+    has not done, which is the failure `Rover.tools` exists to prevent.
 
-    The other half is that the description arrives finished. It is a literal with
+    Then that `run_script`'s description arrives finished. It is a literal with
     `{api}` in it until something fills it in, and a schema handed to a model with
     a formatting placeholder still in it is a schema that teaches it nothing.
+
+    And last, that starting is not offered without stopping. A behaviour has no
+    deadline any more, so those two are one facility: a model that can take the
+    rover's single script slot and cannot give it back is worse off than one that
+    was never able to take it.
     """
     import rover_daemon
     import scripting
@@ -916,21 +925,23 @@ def test_the_script_tool_is_offered_to_the_rover_and_not_to_the_lan():
         return [t["function"]["name"] for t in rover.tools(**kw)]
 
     check("a daemon not running scripts offers none, even on loopback",
-          "run_script" in names(local=True), False)
+          [n for n in names(local=True) if "script" in n], [])
 
     rover.scripts = scripting.Runner("127.0.0.1:1")  # nothing there; nothing calls it
     try:
-        check("a client on the LAN is not shown run_script",
-              "run_script" in names(), False)
+        check("a client on the LAN is shown none of them",
+              [n for n in names() if "script" in n], [])
         check("...and the default is the LAN, so a caller has to say otherwise",
               names(), names(local=False))
-        check("a client on the rover is shown it", "run_script" in names(local=True),
-              True)
-        check("...last, after the tools whose order was measured",
-              names(local=True)[-1], "run_script")
+        check("a client on the rover is shown all three",
+              names(local=True)[-3:], ["run_script", "start_script", "script_stop"])
+        # Which is also the ordering check: they come after the tools whose
+        # order was measured, and a start is never offered without its stop.
+        check("no scripting tool comes before the measured ones",
+              [n for n in names(local=True)[:-3] if "script" in n], [])
 
-        described = rover.script_tool()["function"]["description"]
-        check("its description is filled in, not the literal",
+        described = rover.script_tools()[0]["function"]["description"]
+        check("run_script's description is filled in, not the literal",
               "{api}" in described or "{limit_s}" in described, False)
         # Two primitives and the limit, read from the modules that own them
         # rather than written here: the point of generating this is that a
@@ -940,13 +951,28 @@ def test_the_script_tool_is_offered_to_the_rover_and_not_to_the_lan():
                   for word in ("gimbal.look_at", "drive.forward", "every(")), True)
         check("...and the runner's own limit in it",
               f"{scripting.RUN_LIMIT_S:.0f} seconds" in described, True)
-        check("it is the same object next time, built once",
-              rover.script_tool() is rover.script_tool(), True)
+        # The other two point at that list rather than carrying a second copy,
+        # which is what keeps a realtime session from paying for it twice.
+        starting = rover.script_tools()[1]["function"]["description"]
+        check("start_script sends the model to run_script for the primitives",
+              "run_script" in starting and "gimbal.look_at" not in starting, True)
+        check("...and says what ends it", "script_stop" in starting, True)
+        check("...and that only one runs at a time",
+              "one program runs at a time" in starting, True)
+        check("the list is the same object next time, built once",
+              rover.script_tools() is rover.script_tools(), True)
     finally:
         rover.scripts.close()
 
 
 def test_one_script_at_a_time():
+    """The single slot, which is the whole of what keeps behaviours from piling up.
+
+    It carries more weight than it did: a behaviour has no deadline, so nothing
+    frees the slot on its own any more and the refusal has to name what is
+    holding it. Started here with a limit, because this one is meant to be over
+    quickly whichever way the test ends.
+    """
     import scripting
 
     runner = scripting.Runner("127.0.0.1:1")
@@ -961,6 +987,51 @@ def test_one_script_at_a_time():
         check("...and the run is recorded as stopped", stopped["outcome"], "stopped")
         check("a slot freed by a stop takes the next script",
               runner.run("print('after')")["outcome"], "finished")
+    finally:
+        runner.close()
+
+
+def test_a_behaviour_runs_until_it_is_stopped():
+    """No deadline on a `start`, so a stop is the only thing that ends this one.
+
+    The script here is the same runaway `while True` that the blocking test
+    shoots on time, and the point is that nothing shoots it: the run carries no
+    wall limit at all, the child is told so, and it is still going a second
+    later. What it is checked against is the runner's own state rather than a
+    number written here, because the assertion is "there is no deadline" and not
+    "the deadline is long".
+    """
+    import scripting
+
+    runner = scripting.Runner("127.0.0.1:1")
+    try:
+        started = runner.start("while True:\n    pass\n")
+        check("a behaviour starts", started["ok"], True)
+        check("...with no limit reported, because it has none",
+              started["limit_s"], None)
+        check("...and none recorded either", runner._run.wall_limit, None)
+        # A second is nothing next to the five minutes this used to get, so it
+        # is evidence about the watcher rather than about the clock: what it
+        # proves is that the run is still alive with nobody having stopped it.
+        time.sleep(1.0)
+        check("it is still running with nothing to end it",
+              runner.status()["outcome"], "running")
+        stopped = runner.stop()
+        check("a stop is what ends it", stopped["outcome"], "stopped")
+        check("...and it says who did", stopped.get("error"), "stopped")
+        check("the slot is free afterwards",
+              runner.run("print('after')")["outcome"], "finished")
+
+        # Asking for a deadline still works, and is still bounded below at a
+        # second: this is the caller who does want its behaviour to end.
+        asked = runner.start("import time\ntime.sleep(30)\n", limit_s=45)
+        check("a behaviour may ask for a limit and gets it", asked["limit_s"], 45.0)
+        runner.stop()
+        # And nought is how a caller says "no limit" out loud rather than by
+        # leaving the argument out, which the console has to be able to do.
+        explicit = runner.start("import time\ntime.sleep(30)\n", limit_s=0)
+        check("nought asks for no limit at all", explicit["limit_s"], None)
+        runner.stop()
     finally:
         runner.close()
 
@@ -1426,8 +1497,9 @@ def main():
                  test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,
                  test_scripts_run_and_say_what_happened,
-                 test_the_script_tool_is_offered_to_the_rover_and_not_to_the_lan,
-                 test_one_script_at_a_time, test_where,
+                 test_the_script_tools_are_offered_to_the_rover_and_not_to_the_lan,
+                 test_one_script_at_a_time,
+                 test_a_behaviour_runs_until_it_is_stopped, test_where,
                  test_map_view, test_flags, test_aiming_through_a_missed_frame,
                  test_one_move_puts_a_face_in_the_middle,
                  test_the_approach_to_a_face_never_turns_back,

@@ -128,19 +128,20 @@ If per-frame scripting ever becomes worth having, it becomes worth having on the
 new board, and the language question can be re-opened there against a host that
 can actually run the loop.
 
-## Five calls, and one of them is a tool
+## Five calls, and three of them are tools
 
 The daemon gained:
 
 * `run_script` — source in, result out, for anything short enough that the caller
   can wait for it.
-* `start_script` — the same, for a behaviour that runs for minutes; returns a
-  handle instead of a result.
+* `start_script` — the same, for a behaviour that runs until it is stopped;
+  returns a handle instead of a result, and carries no deadline.
 * `script_status` and `script_stop` — read the handle, or kill it.
 * `list_api` — the reference a script is written against.
 
-**Four of the five are refused on anything but loopback, and one of them,
-`run_script`, is offered to the model as a tool.** The loopback rule is from the
+**Four of the five are refused on anything but loopback, and three of those four
+— `run_script`, `start_script` and `script_stop` — are offered to the model as
+tools.** The loopback rule is from the
 security section below and has not changed: submission is the code-execution
 path, and served on the LAN it would hand a stranger a shell on the rover rather
 than the ability to flash the headlights. Bound to loopback it grants what an
@@ -150,21 +151,31 @@ conversation, because the conversation is on the rover now.
 `script_status` is the exception to the gate and stays on the LAN, because
 watching a behaviour run changes nothing and is what a console on a desk wants.
 
-The three that stay out of `list_tools` stay out for their own reasons rather
-than for the security one. `start_script` is a behaviour outliving the question
-that asked for it, which wants somebody watching; `script_stop` has nothing to
-stop, since a model can only run the blocking kind; and `list_api` is a
-catalogue whose contents are now written into `run_script`'s own description —
-a model that has to ask what the primitives are before it can write anything is
-a model that will write first and ask afterwards.
+`start_script` and `script_stop` were both control calls until a behaviour
+stopped having a time limit, and that is what changed the argument. While a
+behaviour was shot after five minutes, starting one was a thing to do from a
+console with somebody watching, and the model had nothing it needed to stop
+because a blocking run was over before the next turn. A behaviour that runs
+until it is stopped is a different object: it is the only shape that answers
+"follow me until I tell you to stop", and something has to be able to tell it.
+So the two arrived in `list_tools` together, and deliberately together —
+starting without stopping would hand the model the rover's single script slot
+with no way to give it back.
 
-`run_script` is offered only to a client on loopback, which is `Rover.tools`
+The two that stay out stay out for their own reasons rather than for the
+security one. `script_status` is watching, which is what a console wants and not
+what a conversation does; and `list_api` is a catalogue whose contents are now
+written into `run_script`'s own description — a model that has to ask what the
+primitives are before it can write anything is a model that will write first and
+ask afterwards.
+
+The three are offered only to a client on loopback, which is `Rover.tools`
 taking the same care it already takes over `look`: a tool that cannot do what it
 says is worse than a missing one, and a schema handed across the LAN would be
 one whose every call comes back "reach it through an ssh tunnel". So anything
 holding a conversation from a desk -- there is no such client in this repository
 any more, but the daemon still serves one -- sees the seventeen tools it always
-saw, and the session on the rover sees eighteen.
+saw, and the session on the rover sees twenty.
 
 `list_api` follows the discipline `list_tools` already established: the daemon is
 the only thing that knows what this rover can do, so it is the only thing that
@@ -176,6 +187,14 @@ does, and for the same reason, since two things aiming one gimbal is two robots.
 Stopping works while the script is mid-call, because the daemon is threaded per
 connection and `stop_driving` takes no hardware lock, so a second connection can
 interrupt a first.
+
+**That one slot is now the only thing bounding a behaviour, so the refusal has to
+say what is holding it.** Nothing frees the slot on its own any more: a `start`
+without a `limit_s` has no deadline, and what ends it is the script finishing, the
+script failing, or somebody calling `script_stop`. A second `start` is refused
+rather than queued — a caller told its behaviour started when it is really second
+in line will say so out loud — and the refusal carries the id of the run in the
+slot and how long it has been there, so the next thing to do is obvious.
 
 **Every run ends with the wheels stopped, and the gimbal left where it is.** A
 script killed inside a `drive` leaves the daemon finishing a move on behalf of a
@@ -246,10 +265,12 @@ for _ in every(2.0, for_s=600):      # tick, with a deadline
     empty = not seen
 ```
 
-`every` is doing more than `sleep`. It is where the run's deadline is enforced,
-where the stop flag is checked, and where a program that would otherwise busy-wait
-is made to yield the core — so the three ways a script can eat this rover are all
-one primitive, and a script that does not use it does not loop.
+`every` is doing more than `sleep`. It is where a deadline is enforced if the run
+was given one, where the stop flag is checked, and where a program that would
+otherwise busy-wait is made to yield the core — so the three ways a script can eat
+this rover are all one primitive, and a script that does not use it does not loop.
+A behaviour has no deadline unless it asked for one, which makes the stop flag the
+important half: `every` is how being stopped reaches a running program at all.
 
 `say` is the other half of long-running behaviour, and it is the piece with no
 counterpart today: a program that runs for ten minutes and speaks once is the
@@ -306,13 +327,13 @@ Two things make it survivable rather than merely allowed. The primitives are
 written into the schema, generated from
 [rover_api.py](../rover_daemon/rover_api.py) by introspection, so the model is
 not guessing at names in the one turn it has to get them right — that is what
-`Rover.script_tool` is for, and why the description is assembled at runtime
+`Rover.script_tools` is for, and why that description is assembled at runtime
 rather than typed out. And a failure comes back naming the line that failed, so
 a wrong program is a correction rather than a dead end.
 
 What is still not measured is whether it writes *correct* programs from speech,
-and what an eighteenth tool carrying a page of primitives does to the seventeen
-around it — a tool is read against its neighbours, and every number in
+and what three more tools — one of them carrying a page of primitives — do to the
+seventeen around them: a tool is read against its neighbours, and every number in
 [voice_chat/README.md](../voice_chat/README.md) was taken with ten of them. Those
 runs are at least not invalidated: they are made on a desk against
 [mock_rover.py](../voice_chat/mock_rover.py), and a client that is not on the
@@ -469,15 +490,17 @@ The MVP is on the rover as of 2026-08-20. Two files beside the daemon and about
 sixty lines inside it:
 
 * [scripting.py](../rover_daemon/scripting.py) — the daemon's end. One slot, a
-  child process per run, output drained into a bounded buffer, a wall-clock cap
-  and a memory ceiling, and a kill that takes the whole process group.
+  child process per run, output drained into a bounded buffer, a memory ceiling,
+  a wall-clock cap on the blocking kind of run and none on a behaviour, and a
+  kill that takes the whole process group.
 * [rover_api.py](../rover_daemon/rover_api.py) — the script's end. The existing
   tools as named primitives, plus a frame, the detector run on a frame, absolute
   gimbal angles, the live scan, `every`, and `call()` underneath them for a tool
   that arrived after the module did.
-* The five calls above, loopback-gated in the daemon's connection handler, one
-  of them — `run_script` — also offered as a tool to whichever client is on
-  loopback, with the primitives above written into its description.
+* The five calls above, loopback-gated in the daemon's connection handler, three
+  of them — `run_script`, `start_script` and `script_stop` — also offered as
+  tools to whichever client is on loopback, with the primitives above written
+  into the first one's description and pointed at from the second.
 
 What it does on the rover, measured there rather than inferred:
 
@@ -525,10 +548,13 @@ program that is in no position to notice still stops. On the rover a script cut
 off at its limit got two more lines out and turned the headlights back off before
 the `SIGKILL` was due.
 
-Three limits are worth knowing: a blocking run gets 15 seconds by default,
-sized so that a script which opens the camera fits, since a cold `count_faces`
-is five seconds on its own; a behaviour gets five minutes and may ask for
-thirty; and either is killed at 96 MB.
+Two limits are worth knowing, and the third is worth knowing about because it is
+gone. A blocking run gets 15 seconds by default, sized so that a script which
+opens the camera fits, since a cold `count_faces` is five seconds on its own; and
+either kind is killed at 96 MB. A behaviour used to get five minutes and to be
+allowed to ask for thirty, and now gets no deadline at all — it may still ask for
+one with `limit_s`, but by default it runs until it ends or `script_stop` ends it,
+which is why that call became a tool the model is offered.
 
 [mock_rover.py](../voice_chat/mock_rover.py) speaks the same wire protocol and
 holds the state a real rover would, so programs can be written and run against a

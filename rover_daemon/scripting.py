@@ -8,16 +8,30 @@ killing the whole process group when either runs out. See
 [docs/scripting.md](../docs/scripting.md) for why this is a process rather than
 an interpreter inside the daemon.
 
-The short version of that argument is in the three limits below. Stopping a
-runaway is `SIGKILL` rather than an interrupt hook the language has to provide;
-a memory ceiling is somebody else's arithmetic; and a script that crashes is a
-child that exits, which the daemon does not even notice. None of that is
-available to code running inside a process that is also holding the UART.
+The short version of that argument is in the limits below. Stopping a runaway is
+`SIGKILL` rather than an interrupt hook the language has to provide; a memory
+ceiling is somebody else's arithmetic; and a script that crashes is a child that
+exits, which the daemon does not even notice. None of that is available to code
+running inside a process that is also holding the UART.
 
-**One slot, deliberately.** Two scripts is two things aiming one gimbal, which
-is the same reason `look_at` stops face tracking. A second `start` is refused
-rather than queued, because the caller is a model that will otherwise be told
-its behaviour started when what actually happened is that it is second in line.
+**A behaviour is bounded by being stopped, not by a clock.** A blocking `run`
+still gets fifteen seconds, because somebody's connection is being held open for
+it, but a `start` has no deadline at all unless its caller asks for one. It used
+to have five minutes, and that number was a guess about programs nobody had
+written yet: "follow me until I tell you to stop" is an ordinary thing to ask a
+rover, and any limit turns that into a rover which gives up for no reason
+anybody in the room can see. So the ways a behaviour ends are that it finishes,
+that it fails, or that somebody stops it -- which is why stopping one is a tool
+the model is offered rather than a control call.
+
+**One slot, deliberately, and it carries more weight now.** Two scripts is two
+things aiming one gimbal, which is the same reason `look_at` stops face
+tracking. A second `start` is refused rather than queued, because the caller is
+a model that will otherwise be told its behaviour started when what actually
+happened is that it is second in line. The five-minute limit used to free the
+slot in the end whatever anybody did; now the only things that free it are the
+script ending and somebody stopping it, so the refusal names the run that is
+holding it and whoever can start one can end it.
 
 **A run that ends stops the wheels.** A script killed in the middle of `drive`
 leaves the daemon finishing a move on behalf of a connection that has gone, so
@@ -61,10 +75,9 @@ STARTUP_S = 6.0
 # `start_script`, where nobody is holding a connection open waiting for it.
 RUN_LIMIT_S = 15.0
 # A behaviour, on the other hand, is meant to outlive the question that started
-# it. Five minutes by default and half an hour at the outside: past that it is
-# not a behaviour, it is something that should have been deployed.
-START_LIMIT_S = 300.0
-MAX_LIMIT_S = 1800.0
+# it, and there is deliberately no constant for it here. See the docstring above:
+# a `start` runs until it ends or is stopped, and a caller that does want a
+# deadline passes `limit_s` and gets what it asked for.
 
 # How much of the child's own memory is its business. This box has 474 MB and the
 # daemon, the scan matcher and the OAK's buffers are all in it, so a script that
@@ -103,10 +116,15 @@ class Runner:
     # --- what the daemon calls ------------------------------------------
 
     def start(self, source: str, limit_s: float | None = None) -> dict[str, Any]:
-        """Begin a script and return its handle. Refused if one is running."""
+        """Begin a script and return its handle. Refused if one is running.
+
+        No deadline unless `limit_s` asks for one, so `limit_s` comes back null
+        in the ordinary case -- which is the caller being told something true and
+        worth knowing: the thing it has just started will not stop by itself.
+        """
         if not isinstance(source, str) or not source.strip():
             return {"ok": False, "error": "there is no source to run"}
-        limit = _limit(limit_s, START_LIMIT_S)
+        limit = _limit(limit_s, None)
         with self._lock:
             if self._run is not None and self._run.running:
                 running = self._run
@@ -149,6 +167,8 @@ class Runner:
             # blocking run answers "still running" about a script that is at
             # that moment being shot. `wall_limit` is the one definition of when
             # that starts; the two graces are the SIGTERM wait and the SIGKILL.
+            # Never the `None` a behaviour has, because the limit above is taken
+            # with a ceiling as well as a default.
             run.wait(run.wall_limit + 2 * GRACE_S + 2.0)
         state = self.status(started["id"])
         state["ok"] = state.get("outcome") == "finished"
@@ -198,20 +218,33 @@ class Runner:
                 pass
 
 
-def _limit(asked: float | None, default: float, ceiling: float = MAX_LIMIT_S) -> float:
+def _limit(asked: float | None, default: float | None,
+           ceiling: float | None = None) -> float | None:
+    """The deadline a run gets: what was asked for, or the default, or none.
+
+    `None` means no deadline the whole way through -- what a behaviour gets, and
+    what nought asks for explicitly. A ceiling is what makes a blocking run
+    different: a connection is being held open for that one, so an ask for
+    longer is trimmed and an ask for forever is given the default instead.
+    """
     if asked is None:
         return default
     try:
         asked = float(asked)
     except (TypeError, ValueError):
         return default
-    return max(1.0, min(asked, ceiling))
+    if asked <= 0:
+        return None if ceiling is None else default
+    if ceiling is not None:
+        asked = min(asked, ceiling)
+    return max(1.0, asked)
 
 
 class _Run:
     """One child process, from source to whatever it turned out to mean."""
 
-    def __init__(self, run_id: str, source: str, limit_s: float, address: str,
+    def __init__(self, run_id: str, source: str, limit_s: float | None,
+                 address: str,
                  on_finish: Callable[[dict], None]) -> None:
         self.id = run_id
         self.source = source
@@ -233,17 +266,22 @@ class _Run:
         self._ended: float | None = None
 
     @property
-    def wall_limit(self) -> float:
-        """When this run gets killed, measured from the spawn.
+    def wall_limit(self) -> float | None:
+        """When this run gets killed, measured from the spawn, or None for never.
 
-        The startup allowance is added here, and it is not slack: the script's
-        own deadline runs from its first line, so a cap measured from the spawn
-        would take the interpreter's four seconds out of the script's budget and
-        kill a correct behaviour a fifth of the way through what it was promised.
-        `rover_api` raises Deadline first and cleanly; this is the backstop for a
-        script that is in no position to notice.
+        None is the ordinary case for a behaviour, and the watcher below then
+        does not look at the clock at all: what ends such a run is the script
+        itself, or a stop.
+
+        Where there is a limit the startup allowance is added here, and it is not
+        slack: the script's own deadline runs from its first line, so a cap
+        measured from the spawn would take the interpreter's four seconds out of
+        the script's budget and kill a correct behaviour a fifth of the way
+        through what it was promised. `rover_api` raises Deadline first and
+        cleanly; this is the backstop for a script that is in no position to
+        notice.
         """
-        return self.limit_s + STARTUP_S
+        return None if self.limit_s is None else self.limit_s + STARTUP_S
 
     @property
     def seconds(self) -> float:
@@ -269,7 +307,9 @@ class _Run:
             env["ROVER_SCRIPT"] = source_path
             env["ROVER_RESULT"] = self._result_path
             env["ROVER_ADDRESS"] = self.address
-            env["ROVER_LIMIT_S"] = str(self.limit_s)
+            # Nought is how a child is told it has no deadline at all, which
+            # `rover_api` reads back as `float(...) or None`.
+            env["ROVER_LIMIT_S"] = str(self.limit_s or 0)
             # So a print arrives while the script is still running rather than at
             # the end -- and so it is not lost altogether when one is killed.
             env["PYTHONUNBUFFERED"] = "1"
@@ -341,14 +381,15 @@ class _Run:
             pass
 
     def _watch(self) -> None:
-        """Time, memory, and the end -- whichever arrives first."""
+        """Time where there is any, memory, and the end -- whichever comes first."""
         proc = self._proc
         assert proc is not None
         try:
             while True:
                 if proc.poll() is not None:
                     break
-                if self.seconds > self.wall_limit:
+                limit = self.wall_limit
+                if limit is not None and self.seconds > limit:
                     self.kill(f"it ran past the {self.limit_s:.0f}s it was given")
                     break
                 used = _resident_mb(proc.pid)

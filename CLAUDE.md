@@ -112,12 +112,24 @@ rover, running in opposite directions:
   [rover_daemon/ros_navigator.py](rover_daemon/ros_navigator.py) and
   [ros_nav/nav_bridge.py](ros_nav/nav_bridge.py).
 
-**Eighteen if you are asking from the rover itself.** `run_script` -- write a
-short Python program, run it in a child process, get back what it printed -- is
-offered only to a client on loopback, because it is refused on anything but
-loopback and a schema that always answers "reach it through an ssh tunnel" is
-worse than no schema. The conversation is on the rover now, so that includes the
-model; a desk client still sees seventeen. So `list_tools` legitimately
+**Twenty if you are asking from the rover itself.** Three of them run code
+rather than perform an act, and all three are offered only to a client on
+loopback, because they are refused on anything but loopback and a schema that
+always answers "reach it through an ssh tunnel" is worse than no schema:
+
+- `run_script` writes a short Python program, runs it in a child process and
+  gives back what it printed, with fifteen seconds to do it in because the
+  caller's connection is held open meanwhile.
+- `start_script` is the same for something with no end written into it and hands
+  back a handle instead of an answer. **It has no time limit at all**; it runs
+  until it finishes, fails, or is stopped.
+- `script_stop` is what stops it, and it is a tool rather than a control call
+  precisely because of the line above -- a model that can start something
+  endless and not end it has taken the rover's one script slot for good.
+
+One script at a time, so a second `start_script` is refused and names the run
+holding the slot. The conversation is on the rover now, so the model is inside
+that gate; a desk client still sees seventeen. So `list_tools` legitimately
 answers differently depending on where it was asked from, and the tool count in a
 startup line or a console panel is the local one. See
 [docs/scripting.md](docs/scripting.md).

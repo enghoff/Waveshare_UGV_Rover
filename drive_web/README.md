@@ -118,14 +118,17 @@ loopback too, so `look`'s JPEG goes from the camera to the model without crossin
 the house wifi at all. What crosses the wifi is the audio: 32 kB a second each
 way, against 35 kB for a single picture.
 
-It also buys an eighteenth tool, which is the one consequence of this move that
-is not merely about latency. `run_script` -- source in, whatever it printed out,
-in a child process with a fifteen-second wall clock -- is refused on anything but
-loopback, because submitting code is a different proposition from flashing the
-headlights on a port that authenticates nothing. A desk holding the conversation
-was outside that gate and is not shown the tool; a session on the rover is inside
-it, so the model can write a small program when what was asked for is a sequence
-rather than an act. See [docs/scripting.md](../docs/scripting.md).
+It also buys three more tools, which are the one consequence of this move that
+is not merely about latency. Running code is refused on anything but loopback,
+because submitting code is a different proposition from flashing the headlights
+on a port that authenticates nothing, and a desk holding the conversation was
+outside that gate. A session on the rover is inside it, so the model can write a
+small program when what was asked for is a sequence rather than an act:
+`run_script` for one that finishes while it waits, in a child process with a
+fifteen-second wall clock; `start_script` for one with no end written into it,
+which runs until it is stopped and hands back a handle instead of an answer; and
+`script_stop`, which is what stops it. See
+[docs/scripting.md](../docs/scripting.md).
 
 * **On demand, and closed again.** There is no session until the button is
   pressed. It ends when the button is pressed again, when the tab goes, after two

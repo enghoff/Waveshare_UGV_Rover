@@ -342,18 +342,24 @@ class RoverNav:
     # middle of one is a local client, and the gate that was doing two jobs is
     # back to doing the one it was built for.
     #
-    # The other four are control calls and stay out of :meth:`Rover.tools`. A
-    # blocking run is the shape that fits a conversation -- fifteen seconds, and
-    # the answer is what the program printed -- while `start_script` is a
-    # behaviour outliving the question that asked for it, which is a thing to
-    # start from a console or an ssh session where somebody is watching it.
+    # `start_script` and `script_stop` are offered the same way and for a reason
+    # that arrived with them: a behaviour has no time limit any more, so what
+    # ends one is somebody stopping it, and the client that can start a thing
+    # which outlives the question has to be able to end it too. A blocking run
+    # is still the shape that fits a conversation best -- fifteen seconds, and
+    # the answer is what the program printed -- and it is what to reach for when
+    # the thing being asked for has an end in it.
+    #
+    # `script_status` and `list_api` remain control calls and stay out of
+    # :meth:`Rover.tools`: watching a run is what a console wants, and the
+    # catalogue is written into `run_script`'s own description.
 
     def _tool_run_script(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Run a script and wait for it. The one of the five a model is offered.
+        """Run a script and wait for it. One of the three a model is offered.
 
         For something that finishes while the caller holds the connection. A
-        behaviour that runs for minutes is `start_script`; the difference is only
-        who does the waiting.
+        behaviour that keeps going is `start_script`; the difference is who does
+        the waiting, and that only this one has a deadline.
 
         The waiting is longer than a tool call, and the clients know it: fifteen
         seconds of script, plus the interpreter starting, plus the two graces of
@@ -369,7 +375,13 @@ class RoverNav:
         return self.scripts.run(arguments.get("source"), arguments.get("limit_s"))
 
     def _tool_start_script(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Start a script and return its handle. A control call, not a model tool."""
+        """Start a behaviour and return its handle. A model tool, on loopback.
+
+        No deadline unless the caller asks for one with `limit_s`, so what comes
+        back is a handle to something that will still be running when the next
+        thing is said. Refused while another script holds the slot, which is the
+        reply that names it -- and `script_stop` is how the slot is given back.
+        """
         if self.scripts is None:
             return {"ok": False, "error": "this daemon is not running scripts"}
         return self.scripts.start(arguments.get("source"), arguments.get("limit_s"))
@@ -381,7 +393,13 @@ class RoverNav:
         return self.scripts.status(arguments.get("id"))
 
     def _tool_script_stop(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        """Stop the running script. A control call, and never refused."""
+        """Stop the running script. A model tool now, and never refused.
+
+        Never refused is what makes it safe to offer: with nothing running it
+        answers that nothing was, so a model that reaches for it after being
+        told to stop cannot be wrong to have tried. It is also the only thing
+        that ends an unbounded behaviour, short of the script itself.
+        """
         if self.scripts is None:
             return {"ok": False, "error": "this daemon is not running scripts"}
         return self.scripts.stop()
@@ -395,7 +413,9 @@ class RoverNav:
         """
         import rover_api
 
+        # No `start_limit_s` among these, and its absence is the fact: a
+        # behaviour is bounded by being stopped rather than by a clock, so there
+        # is no number to report and reporting one would invent a deadline.
         return {"ok": True, "reference": rover_api.reference(),
                 "run_limit_s": scripting.RUN_LIMIT_S,
-                "start_limit_s": scripting.START_LIMIT_S,
                 "memory_mb": scripting.MEMORY_MB}

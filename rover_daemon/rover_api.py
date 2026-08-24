@@ -25,8 +25,9 @@ hearing. Catch it where a failure is expected and ignore it everywhere else.
 **This is not a sandbox against the filesystem.** The child is an ordinary
 process with the daemon's own permissions; it can read and write files like
 anything else running as `admin`. What it is isolated from is the hardware, and
-what it is bounded by is a wall clock, a memory ceiling and a kill -- which are
-the three ways a program on this rover can do damage without meaning to.
+what it is bounded by is a memory ceiling, a kill, and -- on a blocking run,
+where somebody is waiting for the answer -- a wall clock. A behaviour has no
+clock on it and ends when it is stopped, so there the kill is the whole story.
 
 **Nothing here paces itself except :func:`every`.** One `camera.faces()` opens the
 camera, decodes a frame and runs YuNet over it -- about 0.3 s, of which 150 ms is
@@ -57,8 +58,9 @@ DEFAULT_ADDRESS = "127.0.0.1:8769"
 # Long enough for the slowest call this can make. `count_faces` with the camera
 # cold has to start v4l2-ctl and wait for its first buffer, and a `drive` blocks
 # in the daemon until the move is over -- which is a move, not a message, and can
-# be a minute. The runner's wall-clock cap is the real bound; this only exists so
-# that a daemon which has stopped answering is an error rather than a hang.
+# be a minute. This is not the run's own bound -- a behaviour has none, and a
+# blocking run is capped by the runner -- it exists so that a daemon which has
+# stopped answering is an error rather than a hang.
 TIMEOUT_S = 120.0
 CONNECT_TIMEOUT_S = 3.0
 
@@ -186,16 +188,19 @@ def every(period_s: float, for_s: float | None = None, ticks: int | None = None)
     """Tick on a schedule, yielding the tick number, until told otherwise.
 
     This is the loop primitive, and using it is not optional politeness: it is
-    the one place that notices a stop, enforces the run's deadline, and yields
+    the one place that notices a stop, enforces any deadline the run has, and yields
     the core between passes. A `while True` with a `time.sleep` in it does none
     of those things and is how a script becomes something that has to be killed.
 
         for tick in every(2.0, for_s=600):   # every two seconds, for ten minutes
 
     `for_s` and `ticks` end the loop normally, so the script carries on to
-    whatever it meant to say afterwards. The run's own limit is different and
-    raises :class:`Deadline`, because reaching that means the script did not
-    finish, and a caller that is told "done" would be told something false.
+    whatever it meant to say afterwards. A run that was given a limit is
+    different and raises :class:`Deadline` on reaching it, because that means the
+    script did not finish and a caller told "done" would be told something false.
+    A behaviour is given no limit unless it asked for one, so `for_s` is how a
+    loop that is meant to end says so, and a loop with neither runs until
+    somebody stops it.
 
     A tick that overruns its period does not try to catch up. On this host
     overrunning is what asking for too much per pass looks like, and catching up
@@ -455,7 +460,8 @@ def reference() -> str:
         lines.append(f"{func.__name__}{inspect.signature(func)}")
         lines.append(f"    {(func.__doc__ or '').strip().split(chr(10))[0]}")
     lines += ["", "Raises RoverError when the rover refuses a call, Stopped when "
-                  "somebody stops the script, Deadline when it runs past its limit."]
+                  "somebody stops the script, Deadline when a run that was given "
+                  "a limit goes past it."]
     return "\n".join(lines)
 
 

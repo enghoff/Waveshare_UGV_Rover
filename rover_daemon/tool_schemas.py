@@ -398,18 +398,19 @@ MAP_TOOL: dict[str, Any] = {
 }
 
 
-# Offered only to a client on the loopback interface, which is the one tool here
-# with a condition that is about the caller rather than about the hardware. The
-# rest of that argument is in `LOCAL_ONLY` in rover_daemon.py: this is the call
-# that runs code rather than performing an act, so a stranger on the LAN is not
-# shown it and would be refused it. The model is inside that gate because the
-# conversation moved onto the rover, not because the gate was opened.
+# Offered only to a client on the loopback interface, which is the condition the
+# three tools below share and the only one here that is about the caller rather
+# than about the hardware. The rest of that argument is in `LOCAL_ONLY` in
+# rover_daemon.py: these are the calls that run code rather than performing an
+# act, so a stranger on the LAN is shown none of them and would be refused them.
+# The model is inside that gate because the conversation moved onto the rover,
+# not because the gate was opened.
 #
-# **Its description is finished at runtime, not here.** `{api}` is filled with
-# `rover_api.signatures()` and `{limit_s}` with the runner's own ceiling, both by
-# `Rover.script_tool`, so a primitive that is renamed or a limit that is retuned
-# cannot go on being advertised the way it used to be. What stays here is a
-# literal, because prompts.py reads this file with `ast` and cannot run it.
+# **This one's description is finished at runtime, not here.** `{api}` is filled
+# with `rover_api.signatures()` and `{limit_s}` with the runner's own ceiling,
+# both by `Rover.script_tools`, so a primitive that is renamed or a limit that is
+# retuned cannot go on being advertised the way it used to be. What stays here is
+# a literal, because prompts.py reads this file with `ast` and cannot run it.
 SCRIPT_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -450,5 +451,73 @@ SCRIPT_TOOL: dict[str, Any] = {
             },
             "required": ["source"],
         },
+    },
+}
+# The other two thirds of the same idea, and the reason they are model tools at
+# all is that a behaviour has no time limit any more (see the docstring in
+# [scripting.py](scripting.py)): something that runs until it is told to stop
+# needs somebody able to tell it. `start_script` hands back a handle instead of a
+# result and `script_stop` ends whatever is holding the one slot, and both are
+# loopback-only for exactly the reason `run_script` is.
+#
+# **Neither repeats the primitive list, deliberately.** All three of these are in
+# front of the model in one list, so the surface written into `run_script`'s
+# description above is already there to be read, and a second copy of it is nine
+# hundred characters paid again on every turn of a realtime conversation to say
+# something the model has just been told. So these two say "the same primitives
+# as run_script" and nothing filled in at runtime, which is also why they are
+# plain literals rather than templates.
+START_SCRIPT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "start_script",
+        "description": (
+            "Start a program on the rover and carry on talking while it runs. "
+            "Use this instead of run_script when what has been asked for has no "
+            "end written into it -- something to keep doing, something to do "
+            "until you are told to stop, something to watch for a while -- or "
+            "when it would plainly take more than a few seconds. It is written "
+            "against exactly the same primitives as run_script, listed in that "
+            "tool's description. Nothing comes back but the fact that it "
+            "started, so what the program prints is not something you will get "
+            "to say: say what it is going to do before you call this, and do not "
+            "claim afterwards that it has finished. It runs until it ends on its "
+            "own or somebody stops it -- a loop with no end in it runs until "
+            "then -- and script_stop is what ends it. Only one program runs at a "
+            "time, so if one is already going this is refused and tells you "
+            "which; stop that one first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "The whole program, as Python source. Real newlines "
+                        "between the lines and four spaces for an indent."
+                    ),
+                },
+            },
+            "required": ["source"],
+        },
+    },
+}
+
+STOP_SCRIPT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "script_stop",
+        "description": (
+            "Stop the program that is running. Call it the moment you are asked "
+            "to stop, or told that what it is doing is done with, or asked for "
+            "something the program is in the way of. It is never a mistake to "
+            "call: with nothing running it does nothing and says so. The program "
+            "is asked politely first and has a couple of seconds to tidy up, so "
+            "it may put its lights out or straighten up on the way. What comes "
+            "back says whether anything was stopped, how long it had been going "
+            "and whatever it printed. This stops a program and not the rover: to "
+            "halt the wheels on their own, use stop_driving."
+        ),
+        "parameters": {"type": "object", "properties": {}},
     },
 }
