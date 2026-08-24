@@ -644,8 +644,25 @@ def test_calibration_store():
         speeds = sorted(v for _, v in points)
         check("the measured speed curve rises with PWM, so it can be inverted",
               [v for _, v in points] == speeds, True)
-        check("Nav2's 0.50 m/s limit is inside the measured range (%.2f-%.2f)"
-              % (speeds[0], speeds[-1]), speeds[0] <= 0.50 <= speeds[-1], True)
+        check("Nav2's 0.40 m/s limit is inside the measured range (%.2f-%.2f)"
+              % (speeds[0], speeds[-1]), speeds[0] <= 0.40 <= speeds[-1], True)
+        # The one that was missing, and its absence is what let the controller
+        # spend a third of every drive commanding speeds the wheels cannot
+        # produce. There is no creep on this chassis: below the slowest measured
+        # PWM the motors do not turn, so anything Nav2 asks for between zero and
+        # that speed arrives at the wheels as that speed.
+        floor = speeds[0]
+        cfg = os.path.join(HERE, "config", "nav2.yaml")
+        if os.path.exists(cfg):
+            with open(cfg) as fh:
+                nav_text = fh.read()
+            check("Nav2's top speed clears the chassis's %.2f m/s floor" % floor,
+                  "max_vel_x: 0.40" in nav_text and floor < 0.40, True)
+            check("...and it samples only the two speeds the chassis has",
+                  "vx_samples: 2" in nav_text, True)
+            check("...and its acceleration window spans the whole range, or the "
+                  "samples collapse to a creep",
+                  "acc_lim_x: 4.0" in nav_text, True)
     else:
         print("  ....  no drive_pwm_points yet -- run calibrate_chassis.py")
 
@@ -658,6 +675,38 @@ def test_calibration_store():
 
 
 # --- the configuration files --------------------------------------------------
+def _costmap_sections(text):
+    """nav2.yaml split into the global costmap's block and the local one's.
+
+    Crude, and deliberately so: this file cannot import yaml on every machine it
+    runs on, and what the checks below ask is only whether a plugin name appears
+    on one side of the file or the other. Returns (global, local) as text.
+    """
+    lines = text.splitlines(True)
+    where, out = None, {"global_costmap:": [], "local_costmap:": []}
+    for line in lines:
+        if line.rstrip() in out:
+            where = line.rstrip()
+        elif line and not line[0].isspace() and not line.startswith("#"):
+            where = None
+        if where:
+            out[where].append(line)
+    return "".join(out["global_costmap:"]), "".join(out["local_costmap:"])
+
+
+def settings_of(text):
+    """Just the settings out of a YAML file, with the comments dropped.
+
+    Everything below is checked by looking for a string, and both of the names
+    that matter -- the critic that was replaced and the shim that was removed --
+    go on appearing in the comments that explain why they are not there. A search
+    over the whole file finds the explanation and calls it the setting.
+    """
+    keep = [line for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]
+    return chr(10).join(keep)
+
+
 def test_configs_agree():
     """The three places a speed limit is written must say the same thing.
 
@@ -680,11 +729,63 @@ def test_configs_agree():
     check("Nav2's top speed is not the stale MAX_SPEED_MS",
           ("max_vel_x: %.2f" % MAX_SPEED_MS) in text, False)
     check("...and is a speed this chassis can actually reach",
-          "max_vel_x: 0.50" in text, True)
+          "max_vel_x: 0.40" in text, True)
+    # A heading change tighter than an arc can absorb has to be a turn on the
+    # spot, and a bare velocity controller will only ever approximate one.
+    # The shim was tried and taken out again -- it cannot transform on a rover
+    # whose transform tree runs at the driver board's 17 Hz, and it cost the
+    # control loop a third of its rate. The comment in nav2.yaml has the whole
+    # story; this keeps somebody from re-adding it without reading it.
+    check("no rotation shim, which this rover's transform rate cannot support",
+          "RotationShimController" in settings_of(text), False)
+    # The footprint and the critic that reads it have to change together. A
+    # rectangle with a 0.14 m inscribed radius under a critic that only tests the
+    # centre cell is a rover free to swing its corners into the furniture.
+    # Settings only. Both names go on appearing in the comments beside them,
+    # which is where the reasoning lives, so a search over the whole file finds
+    # the explanation and calls it the setting.
+    settings = settings_of(text)
+    check("the footprint is the measured rectangle, not a guessed circle",
+          "robot_radius" in settings, False)
+    check("...and both costmaps carry it",
+          settings.count('footprint: "[[0.20') == 2, True)
+    check("...and the controller checks that shape rather than one point",
+          "ObstacleFootprint" in settings and "BaseObstacle" not in settings, True)
+    # The arrival circle has to be bigger than the smallest move the rover has.
+    # One forward sample at 0.40 m/s over a 0.8 s rollout is 32 cm, so a 15 cm
+    # circle was a target DWB could not aim at: it sat 23 cm from a goal for
+    # 25 s and timed out, because everything that closed the gap overshot it.
+    # The two copies are the goal checker's and the controller's, and they have
+    # to be the same number or RotateToGoal switches at a different radius from
+    # the one that ends the goal.
+    check("the arrival circle clears the chassis's 32 cm minimum move",
+          settings.count("xy_goal_tolerance: 0.22") == 2, True)
+    # The lidar looks forwards, so a reverse leg is driven blind. DWB is left
+    # with no reverse sample at all; backing out of a corner is the behaviour
+    # server's `backup`, which the behaviour tree bounds to 30 cm.
+    check("the controller has no reverse, since the rover cannot see behind it",
+          "min_vel_x: 0.0" in settings and "min_vel_x: -0.40" not in settings,
+          True)
+    check("...but the smoother still passes one, or the recovery cannot back up",
+          "min_velocity: [-0.40, 0.0, -0.78]" in settings, True)
     turn = math.radians(MAX_TURN_DPS)
     check("Nav2's turn limit matches MAX_TURN_DPS (%.2f rad/s)" % turn,
           abs(turn - 0.78) < 0.01, True)
     check("...and that is what the file says", "max_vel_theta: 0.78" in text, True)
+
+    # The two costmap rules that a rover running SLAM cannot break. Both were
+    # broken at once, and between them they closed 61% of the mapped floor to the
+    # planner, which is what a route four times longer than it needed to be is
+    # made of. See the comments beside each of them in config/nav2.yaml.
+    globals_, locals_ = _costmap_sections(text)
+    check("the global costmap has no obstacle layer, which SLAM would ghost",
+          "obstacle_layer" in globals_, False)
+    check("...and still has the static layer, or it has nothing to plan on",
+          "static_layer" in globals_, True)
+    check("the local costmap does have one, since something must see a chair",
+          "obstacle_layer" in locals_, True)
+    check("...and clears the bearings that got nothing back",
+          "inf_is_valid: true" in locals_, True)
 
     slam = os.path.join(HERE, "config", "slam_toolbox.yaml")
     if os.path.exists(slam):
@@ -698,6 +799,86 @@ def test_configs_agree():
               "mode: mapping" in slam_text, True)
         check("loop closing is on, which is the whole reason for this stack",
               "do_loop_closing: true" in slam_text, True)
+
+
+def test_goal_fits_before_it_is_sent():
+    """The goal check, on the real geometry rather than a stand-in.
+
+    goal_fit.py has no ROS in it for exactly this reason, so what runs here is
+    the code the rover runs. The numbers in the last two checks are the recorded
+    failure: a goal at (4.34, -0.98) on a costmap where the body covered a lethal
+    cell at the heading the bridge would have sent, which Nav2 accepted, planned
+    a clean straight path to, and then spent thirty seconds failing to reach.
+    """
+    section("a goal is checked against the body before it is sent")
+    sys.path.insert(0, HERE)
+    try:
+        import goal_fit
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import goal_fit: %s" % exc)
+        return
+
+    body = goal_fit.polygon_from(
+        '[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]', 0.0)
+    check("the footprint parses out of the string nav2.yaml holds",
+          body == [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)],
+          True)
+    check("...and a bare radius still gives a polygon rather than nothing",
+          len(goal_fit.polygon_from("", 0.25) or []) >= 8, True)
+
+    # Two metres square of clear floor, with a wall down the right-hand side:
+    # lethal from 1.70 m, and the inscribed ring reaching back to 1.50.
+    width = height = 40
+    data = [0] * (width * height)
+    for row in range(height):
+        for col in range(30, width):
+            data[row * width + col] = 254 if col >= 34 else 253
+    floor = goal_fit.CostGrid(width, height, 0.05, 0.0, 0.0, data)
+
+    check("a goal in open floor fits", goal_fit.fits(floor, body, 0.5, 1.0, 0.0),
+          True)
+    check("...and one in the wall does not",
+          goal_fit.fits(floor, body, 1.6, 1.0, 0.0), False)
+    check("...and is left exactly where it was asked for",
+          goal_fit.fit(floor, body, 0.5, 1.0, 0.0)["moved_m"] == 0.0, True)
+
+    moved = goal_fit.fit(floor, body, 1.6, 1.0, 0.0)
+    check("a goal in the wall is moved to somewhere the body fits",
+          moved is not None and goal_fit.fits(floor, body, moved["x"],
+                                              moved["y"], moved["yaw"]), True)
+    check("...and not moved further than it has to be",
+          moved is not None and moved["moved_m"] <= goal_fit.REACH_M, True)
+    check("...and a goal with no way out at all is refused rather than tried",
+          goal_fit.fit(floor, body, 1.9, 1.0, 0.0, reach_m=0.10), None)
+
+    # Unknown is not an obstacle. The planner is configured with allow_unknown
+    # because this rover maps as it drives, so a goal in a room it has not seen
+    # yet has to be allowed through -- refusing it would stop exploration dead.
+    unseen = goal_fit.CostGrid(width, height, 0.05, 0.0, 0.0,
+                               [255] * (width * height))
+    check("unknown floor does not block a goal, or the rover stops exploring",
+          goal_fit.fits(unseen, body, 1.0, 1.0, 0.0), True)
+
+    # The outline matters as well as the interior: a body can straddle a wall
+    # one cell thick without any cell centre landing inside the polygon.
+    thin = [0] * (width * height)
+    for row in range(height):
+        thin[row * width + 20] = 254
+    check("a wall one cell thick is not stepped over by the interior test",
+          goal_fit.fits(goal_fit.CostGrid(width, height, 0.05, 0.0, 0.0, thin),
+                        body, 1.0, 1.0, 0.0), False)
+
+    # And that the bridge actually asks. The geometry being right is no use if
+    # `goto` never calls it, and this file cannot import nav_bridge to find out.
+    bridge = os.path.join(HERE, "nav_bridge.py")
+    if os.path.exists(bridge):
+        with open(bridge) as fh:
+            source = fh.read()
+        check("the bridge checks a goal before sending it",
+              "self.fit_goal(gx, gy, yaw)" in source, True)
+        check("...and turns round rather than reversing the length of a room",
+              "REVERSE_LIMIT_M" in source and "reverse_by_turning" in source,
+              True)
 
 
 # --- the navigation bridge ----------------------------------------------------
@@ -937,6 +1118,7 @@ def main():
     test_the_two_halves_agree_on_the_port()
     test_calibration_store()
     test_configs_agree()
+    test_goal_fits_before_it_is_sent()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0
 

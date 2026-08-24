@@ -62,7 +62,9 @@ from action_msgs.msg import GoalStatus
 from builtin_interfaces.msg import Duration as DurationMsg
 from geometry_msgs.msg import Point, PoseStamped, Twist
 from nav2_msgs.action import BackUp, DriveOnHeading, NavigateToPose, Spin
+from nav2_msgs.srv import GetCostmap
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
+from rcl_interfaces.srv import GetParameters
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -77,6 +79,10 @@ from tf2_ros import Buffer, TransformListener
 # Beside this file, and with no ROS in it, so that the selftest on a
 # workstation reads the same table this does rather than a copy of it.
 from nav_codes import phrase_for, reason_for
+# Likewise, and for the stronger version of the same reason: this one is a
+# geometry test rather than a table, and a drifted copy of it would be a rover
+# that thinks it fits somewhere it does not.
+import goal_fit
 
 # Loopback, for the same reason board_bridge.py is: this hands out the wheels,
 # and nothing on it authenticates. 8769 is the daemon, 8770 the depth camera,
@@ -121,6 +127,22 @@ TIME_ALLOWANCE_FLOOR_S = 8.0
 # speed rather than a small number.
 DEFAULT_SPEED_MS = 0.35
 DEFAULT_TURN_DPS = 45.0
+
+# **How far the rover will reverse before it would rather turn round.** The lidar
+# is the only thing aboard that sees where it is going and it faces forwards, so
+# every centimetre of reverse is driven blind. Half a metre is a little over one
+# body length -- enough to back off something it has nosed into, and short enough
+# that whatever it is reversing towards was in view moments ago. Past that,
+# `drive` turns the rover round and drives it forwards instead, which covers the
+# same ground looking at it. The controller has no reverse at all: see
+# `min_vel_x` in config/nav2.yaml.
+REVERSE_LIMIT_M = 0.5
+
+# The costmap query behind the goal check. Fetched per goal rather than cached,
+# because the whole value of the check is that it uses the costmap Nav2 is about
+# to plan on; a stale one would pass goals into furniture that has since been
+# seen. Two seconds is generous for a 300 x 300 grid over loopback.
+COSTMAP_TIMEOUT_S = 2.0
 
 
 def yaw_of(quaternion):
@@ -196,6 +218,18 @@ class NavBridge(Node):
 
         self.reset_client = self.create_client(
             Reset, "/slam_toolbox/reset", callback_group=self.group)
+        # The costmap the planner is about to use, and the body the controller is
+        # about to check it against. Asking the running stack for both is what
+        # keeps this file from carrying a second opinion about either: the
+        # footprint in particular is a measurement, and a copy of it here would go
+        # stale the first time somebody re-measured the rover.
+        self.costmap_client = self.create_client(
+            GetCostmap, "/global_costmap/get_costmap",
+            callback_group=self.group)
+        self.footprint_client = self.create_client(
+            GetParameters, "/global_costmap/global_costmap/get_parameters",
+            callback_group=self.group)
+        self.body = None
 
         self.actions = {
             "goto": ActionClient(self, NavigateToPose, "navigate_to_pose",
@@ -723,6 +757,20 @@ class NavBridge(Node):
                     "travelled_m": travelled, "turned_deg": turned,
                     "detail": "a stop was asked for" if cancelled
                               else "the time allowance ran out"}
+        # Code 0 is NONE, and NONE only means "arrived" beside a SUCCEEDED
+        # status, which the branch above has already taken. Down here the goal
+        # was aborted, and an abort that carries no code is one `bt_navigator`
+        # ended without filling in a reason -- which it does when a server under
+        # it stops answering. Reading the table for 0 here turned exactly that
+        # into "arrived", so a rover that gave up 0.7 m into a 1.5 m drive
+        # reported success, twice, while somebody was trying to work out why it
+        # was not driving properly.
+        if not code:
+            return {"reason": "failed", "travelled_m": travelled,
+                    "turned_deg": turned,
+                    "detail": message or ("Nav2 abandoned the goal without saying "
+                                          "why, which usually means a server under "
+                                          "it stopped answering in time")}
         return {"reason": reason_for(code), "travelled_m": travelled,
                 "turned_deg": turned,
                 "detail": (phrase_for(code, message)
@@ -740,6 +788,8 @@ class NavBridge(Node):
         """
         speed = abs(speed_ms or DEFAULT_SPEED_MS)
         reach = abs(distance_m)
+        if distance_m < -REVERSE_LIMIT_M:
+            return self.reverse_by_turning(reach, speed, say)
         limit = max(TIME_ALLOWANCE_FLOOR_S,
                     TIME_ALLOWANCE_SLACK * reach / max(speed, 0.05))
         if distance_m >= 0:
@@ -754,6 +804,38 @@ class NavBridge(Node):
         return self.run_goal(
             kind, goal, limit + 5.0, say,
             lambda fb: {"travelled_m": round(abs(fb.distance_traveled), 3)})
+
+    def reverse_by_turning(self, reach, speed, say):
+        """A long way backwards, driven forwards, because the lidar faces one way.
+
+        The rover sees with a lidar bolted on looking ahead of it, so anything
+        behind it is unmapped and unwatched, and `BackUp` will drive into it at
+        full speed reporting nothing wrong -- its collision check reads the same
+        costmap, and the costmap behind the rover is whatever was there when it
+        last faced that way. A short reverse is fine on those terms because the
+        rover was looking at that ground moments ago; REVERSE_LIMIT_M is where
+        that stops being true.
+
+        So this turns round and drives forwards, which covers the same ground
+        with the sensor pointed at it. The rover ends up facing the other way,
+        which is the honest cost of the manoeuvre and is why the reply says so.
+        """
+        about = self.turn(180.0, say)
+        if about.get("reason") != "arrived":
+            about["detail"] = (
+                "%s -- the rover was turning round first, because %0.1f m is "
+                "further than it will reverse blind"
+                % (about.get("detail") or "the turn did not finish", reach))
+            return about
+        onward = self.drive(reach, speed, say)
+        onward["turned_deg"] = round(
+            (about.get("turned_deg") or 0.0) + (onward.get("turned_deg") or 0.0),
+            1)
+        onward["detail"] = (
+            "%s -- " % onward["detail"] if onward.get("detail") else "") + (
+            "the rover turned round and drove forwards rather than reversing "
+            "%0.1f m blind, so it is now facing the other way" % reach)
+        return onward
 
     def turn(self, angle_deg, say):
         """On the spot, by `Spin`, which is collision-checked like everything else.
@@ -774,6 +856,90 @@ class NavBridge(Node):
                 math.copysign(math.degrees(abs(fb.angular_distance_traveled)),
                               angle_deg), 1)},
             motion="turning")
+
+    def footprint(self):
+        """The body outline the costmap node is configured with, asked for once.
+
+        A parameter query rather than a constant in this file, because the
+        footprint is a measurement of the rover -- `lidar_slam/slam2d.c` has the
+        same rectangle -- and somebody re-measuring it in config/nav2.yaml should
+        not have to know that a second copy exists here. Cached after the first
+        answer: costmap footprints do not change while a node is running.
+        """
+        if self.body is not None:
+            return self.body
+        if not self.footprint_client.wait_for_service(timeout_sec=1.0):
+            return None
+        request = GetParameters.Request()
+        request.names = ["footprint", "robot_radius"]
+        future = self.footprint_client.call_async(request)
+        if not self.wait(future, COSTMAP_TIMEOUT_S):
+            return None
+        answer = future.result()
+        if answer is None or len(answer.values) < 2:
+            return None
+        self.body = goal_fit.polygon_from(answer.values[0].string_value,
+                                          answer.values[1].double_value)
+        return self.body
+
+    def costmap(self):
+        """The global costmap as the planner currently holds it, or None.
+
+        `GetCostmap` rather than the published topic on purpose: the topic sends
+        one full grid and then deltas, so a subscriber that joined late or missed
+        an update holds something subtly wrong, and subtly wrong is the failure
+        this whole check exists to catch.
+        """
+        if not self.costmap_client.wait_for_service(timeout_sec=1.0):
+            return None
+        future = self.costmap_client.call_async(GetCostmap.Request())
+        if not self.wait(future, COSTMAP_TIMEOUT_S):
+            return None
+        answer = future.result()
+        if answer is None:
+            return None
+        grid = answer.map
+        return goal_fit.CostGrid(grid.metadata.size_x, grid.metadata.size_y,
+                                 grid.metadata.resolution,
+                                 grid.metadata.origin.position.x,
+                                 grid.metadata.origin.position.y,
+                                 bytes(bytearray(grid.data)))
+
+    def fit_goal(self, gx, gy, yaw):
+        """Move a goal to the nearest place the rover's body will actually go.
+
+        Returns the pose to send and a sentence about it, or None for the goal
+        and a sentence saying why when there is nowhere near it that fits.
+
+        Nav2 will not do this for itself, and the two halves of it disagree in a
+        way that reads as a broken rover: NavFn plans for a point, so a cell five
+        centimetres from a wall is a fine destination and it returns a clean
+        straight path to it, while DWB checks the real rectangle and will not end
+        a rollout there. What that looked like on the rover was twenty-five
+        seconds of small heading corrections and then a timeout, with nothing
+        anywhere saying the goal had been inside a wall the whole time. See
+        goal_fit.py.
+
+        A failure to ask -- the costmap service missing, the parameters not
+        answering -- sends the goal unchanged. This is a check that improves a
+        goal, not one the rover depends on to move, and a stack half way through
+        starting up should not mean a refusal to drive.
+        """
+        body = self.footprint()
+        grid = self.costmap() if body else None
+        if grid is None:
+            return (gx, gy, yaw), None
+        placed = goal_fit.fit(grid, body, gx, gy, yaw)
+        if placed is None:
+            return None, ("there is nowhere within half a metre of that spot "
+                          "where the rover's body fits -- it is inside a wall "
+                          "or under something")
+        if placed["moved_m"] < grid.resolution / 2.0:
+            return (gx, gy, yaw), None
+        return ((placed["x"], placed["y"], placed["yaw"]),
+                "the spot asked for is too close to something for the rover to "
+                "stand in, so the goal was moved %d cm to the nearest one it "
+                "fits" % round(placed["moved_m"] * 100))
 
     def goto(self, where, yaw_deg, say):
         """Somewhere on the map, with a planner and a costmap between.
@@ -797,6 +963,12 @@ class NavBridge(Node):
             yaw = math.atan2(gy - start[1], gx - start[0])
         else:
             yaw = math.radians(yaw_deg)
+
+        placed, note = self.fit_goal(gx, gy, yaw)
+        if placed is None:
+            return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": note}
+        gx, gy, yaw = placed
 
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
@@ -825,7 +997,14 @@ class NavBridge(Node):
                     "waypoints": len(plan.poses) if plan is not None else 0,
                     "recoveries": int(fb.number_of_recoveries)}
 
-        return self.run_goal("goto", goal, limit, say, measure)
+        outcome = self.run_goal("goto", goal, limit, say, measure)
+        # Said whatever happened, including on arrival: a rover that stopped 20 cm
+        # from where somebody pointed has done the right thing, and the console
+        # saying so is the difference between that and a rover that missed.
+        if note:
+            outcome["detail"] = ("%s -- %s" % (outcome["detail"], note)
+                                 if outcome.get("detail") else note)
+        return outcome
 
 
 class Handler(socketserver.StreamRequestHandler):

@@ -1,18 +1,19 @@
 # `ros_nav/` — ROS 2 mapping and navigation on the rover
 
 A map that closes its loops, and a navigation stack that plans on it. This
-replaces the SLAM and the planning in [`lidar_slam/`](../lidar_slam) with
-`slam_toolbox` and Nav2, running on the Banana Pi itself under ROS 2 Jazzy.
+replaced the rover's own SLAM and planner — which used to live in
+[`lidar_slam/`](../lidar_slam) and have since been deleted — with `slam_toolbox`
+and Nav2, running on the Banana Pi itself under ROS 2 Jazzy.
 
 ## Why this exists
 
-The scan matcher in `lidar_slam/slam2d.c` is good and fast and has one deliberate
-hole, which its own README is candid about: **no loop closure**. The pose drifts
-monotonically and for ever, so driving a circuit leaves the two ends of it in
-different places, and "go back to where you started" is not something the rover
-can do. The reason it has no loop closure is arithmetic — the note there works
-out that one closure attempt over `slam_toolbox`'s default search window would be
-about nineteen seconds on the 700 MHz single-core Pi that code was written for.
+The scan matcher this replaced was good and fast and had one deliberate hole:
+**no loop closure**. The pose drifted monotonically and for ever, so driving a
+circuit left the two ends of it in different places, and "go back to where you
+started" was not something the rover could do. The reason it had no loop closure
+was arithmetic — one closure attempt over `slam_toolbox`'s default search window
+worked out at about nineteen seconds on the 700 MHz single-core Pi that code was
+written for.
 
 The rover is not that board any more. It is a quad-core Cortex-A53 with NEON, and
 `slam_toolbox` does that search multi-resolution, threaded, in optimised C++. So
@@ -65,14 +66,16 @@ the two things ROS cannot do without — the encoders and gyro at 50 Hz, and the
 motor commands — over loopback. See
 [`rover_daemon/board_bridge.py`](../rover_daemon/board_bridge.py).
 
-The lidar is a separate USB device, so ROS simply takes it. That is why the
-daemon must now run **without `--lidar`**: two processes on one serial port is two
-half-conversations, and the daemon would win.
+The lidar is a separate USB device, so ROS simply takes it. The daemon has no way
+to ask for it any more — its `--lidar` flag went with its planner — which is the
+right shape, because two processes on one serial port is two half-conversations
+and the daemon would win.
 
 `lidar_node.py` does not re-implement the D500's packet format. It creates a
-`Slam2D` from `lidar_slam/` and uses it as a parser only — `feed()` in, `scan_xy()`
-out — because that code already reads this sensor in 0.3 ms where Python takes 25.
-`update()`, which is the scan match and the occupancy grid, is never called.
+`Slam2D` from `lidar_slam/` and feeds bytes in — `feed()` in, `scan_xy()` out —
+because that code already reads this sensor in 0.3 ms where Python takes 25. That
+library is now only a parser: its scan matcher and occupancy grid were deleted
+once nothing called them.
 
 It does use one more thing from that library, and for the same reason: `describe()`,
 which turns a revolution into walls, free-standing objects and the gaps between
@@ -80,7 +83,7 @@ them. That is what `describe_surroundings` answers with, and a language model ca
 say something useful about it where it would cheerfully hallucinate over a list of
 360 ranges. It goes out on `/surroundings` as JSON in a `std_msgs/String`, twice a
 second and only while something subscribes. What that library cannot supply is the
-pose — it never runs the matcher — so the bridge replaces it, along with the match
+pose — there is no matcher in it — so the bridge adds it, along with the match
 score and the scan count, rather than letting three plausible-looking zeroes reach
 a console.
 
@@ -91,7 +94,7 @@ that is what has the serial port, the camera and OpenCV; ROS 2 is a conda
 environment with its own Python, and there is no making them one process. So
 `nav_bridge.py` serves the stack on loopback 8773 and
 [`rover_daemon/ros_navigator.py`](../rover_daemon/ros_navigator.py) is the client,
-duck-typed to the `Navigator` the daemon used to drive with. Nothing in
+shaped like the `Navigator` the daemon used to drive with. Nothing in
 `rover_nav.py`, in the tool schemas, or in either console had to change.
 
 **Every move is a Nav2 action, not something written here.** That is the point of
@@ -165,8 +168,8 @@ four A53 cores is most of a day. [RoboStack](https://robostack.github.io/)
 publishes the same releases as conda packages with `linux-aarch64` builds.
 
 `install-boot.sh` also checks the daemon's crontab entry, because the two are a
-pair: the daemon must have `--board-bridge` and must not have `--lidar`. If that
-is wrong it prints the `sed` line that fixes it.
+pair: the daemon must have `--board-bridge` and `--ros-nav`. If that is wrong it
+prints the `sed` line that fixes it.
 
 ## Running it
 
@@ -296,8 +299,8 @@ minutes. It logs what it has found every thirty seconds. This is the part of
 `robot_localization` that matters, done directly, until the full filter is fitted.
 
 **The turn curve** had to be measured, and finding that out cost two wrong
-answers. The constants in `lidar_slam/nav_types.py` say PWM 80 turns this rover at
-31.6 deg/s and PWM 180 at 170. They were true of the rover as it was, on a
+answers. The fallback constants in `lidar_slam/nav_types.py` say PWM 80 turns this
+rover at 31.6 deg/s and PWM 180 at 170. They were true of the rover as it was, on a
 different board, floor and battery, and `nav_types.py` warns in as many words that
 stale numbers show up as a consistent over- or under-shoot in the same direction
 on every turn. Both models built on them failed on the hardware:
@@ -437,7 +440,8 @@ round the same square is a good test *of Nav2*, and a separate one.
 
 with `map -> odom` moving 1.045 m and -38 deg over the run and a **single step of
 0.619 m** in it. A scan match nudges the pose by centimetres; a step that size is
-the pose graph bending, which is the thing `lidar_slam/` cannot do at all.
+the pose graph bending, which is the thing the rover's own SLAM could not do at
+all.
 
 Read the two columns differently, though. The heading is conclusive: 37 degrees of
 accumulated error became under one. The position is only suggestive, because
@@ -641,6 +645,246 @@ A failed move now says how hard Nav2 tried: `blocked -- Nav2 gave up after 10
 recovery attempts`. A bare "blocked" sends somebody to look at the rover, which is
 the wrong place.
 
+## The rover took absurd routes, and there were five reasons, not one
+
+The rover started answering a two-metre goal with a five-metre route: out to one
+side, past the goal, back again, 519 degrees of accumulated turning to cover two
+metres of clear floor. It reads as a controller that cannot follow a line, and it
+was not — the *plan* was that shape before the wheels turned. Asking
+`ComputePathToPose` for a route while the rover stood still reproduces it in a
+tenth of a second and moves nothing, which is the way to tell the two apart:
+
+```bash
+ssh bpi-m4zero 'bash -c "source ~/ugv/ros_nav/env.sh; python3 - <<EOF
+... ComputePathToPose to a point 2 m ahead, and measure length against 2 m
+EOF"'
+```
+
+**The cause was the global costmap's obstacle layer, and on a rover that is
+mapping as it goes there is no setting that makes that layer safe.** It remembers
+marked cells in the `map` frame and nothing ever re-registers them. Every time
+slam_toolbox closes a loop it moves that frame — which is the whole reason for
+running it — and the static layer moves with it because the static layer *is* the
+map, while every cell the obstacle layer had marked stays where it was. Each
+correction leaves a ghost copy of every wall a few centimetres off the real one,
+and the ghosts only accumulate. Counted on this rover after 2h40m of driving:
+
+| | cells |
+|---|---|
+| obstacles in slam_toolbox's map | 1119 |
+| lethal cells in the global costmap | 2649 |
+| …with no map obstacle within 10 cm | 1201 |
+| …of those, in cells the map calls open floor | 523 |
+
+A second mechanism kept them there. `lidar_node` publishes a bearing that got
+nothing back as `inf`, which is what a LaserScan is supposed to say, and about a
+quarter of every revolution is one — 360 bins against roughly 450 returns that
+are not evenly spread. The projection that feeds the obstacle layer *drops* those
+bins unless `inf_is_valid` is set, so a quarter of the directions around the rover
+were never raytraced and nothing marked in them could ever be cleared.
+
+The reason a few hundred stray cells wreck a route rather than merely
+inconveniencing it is the arithmetic in the section above, plus how NavFn reads a
+costmap. Anything at or above 253 — every cell within the rover's own radius of a
+lethal one — is a *hard obstacle* to the planner, and 253 is also exactly what
+unexplored space is worth. So the ghosts did not make the floor expensive, they
+made it impassable, and unexplored space was no worse: 61% of the mapped free
+floor was closed, and the cheapest way from here to there ran out through the
+unknown. Replaying the captured grids through the same cost transform:
+
+| costmap | free floor blocked | 2 m goal, straight and clear |
+|---|---|---|
+| as it was | 61% | 4.46 m, tortuosity 2.07 |
+| static layer only | 35% | 2.33 m, tortuosity 1.17 |
+
+So the global costmap has no obstacle layer any more, and the local one is told
+`inf_is_valid: true`. Nothing was lost that this rover had: the static layer is
+slam_toolbox's live map, republished every two seconds and re-registered by every
+loop closure, so anything seen while driving is in the global picture within a
+couple of seconds and *in the right place*. What the global planner no longer
+knows is an obstacle that appeared since the last map update — and that one
+belongs to the local costmap, which is rebuilt from the live scan and is what DWB
+actually drives against. `selftest.py` checks both settings, because the failure
+they cause looks like a controller fault and is not.
+
+### The chassis has two forward speeds, and Nav2 was told it had a continuum
+
+`calibrate_chassis.py` tried PWM 70 and PWM 80 and neither moved the rover at all.
+The slowest speed it can hold is 0.33 m/s at PWM 85. **There is no creep**, and
+almost nothing in a stock Nav2 configuration is true of a robot like that.
+
+Recorded off `/cmd_vel` and `/odom` over one ordinary 1.8 m drive, before any of
+this changed: **16 of the 37 velocity commands Nav2 issued were below the floor**,
+the slowest of them 0.05 m/s against a rover already doing 0.34. Two consequences,
+and both of them look like a controller that cannot steer:
+
+- **Every acceleration and deceleration was a fiction.** DWB ramped up over 0.9 s
+  and down over 0.7 s; the rover stepped to 0.33 m/s on the first command and held
+  it until the command reached exactly zero, so it overshot the end of every leg
+  and had to come back for it.
+- **So were the tight curves.** DWB believed it could pair 0.05 m/s with
+  0.78 rad/s, which is a 6 cm turning radius. The tightest arc this chassis can
+  drive is 0.33 over 0.78 — **0.43 m of radius, about 0.9 m across**, and close to
+  the 0.7 m measured by driving it. Asked for the tight one it drove the wide one,
+  ran wide of the path, was corrected, and ran wide the other way.
+
+The fix is to give DWB the velocity space the chassis has and no more: `vx_samples: 3`
+over `-0.40 .. 0.40`, which its iterator turns into exactly {back, stop, forward},
+and acceleration limits that describe a step rather than a ramp. The *sample*
+window is the acceleration limit times the tick, not `min_vel_x`..`max_vel_x`, so
+at the 0.5 m/s² that was there DWB could not ask for more than 0.05 m/s on its
+first tick however high the maximum was.
+
+`steering_sim.py` and `steer_gain.py` are about the other axis and are unaffected:
+the differential between two wheels that are already turning has no stiction floor,
+and the measured steering curve tracks a request to within a few per cent.
+
+### The footprint was a guess, and the body had already been measured
+
+`robot_radius: 0.25` was a circle chosen to be safe, because `base_link` is at the
+lidar rather than at the middle of the chassis and the offset had never been
+measured. The radius is also the *inscribed* radius, and the inscribed radius is
+where the inflation layer writes 253, and 253 is a hard obstacle to NavFn rather
+than an expensive cell. So every mapped obstacle projected a 25 cm disc of no-go:
+
+| | share of the mapped free floor |
+|---|---|
+| blocked at `robot_radius: 0.25` | 30% |
+| reachable from where the rover stood | 62% |
+| blocked with the measured footprint | 15% |
+| reachable with it | 81% |
+
+It was worse than a statistic. The rover's *own* cell read 253, so the planner
+could not leave the start and answered a 2 m goal with "there is no route to there
+that the rover fits through" while the rover sat in the middle of a clear room.
+
+The measurement was already in the repository. `lidar_slam/slam2d.c` drops the
+returns that land on the rover's own body, and its bounds came from 397
+revolutions of this lidar looking at this chassis: 0.16 m behind the sensor and
+0.14 m to each side. Only forward is unmeasurable, because the lidar sees past the
+body that way, so 0.20 m is a deliberate over-estimate. The inscribed radius of
+that rectangle is its half-width, 0.14 m.
+
+**The critic has to change with it.** `BaseObstacle` scores and vetoes on the one
+cell the robot's centre is in, which is a collision test only while the inscribed
+ring is as big as the whole robot. It no longer is — the rear corners are 0.21 m
+out — so `ObstacleFootprint`, which traces the four edges, replaces it.
+
+### What the controller was really weighing, and how to see it
+
+`/evaluation` is DWB publishing its own decision: every candidate twist, the score
+each critic gave it, and which one won. It is the only place that says why a rover
+that could move is standing still, and two of the four faults here were found in
+it and nowhere else.
+
+The first was `BaseObstacle`, and the shape of it is worth remembering because it
+is structural. That critic scores the costmap cost where a rollout *ends*, and a
+rover that stays where it is ends where it already was, in open floor, at zero.
+Anything that moves ends further into a room, which in a furnished one is inside
+the inflation gradient at a cost of 190 to 240. **It is a standing bribe not to
+move**, worth about 4 points at the stock scale — and standing still was winning
+13.20 to 13.54. Stock DWB gets away with it because it has twenty forward samples
+and the slow ones barely enter the gradient. This chassis has no slow ones.
+
+The second was the rollout length. `sim_time: 1.5` at this speed is 0.6 m of arc,
+and the two heaviest critics measure how far a rollout strays from the planned
+path. NavFn plans on a 5 cm grid with no curvature limit in it, so its corners are
+tighter than any arc this chassis can drive, and over 0.6 m the best forward option
+was 10 points off the path where standing still was 1.6. The rover chose to stay
+put on **282 of 342 ticks** with clear floor in front of it. A shorter rollout does
+not make the corner followable, it just stops asking the rover to commit to it.
+
+### A rotation shim was tried, and taken out again
+
+A chassis with a half-metre turning radius ought to turn on the spot at a corner
+rather than swing wide, and `RotationShimController` is Nav2's way of saying so.
+It does not work here. It transforms a point off the path into the base frame with
+a fixed 10 ms transform tolerance it does not expose as a parameter, and this
+rover's transform tree is driven by the driver board at about 17 Hz, so the newest
+`odom -> base_link` is 30 ms old on average and the lookup fails. It then throws,
+logs at ERROR and delegates — ten times a second. With it in the chain the control
+loop ran at 6-7 Hz against the 10 it is asked for, `compute_path_to_pose` began
+timing out on acknowledgement, and moves were aborted mid-drive.
+
+Nothing was lost by removing it, because {back, stop, forward} already contains the
+pivot: DWB chooses it about a third of the time and forward the rest.
+
+### A fifth reason: the goal was inside a wall, and nothing said so
+
+The one after the four above, found by reading the log of a run that ended the way
+the others had. The rover was sent to (4.34, -0.98), drove 1.55 m in about five
+seconds, stopped 23 cm short and then stood making small heading corrections until
+the allowance ran out twenty-five seconds later. The console said `timed out, after
+1 replan`, which reads as a rover that could not find its way.
+
+It had found its way. It could not *park*. That cell's cost was 216 — inside the
+inflation gradient, five centimetres from the inscribed ring of a real wall — and
+laying the measured body over it at each of twenty-four headings, the footprint
+overlapped the inscribed ring at every one of them and covered an outright lethal
+cell at the heading the bridge had asked for.
+
+**The two halves of Nav2 disagree about what the rover is, and nothing reconciles
+them.** NavFn searches the cost grid as though the rover were a point, so 216 is
+drivable and it returned a clean straight path, tortuosity 1.01, and went on
+returning it after every replan. DWB checks the real rectangle and would not end a
+rollout there. Neither logged anything: as far as each was concerned it was doing
+its job.
+
+Two changes, and they are both about the size of the smallest move this chassis
+has:
+
+- **The arrival circle went from 15 cm to 22 cm.** One forward sample at 0.40 m/s
+  over a 0.8 s rollout is 32 cm, so the shortest move DWB can even weigh is twice
+  the old tolerance. A 15 cm circle was a target the controller could not aim at —
+  every rollout that closed the gap overshot it and scored worse than standing
+  still, which is precisely what it did.
+- **The bridge tests a goal against the body before sending it**, and moves it to
+  the nearest pose the rover fits in, or refuses when there is none within half a
+  metre. That is `goal_fit.py`, which has no ROS in it so the selftest runs the
+  same geometry the rover does. Replayed against the recorded costmap, the goal
+  that hung is rejected — worst cost under the body 254 — and snaps 5 cm to
+  (4.34, -0.93), which is 18 cm from where the rover actually gave up and so
+  inside the new tolerance. That run would have arrived.
+
+On the rover: a goal aimed deliberately into a wall came back `arrived`, having
+travelled 0.0 m, saying *the spot asked for is too close to something for the rover
+to stand in, so the goal was moved 30 cm to the nearest one it fits*.
+
+### The rover will not reverse further than it can see
+
+The lidar is the only thing aboard that sees where the rover is going, and it is
+bolted on facing forwards. Everything behind is unmapped and unwatched, and the
+collision check that guards a reverse reads the same costmap — so what it is
+checking against is whatever was there the last time the rover faced that way.
+
+So DWB has no reverse sample at all now (`min_vel_x: 0.0`, and two samples rather
+than three), and an explicit `drive` backwards further than `REVERSE_LIMIT_M` turns
+the rover round and drives it forwards instead, which covers the same ground with
+the sensor pointed at it. Half a metre is a little over one body length: enough to
+back off something the rover has nosed into, short enough that it was looking at
+that ground moments ago.
+
+Backing out of a corner still works, because that is the behaviour server's
+`backup` recovery and the behaviour tree bounds it to 30 cm. The velocity smoother
+therefore keeps its reverse limit even though the controller no longer uses one —
+everything the rover drives passes through that node, and a floor of zero there
+would silently swallow the recovery.
+
+### Where it got to, and what is still wrong
+
+Goals that timed out at 30 to 39 seconds now arrive in 5 to 11. In open floor DWB
+chooses to move on 61 of 62 ticks where it chose to stand still on 282 of 342.
+
+**It is not finished.** Starting close to a wall, NavFn still returns routes about
+1.9 times the direct distance, and against one of those DWB goes back to sitting
+and rotating — it loses by under one point in forty-five, entirely on the two
+critics that measure distance from the path. That is the planner's fault rather
+than the controller's: a grid Dijkstra has no curvature in it, so its route is not
+one this chassis can follow, and asking a velocity controller to follow it anyway
+is asking it to choose between the path and the goal. The lever not yet pulled is a
+planner that knows the turning radius, or the configured `smoother_server`, which
+is set up and which the stock behaviour tree never calls.
+
 ## What is deliberately not here
 
 **AMCL and the map server.** They localise against a map saved earlier, and this
@@ -662,8 +906,8 @@ is fusing a guess.
 
 **A colcon workspace.** The nodes are plain scripts and the launch files name them
 by absolute path, so deployment is `scp` and there is no build step to forget.
-`lidar_slam/` already has one of those, and a stale `libslam2d.so` is the rover
-running last week's code with this week's file next to it on disk.
+`lidar_slam/` still has one, for `libslam2d.so`, and a stale one is the rover
+running last week's parser with this week's file next to it on disk.
 
 **Nav2 behind the daemon's `drive`.** `DriveOnHeading` goes straight and stops; it
 does not weave. That is a real reduction from what the daemon's own follower did,
@@ -679,32 +923,23 @@ rate this rover chooses. The turn is still refused only if the rotation itself
 would sweep through something, which is what mattered: rotating is how a rover
 that has got too close to a wall gets away from it.
 
-## Going back
+## There is no going back
 
-The old stack is untouched and two crontab edits away:
+There used to be, and this section used to say how: the daemon's own planner was
+left in place behind a `--lidar` flag, two crontab edits away, until Nav2 had
+driven the rover around the house enough times to have earned the trade. It has,
+so that planner, its scan matcher, its route finder and its drive controller have
+been deleted — about 5,400 lines — along with the flag that reached them.
 
-```bash
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --off'
-ssh bpi-m4zero "crontab -l | sed 's/--board-bridge --ros-nav/--lidar/' | crontab - && sync"
-ssh bpi-m4zero "pkill -f 'ugv/run_daemon[.]sh'; ~/ugv/restart.sh"
-```
+What that buys is one arrangement to reason about instead of two that offered the
+same 17 tools and the same replies and could not be told apart from a console. The
+daemon's startup line no longer has to be checked to know which planner answered a
+move; if it says anything but `driving ros2 on 127.0.0.1:8773` then nothing is
+driving at all.
 
-That is deliberate and should stay true until Nav2 has driven the rover around the
-house enough times to have earned the trade. Both arrangements now offer the same
-17 tools and the same replies, so the consoles and the voice chat cannot tell them
-apart — which is the point, and also the thing to be careful about. **Check which
-one is running before drawing a conclusion about either.** The daemon's startup
-line says so:
-
-```
-driving ros2 on 127.0.0.1:8773        # Nav2 behind the tools
-driving own planner, lidar /dev/...   # the daemon's own, behind the same tools
-```
-
-The two flags are mutually exclusive and the daemon refuses to start with both,
-because `--lidar` opens the serial port that ROS's own lidar node needs — the
-daemon would win it silently and `slam_toolbox` would wait for a scan that never
-arrives.
+Getting the old stack back means `git revert`, not a crontab edit. The commit that
+removed it is one commit and it took `lidar_slam/`'s README with it, so the
+reasoning is recoverable along with the code.
 
 ## Reloading it after a deploy
 

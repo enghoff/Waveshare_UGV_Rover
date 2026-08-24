@@ -60,14 +60,73 @@ controller_server:
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      # 15 cm and 15 degrees. The pose comes from a 5 cm grid and a scan matcher,
-      # so asking for better than this is asking the rover to hunt for a
-      # precision the map does not contain.
-      xy_goal_tolerance: 0.15
+      # **22 cm, and it is the chassis that sets it, not the map.** The pose
+      # comes from a 5 cm grid and a scan matcher, so anything under about 10 cm
+      # would be asking the rover to hunt for a precision the map does not
+      # contain. The reason it is twice that is the speed floor: one forward
+      # sample at 0.40 m/s over a 0.8 s rollout means the shortest move DWB can
+      # even consider is 32 cm, so a 15 cm circle is a target the controller
+      # cannot aim at. Measured on the rover -- a goal that ended 23 cm out sat
+      # and shuffled for 25 s and then timed out, because every rollout that
+      # closed the gap overshot it and scored worse than standing still.
+      #
+      # 15 degrees stays. Rotation has no floor of that kind: the difference
+      # between two wheels already turning is continuous. See drive_mixer.py.
+      xy_goal_tolerance: 0.22
       yaw_goal_tolerance: 0.26
       stateful: true
 
+    # **This chassis has two forward speeds: stopped, and about a third of a
+    # metre a second.** Everything unusual in this block follows from that one
+    # measured fact, so it is worth stating before the numbers.
+    #
+    # `calibrate_chassis.py` tried PWM 70 and PWM 80 and neither moved the rover
+    # at all; the slowest speed it can hold is 0.33 m/s at PWM 85. There is no
+    # creep. A stock DWB does not know this: it samples a dozen forward speeds
+    # between zero and its maximum, rolls each one out, scores it and picks one --
+    # and every sample under 0.33 comes out of the wheels as 0.33. Recorded on the
+    # rover over one ordinary 1.8 m drive, 16 of the 37 velocity commands Nav2
+    # issued were in that band, the slowest of them 0.05 m/s against a rover
+    # already doing 0.34.
+    #
+    # Two things follow, and both of them look like a controller that cannot
+    # steer:
+    #
+    # - **Every acceleration and deceleration was a fiction.** DWB ramped up over
+    #   0.9 s and down over 0.7 s; the rover stepped to 0.33 m/s on the first
+    #   command and held it until the command reached exactly zero. So it
+    #   overshot the end of every leg and had to come back for it.
+    # - **Tight curves were a fiction too.** DWB believed it could pair 0.05 m/s
+    #   with 0.78 rad/s, which is a 6 cm turning radius. The tightest arc this
+    #   chassis can actually drive is 0.33 m/s over 0.78 rad/s, which is 0.43 m
+    #   of radius -- about 0.9 m across, and close to the 0.7 m somebody measured
+    #   by driving it. Asked for the tight one it drove the wide one, ran wide of
+    #   the path, was corrected, and ran wide the other way.
+    #
+    # So the velocity space here is set to the two things the chassis can do and
+    # nothing else. `vx_samples: 2` with a floor of zero means DWB samples exactly
+    # {0.0, max_vel_x}: stop, or go. Anything the path asks for that a 0.5 m arc
+    # cannot absorb is then a turn on the spot, which is what this chassis does
+    # anyway.
     FollowPath:
+      # **There was a `RotationShimController` in front of this, and it had to
+      # come out.** The idea was right -- a heading change tighter than a 0.5 m
+      # arc can absorb should be a turn on the spot, and that is a manoeuvre a
+      # velocity controller only approximates. It does not work on this rover.
+      #
+      # It transforms a point off the path into the base frame with a fixed 10 ms
+      # transform tolerance that it does not expose as a parameter, and the
+      # transform tree here is driven by the driver board at about 17 Hz, so the
+      # newest `odom -> base_link` is 30 ms old on average and the lookup fails.
+      # What that costs is not just the shim: it throws, logs at ERROR, and
+      # delegates, ten times a second, and with it in the chain the control loop
+      # ran at 6-7 Hz against the 10 it is asked for, `compute_path_to_pose` began
+      # timing out on acknowledgement, and moves were aborted mid-drive.
+      #
+      # Nothing was lost by removing it, because the sample set below already
+      # contains the pivot: with vx running -0.40, 0.0, +0.40, "turn on the spot"
+      # is one of the three things DWB can choose, and recorded off `/evaluation`
+      # it chooses it about a third of the time and forward the rest.
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: false
       # The measured envelope. 0.50 m/s comes from calibrate_chassis.py, which
@@ -81,37 +140,129 @@ controller_server:
       # 45 deg/s is 0.785 rad/s, and that one *is* a real limit rather than a
       # comfort setting -- past it a 100 ms lidar sweep smears across more heading
       # change than a scan match can absorb.
+      # **The controller may not reverse at all, and that is a sensor limit
+      # rather than a comfort one.** The lidar is the only thing on this rover
+      # that sees where it is going, and it is mounted looking forwards, so a
+      # reverse leg is driven blind. Given a reverse sample DWB will take one
+      # whenever the arithmetic happens to like it, and the arithmetic does not
+      # know the rover cannot see behind itself.
+      #
+      # Nav2 can still back out of a corner, because that is the behaviour
+      # server's `backup` recovery and the behaviour tree bounds it to 30 cm --
+      # which is about the length of blind reversing worth having. The bridge
+      # applies the same rule to an explicit `drive` backwards: see
+      # REVERSE_LIMIT_M in nav_bridge.py, which turns the rover round rather
+      # than reversing the length of a room.
       min_vel_x: 0.0
-      max_vel_x: 0.50
+      # 0.40 rather than the 0.50 this was, and the change is not about comfort.
+      # With three samples the rover drives at exactly this whenever it is
+      # rolling, so it is now *the* speed rather than a ceiling -- and it has to
+      # sit far enough above the 0.33 m/s floor that the mixer has PWM left to
+      # steer with.
+      max_vel_x: 0.40
       min_vel_y: 0.0
       max_vel_y: 0.0
       max_vel_theta: 0.78
       min_speed_xy: 0.0
-      max_speed_xy: 0.50
+      max_speed_xy: 0.40
       # Turning on the spot is how a skid-steer chassis changes direction, so it
       # has to be allowed rather than penalised into a wide arc it cannot drive.
       min_speed_theta: 0.0
-      acc_lim_x: 0.5
-      acc_lim_theta: 1.5
-      decel_lim_x: -0.7
-      decel_lim_theta: -2.0
-      # 12 x 20 samples at 1.5 s. This is the CPU knob: the cost is the product,
-      # and 240 rollouts a tick at 10 Hz is affordable here where the stock
-      # 20 x 40 at 20 Hz is not.
-      vx_samples: 12
+      # **These describe a chassis that steps, because this one does.** They are
+      # not comfort limits and they are not guesses: measured on the rover, the
+      # wheels were at 0.34 m/s within 0.15 s of the first command and at zero
+      # within one tick of the last.
+      #
+      # The number that matters is the limit times the controller's period, which
+      # is what DWB is allowed to change the command by in one tick -- and it
+      # samples *within* that window rather than within min_vel_x..max_vel_x. At
+      # the 0.5 m/s^2 that was here, the window from rest was 0 to 0.05 m/s, so
+      # the fastest thing DWB could ask for on the first tick was a seventh of the
+      # slowest speed the rover can hold. 4.0 m/s^2 over a 0.1 s tick is 0.40, so
+      # the window is the whole range and both samples are always reachable.
+      acc_lim_x: 4.0
+      acc_lim_theta: 8.0
+      decel_lim_x: -4.0
+      decel_lim_theta: -8.0
+      # **Two forward samples, and they are the two the chassis has.** With the
+      # range running 0.0..0.40 and the acceleration window covering it, DWB's
+      # iterator returns exactly {0.0, +0.40}: stop, or go. Twelve evenly spaced
+      # samples sounds better and is worse -- ten of them were speeds the wheels
+      # cannot produce, so DWB was scoring ten rollouts of a rover that does not
+      # exist and picking between them.
+      #
+      # There were three of these until reverse came out, and nothing was lost
+      # with it. Paired with the sixteen rotation samples, the "stop" sample is
+      # a turn on the spot, so the pivot this chassis uses to change direction
+      # is still one of the things DWB can choose -- recorded off `/evaluation`,
+      # about a third of its ticks.
+      #
+      # The rotation samples stay dense, because steering *is* continuous here:
+      # the differential between two wheels that are already turning has no
+      # stiction floor, which is what `steer_pwm` is about. So the CPU cost is
+      # 3 x 16 at 0.8 s -- 48 rollouts a tick where there were 240, and each of
+      # them shorter. That headroom is spent on `ObstacleFootprint`, which
+      # traces four edges where the critic it replaced read one cell.
+      vx_samples: 2
       vy_samples: 1
-      vtheta_samples: 20
-      sim_time: 1.5
+      vtheta_samples: 16
+      # **0.8 s, and the reason is the turning radius again.** A rollout is
+      # sim_time long -- 0.6 m at 1.5 s and this speed -- and the two critics
+      # that dominate the score measure how far it strays from the planned path.
+      # NavFn plans on a 5 cm grid with no curvature limit in it, so its corners
+      # are tighter than any arc this chassis can drive; over 0.6 m of arc the
+      # best forward option was 10 points off the path while standing still was
+      # 1.6, and standing still therefore won. Recorded off `/evaluation`: the
+      # rover chose to stay put on 282 of 342 ticks with clear floor ahead of it.
+      #
+      # A shorter rollout does not make the corner followable, it just stops
+      # asking the rover to commit to it: over 0.32 m the arc and the path have
+      # not had room to diverge, and the next tick asks again. Cheap in safety
+      # terms because this chassis stops within one tick -- about 4 cm at this
+      # speed -- so the horizon is still eight times the stopping distance.
+      sim_time: 0.8
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.3
-      xy_goal_tolerance: 0.15
+      # The same 0.22 as the goal checker above, and it has to be the same
+      # number: this copy is what switches `RotateToGoal` on. Set lower, the
+      # rover would settle its heading in a ring the checker will not accept;
+      # set higher, it would start hunting the final heading while still driving.
+      xy_goal_tolerance: 0.22
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
-      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+      # `ObstacleFootprint` rather than `BaseObstacle`, because the footprint is
+      # now a rectangle. `BaseObstacle` scores and vetoes on the cost of the one
+      # cell the robot's centre is in, which is a collision test only while the
+      # inflation layer's inscribed ring is as big as the whole robot. It was,
+      # and it no longer is: the ring is 0.14 m and the rear corners are 0.21 m
+      # out, so a point check would let the rover reverse its corner into a wall.
+      # This one traces the four edges.
+      critics: ["RotateToGoal", "Oscillation", "ObstacleFootprint", "GoalAlign",
                 "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.02
+      # **0.005 rather than the stock 0.02, and this is the number that decides
+      # whether the rover moves at all.**
+      #
+      # This critic scores the costmap cost where a rollout *ends*, and a rover
+      # that stays where it is ends where it already was -- in open floor, at
+      # zero. Every rollout that goes anywhere ends 0.6 m further into a room,
+      # which in a furnished one means somewhere inside the inflation gradient,
+      # at a cost of 190 to 240. So the critic pays a standing bribe not to move,
+      # and the bribe is worth about 4 points at the stock scale.
+      #
+      # Recorded off `/evaluation` while the rover sat still with clear floor in
+      # front of it: standing scored 13.20 and the best forward trajectory 13.54,
+      # of which 3.74 was this critic (then named BaseObstacle). It stood there and dithered until the move
+      # timed out. Stock DWB gets away with the bribe because it has twenty
+      # forward samples and the slow ones barely enter the gradient; this chassis
+      # has no slow ones, so the bribe has to come down instead.
+      #
+      # Safety does not live in this number. A trajectory that reaches a cell at
+      # the inscribed radius is *vetoed* by this same critic, whatever the scale
+      # is; the scale only says how much to prefer the middle of a corridor to
+      # the edge of one.
+      ObstacleFootprint.scale: 0.005
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -137,13 +288,37 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      # The rover is 34 cm across and `base_link` is at the *lidar*, not at the
-      # centre of the chassis -- see base_node.py for why that offset was left
-      # unmeasured rather than guessed. So the footprint is a circle big enough
-      # to contain the rover wherever inside it the sensor actually sits, which
-      # is the honest shape given what is known. Measure the offset and this can
-      # become a proper rectangle.
-      robot_radius: 0.25
+      # **The rover's real shape, measured, instead of a circle nobody measured.**
+      #
+      # `robot_radius: 0.25` was here, and it was a guess made safe by being
+      # generous: `base_link` is at the lidar rather than at the centre of the
+      # chassis, the offset had never been measured, so the footprint was a circle
+      # big enough to contain the rover wherever inside it the sensor sits.
+      #
+      # What that costs is not obvious and is very large. The radius is also the
+      # *inscribed* radius, which is the distance at which the inflation layer
+      # writes 253 -- and 253 is a hard obstacle to NavFn, not an expensive cell.
+      # So every occupied cell in the map projected a 25 cm disc of no-go, and on
+      # a real map of this house that closed 30% of the mapped floor and left only
+      # 62% of it reachable from where the rover was standing. It was worse than
+      # that: the rover's *own* cell read 253, so the planner could not leave the
+      # start and answered `drive_to` with "there is no route to there that the
+      # rover fits through" while the rover sat in the middle of a clear room.
+      #
+      # The measurement was already in the repository. `lidar_slam/slam2d.c` drops
+      # the returns that land on the rover's own body, and the bounds it uses were
+      # taken from 397 revolutions of this lidar looking at this chassis: the body
+      # reaches 0.16 m behind the sensor and 0.14 m to each side of it. Forward is
+      # the one direction the lidar cannot measure, because it sees past the body
+      # that way, so 0.20 m is a deliberate over-estimate.
+      #
+      # The inscribed radius of that rectangle is its half-width, 0.14 m, which is
+      # what the inflation layer now uses -- and 81% of the floor comes back.
+      # `ObstacleFootprint` in the controller's critics is the other half of this
+      # change and is not optional: the critic that was there checks one point at
+      # the robot's centre, which is only a collision test while the inscribed
+      # radius is the whole robot. This rectangle's corners are 0.21 m out.
+      footprint: "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]"
       # Send the whole grid every time, not just the cells that changed. Stock
       # behaviour is one full costmap followed by deltas for ever, which is right
       # for a viewer that was watching from the start and useless for one that
@@ -168,6 +343,21 @@ local_costmap:
           # against a best-effort publisher is the incompatibility that shows up
           # as "Subscription count: 1" and no data ever arriving.
           data_type: "LaserScan"
+          # **A bearing that got nothing back has to clear, and by default it
+          # does not.** `lidar_node` publishes an empty bin as `inf`, which is
+          # the correct thing for a LaserScan to say, and about a quarter of
+          # every revolution is one -- 360 bins against roughly 450 returns that
+          # are not evenly spread, plus whatever the room absorbs. The projection
+          # that turns a scan into points for this layer *drops* those bins
+          # unless told otherwise, so a quarter of the directions around the
+          # rover are never raytraced and anything ever marked in them stays
+          # marked for as long as the process lives. That is how a person who
+          # walked past an hour ago is still a wall.
+          #
+          # With this on, an infinite reading is read as "clear all the way out
+          # to range_max" -- 8 m -- and since that is past `obstacle_max_range`
+          # it clears without marking anything at the far end.
+          inf_is_valid: true
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -191,27 +381,51 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.25
+      # The same measured rectangle as the local costmap's -- see the note there.
+      # Two costmaps disagreeing about the shape of the robot is a planner that
+      # routes through gaps the controller then refuses to drive.
+      footprint: "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]"
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # **No obstacle layer here, and that is the whole reason this rover stopped
+      # taking absurd routes.** It had one, and on a rover that is running SLAM
+      # rather than localising against a saved map it cannot be made to work.
+      #
+      # The layer remembers marked cells in the `map` frame and nothing ever
+      # re-registers them. slam_toolbox moves that frame every time it closes a
+      # loop, which is the entire point of running it -- and when it does, the
+      # static layer below follows, because it is the map, while every cell this
+      # layer had marked stays where it was. Each correction therefore leaves a
+      # ghost copy of every wall, a few centimetres off the real one, and the
+      # ghosts only ever accumulate. Measured on this rover after 2h40m of
+      # driving: 2649 lethal cells against the 1119 the map actually had, 1201 of
+      # them with no obstacle within 10 cm and 523 of those sitting in cells the
+      # map called open floor.
+      #
+      # That is not a cosmetic difference, because of how NavFn reads a costmap.
+      # Anything at or above 253 -- which is every cell within the rover's own
+      # radius of a lethal one -- is a hard obstacle to it, and 253 is also what
+      # unexplored space is worth. So the ghosts did not make the floor
+      # expensive, they made it *impassable*: 61% of the mapped free floor was
+      # closed to the planner, and the routes that came back went the long way
+      # round through unexplored space. A goal two metres straight ahead down an
+      # unobstructed line was answered with a five-metre route and 519 degrees of
+      # turning; with this layer gone the same goal plans as 2.3 m.
+      #
+      # Nothing is lost that this rover had. The static layer is slam_toolbox's
+      # live map, republished every two seconds and re-registered by every loop
+      # closure, so anything the lidar sees while the rover is moving is in the
+      # global picture within a couple of seconds and in the *right place*. What
+      # the global planner no longer knows about is an obstacle that appeared
+      # since the last map update -- and that one belongs to the local costmap,
+      # which does have an obstacle layer, is rebuilt from the live scan, and is
+      # what DWB actually drives against.
+      plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         # slam_toolbox's live map, not a saved one. It republishes the whole grid
         # every map_update_interval, and subscribing transiently would miss it.
         map_subscribe_transient_local: true
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
-        observation_sources: scan
-        scan:
-          topic: /scan
-          data_type: "LaserScan"
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          raytrace_max_range: 8.0
-          obstacle_max_range: 6.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.45
@@ -272,10 +486,18 @@ velocity_smoother:
     smoothing_frequency: 10.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.50, 0.0, 0.78]
-    min_velocity: [-0.50, 0.0, -0.78]
-    max_accel: [0.5, 0.0, 1.5]
-    max_decel: [-0.7, 0.0, -2.0]
+    # The same numbers as the controller's, and for the same reason. This is the
+    # last thing between DWB and the wheels, so a gentle limit here reinstates
+    # exactly the ramp the controller was just told not to plan: the rover would
+    # go on stepping to 0.33 m/s while Nav2 believed it was easing in.
+    max_velocity: [0.40, 0.0, 0.78]
+    # Reverse stays open here even though the controller above no longer uses
+    # it. Everything the rover drives passes through this node, including the
+    # behaviour server's `backup` recovery and the bridge's own short reverse,
+    # and a floor of zero here would silently swallow both.
+    min_velocity: [-0.40, 0.0, -0.78]
+    max_accel: [4.0, 0.0, 8.0]
+    max_decel: [-4.0, 0.0, -8.0]
     odom_topic: "odom"
     odom_duration: 0.1
     # Half a second of silence stops the wheels, matching base_node's own
