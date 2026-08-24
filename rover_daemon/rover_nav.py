@@ -330,26 +330,39 @@ class RoverNav:
 
     # --- scripts ------------------------------------------------------------
     #
-    # Five control calls, none of them in :meth:`tools`, and all five refused on
-    # anything but the loopback interface -- see `Handler`. A model is not shown
-    # them and could not reach them if it were, because the clients that hold a
-    # conversation are on a desk across the LAN.
+    # Five calls, all of them refused on anything but the loopback interface --
+    # see `Handler` -- and one of them, `run_script`, offered to the model as a
+    # tool by :meth:`Rover.tools` when that is where the asking is coming from.
     #
-    # That is the MVP's answer to the obvious objection: this port authenticates
-    # nothing, and "run this code" is a different proposition from "turn the
-    # lights on". Bound to loopback it grants exactly what an ssh session on this
-    # Pi already grants, and it is reached the same way -- a tunnel, or an agent
-    # working on the rover itself. What lets a model use a behaviour later is
-    # `run_behaviour`, which runs something already written and reviewed rather
-    # than something composed in the middle of a conversation.
+    # Loopback is still the whole security argument: this port authenticates
+    # nothing, "run this code" is a different proposition from "turn the lights
+    # on", and bound to loopback it grants exactly what an ssh session on this
+    # board already grants. What has changed is who is on loopback. The rover
+    # holds its own conversation now, so a model composing a program in the
+    # middle of one is a local client, and the gate that was doing two jobs is
+    # back to doing the one it was built for.
+    #
+    # The other four are control calls and stay out of :meth:`Rover.tools`. A
+    # blocking run is the shape that fits a conversation -- fifteen seconds, and
+    # the answer is what the program printed -- while `start_script` is a
+    # behaviour outliving the question that asked for it, which is a thing to
+    # start from a console or an ssh session where somebody is watching it.
 
     def _tool_run_script(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Run a script and wait for it. A control call, not a model tool.
+        """Run a script and wait for it. The one of the five a model is offered.
 
         For something that finishes while the caller holds the connection. A
         behaviour that runs for minutes is `start_script`; the difference is only
-        who does the waiting, and this one is bounded well inside the clients'
-        12 s patience so that "no answer" cannot mean "still working".
+        who does the waiting.
+
+        The waiting is longer than a tool call, and the clients know it: fifteen
+        seconds of script, plus the interpreter starting, plus the two graces of
+        a kill, is half a minute in the worst case against the twelve seconds a
+        conversation client allows an ordinary call. `RUN_SCRIPT_TIMEOUT_S` in
+        [rover_tools.py](../voice_chat/rover_tools.py) is that arithmetic on the
+        other side of the wire, and it is there so that a script stopped at its
+        limit is reported as a script stopped at its limit rather than read as a
+        daemon that has died.
         """
         if self.scripts is None:
             return {"ok": False, "error": "this daemon is not running scripts"}

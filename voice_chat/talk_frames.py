@@ -1,4 +1,4 @@
-"""Local /frame receiver so look can post pictures to this desk."""
+"""Local /frame receiver so look can post pictures to the model's host."""
 from __future__ import annotations
 
 import http.server
@@ -42,10 +42,8 @@ class Frames(http.server.ThreadingHTTPServer):
 
     The rover's `look` does not send the picture through the conversation. It
     posts the JPEG straight to the model's host and returns nothing but the name
-    it was filed under, which keeps a 35KB frame off the desk that only has a
-    microphone on it. That road led to MEDIA, and on this path MEDIA does not
-    exist -- so the desk becomes the host, holds the frame under a name, and
-    forwards it into the session when the tool result comes back naming it.
+    it was filed under. That road led to MEDIA, then to a desk client; on this
+    path the host is the rover itself, loopback, while a conversation is open.
 
     The contract is the voice service's, unchanged, so the daemon needs no edit:
 

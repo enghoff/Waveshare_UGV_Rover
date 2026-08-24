@@ -401,6 +401,37 @@ drive = _Drive()
 power = _Power()
 
 
+#: The surface, in the order it is worth reading: the namespaces first and the
+#: loose functions under them. Named once here because two things now describe
+#: this module by looking at it -- `reference`, for whoever is writing a
+#: behaviour, and `signatures`, for the model that is about to -- and a list kept
+#: twice is a list that ends up disagreeing with itself.
+_NAMESPACES = (("lights", lights), ("gimbal", gimbal), ("camera", camera),
+               ("tracking", tracking), ("drive", drive), ("power", power))
+_FUNCTIONS = (every, wait, time_left, call)
+
+
+def _members(thing: object):
+    """Every public callable on a namespace, as (name, signature, first line).
+
+    The signature comes back with the quotes stripped off its annotations. They
+    are there because this file says `from __future__ import annotations`, so
+    `inspect` is reading strings rather than types and renders them as strings --
+    `jpeg: 'bytes | None'` -- which is an implementation detail of this module
+    leaking into something a model is about to read as Python.
+    """
+    import inspect
+
+    for attr in sorted(dir(thing)):
+        if attr.startswith("_"):
+            continue
+        member = getattr(thing, attr)
+        if not callable(member):
+            continue
+        signature = str(inspect.signature(member)).replace("'", "")
+        yield attr, signature, (member.__doc__ or "").strip().split("\n")[0]
+
+
 def reference() -> str:
     """The whole surface above as text, built by looking at it.
 
@@ -412,27 +443,50 @@ def reference() -> str:
     import inspect
 
     lines = [(__doc__ or "").strip().split("\n\n")[0], ""]
-    for name, thing in (("lights", lights), ("gimbal", gimbal), ("camera", camera),
-                        ("tracking", tracking), ("drive", drive), ("power", power)):
+    for name, thing in _NAMESPACES:
         doc = (thing.__class__.__doc__ or "").strip().split("\n")[0]
         lines.append(f"{name}  -- {doc}" if doc else name)
-        for attr in sorted(dir(thing)):
-            if attr.startswith("_"):
-                continue
-            member = getattr(thing, attr)
-            if not callable(member):
-                continue
-            signature = str(inspect.signature(member))
-            summary = (member.__doc__ or "").strip().split("\n")[0]
+        for attr, signature, summary in _members(thing):
             lines.append(f"    {name}.{attr}{signature}")
             if summary:
                 lines.append(f"        {summary}")
         lines.append("")
-    for func in (every, wait, time_left, call):
+    for func in _FUNCTIONS:
         lines.append(f"{func.__name__}{inspect.signature(func)}")
         lines.append(f"    {(func.__doc__ or '').strip().split(chr(10))[0]}")
     lines += ["", "Raises RoverError when the rover refuses a call, Stopped when "
                   "somebody stops the script, Deadline when it runs past its limit."]
+    return "\n".join(lines)
+
+
+def signatures() -> str:
+    """The same surface, one line to a namespace and no prose. About 900 chars.
+
+    What the model-facing `run_script` schema is built out of -- see `SCRIPT_TOOL`
+    in [tool_schemas.py](tool_schemas.py). `reference` is written for something
+    that can afford to read three thousand characters before it starts; this is
+    written for a tool description that sits in a realtime session beside
+    seventeen others and is paid for on every turn of the conversation.
+
+    Generated from the same introspection as `reference` and for the same reason,
+    which matters more here than there: a schema that advertises a primitive
+    under the name it used to have does not merely mislead somebody reading, it
+    makes the model write a program that cannot run.
+
+    Each namespace's own one-line docstring is kept, as a comment after the
+    calls, because two of them say something a signature cannot -- that every
+    `drive` call blocks until the move is over, most of all.
+    """
+    lines = []
+    for name, thing in _NAMESPACES:
+        calls = ", ".join(f"{name}.{attr}{signature}"
+                          for attr, signature, _summary in _members(thing))
+        doc = (thing.__class__.__doc__ or "").strip().split("\n")[0]
+        lines.append(f"{calls}   # {doc}" if doc else calls)
+    import inspect
+
+    lines.append(", ".join(f"{func.__name__}{inspect.signature(func)}"
+                           for func in _FUNCTIONS).replace("'", ""))
     return "\n".join(lines)
 
 

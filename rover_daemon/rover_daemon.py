@@ -45,7 +45,7 @@ watching a move needs and a model asked to narrate one does not.
 
 `list_tools` is why the clients carry no schemas of their own. The daemon is the
 only thing that knows what this rover can do, so it is the only thing that should
-be describing it -- [voice_chat/talk.py](../voice_chat/talk.py) asks, and
+be describing it -- [voice_chat/session.py](../voice_chat/session.py) asks, and
 hands the answer straight to the model. Adding a tool is a change to
 [tool_schemas.py](tool_schemas.py) and the handler on Rover, with nothing to
 redeploy anywhere else.
@@ -57,12 +57,14 @@ worked out. This runs the same loop -- importing the same `aiming.py`, so the tw
 cannot become different robots -- but under a switch, sharing the board with
 everything else, so that a conversation can start and stop it.
 
-The client is not on this machine. Speech runs on whatever desk has a
-microphone, and [voice_chat/talk.py](../voice_chat/talk.py) reaches this over the
-LAN like any other client. That is why this binds an address rather than a Unix
-socket, and it is why forwarding frames over the LAN is simply the cost of
-tracking rather than something that has to be budgeted against anything else
-running here.
+**The client used to be somewhere else, and one gate here depends on where it
+is.** Speech used to run on a desk with a microphone, reaching this over the LAN,
+which is why this binds an address rather than a Unix socket. The usual
+arrangement now is the rover holding its own conversation -- the browser has the
+microphone and [drive_web/omni_bridge.py](../drive_web/omni_bridge.py) has the
+session -- so the model's tool calls arrive on loopback. `LOCAL_ONLY` below is
+the one place that matters, because a rule written as "loopback only" was doing
+duty as "no model, ever", and those two stopped meaning the same thing.
 """
 
 from __future__ import annotations
@@ -91,7 +93,9 @@ from rover_nav import (
     _map_cells, _map_view,
 )
 from rover_wifi import _terse_fields, _wifi_networks
-from tool_schemas import LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, TOOLS
+from tool_schemas import (
+    LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, TOOLS,
+)
 
 DEFAULT_BOARD_HOST = "192.168.1.22"
 DEFAULT_SERVICE = "local"
@@ -115,6 +119,21 @@ ROS_NAV_PORT = 8773
 # of the protocol and these is the difference between a stranger flashing the
 # headlights and a stranger with a shell on the rover. Bound to loopback they grant
 # what an ssh session here already grants, and are reached the same way.
+#
+# **The conversation is inside this gate now, and that is the whole change.** When
+# this was written, the client holding the conversation was on whichever desk had
+# the microphone, so "loopback only" and "no model, ever" were the same sentence.
+# The rover holds its own session with Alibaba's model today -- see
+# [drive_web/omni_bridge.py](../drive_web/omni_bridge.py) -- so those tool calls
+# arrive here from 127.0.0.1 like any other local client, and `run_script` is
+# offered to the model in `list_tools` deliberately rather than by oversight. What
+# the gate still refuses is a stranger on the LAN, which is what it was for; what
+# it no longer implies is that nothing conversational can reach these.
+#
+# The other four stay unadvertised. A model that can run a program for fifteen
+# seconds and be told what it printed does not also need to start one that
+# outlives the question, and `list_api` is a catalogue whose contents are now
+# written into `run_script`'s own description anyway.
 #
 # `script_status` is deliberately not among them. Watching a behaviour run is
 # what a console on a desk wants, it changes nothing, and everything else this
@@ -141,7 +160,9 @@ class Handler(socketserver.StreamRequestHandler):
             else:
                 name = request.get("call")
                 if name == "list_tools":
-                    reply = {"ok": True, "tools": rover.tools()}
+                    # Where the client is decides whether it is shown the one
+                    # tool it would be refused. See `Rover.tools`.
+                    reply = {"ok": True, "tools": rover.tools(local=local)}
                 elif not isinstance(name, str):
                     reply = {"ok": False, "error": "every request needs a 'call'"}
                 elif name in LOCAL_ONLY and not local:
@@ -150,6 +171,14 @@ class Handler(socketserver.StreamRequestHandler):
                                       f"reach it through an ssh tunnel"}
                 else:
                     reply = rover.call(name, request.get("arguments") or {})
+                    # `set_vision` answers with the tool names as they now
+                    # stand, and one of those names depends on who is asking --
+                    # which is knowledge this end has and a tool handler does
+                    # not. Corrected here rather than passed down, so that
+                    # "where the client is" stays in the one place that knows.
+                    if local and isinstance(reply.get("tools"), list):
+                        reply["tools"] = [t["function"]["name"]
+                                          for t in rover.tools(local=True)]
             try:
                 self.wfile.write(json.dumps(reply).encode() + b"\n")
             except OSError:
@@ -285,7 +314,10 @@ def main() -> int | str:
           f"vision {rover.vision.describe() if rover.vision else 'off'}, "
           f"driving {driving}, "
           f"board shared {bridge.describe() if bridge else 'no'} "
-          f"({len(rover.tools())} tools)",
+          # Both counts, because there are honestly two: `run_script` is offered
+          # to a client on loopback and refused to one on the LAN, so a single
+          # number here would be wrong for one of the two readers of this line.
+          f"({len(rover.tools())} tools, {len(rover.tools(local=True))} on loopback)",
           flush=True)
 
     def release_idle_camera() -> None:

@@ -13,7 +13,9 @@ from rover_camera import RoverCamera, VisionLink
 from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_util import _flag, _level, _number  # noqa: F401
 from rover_wifi import RoverWifi
-from tool_schemas import LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, TOOLS
+from tool_schemas import (
+    LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, TOOLS,
+)
 
 
 class Rover(RoverCamera, RoverWifi, RoverNav):
@@ -79,6 +81,10 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
         # by connecting back to this daemon like any other client. None on a
         # daemon that is not running scripts, which is what every call checks.
         self.scripts = None
+        # `run_script`'s schema, once something has asked for it. See
+        # :meth:`script_tool` for why it is built rather than constant and why it
+        # is worth keeping afterwards.
+        self._script_tool: dict[str, Any] | None = None
         # The last pack voltage and when it was read, because a console polls this
         # and every fresh sample is a read of the UART. Its own lock, so that two
         # clients asking at once are one read of the board rather than two.
@@ -103,7 +109,7 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
 
     # --- the board ----------------------------------------------------------
 
-    def tools(self) -> list[dict[str, Any]]:
+    def tools(self, local: bool = False) -> list[dict[str, Any]]:
         """What this rover can do, as this rover is currently configured.
 
         Built rather than constant, because `look` exists only when there is
@@ -114,6 +120,16 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
 
         The same rule covers driving, which needs a lidar, and the map, which needs
         both a lidar to build it and somewhere to send the picture.
+
+        `local` is that same rule applied to the one tool whose condition is the
+        caller rather than the hardware. `run_script` is refused on anything but
+        loopback -- see `LOCAL_ONLY` in [rover_daemon.py](rover_daemon.py) -- so a
+        client across the LAN must not be shown it: the model would be offered a
+        tool that answers "reach it through an ssh tunnel" every time, which is
+        exactly the lying schema this method exists to avoid. It comes last
+        because order is not cosmetic here; a tool is read against its
+        neighbours, and everything measured about this list was measured with
+        these ones in this order.
         """
         tools = list(TOOLS)
         if self.vision is not None:
@@ -122,7 +138,40 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
             tools += NAV_TOOLS
             if self.vision is not None:
                 tools.append(MAP_TOOL)
+        if local and self.scripts is not None:
+            tools.append(self.script_tool())
         return tools
+
+    def script_tool(self) -> dict[str, Any]:
+        """`run_script`'s schema, with the script API written into it.
+
+        The description names every primitive a program may call, because the
+        alternative is a model guessing at them: a voice model asked for a
+        behaviour in the middle of a conversation has one turn to write it, and a
+        program against `lights.on()` -- which does not exist -- fails as a
+        `NameError` several seconds later with nothing to show for it. Handing it
+        `list_api` instead would need the model to ask before it writes, and a
+        catalogue a model has only read is not reliably one it uses; see
+        [docs/scripting.md](../docs/scripting.md).
+
+        So the surface is generated from `rover_api` and pasted in, which keeps
+        the one rule this repository has about descriptions: the thing that owns a
+        fact is the thing that states it. Built once and kept, because it costs an
+        `inspect` import and a walk of six namespaces, and `list_tools` is asked
+        on every connection a console makes.
+        """
+        if self._script_tool is None:
+            import copy
+
+            import rover_api
+            import scripting
+
+            schema = copy.deepcopy(SCRIPT_TOOL)  # the literal is not ours to edit
+            schema["function"]["description"] = (
+                schema["function"]["description"].format(
+                    api=rover_api.signatures(), limit_s=scripting.RUN_LIMIT_S))
+            self._script_tool = schema
+        return self._script_tool
 
     def describe(self) -> str:
         return self.link.describe()

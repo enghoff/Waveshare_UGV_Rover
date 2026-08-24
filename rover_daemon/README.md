@@ -9,7 +9,7 @@ corrupting each other.
 ```
   root@media                              admin@bpi-m4zero
   ----------                              ----------------
-  voice-chat  <--speech--  talk.py  --TCP 8769-->  rover_daemon.py
+  console    <--speech--  session.py  --TCP 8769-->  rover_daemon.py
   face-detect <---------------- JPEG ------------- | camera
                               boxes -------------> | UART -> ESP32
   voice-chat  <------- JPEG, POST /frame ---------- | (only with --vision)
@@ -37,7 +37,7 @@ JSON on one wire and two processes fighting for one camera.
 
 `list_tools` returns the schemas themselves. That is the point of it: no client
 carries a copy, so adding a tool is a change to [tool_schemas.py](tool_schemas.py)
-and the handler on Rover, and nothing else is redeployed. [voice_chat/talk.py](../voice_chat/talk.py) asks on connect and hands
+and the handler on Rover, and nothing else is redeployed. [voice_chat/session.py](../voice_chat/session.py) asks on connect and hands
 the answer straight to the model.
 
 That list is built rather than constant, which is how `look` can come and go:

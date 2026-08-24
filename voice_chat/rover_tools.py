@@ -11,9 +11,14 @@ honours it.
     rover = RoverClient("127.0.0.1:8769")   # on the rover itself
     rover = RoverClient("bpi-m4zero.local:8769")  # from a desk on the same LAN
 
-[talk.py](talk.py) uses this across the LAN, from whichever desk has the
-microphone. The loopback default is for anything that ends up running on the
-rover itself.
+[omni_bridge.py](../drive_web/omni_bridge.py) uses this on loopback, from the
+rover's own drive console. A desk on the same LAN can still open a
+`RoverClient` the same way.
+
+One thing here does know something about a particular tool, and it is named as
+the exception it is: `SLOW_TOOLS` says how long `run_script` may take, because
+that one is a program running on the rover rather than a line down a UART and the
+patience that is right for the others would report it as a dead daemon.
 
 Every call answers with a JSON object, and a failure is an answer too --
 `{"ok": false, "error": ...}` rather than an exception. That shape is not for
@@ -50,6 +55,21 @@ DEFAULT_CANDIDATES = ("bpi-m4zero.local", "192.168.1.139")
 # else is a JSON line down a UART. The voice service has its own, shorter
 # patience -- see VOICE_TOOL_TIMEOUT -- and that is the one a user notices.
 TIMEOUT_S = 12.0
+# Except for `run_script`, which is not a message to the rover but a job on it.
+# The daemon's own arithmetic, from `scripting.py`: fifteen seconds of script,
+# six more allowed for the interpreter to start, two graces of two seconds each
+# for a kill that has to be polite first, and two seconds of slack -- twenty-seven
+# in the worst case, which is a script that had to be shot rather than one that
+# ended. Waiting it out matters more than it looks: a timeout here reads as "no
+# answer from the rover daemon", so a program stopped at its limit would be
+# reported to the model as a rover that had stopped answering, and the model
+# would say so out loud while the rover sat there perfectly well.
+#
+# Named per tool rather than raised for everything, because twelve seconds is the
+# right patience for a call that is one line down a UART, and a daemon that has
+# genuinely gone should be noticed in twelve seconds and not in thirty.
+RUN_SCRIPT_TIMEOUT_S = 30.0
+SLOW_TOOLS = {"run_script": RUN_SCRIPT_TIMEOUT_S}
 CONNECT_TIMEOUT_S = 3.0
 # Shorter, because this one is paid per candidate before anybody has spoken. An
 # address on this LAN either answers in milliseconds or is not there.
@@ -154,8 +174,16 @@ class RoverClient:
                 pass
         self._sock = self._file = None
 
-    def _exchange(self, request: dict[str, Any]) -> dict[str, Any]:
-        """One request, one reply. Raises only if the daemon cannot be reached."""
+    def _exchange(self, request: dict[str, Any],
+                  timeout: float | None = None) -> dict[str, Any]:
+        """One request, one reply. Raises only if the daemon cannot be reached.
+
+        `timeout` is how long to wait for this particular reply, for the calls
+        that are a job rather than a message -- see `SLOW_TOOLS`. Set on every
+        exchange rather than left to the connection, since the connection is kept
+        open across calls and one slow call must not leave the next one waiting
+        half a minute for a daemon that has gone.
+        """
         line = json.dumps(request).encode() + b"\n"
         # Two attempts, because the first may be spent discovering that a
         # connection kept open since the last question has since been closed --
@@ -173,6 +201,7 @@ class RoverClient:
             try:
                 if self._sock is None:
                     self._connect()
+                self._sock.settimeout(self.timeout if timeout is None else timeout)
                 self._file.write(line)
                 self._file.flush()
                 reply = self._file.readline()
@@ -226,7 +255,8 @@ class RoverClient:
         """Perform one tool call. Never raises -- a failure is a result."""
         try:
             with self._lock:
-                return self._exchange({"call": name, "arguments": arguments})
+                return self._exchange({"call": name, "arguments": arguments},
+                                      SLOW_TOOLS.get(name))
         except ConnectionError as error:
             return {"ok": False, "error": str(error)}
 

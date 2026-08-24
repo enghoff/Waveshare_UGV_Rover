@@ -1,27 +1,24 @@
 # Voice chat
 
-Speech in, speech out. The client is [talk.py](talk.py), wherever there is a
-microphone. The model is Alibaba's hosted omni service in Singapore; MEDIA is not
-in that path.
+Speech in, speech out. The microphone is the drive console
+([drive_web/](../drive_web/README.md)); the protocol is
+[session.py](session.py). The model is Alibaba's hosted omni service in
+Singapore; MEDIA is not in that path.
 
 ```
-  the machine you are sitting at            dashscope-intl, Singapore
-  ------------------------------            -------------------------
-  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-plus-realtime-2026-03-15
+  phone / desk browser                      dashscope-intl, Singapore
+  --------------------                      -------------------------
+  mic -> wss://rover:8771/audio --16k pcm-->  qwen3.5-omni-plus-realtime-2026-03-15
                                                 |  text + tool calls
   speakers <-- playback <--24k pcm--------------+
        |
-       +-- tool call --> rover_daemon.py on the rover --> the board, the camera
+       +-- tool call --> rover_daemon.py on loopback --> the board, the camera
 
-  the rover --- one JPEG, POST /frame --> here ---> into the session as a turn
+  the camera --- one JPEG, POST /frame --> 127.0.0.1:8774 --> into the session
 ```
 
-Endpointing — deciding the speaker has stopped — is in
-[endpointing.py](endpointing.py) beside the client rather than in the cloud; see
-below for why.
-
-The local GPU stack on MEDIA ([server.py](server.py)) is still in this directory.
-It has no desk client anymore.
+Turn-taking is the service's (`semantic_vad`). The local GPU stack on MEDIA
+([server.py](server.py)) is still in this directory. It has no client anymore.
 
 A second program has no model in it at all. The drive console is the rover's
 driving tools wired to buttons, and it exists because a conversation is the wrong
@@ -38,11 +35,12 @@ None of that happens here or on the desk — it is performed by
 
 ## Why it is split here
 
+The measurements in this file are the MEDIA GPU stack ([server.py](server.py)).
 Endpointing — deciding the speaker has stopped — is the one piece that could
 live on either side, and it goes local. It needs no model, and doing it locally
 means silence never crosses the network: the link only ever carries a real
-utterance and a real reply. The client therefore needs no torch, no CUDA and no
-model weights, just `sounddevice`, `numpy` and `websockets`.
+utterance and a real reply. The GPU client therefore needs no torch, no CUDA and no
+model weights beyond what the service already loads.
 
 Everything downstream of that is one process rather than three services, because
 a turn is a strict chain (audio → text → text → audio) with nothing to overlap
@@ -118,16 +116,13 @@ Steady-state turns are ~3.8x faster, and the whole exchange 2x. The first turn i
 
 ## Running it
 
-The desk client talks to Alibaba and needs no GPU:
+The conversation is the drive console's microphone, on the rover:
 
-```bash
-python voice_chat/talk.py                      # full duplex; wear headphones
-python voice_chat/talk.py --half-duplex        # push to talk, no barge-in
-python voice_chat/talk.py --rover bpi-m4zero.local:8769
+```
+https://bpi-m4zero.local:8771/
 ```
 
-Just talk. `Ctrl-C` to quit. `--list-devices` and `--input-device N` /
-`--output-device N` if it picks the wrong hardware.
+See [drive_web/README.md](../drive_web/README.md). There is no desk client.
 
 The local GPU service on MEDIA still exists ([server.py](server.py)). It shares
 the card with `grounding-dino` and `qwen3-vl` and is not meant to run alongside
@@ -168,7 +163,7 @@ something on the port that is not this. A connection lost mid-conversation —
 a restart, or the card being switched away — ends the same way, with a line
 rather than a stack trace.
 
-Client dependencies: `pip install -r voice_chat/client-requirements.txt`.
+Client dependencies for the MEDIA GPU service are [requirements.txt](requirements.txt).
 
 The service binds `0.0.0.0` rather than loopback, so there is no tunnel. The
 microphone is on a different machine from the card and a tunnel between them is a
@@ -1417,21 +1412,22 @@ that burst as a long silence and ends the turn mid-sentence.
 
 ## The same conversation, with no GPU in it
 
-[talk.py](talk.py) holds the conversation above against one of Alibaba's
-hosted omni models over its WebSocket protocol. MEDIA drops out of the path
-entirely — no Whisper, no local weights, no Kokoro, no card — and what is left is
-the microphone here and the rover there.
+[session.py](session.py) holds the conversation against one of Alibaba's
+hosted omni models over its WebSocket protocol. The drive console runs it
+([omni_bridge.py](../drive_web/omni_bridge.py)): MEDIA drops out of the path
+entirely — no Whisper, no local weights, no Kokoro, no card — and the microphone
+is a browser tab.
 
 ```
-  the machine you are sitting at            dashscope-intl, Singapore
-  ------------------------------            -------------------------
-  mic -> VAD/endpointing --16k pcm----->  qwen3.5-omni-plus-realtime-2026-03-15
+  phone / desk browser                      dashscope-intl, Singapore
+  --------------------                      -------------------------
+  mic -> wss://rover:8771/audio --16k pcm-->  qwen3.5-omni-plus-realtime-2026-03-15
                                                 |  text + tool calls
   speakers <-- playback <--24k pcm--------------+
        |
-       +-- tool call --> rover_daemon.py on the rover --> the board, the camera
-       |
-  the rover --- one JPEG, POST /frame --> here ---> into the session as a turn
+       +-- tool call --> rover_daemon.py on loopback --> the board, the camera
+
+  the camera --- one JPEG, POST /frame --> 127.0.0.1:8774 --> into the session
 ```
 
 The split is the one this directory already had. Audio stays where the
@@ -1443,19 +1439,8 @@ system prompt is read out of [server.py](server.py) by
 [prompts.py](prompts.py) rather than copied. Improve a description on the rover
 and it is in force here on the next connection.
 
-```bash
-python voice_chat/talk.py                      # full duplex; wear headphones
-python voice_chat/talk.py --half-duplex        # push to talk, no barge-in
-python voice_chat/talk.py --rover bpi-m4zero.local:8769
-```
-
-Run it with the virtualenv active. `python` outside it is whichever interpreter
-is first on PATH, which on this Windows box is the Microsoft Store one and has
-none of the three packages this needs; the script now says so rather than showing
-a traceback about `sounddevice`.
-
-The key is `secrets/alibaba.key` or `$DASHSCOPE_API_KEY`, and it is never
-printed. The voice is `Jennifer`, which the service describes as a premium
+The key on the rover is `~/.ugv/alibaba.key` (or `$DASHSCOPE_API_KEY`), and it is
+never printed. The voice is `Jennifer`, which the service describes as a premium
 American English female voice; `Aiden` is American and male, `Mione` is British
 and female, and `$QWEN_REALTIME_VOICE` picks between them. The service's own
 default, `Tina`, speaks English with a marked accent, and a name from the wrong
@@ -1846,21 +1831,8 @@ ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py
 ssh bpi-m4zero 'cd ugv && python3 selftest.py'     # the daemon's own, on the rover
 ```
 
-The hosted path has one check that is not offline, because the things it gets
-wrong are things only the service knows. `--smoke` puts WAVs where the
-microphone goes and runs the whole conversation — session setup, schemas, tool
-dispatch, the picture — with no audio hardware involved:
-
-```bash
-python voice_chat/mock_rover.py --vision 127.0.0.1:8767 &
-python voice_chat/talk.py --rover 127.0.0.1:8769 --smoke \
-    omni_bench/runs/audio/zira/can-you-switch-the-lights-on.wav \
-    omni_bench/runs/audio/zira/what-do-you-see.wav --out /tmp/reply.wav
-```
-
-It costs a few thousand tokens and it is the only thing that catches a protocol
-change. `--half-duplex` runs the same WAVs with this client doing the
-turn-taking, which is the other half worth checking.
+The hosted path is checked offline in [test_talk.py](test_talk.py) against a
+fake WebSocket, and on the rover by opening the console's microphone.
 
 ## Deploying
 
@@ -1876,11 +1848,11 @@ ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
 scp rover_daemon/*.py bpi-m4zero:~/ugv/
 ```
 
-`talk.py`, `endpointing.py` and `rover_tools.py` are not deployed anywhere —
-they run from this repo on whichever desk has the microphone. Neither are
-`prompts.py` and `mock_rover.py`, and `prompts.py` in particular
-*cannot* be: it reads `server.py`, `tool_schemas.py` and `rover_nav.py` off the disk beside it,
-so it only works from a checkout where both are present. The rover copy is
+`session.py`, `talk_frames.py`, `prompts.py` and `rover_tools.py` deploy with the
+drive console. `prompts.py` in particular has to: it reads `server.py`,
+`tool_schemas.py` and `rover_nav.py` off the disk beside it, so it only works
+from a checkout where both are present — or, on the rover, from the copies
+landed next to `drive_web.py`. The rover copy of the daemon is
 flat in `~/ugv/` alongside the face-tracking scripts, which is the layout already
 there; nothing on the rover needs installing.
 

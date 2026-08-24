@@ -1,10 +1,9 @@
 """Put this directory and voice_chat/ on sys.path.
 
-On the rover everything lands in ~/ugv/drive_web/, including the two modules
-this console still shares with the voice client -- rover_tools.py and
-console_model.py -- so the voice_chat sibling is missing and unused. In the
-repository those two stay in voice_chat/, because talk.py and its tests import
-them there.
+On the rover everything lands in ~/ugv/drive_web/, including the modules
+this console still shares with the voice stack -- rover_tools.py, console_model.py,
+session.py -- so the voice_chat sibling is missing and unused. In the
+repository those stay in voice_chat/, because the tests import them there.
 """
 from __future__ import annotations
 

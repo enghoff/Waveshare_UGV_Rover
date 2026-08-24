@@ -3,7 +3,7 @@
 Two halves, deliberately runnable independently, because they have different
 dependencies and live on different machines:
 
-    python voice_chat/selftest.py          # client half, needs only numpy
+    python voice_chat/selftest.py          # client half, needs numpy (and websockets for the session)
     ssh root@media /opt/voice_chat/.venv/bin/python /opt/voice_chat/selftest.py
 
 Whichever half cannot import its dependencies is reported as skipped rather than
@@ -31,9 +31,8 @@ def main() -> int:
         test_sentences, test_tool_sniffer, test_trim, test_vision,
     )
     from test_talk import (
-        test_connect_errors, test_echo_guard, test_endpointer, test_frames,
-        test_indicator, test_move_commentary, test_pointing_the_camera,
-        test_prompts, test_rover_client, test_speaker, test_speculation,
+        test_connect_errors, test_frames,
+        test_move_commentary, test_prompts, test_rover_client,
         test_talk_session,
     )
 
@@ -43,14 +42,8 @@ def main() -> int:
     test_vision()
     test_rover_client()
     test_connect_errors()
-    test_indicator()
-    test_endpointer()
-    test_speculation()
     test_prompts()
     test_frames()
-    test_speaker()
-    test_echo_guard()
-    test_pointing_the_camera()
     test_move_commentary()
     test_talk_session()
 

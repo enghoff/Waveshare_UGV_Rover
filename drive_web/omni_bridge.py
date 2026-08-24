@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """The omni conversation, run by the rover instead of by a desk.
 
-[talk.py](../voice_chat/talk.py) holds a live session with Alibaba's realtime
+[session.py](../voice_chat/session.py) holds a live session with Alibaba's realtime
 model and drives the rover's tools from it, and everything measured about that --
 which prompt sentence flash cannot be given, how a picture has to travel as a
 turn of its own, what a barge-in has to tell the service it actually played --
 lives in its `Session`. **This file does not fork any of that.** It supplies the
-three things `Session` expects from a desk -- a speaker, an indicator and a frame
+three things `Session` expects -- a speaker, an indicator and a frame
 server -- backed by a browser instead of by a sound card, and lets the rest run
 unchanged. A fork would drift from the file the measurements were taken against,
 and the measurements are most of that file's value.
@@ -50,14 +50,13 @@ import threading
 import time
 from typing import Any
 
-import _paths  # noqa: F401 - talk.py and its neighbours
+import _paths  # noqa: F401 - session.py and its neighbours
 
 import numpy as np
 
 import rover_tools
-import talk
-from endpointing import IN_RATE
-from talk_audio import OUT_RATE, _to_pcm16
+import session as omni
+from session import IN_RATE, OUT_RATE, _to_pcm16
 from talk_frames import Frames
 
 #: What the page has to send and what it will be sent, so that the rates live in
@@ -145,7 +144,7 @@ def api_key() -> str:
 
 
 class BrowserSpeaker:
-    """`talk.Speaker`'s interface, with the sound card a network away.
+    """The speaker interface `Session` calls, with the sound card a network away.
 
     `Session` asks a speaker four things: start a reply, take this audio, how
     many milliseconds of it were actually heard, and throw away what has not been
@@ -226,7 +225,7 @@ class BrowserSpeaker:
 
 
 class Notes:
-    """`talk.Indicator`'s interface, writing into the console's transcript.
+    """The indicator interface `Session` calls, writing into the console's transcript.
 
     The desk client draws a spinner and prints lines under it. Here the same
     lines are what the page shows, so `set` is a state the page renders and `say`
@@ -260,7 +259,7 @@ class Omni:
 
     def __init__(self, rover_address: str, note, model: str | None = None) -> None:
         self.rover_address = rover_address
-        self.model = model or talk.MODEL
+        self.model = model or omni.MODEL
         self._note = note
         self._lock = threading.Lock()
 
@@ -436,8 +435,8 @@ class Omni:
                            f"({answer.get('error')}), so look has nowhere to post",
                            err=True)
 
-            async with await talk._open(talk.ENDPOINT, key, self.model) as ws:
-                session = talk.Session(ws, rover, frames, speaker, notes,
+            async with await omni._open(omni.ENDPOINT, key, self.model) as ws:
+                session = omni.Session(ws, rover, frames, speaker, notes,
                                        duplex=True, model=self.model)
                 self._session = session
 
@@ -516,7 +515,7 @@ class Omni:
                 self._note(f"microphone: nothing has been listening for "
                            f"{IDLE_STOP_S:.0f}s, so the session is closing")
                 return
-            if age > talk.SESSION_LIMIT_S - 60:
+            if age > omni.SESSION_LIMIT_S - 60:
                 self._note("microphone: this service caps a session at two hours "
                            "and it is there; closing, press the button to start "
                            "another")

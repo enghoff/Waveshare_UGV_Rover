@@ -1,5 +1,4 @@
 # Server side -- installed into /opt/voice_chat/.venv on the MEDIA GPU host.
-# The client needs only the three packages at the bottom; see client-requirements.txt.
 torch
 transformers
 accelerate

@@ -5,8 +5,8 @@
 #     ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh --force'
 #
 # The rover holds its own conversation with Alibaba's realtime service now -- see
-# [omni_bridge.py](omni_bridge.py) -- and the client half of that is
-# [talk.py](../voice_chat/talk.py), which needs this library. The board runs
+# [omni_bridge.py](omni_bridge.py) -- and the session that speaks the protocol is
+# [session.py](../voice_chat/session.py), which needs this library. The board runs
 # Debian's CPython 3.13 with **no pip and no python3-venv**, and `sudo` here wants
 # a password no deploy script has, so this follows the same road as OpenCV and
 # depthai before it: a wheel is a zip, and unpacking one next to the code that

@@ -30,7 +30,7 @@ drive the rover. The microphone is the one exception, and
 The pacing and the English live in
 [voice_chat/console_model.py](../voice_chat/console_model.py); the wire is
 [voice_chat/rover_tools.py](../voice_chat/rover_tools.py). Both are copied next
-to this on deploy, because talk.py still imports them from `voice_chat/`.
+to this on deploy, because the tests still import them from `voice_chat/`.
 
 ## Running it
 
@@ -46,10 +46,10 @@ a sudo password no script has, and cron needs none:
 
 ```bash
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md bpi-m4zero:~/ugv/drive_web/
-# console_model and rover_tools are the console's; the rest are the voice client,
-# which the rover now runs itself -- see the microphone, below. server.py is not
-# imported there, only parsed, because it is where the prompt is written.
-scp voice_chat/{console_model,rover_tools,talk,talk_audio,talk_frames,prompts,endpointing,server}.py \
+# console_model and rover_tools are the console's; session.py is the omni
+# protocol the microphone runs. server.py is not imported there, only parsed,
+# because it is where the prompt is written.
+scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts,server}.py \
     bpi-m4zero:~/ugv/drive_web/
 ssh bpi-m4zero '~/ugv/drive_web/install.sh'              # crontab, once
 ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'  # a wheel, once
@@ -108,15 +108,24 @@ gets an ordinary padlock; skip it and all that is lost is the clicking.
 The rover holds a live conversation with Alibaba's realtime omni model, and this
 page is its microphone and its speaker.
 [omni_bridge.py](omni_bridge.py) runs the session and
-[voice_chat/talk.py](../voice_chat/talk.py)'s `Session` is what actually speaks
+[voice_chat/session.py](../voice_chat/session.py)'s `Session` is what actually speaks
 the protocol -- unchanged, with a browser supplied where a sound card used to be,
 because everything measured about that file lives in it and a fork would drift.
 
 What this buys over running the same client on a desk is where the work happens.
-The daemon is on loopback, so the seventeen tools are local calls; the frame
-server is on loopback too, so `look`'s JPEG goes from the camera to the model
-without crossing the house wifi at all. What crosses the wifi is the audio: 32 kB
-a second each way, against 35 kB for a single picture.
+The daemon is on loopback, so the tools are local calls; the frame server is on
+loopback too, so `look`'s JPEG goes from the camera to the model without crossing
+the house wifi at all. What crosses the wifi is the audio: 32 kB a second each
+way, against 35 kB for a single picture.
+
+It also buys an eighteenth tool, which is the one consequence of this move that
+is not merely about latency. `run_script` -- source in, whatever it printed out,
+in a child process with a fifteen-second wall clock -- is refused on anything but
+loopback, because submitting code is a different proposition from flashing the
+headlights on a port that authenticates nothing. A desk holding the conversation
+was outside that gate and is not shown the tool; a session on the rover is inside
+it, so the model can write a small program when what was asked for is a sequence
+rather than an act. See [docs/scripting.md](../docs/scripting.md).
 
 * **On demand, and closed again.** There is no session until the button is
   pressed. It ends when the button is pressed again, when the tab goes, after two

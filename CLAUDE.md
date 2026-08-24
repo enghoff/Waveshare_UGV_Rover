@@ -112,6 +112,16 @@ rover, running in opposite directions:
   [rover_daemon/ros_navigator.py](rover_daemon/ros_navigator.py) and
   [ros_nav/nav_bridge.py](ros_nav/nav_bridge.py).
 
+**Eighteen if you are asking from the rover itself.** `run_script` -- write a
+short Python program, run it in a child process, get back what it printed -- is
+offered only to a client on loopback, because it is refused on anything but
+loopback and a schema that always answers "reach it through an ssh tunnel" is
+worse than no schema. The conversation is on the rover now, so that includes the
+model; a desk client still sees seventeen. So `list_tools` legitimately
+answers differently depending on where it was asked from, and the tool count in a
+startup line or a console panel is the local one. See
+[docs/scripting.md](docs/scripting.md).
+
 Without `--ros-nav` the daemon offers no driving tools at all, and its startup line
 says `driving off` rather than `driving ros2 on 127.0.0.1:8773`.
 
@@ -175,13 +185,13 @@ ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'            # ~10 s to boot the VPU a
 ```
 
 `drive_web/` is the browser console, on TCP 8771 (8770 is oak_depth). It has its
-own supervisor and crontab entry. `console_model.py` and `rover_tools.py` stay
-in `voice_chat/` (talk.py uses them) and are copied next to it on deploy:
+own supervisor and crontab entry. `console_model.py`, `rover_tools.py` and
+`session.py` stay in `voice_chat/` and are copied next to it on deploy:
 
 ```bash
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md bpi-m4zero:~/ugv/drive_web/
-# the console's two, then the voice client the rover now runs itself
-scp voice_chat/{console_model,rover_tools,talk,talk_audio,talk_frames,prompts,endpointing,server}.py \
+# the console's copy, then the omni session the rover now runs itself
+scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts,server}.py \
     bpi-m4zero:~/ugv/drive_web/
 ssh bpi-m4zero '~/ugv/drive_web/install.sh'    # crontab, once
 ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'   # a pinned wheel, once

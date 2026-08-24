@@ -510,9 +510,8 @@ def main() -> int | str:
     if args.folder is None:
         parser.error("a folder to put the sweep in, or --selftest")
     if not args.fit_only:
-        # Named or found, the same way talk.py does it -- and then given a longer
-        # patience than a voice client would, because `turn_in_place` does not answer
-        # until the rover has arrived.
+        # Named or found, then given a longer patience than a voice turn would,
+        # because `turn_in_place` does not answer until the rover has arrived.
         rover = RoverClient(args.rover) if args.rover else discover()
         if rover is None:
             return "no rover daemon found; name one with --rover"

@@ -1,113 +1,46 @@
-"""The rover's voice with the model in Singapore and everything else on this desk.
+"""The Alibaba realtime session the drive console's microphone runs.
 
-This holds the conversation against Alibaba's hosted omni model over the Realtime
-WebSocket protocol. There is no MEDIA in the path -- no Whisper, no local weights,
-no Kokoro, and no GPU.
+The protocol lives here -- prompt, tools, barge-in, how a picture has to travel
+as a turn of its own -- so [omni_bridge.py](../drive_web/omni_bridge.py) does not
+fork it. That file supplies the three things :class:`Session` expects from a
+desk (a speaker, an indicator, a frame server) backed by a browser instead of a
+sound card.
 
-    python voice_chat/talk.py                    # full duplex; wear headphones
-    python voice_chat/talk.py --half-duplex      # push to talk, no barge-in
-    python voice_chat/talk.py --rover bpi-m4zero.local:8769
-
-The split is the one this repository already has. Audio capture and playback stay
-on whatever desk has the microphone because they have to; the tools stay on the
-rover because that is where the board and the camera are; and only the model is
-remote. Nothing here performs a tool -- [rover_daemon.py](../rover_daemon/rover_daemon.py)
+Nothing here performs a tool. [rover_daemon.py](../rover_daemon/rover_daemon.py)
 owns the hardware, [rover_tools.py](rover_tools.py) asks it what it can do, and
-this passes calls along.
+this passes calls along. Audio never touches a sound card in this process.
 
-Three things are worth knowing before running it.
-
-**It is full duplex, so wear headphones.** Barge-in needs the microphone open
-while the reply is playing, and an open microphone in a room with speakers hears
-the rover's own voice, decides it is being interrupted, and stops itself
-mid-sentence forever. Alibaba's own documentation says to wear headphones for
-this reason. There is a crude suppressor for when you will not -- see
-:class:`Ears` -- which is not acoustic echo cancellation and does not pretend to
-be. `--half-duplex` is the other way: this client decides when a turn ended, the
-microphone is shut while the rover talks, and silence never crosses the network.
-That last property is worth something, since server-side turn detection can only
-find the end of a turn in silence it was actually sent.
-
-**The picture finds its own way home.** `look` does not hand its photograph back
-through the conversation; it posts the JPEG straight to the model's host, which
-is what keeps a 35kB frame off a desk that only has a microphone on it. That host
-used to be MEDIA and is now this machine, so this serves the same `/frame`
-contract itself (:class:`Frames`) and tells the rover where to find it on every
-connection (:func:`point_camera_here`). Nothing has to be remembered at the
-rover's end, which is the point: the address was a constant once, and when the
-model moved the pictures kept going to where the model used to be.
-
-**Face tracking still needs MEDIA**, and this does not change that. `look` is
-served from here, but the face *detector* the tracking loop talks to is a
-separate service on the GPU box; with it away, `start_tracking` now says so
-rather than reporting success and holding still.
-
-Credentials come from `secrets/alibaba.key` or `$DASHSCOPE_API_KEY`, and the key
-is never printed. Dependencies are thin -- sounddevice, numpy, websockets.
+`look` does not hand its photograph back through the conversation; it posts the
+JPEG to a loopback :class:`~talk_frames.Frames` server and this forwards it into
+the session when the tool result names it. That destination used to be a constant
+baked into the daemon; a client now says it on every connection with `set_vision`.
 """
-
 from __future__ import annotations
 
-import argparse
 import asyncio
 import base64
 import json
 import os
-import queue
 import sys
-import time
-import wave
-from pathlib import Path
 from typing import Any
 
-# **`sounddevice` is optional and the other two are not**, which is a
-# distinction the rover made necessary. The desk client needs a sound card; the
-# rover runs the same `Session` with a browser where the sound card would be --
-# see [drive_web/omni_bridge.py](../drive_web/omni_bridge.py) -- and that board
-# has no audio hardware, no wheel that would build for it, and no pip to install
-# one with. Importing this module there has to work; opening a microphone on it
-# does not. Anything that actually touches `sd` is in `converse`, which is the
-# desk's path and says so if it is missing.
-try:
-    import sounddevice as sd
-except ImportError:
-    sd = None
+import numpy as np
 
 try:
-    import numpy as np
     import websockets
-except ImportError as _missing:
-    # Nearly always a shell without the virtualenv on it rather than a machine
-    # without the package: `python` outside the venv is whichever interpreter is
-    # first on PATH, and on Windows that is usually the Store one, which has none
-    # of this. Said as a sentence when run directly; re-raised when imported, so
-    # that selftest.py can still skip the parts that need a sound card.
-    if __name__ == "__main__":
-        import sys as _sys
-        print(f"{_missing.name} is not installed for {_sys.executable}.\n"
-              "  This is almost always the wrong interpreter rather than a missing\n"
-              "  package -- activate the virtualenv first:\n"
-              "    .venv\\Scripts\\Activate.ps1        # PowerShell\n"
-              "  or run it with that interpreter directly:\n"
-              "    .venv\\Scripts\\python.exe voice_chat\\talk.py\n"
-              "  If it really is missing: pip install -r voice_chat/client-requirements.txt",
-              file=_sys.stderr)
-        raise SystemExit(1) from None
-    raise
+except ImportError:
+    websockets = None  # type: ignore[assignment]
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import prompts
 import rover_tools
-from endpointing import BLOCK, BLOCK_MS, Endpointer, IN_RATE
-from talk_audio import (
-    OUT_RATE, Ears, Indicator, Speaker, _from_pcm16, _to_pcm16, _b64,
-)
-from talk_frames import (
-    FRAME_TTL_S, MAX_FRAME_BYTES, MAX_FRAMES, Frames, _jpeg_size,
-)
+from talk_frames import Frames, _jpeg_size
 
-ROOT = Path(__file__).resolve().parent.parent
+# 16 kHz is what the service takes; 24 kHz is what it speaks.
+IN_RATE = 16000
+OUT_RATE = 24000
+
 OPEN_TIMEOUT_S = 15.0
 
 # The international endpoint. The mainland host refuses this account's key with a
@@ -166,6 +99,18 @@ MODEL = os.environ.get(
 # which changes what the table above means: it is a measurement of flash under a
 # prompt tuned for a different model, not of flash.
 
+
+def _b64(raw: bytes) -> str:
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _to_pcm16(audio: np.ndarray) -> bytes:
+    """Float samples as the 16-bit little-endian PCM the service reads."""
+    return (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+
+
+def _from_pcm16(raw: bytes) -> np.ndarray:
+    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
 
 # The sentence, verbatim from server.py's TOOL_PROMPT. Removed on the way to
 # flash-realtime and left alone everywhere else.
@@ -238,17 +183,9 @@ TEMPERATURE = float(os.environ.get("QWEN_REALTIME_TEMPERATURE", "0.2"))
 TRACE = os.environ.get("QWEN_REALTIME_TRACE", "") not in ("", "0", "false", "False")
 
 # A session is capped at two hours by the service, and it says so by closing the
-# socket. Warned about a little early so a conversation ending is a sentence on
-# the terminal rather than a stack trace.
+# socket. The console watches this and closes a little early so a conversation
+# ending is a line in the log rather than a stack trace.
 SESSION_LIMIT_S = 120 * 60
-SESSION_WARN_S = SESSION_LIMIT_S - 300
-
-# How much audio goes in one message. A WebSocket frame per 20ms block is a lot
-# of frames for a conversation that lasts minutes; 100ms is still five updates a
-# second, which is far below anything a person can hear as latency.
-UPLOAD_MS = 100
-UPLOAD_BLOCKS = max(1, UPLOAD_MS // BLOCK_MS)
-
 
 # A picture cannot be put into an empty input buffer. The rule is the service's
 # and it is not negotiable -- "you must send audio data at least once before you
@@ -271,64 +208,6 @@ DUPLEX_TURNS = {"type": "semantic_vad", "create_response": True,
                 "interrupt_response": True}
 
 
-def point_camera_here(rover: rover_tools.RoverClient | None,
-                      frames: Frames | None) -> None:
-    """Tell the rover where to post its pictures: here.
-
-    The rover does not hand `look`'s photograph back through the conversation.
-    It posts the JPEG straight to the model's host, which is what keeps a 35kB
-    frame off a desk that only has a microphone on it. That destination used to
-    be a constant baked into however the daemon was started, and a constant is
-    the wrong shape for it -- when the model moved off MEDIA the pictures kept
-    going to MEDIA, and `look` failed with "No route to host" while every other
-    tool on the rover worked perfectly.
-
-    So it is said out loud on every connection, using the address this machine's
-    own socket to the daemon is bound to. That is right by construction: the
-    kernel already picked the interface that reaches the rover, and it picks a
-    different one once the rover is off its dock.
-    """
-    if rover is None:
-        return
-    if frames is None:
-        rover.call("set_vision", {"address": None})
-        return
-    here = rover.local_address()
-    if here is None:
-        print("  cannot tell which address the rover sees this machine on;\n"
-              "  'look' will only work if the daemon was already pointed here",
-              file=sys.stderr)
-        return
-    where = f"{here}:{frames.server_address[1]}"
-    answer = rover.call("set_vision", {"address": where})
-    if answer.get("ok"):
-        print(f"pictures: the rover will post to {answer.get('vision', where)}")
-        return
-    # An older daemon has no such call. Say exactly what to do about it rather
-    # than leaving `look` to fail later with a routing error, which is what this
-    # whole function exists to stop happening.
-    print(f"  this rover daemon does not take set_vision ({answer.get('error')}).\n"
-          f"  'look' will post wherever it was started pointing. To fix it:\n"
-          f"    scp rover_daemon/*.py bpi-m4zero:~/ugv/ && ssh bpi-m4zero '~/ugv/restart.sh'\n"
-          f"  or restart the daemon with: --vision {where}", file=sys.stderr)
-
-
-def api_key() -> str:
-    """The DashScope key, from the environment or from `secrets/`, never printed."""
-    from_env = os.environ.get("DASHSCOPE_API_KEY", "").strip()
-    if from_env:
-        return from_env
-    path = ROOT / "secrets" / "alibaba.key"
-    if not path.exists():
-        raise SystemExit(
-            f"no API key: set $DASHSCOPE_API_KEY or put one line in {path}\n"
-            "  (secrets/ is gitignored)")
-    key = path.read_text(encoding="utf-8").strip()
-    if not key:
-        raise SystemExit(f"{path} is empty")
-    return key
-
-
 class Session:
     """One conversation with the hosted model, and the rover behind it.
 
@@ -338,8 +217,8 @@ class Session:
     """
 
     def __init__(self, ws, rover: rover_tools.RoverClient | None,
-                 frames: Frames | None, speaker: Speaker | None,
-                 indicator: Indicator, duplex: bool, model: str,
+                 frames: Frames | None, speaker: Any | None,
+                 indicator: Any, duplex: bool, model: str,
                  quiet: bool = False) -> None:
         self.ws = ws
         self.rover = rover
@@ -749,6 +628,8 @@ class Session:
 
 async def _open(url: str, key: str, model: str):
     """Connect, or explain what went wrong in terms somebody can act on."""
+    if websockets is None:
+        raise SystemExit("websockets is not installed for this interpreter")
     uri = f"{url}?model={model}"
     headers = {"Authorization": f"Bearer {key}"}
     try:
@@ -779,348 +660,3 @@ async def _open(url: str, key: str, model: str):
         raise SystemExit(f"{url} did not answer within {OPEN_TIMEOUT_S:.0f}s.") from None
     except OSError as error:
         raise SystemExit(f"cannot reach {url}: {error}") from None
-
-
-async def converse(url: str, key: str, model: str, device: int | None,
-                   out_device: int | None, rover: rover_tools.RoverClient | None,
-                   frames: Frames | None, duplex: bool, echo_guard: bool,
-                   echo_factor: float) -> None:
-    if sd is None:
-        raise SystemExit(
-            "this needs sounddevice, and there is none on this machine. The "
-            "rover runs the same session with a browser for a sound card; see "
-            "drive_web/omni_bridge.py.")
-    blocks: queue.Queue[np.ndarray] = queue.Queue()
-    indicator = Indicator()
-
-    def on_audio(indata, _frames, _time, status) -> None:
-        if status:
-            print(f"\n  (input {status})", file=sys.stderr)
-        blocks.put(indata[:, 0].copy())
-
-    print(f"connecting to {model} ...", flush=True)
-    async with await _open(url, key, model) as ws:
-        speaker = Speaker(out_device)
-        speaker.start()
-        session = Session(ws, rover, frames, speaker, indicator, duplex, model)
-
-        async def receive() -> None:
-            async for message in ws:
-                await session.handle(json.loads(message))
-
-        # Started before anything is configured, not after. Everything this
-        # client waits to be told -- that the session took, that a turn landed --
-        # is told through here, so a setup that runs before the reader does is a
-        # setup that waits for events nobody is listening for.
-        reader = asyncio.create_task(receive())
-
-        # Asked for afresh on every connection rather than cached: the daemon is
-        # the authority on what this rover can do, and it may have been restarted
-        # with more tools since the last time anybody looked.
-        tools = await asyncio.to_thread(rover.tools) if rover is not None else []
-        vision = any(t.get("function", {}).get("name") == "look" for t in tools)
-        await session.configure(tools, vision=vision)
-
-        print(f"connected. {'full duplex -- wear headphones' if duplex else 'push to talk'}"
-              f", Ctrl-C to quit.\n")
-
-        stream = sd.InputStream(samplerate=IN_RATE, blocksize=BLOCK, channels=1,
-                                dtype="float32", device=device, callback=on_audio)
-        ears = Ears(speaker, echo_factor, echo_guard and duplex)
-
-        async def microphone() -> None:
-            endpointer = Endpointer()
-            outgoing: list[np.ndarray] = []
-            speaking = False
-            started = time.monotonic()
-            warned = False
-
-            while True:
-                try:
-                    block = blocks.get_nowait()
-                except queue.Empty:
-                    await asyncio.sleep(0.005)
-                    continue
-
-                if not warned and time.monotonic() - started > SESSION_WARN_S:
-                    warned = True
-                    indicator.say("  [this session is capped at two hours and is "
-                                  "nearly there; restart to keep talking]")
-
-                rms = float(np.sqrt(np.mean(block ** 2)))
-
-                if duplex:
-                    # Everything goes, because the service is the one deciding
-                    # when a turn ended and it cannot decide that from audio it
-                    # was never sent. Two things are held back: whatever the echo
-                    # guard judges to be the rover's own voice, and everything at
-                    # all while a picture is being handed over -- that second one
-                    # is a turn of its own and anything said into it joins it.
-                    if session.hold_mic:
-                        outgoing = []
-                        indicator.set("thinking")
-                        continue
-                    if ears.hears(rms):
-                        outgoing.append(block)
-                    if len(outgoing) >= UPLOAD_BLOCKS:
-                        await session.push(_to_pcm16(np.concatenate(outgoing)))
-                        outgoing = []
-                    if not session.responding and not speaker.busy:
-                        indicator.set("listening")
-                    continue
-
-                # Half duplex: deaf on purpose while the reply plays, because an
-                # open microphone here endpoints the rover's own voice.
-                if session.responding or speaker.busy:
-                    indicator.set("speaking" if speaker.busy else "thinking")
-                    endpointer.reset()
-                    continue
-
-                utterance = endpointer.push(block, rms)
-                if endpointer.speaking and not speaking:
-                    # The rising edge. `voiced` already holds the preroll, which
-                    # is the 300ms without which "start" arrives as "art".
-                    speaking = True
-                    await session.push(_to_pcm16(np.concatenate(endpointer.voiced)))
-                    indicator.set("hearing")
-                elif endpointer.speaking:
-                    outgoing.append(block)
-                    if len(outgoing) >= UPLOAD_BLOCKS:
-                        await session.push(_to_pcm16(np.concatenate(outgoing)))
-                        outgoing = []
-
-                if speaking and not endpointer.speaking:
-                    # The falling edge, which is either a turn or a cough. The
-                    # endpointer answers with the utterance for the first and
-                    # nothing for the second, and a cough that has already been
-                    # uploaded has to be taken back or it becomes the next turn.
-                    speaking = False
-                    if outgoing:
-                        await session.push(_to_pcm16(np.concatenate(outgoing)))
-                        outgoing = []
-                    if utterance is None:
-                        await session.discard()
-                        indicator.set("listening")
-                    else:
-                        await session.commit()
-                        indicator.set("thinking")
-                elif not speaking:
-                    indicator.set("listening")
-
-        with stream, indicator:
-            indicator.set("listening")
-            try:
-                await asyncio.gather(reader, microphone())
-            finally:
-                reader.cancel()
-                speaker.close()
-
-
-async def smoke(url: str, key: str, model: str, wavs: list[str],
-                rover: rover_tools.RoverClient | None, frames: Frames | None,
-                out: str | None, duplex: bool = False) -> int:
-    """The whole path with a file where the microphone goes, and no speaker.
-
-    This is what makes the client testable at all. A conversation needs a room, a
-    microphone and somebody to talk into it; this needs a WAV, and it exercises
-    the same session setup, the same schemas, the same tool dispatch and the same
-    picture forwarding. What it cannot test is the two things that only exist in
-    a room -- echo and interruption.
-    """
-    indicator = Indicator()
-    async with await _open(url, key, model) as ws:
-        session = Session(ws, rover, frames, None, indicator, duplex, model)
-        heard: list[np.ndarray] = []
-
-        async def receive() -> None:
-            async for message in ws:
-                event = json.loads(message)
-                if event.get("type") == "response.audio.delta":
-                    heard.append(_from_pcm16(base64.b64decode(event["delta"])))
-                await session.handle(event)
-
-        # Before configuring, for the reason given in `converse`.
-        receiver = asyncio.create_task(receive())
-
-        tools = await asyncio.to_thread(rover.tools) if rover is not None else []
-        vision = any(t.get("function", {}).get("name") == "look" for t in tools)
-        await session.configure(tools, vision=vision)
-        print(f"{model}: {len(tools)} tools, "
-              f"{len(instructions(vision=vision, model=model))} chars of prompt"
-              f"{', server-side turns' if duplex else ''}")
-
-        try:
-            for path in wavs:
-                with wave.open(path, "rb") as source:
-                    if source.getframerate() != IN_RATE or source.getnchannels() != 1:
-                        print(f"  {path}: want 16kHz mono, got "
-                              f"{source.getframerate()}Hz "
-                              f"{source.getnchannels()}ch", file=sys.stderr)
-                        return 1
-                    raw = source.readframes(source.getnframes())
-                print(f"\n> {Path(path).name} ({len(raw) / 2 / IN_RATE:.1f}s)")
-                # In the same 100ms pieces the microphone would send, so the
-                # service sees the shape of a real turn and not one long blob.
-                step = IN_RATE * UPLOAD_MS // 1000 * 2
-                for start in range(0, len(raw), step):
-                    await session.push(raw[start:start + step])
-                if duplex:
-                    # Nothing is committed by hand here: the service is watching
-                    # for the end of the turn, and the only way to show it one is
-                    # to send the silence that follows. Two seconds, against the
-                    # 800ms it waits for by default.
-                    quiet = _to_pcm16(np.zeros(IN_RATE * UPLOAD_MS // 1000,
-                                               dtype=np.float32))
-                    for _ in range(2000 // UPLOAD_MS):
-                        await session.push(quiet)
-                        await asyncio.sleep(0.02)
-                else:
-                    await session.commit()
-
-                # A turn is over when nothing is being said, nothing is owed and
-                # nothing is out at the rover -- see `Session.idle`. Stopping at
-                # the first `response.done` instead is the bug this replaced: a
-                # tool call answers in two responses, and cutting between them
-                # sends the next question into the middle of the first answer,
-                # after which every reply is one turn late and still plausible.
-                deadline = time.monotonic() + 60
-                await asyncio.sleep(2.0 if duplex else 0.4)
-                while time.monotonic() < deadline:
-                    await session.drain()
-                    if session.idle:
-                        break
-                    await asyncio.sleep(0.1)
-                else:
-                    print("  (gave up waiting for the turn to end)", file=sys.stderr)
-        finally:
-            receiver.cancel()
-
-        if out and heard:
-            audio = np.concatenate(heard)
-            with wave.open(out, "wb") as sink:
-                sink.setnchannels(1)
-                sink.setsampwidth(2)
-                sink.setframerate(OUT_RATE)
-                sink.writeframes(_to_pcm16(audio))
-            print(f"\n{len(audio) / OUT_RATE:.1f}s of reply audio -> {out}")
-
-        print(f"\ncalls: {[name for name, _ in session.calls] or 'none'}")
-        if session.usage:
-            print(f"usage: {json.dumps(session.usage)}")
-        if session.errors:
-            print(f"errors: {session.errors}", file=sys.stderr)
-            return 1
-    return 0
-
-
-def main() -> int:
-    # The model speaks typographic English -- curly apostrophes, dashes -- and a
-    # redirected stdout on Windows is cp1252, which turns "don't" into "don?t" on
-    # a good day and raises UnicodeEncodeError on a bad one, mid-conversation.
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError):
-            pass
-
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--url", default=ENDPOINT)
-    parser.add_argument("--model", default=MODEL)
-    parser.add_argument("--rover", default="auto", metavar="HOST:PORT",
-                        help='the rover daemon; "auto" looks for it, "none" for no tools')
-    # Duplex is the default. `--duplex` is kept as a no-op because it was the way
-    # to ask for this and there is no reason for that to start being an error.
-    parser.add_argument("--duplex", action="store_true",
-                        help="the default; kept so the old spelling still works")
-    parser.add_argument("--half-duplex", action="store_true",
-                        help="no barge-in: this client decides when a turn ended, "
-                             "the microphone is shut while the rover talks, and "
-                             "silence never crosses the network")
-    parser.add_argument("--no-echo-guard", action="store_true",
-                        help="with --duplex, do not suppress the microphone while "
-                             "the rover is talking (assumes headphones)")
-    parser.add_argument("--echo-factor", type=float, default=2.5,
-                        help="how much louder than the speaker the microphone must "
-                             "be to count as somebody interrupting")
-    parser.add_argument("--frame-port", type=int, default=8767,
-                        help="where this client answers the daemon's /frame POSTs")
-    parser.add_argument("--no-frames", action="store_true",
-                        help="do not serve /frame; 'look' will fail")
-    parser.add_argument("--input-device", type=int, default=None)
-    parser.add_argument("--output-device", type=int, default=None)
-    parser.add_argument("--list-devices", action="store_true")
-    parser.add_argument("--smoke", nargs="+", metavar="WAV",
-                        help="no microphone: send these 16kHz mono WAVs as turns "
-                             "and print what happened")
-    parser.add_argument("--out", metavar="WAV", default=None,
-                        help="with --smoke, write the reply audio here")
-    args = parser.parse_args()
-
-    if args.list_devices:
-        print(sd.query_devices())
-        return 0
-
-    key = api_key()
-
-    rover = None
-    if args.rover != "none":
-        # Probed rather than assumed, and searched for rather than probed at one
-        # address: the name and the wifi address can disagree, and picking the
-        # wrong one looks exactly like a rover that is not there.
-        if args.rover == "auto":
-            rover = rover_tools.discover()
-        else:
-            rover = rover_tools.RoverClient(args.rover)
-            if not rover.probe():
-                rover.close()
-                rover = None
-        if rover is not None:
-            print(f"rover daemon at {rover.describe()}")
-        else:
-            where = ("any of " + ", ".join(rover_tools.DEFAULT_CANDIDATES)
-                     if args.rover == "auto" else args.rover)
-            print(f"  no rover daemon on {where}; no tools.\n"
-                  f"  Start one with: python voice_chat/mock_rover.py --vision",
-                  file=sys.stderr)
-
-    frames = None
-    if not args.no_frames:
-        try:
-            frames = Frames(args.frame_port)
-            frames.serve_in_background()
-            print(f"pictures accepted on http://0.0.0.0:{args.frame_port}/frame")
-        except OSError as error:
-            print(f"  cannot serve /frame on {args.frame_port} ({error}); "
-                  f"'look' will fail", file=sys.stderr)
-
-    # Said before the tool list is asked for, because it changes the tool list:
-    # `look` exists only while there is somewhere for a picture to go.
-    point_camera_here(rover, frames)
-
-    duplex = not args.half_duplex
-
-    try:
-        if args.smoke:
-            return asyncio.run(smoke(args.url, key, args.model, args.smoke,
-                                     rover, frames, args.out, duplex))
-        asyncio.run(converse(args.url, key, args.model, args.input_device,
-                             args.output_device, rover, frames, duplex,
-                             not args.no_echo_guard, args.echo_factor))
-    except KeyboardInterrupt:
-        print("\nbye")
-    except websockets.ConnectionClosed as error:
-        print(f"\nthe service closed the connection ({error}).\n"
-              "  A session is capped at two hours; if it ran that long, this is why.",
-              file=sys.stderr)
-        return 1
-    finally:
-        if frames is not None:
-            frames.shutdown()
-            frames.server_close()  # or the port stays claimed until the shell dies
-        if rover is not None:
-            rover.close()
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

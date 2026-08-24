@@ -9,7 +9,17 @@ another tool. Written 2026-08-20.
 built](#what-is-built-and-what-waits) for what that covers and what it measured.
 Everything past it is still design. None of it replaces the tools in
 [rover_daemon.py](../rover_daemon/rover_daemon.py): scripting is a second surface
-beside them, reached from the rover itself rather than from a conversation.
+beside them, reached from the rover itself.
+
+**And as of 2026-08-24 the conversation reaches it too**, which this document
+spent its security section arguing against and its authorship section calling the
+wrong idea. Both arguments turned on where the client was, and the client moved:
+the rover holds its own session with Alibaba's model now, so `run_script` is a
+model tool offered to a caller on loopback. What changed and what did not is in
+[a code endpoint is a shell on the rover](#a-code-endpoint-is-a-shell-on-the-rover)
+and [the author is not the speaker](#the-author-is-not-the-speaker), which have
+been left standing rather than quietly reworded, because the reasoning in them is
+still the reasoning — it is one of its premises that expired.
 
 The case for it is expressiveness. A tool list is a fixed vocabulary: everything
 it does not contain is something nobody can ask for, and the only way to widen it
@@ -118,7 +128,7 @@ If per-frame scripting ever becomes worth having, it becomes worth having on the
 new board, and the language question can be re-opened there against a host that
 can actually run the loop.
 
-## Five calls, and none of them is a tool
+## Five calls, and one of them is a tool
 
 The daemon gained:
 
@@ -129,16 +139,31 @@ The daemon gained:
 * `script_status` and `script_stop` — read the handle, or kill it.
 * `list_api` — the reference a script is written against.
 
-**None of them is offered to a model, and four of the five are refused on
-anything but loopback.** That is a change from what this document first said,
-and the security section below is the reason: submission is the code-execution
+**Four of the five are refused on anything but loopback, and one of them,
+`run_script`, is offered to the model as a tool.** The loopback rule is from the
+security section below and has not changed: submission is the code-execution
 path, and served on the LAN it would hand a stranger a shell on the rover rather
 than the ability to flash the headlights. Bound to loopback it grants what an
-ssh session on this Pi already grants, and it is reached the same way — a tunnel,
-or an agent working on the rover itself. `script_status` is the exception and
-stays on the LAN, because watching a behaviour run changes nothing and is what a
-console on a desk wants. What lets a model use a behaviour is `run_behaviour`,
-still to be built, which runs something already written and reviewed.
+ssh session on this board already grants, and it is reached the same way — a
+tunnel, an agent working on the rover itself, or, since 2026-08-24, the
+conversation, because the conversation is on the rover now.
+`script_status` is the exception to the gate and stays on the LAN, because
+watching a behaviour run changes nothing and is what a console on a desk wants.
+
+The three that stay out of `list_tools` stay out for their own reasons rather
+than for the security one. `start_script` is a behaviour outliving the question
+that asked for it, which wants somebody watching; `script_stop` has nothing to
+stop, since a model can only run the blocking kind; and `list_api` is a
+catalogue whose contents are now written into `run_script`'s own description —
+a model that has to ask what the primitives are before it can write anything is
+a model that will write first and ask afterwards.
+
+`run_script` is offered only to a client on loopback, which is `Rover.tools`
+taking the same care it already takes over `look`: a tool that cannot do what it
+says is worse than a missing one, and a schema handed across the LAN would be
+one whose every call comes back "reach it through an ssh tunnel". So a desk
+running [talk.py](../voice_chat/talk.py) sees the seventeen tools it always saw,
+and the session on the rover sees eighteen.
 
 `list_api` follows the discipline `list_tools` already established: the daemon is
 the only thing that knows what this rover can do, so it is the only thing that
@@ -185,6 +210,16 @@ where nobody is holding a connection open. It is also the strongest argument for
 a warm interpreter on the new board — which is on the list below and is not worth
 building here, because 10 MB held permanently on a 474 MB machine to save four
 seconds is the wrong trade on this one.
+
+**Those numbers are the Pi 1's, and the board underneath this changed.** On the
+Banana Pi M4 Zero the same measurement is **0.51 s** from spawn to the script's
+first line, reported by the runner as `startup_s` in every reply. That is the
+difference between four A53s at 1.8 GHz and one ARM1176 at 700 MHz, and it is
+what makes a blocking `run_script` usable in a conversation at all: the reply to
+a three-second program arrives in three and a half seconds rather than in eight.
+`STARTUP_S` is left at six seconds all the same, because it is an allowance
+against being killed early rather than an estimate, and a rover mid-scan can be
+slower than a rover at rest.
 
 The two clocks this creates have to be kept apart, and getting it wrong is a real
 fault rather than an untidiness. The script's own deadline runs from its first
@@ -254,6 +289,37 @@ without growing what the model has to hold in its head while talking.
 This also puts the development loop somewhere it can be honest. A behaviour
 becomes a file that can be re-run, diffed and fixed, rather than a one-shot
 utterance that worked once and cannot be recovered.
+
+**2026-08-24: the speaker writes as well, and the paragraph above is still the
+reason that is a compromise rather than a plan.** The rover now holds its own
+conversation, which took away the accident that was enforcing this — a desk
+across the LAN — and `run_script` was asked for as a model tool. So the voice
+model may write a program in the middle of a sentence, and everything said
+above about it being the wrong thing for the job is still true. What the design
+does about it is name the cost in the tool's own description: the rover cannot
+speak while a program runs, so the model is told to say what it is about to do
+first, to keep the program to a few seconds, and that anything longer is
+something to say it cannot do yet.
+
+Two things make it survivable rather than merely allowed. The primitives are
+written into the schema, generated from
+[rover_api.py](../rover_daemon/rover_api.py) by introspection, so the model is
+not guessing at names in the one turn it has to get them right — that is what
+`Rover.script_tool` is for, and why the description is assembled at runtime
+rather than typed out. And a failure comes back naming the line that failed, so
+a wrong program is a correction rather than a dead end.
+
+What is still not measured is whether it writes *correct* programs from speech,
+and what an eighteenth tool carrying a page of primitives does to the seventeen
+around it — a tool is read against its neighbours, and every number in
+[voice_chat/README.md](../voice_chat/README.md) was taken with ten of them. Those
+runs are at least not invalidated: they are made on a desk against
+[mock_rover.py](../voice_chat/mock_rover.py), and a client that is not on the
+rover is not shown this tool at all.
+
+None of which retires the authoring path. A behaviour worth keeping is still a
+file somebody can read, and `run_behaviour` is still the shape for that; what has
+changed is that the throwaway three-liner no longer has to become one.
 
 ## How the author reaches the rover
 
@@ -367,18 +433,33 @@ flash the headlights and drive the rover into a wall. Through a code endpoint
 they would have arbitrary execution on the machine bolted to it.
 
 That is a change in kind rather than in degree, and it is why the four calls that
-submit or stop code are refused on anything but loopback, and why none of them is
-in `list_tools` — the same treatment `set_vision` gets, for a stronger reason.
-Reaching them means an ssh session to the rover or a tunnel over one, which is a
-door that already existed. It is not real security and is not meant to be: the
-point is that the rover's tools and a code endpoint should not inherit the same
-exposure merely by arriving on the same port.
+submit or stop code are refused on anything but loopback. Reaching them means an
+ssh session to the rover or a tunnel over one, which is a door that already
+existed. It is not real security and is not meant to be: the point is that the
+rover's tools and a code endpoint should not inherit the same exposure merely by
+arriving on the same port.
 
-The obvious consequence is deliberate. No model can run a script on this rover,
-because the clients that hold a conversation are on a desk across the LAN. What
-a model gets later is `run_behaviour` — something already written, tested on the
-hardware and given a name — which is a different proposition from code composed
-in the middle of a conversation and never read by anybody.
+**What this section originally concluded was that no model could run a script
+here, because the clients that hold a conversation were on a desk across the
+LAN.** That sentence is about a deployment rather than about a rule, and the
+deployment changed earlier the same day this was rewritten, when the rover took
+over holding its own session — see
+[drive_web/omni_bridge.py](../drive_web/omni_bridge.py). The gate did not move;
+the conversation moved inside it. Worth being plain about what that means: the
+sentence was read here as a security property while what it actually described
+was where a microphone happened to be plugged in, which is a poor thing to have
+been relying on either way.
+
+So the exposure to weigh now is not the LAN, it is the microphone. Whoever can
+talk to the rover can have it run a program on itself, and what stands between a
+stranger and that is the console's own token — `~/.ugv/console.token`, which
+gates the microphone button and nothing else — plus the fact that the driving
+controls beside it were never gated at all. Somebody who can reach the console
+page can already drive the rover into a wall. What they can now also do is spend
+fifteen seconds of its CPU and read a file as `admin`, which is a real widening,
+and it is the reason the four remaining calls stay where they are: a fifteen-
+second blocking run that reports what it printed is a much smaller thing to hand
+out than a behaviour that outlives the conversation.
 
 ## What is built, and what waits
 
@@ -392,7 +473,9 @@ sixty lines inside it:
   tools as named primitives, plus a frame, the detector run on a frame, absolute
   gimbal angles, the live scan, `every`, and `call()` underneath them for a tool
   that arrived after the module did.
-* The five calls above, loopback-gated in the daemon's connection handler.
+* The five calls above, loopback-gated in the daemon's connection handler, one
+  of them — `run_script` — also offered as a tool to whichever client is on
+  loopback, with the primitives above written into its description.
 
 What it does on the rover, measured there rather than inferred:
 
@@ -404,6 +487,34 @@ What it does on the rover, measured there rather than inferred:
 | a script allocating without limit | stopped at 96.7 MB |
 | a behaviour stopped mid-tick | its `finally` block ran, and its output survived |
 | the same calls from the LAN | refused, with the tunnel named |
+
+And what the model does with it, measured on 2026-08-24 by speaking to the rover's
+own session — a synthesised phrase pushed in where the browser's microphone goes,
+against the deployed daemon on loopback:
+
+| | |
+|---|---|
+| "Flash the headlights three times." | wrote a six-line program against `lights` and `wait`, correct first time, and said it had done it |
+| what that run cost | 3.56 s wall, 0.51 s of it the interpreter, 12.1 MB peak |
+| "Turn the lights on." | `set_lights`, not a program — the description's own instruction holding |
+| "Sweep your camera slowly from left to right and tell me how many people you saw." | three `look_at` calls and one `count_faces`, no program |
+| `list_tools` from the LAN, meanwhile | seventeen tools, `run_script` not among them |
+
+The first row is the one that was in doubt: this document's own position was that
+an audio-first model writes code badly. Asked for something plainly repetitive it
+wrote `for _ in range(3)` around `lights.set` and `wait`, correctly, first time.
+
+The third row is the more interesting one, and it is not a success. A sweep is
+exactly what a program is for — point, look, count, move on — and what came back
+instead was three gimbal moves with a single `count_faces` at the end of them, so
+the answer it gave out loud was about the last position rather than about the
+sweep. That is the discouraging sentence in the description working too well: told
+not to write a program for anything a single tool already does, it decomposed the
+job into tools that each did part of it. Nothing here yet distinguishes "several
+acts in an order" from "several acts I can just perform".
+
+Two phrases and a counter-example are not a measurement — the six-sample cells in
+[voice_chat/README.md](../voice_chat/README.md) are what one looks like here.
 
 That last row and the one above it are the two that matter. A stop is polite
 first — `SIGTERM` becomes an exception at the next `every`, so a behaviour

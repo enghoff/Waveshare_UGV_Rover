@@ -396,3 +396,59 @@ MAP_TOOL: dict[str, Any] = {
         "parameters": {"type": "object", "properties": {}},
     },
 }
+
+
+# Offered only to a client on the loopback interface, which is the one tool here
+# with a condition that is about the caller rather than about the hardware. The
+# rest of that argument is in `LOCAL_ONLY` in rover_daemon.py: this is the call
+# that runs code rather than performing an act, so a stranger on the LAN is not
+# shown it and would be refused it. The model is inside that gate because the
+# conversation moved onto the rover, not because the gate was opened.
+#
+# **Its description is finished at runtime, not here.** `{api}` is filled with
+# `rover_api.signatures()` and `{limit_s}` with the runner's own ceiling, both by
+# `Rover.script_tool`, so a primitive that is renamed or a limit that is retuned
+# cannot go on being advertised the way it used to be. What stays here is a
+# literal, because prompts.py reads this file with `ast` and cannot run it.
+SCRIPT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "run_script",
+        "description": (
+            "Write a short Python program and run it on the rover. Use this when "
+            "what has been asked for is not one of your other tools but a "
+            "sequence of them: something done a number of times over, something "
+            "that keeps going while something else is true, something that has to "
+            "look at a value before it acts, or several acts that have to happen "
+            "in a particular order. Do not use it for anything one of your other "
+            "tools already does on its own -- flashing the headlights three times "
+            "is a program, turning them on is not. "
+            "You cannot talk while it runs and it is stopped after {limit_s:.0f} "
+            "seconds, so keep it to a few seconds' work; anything longer is "
+            "something to say you cannot do yet. What comes back to you is "
+            "whatever the program printed, so print what you want to be able to "
+            "say afterwards. If it fails you are told which line failed and may "
+            "fix it and run it again. Say what you are about to do before calling "
+            "this, and never read the program itself out loud. The program cannot "
+            "see: to look at something, use your own looking tool rather than "
+            "writing a program about it. It is written against these primitives "
+            "and can reach nothing else on the rover:\n"
+            "from rover_api import lights, gimbal, camera, tracking, drive, "
+            "power, every, wait\n"
+            "{api}"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "The whole program, as Python source. Real newlines "
+                        "between the lines and four spaces for an indent."
+                    ),
+                },
+            },
+            "required": ["source"],
+        },
+    },
+}

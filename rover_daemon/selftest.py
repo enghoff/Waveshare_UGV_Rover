@@ -154,7 +154,8 @@ def test_schemas():
     # map, which need a lidar; but a conditional schema still has to have a handler,
     # and the point of this test is that none of them lie.
     every = (rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
-             + rover_daemon.NAV_TOOLS + [rover_daemon.MAP_TOOL])
+             + rover_daemon.NAV_TOOLS + [rover_daemon.MAP_TOOL]
+             + [rover_daemon.SCRIPT_TOOL])
     # The schemas cross a network and go into a prompt, so they have to be JSON.
     json.dumps(every)
     names = [t["function"]["name"] for t in every]
@@ -180,11 +181,12 @@ def test_schemas():
                # watching a stale map and the wrong thing for a model, since it
                # takes the camera down with it for a few seconds.
                "reset_lidar",
-               # The scripting calls, which are control calls twice over: no model
-               # is shown them, and four of the five are refused on anything but
-               # loopback -- see LOCAL_ONLY in rover_daemon.py.
-               "run_script", "start_script", "script_status", "script_stop",
-               "list_api",
+               # Four of the five scripting calls. `run_script` is not among them
+               # any more -- it is a model tool now, offered to a client on
+               # loopback, which since the rover started holding its own
+               # conversation includes the model. See LOCAL_ONLY in
+               # rover_daemon.py, and test_script_tool below for the gate.
+               "start_script", "script_status", "script_stop", "list_api",
                # And the network, which is a control call for a reason of its own:
                # a model that moved the rover onto another access point would be
                # cutting the wire its own conversation arrives on, and no wording
@@ -893,6 +895,57 @@ def test_scripts_run_and_say_what_happened():
         runner.close()
 
 
+def test_the_script_tool_is_offered_to_the_rover_and_not_to_the_lan():
+    """Who is shown `run_script`, and whether what they are shown is usable.
+
+    The gate is the interesting half. `run_script` is refused on anything but
+    loopback (`LOCAL_ONLY`), so a client across the LAN that was shown the schema
+    would be holding a tool whose every call comes back "reach it through an ssh
+    tunnel" -- and a model with a tool like that reports doing things it has not
+    done, which is the failure `Rover.tools` exists to prevent.
+
+    The other half is that the description arrives finished. It is a literal with
+    `{api}` in it until something fills it in, and a schema handed to a model with
+    a formatting placeholder still in it is a schema that teaches it nothing.
+    """
+    import rover_daemon
+    import scripting
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    def names(**kw):
+        return [t["function"]["name"] for t in rover.tools(**kw)]
+
+    check("a daemon not running scripts offers none, even on loopback",
+          "run_script" in names(local=True), False)
+
+    rover.scripts = scripting.Runner("127.0.0.1:1")  # nothing there; nothing calls it
+    try:
+        check("a client on the LAN is not shown run_script",
+              "run_script" in names(), False)
+        check("...and the default is the LAN, so a caller has to say otherwise",
+              names(), names(local=False))
+        check("a client on the rover is shown it", "run_script" in names(local=True),
+              True)
+        check("...last, after the tools whose order was measured",
+              names(local=True)[-1], "run_script")
+
+        described = rover.script_tool()["function"]["description"]
+        check("its description is filled in, not the literal",
+              "{api}" in described or "{limit_s}" in described, False)
+        # Two primitives and the limit, read from the modules that own them
+        # rather than written here: the point of generating this is that a
+        # renamed primitive cannot go on being advertised.
+        check("...with the primitives a program is written against",
+              all(word in described
+                  for word in ("gimbal.look_at", "drive.forward", "every(")), True)
+        check("...and the runner's own limit in it",
+              f"{scripting.RUN_LIMIT_S:.0f} seconds" in described, True)
+        check("it is the same object next time, built once",
+              rover.script_tool() is rover.script_tool(), True)
+    finally:
+        rover.scripts.close()
+
+
 def test_one_script_at_a_time():
     import scripting
 
@@ -1373,6 +1426,7 @@ def main():
                  test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,
                  test_scripts_run_and_say_what_happened,
+                 test_the_script_tool_is_offered_to_the_rover_and_not_to_the_lan,
                  test_one_script_at_a_time, test_where,
                  test_map_view, test_flags, test_aiming_through_a_missed_frame,
                  test_one_move_puts_a_face_in_the_middle,
