@@ -33,6 +33,9 @@ DAYS_CA=3650
 # Not 3650. Safari refuses a certificate valid for more than 825 days even from a
 # root it trusts, and a leaf nobody can load is a worse failure than a renewal.
 DAYS_LEAF=820
+# How long to wait for the wifi to have an address before giving up on naming it.
+# The board is not on the network at all for the first half-minute after a boot.
+WAIT_ADDRESS=90
 FORCE=""
 [ "$1" = "--force" ] && FORCE=1
 
@@ -45,13 +48,43 @@ chmod 700 "$DIR"
 # both have to be in here. The board is wifi-only and its address can move, which
 # is the one thing that dates this file -- run it again when it does.
 host="$(hostname)"
+
+lan_addresses() {
+    for address in $(hostname -I 2>/dev/null); do
+        case "$address" in
+            *:*) continue ;;                  # IPv6; the console is not on one
+            127.*) continue ;;
+        esac
+        echo "$address"
+    done
+}
+
+# **Wait for an address before deciding anything**, because at boot there is not
+# one yet. run_drive_web.sh calls this from a @reboot crontab entry, which fires
+# long before DHCP has finished on a wifi-only board, and `hostname -I` is empty
+# for the first half-minute. A certificate built in that window names nothing but
+# loopback -- and the freshness check below is computed from the same empty list,
+# so every boot afterwards agrees that the loopback-only certificate is current
+# and never replaces it. The console is then reachable by name and by no address
+# at all, which quietly makes an mDNS lookup the only way in. That is not a
+# theory: the certificate on this board had been in exactly that state.
+waited=0
+while [ -z "$(lan_addresses)" ] && [ "$waited" -lt "$WAIT_ADDRESS" ]; do
+    sleep 3
+    waited=$((waited + 3))
+done
+[ "$waited" -gt 0 ] && echo "waited ${waited}s for an address"
+
+# Still nothing: keep whatever is there rather than replacing a certificate that
+# names yesterday's address with one that names none.
+if [ -z "$(lan_addresses)" ] && [ -f "$DIR/console.crt" ]; then
+    echo "no address after ${WAIT_ADDRESS}s; leaving $DIR/console.crt as it is"
+    exit 0
+fi
+
 names="DNS:${host},DNS:${host}.local,DNS:localhost"
 ips="IP:127.0.0.1"
-for address in $(hostname -I 2>/dev/null); do
-    case "$address" in
-        *:*) continue ;;                      # IPv6; the console is not on one
-        127.*) continue ;;
-    esac
+for address in $(lan_addresses); do
     ips="${ips},IP:${address}"
 done
 # Anything else worth covering -- a hostname the router hands out, say -- can be
