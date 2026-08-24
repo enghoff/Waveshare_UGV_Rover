@@ -885,6 +885,91 @@ is asking it to choose between the path and the goal. The lever not yet pulled i
 planner that knows the turning radius, or the configured `smoother_server`, which
 is set up and which the stock behaviour tree never calls.
 
+## "lost -- Nav2 gave up without saying why (code 102)", on the long routes
+
+Code 102 is the controller's `TF_ERROR`, which `nav_codes.py` reads as "lost". It
+is not the lidar, not the planner and not the floor. It is `map -> odom` having
+gone stale by more than a third of a second, and the whole thing turns on a
+subtraction between four numbers in two config files.
+
+**Where the budget comes from.** slam_toolbox does not stamp `map -> odom` with
+the time it publishes it. It stamps it with the time of the last scan its laser
+callback picked up, plus `transform_timeout` -- and in async mode that callback
+*is* where scans are processed, so nothing new is picked up while it works. At the
+other end, the controller's pose comes back stamped at the newest
+`odom -> base_link`, which is about now, and DWB hands it to
+`nav_2d_utils::transformPose`, which refuses a transform older than
+`transform_tolerance`. Chain them:
+
+    scan published at T, stamped T - 0.10   (lidar_node stamps the start of the sweep)
+    map -> odom therefore stamped           T - 0.10 + 0.20 = T + 0.10
+    controller needs, at `now`,             something no older than now - 0.30
+    so it fails once                        now > T + 0.40
+
+**0.40 s.** That is how long slam_toolbox may go without picking up a scan before
+the next control tick throws. Measured on the rover by stopping the mapper with
+`SIGSTOP` and watching `transform_age_s` in `nav_status`, the transform passed
+0.40 s exactly 0.44 s after the stall began, and came back within one sample of
+`SIGCONT`. `tf_stall_sim.py` is the same arithmetic without a rover, and predicted
+0.45 s.
+
+**What spends it, and why it is long routes.** Three things, and all three grow
+with the route rather than with the goal:
+
+- `updateMap()` takes `smapper_mutex_`, which `addScan()` also needs, and rebuilds
+  the occupancy grid from every scan in the graph. It runs every
+  `map_update_interval` -- 2 s here -- and only when something subscribes to
+  `/map`, which with Nav2 up is always, because the global costmap's static layer
+  does. Its cost grows with the graph, and the graph gains a node every 20 cm.
+- A loop closure searches an 8 m square and lands near a second on this board. It
+  fires when the rover comes back somewhere it has been, which a goal inside one
+  room never does.
+- The scan subscription is a `tf2_ros::MessageFilter` on `odom`, so a gap in the
+  driver board's telemetry withholds scans just as effectively. That one is
+  gentler than it looks -- both transforms freeze together, so the controller
+  drives on a stale pose rather than aborting -- but it is the same cliff.
+
+**Nothing recovers from it, and that is deliberate.** The behaviour tree gates
+every recovery it has behind `WouldAControllerRecoveryHelp`, whose list is
+`UNKNOWN`, `PATIENCE_EXCEEDED`, `FAILED_TO_MAKE_PROGRESS` and `NO_VALID_CONTROL`.
+`TF_ERROR` is not on it, because clearing a costmap or spinning on the spot cannot
+mend a transform. So the six retries never start: in `ros_nav.log` there are 38
+milliseconds between `Aborting handle` and `Goal failed`, with no costmap clear
+between them. That is why the console says "gave up without saying why" and not
+"gave up after N recovery attempts" -- the count really is zero.
+
+**How to tell it apart from everything else that reads as "lost".** The log names
+which of the two TF failures happened, and they mean opposite things:
+
+```bash
+ssh bpi-m4zero "grep -a -A2 'Transform data too old' ~/ugv/ros_nav/ros_nav.log | tail -30"
+```
+
+`Transform data too old when converting from odom to map`, followed by `Unable to
+transform robot pose into global plan's frame`, is this. The pair of timestamps on
+the middle line is the measurement: subtract them and that is how far past the
+0.30 s tolerance it went. Ten of them over two afternoons here ran 0.30 to 0.35 s,
+with one at 1.16 s. `Failed to obtain robot pose` instead is the other fault
+entirely -- no `odom -> base_link` at all, which is the driver board, and CLAUDE.md
+says how to check that one.
+
+**What would widen the budget.** `restamp_tf: true` in `slam_toolbox.yaml` is the
+one-line answer and the parameter is present in the 2.8.5 installed here: it
+stamps `map -> odom` with `now + transform_timeout` instead of with the last
+scan's time, so the correction never expires and the controller keeps steering on
+it through a closure. That is the right trade, because `map -> odom` is a slowly
+varying correction rather than a measurement -- `odom -> base_link` is still live
+underneath it, so the rover's own motion is never stale. Raising `FollowPath`'s
+`transform_tolerance` or slam_toolbox's `transform_timeout` buys the same headroom
+less honestly. Halving `loop_search_space_dimension` and lengthening
+`map_update_interval` make the stalls shorter and rarer but leave the cliff where
+it is.
+
+**The console cannot see this coming.** `TRANSFORM_STALE_S` in `nav_bridge.py` is
+1.0 s, so `position_trusted` stays true right through a stall that has already
+abandoned the goal. The number is there in `nav_status` as `transform_age_s`; it
+is the threshold that is too loose.
+
 ## What is deliberately not here
 
 **AMCL and the map server.** They localise against a map saved earlier, and this

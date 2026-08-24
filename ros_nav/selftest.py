@@ -1021,6 +1021,48 @@ def test_nav2_error_codes_match_the_installed_nav2():
                   reason_for(code), wanted[label])
 
 
+def test_the_transform_budget_survives_a_scan():
+    """The controller has to tolerate a scan going missing, and only just does.
+
+    `map -> odom` is stamped with the last scan slam_toolbox picked up plus
+    `transform_timeout`, and DWB refuses a pose that is older than
+    `transform_tolerance` -- so between the two configs there is a fixed number of
+    seconds that `laserCallback` may be busy before the next control tick throws
+    ControllerTFError and the goal comes back as code 102, which is "lost".
+    tf_stall_sim.py explains where that subtraction comes from.
+
+    Two things are checked. The budget must be longer than the gap between scans,
+    or every ordinary revolution would abort a goal; and the simulation must
+    report a healthy stack as healthy, which is the guard the steering simulation
+    had to learn the hard way.
+    """
+    section("the transform budget between slam_toolbox and the controller")
+    try:
+        import tf_stall_sim
+    except ImportError:
+        print("  .... skipped, no tf_stall_sim.py")
+        return
+    cfg = tf_stall_sim.config()
+    budget = (cfg["transform_timeout"] + cfg["transform_tolerance"]
+              - cfg["scan_stamp_offset"])
+    scan_gap = 1.0 / tf_stall_sim.SCAN_HZ
+    check("the budget is longer than one revolution", budget > scan_gap, True)
+    print("       %.2f s of budget, %.0f ms between scans" % (budget, scan_gap * 1000))
+    quiet = tf_stall_sim.run(cfg, seconds=6.0)
+    check("nothing aborts when nothing stalls", len(quiet["aborts"]), 0)
+    stalled = tf_stall_sim.run(cfg, seconds=6.0, stall=budget + 0.3, stall_at=2.0)
+    check("...and a stall past the budget does", len(stalled["aborts"]) > 0, True)
+    # And the way out of it, which is the only reason the budget above is
+    # survivable on a route long enough to close a loop: with this on,
+    # `map -> odom` is stamped when it is published rather than when the mapper
+    # last picked up a scan, so a busy mapper no longer expires the correction
+    # the controller steers on.
+    slam = os.path.join(HERE, "config", "slam_toolbox.yaml")
+    if os.path.exists(slam):
+        check("slam_toolbox restamps map -> odom, so a busy mapper cannot expire it",
+              "restamp_tf: true" in open(slam).read(), True)
+
+
 def test_heading_arithmetic():
     """Wrapping, and reading a yaw back out of a quaternion.
 
@@ -1113,6 +1155,7 @@ def main():
     test_bridge_protocol()
     test_nav2_error_codes()
     test_nav2_error_codes_match_the_installed_nav2()
+    test_the_transform_budget_survives_a_scan()
     test_heading_arithmetic()
     test_steering_bearing()
     test_the_two_halves_agree_on_the_port()

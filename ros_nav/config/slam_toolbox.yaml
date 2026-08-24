@@ -55,6 +55,29 @@ slam_toolbox:
     # nothing but heat. This is the largest single CPU saving in the file.
     minimum_time_interval: 0.2
     transform_timeout: 0.2
+    # **Stamp `map -> odom` with the time it is published, not with the time of
+    # the last scan the mapper picked up.** Without this the correction carries
+    # the stamp of that scan plus `transform_timeout`, and since the laser
+    # callback is also where scans are *processed*, the stamp stops advancing for
+    # as long as the mapper is busy -- a loop closure, or the two-second
+    # occupancy-grid rebuild, both of which grow with the route. The controller
+    # refuses a correction older than its 0.3 s `transform_tolerance`, so the
+    # whole budget was 0.4 s: past that, DWB threw, the goal came back as code
+    # 102, and the console said "lost -- Nav2 gave up without saying why".
+    # Measured here by stopping the mapper for 0.8 s, the transform passed 0.40 s
+    # of age 0.44 s in. Nothing recovered from it either, and that part is by
+    # design: Nav2 gates every recovery it has behind an error-code list that
+    # TF_ERROR is deliberately not on, because clearing a costmap cannot mend a
+    # transform.
+    #
+    # Restamping is honest here in a way it would not be for a sensor reading.
+    # `map -> odom` is a slowly varying *correction*, not a measurement, and
+    # `odom -> base_link` goes on being published at the driver board's 17 Hz
+    # underneath it -- so the rover's own motion is never stale, only the graph's
+    # opinion of where that motion started. Holding the last opinion for a second
+    # while the optimiser works is what the controller should do; abandoning the
+    # route is not. See ros_nav/tf_stall_sim.py and the README section on 102.
+    restamp_tf: true
     tf_buffer_duration: 30.0
     stack_size_to_use: 40000000
 
