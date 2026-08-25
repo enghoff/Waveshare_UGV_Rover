@@ -74,9 +74,10 @@ NS = "bench"
 #: start: a parameter it does not like is reported there and nowhere else.
 CHILD_LOG = "/tmp/dwb_bench_controller.log"
 
-#: 2 forward samples x 16 rotation samples, plus the zero the iterator injects.
-#: Fewer than this on a tick means `ObstacleFootprint` vetoed the difference.
-CANDIDATES = 33
+#: 2 forward samples x 16 rotation samples, plus the zero the iterator injects,
+#: minus the four standing turns slower than the mixer floor. Fewer than this
+#: on a tick means `ObstacleFootprint` vetoed the difference.
+CANDIDATES = 29
 
 
 def yaw_of(q):

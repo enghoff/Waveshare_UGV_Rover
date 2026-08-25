@@ -810,6 +810,17 @@ def test_configs_agree():
     check("Nav2's turn limit matches MAX_TURN_DPS (%.2f rad/s)" % turn,
           abs(turn - 0.78) < 0.01, True)
     check("...and that is what the file says", "max_vel_theta: 0.78" in text, True)
+    # Both floors have to move. Nav2's isValidSpeed is an AND: a theta floor
+    # with min_speed_xy left at 0 never drops a sample. 0.21 rad/s is the
+    # mixer's 12 deg/s; 0.1 m/s is below the only forward sample, so driving
+    # is untouched.
+    check("DWB will not sample a standing turn slower than the mixer can hold",
+          "min_speed_theta: 0.21" in settings, True)
+    check("...and min_speed_xy is not zero, or that theta floor is a no-op",
+          "min_speed_xy: 0.1" in settings, True)
+    check("...and the old zero floors are gone",
+          "min_speed_xy: 0.0" in settings or "min_speed_theta: 0.0" in settings,
+          False)
 
     # The two costmap rules that a rover running SLAM cannot break. Both were
     # broken at once, and between them they closed 61% of the mapped floor to the
@@ -1289,6 +1300,46 @@ def test_progress_is_not_only_translation():
           angle < math.radians(9.0 * allowance) / 4.0)
 
 
+def test_dwb_will_not_sample_a_turn_the_wheels_cannot_hold():
+    """The 2026-08-25 doorway recording, as a sample-set test.
+
+    Eight in ten commands were standing turns, most of them 3 deg/s. The mixer
+    lifts those to 12 deg/s, the rover overshoots, and it swaps sides. Nav2's
+    isValidSpeed only drops a sample when *both* floors fail, so this checks
+    the generated set, not just the yaml strings.
+    """
+    section("DWB does not sample a standing turn slower than the mixer")
+    sys.path.insert(0, HERE)
+    try:
+        import corridor_sim as dwb
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import corridor_sim: %s" % exc)
+        return
+
+    samples = dwb.twists()
+    slow = [(vx, wz) for vx, wz in samples
+            if abs(vx) < 0.05 and abs(wz) < dwb.MIN_SPEED_THETA]
+    check("the sample count matches the 29 the live controller will log",
+          len(samples), dwb.CANDIDATES)
+    check("...and that is 12 standing turns, not the old 16",
+          dwb.PIVOTS, 12)
+    check("no standing turn is slower than 0.21 rad/s", slow, [])
+    rolling = [(vx, wz) for vx, wz in samples if abs(vx) >= 0.05]
+    check("...while the forward sample still has every steer, including slow ones",
+          any(abs(wz) < dwb.MIN_SPEED_THETA for vx, wz in rolling), True)
+
+    episode_path = os.path.join(HERE, "recordings", "doorway-2026-08-25.json")
+    if os.path.isfile(episode_path):
+        with open(episode_path) as handle:
+            episode = json.load(handle)
+        below = sum(1 for c in episode["commands"]
+                    if abs(c["vx"]) < 0.05 and 0.05 <= abs(c["wz"]) < 0.21)
+        check("the doorway recording still shows the fault this floor deletes",
+              below > 100, True)
+    else:
+        print("  .... no recordings/doorway-2026-08-25.json, sample set only")
+
+
 def test_lattice_respects_the_dwb_envelope():
     """The doorway corner, on a map that does not need a recording.
 
@@ -1364,6 +1415,7 @@ def main():
     test_goal_fits_before_it_is_sent()
     test_a_route_is_budgeted_on_the_route()
     test_progress_is_not_only_translation()
+    test_dwb_will_not_sample_a_turn_the_wheels_cannot_hold()
     test_lattice_respects_the_dwb_envelope()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0

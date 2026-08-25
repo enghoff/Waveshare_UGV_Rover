@@ -219,11 +219,27 @@ controller_server:
       min_vel_y: 0.0
       max_vel_y: 0.0
       max_vel_theta: 0.78
-      min_speed_xy: 0.0
+      # **0.1 and 0.21, and both have to move or neither does anything.**
+      # Nav2 drops a sample only when hypot(vx, vy) is under min_speed_xy *and*
+      # |vtheta| is under min_speed_theta. A theta floor with min_speed_xy left
+      # at zero is a no-op: hypot is never below zero, so the slow pivots stay.
+      # 0.1 m/s sits below the only forward sample (0.40), so driving is
+      # untouched; it just makes the standing-turn floor actually apply.
+      #
+      # 0.21 rad/s is 12 deg/s, `drive_mixer.MIN_TURN_DPS`. DWB's sixteen-way
+      # split of ±0.78 includes ±0.052 and ±0.156 -- about 3 deg/s and 9 deg/s --
+      # and the mixer lifts anything slower than 12 to 12, so those samples are
+      # a correction the rover will not execute. Recorded 2026-08-25 in a
+      # doorway Lattice had already drawn a followable path through: 192 of 256
+      # pivot commands were 0.052 rad/s, eight in ten commands that minute were
+      # pivots, a thousand degrees of turning for 2.6 m of travel.
+      min_speed_xy: 0.1
       max_speed_xy: 0.40
       # Turning on the spot is how a skid-steer chassis changes direction, so it
       # has to be allowed rather than penalised into a wide arc it cannot drive.
-      min_speed_theta: 0.0
+      # The floor above is which standing turns are *legal*, not whether they
+      # exist.
+      min_speed_theta: 0.21
       # **These describe a chassis that steps, because this one does.** They are
       # not comfort limits and they are not guesses: measured on the rover, the
       # wheels were at 0.34 m/s within 0.15 s of the first command and at zero

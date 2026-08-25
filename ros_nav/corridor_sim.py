@@ -178,8 +178,13 @@ DEAD_TIME_S = 0.2
 TURN_GAIN = 2.4
 
 #: What the rover's log prints when it gives up, so a sample set that stops
-#: matching it is noticed rather than quietly simulated.
-CANDIDATES = 33
+#: matching it is noticed rather than quietly simulated. Thirty-three was the
+#: set with every standing turn included (2 x 17, less (0, 0)). The mixer floor
+#: drops the four slowest pivots (±0.052, ±0.156 rad/s); the live set is 29.
+CANDIDATES = 29
+#: Standing turns that survive min_speed_xy / min_speed_theta. Used to read the
+#: pose-sweep table: a count of this many and no more is "pivots only".
+PIVOTS = 12
 
 #: behavior_server, read off the running node. `simulate_ahead_time` is the
 #: number that decides whether a wedged rover turns at all: Spin and BackUp
@@ -245,13 +250,31 @@ def one_d_velocities(current, low, high, acc_limit, decel_limit, acc_time,
     return out
 
 
-def twists(vx_now=0.0, wz_now=0.0):
-    """Every candidate DWB scores this tick: two by seventeen, less one.
+# Copied from config/nav2.yaml. Nav2's isValidSpeed is an AND of the two, so a
+# theta floor with xy left at zero does not drop anything.
+MIN_SPEED_XY = 0.1
+MIN_SPEED_THETA = 0.21
 
-    The pair (0, 0) is dropped by `nav_2d_utils::isValidSpeed`, which is the
-    difference between thirty-four and the thirty-three the log names. Standing
+
+def is_valid_speed(vx, wz):
+    """`KinematicsHandler::isValidSpeed`: too slow in xy *and* in theta is out.
+
+    A standing turn under the mixer floor fails both tests and is dropped. A
+    0.40 m/s sample with a 3 deg/s steer fails only the theta test, so it stays
+    -- steering while rolling has no stiction floor of that kind.
+    """
+    if math.hypot(vx, 0.0) < MIN_SPEED_XY and abs(wz) < MIN_SPEED_THETA:
+        return False
+    return True
+
+
+def twists(vx_now=0.0, wz_now=0.0):
+    """Every candidate DWB scores this tick, after the mixer floor.
+
+    The pair (0, 0) is dropped by `nav_2d_utils::isValidSpeed`. Standing
     perfectly still is not a candidate: whatever DWB picks, the rover either
-    turns or drives.
+    turns or drives. The four slowest standing turns go the same way, because
+    this chassis will not hold them.
     """
     xs = one_d_velocities(vx_now, MIN_VEL_X, MAX_VEL_X, ACC_LIM_X, DECEL_LIM_X,
                           SIM_TIME, VX_SAMPLES)
@@ -259,7 +282,7 @@ def twists(vx_now=0.0, wz_now=0.0):
                               ACC_LIM_THETA, DECEL_LIM_THETA, SIM_TIME,
                               VTHETA_SAMPLES)
     return [(vx, wz) for vx in xs for wz in thetas
-            if abs(vx) > 1e-9 or abs(wz) > 1e-9]
+            if (abs(vx) > 1e-9 or abs(wz) > 1e-9) and is_valid_speed(vx, wz)]
 
 
 def rollout(x, y, yaw, vx, wz, vx_now=None, wz_now=None):
@@ -833,10 +856,10 @@ def render(width_m, headings, rows):
     print("      '.' is a tick with nothing to drive -- the log's "
           "'No valid trajectories out of 33'")
     forward_only = [(o, h) for o, counts, _ in rows
-                    for h, c in zip(headings, counts) if c == 16]
+                    for h, c in zip(headings, counts) if c == PIVOTS]
     if forward_only:
-        print("      a count of 16 is the sixteen pivots surviving and no "
-              "forward candidate at all")
+        print("      a count of %d is the remaining pivots surviving and no "
+              "forward candidate at all" % PIVOTS)
 
 
 def blame(rows):
