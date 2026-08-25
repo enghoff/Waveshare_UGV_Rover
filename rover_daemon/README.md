@@ -203,7 +203,12 @@ other two are worth a note each.
 carry an image into a conversation, so `look` posts the frame to the model's host and
 returns the name it was filed under, while a window on a desk has no such problem and
 routing a picture through a frame server to reach the screen of the machine that
-asked for it would be silly. The practical difference is what each one needs.
+asked for it would be silly. `show_map` takes the same two knobs the console does —
+how many metres across (`across_m`) and how big a picture (`pixels`) — and leaves
+them optional, so "show me the map" is still a room-sized view. It is not shown
+`half_extent_m` or pixels-per-cell: those are how `map_png` talks, and a model
+handed the half would pass six meaning six metres across and get twelve. The
+practical difference is what each one needs.
 `look` needs somewhere to post and is withdrawn without `--vision`; `camera_jpeg`
 needs only a camera, so a daemon started with no vision host can still be asked for a
 picture. The bytes are the camera's own and nothing here decodes them — there is no

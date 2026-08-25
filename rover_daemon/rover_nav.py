@@ -16,10 +16,13 @@ from rover_util import _flag, _number
 NO_DRIVING = ("this rover is not set up to drive or map itself, so it has no "
               "driving tools. The daemon needs --ros-nav, which points it at the "
               "ROS 2 stack")
-# How much of the map goes into a picture for the model. A few metres, not the whole
+# How much of the map goes into a picture when nobody asks. A room, not the whole
 # grid: the pose drifts over a long run, so a picture wide enough to invite planning
-# a route home is a picture that will mislead.
+# a route home is a picture that will mislead. The model can ask for more via
+# `across_m`; the caption still says not to navigate back off a wide view.
 MAP_HALF_EXTENT_M = 3.0
+# Magnification `map_png` still accepts directly. The model and the console both
+# go through `_map_view` instead, which derives this from extent and picture size.
 MAP_SCALE = 3
 # What a hand-driven client may ask for, so the window can zoom.
 #
@@ -89,6 +92,26 @@ def _map_view(half: float, pixels: float, resolution_m: float) -> tuple[float, i
     while scale > 1 and cells * scale > MAP_MAX_PIXELS:
         scale -= 1
     return half, scale
+
+
+def _model_map_view(arguments: dict[str, Any],
+                    resolution_m: float) -> tuple[float, int]:
+    """Extent and pixels-per-cell for the model's map.
+
+    `across_m` is how many metres of room to show, the way a person would say it,
+    not how far each way from the rover -- that half-extent is what `map_png` and
+    the renderer take, and a model handed the half would pass six meaning six
+    metres across and get twelve. `pixels` is how big a picture. Leave both out
+    and this is a room at the same size the console asks for by default, with
+    pixels per cell derived rather than fixed, so widening the view shows more
+    room instead of a bigger picture.
+    """
+    if arguments.get("across_m") is not None:
+        half = _number(arguments["across_m"], "across_m") / 2.0
+    else:
+        half = MAP_HALF_EXTENT_M
+    pixels = arguments.get("pixels", MAP_PIXELS)
+    return _map_view(half, _number(pixels, "pixels"), resolution_m)
 
 
 class RoverNav:
@@ -178,13 +201,13 @@ class RoverNav:
         with self._lock:
             return -self.pan, self.camera_fov_deg
 
-    def _tool_show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+    def _tool_show_map(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}
         if self.vision is None:
             return {"ok": False, "error": "there is nowhere to send a picture"}
-        png, caption = self.nav.map_png(MAP_HALF_EXTENT_M, MAP_SCALE,
-                                        camera=self._camera_cone())
+        half, scale = _model_map_view(arguments, self.nav.slam.config.resolution_m)
+        png, caption = self.nav.map_png(half, scale, camera=self._camera_cone())
         sent = self.vision.post(png)
         # The caption is the answer whether or not the picture arrives. The frame
         # server stashes bytes without decoding them and the upload declares no
@@ -248,7 +271,8 @@ class RoverNav:
         the two by `_map_view` rather than asked for, so widening the view shows more
         room at the same picture size instead of returning a bigger picture. `scale`
         is still accepted for a caller that really does want to fix the
-        magnification, which is how `show_map` asks.
+        magnification. The model is not shown that knob: `show_map` takes metres
+        across and a picture size, and `_model_map_view` turns them into these.
 
         `rover_up` turns the page so that straight up is straight ahead of the rover,
         instead of the direction it was facing when it started.

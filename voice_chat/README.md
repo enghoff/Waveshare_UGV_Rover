@@ -1173,7 +1173,12 @@ from `list_tools`, and the first three are there for the same reason: the PWM
 actually on the motors and the age of the last scan are what tell you why a move went
 wrong, and are of no use at all to something that has to say the answer out loud.
 `show_map` and `look` remain the model's versions, because a tool result cannot carry
-a picture into a conversation and a console has no such problem. `clear_map` is kept
+a picture into a conversation and a console has no such problem. `show_map` takes the
+same two knobs the console does, named the way a person would say them: `across_m`
+for how many metres of room, `pixels` for how big a picture. Leave both out for about
+six metres across. It is not shown `half_extent_m` — that is `map_png`'s name for
+half of the same quantity, and a model handed it would pass six and get twelve.
+`clear_map` is kept
 back on different grounds — a model told there is no route somewhere will reach for
 it, and clearing the map throws away the walls the route was refused for. See
 [rover_daemon/README.md](../rover_daemon/README.md).

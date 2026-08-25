@@ -89,8 +89,9 @@ from rover import Rover
 from rover_camera import VisionLink, _where, default_camera
 from rover_util import _flag, _level, _number
 from rover_nav import (
-    CAMERA_FOV_DEG, MAP_MAX_HALF_EXTENT_M, MAP_MAX_PIXELS,
-    _map_cells, _map_view,
+    CAMERA_FOV_DEG, MAP_HALF_EXTENT_M, MAP_MAX_HALF_EXTENT_M,
+    MAP_MAX_PIXELS, MAP_MIN_PIXELS, MAP_PIXELS,
+    _map_cells, _map_view, _model_map_view,
 )
 from rover_wifi import _terse_fields, _wifi_networks
 from tool_schemas import (

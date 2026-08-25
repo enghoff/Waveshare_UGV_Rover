@@ -594,13 +594,26 @@ class Rover:
                 "render_s": round(time.monotonic() - started, 2),
                 "png_base64": base64.b64encode(png).decode("ascii")}
 
-    def show_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        """The model's version: the picture goes to the vision host, not the reply."""
+    def show_map(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """The model's version: the picture goes to the vision host, not the reply.
+
+        The same two knobs as the console -- how many metres across, and how big a
+        picture -- because a mock that ignored them would let a conversation that
+        asked for a floor view pass here and fail against the rover. `across_m` is
+        halved into `map_png`'s half-extent; nothing asked for is a room at the
+        default picture size, same as the real handler.
+        """
         if self.vision is None:
             return {"ok": False, "error": "there is nowhere to send a picture"}
-        png, caption = self._map(3.0, 3)
+        mapped: dict[str, Any] = {}
+        if arguments.get("pixels") is not None:
+            mapped["pixels"] = arguments["pixels"]
+        if arguments.get("across_m") is not None:
+            mapped["half_extent_m"] = float(arguments["across_m"]) / 2.0
+        body = self.map_png(mapped)
+        png = base64.b64decode(body["png_base64"])
         _name, error = self._post(png, "image/png")
-        result = {"ok": True, "caption": caption, **self._described()}
+        result = {"ok": True, "caption": body["caption"], **self._described()}
         if error:
             result["note"] = ("the map could not be sent as a picture, so answer "
                               "from the description alone")

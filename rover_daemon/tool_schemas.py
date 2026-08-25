@@ -382,18 +382,60 @@ NAV_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+# Bounds the model is shown for `show_map`. They live here, next to the schema,
+# because prompts.py reads this file with ast and cannot see rover_nav. Across is
+# twice the drawing half-extent (so 24 m is MAP_MAX_HALF_EXTENT_M); the pixel
+# bounds are MAP_MIN_PIXELS and MAP_MAX_PIXELS. selftest.py refuses a drift.
+MAP_ACROSS_MIN_M = 1.0
+MAP_ACROSS_MAX_M = 24.0
+MAP_PIXELS_MIN = 200
+MAP_PIXELS_MAX = 1200
+
 MAP_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "show_map",
         "description": (
-            "Take a top-down map of the few metres around the rover, built up from "
+            "Take a top-down map of the space around the rover, built up from "
             "its lidar as it has driven, and look at it. Use this for questions "
             "about the shape of the space or about getting from one place to "
             "another. For a plain question about what is nearby, "
-            "describe_surroundings is quicker and more precise."
+            "describe_surroundings is quicker and more precise. Leave the "
+            "arguments out for about six metres across, which is a room. Pass "
+            "across_m to see more or less of the floor -- a few metres to judge "
+            "what the rover is about to drive into, up to twenty-four metres for "
+            "the shape of a whole floor. Distances on a wide view drift, so do "
+            "not plan a route home off one. Pass pixels only when you need a "
+            "larger picture to read detail; a bigger picture takes the rover "
+            "longer to draw."
         ),
-        "parameters": {"type": "object", "properties": {}},
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "across_m": {
+                    "type": "number",
+                    "minimum": MAP_ACROSS_MIN_M,
+                    "maximum": MAP_ACROSS_MAX_M,
+                    "description": (
+                        "How many metres of room the picture should cover. Leave "
+                        "it out for about six, a room. Use a few metres for what "
+                        "is immediately around the rover, and more for the shape "
+                        "of a floor."
+                    ),
+                },
+                "pixels": {
+                    "type": "integer",
+                    "minimum": MAP_PIXELS_MIN,
+                    "maximum": MAP_PIXELS_MAX,
+                    "description": (
+                        "How big a picture to look at. Leave it out for a normal "
+                        "one. 320 is a quick look; 640 shows more detail and "
+                        "costs the rover more time to draw."
+                    ),
+                },
+            },
+            "required": [],
+        },
     },
 }
 

@@ -207,6 +207,26 @@ def test_schemas():
         check(f"{function['name']} has a parameter object",
               function["parameters"]["type"], "object")
 
+    # The model's map knobs have to match what the renderer will actually draw.
+    # A schema that offers 50 m across is a tool that then silently clamps to 24,
+    # and a 4B model will not notice.
+    props = rover_daemon.MAP_TOOL["function"]["parameters"]["properties"]
+    check("the model can ask how many metres across", "across_m" in props, True)
+    check("...and how big a picture", "pixels" in props, True)
+    check("...but is not shown the half-extent map_png takes",
+          "half_extent_m" in props, False)
+    check("...nor pixels-per-cell", "scale" in props, False)
+    check("neither map knob is required, so 'show me the map' still works",
+          rover_daemon.MAP_TOOL["function"]["parameters"].get("required"), [])
+    check("the across ceiling is twice the drawing half-extent",
+          props["across_m"]["maximum"], 2 * rover_daemon.MAP_MAX_HALF_EXTENT_M)
+    check("the across floor is twice the drawing floor",
+          props["across_m"]["minimum"], 1.0)
+    check("the picture floor is the drawing floor",
+          props["pixels"]["minimum"], rover_daemon.MAP_MIN_PIXELS)
+    check("the picture ceiling is the drawing ceiling",
+          props["pixels"]["maximum"], rover_daemon.MAP_MAX_PIXELS)
+
 
 def test_lights():
     import rover_daemon
@@ -643,6 +663,101 @@ def test_map_png_names_the_clock():
     check("map_png answers rather than raising", got.get("ok"), True)
     check("...and names the picture size it drew", got.get("pixels"), 640)
     check("...and times the draw", isinstance(got.get("render_s"), (int, float)), True)
+
+
+def test_show_map_takes_across_and_size():
+    """The model can pick how much room is in frame and how big a picture.
+
+    `across_m` is metres of room, not the half-extent `map_png` takes: a model
+    told "six metres across" and handed `half_extent_m` would pass 6 and get
+    twelve. Leave both out and it is still a room at the console's default
+    picture size -- pixels per cell derived, so widening the view does not
+    resize the picture.
+    """
+    import http.server
+    import threading
+
+    import rover_daemon
+
+    posted = []
+    asked = []
+
+    class Vision(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            posted.append(body)
+            reply = json.dumps({"ok": True, "image": f"frame-{len(posted)}"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(reply)))
+            self.end_headers()
+            self.wfile.write(reply)
+
+        def log_message(self, *args):
+            pass
+
+    class FakeNav:
+        class slam:
+            class config:
+                resolution_m = 0.05
+            pose = (0.0, 0.0, 0.0)
+
+        def map_png(self, half, scale, rover_up=False, camera=None):
+            asked.append((half, scale))
+            png = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
+                   + (640).to_bytes(4, "big") + (480).to_bytes(4, "big"))
+            return png, f"a fake room of {2 * half:.0f} m"
+
+        def describe(self):
+            return {"clear_ahead_m": 2.0, "text": "a room"}
+
+    res = FakeNav.slam.config.resolution_m
+    room = rover_daemon._model_map_view({}, res)
+    wide = rover_daemon._model_map_view({"across_m": 24}, res)
+    close = rover_daemon._model_map_view({"across_m": 3}, res)
+    small = rover_daemon._model_map_view({"pixels": 320}, res)
+    large = rover_daemon._model_map_view({"pixels": 800}, res)
+    check("nothing asked for is a room", room[0], rover_daemon.MAP_HALF_EXTENT_M)
+    check("six metres across is that same room, not twelve",
+          rover_daemon._model_map_view({"across_m": 6}, res)[0],
+          rover_daemon.MAP_HALF_EXTENT_M)
+    check("twenty-four metres across is the drawing ceiling",
+          wide[0], rover_daemon.MAP_MAX_HALF_EXTENT_M)
+    check("a close view is closer than a room", close[0] < room[0], True)
+    check("a bigger picture is more pixels per cell, not more room",
+          (large[0], large[1] > small[1]), (small[0], True))
+    check("widening the view does not raise the magnification",
+          wide[1] <= room[1], True)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Vision)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    address = f"127.0.0.1:{server.server_address[1]}"
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0",
+                               vision=address)
+    rover.nav = FakeNav()
+    try:
+        check("show_map is offered once there is somewhere to send a picture",
+              "show_map" in [t["function"]["name"] for t in rover.tools()], True)
+        got = rover.call("show_map", {})
+        check("nothing asked for still draws", got.get("ok"), True)
+        check("...at the room-sized default", asked[-1], room)
+        check("...and the picture was posted", len(posted), 1)
+        check("a string six means six metres across",
+              rover.call("show_map", {"across_m": "6"}).get("ok"), True)
+        check("...and is a room, not a floor", asked[-1][0], room[0])
+        rover.call("show_map", {"across_m": 24, "pixels": 320})
+        check("a floor view at a small picture reaches the renderer as such",
+              asked[-1], rover_daemon._model_map_view(
+                  {"across_m": 24, "pixels": 320}, res))
+        check("the caption still goes to the model, not the picture size",
+              "caption" in got, True)
+        check("...and the result does not name pixels-per-cell",
+              "scale" in got, False)
+    finally:
+        server.shutdown()
 
 
 def test_drive_to_takes_a_place_on_the_map():
@@ -1551,6 +1666,7 @@ def main():
                  test_counting_faces_does_not_hold_the_board,
                  test_the_local_detector_scales_its_boxes_back_up, test_camera_cone,
                  test_map_png_names_the_clock,
+                 test_show_map_takes_across_and_size,
                  test_drive_to_takes_a_place_on_the_map,
                  test_wifi_status_without_the_helper_still_reports_the_link,
                  test_wifi_status_with_two_radios,
