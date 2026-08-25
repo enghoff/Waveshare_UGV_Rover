@@ -34,7 +34,32 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /odom
     bt_loop_duration: 10
-    default_server_timeout: 20
+    # **200 ms rather than the stock 20, and the stock was failing a quarter of
+    # all navigation goals outright.**
+    #
+    # This is how long a behaviour tree action node waits for a server to say
+    # "accepted" before it gives up and fails the action -- not how long the
+    # work may take, just the acknowledgement. When it fires the log says
+    # `Timed out while waiting for action server to acknowledge goal request
+    # for compute_path_to_pose` and the goal is abandoned before the planner
+    # has been asked anything, so it reads as a navigation failure and is a
+    # scheduling one.
+    #
+    # Measured on the board with acklat.py, forty goal requests to the live
+    # planner while the rover stood still: median 13.9 ms, p90 29 ms, max
+    # 35 ms. The stock 20 ms sits below the median. Twenty-five per cent of
+    # those forty would have been failed by it, and the log agrees -- three of
+    # the seventeen goals in the preceding half hour died exactly that way.
+    # Four cores here run slam_toolbox, seven Nav2 servers and three Python
+    # nodes, and load average sits near eight; 20 ms is not a deadline this
+    # board can meet.
+    #
+    # 200 ms is roughly six times the worst sample and fourteen times the
+    # median, which leaves room for a busier moment than the one measured. It
+    # is deliberately not the whole second it would be tempting to use: this
+    # wait blocks the tree tick, so it is also how long a cancel can sit
+    # unheard. If the message comes back, this is the number to raise.
+    default_server_timeout: 200
     # 30 s, against a stock 1 s. This board takes visibly longer to bring a
     # behaviour tree node up, and a timeout that fires during startup looks like
     # a navigation failure.
@@ -294,10 +319,55 @@ controller_server:
       # is; the scale only says how much to prefer the middle of a corridor to
       # the edge of one.
       ObstacleFootprint.scale: 0.005
+      # **0.8 rather than 0.1, and this is the number that decides whether a
+      # rover pointing the wrong way can ever find its way round.**
+      #
+      # These two critics are the only thing in the whole set that can tell one
+      # rotation from another. The other four read the costmap at the point a
+      # rollout ends, and a rover turning on the spot ends where it started --
+      # in the same 5 cm cell -- so `PathDist` and `GoalDist` return the
+      # identical number for all sixteen pivots. The align pair are supposed to
+      # break that tie by reading the map a little way in front of the nose
+      # instead.
+      #
+      # At 0.1 m they cannot. The flood they read is a whole number of cells,
+      # and a point 10 cm from the centre of rotation sweeps about two cells
+      # across the entire turn range, so the tie does not break: measured on a
+      # recorded drive, the sixteen pivots scored 44.81 to 44.88 out of about
+      # 45. The rover had nothing whatever to tell it which way to turn, and
+      # what it did instead was turn whichever way rounding happened to favour,
+      # then the other way, at about one and a half swings a second.
+      #
+      # It matters most exactly where this rover fails: in a narrow passage,
+      # having ended up a long way off the heading its plan sets out on. In the
+      # drive that was recorded the rover was 143 degrees off its own plan, so
+      # driving forward took it eight cells *away* from the path -- worth 13.6
+      # points against it -- while turning was free and directionless. It swung
+      # 441 degrees in eight seconds and finished two centimetres from where it
+      # started.
+      #
+      # Reproduced before it was changed, in `corridor_sim.py` driving the real
+      # recorded costmap and the real recorded plan, from 24 different starting
+      # poses out of that drive:
+      #
+      #     look-ahead   gets out    candidates refused   ticks with none left
+      #     0.10          0 of 24     0%                   0
+      #     0.325         0 of 24    48%                   0
+      #     0.45         21 of 24    52%                   0
+      #     0.80         24 of 24    49%                   0
+      #
+      # 0.325 is nav2's own default and it is not enough here; this rover's
+      # costmap is 5 cm and its body is 36 cm long, so the nose has to reach
+      # well past its own inflation ring before the flood underneath it changes
+      # by a whole cell. The cost is that about half the candidates get thrown
+      # out for having their nose point somewhere the flood never reached --
+      # which sounds alarming and is not: over the same 40 recorded ticks there
+      # was never once a tick with nothing legal left, and `ObstacleFootprint`
+      # is still what decides whether a trajectory is safe.
       PathAlign.scale: 32.0
-      PathAlign.forward_point_distance: 0.1
+      PathAlign.forward_point_distance: 0.8
       GoalAlign.scale: 24.0
-      GoalAlign.forward_point_distance: 0.1
+      GoalAlign.forward_point_distance: 0.8
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
       RotateToGoal.scale: 32.0

@@ -102,24 +102,40 @@ LINEAR_GRANULARITY = 0.05
 ANGULAR_GRANULARITY = 0.025
 ACC_LIM_X = 4.0
 ACC_LIM_THETA = 8.0
+DECEL_LIM_X = -4.0
+DECEL_LIM_THETA = -8.0
 CONTROLLER_FREQUENCY = 10.0
 FAILURE_TOLERANCE_S = 0.3
 XY_GOAL_TOLERANCE = 0.22
 
+# **The four map-grid critics do not weigh what nav2.yaml says they weigh.**
+# `MapGridCritic::getScale` returns `resolution * 0.5 * scale`, so at 5 cm cells
+# the 32 below is really 0.8 and the 24 is really 0.6 -- a fortieth of the
+# configured number. `ObstacleFootprint` is not a map-grid critic and is not
+# rescaled, so its 0.005 is the real 0.005. Reading the numbers off the config
+# as written puts the path critics forty times too heavy against the obstacle
+# cost, which is the difference between a landscape where the wall matters and
+# one where it is a rounding error. Taken from the rover's own
+# `include/dwb_critics/map_grid.hpp`.
 PATH_ALIGN_SCALE = 32.0
 PATH_DIST_SCALE = 32.0
 GOAL_ALIGN_SCALE = 24.0
 GOAL_DIST_SCALE = 24.0
 OBSTACLE_SCALE = 0.005
-FORWARD_POINT_DISTANCE = 0.1
+FORWARD_POINT_DISTANCE = 0.8
 
 # dwb_critics defaults, which the config does not override.
+ROTATE_TO_GOAL_SCALE = 32.0
+SLOWING_FACTOR = 5.0
+
 OSCILLATION_RESET_DIST = 0.05
 OSCILLATION_RESET_ANGLE = 0.2
 X_ONLY_THRESHOLD = 0.05
 
 #: local_costmap: a 3 m rolling window at 5 cm, obstacle + inflation.
 RESOLUTION = 0.05
+#: What `MapGridCritic::getScale` does to every one of the four.
+MAP_GRID_RESCALE = RESOLUTION * 0.5
 INFLATION_RADIUS = 0.45
 COST_SCALING_FACTOR = 3.0
 
@@ -133,6 +149,33 @@ INSCRIBED_M = 0.14
 #: this does not clear stiction, so it is lifted to this. It is why a two-degree
 #: correction leaves as a twelve-degree one.
 MIN_TURN_DPS = 12.0
+
+# --- the chassis, as measured off a recorded drive ----------------------------
+# **These two numbers are the other half of this fault, and neither is in any
+# config file.** They were fitted to `episode-fault.json` by cross-correlating
+# the turn Nav2 commanded against the turn the gyro then reported:
+#
+#     lag   0.0s  0.1s  0.2s  0.3s  0.4s  0.5s  0.6s  0.7s
+#     corr  0.15  0.46  0.85  0.67  0.27 -0.06 -0.41 -0.50
+#
+# The peak is unambiguous and it is *positive*, which is worth saying because a
+# rover whose yaw moves the opposite way to its command looks exactly like
+# miswired motors or an inverted gyro. It is neither: the sign is right and the
+# response is simply two ticks late. The correlation goes negative at 0.6-0.7 s,
+# which is the half-period of the swing.
+#
+#: Two control ticks between Nav2 asking and the gyro showing it. Assembled out
+#: of six small delays, none of them wrong on its own: the controller's own
+#: 10 Hz, the velocity smoother's 10 Hz, `base_node` at 50 Hz, the loopback
+#: bridge, the ESP32's 17 Hz telemetry coming back, and the chassis reversing.
+DEAD_TIME_S = 0.2
+#: And it turns two and a half times faster than it was asked to. The mixer's
+#: own arithmetic accounts for only 1.14 of that on this command sequence -- the
+#: 12 deg/s from-rest floor over-serving the two smallest samples, which are
+#: also the two most often chosen. The rest is the pivot curve itself: it was
+#: measured by timing *bursts from a standstill*, so its rate is an average that
+#: includes the spin-up, and the sustained rate at the same PWM is higher.
+TURN_GAIN = 2.4
 
 #: What the rover's log prints when it gives up, so a sample set that stops
 #: matching it is noticed rather than quietly simulated.
@@ -158,21 +201,44 @@ UNREACHABLE_SCORE = -2.0
 
 
 # --- DWB's sample set ---------------------------------------------------------
-def one_d_velocities(current, low, high, acc_limit, acc_time, samples):
-    """`nav_2d_utils::OneDVelocityIterator`, including the zero it inserts.
+def project_velocity(v0, acc_limit, decel_limit, dt, target):
+    """`dwb_plugins::projectVelocity`, the reachable velocity after `dt`."""
+    if v0 < target:
+        return min(target, v0 + acc_limit * dt)
+    return max(target, v0 + decel_limit * dt)
 
-    Two things here are easy to get wrong and both change the count. The band
-    is clipped to what one control period of acceleration can reach rather
-    than to the configured limits; and when the band straddles zero, zero is
-    *added* to the samples rather than being one of them -- sixteen evenly
-    spaced samples between -0.78 and +0.78 never land on it.
+
+def one_d_velocities(current, low, high, acc_limit, decel_limit, acc_time,
+                     samples):
+    """`OneDVelocityIterator`, and the window it uses is not the control period.
+
+    **The acceleration window is `sim_time`, not one tick of the controller**,
+    and that single constant decides what the whole sample set looks like. The
+    model had 1/10 s here, which clipped the band to whatever one tick of
+    acceleration could reach, and every candidate then depended on how fast the
+    rover happened to be turning. The recorded drive says otherwise: all
+    eighty-three commands land exactly on the sixteen-way split of the full
+    -0.78..+0.78 range, with nothing in between, so the band was never clipped
+    at all. `StandardTrajectoryGenerator` hands `sim_time_` to the iterator,
+    and at 8 rad/s^2 for 0.8 s the reachable band is 6.4 rad/s wide -- five
+    times the whole range. `LimitedAccelGenerator` is the plugin that would
+    have used the control period, and this rover does not use it.
+
+    So the sample set is *static*: two forward speeds, seventeen turn rates.
+    Which matters for reading the fault, because it means the rover is not
+    being denied the forward sample by its own momentum. The 0.40 m/s
+    candidate is offered on every single tick, and loses on score.
+
+    The zero is inserted rather than sampled: sixteen even samples across a
+    range straddling zero never land on it, so the iterator emits one extra.
     """
     current = min(max(current, low), high)
-    top = min(high, current + acc_limit * acc_time)
-    bottom = max(low, current - acc_limit * acc_time)
-    if samples == 1:
+    top = project_velocity(current, acc_limit, decel_limit, acc_time, high)
+    bottom = project_velocity(current, acc_limit, decel_limit, acc_time, low)
+    if abs(top - bottom) < 1e-9:
         return [bottom]
-    step = (top - bottom) / (samples - 1)
+    samples = max(2, samples)
+    step = (top - bottom) / max(1, samples - 1)
     out = [bottom + i * step for i in range(samples)]
     if bottom < 0.0 < top and not any(abs(v) < 1e-9 for v in out):
         out.append(0.0)
@@ -180,40 +246,52 @@ def one_d_velocities(current, low, high, acc_limit, acc_time, samples):
 
 
 def twists(vx_now=0.0, wz_now=0.0):
-    """Every candidate DWB scores this tick.
+    """Every candidate DWB scores this tick: two by seventeen, less one.
 
     The pair (0, 0) is dropped by `nav_2d_utils::isValidSpeed`, which is the
     difference between thirty-four and the thirty-three the log names. Standing
     perfectly still is not a candidate: whatever DWB picks, the rover either
     turns or drives.
     """
-    period = 1.0 / CONTROLLER_FREQUENCY
-    xs = one_d_velocities(vx_now, MIN_VEL_X, MAX_VEL_X, ACC_LIM_X, period,
-                          VX_SAMPLES)
+    xs = one_d_velocities(vx_now, MIN_VEL_X, MAX_VEL_X, ACC_LIM_X, DECEL_LIM_X,
+                          SIM_TIME, VX_SAMPLES)
     thetas = one_d_velocities(wz_now, -MAX_VEL_THETA, MAX_VEL_THETA,
-                              ACC_LIM_THETA, period, VTHETA_SAMPLES)
+                              ACC_LIM_THETA, DECEL_LIM_THETA, SIM_TIME,
+                              VTHETA_SAMPLES)
     return [(vx, wz) for vx in xs for wz in thetas
             if abs(vx) > 1e-9 or abs(wz) > 1e-9]
 
 
-def rollout(x, y, yaw, vx, wz):
-    """`StandardTrajectoryGenerator`: constant velocity, granularity steps.
+def rollout(x, y, yaw, vx, wz, vx_now=None, wz_now=None):
+    """`StandardTrajectoryGenerator::generateTrajectory`.
 
-    Not `discretize_by_time`, which is off by default, so how many poses a
-    candidate has comes from how far it travels and how far it turns rather
-    than from the clock. A 0.40 m/s sample is seven poses and a full-rate
-    pivot is twenty-five, and `ObstacleFootprint` checks every one of them.
+    Not `discretize_by_time`, which is off, so how many poses a candidate has
+    comes from how far it travels and how far it turns rather than from the
+    clock. A 0.40 m/s sample is seven poses and a full-rate pivot is
+    twenty-five, and `ObstacleFootprint` checks every one of them.
+
+    Two details that the obvious constant-velocity version gets wrong. **The
+    pose the rover is standing in is the first pose of every trajectory**, so a
+    rover whose own footprint is already over a lethal cell has all
+    thirty-three candidates refused, whatever they were going to do about it.
+    And the velocity *ramps* from what the rover is actually doing towards the
+    candidate rather than starting there, so a pivot commanded at 0.78 rad/s
+    from a standstill turns about six per cent less than 0.78 x 0.8 rad.
     """
     steps = max(1, int(math.ceil(max(
         abs(vx) * SIM_TIME / LINEAR_GRANULARITY,
         abs(wz) * SIM_TIME / ANGULAR_GRANULARITY))))
     dt = SIM_TIME / steps
-    poses = []
+    poses = [(x, y, yaw)]
     px, py, pyaw = x, y, yaw
+    cur_x = vx if vx_now is None else vx_now
+    cur_t = wz if wz_now is None else wz_now
     for _ in range(steps):
-        px += vx * math.cos(pyaw) * dt
-        py += vx * math.sin(pyaw) * dt
-        pyaw = wrap(pyaw + wz * dt)
+        cur_x = project_velocity(cur_x, ACC_LIM_X, DECEL_LIM_X, dt, vx)
+        cur_t = project_velocity(cur_t, ACC_LIM_THETA, DECEL_LIM_THETA, dt, wz)
+        px += cur_x * math.cos(pyaw) * dt
+        py += cur_x * math.sin(pyaw) * dt
+        pyaw = wrap(pyaw + cur_t * dt)
         poses.append((px, py, pyaw))
     return poses
 
@@ -382,8 +460,14 @@ def obstacle_footprint(grid, poses):
     a cost here and not a refusal. The refusal comes from the map-grid critics
     below, which is a much easier thing to miss.
     """
-    worst = 0.0
+    # `BaseObstacleCritic::scoreTrajectory` with `sum_scores` off -- which is
+    # the default and is what this rover runs -- keeps only the *last* pose's
+    # cost, however bad the ones on the way there were. Every pose can still
+    # refuse the candidate outright; only the score is the last one's. Taking
+    # the worst instead quietly makes the wall matter along the whole rollout.
+    last = 0.0
     for x, y, yaw in poses:
+        worst = 0.0
         col, row = grid.cell_of(x, y)
         if not (0 <= col < grid.width and 0 <= row < grid.height):
             return None, "ObstacleFootprint: trajectory goes off grid"
@@ -401,7 +485,8 @@ def obstacle_footprint(grid, poses):
                 if cost == goal_fit.UNKNOWN:
                     return None, "ObstacleFootprint: trajectory hits unknown"
                 worst = max(worst, float(cost))
-    return worst, ""
+        last = worst
+    return last, ""
 
 
 def flood(grid, seeds):
@@ -458,56 +543,183 @@ def map_grid_score(grid, values, x, y, name):
     return value, ""
 
 
-def forward_pose(x, y, yaw, distance=FORWARD_POINT_DISTANCE):
-    """Where `PathAlign` and `GoalAlign` actually look: ahead of the nose."""
+def forward_pose(x, y, yaw, distance=None):
+    """Where `PathAlign` and `GoalAlign` actually look: ahead of the nose.
+
+    **This distance is the whole fault.** Everything else about a pivot is
+    invisible to the four map-grid critics: they read the costmap at a point,
+    the flood values in it are whole numbers of cells, and a rover turning on
+    the spot does not leave its own cell. So the only thing that separates one
+    pivot from another is where *this* point lands -- and at the configured
+    0.1 m it sweeps about two cells across the entire turn range, which the
+    integer flood cannot resolve. Sixteen pivots therefore score identically,
+    the rover has no way to tell left from right, and it dithers.
+
+    The two critics take the distance separately, as they do in nav2, because
+    they flood from different seeds and a long reach costs them differently.
+    """
+    if distance is None:
+        distance = FORWARD_POINT_DISTANCE
     return x + distance * math.cos(yaw), y + distance * math.sin(yaw)
 
 
-class Oscillation(object):
-    """`OscillationCritic`, which is the memory the abort keeps throwing away.
+class CommandTrend(object):
+    """One dimension of `OscillationCritic`, read off the rover's own library.
 
-    Once the rover is turning below `x_only_threshold` of forward speed, the
-    critic watches only the turn, and after one command it will not consider a
-    turn the other way until the rover has moved 5 cm or turned 0.2 rad from
-    where it started standing. In a passage where the wall refuses one
-    direction that is half the sample set gone for a reason unrelated to the
-    wall.
+    This class was wrong twice before it was disassembled, and both times the
+    error made the model refuse turns the rover was happily taking. The name
+    invites the wrong guess: it sounds as though commanding a left turn
+    forbids a right one. It does not. **A restriction is placed only at the
+    moment the sign actually reverses**, and it forbids going back the way it
+    just came from:
+
+        sign   +   +   +   -    <- the reversal, here and nowhere else
+        flag   .   .   .   negative_only
+
+    So after a left-then-right, right is all that is allowed until the flag
+    clears -- and until that reversal happens nothing is forbidden at all.
+
+    Three details from `objdump` that no amount of reading the name would give:
+
+      * a commanded zero does nothing whatever. It does not clear the flags and
+        it does not even record a sign, so a stopped tick is invisible here.
+      * `update` never clears the opposite flag. Two reversals without a reset
+        in between leave *both* set, and then every candidate that turns either
+        way is refused -- which is the one state in which this critic can wedge
+        a rover on its own.
+      * only `reset()` clears them, and it clears the remembered sign too.
     """
+
+    ZERO, POSITIVE, NEGATIVE = 0, 1, 2
 
     def __init__(self):
         self.reset()
 
     def reset(self):
+        self.sign = self.ZERO
         self.positive_only = False
         self.negative_only = False
-        self.stationary = None
+
+    def update(self, velocity):
+        """`CommandTrend::update`: true when a restriction was just placed."""
+        placed = False
+        if velocity < 0.0:
+            if self.sign == self.POSITIVE:
+                self.negative_only = True
+                placed = True
+            self.sign = self.NEGATIVE
+        elif velocity > 0.0:
+            if self.sign == self.NEGATIVE:
+                self.positive_only = True
+                placed = True
+            self.sign = self.POSITIVE
+        return placed
+
+    def is_oscillating(self, velocity):
+        return ((self.positive_only and velocity < 0.0)
+                or (self.negative_only and velocity > 0.0))
+
+    def restricted(self):
+        """`hasSignFlipped`, which despite the name is "a flag is in force"."""
+        return self.positive_only or self.negative_only
+
+
+class Oscillation(object):
+    """`OscillationCritic`, and the two reasons it cannot stop this rover.
+
+    **The first is the reset distance.** The flags clear as soon as the rover
+    has moved 5 cm or turned 0.2 rad from wherever it last reversed, and a
+    rover turning at the 0.68 rad/s this one commands covers 0.2 rad in three
+    control ticks. So a restriction lives for about three hundred
+    milliseconds, which is no obstacle at all to something reversing its turn
+    once a second.
+
+    **The second is worse and is not in this class**: `DWBLocalPlanner::setPlan`
+    calls `reset()` on every critic, and the behaviour tree hands the
+    controller a freshly planned path once a second. Every replan therefore
+    wipes the memory of the critic whose entire job is remembering. The replay
+    models that, because without it no honest copy of this controller is
+    possible.
+
+    Faithful to the aarch64 build on the rover: `setOscillationFlags` updates
+    the forward trend always and the rotational trend only while the forward
+    command is at or below `x_only_threshold`; the pose to measure from moves
+    only when a restriction was just placed; and the reset is consulted only
+    while some restriction is in force.
+    """
+
+    def __init__(self):
+        self.x = CommandTrend()
+        self.y = CommandTrend()
+        self.theta = CommandTrend()
+        self.prev_stationary = (0.0, 0.0, 0.0)
+        self.resets = 0
+
+    def reset(self):
+        self.x.reset()
+        self.y.reset()
+        self.theta.reset()
 
     def veto(self, vx, wz):
-        if self.positive_only and wz < 0.0:
-            return "Oscillation: trajectory is oscillating"
-        if self.negative_only and wz > 0.0:
+        """`scoreTrajectory`: all three dimensions, ungated by the threshold."""
+        if self.x.is_oscillating(vx) or self.theta.is_oscillating(wz):
             return "Oscillation: trajectory is oscillating"
         return ""
 
+    def _reset_available(self, x, y, yaw):
+        px, py, pyaw = self.prev_stationary
+        if OSCILLATION_RESET_DIST >= 0.0:
+            if (x - px) ** 2 + (y - py) ** 2 > OSCILLATION_RESET_DIST ** 2:
+                return True
+        if OSCILLATION_RESET_ANGLE >= 0.0:
+            # Deliberately unwrapped, because nav2 does not wrap it either: it
+            # subtracts two yaws straight and takes the magnitude. A rover
+            # crossing +/-pi therefore gets a free reset out of arithmetic.
+            if abs(yaw - pyaw) > OSCILLATION_RESET_ANGLE:
+                return True
+        return False
+
     def debrief(self, x, y, yaw, vx, wz):
-        """After a command is chosen: latch, or clear because the rover moved."""
-        if self.stationary is None:
-            self.stationary = (x, y, yaw)
-        sx, sy, syaw = self.stationary
-        if math.hypot(x - sx, y - sy) >= OSCILLATION_RESET_DIST \
-                or abs(wrap(yaw - syaw)) >= OSCILLATION_RESET_ANGLE:
-            self.reset()
-            self.stationary = (x, y, yaw)
-        if abs(vx) > X_ONLY_THRESHOLD:
+        """`debrief`, in the order the library does it."""
+        placed = self.x.update(vx)
+        if X_ONLY_THRESHOLD < 0.0 or abs(vx) <= X_ONLY_THRESHOLD:
+            placed = self.y.update(0.0) or placed
+            placed = self.theta.update(wz) or placed
+        if placed:
+            self.prev_stationary = (x, y, yaw)
+        if not (self.x.restricted() or self.y.restricted()
+                or self.theta.restricted()):
             return
-        if wz > 0.0:
-            self.positive_only = True
-        elif wz < 0.0:
-            self.negative_only = True
+        if self._reset_available(x, y, yaw):
+            self.reset()
+            self.resets += 1
+
+
+def rotate_to_goal(x, y, yaw, goal, vx, wz, end_yaw, goal_yaw=None):
+    """`RotateToGoalCritic`: inside the goal circle, only turning is allowed.
+
+    Its `prepare` sets an in-window flag when the rover is closer to the goal
+    than `xy_goal_tolerance`, and while that is set every candidate with any
+    translation at all is thrown out, so within 22 cm of the goal the sample
+    set collapses from thirty-three to the sixteen pivots. nav2.yaml already
+    records that as the reason a goal 23 cm out sat and shuffled; it has to be
+    modelled here or a replay of the last seconds of any drive disagrees with
+    the rover for a reason that has nothing to do with the fault.
+
+    Returns (score, veto reason). Outside the window it is silent.
+    """
+    if math.hypot(goal[0] - x, goal[1] - y) >= XY_GOAL_TOLERANCE:
+        return 0.0, ""
+    if abs(vx) > 1e-6:
+        return None, "RotateToGoal: nonrotation command near goal"
+    if goal_yaw is None:
+        return 0.0, ""
+    return abs(wrap(end_yaw - goal_yaw)) / SLOWING_FACTOR, ""
 
 
 def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
-             oscillation=None, path_values=None, goal_values=None):
+             oscillation=None, path_values=None, goal_values=None,
+             goal_yaw=None, path_look=None, goal_look=None):
     """Score every candidate, or say which critic threw it out.
 
     Returns the survivors as (score, vx, wz) and a tally of refusals by
@@ -520,6 +732,7 @@ def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
         path_values = flood(grid, [grid.cell_of(px, py) for px, py in path])
     if goal_values is None:
         goal_values = flood(grid, [grid.cell_of(*goal)])
+    near_goal = math.hypot(goal[0] - x, goal[1] - y) <= FORWARD_POINT_DISTANCE
     kept = []
     refused = collections.Counter()
     for vx, wz in twists(vx_now, wz_now):
@@ -528,27 +741,45 @@ def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
             if reason:
                 refused[reason] += 1
                 continue
-        poses = rollout(x, y, yaw, vx, wz)
+        poses = rollout(x, y, yaw, vx, wz, vx_now, wz_now)
+        end_x, end_y, end_yaw = poses[-1]
+        # The config's critic order is RotateToGoal, Oscillation,
+        # ObstacleFootprint, then the four map-grid ones, and the order is not
+        # decoration: `short_circuit_trajectory_evaluation` is true, so the
+        # first critic to throw is the one the log would name.
+        turn_score, reason = rotate_to_goal(x, y, yaw, goal, vx, wz, end_yaw,
+                                            goal_yaw)
+        if reason:
+            refused[reason] += 1
+            continue
         obstacle, reason = obstacle_footprint(grid, poses)
         if reason:
             refused[reason] += 1
             continue
-        end_x, end_y, end_yaw = poses[-1]
-        total = OBSTACLE_SCALE * obstacle
+        total = OBSTACLE_SCALE * obstacle + ROTATE_TO_GOAL_SCALE * turn_score
         failed = ""
+        # The order is the one nav2.yaml lists, because
+        # `short_circuit_trajectory_evaluation` is on and the first critic to
+        # throw is the one that gets the blame in the log and in the tally.
+        # `PathAlign` switches itself off within `forward_point_distance` of
+        # the local goal, because past the end of the path there is nothing
+        # left to line up with. Its scale, and only its scale, goes to zero;
+        # it still refuses a pose it cannot reach.
+        align_scale = 0.0 if near_goal else PATH_ALIGN_SCALE
         for name, values, point, scale in (
-                ("PathDist", path_values, (end_x, end_y), PATH_DIST_SCALE),
-                ("GoalDist", goal_values, (end_x, end_y), GOAL_DIST_SCALE),
-                ("PathAlign", path_values,
-                 forward_pose(end_x, end_y, end_yaw), PATH_ALIGN_SCALE),
                 ("GoalAlign", goal_values,
-                 forward_pose(end_x, end_y, end_yaw), GOAL_ALIGN_SCALE)):
+                 forward_pose(end_x, end_y, end_yaw, goal_look),
+                 GOAL_ALIGN_SCALE),
+                ("PathAlign", path_values,
+                 forward_pose(end_x, end_y, end_yaw, path_look), align_scale),
+                ("PathDist", path_values, (end_x, end_y), PATH_DIST_SCALE),
+                ("GoalDist", goal_values, (end_x, end_y), GOAL_DIST_SCALE)):
             value, reason = map_grid_score(grid, values, point[0], point[1],
                                            name)
             if reason:
                 failed = reason
                 break
-            total += scale * value
+            total += MAP_GRID_RESCALE * scale * value
         if failed:
             refused[failed] += 1
             continue
@@ -633,8 +864,38 @@ def plant(vx, wz):
     return vx, wz
 
 
+class Chassis(object):
+    """What the rover does with a command, rather than what it was told to do.
+
+    The model used to assume the wheels obeyed instantly and exactly, and with
+    that assumption the controller is stable at every corridor width and start
+    pose worth trying -- which is why three attempts at this fault found
+    nothing. **Two tenths of a second of delay and a factor of two and a half
+    are the whole difference**, and neither is a Nav2 setting, so no amount of
+    reading nav2.yaml would have turned them up.
+
+    Set `gain` to 1 and `dead_time` to 0 to get the old, obedient rover back;
+    that comparison is the experiment, not a fallback.
+    """
+
+    def __init__(self, gain=TURN_GAIN, dead_time=DEAD_TIME_S,
+                 dt=1.0 / CONTROLLER_FREQUENCY):
+        self.gain = gain
+        self.dt = dt
+        self.queue = [(0.0, 0.0)] * max(0, int(round(dead_time / dt)))
+
+    def step(self, vx_cmd, wz_cmd):
+        """The twist on the wheels now, given the one just commanded."""
+        # The mixer's floors first, because they act on the command; then the
+        # delay, because it is downstream of everything; then the gain, which
+        # is the chassis itself out-running its own calibration.
+        vx, wz = plant(vx_cmd, wz_cmd)
+        self.queue.append((vx, wz * self.gain))
+        return self.queue.pop(0)
+
+
 def run(width_m, seconds=12.0, doorway=False, start_offset=0.30,
-        start_heading_deg=90.0):
+        start_heading_deg=90.0, gain=TURN_GAIN, dead_time=DEAD_TIME_S):
     """The controller, the abort and the costmap clear, at 10 Hz.
 
     The default start is the one the sweep says is the trap: 30 cm off the
@@ -653,8 +914,12 @@ def run(width_m, seconds=12.0, doorway=False, start_offset=0.30,
     oscillation = Oscillation()
 
     x, y, yaw = 0.0, start_offset, math.radians(start_heading_deg)
+    start = (x, y)
     real = corridor(width_m, doorway=doorway, clear_at=(x, y, yaw))
     grid = real
+    chassis = Chassis(gain, dead_time)
+    turned = 0.0
+    travelled = 0.0
     vx_now = wz_now = 0.0
     dt = 1.0 / CONTROLLER_FREQUENCY
     dead_since = None
@@ -694,7 +959,7 @@ def run(width_m, seconds=12.0, doorway=False, start_offset=0.30,
         else:
             dead_since = None
             _, vx_cmd, wz_cmd = kept[0]
-        vx, wz = plant(vx_cmd, wz_cmd)
+        vx, wz = chassis.step(vx_cmd, wz_cmd)
         sign = 0 if abs(wz) < 1e-6 else (1 if wz > 0 else -1)
         if sign and last_sign and sign != last_sign:
             flips += 1
@@ -703,15 +968,23 @@ def run(width_m, seconds=12.0, doorway=False, start_offset=0.30,
                              math.degrees(abs(wz))))
         if sign:
             last_sign = sign
-        oscillation.debrief(x, y, yaw, vx, wz)
+        # nav2 debriefs the critic with what it *commanded*, not with what the
+        # wheels did about it -- the critic never sees the plant at all.
+        oscillation.debrief(x, y, yaw, vx_cmd, wz_cmd)
         x += vx * math.cos(yaw) * dt
         y += vx * math.sin(yaw) * dt
         yaw = wrap(yaw + wz * dt)
+        travelled += abs(vx) * dt
+        turned += abs(wz) * dt
         vx_now, wz_now = vx, wz
         t += dt
+    net = math.hypot(x - start[0], y - start[1])
     return {"x": x, "y": y, "yaw_deg": math.degrees(yaw), "aborts": aborts,
             "clears": clears, "dead_ticks": dead_ticks, "flips": flips,
-            "events": events, "ticks": int(seconds * CONTROLLER_FREQUENCY)}
+            "events": events, "ticks": int(seconds * CONTROLLER_FREQUENCY),
+            "net": net, "travelled": travelled,
+            "turned_deg": math.degrees(turned),
+            "stuck": net < 0.25 and math.degrees(turned) > 90.0}
 
 
 def render_run(width_m, result, offset, heading):

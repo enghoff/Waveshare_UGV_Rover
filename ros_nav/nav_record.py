@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Record everything a failing drive is made of, so it can be replayed at a desk.
+
+    python3 nav_record.py --seconds 180 --out /tmp/episode.json
+
+**Why this exists.** Three attempts at this rover's "drives but goes nowhere"
+fault have been built on invented geometry, and each one reproduced something
+that turned out not to be what the rover was doing. A simulation is only worth
+anything if it can be checked against what the real controller actually
+commanded, tick by tick, from the same inputs. This records those inputs and
+that output together:
+
+    /plan                 the route the controller was handed, 1 Hz
+    local_costmap         what it was avoiding, 2 Hz, in the odom frame
+    odom -> base_link     where it thought it was, 10 Hz
+    map -> base_link      and where that was on the map
+    /cmd_vel_nav          what DWB decided, before the velocity smoother
+
+`dwb_replay.py` reads the result and re-scores every tick offline. If its
+choice matches the recorded `/cmd_vel_nav`, the model is a fair copy of the
+controller and can be used to test a change; if it does not, the model is
+wrong and nothing built on it means anything. That check is the whole point.
+
+**It records the local costmap and not the global one.** The controller reads
+the local, it is 60x60 rather than 283x276, and at 2 Hz for three minutes the
+global would be three hundred megabytes of mostly unchanged cells. The global
+is written once at the start, for context.
+
+Nothing here publishes. It is one more Python node on a board with four cores
+and no spare ones, so keep the recordings short.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import math
+import os
+import sys
+import time
+
+import rclpy
+from geometry_msgs.msg import Twist
+from nav2_msgs.srv import GetCostmap
+from nav_msgs.msg import Path
+from rclpy.node import Node
+from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
+                       QoSReliabilityPolicy)
+from tf2_ros import Buffer, TransformListener
+
+POSE_HZ = 10.0
+COSTMAP_HZ = 2.0
+
+
+def yaw_of(q):
+    return math.atan2(2.0 * (q.w * q.z), 1.0 - 2.0 * q.z * q.z)
+
+
+class Recorder(Node):
+    """Subscribes to everything and keeps it in memory until the end."""
+
+    def __init__(self):
+        super().__init__("nav_record")
+        self.started = time.monotonic()
+        self.plans = []
+        self.costmaps = []
+        self.poses = []
+        self.commands = []
+        self.global_costmap = None
+
+        # The plan is published latched-ish by bt_navigator; take it reliable.
+        self.create_subscription(Path, "plan", self.on_plan, 10)
+        self.create_subscription(Twist, "cmd_vel_nav", self.on_cmd, 10)
+        self.buffer = Buffer()
+        TransformListener(self.buffer, self)
+        self.costmap_client = self.create_client(
+            GetCostmap, "/local_costmap/get_costmap")
+        self.global_client = self.create_client(
+            GetCostmap, "/global_costmap/get_costmap")
+        self.create_timer(1.0 / POSE_HZ, self.sample_pose)
+        self.create_timer(1.0 / COSTMAP_HZ, self.sample_costmap)
+        self.pending = None
+
+    def stamp(self):
+        return round(time.monotonic() - self.started, 3)
+
+    def on_plan(self, msg):
+        self.plans.append({
+            "t": self.stamp(),
+            "frame": msg.header.frame_id,
+            "poses": [[round(p.pose.position.x, 4), round(p.pose.position.y, 4),
+                       round(yaw_of(p.pose.orientation), 4)]
+                      for p in msg.poses],
+        })
+
+    def on_cmd(self, msg):
+        self.commands.append({"t": self.stamp(),
+                              "vx": round(msg.linear.x, 4),
+                              "wz": round(msg.angular.z, 4)})
+
+    def sample_pose(self):
+        row = {"t": self.stamp()}
+        for frame in ("odom", "map"):
+            try:
+                t = self.buffer.lookup_transform(frame, "base_link",
+                                                 rclpy.time.Time())
+            except Exception:
+                continue
+            row[frame] = [round(t.transform.translation.x, 4),
+                          round(t.transform.translation.y, 4),
+                          round(yaw_of(t.transform.rotation), 4)]
+        if len(row) > 1:
+            self.poses.append(row)
+
+    def sample_costmap(self):
+        """One GetCostmap in flight at a time, so a slow answer cannot pile up."""
+        if self.pending is not None:
+            if not self.pending[1].done():
+                return
+            answer = self.pending[1].result()
+            if answer is not None:
+                self.costmaps.append(self.pack(self.pending[0], answer.map))
+            self.pending = None
+        if not self.costmap_client.service_is_ready():
+            return
+        self.pending = (self.stamp(),
+                        self.costmap_client.call_async(GetCostmap.Request()))
+
+    @staticmethod
+    def pack(stamp, grid):
+        return {
+            "t": stamp,
+            "width": grid.metadata.size_x,
+            "height": grid.metadata.size_y,
+            "resolution": round(grid.metadata.resolution, 4),
+            "origin": [round(grid.metadata.origin.position.x, 4),
+                       round(grid.metadata.origin.position.y, 4)],
+            "data": base64.b64encode(bytes(bytearray(
+                c & 0xFF for c in grid.data))).decode("ascii"),
+        }
+
+    def fetch_global(self):
+        if not self.global_client.wait_for_service(timeout_sec=5.0):
+            return
+        future = self.global_client.call_async(GetCostmap.Request())
+        rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
+        if future.result() is not None:
+            self.global_costmap = self.pack(self.stamp(), future.result().map)
+
+    def episode(self):
+        return {
+            "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "local costmap is in the odom frame; the plan is in map",
+            "plans": self.plans,
+            "costmaps": self.costmaps,
+            "poses": self.poses,
+            "commands": self.commands,
+            "global_costmap": self.global_costmap,
+        }
+
+
+def turning_of(poses, floor=0.01):
+    """Heading actually turned, with the noise floor taken out.
+
+    Summing every |delta yaw| looks right and is not: at 10 Hz over five
+    minutes it adds up three thousand samples of gyro noise and reports
+    thirty-four degrees of turning for a rover that never moved. That would
+    quietly break the one test that says whether a recording is worth
+    analysing. Anything under half a degree between samples is not a turn.
+    """
+    total = 0.0
+    for a, b in zip(poses, poses[1:]):
+        step = abs(math.atan2(math.sin(b[2] - a[2]), math.cos(b[2] - a[2])))
+        if step >= floor:
+            total += step
+    return total
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--seconds", type=float, default=180.0)
+    parser.add_argument("--out", default="/tmp/episode.json")
+    args = parser.parse_args()
+
+    rclpy.init()
+    node = Recorder()
+    node.fetch_global()
+    print("recording %.0f s to %s -- drive the rover now" % (args.seconds,
+                                                             args.out),
+          flush=True)
+    end = time.monotonic() + args.seconds
+    last = 0
+    while time.monotonic() < end:
+        rclpy.spin_once(node, timeout_sec=0.05)
+        done = int(time.monotonic() - node.started)
+        if done != last and done % 30 == 0:
+            print("  %3ds  %d plans, %d costmaps, %d poses, %d commands"
+                  % (done, len(node.plans), len(node.costmaps),
+                     len(node.poses), len(node.commands)), flush=True)
+            last = done
+
+    episode = node.episode()
+    with open(args.out, "w") as handle:
+        json.dump(episode, handle)
+    size = os.path.getsize(args.out) / 1e6
+    print("wrote %s, %.1f MB: %d plans, %d costmaps, %d poses, %d commands"
+          % (args.out, size, len(episode["plans"]), len(episode["costmaps"]),
+             len(episode["poses"]), len(episode["commands"])))
+    moved = 0.0
+    poses = [p["odom"] for p in episode["poses"] if "odom" in p]
+    for a, b in zip(poses, poses[1:]):
+        moved += math.hypot(b[0] - a[0], b[1] - a[1])
+    if poses:
+        net = math.hypot(poses[-1][0] - poses[0][0], poses[-1][1] - poses[0][1])
+        turned = turning_of(poses)
+        print("the rover drove %.2f m of path, turned %.0f deg, and finished "
+              "%.2f m from where it started" % (moved, math.degrees(turned),
+                                                net))
+        if moved > 0.3 and net < 0.3:
+            print("that is the fault: it moved and did not go anywhere")
+    node.destroy_node()
+    rclpy.shutdown()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
