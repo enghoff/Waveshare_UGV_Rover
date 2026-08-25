@@ -136,6 +136,13 @@ X_ONLY_THRESHOLD = 0.05
 RESOLUTION = 0.05
 #: What `MapGridCritic::getScale` does to every one of the four.
 MAP_GRID_RESCALE = RESOLUTION * 0.5
+#: And what `ObstacleFootprintCritic::getScale` does to the obstacle critic,
+#: which is *not* the same thing and was the model's other scale error. Its
+#: header on the rover reads `return costmap_->getResolution() * scale_;`,
+#: where the `BaseObstacleCritic` it replaced inherited the plain `scale_`.
+#: So the swap to a footprint check quietly divided the weight on obstacle cost
+#: by twenty, on top of the deliberate 0.02 -> 0.005 cut.
+OBSTACLE_RESCALE = RESOLUTION
 INFLATION_RADIUS = 0.45
 COST_SCALING_FACTOR = 3.0
 
@@ -201,6 +208,31 @@ SPIN_DIST = 1.57
 BACKUP_DIST = 0.30
 BACKUP_SPEED = 0.15
 
+#: **`MapGridCritic`'s two special cell values, which are not sentinels.**
+#:
+#: Read out of the rover's own `libdwb_critics.so` rather than assumed.
+#: `MapGridCritic::reset` converts the costmap's cell count to a double, adds
+#: one, and stores the pair::
+#:
+#:     ucvtf d0, x1            ; obstacle_score_   = number of cells
+#:     fmov  d30, #1.0
+#:     fadd  d30, d0, d30      ; unreachable_score_ = cells + 1
+#:     stp   d0, d30, [x19, #160]
+#:
+#: So on this rover's 3 m window at 5 cm they are 3600 and 3601, and they are
+#: *scores* rather than flags. That matters because two of the four map-grid
+#: critics do not refuse a pose that lands on one -- they return the number.
+#: A nose pointing into a wall is then ruinously expensive and still legal,
+#: which is the difference between a controller that picks the least bad option
+#: and a model that finds nothing to pick at all.
+def special_scores(grid):
+    """`obstacle_score_`, `unreachable_score_` for a costmap of this size."""
+    cells = float(grid.width * grid.height)
+    return cells, cells + 1.0
+
+
+#: Kept only so the flood can fill an array before it knows better; every
+#: comparison against them goes through `special_scores` for the real values.
 OBSTACLE_SCORE = -1.0
 UNREACHABLE_SCORE = -2.0
 
@@ -256,19 +288,28 @@ MIN_SPEED_XY = 0.1
 MIN_SPEED_THETA = 0.21
 
 
-def is_valid_speed(vx, wz):
+def is_valid_speed(vx, wz, min_speed_xy=None, min_speed_theta=None):
     """`KinematicsHandler::isValidSpeed`: too slow in xy *and* in theta is out.
 
     A standing turn under the mixer floor fails both tests and is dropped. A
     0.40 m/s sample with a 3 deg/s steer fails only the theta test, so it stays
     -- steering while rolling has no stiction floor of that kind.
+
+    The two floors are arguments and not just constants because they are the
+    setting most likely to differ between a recording and the config in front
+    of you. They decide which candidates *exist*, so a replay that assumes
+    today's pair against a drive recorded under yesterday's is not scoring the
+    same controller at all -- it is asking why the rover chose a twist the
+    model never offered.
     """
-    if math.hypot(vx, 0.0) < MIN_SPEED_XY and abs(wz) < MIN_SPEED_THETA:
+    floor_xy = MIN_SPEED_XY if min_speed_xy is None else min_speed_xy
+    floor_theta = MIN_SPEED_THETA if min_speed_theta is None else min_speed_theta
+    if math.hypot(vx, 0.0) < floor_xy and abs(wz) < floor_theta:
         return False
     return True
 
 
-def twists(vx_now=0.0, wz_now=0.0):
+def twists(vx_now=0.0, wz_now=0.0, min_speed_xy=None, min_speed_theta=None):
     """Every candidate DWB scores this tick, after the mixer floor.
 
     The pair (0, 0) is dropped by `nav_2d_utils::isValidSpeed`. Standing
@@ -282,7 +323,8 @@ def twists(vx_now=0.0, wz_now=0.0):
                               ACC_LIM_THETA, DECEL_LIM_THETA, SIM_TIME,
                               VTHETA_SAMPLES)
     return [(vx, wz) for vx in xs for wz in thetas
-            if (abs(vx) > 1e-9 or abs(wz) > 1e-9) and is_valid_speed(vx, wz)]
+            if (abs(vx) > 1e-9 or abs(wz) > 1e-9)
+            and is_valid_speed(vx, wz, min_speed_xy, min_speed_theta)]
 
 
 def rollout(x, y, yaw, vx, wz, vx_now=None, wz_now=None):
@@ -553,16 +595,39 @@ def flood(grid, seeds):
     return values
 
 
-def map_grid_score(grid, values, x, y, name):
-    """`MapGridCritic::scorePose`, which is a point test, not a body test."""
+def map_grid_score(grid, values, x, y, name, stop_on_failure=True):
+    """`MapGridCritic::scorePose`, which is a point test, not a body test.
+
+    **Only two of the four map-grid critics can refuse anything, and that was
+    the model's largest error.** `MapGridCritic::onInit` sets `stop_on_failure_`
+    true, and both align critics overwrite it with zero immediately after
+    calling their base -- in `libdwb_critics.so`, at offset 176 of the critic::
+
+        MapGridCritic::onInit    mov  w0, #0x1 ; strb w0, [x19, #176]
+        PathAlignCritic::onInit  blr  x1      ; strb wzr, [x19, #176]
+        GoalAlignCritic::onInit  blr  x1      ; strb wzr, [x19, #176]
+
+    `scoreTrajectory` reads that byte twice. It decides whether the obstacle
+    and unreachable values throw, and it decides how much of the rollout is
+    looked at: with the flag clear the loop starts at `size - 1`, so an align
+    critic sees the last pose and nothing else.
+
+    Going off the grid is different and refuses either way, because that throw
+    lives in `scorePose` where the flag cannot reach it.
+    """
     col, row = grid.cell_of(x, y)
     if not (0 <= col < grid.width and 0 <= row < grid.height):
         return None, "%s: trajectory goes off grid" % name
     value = values[row * grid.width + col]
+    obstacle, unreachable = special_scores(grid)
     if value == OBSTACLE_SCORE:
-        return None, "%s: trajectory hits obstacle" % name
+        if stop_on_failure:
+            return None, "%s: trajectory hits obstacle" % name
+        return obstacle, ""
     if value == UNREACHABLE_SCORE:
-        return None, "%s: trajectory hits unreachable area" % name
+        if stop_on_failure:
+            return None, "%s: trajectory hits unreachable area" % name
+        return unreachable, ""
     return value, ""
 
 
@@ -740,9 +805,40 @@ def rotate_to_goal(x, y, yaw, goal, vx, wz, end_yaw, goal_yaw=None):
     return abs(wrap(end_yaw - goal_yaw)) / SLOWING_FACTOR, ""
 
 
+def last_pose_on_costmap(grid, path):
+    """`GoalDistCritic::getLastPoseOnCostmap`, and leaving it out broke the model.
+
+    `GoalDist` and `GoalAlign` do not flood from the end of the plan. They flood
+    from the last point of it that `worldToMap` can still convert -- walking
+    forward, skipping any lead-in that is off the window, and stopping at the
+    first point that falls off it again.
+
+    The distinction is not academic on this rover. `transformGlobalPlan` keeps
+    plan points within `max(width, height) * resolution / 2` of the robot, which
+    is 1.5 m, while the window those points have to land in is a 3 m *square*
+    that the rolling costmap re-centres on cell boundaries rather than on the
+    robot. So the far end of the pruned plan sits exactly on the boundary and
+    routinely falls just outside it: on the recorded drive, 63 of 89 ticks.
+    Seeding the flood from that point instead means seeding it from nothing,
+    every cell comes back unreachable, and a model that then let those critics
+    refuse candidates threw out all of them -- on exactly those 63 ticks.
+    """
+    found = None
+    started = False
+    for px, py in path:
+        col, row = grid.cell_of(px, py)
+        if 0 <= col < grid.width and 0 <= row < grid.height:
+            found = (col, row)
+            started = True
+        elif started:
+            break
+    return found
+
+
 def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
              oscillation=None, path_values=None, goal_values=None,
-             goal_yaw=None, path_look=None, goal_look=None):
+             goal_yaw=None, path_look=None, goal_look=None,
+             min_speed_xy=None, min_speed_theta=None):
     """Score every candidate, or say which critic threw it out.
 
     Returns the survivors as (score, vx, wz) and a tally of refusals by
@@ -754,11 +850,12 @@ def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
     if path_values is None:
         path_values = flood(grid, [grid.cell_of(px, py) for px, py in path])
     if goal_values is None:
-        goal_values = flood(grid, [grid.cell_of(*goal)])
+        seed = last_pose_on_costmap(grid, path)
+        goal_values = flood(grid, [seed] if seed else [])
     near_goal = math.hypot(goal[0] - x, goal[1] - y) <= FORWARD_POINT_DISTANCE
     kept = []
     refused = collections.Counter()
-    for vx, wz in twists(vx_now, wz_now):
+    for vx, wz in twists(vx_now, wz_now, min_speed_xy, min_speed_theta):
         if oscillation is not None:
             reason = oscillation.veto(vx, wz)
             if reason:
@@ -779,28 +876,43 @@ def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
         if reason:
             refused[reason] += 1
             continue
-        total = OBSTACLE_SCALE * obstacle + ROTATE_TO_GOAL_SCALE * turn_score
+        total = (OBSTACLE_RESCALE * OBSTACLE_SCALE * obstacle
+                 + ROTATE_TO_GOAL_SCALE * turn_score)
         failed = ""
         # The order is the one nav2.yaml lists, because
         # `short_circuit_trajectory_evaluation` is on and the first critic to
         # throw is the one that gets the blame in the log and in the tally.
         # `PathAlign` switches itself off within `forward_point_distance` of
         # the local goal, because past the end of the path there is nothing
-        # left to line up with. Its scale, and only its scale, goes to zero;
-        # it still refuses a pose it cannot reach.
+        # left to line up with. Its scale, and only its scale, goes to zero.
         align_scale = 0.0 if near_goal else PATH_ALIGN_SCALE
-        for name, values, point, scale in (
-                ("GoalAlign", goal_values,
-                 forward_pose(end_x, end_y, end_yaw, goal_look),
-                 GOAL_ALIGN_SCALE),
-                ("PathAlign", path_values,
-                 forward_pose(end_x, end_y, end_yaw, path_look), align_scale),
-                ("PathDist", path_values, (end_x, end_y), PATH_DIST_SCALE),
-                ("GoalDist", goal_values, (end_x, end_y), GOAL_DIST_SCALE)):
-            value, reason = map_grid_score(grid, values, point[0], point[1],
-                                           name)
-            if reason:
-                failed = reason
+        # `stops` is `stop_on_failure_`, and it changes both what a critic may
+        # refuse and how much of the rollout it reads -- see `map_grid_score`.
+        for name, values, scale, stops, look in (
+                ("GoalAlign", goal_values, GOAL_ALIGN_SCALE, False, goal_look),
+                ("PathAlign", path_values, align_scale, False, path_look),
+                ("PathDist", path_values, PATH_DIST_SCALE, True, None),
+                ("GoalDist", goal_values, GOAL_DIST_SCALE, True, None)):
+            value = 0.0
+            if stops:
+                # Every pose of the rollout is tested and any one of them can
+                # refuse the candidate; the score kept is the last one's.
+                for px, py, _pyaw in poses:
+                    value, reason = map_grid_score(grid, values, px, py, name,
+                                                   True)
+                    if reason:
+                        failed = reason
+                        break
+            else:
+                # The flag is clear, so the loop starts at `size - 1`: the last
+                # pose, read at the forward point, and nothing it finds there
+                # can refuse the candidate.
+                point = forward_pose(end_x, end_y, end_yaw, look)
+                value, reason = map_grid_score(grid, values, point[0], point[1],
+                                               name, False)
+                if reason:
+                    failed = reason
+            if failed:
                 break
             total += MAP_GRID_RESCALE * scale * value
         if failed:

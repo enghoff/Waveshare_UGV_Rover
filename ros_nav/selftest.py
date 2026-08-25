@@ -773,6 +773,20 @@ def test_configs_agree():
           "nav2_navfn_planner::NavfnPlanner" in settings, False)
     check("Hybrid-A* is not the configured planner either",
           "nav2_smac_planner::SmacPlannerHybrid" in settings, False)
+    # **The align look-ahead, which is a controller setting but belongs next to
+    # the planner ones because it decides whether the plan gets followed.**
+    # An align critic clears `stop_on_failure_`, so a nose point it cannot
+    # reach is not refused, it is charged `unreachable_score_` -- the costmap's
+    # cell count plus one, 2881 points once scaled. At 0.8 m that landed on a
+    # median 26% of the candidates in a tick and swamped every other critic
+    # (obstacle cost moves the answer by 0.02 points; this moves it by 2881).
+    # Driven round the loop from twelve starts in each recording, 0.325 got
+    # somewhere 24 times of 24 and 0.8 managed 5. See ros_nav/trap_sim.py.
+    check("the align look-ahead is back at nav2's default, not the 0.8 that trapped it",
+          "PathAlign.forward_point_distance: 0.325" in settings
+          and "GoalAlign.forward_point_distance: 0.325" in settings, True)
+    check("...and neither align critic is left at 0.8",
+          "forward_point_distance: 0.8" in settings, False)
     check("in-place turns are expensive, so a doorway that takes an arc gets one",
           "rotation_penalty: 5.0" in settings, True)
     check("...and reverse expansion is off, because the lidar looks forwards",
@@ -1393,6 +1407,68 @@ def test_lattice_respects_the_dwb_envelope():
           linfo["length_m"] < 2.0 * ninfo["length_m"], True)
 
 
+def test_dwb_drives_the_body_into_a_door_frame():
+    """The after-floor doorway recording, as a pose test, not a closed loop.
+
+    Mixer floor stopped the pivoting. The rover then drove 3.5 m and sat
+    next to a door frame for fifty seconds. Last driving command was
+    0.40 m/s with the rectangle already in the inscribed ring, the nose
+    4 cm from lethal, and 1.1 m still to the goal. Then one (0, 0).
+
+    The synthetic 0.80 m door is that last driving tick without the
+    recording: 14 cm off centre, 20 degrees toward the jamb. Frozen-map
+    closed loops are how the 0.8 m look-ahead shipped on worthless
+    evidence; this scores the pose once. The recording, when present,
+    is the sit: PoseProgressChecker would have fired, and the model
+    still had a forward candidate on the stop tick, so FollowPath had
+    already ended.
+    """
+    section("DWB will drive the body into a door-frame halo")
+    sys.path.insert(0, HERE)
+    try:
+        import jam_repro
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import jam_repro: %s" % exc)
+        return
+
+    result = jam_repro.jam_reproduction()
+    a = result["approach"]
+    check("the body already covers the inscribed ring of the jamb",
+          a["ring"] > 0, True)
+    check("...without covering a lethal cell", a["lethal"], 0)
+    check("...while the centre cell is still a legal planner step",
+          a["centre"] < 253, True)
+    check("DWB still has a legal candidate", a["legal"] > 0, True)
+    check("...and the one it picks is 0.40 m/s forward",
+          a["best_vx"], 0.40, tolerance=0.01)
+    check("there is no reverse sample to back out with",
+          a["reverse_samples"], 0)
+    check("...even though 30 cm behind is clear",
+          a["room_behind_m"], 0.30, tolerance=0.01)
+    check("the nose is about 4 cm from lethal, as on the rover",
+          a["nose_lethal_m"], 0.22, tolerance=0.03)
+
+    live = result["recording"]
+    if live is None:
+        print("  .... no recordings/doorway-2026-08-25-after-floor.json")
+        return
+    check("the recording's last drive is still 0.40 m/s",
+          live["last_drive_vx"], 0.40, tolerance=0.01)
+    check("...with the body already in the ring and not in lethal",
+          live["ring"] > 0 and live["lethal"] == 0, True)
+    check("...and more than a goal-tolerance from the plan's end",
+          live["goal_m"] > 0.22, True)
+    check("then it sat less than 20 cm in fifty seconds",
+          live["sat_m"] < 0.20 and live["sat_s"] > 40.0, True)
+    check("PoseProgressChecker would have called that stuck",
+          live["stuck_at"] is not None, True)
+    if live["stuck_at"] is not None:
+        check("...inside one 15 s window of the last drive",
+              live["stuck_at"] - live["last_drive_t"] < 16.0, True)
+    check("on the (0, 0) tick the model still had a legal forward",
+          (live["model_legal_at_stop"] or 0) > 0, True)
+
+
 def test_discovery_stays_on_this_board():
     """A dead radio must not be able to take the ROS graph with it.
 
@@ -1475,6 +1551,7 @@ def main():
     test_progress_is_not_only_translation()
     test_dwb_will_not_sample_a_turn_the_wheels_cannot_hold()
     test_lattice_respects_the_dwb_envelope()
+    test_dwb_drives_the_body_into_a_door_frame()
     test_discovery_stays_on_this_board()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0

@@ -86,7 +86,33 @@ def settings_of(episode):
         path_look = LEGACY_LOOK_AHEAD
     if goal_look is None:
         goal_look = LEGACY_LOOK_AHEAD
-    return path_look, goal_look, bool(params)
+    floor_xy = params.get("FollowPath.min_speed_xy")
+    floor_theta = params.get("FollowPath.min_speed_theta")
+    return path_look, goal_look, bool(params), floor_xy, floor_theta
+
+
+def sample_floors_of(episode, floor_xy, floor_theta):
+    """The speed floors this drive was recorded under, inferred if not saved.
+
+    The floors decide which twists DWB generates, so getting them wrong does
+    not shift the scores -- it removes the rover's own choice from the list and
+    the model is left explaining a candidate it never had. Recordings made
+    before `nav_record.py` saved them are still usable, because the commands
+    give the answer away: a drive containing a standing turn at 0.052 rad/s was
+    plainly not made under a floor of 0.21, and the slowest standing turn in it
+    is an upper bound on the floor that was in force.
+    """
+    if floor_xy is not None and floor_theta is not None:
+        return floor_xy, floor_theta, "recorded"
+    standing = [abs(c["wz"]) for c in episode["commands"]
+                if abs(c["vx"]) < 1e-6 and abs(c["wz"]) > 1e-6]
+    if not standing:
+        return floor_xy, floor_theta, "assumed (no standing turns to go on)"
+    slowest = min(standing)
+    if floor_theta is None and slowest < dwb.MIN_SPEED_THETA - 1e-9:
+        return 0.0, 0.0, ("inferred: a standing turn at %.3f rad/s is in the "
+                          "recording, so no floor was in force" % slowest)
+    return floor_xy, floor_theta, "assumed (matches today's)"
 
 
 def turning_of(poses, floor=0.01):
@@ -210,7 +236,9 @@ def same(a, b):
 
 def replay(episode, verbose=False, limit=None):
     """Score every recorded tick and compare with what DWB actually sent."""
-    path_look, goal_look, known = settings_of(episode)
+    path_look, goal_look, known, floor_xy, floor_theta = settings_of(episode)
+    floor_xy, floor_theta, floor_note = sample_floors_of(
+        episode, floor_xy, floor_theta)
     rows = ticks(episode)
     if limit:
         rows = rows[:limit]
@@ -262,7 +290,9 @@ def replay(episode, verbose=False, limit=None):
                                      vx_now=last_vx, wz_now=last_wz,
                                      oscillation=oscillation,
                                      path_look=path_look,
-                                     goal_look=goal_look)
+                                     goal_look=goal_look,
+                                     min_speed_xy=floor_xy,
+                                     min_speed_theta=floor_theta)
         want = (row["command"]["vx"], row["command"]["wz"])
         blame.update(refused)
         if not kept:
@@ -298,6 +328,7 @@ def replay(episode, verbose=False, limit=None):
     gaps.sort()
     spreads.sort()
     return {"look": (path_look, goal_look), "look_known": known,
+            "floors": (floor_xy, floor_theta), "floor_note": floor_note,
             "ticks": len(rows), "agreed": agreed, "model_empty": model_empty,
             "both_empty": both_empty, "blame": blame, "replans": replans,
             "latch_resets": oscillation.resets, "same_twist": same_twist,
@@ -461,6 +492,11 @@ def main():
           % (result["look"][0], result["look"][1],
              "" if result["look_known"] else
              "  (assumed -- this recording predates saving them)"))
+    floors = result["floors"]
+    print("   standing-turn floor %s / %s rad/s  (%s)"
+          % ("--" if floors[0] is None else "%.2f m/s" % floors[0],
+             "--" if floors[1] is None else "%.2f" % floors[1],
+             result["floor_note"]))
     print("   the rover's own choice scored within %.2f of the model's best on "
           "%d of them (%.0f%%)" % (SCORE_TOLERANCE, result["agreed"], share))
     print("   median gap %.3f, p90 %.3f, worst %.3f"
@@ -494,7 +530,7 @@ def main():
     print("obeying it, which is the other half of this fault.")
     if args.loop or args.drive:
         print()
-        was = settings_of(episode)
+        was = settings_of(episode)[:3]
         print("the same costmap and the same plan, driven by the model at the "
               "look-ahead")
         print("in corridor_sim.py now (%.2f m), against the %.2f m the rover "

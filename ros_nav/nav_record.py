@@ -78,6 +78,16 @@ WANTED_PARAMS = [
     "FollowPath.max_vel_theta",
     "FollowPath.acc_lim_x",
     "FollowPath.acc_lim_theta",
+    # **The two that decide which candidates exist at all.** Everything above
+    # changes how a candidate scores; these change whether DWB ever offers it.
+    # A drive recorded under one pair and replayed under another is not a
+    # disagreement about scoring, it is the model being asked why the rover
+    # picked a twist that was never on the list -- and it looks exactly like a
+    # broken critic. Both recordings made before this line existed contain
+    # standing turns at 0.052 rad/s, which today's floor drops: 62% of the
+    # commands in one of them and 45% in the other.
+    "FollowPath.min_speed_xy",
+    "FollowPath.min_speed_theta",
 ]
 
 
