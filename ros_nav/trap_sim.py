@@ -4,7 +4,8 @@
     python3 trap_sim.py --turn        # where a pivot does not fit
     python3 trap_sim.py --weights     # what actually decides a tick
     python3 trap_sim.py --look        # sweep the align look-ahead
-    python3 trap_sim.py               # all three
+    python3 trap_sim.py --bias        # is driving or turning being punished?
+    python3 trap_sim.py               # all four
 
 **The three complaints this exists to explain.** The rover gets stuck turning
 in a corridor; it drives too close to a corner and stops there; and once it is
@@ -269,15 +270,73 @@ def look_sweep(episode, looks):
     return table
 
 
+def drive_bias(episode, look=None):
+    """Does the unreachable charge fall harder on driving than on pivoting?
+
+    **This is a tuning question and not a law, and the answer flips.** A
+    driving rollout ends `sim_time * max_vel_x` -- 0.32 m -- further into the
+    room, so the point the align critics judge it on is that much further out;
+    a pivot ends where the rover already stands, which is on the path by
+    definition. Which of the two ends up over a wall therefore depends on the
+    look-ahead and on the geometry in front of the rover, and on the corridor
+    recording it reverses between 0.45 and 0.60:
+
+        look     driving   pivoting
+        0.200      74%        1%
+        0.325      77%       16%
+        0.450      74%       65%
+        0.600      13%       73%
+        0.800       5%       60%
+
+    Whichever side is being punished is the side the rover stops choosing. At
+    0.325 in that corridor it was driving, so the rover turned on the spot for
+    93% of a minute with clear floor ahead. On the doorway recording the same
+    sweep never exceeds eight points either way, so do not read a number off
+    one recording and treat it as the rover's character.
+    """
+    look = dwb.FORWARD_POINT_DISTANCE if look is None else look
+    drive_hit = drive_n = pivot_hit = pivot_n = 0
+    drive_worse = ticks = 0
+    for grid, path, x, y, yaw, vx0, wz0, _osc in recorded_ticks(episode):
+        values = dwb.flood(grid, [grid.cell_of(px, py) for px, py in path])
+        big = grid.width * grid.height
+        d_hit = d_n = p_hit = p_n = 0
+        for vx, wz in dwb.twists(vx0, wz0):
+            end_x, end_y, end_yaw = dwb.rollout(x, y, yaw, vx, wz, vx0, wz0)[-1]
+            nose = dwb.forward_pose(end_x, end_y, end_yaw, look)
+            value, _ = dwb.map_grid_score(grid, values, nose[0], nose[1],
+                                          "PathAlign", False)
+            if value is None:
+                continue
+            charged = 1 if value >= big else 0
+            if abs(vx) > 1e-9:
+                d_n += 1
+                d_hit += charged
+            else:
+                p_n += 1
+                p_hit += charged
+        drive_hit += d_hit
+        drive_n += d_n
+        pivot_hit += p_hit
+        pivot_n += p_n
+        if d_n and p_n:
+            ticks += 1
+            if d_hit / float(d_n) > p_hit / float(p_n):
+                drive_worse += 1
+    return {"drive": (drive_hit, drive_n), "pivot": (pivot_hit, pivot_n),
+            "drive_worse": drive_worse, "ticks": ticks}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--episode", default=EPISODE)
     parser.add_argument("--turn", action="store_true")
     parser.add_argument("--weights", action="store_true")
     parser.add_argument("--look", action="store_true")
+    parser.add_argument("--bias", action="store_true")
     parser.add_argument("--looks", default="0.325,0.45,0.60,0.80")
     args = parser.parse_args(argv)
-    everything = not (args.turn or args.weights or args.look)
+    everything = not (args.turn or args.weights or args.look or args.bias)
     episode = dwb_replay.load(args.episode)
 
     if args.turn or everything:
@@ -318,6 +377,21 @@ def main(argv=None):
                      100 * unreachable[-1]))
             print("   and every one of those is charged %.0f points."
                   % (dwb.MAP_GRID_RESCALE * dwb.PATH_ALIGN_SCALE * (60 * 60 + 1)))
+        print()
+
+    if args.bias or everything:
+        bias = drive_bias(episode)
+        hit, n = bias["drive"]
+        phit, pn = bias["pivot"]
+        print("who pays the unreachable charge, driving or turning")
+        print("   a candidate that DRIVES forward is charged  %5d of %5d  (%2.0f%%)"
+              % (hit, n, 100.0 * hit / max(n, 1)))
+        print("   a candidate that TURNS on the spot          %5d of %5d  (%2.0f%%)"
+              % (phit, pn, 100.0 * phit / max(pn, 1)))
+        print("   driving is the worse-treated of the two on %d of %d ticks (%.0f%%)"
+              % (bias["drive_worse"], bias["ticks"],
+                 100.0 * bias["drive_worse"] / max(bias["ticks"], 1)))
+        print("   -- which is why the rover turns instead of going.")
         print()
 
     if args.look or everything:

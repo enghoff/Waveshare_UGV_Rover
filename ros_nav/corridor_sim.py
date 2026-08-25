@@ -122,7 +122,10 @@ PATH_DIST_SCALE = 32.0
 GOAL_ALIGN_SCALE = 24.0
 GOAL_DIST_SCALE = 24.0
 OBSTACLE_SCALE = 0.005
-FORWARD_POINT_DISTANCE = 0.8
+# Tracks config/nav2.yaml. A stale copy here is not a cosmetic drift: this
+# distance decides which candidates carry the unreachable charge, and on some
+# geometry it decides whether driving or turning is the one penalised.
+FORWARD_POINT_DISTANCE = 0.325
 
 # dwb_critics defaults, which the config does not override.
 ROTATE_TO_GOAL_SCALE = 32.0
@@ -835,6 +838,31 @@ def last_pose_on_costmap(grid, path):
     return found
 
 
+#: `PreferForwardCritic`, which is not in the rover's critic list and is
+#: modelled here so it can be tried before it is. It is the only critic
+#: available that says anything about turning *as such*: the four map-grid ones
+#: read the costmap in whole cells, so of the twelve standing turns this
+#: chassis can command only about five come back with distinct scores and the
+#: rest are exact ties settled by rounding. Its score is
+#: `fabs(velocity.theta) * theta_scale` for a forward trajectory and a flat
+#: `penalty` for a reverse or strafing one, so it is symmetric in left and
+#: right -- it cannot say which way to turn, only that turning costs more than
+#: going. That is the right shape for a rover that pivots 93% of the time with
+#: clear floor in front of it, and the wrong shape for one that needs to pivot
+#: to get out of somewhere.
+PREFER_FORWARD_THETA_SCALE = 10.0
+PREFER_FORWARD_PENALTY = 1.0
+#: 0.0 keeps it out of the sum, which is what the rover runs today.
+PREFER_FORWARD_SCALE = 0.0
+
+
+def prefer_forward(vx, wz):
+    """`PreferForwardCritic::scoreTrajectory`, on this chassis's samples."""
+    if vx < 0.0:
+        return PREFER_FORWARD_PENALTY
+    return abs(wz) * PREFER_FORWARD_THETA_SCALE
+
+
 def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
              oscillation=None, path_values=None, goal_values=None,
              goal_yaw=None, path_look=None, goal_look=None,
@@ -877,7 +905,8 @@ def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
             refused[reason] += 1
             continue
         total = (OBSTACLE_RESCALE * OBSTACLE_SCALE * obstacle
-                 + ROTATE_TO_GOAL_SCALE * turn_score)
+                 + ROTATE_TO_GOAL_SCALE * turn_score
+                 + PREFER_FORWARD_SCALE * prefer_forward(vx, wz))
         failed = ""
         # The order is the one nav2.yaml lists, because
         # `short_circuit_trajectory_evaluation` is on and the first critic to

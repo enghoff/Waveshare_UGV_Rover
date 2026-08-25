@@ -311,8 +311,66 @@ controller_server:
       # and it no longer is: the ring is 0.14 m and the rear corners are 0.21 m
       # out, so a point check would let the rover reverse its corner into a wall.
       # This one traces the four edges.
+      # **`PreferForward` is here because nothing else in the set says anything
+      # about turning as such, and this rover would rather turn than drive.**
+      #
+      # The four map-grid critics charge a candidate `unreachable_score_` --
+      # 2881 points after scaling -- whenever the point they read lands on a
+      # wall or somewhere the flood could not get to. That charge is not
+      # even-handed between driving and turning, and **which of the two it
+      # punishes flips with the look-ahead**, because the two kinds of rollout
+      # put their judged point in very different places: a driving one ends
+      # 0.32 m further into the room, a pivot ends where the rover already
+      # stands. Swept over the corridor recording, the charge lands on:
+      #
+      #     look     driving   pivoting
+      #     0.200      74%        1%      <- driving punished
+      #     0.325      77%       16%
+      #     0.450      74%       65%      <- roughly even
+      #     0.600      13%       73%      <- turning punished
+      #     0.800       5%       60%
+      #
+      # So this is a tuning question rather than a law, and it is sharply
+      # geometry-dependent: the same sweep on the doorway recording never
+      # exceeds eight points either way, which is why the corridor is where it
+      # showed up. `trap_sim.py --bias` is the measurement.
+      #
+      # So the controller was being told, tick after tick, that going forward
+      # was ruinous and turning was nearly free -- and it behaved accordingly:
+      # 93% of one recorded minute was turns on the spot, reversing direction
+      # 78 times, for 0.51 m of net travel with clear floor ahead. Sweeping the
+      # align look-ahead from 0.05 to 0.45 does not remove the gap and neither
+      # does shortening `sim_time` to 0.4 s; both were tried in `trap_sim.py`.
+      #
+      # `PreferForwardCritic::scoreTrajectory` returns `fabs(theta) *
+      # theta_scale` for a forward rollout, read out of `libdwb_critics.so`, so
+      # it prices turning directly and is symmetric in left and right -- it
+      # cannot say *which* way to turn, only that turning is not free. That is
+      # the right shape for this fault and the wrong shape for a rover that has
+      # to pivot to escape, which is why the scale is small and why it was
+      # regression-tested against both doorway recordings before it shipped.
       critics: ["RotateToGoal", "Oscillation", "ObstacleFootprint", "GoalAlign",
-                "PathAlign", "PathDist", "GoalDist"]
+                "PathAlign", "PathDist", "GoalDist", "PreferForward"]
+      # No `getScale` override on this critic, so the number here is the number
+      # that is used -- unlike ObstacleFootprint below. A full-speed pivot at
+      # 0.78 rad/s costs 0.78 * 10 * this, against a PathDist spread of about
+      # 1.6 points across a whole tick's candidates.
+      #
+      # Driven round the closed loop from eight starts in each of the three
+      # recordings, medians:
+      #
+      #     look   PreferForward   corridor        doorway     lock-up
+      #     0.325       0.0        1.31 m, 12 rev  1.00 m 8/8  0.91 m 8/8
+      #     0.325       0.5        1.39 m,  5 rev  0.95 m 8/8  0.93 m 8/8
+      #     0.450       0.0        0.66 m, 16 rev  0.92 m 8/8  0.91 m 8/8
+      #     0.450       0.5        1.23 m, 15 rev  0.83 m 8/8  0.91 m 8/8
+      #
+      # **0.45 was the obvious-looking move and it is wrong.** It is where the
+      # charge above falls about evenly on driving and turning, but evening
+      # that up is not the objective: only four of the eight corridor starts
+      # got anywhere at 0.45, against eight of eight at 0.325. Balancing a
+      # penalty is not the same as removing it.
+      PreferForward.scale: 0.5
       # **0.005 rather than the stock 0.02, and this is the number that decides
       # whether the rover moves at all.**
       #

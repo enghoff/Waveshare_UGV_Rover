@@ -782,6 +782,14 @@ def test_configs_agree():
     # (obstacle cost moves the answer by 0.02 points; this moves it by 2881).
     # Driven round the loop from twelve starts in each recording, 0.325 got
     # somewhere 24 times of 24 and 0.8 managed 5. See ros_nav/trap_sim.py.
+    # The only critic in the set that prices turning as such. Without it the
+    # rover answers a corridor by pivoting 93% of the time: whichever of
+    # driving or turning the align critics happen to be charging on the
+    # geometry in front of it is the one it stops choosing, and at 0.325 in the
+    # recorded corridor that was driving, by 61 points. See ros_nav/trap_sim.py
+    # --bias.
+    check("something in the critic set prices turning, or the rover will spin",
+          "PreferForward" in settings, True)
     check("the align look-ahead is back at nav2's default, not the 0.8 that trapped it",
           "PathAlign.forward_point_distance: 0.325" in settings
           and "GoalAlign.forward_point_distance: 0.325" in settings, True)
