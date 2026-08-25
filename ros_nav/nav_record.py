@@ -70,7 +70,18 @@ WANTED_PARAMS = [
     "FollowPath.GoalAlign.scale",
     "FollowPath.PathDist.scale",
     "FollowPath.GoalDist.scale",
-    "FollowPath.ObstacleFootprint.scale",
+    # **The obstacle critic is named here, and the name changes with the
+    # footprint.** `ObstacleFootprint` was in this list until the body went back
+    # to a circle and `BaseObstacle` replaced it; asking for the dead name cost
+    # every recording made afterwards its entire settings block, because
+    # `rclcpp`'s parameter service answers a batch containing one undeclared
+    # name with an *empty* reply rather than with the fifteen it does have. The
+    # rover said so and nobody was reading: `[controller_server] [rclcpp]:
+    # Failed to get parameters: FollowPath.ObstacleFootprint.scale`. `fetch_params`
+    # asks one name at a time now, so the next critic swap costs one line of the
+    # block instead of all of it.
+    "FollowPath.BaseObstacle.scale",
+    "FollowPath.PreferForward.scale",
     "FollowPath.sim_time",
     "FollowPath.vx_samples",
     "FollowPath.vtheta_samples",
@@ -182,23 +193,43 @@ class Recorder(Node):
         }
 
     def fetch_params(self):
-        """Ask the controller what it is running, once, at the start."""
+        """Ask the controller what it is running, once, at the start.
+
+        One name per request, which is slower and cannot fail silently. A batch
+        is all-or-nothing: `rclcpp`'s parameter service catches the not-declared
+        exception and returns with `values` empty, so a single stale name in the
+        list -- a critic that has been renamed, a setting that moved -- takes the
+        whole block down and leaves the recording undated. That is exactly what
+        happened to every drive recorded between the footprint going back to a
+        circle and this being noticed, and it is invisible from here: the reply
+        arrives, it is simply empty.
+        """
         if not self.param_client.wait_for_service(timeout_sec=5.0):
             return
-        request = GetParameters.Request()
-        request.names = list(WANTED_PARAMS)
-        future = self.param_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        answer = future.result()
-        if answer is None:
-            return
-        for name, value in zip(WANTED_PARAMS, answer.values):
+        missing = []
+        for name in WANTED_PARAMS:
+            request = GetParameters.Request()
+            request.names = [name]
+            future = self.param_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            answer = future.result()
+            if answer is None or not answer.values:
+                missing.append(name)
+                continue
+            value = answer.values[0]
             if value.type == 3:
                 self.params[name] = value.double_value
             elif value.type == 2:
                 self.params[name] = value.integer_value
             elif value.type == 1:
                 self.params[name] = value.bool_value
+            else:
+                missing.append(name)
+        if missing:
+            print("the controller does not have these settings, so this "
+                  "recording will not carry them:", file=sys.stderr)
+            for name in missing:
+                print("   %s" % name, file=sys.stderr)
 
     def fetch_global(self):
         if not self.global_client.wait_for_service(timeout_sec=5.0):
