@@ -54,7 +54,11 @@ sleep 2
 left=0
 for pattern in "$DIR/lidar_node.py" "$DIR/base_node.py" "$DIR/nav_bridge.py" \
                async_slam_toolbox_node; do
-    n=$(pgrep -fc "$pattern" 2>/dev/null || echo 0)
+    # pgrep -c prints 0 and exits 1 when nothing matches. `|| echo 0` then
+    # appends a second 0 and `[[ "$n" -gt 0 ]]` becomes "integer expression
+    # expected" -- which is how a clean sweep used to look like a failure.
+    n=$(pgrep -fc "$pattern" 2>/dev/null || true)
+    n=${n:-0}
     if [ "$n" -gt 0 ]; then
         echo "!! $n x $pattern survived the sweep" >&2
         left=$((left + n))

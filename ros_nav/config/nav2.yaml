@@ -537,7 +537,7 @@ planner_server:
     expected_planner_frequency: 1.0
     planner_plugins: ["GridBased"]
     GridBased:
-      # **SmacPlannerHybrid, and the comment that used to live here was the
+      # **SmacPlannerLattice, and the comment that used to live here was the
       # wrong half of a true fact.** This chassis *can* turn on the spot, so
       # a minimum turning radius is not a mechanical limit the way it is for
       # a car. It *is* a limit on what DWB can follow while driving: the only
@@ -552,41 +552,49 @@ planner_server:
       #
       # SimpleSmoother cannot see this. Called on the four sharpest recorded
       # corners it returned the input unchanged, because tightness is not
-      # jaggedness. Hybrid-A* never draws a corner past the radius below.
-      # Reproduced in hybrid_astar.py on a 55 deg metre-wide bend before this
-      # replaced NavFn: the grid path's tightest 0.32 m window was 45 deg,
-      # the Hybrid-A* path's was 35.8 -- the rollout envelope itself.
+      # jaggedness. Hybrid-A* Dubins never draws a corner past 0.51 m either,
+      # but it also cannot write a pivot, and this chassis's legal way through
+      # a doorway that will not take an arc is to turn on the spot. The
+      # differential control set in config/lattices/ is Nav2's own 5 cm,
+      # 0.5 m sample -- 0.5 m is that envelope to a centimetre -- and it
+      # includes in-place rotations. rotation_penalty stays at Nav2's 5.0 so
+      # a doorway that *can* take an arc gets one; a pivot is the fallback,
+      # not the shortcut. Reproduced in lattice.py on a 55 deg metre-wide
+      # bend before this replaced Hybrid: the grid path's tightest 0.32 m
+      # window was 45 deg, the lattice path's was 34.9, with no pivot.
       #
-      # Dubins, not Reeds-Shepp: the controller has no reverse sample, because
-      # the lidar looks forwards. A path that asked for a reverse leg would be
-      # one DWB could not follow for a different reason. The extra state is
-      # real CPU -- 32 heading bins rather than the stock 72, a 10 m Dubins
-      # table rather than 20, and a 2 s cap, all because this is four A53
-      # cores already running slam_toolbox. `GridBased` keeps the name the
-      # behaviour tree already asks for.
-      plugin: "nav2_smac_planner::SmacPlannerHybrid"
+      # Reverse expansion is off: the lidar looks forwards, DWB has no reverse
+      # sample, and a path that asked for a reverse leg would be one the
+      # controller could not follow for a different reason. The filepath is
+      # empty here because yaml cannot resolve a relative path; nav.launch.py
+      # overlays the absolute one next to this file. `GridBased` keeps the
+      # name the behaviour tree already asks for. 2 s and a 10 m heuristic
+      # table because this is four A53 cores already running slam_toolbox.
+      plugin: "nav2_smac_planner::SmacPlannerLattice"
       tolerance: 0.25
-      downsample_costmap: false
-      downsampling_factor: 1
       allow_unknown: true
       max_iterations: 1000000
       max_on_approach_iterations: 1000
       terminal_checking_interval: 5000
       max_planning_time: 2.0
-      motion_model_for_search: "DUBIN"
-      angle_quantization_bins: 32
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
       analytic_expansion_max_cost: 200.0
       analytic_expansion_max_cost_override: false
-      minimum_turning_radius: 0.51
-      reverse_penalty: 2.1
-      change_penalty: 0.0
-      non_straight_penalty: 1.20
+      reverse_penalty: 2.0
+      change_penalty: 0.05
+      non_straight_penalty: 1.05
       cost_penalty: 2.0
-      retrospective_penalty: 0.025
+      rotation_penalty: 5.0
+      retrospective_penalty: 0.015
+      lattice_filepath: ""
       lookup_table_size: 10.0
       cache_obstacle_heuristic: true
+      allow_reverse_expansion: false
+      goal_heading_mode: "DEFAULT"
+      coarse_search_resolution: 1
+      downsample_obstacle_heuristic: true
+      use_quadratic_cost_penalty: false
       smooth_path: true
       debug_visualizations: false
       smoother:
@@ -595,6 +603,7 @@ planner_server:
         w_data: 0.2
         tolerance: 1.0e-10
         do_refinement: true
+        refinement_num: 2
 
 smoother_server:
   ros__parameters:

@@ -104,16 +104,19 @@ never draws a corner past them — Nav2 ships `SmacPlanner` in a mode built for
 exactly this — in place of `NavFn`'s plain grid search, which has no notion of
 the body behind it at all.
 
-That is now the configured planner. `hybrid_astar.py` is a Dubins Hybrid-A*
-with this chassis's radius (`max_vel_x / max_vel_theta` = 0.51 m) and
-`smac_replay.py` holds it to the same standard every earlier fix eventually
-got: the same costmap, both searches, the path geometry. On a metre-wide
-passage that turns 55 degrees — the middle of the 44-to-67 the recordings
-measured in the first 1.2 m of plan — the grid path's tightest 0.32 m window
-was 45 degrees and Hybrid-A*'s was 35.8, which is the rollout envelope
-itself. The live plugin is `nav2_smac_planner::SmacPlannerHybrid`, still
-named `GridBased` so the behaviour tree does not have to move, Dubins rather
-than Reeds-Shepp because the controller has no reverse sample.
+That is now the configured planner, and the mode is the state lattice rather
+than Hybrid-A*. Hybrid Dubins also stays inside the 0.51 m envelope, but it
+cannot write a pivot, and a pivot is this chassis's legal way through a
+doorway that will not take an arc. `lattice.py` searches Nav2's own 5 cm,
+0.5 m differential control set (in-place rotations included, reverse off
+because the lidar looks forwards) and `smac_replay.py` holds it to the same
+standard every earlier fix eventually got: the same costmap, both searches,
+the path geometry. On a metre-wide passage that turns 55 degrees — the
+middle of the 44-to-67 the recordings measured in the first 1.2 m of plan —
+the grid path's tightest 0.32 m window was 45 degrees and the lattice
+path's was 34.9, with no pivot. The live plugin is
+`nav2_smac_planner::SmacPlannerLattice`, still named `GridBased` so the
+behaviour tree does not have to move.
 
 It does not close a loop on a frozen map. That is how the 0.8 m look-ahead
 shipped. The number that decided this one is the path's own corner.

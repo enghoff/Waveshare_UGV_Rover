@@ -765,15 +765,33 @@ def test_configs_agree():
     # NavFn does not, and that is the doorway lock-up: a 45 deg kink in one
     # rollout, every forward sample leaves the line, the rover pivots. The
     # plugin name GridBased is unchanged so the behaviour tree does not have
-    # to move; the class behind it does.
-    check("the planner is Hybrid-A*, which is the one that knows a turning radius",
-          "nav2_smac_planner::SmacPlannerHybrid" in settings, True)
+    # to move; the class behind it does. Lattice, not Hybrid: this chassis
+    # can pivot, and Dubins Hybrid-A* cannot write that into a path.
+    check("the planner is the state lattice, which is the one that knows a turning radius",
+          "nav2_smac_planner::SmacPlannerLattice" in settings, True)
     check("NavFn is not the configured planner",
           "nav2_navfn_planner::NavfnPlanner" in settings, False)
-    check("the turning radius is DWB's forward envelope (max_vel_x / max_vel_theta)",
-          "minimum_turning_radius: 0.51" in settings, True)
-    check("...and Hybrid-A* may enter unknown, because this rover maps as it drives",
+    check("Hybrid-A* is not the configured planner either",
+          "nav2_smac_planner::SmacPlannerHybrid" in settings, False)
+    check("in-place turns are expensive, so a doorway that takes an arc gets one",
+          "rotation_penalty: 5.0" in settings, True)
+    check("...and reverse expansion is off, because the lidar looks forwards",
+          "allow_reverse_expansion: false" in settings, True)
+    check("...and the lattice may enter unknown, because this rover maps as it drives",
           "allow_unknown: true" in settings, True)
+    lattice_json = os.path.join(HERE, "config", "lattices", "diff_5cm_0.5m.json")
+    check("the differential control set is in the tree, not left on a share path",
+          os.path.isfile(lattice_json), True)
+    if os.path.isfile(lattice_json):
+        with open(lattice_json) as handle:
+            meta = json.load(handle)["lattice_metadata"]
+        check("...and is the 0.5 m differential sample, DWB's envelope to a centimetre",
+              meta.get("motion_model") == "diff" and abs(meta.get("turning_radius", 0) - 0.5) < 1e-9,
+              True)
+    with open(os.path.join(HERE, "nav.launch.py")) as handle:
+        launch = handle.read()
+    check("launch injects an absolute lattice path; yaml cannot resolve a relative one",
+          "lattice_filepath" in launch and "diff_5cm_0.5m.json" in launch, True)
 
     # The lidar looks forwards, so a reverse leg is driven blind. DWB is left
     # with no reverse sample at all; backing out of a corner is the behaviour
@@ -1266,50 +1284,57 @@ def test_progress_is_not_only_translation():
           angle < math.radians(9.0 * allowance) / 4.0)
 
 
-def test_hybrid_astar_respects_the_dwb_envelope():
+def test_lattice_respects_the_dwb_envelope():
     """The doorway corner, on a map that does not need a recording.
 
     NavFn's grid search has no turning radius, so the path it traces through
     a metre-wide 55 deg bend kinks more in 0.32 m than DWB can follow at
-    speed. Hybrid-A* is given that radius (max_vel_x / max_vel_theta) and has
-    to stay inside it. This is the reproduction docs/doorway-pivot.md asked
-    for before SmacPlanner replaced NavFn: the same costmap, both searches,
-    the path geometry -- not a closed loop started from a NavFn deadlock.
+    speed. The differential lattice is given a 0.5 m control set (this
+    chassis's max_vel_x / max_vel_theta, to a centimetre) and has to stay
+    inside that envelope on the driving stretches. This is the reproduction
+    docs/doorway-pivot.md asked for before SmacPlanner replaced NavFn: the
+    same costmap, both searches, the path geometry -- not a closed loop
+    started from a NavFn deadlock.
     """
-    section("Hybrid-A* will not draw a corner DWB cannot follow")
+    section("the state lattice will not draw a corner DWB cannot follow")
     sys.path.insert(0, HERE)
     try:
-        import hybrid_astar as smac
+        import hybrid_astar as geo
+        import lattice
         import corridor_sim as dwb
     except ImportError as exc:                          # pragma: no cover
-        print("  .... skipped, cannot import hybrid_astar: %s" % exc)
+        print("  .... skipped, cannot import lattice: %s" % exc)
         return
 
     radius = dwb.MAX_VEL_X / dwb.MAX_VEL_THETA
-    check("the radius is DWB's only forward sample over its fastest turn",
-          smac.MIN_TURNING_RADIUS, radius, tolerance=1e-9)
+    check("DWB's forward envelope is max_vel_x over max_vel_theta",
+          geo.MIN_TURNING_RADIUS, radius, tolerance=1e-9)
     check("...and is 0.51 m with the numbers in nav2.yaml",
           radius, 0.51, tolerance=0.005)
+    meta, _ = lattice.load_lattice()
+    check("the control set's radius is that envelope to a centimetre",
+          meta["turning_radius"], 0.5, tolerance=1e-9)
+    check("...and the motion model is differential, not ackermann",
+          meta["motion_model"], "diff")
 
-    grid, start, goal = smac.bent_passage()
-    navfn = smac.grid_astar(grid, (start[0], start[1]), (goal[0], goal[1]))
-    hybrid = smac.hybrid_astar(grid, start, goal)
+    result = lattice.doorway_reproduction()
+    ninfo = result["navfn"]
+    linfo = result["lattice"]
     check("the grid search still finds a route through the doorway",
-          navfn is not None)
-    check("Hybrid-A* finds one too", hybrid is not None)
-    if navfn is None or hybrid is None:
+          ninfo is not None)
+    check("the lattice finds one too", linfo is not None)
+    if ninfo is None or linfo is None:
         return
-    hybrid = smac.densify(hybrid)
-    ninfo = smac.describe_path(navfn, "navfn")
-    hinfo = smac.describe_path(hybrid, "hybrid")
     check("NavFn's doorway corner is tighter than one DWB rollout (%.1f deg > %.1f)"
-          % (ninfo["tightest_deg"], math.degrees(smac.ROLLOUT_RAD)),
+          % (ninfo["tightest_deg"], result["rollout_deg"]),
           ninfo["followable"], False)
-    check("Hybrid-A* stays inside that envelope (%.1f deg)"
-          % hinfo["tightest_deg"],
-          hinfo["followable"], True)
+    check("the lattice stays inside that envelope (%.1f deg)"
+          % linfo["tightest_deg"],
+          linfo["followable"], True)
+    check("...without needing a pivot on a doorway that takes an arc",
+          linfo["pivots"], 0)
     check("...and does not wander off: the route is within 2x the grid one",
-          hinfo["length_m"] < 2.0 * ninfo["length_m"], True)
+          linfo["length_m"] < 2.0 * ninfo["length_m"], True)
 
 
 def main():
@@ -1334,7 +1359,7 @@ def main():
     test_goal_fits_before_it_is_sent()
     test_a_route_is_budgeted_on_the_route()
     test_progress_is_not_only_translation()
-    test_hybrid_astar_respects_the_dwb_envelope()
+    test_lattice_respects_the_dwb_envelope()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0
 

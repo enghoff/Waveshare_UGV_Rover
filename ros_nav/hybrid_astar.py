@@ -6,11 +6,12 @@ a doorway is a polyline whose first metre can bend more than one DWB rollout can
 follow. DWB then prefers a pivot -- standing still stays on the line -- and the
 rover locks up in the passage. See docs/doorway-pivot.md.
 
-Nav2's answer is SmacPlannerHybrid: the same costmap, searched in (x, y, heading)
-with Dubins primitives that cannot turn tighter than a given radius. This module
-is that search, written in the same spirit as corridor_sim.py -- the real plugin
-is C++ and this is the copy used to reproduce the fault and to score a fix
-before anything is asked to drive on it.
+Nav2's live answer on this rover is SmacPlannerLattice (see lattice.py): the
+same costmap, searched over a differential control set that can pivot and
+cannot turn tighter than 0.5 m while driving. This module is the Dubins
+Hybrid-A* that was the first kinematic stand-in -- still the geometry the
+doorway test is scored on (windows, densify, the 55 deg passage), and still
+a useful comparison, but not the plugin the rover runs.
 
 The radius is not a guess. DWB's only forward sample is max_vel_x, its fastest
 turn is max_vel_theta, and the tightest arc that combination can draw is
@@ -316,7 +317,7 @@ def grid_astar(grid, start, goal, allow_unknown=True, max_expansions=MAX_EXPANSI
             for c, r in cells]
 
 
-# --- Hybrid-A* (Dubins), standing in for SmacPlannerHybrid --------------------
+# --- Hybrid-A* (Dubins), the kinematic comparison lattice.py is scored against --
 def _primitives(radius, bins=ANGLE_BINS):
     """The three Dubins motions from one heading bin: left, straight, right.
 
@@ -364,6 +365,11 @@ def hybrid_astar(grid, start, goal, radius=MIN_TURNING_RADIUS,
                  allow_unknown=True, max_expansions=MAX_EXPANSIONS,
                  bins=ANGLE_BINS, tolerance=TOLERANCE_M):
     """SE2 A* with Dubins primitives, which is what SmacPlannerHybrid is.
+
+    Not the live plugin -- that is SmacPlannerLattice -- but the same envelope
+    test, without in-place rotations. Kept because a lattice path that is
+    followable only because it pivoted is a different claim from one that
+    took the arc.
 
     `start` and `goal` are (x, y, yaw). The goal heading is a preference: a
     pose within `tolerance` of the goal xy is accepted even if the heading

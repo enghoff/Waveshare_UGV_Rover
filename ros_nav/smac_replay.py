@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Whether a turning-radius planner would have drawn the doorway corners.
+"""Whether a state-lattice planner would have drawn the doorway corners.
 
     python3 smac_replay.py                  # the synthetic metre-wide 55 deg bend
     python3 smac_replay.py episode.json     # the rover's own recorded plans
@@ -7,16 +7,18 @@
 
 **Why this exists.** docs/doorway-pivot.md ends on an open question: NavFn
 draws corners this chassis cannot follow while driving, SimpleSmoother cannot
-see curvature, and SmacPlannerHybrid would. That last claim is not allowed to
+see curvature, and SmacPlannerLattice would. That last claim is not allowed to
 ship on the strength of the plugin's name. This scores both searches on the
 same costmap -- a synthetic doorway matching the recorded 44-67 deg in 1.2 m,
 or a recording's own global costmap and plans -- and reports whether the
-Hybrid-A* path stays inside one DWB rollout.
+lattice path stays inside one DWB rollout.
 
 It does not close a loop on a frozen map. That test condemned whatever
 look-ahead the rover happened to be running, and the first doorway fix
 shipped on it. The number here is the path's own tightest heading change
-over 0.32 m, which is how long DWB commits to an arc.
+over 0.32 m of *forward* travel, which is how long DWB commits to an arc.
+In-place rotations in the control set are a different manoeuvre and are
+cut out of that window on purpose.
 """
 
 from __future__ import annotations
@@ -31,7 +33,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import goal_fit
-import hybrid_astar as smac
+import hybrid_astar as geo
+import lattice
 
 
 def load(path):
@@ -47,7 +50,7 @@ def grid_of(snapshot):
 
 
 def start_goal_of(plan):
-    """A Hybrid-A* query from a recorded NavFn plan: first pose to last pose."""
+    """A lattice query from a recorded NavFn plan: first pose to last pose."""
     poses = plan.get("poses") or []
     if len(poses) < 2:
         return None
@@ -79,53 +82,49 @@ def sharpest_plans(episode, count=4):
         if key in seen:
             continue
         seen.add(key)
-        _at, bend = smac.tightest_window(pts)
+        _at, bend = geo.tightest_window(pts)
         ranked.append((bend, plan, pts))
     ranked.sort(reverse=True, key=lambda item: item[0])
     return ranked[:count]
 
 
 def report_path(info, indent="   "):
+    extra = ""
+    if "pivots" in info:
+        extra = ", %d in-place turn%s" % (info["pivots"],
+                                          "" if info["pivots"] == 1 else "s")
     print("%s%s: %.2f m, first 1.2 m bends %.0f deg, tightest %.1f deg "
-          "over 0.32 m at s=%.2f  %s"
+          "over 0.32 m at s=%.2f%s  %s"
           % (indent, info["label"], info["length_m"], info["first_bend_deg"],
-             info["tightest_deg"], info["tightest_at_m"],
+             info["tightest_deg"], info["tightest_at_m"], extra,
              "followable" if info["followable"] else "TOO TIGHT"))
 
 
 def synthetic(dwb=False):
     print("synthetic metre-wide passage, 55 deg bend")
     print("   DWB's forward envelope is %.2f m radius, %.1f deg in one 0.32 m "
-          "rollout" % (smac.MIN_TURNING_RADIUS, math.degrees(smac.ROLLOUT_RAD)))
-    result = smac.doorway_reproduction() if dwb else None
-    if result is None:
-        grid, start, goal = smac.bent_passage()
-        navfn = smac.grid_astar(grid, (start[0], start[1]), (goal[0], goal[1]))
-        hybrid = smac.hybrid_astar(grid, start, goal)
-        if hybrid:
-            hybrid = smac.densify(hybrid)
-        result = {
-            "navfn": None if navfn is None else smac.describe_path(navfn, "navfn"),
-            "hybrid": None if hybrid is None else smac.describe_path(hybrid, "hybrid"),
-        }
+          "rollout; the lattice control set is %.2f m"
+          % (geo.MIN_TURNING_RADIUS, math.degrees(geo.ROLLOUT_RAD),
+             lattice.load_lattice()[0]["turning_radius"]))
+    result = lattice.doorway_reproduction(dwb=dwb)
     if result.get("navfn") is None:
         print("   NavFn-like search found no route")
         return 1
-    if result.get("hybrid") is None:
-        print("   Hybrid-A* found no route")
+    if result.get("lattice") is None:
+        print("   lattice search found no route")
         return 1
     report_path(result["navfn"])
-    report_path(result["hybrid"])
-    if dwb and result.get("navfn_mid") and result.get("hybrid_mid"):
+    report_path(result["lattice"])
+    if dwb and result.get("navfn_mid") and result.get("lattice_mid"):
         print("   DWB along each path, arrival circle excluded:")
-        for name in ("navfn_mid", "hybrid_mid"):
+        for name in ("navfn_mid", "lattice_mid"):
             row = result[name]
             print("      %-11s %d ticks, %d forward, %d pivot, %d no-forward, "
                   "longest stall %.2f m"
                   % (name.replace("_mid", ""), row["ticks"], row["forward"],
                      row["pivot"], row["no_forward"], row["longest_stall_m"]))
-    if not result["navfn"]["followable"] and result["hybrid"]["followable"]:
-        print("   Hybrid-A* draws a corner DWB can follow; the grid search does not.")
+    if not result["navfn"]["followable"] and result["lattice"]["followable"]:
+        print("   the lattice draws a corner DWB can follow; the grid search does not.")
         return 0
     print("   the reproduction did not separate the two planners")
     return 1
@@ -150,7 +149,7 @@ def recorded(path, dwb=False):
         print("")
         print("recorded plan at t=%.1fs, %d poses"
               % (plan.get("t", 0.0), len(pts)))
-        info = smac.describe_path(pts, "navfn (recorded)")
+        info = geo.describe_path(pts, "navfn (recorded)")
         report_path(info)
         if grid is None:
             continue
@@ -158,32 +157,31 @@ def recorded(path, dwb=False):
         if sg is None:
             continue
         start, goal = sg
-        hybrid = smac.hybrid_astar(grid, start, goal)
-        if hybrid is None:
-            print("   Hybrid-A* found no route from this plan's start to its end")
+        found = lattice.lattice_astar(grid, start, goal)
+        if found is None:
+            print("   lattice search found no route from this plan's start to its end")
             failed += 1
             continue
-        hybrid = smac.densify(hybrid)
-        hinfo = smac.describe_path(hybrid, "hybrid")
+        hinfo = lattice.describe_path(found, "lattice")
         report_path(hinfo)
         if not hinfo["followable"]:
             failed += 1
         if dwb:
-            nmid = smac.midcourse_stats(grid, pts)
-            hmid = smac.midcourse_stats(grid, hybrid)
+            nmid = geo.midcourse_stats(grid, pts)
+            hmid = geo.midcourse_stats(grid, found)
             print("   DWB along each path, arrival circle excluded:")
             print("      recorded   %d forward, %d pivot, %d no-forward, "
                   "stall %.2f m" % (nmid["forward"], nmid["pivot"],
                                     nmid["no_forward"], nmid["longest_stall_m"]))
-            print("      hybrid     %d forward, %d pivot, %d no-forward, "
+            print("      lattice    %d forward, %d pivot, %d no-forward, "
                   "stall %.2f m" % (hmid["forward"], hmid["pivot"],
                                     hmid["no_forward"], hmid["longest_stall_m"]))
     if failed:
         print("")
-        print("Hybrid-A* did not produce a followable path for every recorded corner")
+        print("lattice search did not produce a followable path for every recorded corner")
         return 1
     print("")
-    print("every recorded corner Hybrid-A* re-planned stayed inside one DWB rollout")
+    print("every recorded corner the lattice re-planned stayed inside one DWB rollout")
     return 0
 
 

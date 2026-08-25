@@ -883,11 +883,12 @@ chooses to move on 61 of 62 ticks where it chose to stand still on 282 of 342.
 1.9 times the direct distance, and against one of those DWB goes back to sitting
 and rotating — it loses by under one point in forty-five, entirely on the two
 critics that measure distance from the path. The grid Dijkstra that used to
-draw those corners has been replaced: `SmacPlannerHybrid` is given this
-chassis's turning radius (0.51 m, `max_vel_x / max_vel_theta`) and will not
-draw a corner tighter than one DWB rollout can follow. Reproduced in
-`hybrid_astar.py` on a 55 degree metre-wide bend before it replaced NavFn;
-see [docs/doorway-pivot.md](../docs/doorway-pivot.md).
+draw those corners has been replaced: `SmacPlannerLattice` searches a 0.5 m
+differential control set (this chassis's `max_vel_x / max_vel_theta` to a
+centimetre, with in-place rotations) and will not draw a driving corner
+tighter than one DWB rollout can follow. Reproduced in `lattice.py` on a 55
+degree metre-wide bend before it replaced NavFn; see
+[docs/doorway-pivot.md](../docs/doorway-pivot.md).
 
 ## "lost -- Nav2 gave up without saying why (code 102)", on the long routes
 
@@ -1113,9 +1114,10 @@ one name make `ros2 lifecycle` silently answer for whichever it found first.
   error 208 with zero poses. `drive_to` answers that with "there is no route", which
   sends somebody to look at the map when what is needed is 20 cm of reverse.
 - The route being 3.0 times the direct distance is still the planner's, even
-  though the corners it draws are no longer tighter than the chassis. Hybrid-A*
-  will go the long way round when the short way is a cut it cannot take, and
-  that is the right trade: a followable detour against a 55-second pivot. The
+  though the corners it draws are no longer tighter than the chassis. The
+  lattice will go the long way round when the short way is a cut it cannot
+  take while driving, or insert a pivot when an arc will not fit, and that
+  is the right trade: a followable detour against a 55-second lock-up. The
   smoother that is configured but never invoked was the obvious next thing to
   try on the old grid paths, and it turned out not to be the fix — see
   [docs/doorway-pivot.md](../docs/doorway-pivot.md).

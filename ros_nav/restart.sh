@@ -59,7 +59,8 @@ tail -6 "$DIR/ros_nav.log"
 # runs before every launch to prevent it; this is how you find out that it did.
 echo "--- one of each?"
 for name in lidar_node.py base_node.py nav_bridge.py async_slam_toolbox_node; do
-    n=$(pgrep -fc "$name" 2>/dev/null || echo 0)
+    n=$(pgrep -fc "$name" 2>/dev/null || true)
+    n=${n:-0}
     if [ "$n" -eq 1 ]; then
         printf '  ok   %-26s 1\n' "$name"
     else

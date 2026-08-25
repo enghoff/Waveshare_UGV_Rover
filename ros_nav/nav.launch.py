@@ -32,6 +32,11 @@ from launch_ros.actions import Node
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# SmacPlannerLattice will not resolve a relative lattice_filepath against this
+# package, and an empty one loads Nav2's ackermann test set. The overlay below
+# is the only path the plugin actually reads.
+LATTICE_FILE = os.path.join(HERE, "config", "lattices", "diff_5cm_0.5m.json")
+
 # The order is the order they are brought up in, and it matters: a costmap that
 # activates before the map it subscribes to sits empty, and a controller that
 # activates before its costmap has no idea what it is avoiding.
@@ -67,7 +72,9 @@ def generate_launch_description():
         Node(package="nav2_smoother", executable="smoother_server",
              name="smoother_server", output="screen", parameters=[params]),
         Node(package="nav2_planner", executable="planner_server",
-             name="planner_server", output="screen", parameters=[params]),
+             name="planner_server", output="screen",
+             parameters=[params,
+                         {"GridBased.lattice_filepath": LATTICE_FILE}]),
         Node(package="nav2_behaviors", executable="behavior_server",
              name="behavior_server", output="screen", parameters=[params]),
         Node(package="nav2_bt_navigator", executable="bt_navigator",
