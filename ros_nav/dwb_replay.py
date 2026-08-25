@@ -337,8 +337,13 @@ def replay(episode, verbose=False, limit=None):
             "rover_stopped_model_moved": rover_stopped_model_moved}
 
 
+#: Recorded costmaps, re-inflated for a different robot shape, kept because
+#: rebuilding one is far more expensive than scoring a tick with it.
+_REINFLATED = {}
+
+
 def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
-                path_look=None, goal_look=None):
+                path_look=None, goal_look=None, reinflate=False):
     """Let the model drive, on the costmap and plan the rover really had.
 
     `replay` asks whether the model scores the way DWB scores, one recorded
@@ -359,6 +364,16 @@ def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
         return None
     row = rows[start]
     grid = grid_of(row["costmap"])
+    if reinflate:
+        # Testing a change to the *shape* of the robot against a recording means
+        # redoing the inflation, because the shape is what sets the ring. Never
+        # do this in `replay`: the fidelity check has to score the costmap the
+        # rover actually had, or it is grading a controller nobody ran.
+        key = (id(episode), row["costmap"]["t"], dwb.INSCRIBED_M)
+        if key not in _REINFLATED:
+            _REINFLATED.clear()
+            _REINFLATED[key] = dwb.reinflate(grid)
+        grid = _REINFLATED[key]
     x, y, yaw = row["pose"]["odom"]
     origin = (x, y)
     full = plan_in_odom(row["plan"], row["pose"]["map"], row["pose"]["odom"])

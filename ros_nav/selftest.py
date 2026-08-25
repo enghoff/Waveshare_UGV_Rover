@@ -788,6 +788,20 @@ def test_configs_agree():
     # geometry in front of it is the one it stops choosing, and at 0.325 in the
     # recorded corridor that was driving, by 61 points. See ros_nav/trap_sim.py
     # --bias.
+    # A circle, so that any cell the rover may stand in is one it may also turn
+    # in. The measured rectangle could be stood 0.21 m from a wall -- legal,
+    # because its inscribed radius is 0.14 -- and then not pivot, because a
+    # pivot sweeps 0.244. The rover was found wedged in exactly that band.
+    check("the body is a circle, so standing somewhere implies turning there",
+          "robot_radius: 0.175" in settings, True)
+    check("...in both costmaps, because two shapes is a planner that routes "
+          "through gaps the controller will not drive",
+          settings.count("robot_radius: 0.175") == 2, True)
+    check("...and the rectangle is gone from both",
+          "footprint: \"[[0.20, 0.14]" in settings, False)
+    # The point test is a collision test again, and only because of the above.
+    check("the obstacle critic is the point test that matches a circular body",
+          "\"BaseObstacle\"" in settings, True)
     check("something in the critic set prices turning, or the rover will spin",
           "PreferForward" in settings, True)
     check("the align look-ahead is back at nav2's default, not the 0.8 that trapped it",

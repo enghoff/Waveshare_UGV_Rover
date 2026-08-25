@@ -121,7 +121,7 @@ PATH_ALIGN_SCALE = 32.0
 PATH_DIST_SCALE = 32.0
 GOAL_ALIGN_SCALE = 24.0
 GOAL_DIST_SCALE = 24.0
-OBSTACLE_SCALE = 0.005
+OBSTACLE_SCALE = 0.02
 # Tracks config/nav2.yaml. A stale copy here is not a cosmetic drift: this
 # distance decides which candidates carry the unreachable charge, and on some
 # geometry it decides whether driving or turning is the one penalised.
@@ -145,15 +145,63 @@ MAP_GRID_RESCALE = RESOLUTION * 0.5
 #: where the `BaseObstacleCritic` it replaced inherited the plain `scale_`.
 #: So the swap to a footprint check quietly divided the weight on obstacle cost
 #: by twenty, on top of the deliberate 0.02 -> 0.005 cut.
-OBSTACLE_RESCALE = RESOLUTION
+FOOTPRINT = [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)]
+#: **Describing the rover as a circle instead, which is what it now runs.**
+#:
+#: The rectangle above is the body, measured, and it is the honest shape. What
+#: it is not is the shape that decides whether the rover can *turn*: a pivot
+#: sweeps the circumscribed radius, 0.244 m, while the inflation layer paints
+#: its hard 253 ring at the inscribed one, 0.14 m. That ten-centimetre gap is
+#: a band around every wall the rover can drive into and then not turn out of,
+#: and it is where the rover was found wedged: 0.21 m from a wall, five
+#: centimetres from a legal pose, with the body fitting at five of sixteen
+#: headings locally and none at all in the planner's map.
+#:
+#: Setting `robot_radius` to the circumscribed radius closes that band by
+#: making the two radii the same number. The 253 ring becomes 0.244 m deep, so
+#: any cell the rover may stand in is a cell it may also turn round in, in
+#: every map that reads the ring -- the planner's, the controller's and the
+#: behaviour server's alike.
+#: True, because that is what the rover runs. Set it True to
+#: re-test the circular body: `dwb_replay.closed_loop(..., reinflate=True)`
+#: rebuilds a recording's inflation at the new radius so the comparison is
+#: fair. The answer, on all three recordings, was that it costs more than it
+#: buys -- see the table in config/nav2.yaml next to `robot_radius`.
+CIRCULAR = True
+#: The radius to describe it with when CIRCULAR. Not the circumscribed radius
+#: of the measured rectangle (0.244 m) -- that closes the trap completely and
+#: costs the doorways, measured. This is the value the rover's owner measured
+#: off the chassis.
+ROBOT_RADIUS_CONFIGURED = 0.175
+#: Which obstacle critic goes with it. `BaseObstacle` refuses at 253, so the
+#: controller may not put its centre in the ring at all; `ObstacleFootprint`
+#: traces the outline and refuses only on contact at 254. The first is far
+#: stricter and is what a circular body would normally use; whether this rover
+#: can afford it is a question for the recordings, not for taste.
+CIRCULAR_USES_BASE_OBSTACLE = True
+CIRCUMSCRIBED_M = max(math.hypot(x, y) for x, y in FOOTPRINT)
+ROBOT_RADIUS_M = ROBOT_RADIUS_CONFIGURED
+INSCRIBED_M = ROBOT_RADIUS_M if CIRCULAR else 0.14
+if CIRCULAR:
+    # nav2 turns a radius into a twelve-sided polygon, not a square: a square
+    # drawn round a circle is 27% too big at the corners.
+    FOOTPRINT = [(ROBOT_RADIUS_M * math.cos(i * math.pi / 6.0),
+                  ROBOT_RADIUS_M * math.sin(i * math.pi / 6.0))
+                 for i in range(12)]
+
+#: `BaseObstacleCritic` has no `getScale` override -- checked, its header
+#: declares none -- so with a circular body the configured number *is* the
+#: weight, where `ObstacleFootprint`'s was divided by the resolution.
+OBSTACLE_RESCALE = (1.0 if (CIRCULAR and CIRCULAR_USES_BASE_OBSTACLE)
+                    else RESOLUTION)
 INFLATION_RADIUS = 0.45
 COST_SCALING_FACTOR = 3.0
 
 #: The footprint, and the inscribed radius nav2 derives from it -- the distance
 #: from the body's origin to the nearest edge, which is what gets inflated to
 #: 253 and therefore what stops the PathDist flood.
-FOOTPRINT = [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)]
-INSCRIBED_M = 0.14
+
+
 
 #: lidar_slam/nav_types.py, applied by drive_mixer: a standing turn slower than
 #: this does not clear stiction, so it is lifted to this. It is why a two-degree
@@ -519,6 +567,87 @@ def line_cells(col0, row0, col1, row1):
             row += step_r
 
 
+def base_obstacle(grid, poses):
+    """`BaseObstacleCritic`, which is the right critic once the body is a circle.
+
+    It reads the one cell the robot's centre is in and refuses anything that is
+    not free. `isValidCost` in `libdwb_critics.so` is a single comparison --
+    `cmp w1, #0xfc; cset w0, ls` -- so a cost is valid exactly when it is 252 or
+    less, and 253, 254 and 255 are all refusals.
+
+    That is a *point* test, and it is only a collision test while the inflation
+    layer's inscribed ring is as big as the whole robot. With the measured
+    rectangle it was not, which is why `ObstacleFootprint` replaced it. With a
+    circular `robot_radius` it is again, exactly -- and it is now stronger than
+    the footprint critic ever was, because that one only refused on contact at
+    254 while this refuses at 253, the ring. The ring is 0.244 m deep, so the
+    controller can no longer drive the rover into the band where it would not
+    be able to turn round.
+
+    `aggregation_type` is "last" and `sum_scores` is off, so every pose can
+    refuse the candidate but only the final one's cost is scored.
+    """
+    last = 0.0
+    for x, y, _yaw in poses:
+        col, row = grid.cell_of(x, y)
+        if not (0 <= col < grid.width and 0 <= row < grid.height):
+            return None, "BaseObstacle: trajectory goes off grid"
+        cost = grid.cost(col, row)
+        if cost > 252:
+            return None, "BaseObstacle: trajectory hits obstacle"
+        last = float(cost)
+    return last, ""
+
+
+def reinflate(grid, inscribed_m=None, inflation_m=None, scaling=None):
+    """Rebuild a recorded costmap's inflation at a different inscribed radius.
+
+    A recording carries the costmap the rover had, inflated under the settings
+    of the day. Testing a change to the robot's *shape* against it means
+    redoing that arithmetic, because the shape is what sets the ring. Only the
+    lethal cells are kept -- they are the observations; everything else in the
+    grid was derived from them and can be derived again.
+
+    The formula is `InflationLayer::computeCost` and it was checked against a
+    recorded map before being trusted: fitting cost against distance over 2931
+    gradient cells returned a scaling factor of 3.00 and an inscribed radius of
+    0.149 m, against the 3.0 and 0.14 the config asked for.
+    """
+    inscribed_m = INSCRIBED_M if inscribed_m is None else inscribed_m
+    inflation_m = INFLATION_RADIUS if inflation_m is None else inflation_m
+    scaling = COST_SCALING_FACTOR if scaling is None else scaling
+    lethal = [(c, r) for r in range(grid.height) for c in range(grid.width)
+              if grid.cost(c, r) == goal_fit.LETHAL]
+    unknown = set((c, r) for r in range(grid.height) for c in range(grid.width)
+                  if grid.cost(c, r) == goal_fit.UNKNOWN)
+    reach = int(math.ceil(inflation_m / grid.resolution))
+    data = [0] * (grid.width * grid.height)
+    best = {}
+    for lc, lr in lethal:
+        for dr in range(-reach, reach + 1):
+            for dc in range(-reach, reach + 1):
+                nc, nr = lc + dc, lr + dr
+                if not (0 <= nc < grid.width and 0 <= nr < grid.height):
+                    continue
+                away = math.hypot(dc, dr) * grid.resolution
+                if away > inflation_m:
+                    continue
+                if away < best.get((nc, nr), 1e9):
+                    best[(nc, nr)] = away
+    for (c, r), away in best.items():
+        if away == 0.0:
+            data[r * grid.width + c] = goal_fit.LETHAL
+        elif away <= inscribed_m:
+            data[r * grid.width + c] = goal_fit.INSCRIBED
+        else:
+            data[r * grid.width + c] = int((goal_fit.INSCRIBED - 1) * math.exp(
+                -scaling * (away - inscribed_m)))
+    for c, r in unknown:
+        data[r * grid.width + c] = goal_fit.UNKNOWN
+    return goal_fit.CostGrid(grid.width, grid.height, grid.resolution,
+                             grid.origin_x, grid.origin_y, data)
+
+
 def obstacle_footprint(grid, poses):
     """`ObstacleFootprintCritic`: the outline, every pose, 254 and 255 only.
 
@@ -853,7 +982,7 @@ def last_pose_on_costmap(grid, path):
 PREFER_FORWARD_THETA_SCALE = 10.0
 PREFER_FORWARD_PENALTY = 1.0
 #: 0.0 keeps it out of the sum, which is what the rover runs today.
-PREFER_FORWARD_SCALE = 0.0
+PREFER_FORWARD_SCALE = 0.5
 
 
 def prefer_forward(vx, wz):
@@ -900,7 +1029,10 @@ def evaluate(grid, path, goal, x, y, yaw, vx_now=0.0, wz_now=0.0,
         if reason:
             refused[reason] += 1
             continue
-        obstacle, reason = obstacle_footprint(grid, poses)
+        if CIRCULAR and CIRCULAR_USES_BASE_OBSTACLE:
+            obstacle, reason = base_obstacle(grid, poses)
+        else:
+            obstacle, reason = obstacle_footprint(grid, poses)
         if reason:
             refused[reason] += 1
             continue

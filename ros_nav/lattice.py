@@ -127,15 +127,24 @@ def describe_path(path, label):
     }
 
 
+#: `cost_penalty` from config/nav2.yaml. Nav2 multiplies the normalised cell
+#: cost by this before adding it to the step, so it is the only thing in the
+#: search that prefers the middle of a passage to the edge of one. The model
+#: had it hardwired at 1.0 while the rover ran 2.0, which is exactly the sort
+#: of drift that makes a sweep of it meaningless.
+COST_PENALTY = 2.0
+
+
 def lattice_astar(grid, start, goal, lattice_path=None, allow_unknown=True,
                   max_expansions=geo.MAX_EXPANSIONS, tolerance=geo.TOLERANCE_M,
-                  rotation_penalty=ROTATION_PENALTY):
+                  rotation_penalty=ROTATION_PENALTY, cost_penalty=None):
     """SE2 A* over the differential control set, which is SmacPlannerLattice.
 
     `start` and `goal` are (x, y, yaw). Arrival heading is a preference, not a
     requirement -- the same concession hybrid_astar makes, because NavFn never
     had one and a comparison that demands it is not a comparison.
     """
+    penalty = COST_PENALTY if cost_penalty is None else cost_penalty
     meta, by_start = load_lattice(lattice_path)
     headings = meta["heading_angles"]
     sx, sy, syaw = start
@@ -191,7 +200,7 @@ def lattice_astar(grid, start, goal, lattice_path=None, allow_unknown=True,
             cost = grid.cost(col, row)
             if cost == goal_fit.UNKNOWN:
                 cost = 0
-            ng = g + travel * (1.0 + cost / 252.0)
+            ng = g + travel * (1.0 + penalty * cost / 252.0)
             if ng + 1e-12 < g_score.get(nkey, 1e18):
                 g_score[nkey] = ng
                 came[nkey] = (key, prim)
