@@ -162,7 +162,7 @@ driving tools, Nav2's own numbers polled beside them, and the map on screen. It 
 there because a conversation cannot measure a move — a model asked to turn ninety
 degrees reports what it believed happened, and what you need is what the rover
 returned next to what you asked for. The rover hosts it at
-`http://<rover>:8771/` ([drive_web/](drive_web/README.md)). The pacing and the
+`https://<rover>:8771/` ([drive_web/](drive_web/README.md)). The pacing and the
 wording live in `voice_chat/console_model.py`. `python voice_chat\mock_rover.py --drive`
 gives the same page an invented room when there is no rover to hand.
 
@@ -172,24 +172,27 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 
 | Document | Covers |
 |---|---|
-| [oak-on-the-pi.md](docs/oak-on-the-pi.md) | why the OAK was not on the Pi 1: the firmware upload, the armv6 wheel, and the 5 V rail — kept because those three questions still apply |
+| [deploy.md](docs/deploy.md) | which directory runs on which host, how to push it, how to restart it |
+| [hosts.md](docs/hosts.md) | the machines this rover shares work with here — a local-setup document, not a general one |
+| [bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) | the dual-radio design as proposed; what actually runs is [wifi_roam/README.md](wifi_roam/README.md) |
 | [oak-d-lite.md](docs/oak-d-lite.md) | what the board is, each of the five tools, depth semantics, the calibration oddity |
-| [oak-usb-link.md](docs/oak-usb-link.md) | why every script pins USB2, what throughput the link allows, recovering a wedged device |
 | [depthai-version-pin.md](docs/depthai-version-pin.md) | why depthai is pinned `<3`, the evidence, upstream issues |
 | [d500-lidar.md](docs/d500-lidar.md) | power, data path, packet protocol, view orientation |
 | [usb-cameras.md](docs/usb-cameras.md) | how cameras are probed and named, why a black frame is usually the pixel format |
 | [driver-board.md](docs/driver-board.md) | the gamepad controls, how the ESP32 is found, what the heartbeat failsafe does and does not cover |
 | [i2c.md](docs/i2c.md) | header TWI0 is the ESP32's bus: which chips answer, what the host already has on UART, and where to put a new sensor |
 | [face-tracking.md](docs/face-tracking.md) | the calibration, the 266 ms of dead time that makes it hard, the sweep, the servo's own limits |
-| [moving-to-new-hardware.md](docs/moving-to-new-hardware.md) | what was re-measured when tracking moved off the Pi 1, and the five faults that all look like a camera that hunts |
-| [hosts.md](docs/hosts.md) | the machines this rover shares work with here — a local-setup document, not a general one |
 | [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which GPUs are worth it, rent vs buy |
 | [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in, the safety supervisor |
 | [omni-build.md](docs/omni-build.md) | the costed version of that design: what survives, what to write, and what to do first |
 | [scripting.md](docs/scripting.md) | running a program on the rover instead of calling one more tool: what the MVP does, what a script costs to start, and why a saved behaviour must not become a tool |
 
-The last five are planning and local-setup documents, and are specific to one
-installation rather than general. The rest describe the hardware and the code.
+[deploy.md](docs/deploy.md), [hosts.md](docs/hosts.md) and
+[bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) are local-setup
+documents, specific to this installation. [omni-architecture.md](docs/omni-architecture.md),
+[omni-build.md](docs/omni-build.md) and [scripting.md](docs/scripting.md) are
+planning documents; the last of those also describes what is already running.
+The rest describe the hardware and the code.
 [`docs/refs/`](docs/refs) is not prose at all: the LD19 datasheet and STEP model
 and the rover kit's own drawing, kept because several measured numbers in the
 documents above are checked against them.

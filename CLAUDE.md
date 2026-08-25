@@ -1,395 +1,101 @@
 # Working in this repository
 
-## Deploy every change to the host that runs it
+Rules for doing the work. Where each directory runs, how to push it, and how to
+restart it are in [docs/deploy.md](docs/deploy.md). The machines, addresses and
+keys are in [docs/hosts.md](docs/hosts.md). A component's own README is where
+the rest lives.
 
-**Nothing in this repository runs on the Windows workstation.** The rover code runs
-on the Banana Pi and the model services run on MEDIA. Nothing is synced or rebuilt
-automatically, so a change that has only been committed exists nowhere but the
-repo — the rover goes on running the old code.
+## A change is not done until it runs on the host that uses it
 
-A change is therefore not finished when the self-tests pass locally. **Work out
-which hosts the changed files run on, push to each, restart what needs restarting,
-and verify it there — as part of the same piece of work, without being asked.**
-Say in the report which hosts were deployed to and what was checked on them.
+The rover's services run on the Banana Pi (`bpi-m4zero`). The GPU model
+services run on MEDIA. Bench scripts (`oak_camera/`, `lidar/`, `usb_cameras/`,
+`driver_board/`, `omni_bench/`, `voice_chat/mock_rover.py`) run on whichever
+desk is in use and need no deploy.
 
-The repo stays source of truth: edit here and push, never edit in place on a host.
+Nothing is synced or rebuilt automatically. A change that has only been
+committed exists nowhere but the repo — the rover goes on running the old
+code. Self-tests passing locally are not the finish line.
 
-## Where each directory runs
+**Work out which hosts the changed files run on, push to each, restart what
+needs restarting, and verify it there — as part of the same piece of work,
+without being asked.** Say in the report which hosts were deployed to and
+what was checked on them.
 
-| Directory | Host | Lands at |
-|---|---|---|
-| `rover_daemon/`, `driver_board/`, `face_tracking/` | `bpi` | `~/ugv/` (flat for the daemon; others mirror their repo path) |
-| `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` — the lidar's C *parser*, the map renderer and the USB replug, all of which `ros_nav/` and the daemon reuse. Its SLAM, planner and drive controller are deleted, not merely unused |
-| `ros_nav/` | `bpi` | `~/ugv/ros_nav/`, plus a conda environment at `~/miniforge3` built by its own `install.sh`. ROS 2 mapping and navigation; see [ros_nav/README.md](ros_nav/README.md) |
-| `oak_depth/` | `bpi` | `~/ugv/oak_depth/`, plus `vendor/` filled by its own `install.sh` |
-| `wifi_roam/` | `bpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by its own `install.sh` |
-| `netwatch/` | `bpi` | `~/ugv/netwatch/`, and from there into `/usr/local/sbin`, `/usr/local/bin` and `/etc/systemd/system` by its own `install.sh`. `netprobe.py` is the desk half and is not deployed |
-| `behaviours/` | `bpi` | `~/ugv/behaviours/` — **planned, not built**; see [docs/scripting.md](docs/scripting.md). `scripting.py` and `rover_api.py`, which run scripts, deploy flat with the daemon; the agent-written store must never be overwritten by a deploy |
-| `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
-| `drive_web/`, plus `voice_chat/console_model.py` and `voice_chat/rover_tools.py` | `bpi` | `~/ugv/drive_web/` |
-| `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/mock_rover.py` | whatever desk is in use | nothing to deploy |
-
-The drive console is hosted on the rover (`http://<rover>:8771/`). See
-[drive_web/README.md](drive_web/README.md).
-
-See [docs/hosts.md](docs/hosts.md) for what these machines are, their addresses and
-their keys. The SSH host is `bpi-m4zero`.
+The repo stays source of truth: edit here and push, never edit in place on a
+host.
 
 ## Credentials are in `secrets/`, so use them
 
-Every password and token this repository needs is a one-line file in `secrets/`,
-which is gitignored and exists only on the workstation. `bpi-sudo.key` is `admin`'s
-password on the Banana Pi that is the rover now and `rpi-sudo.key` is the same
-account's password on the Raspberry Pi it replaced — **the two are different, and
-the Pi's is silently refused by the Banana Pi**, which reads as a board that has
-lost its password rather than as the wrong file. `wifi.key` is the passphrase the
-three house networks share, and `runpod.key` and `alibaba.key` are the API keys for
-those accounts.
+Every password and token is a one-line file in `secrets/`, gitignored, only
+on the workstation. **Read the file rather than stopping to ask for it.** A
+deploy that stops at "somebody will have to type this in" has not been
+deployed.
 
-**Read the file rather than stopping to ask for it.** A good deal of the work here
-needs root on the Banana Pi — the systemd units under `wifi_roam/`, anything under
-`/etc`, and any scan or network switch — and `sudo` there asks for a password
-rather than being passwordless. A deploy that stops at "somebody will have to type
-this in" has not been deployed. Feed it over stdin, which keeps it out of both
-shells' history and out of `ps` on the rover:
+`bpi-sudo.key` is `admin`'s password on the Banana Pi. `rpi-sudo.key` is the
+same account on the Raspberry Pi it replaced — **the two are different, and
+the Pi's is silently refused by the Banana Pi**, which reads as a board that
+has lost its password rather than as the wrong file.
 
-```bash
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/wifi_roam/install.sh'
-```
-
-One password per `sudo`, because `-S` reads until end of file: two `sudo -S` calls
-chained after one `cat` leaves the second with nothing and it fails as "no password
-was provided", which looks like the wrong password and is not. Pipe it once per
-command, or give the remote side a small script to run under a single `sudo`.
-
-Use them, but keep them where they are: none of these belongs in a commit, in a
-chat transcript, on a command line where `ps` can see it, or copied onto a host.
-
-## The Banana Pi
-
-```bash
-scp rover_daemon/*.py bpi-m4zero:~/ugv/     # includes ros_navigator.py, the
-                                            # client half of the nav bridge
-# lidar_slam/ lost eleven files when its SLAM and planner went; scp adds and never
-# removes, so mirror it rather than copying into it, then rebuild -- libslam2d.so is
-# per-host and a stale one now has the wrong struct layout
-rsync -a --delete --exclude 'libslam2d.so' --exclude selftest lidar_slam/ bpi-m4zero:~/ugv/lidar_slam/
-ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2'
-scp face_tracking/*.py face_tracking/install_opencv.sh     face_tracking/face_detection_yunet.onnx bpi-m4zero:~/ugv/   # the tracking loop and its detector
-scp -r oak_depth bpi-m4zero:~/ugv/           # the OAK as a depth camera; then its own install.sh
-scp -r wifi_roam bpi-m4zero:~/ugv/           # the wifi keeper; then its own install.sh
-scp -r netwatch bpi-m4zero:~/ugv/            # the network recorder; then its own install.sh
-ssh bpi-m4zero 'cd ~/ugv && python3 selftest.py | tail -2'
-ssh bpi-m4zero '~/ugv/restart.sh'          # ~35 s; prints the new tool count
-```
-
-Both `restart.sh` scripts exist so that the pattern they kill on lives in a file
-rather than on an ssh command line, where it would match -- and kill -- the very
-session that typed it.
-
-`restart.sh` kills only the daemon and lets the supervisor restart it, because the
-crontab entry — `@reboot ~/ugv/run_daemon.sh --vision --board-bridge`, beside
-`@reboot ~/ugv/oak_depth/run_oak_depth.sh` — is where the
-arguments live. **Never relaunch `run_daemon.sh` by hand**; it drops the flags and
-the rover silently loses tools.
-
-**There is no `--lidar` any more.** The daemon used to be able to drive with its
-own planner, holding the lidar's serial port itself; that planner has been deleted
-and the flag with it, because the lidar belongs to `ros_nav/` and only one process
-can hold a serial port -- the daemon would win it silently and `slam_toolbox` would
-sit waiting for a scan that never comes. What the entry says is `--board-bridge
---ros-nav`, and the pair is the whole interface between the two halves of this
-rover, running in opposite directions:
-
-- `--board-bridge` lends the driver board's encoders, gyro and motor commands to
-  the ROS stack over loopback TCP 8772, while keeping the UART, the lights, the
-  gimbal and the pack voltage. See
-  [rover_daemon/board_bridge.py](rover_daemon/board_bridge.py).
-- `--ros-nav` borrows navigation back over loopback TCP 8773, so that `drive`,
-  `drive_to`, `turn_in_place`, `show_map` and the rest are offered at all -- backed
-  by Nav2. 17 tools, with the same names and the same replies the daemon's own
-  planner used to give, so the voice chat and the drive console did not change. See
-  [rover_daemon/ros_navigator.py](rover_daemon/ros_navigator.py) and
-  [ros_nav/nav_bridge.py](ros_nav/nav_bridge.py).
-
-**Twenty if you are asking from the rover itself.** Three of them run code
-rather than perform an act, and all three are offered only to a client on
-loopback, because they are refused on anything but loopback and a schema that
-always answers "reach it through an ssh tunnel" is worse than no schema:
-
-- `run_script` writes a short Python program, runs it in a child process and
-  gives back what it printed, with fifteen seconds to do it in because the
-  caller's connection is held open meanwhile.
-- `start_script` is the same for something with no end written into it and hands
-  back a handle instead of an answer. **It has no time limit at all**; it runs
-  until it finishes, fails, or is stopped.
-- `script_stop` is what stops it, and it is a tool rather than a control call
-  precisely because of the line above -- a model that can start something
-  endless and not end it has taken the rover's one script slot for good.
-
-One script at a time, so a second `start_script` is refused and names the run
-holding the slot. The conversation is on the rover now, so the model is inside
-that gate; a desk client still sees seventeen. So `list_tools` legitimately
-answers differently depending on where it was asked from, and the tool count in a
-startup line or a console panel is the local one. See
-[docs/scripting.md](docs/scripting.md).
-
-Without `--ros-nav` the daemon offers no driving tools at all, and its startup line
-says `driving off` rather than `driving ros2 on 127.0.0.1:8773`.
-
-**When the map is empty, check the driver board before you check the lidar.** The
-two are on different ports and the lidar is the misleading one: it can be reporting
-happily at 10 Hz while there is no map at all. The chain is
-`board telemetry -> base_node odometry -> odom->base_link -> slam_toolbox`, and it
-breaks at the first link far more often than anywhere else -- the log says
-`Message Filter dropping message ... queue is full` over and over, which reads as a
-scan problem and is not one. One call settles it:
-
-```bash
-ssh bpi-m4zero 'python3 -c "import json,socket;s=socket.create_connection((\"127.0.0.1\",8769));s.sendall(b\"{\\\"call\\\":\\\"nav_status\\\"}\n\");print(s.makefile().readline())"'
-```
-
-`board_ok: false` there means the daemon is holding a port the ESP32 is not talking
-on. The board answers over WiFi independently -- `curl "http://192.168.1.22/js?json=%7B%22T%22%3A130%7D"` returns a
-`T:1001` line -- so that is how to tell a dead board from a dead serial link. The
-daemon now notices this itself and reopens the port, and `nav_status` counts the
-attempts as `board_reopens`; a count that climbs over an afternoon is a connector
-working loose.
-
-`--ros-nav` needs the ROS stack up, and it does not wait for it -- both are
-started by the same crontab and the stack takes the best part of a minute, so a
-daemon that insisted would never come up at boot. Each tool connects when it is
-called and says plainly when there is nothing to connect to.
-
-**Changing that crontab line is not enough on its own.** The running supervisor is
-holding the arguments the daemon was started with, so it has to be replaced too:
-
-```bash
-ssh bpi-m4zero "crontab -l | sed 's|--vision --board-bridge$|& --ros-nav|' | crontab - && sync"
-ssh bpi-m4zero "pkill -f 'ugv/run_daemon[.]sh'; sleep 1; ~/ugv/restart.sh"
-```
-
-Anything touching `slam2d.c` or `slam2d.h` also needs a rebuild on the host, since
-`libslam2d.so` is built per-host (aarch64 here) and is not committed:
-
-```bash
-ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
-```
-
-**Two libraries the rover needs are unpacked rather than installed, and neither is
-committed.** This board's Debian has no `pip` and no `python3-venv`, and `sudo`
-here wants a password no script has, so each is a pinned wheel unzipped into a
-`vendor/` directory by its own script — idempotent, so running it again after a
-deploy costs one import check:
-
-```bash
-ssh bpi-m4zero '~/ugv/install_opencv.sh'          # OpenCV 4.12, for YuNet in the daemon
-ssh bpi-m4zero '~/ugv/oak_depth/install.sh'       # depthai 2.32.0.0, for the OAK's depth
-```
-
-`oak_depth/` has its own supervisor and its own crontab entry, so reloading the
-depth service is not the same act as reloading the daemon. It owns the OAK, and
-only one process can, so stop it before running anything else against the camera:
-
-```bash
-ssh bpi-m4zero 'python3 ~/ugv/oak_depth/selftest.py'   # with the service stopped
-ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'            # ~10 s to boot the VPU and stereo
-```
-
-`drive_web/` is the browser console, on TCP 8771 (8770 is oak_depth). It has its
-own supervisor and crontab entry. `console_model.py`, `rover_tools.py` and
-`session.py` stay in `voice_chat/` and are copied next to it on deploy:
-
-```bash
-scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md bpi-m4zero:~/ugv/drive_web/
-# the console's copy, then the omni session the rover now runs itself
-scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts,server}.py \
-    bpi-m4zero:~/ugv/drive_web/
-ssh bpi-m4zero '~/ugv/drive_web/install.sh'    # crontab, once
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'   # a pinned wheel, once
-ssh bpi-m4zero '~/ugv/drive_web/restart.sh'    # prints /health
-```
-
-**The console is `https://<the rover>:8771/` now**, and plain http on the same
-port is redirected into it. That is not about secrecy -- there is still no
-password on the driving controls -- it is that `getUserMedia` is refused outside
-a secure context, and the page has a microphone on it. `make_cert.sh` writes the
-certificate to `~/.ugv/tls/`, `run_drive_web.sh` re-runs it at every boot because
-this board's address moves, and `~/.ugv/tls/console-ca.crt` is what to install on
-a phone or a laptop to lose the warning.
-
-**Two files on the rover are deliberately outside `~/ugv`**, which is the one
-place this repository's "credentials stay on the workstation" rule is bent, and
-it was bent knowingly: the rover holds its own conversation with Alibaba's
-realtime model now, so the key has to be reachable from the board or the desk has
-to be switched on for the rover to talk.
-
-```bash
-scp secrets/alibaba.key bpi-m4zero:~/.ugv/alibaba.key   # then chmod 600
-ssh bpi-m4zero 'cat ~/.ugv/console.token'               # gates the microphone only
-```
-
-`~/.ugv/` rather than `~/ugv/` because a deploy lands on the latter, and a key a
-deploy can overwrite is one an `scp -r` can carry back into the repository. The
-token gates the microphone and nothing else, because what is new is that the page
-can spend an account with a free tier and no pay-as-you-go under it.
-
-`ros_nav/` is ROS 2 Jazzy, installed from RoboStack into a conda environment
-outside `~/ugv` because a deploy overwrites `~/ugv`. It has its own supervisor and
-crontab entry, and its `env.sh` **must be sourced from bash** � RoboStack's
-activation hooks use `source`, which dash has not got, and the failure names
-neither the file nor the shell:
-
-```bash
-scp -r ros_nav bpi-m4zero:~/ugv/
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'          # ~20 min, 4.7 GB, no sudo
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --nav'   # crontab; also checks the daemon's
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'             # ~30 s; prints the node list
-```
-
-Its `restart.sh` exists for the usual reason and one more: `ros2 launch` does
-**not** reliably take its nodes down when killed, so every reload used to leave
-another `lidar_node` behind, three of them ended up sharing one serial port, and
-`/scan` arrived at 18 Hz from a 10 Hz sensor with nothing reporting an error. The
-supervisor sweeps before every launch, and `restart.sh` both counts what is
-running and looks for a node that died on the way up.
-
-**That sweep is `sweep.sh`, a separate file, and it must stay one.** It was a
-function inside `run_ros_nav.sh`, which is a trap with a long fuse: bash parses a
-function once, at start, and that supervisor runs for weeks -- so the sweep that
-ran was whichever copy was on disk when it last started. Adding `nav_bridge` to it
-therefore did nothing, the old bridge survived a reload, the new one could not
-bind its port and died in the log, and the stack came back answering with the
-*previous* deploy's code while the reload reported one of each node and nothing
-wrong. **Anything that adds a node to this stack adds it to `sweep.sh`**, and a
-change to `run_ros_nav.sh` itself needs the supervisor replaced rather than just
-the launch:
-
-```bash
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh --supervisor'
-```
-
-`wifi_roam/` is neither of those. It is the only thing here installed as a systemd
-unit, because scanning and switching networks need root, and its `install.sh` is
-what copies the script into `/usr/local/sbin` and the units into
-`/etc/systemd/system`. It is idempotent, so run it again after changing any of
-them:
-
-```bash
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install.sh'
-ssh bpi-m4zero 'systemctl list-timers --no-pager wifi-roam.timer'
-```
-
-**Its roam timer is switched off on this board and stays off**, and since
-2026-08-25 that is not caution but arithmetic: the rover uses **both** of its
-radios now, and `wifi_dual.py` owns them. The roamer's whole model is
-single-radio — notice the link has failed, spend an association finding another
-— and the manager's is the opposite, so letting both move the link is a fight
-over the rover's only way in. `install-dual.sh` disables the timer when it arms
-the manager.
+`sudo` on the Banana Pi prompts. Feed the password over stdin, once per
+`sudo`, because `-S` reads until end of file:
 
 ```bash
 cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh'
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on'
-ssh bpi-m4zero 'cat /run/wifi-dual.json'      # both radios; needs no privilege
 ```
 
-**The rover's address is `192.168.1.80` now.** That is a service address the
-manager moves between the two interfaces with a gratuitous ARP, so it is the one
-that keeps working across a failover and the one to use — an open ssh session,
-the console's websocket and the rover's conversation with Alibaba all survive a
-radio changing underneath them. `.139` (onboard) and `.100` (dongle) are the
-interfaces' own DHCP leases and each still answers, through one routing rule per
-interface. Both `ssh 192.168.1.80` and the workstation's `~/.ssh/config` know
-this.
+Two `sudo -S` calls chained after one `cat` leave the second with nothing.
 
-The onboard radio is `wlan0` and the USB dongle is `wlan1`, pinned by two
-`.link` files; `install-dual.sh` writes the dongle's netplan stanza by copying
-`wlan0`'s, so the passphrase never has to be typed again. Like `install.sh` it
-leaves the manager switched off unless given `DUAL=on`, because everything it
-does reaches for the radios and the way it fails is a rover that needs carrying
-to a socket. See [wifi_roam/README.md](wifi_roam/README.md), and
-[docs/bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) for the
-design and the five places the hardware differed from it.
+Keep them where they are: none of these belongs in a commit, a chat
+transcript, a command line where `ps` can see it, or copied onto a host. The
+two files the rover itself must hold live in `~/.ugv/` on the board, outside
+the deploy tree, for that reason — see [docs/deploy.md](docs/deploy.md).
 
-**`wifi_dual.py` is not deployed on reasoning.** It has a model of the house
-(`wifi_world.py`) and a self-test that first replays a recording of this rover
-losing the network and refuses to report anything if its grading disagrees with
-what the rover recorded at the time:
+## Do not fight the supervisors
 
-```bash
-python3 wifi_roam/test_wifi_dual.py      # anywhere; ~1.4 s on the rover
-```
+Each long-running service has a supervisor (crontab or systemd) and a
+`restart.sh`. The supervisor is where the arguments live. `restart.sh` kills
+only the child and lets it come back with those arguments.
 
-`netwatch/` is the other systemd unit, and it is the one to install first on any
-board that keeps disappearing. It records the link, the load and every word the
-supplicant and the kernel say, to `/var/lib/netwatch/` rather than to `/var/log`,
-which on this board is a zram ramlog that loses exactly the minutes worth having.
-It also writes a record when it is asked to stop, which is what separates a reboot
-somebody asked for from a board that fell over:
+- Never type the `pkill` on an ssh command line. The pattern matches the
+  session that typed it.
+- Never relaunch `run_daemon.sh` by hand. It drops the flags and the rover
+  silently loses tools.
+- Changing a crontab line is not enough: the running supervisor still holds
+  the old arguments, so replace it too, and `sync` afterwards — this card is
+  `commit=120` and a restart otherwise undoes the write.
+- `ros_nav/sweep.sh` must stay a separate file. Anything that adds a node to
+  that stack adds it there. A change to `run_ros_nav.sh` itself needs
+  `~/ugv/ros_nav/restart.sh --supervisor`.
 
-```bash
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/netwatch/install.sh'
-ssh bpi-m4zero 'netwatch-report'                 # boots, outages, and their causes
-python3 netwatch/netprobe.py --log probe.log     # the desk half; not deployed
-```
-
-Note the `sh` in front of both installers. A checkout that arrived by `scp` is
-mode 644, so the shebang is never consulted and running the path directly fails
-with "Permission denied" — which reads as a sudo problem and is not one.
-
-Plain `scp` is fine for the `.py` files — no shebang, so CRLF does not bite. The
-shell scripts under `lidar_slam/`, `oak_depth/`, `wifi_roam/`, `netwatch/` and
-`face_tracking/` do have one, and
-they are held to LF by `.gitattributes`; a CRLF checkout turns their shebang into
-an interpreter with a carriage return in its name.
-
-## MEDIA
-
-```bash
-scp voice_chat/{server.py,voice_history.py,voice_stream.py,voice_http.py,requirements.txt,selftest.py,test_harness.py,test_server.py,test_talk.py} root@media:/opt/voice_chat/
-ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
-```
-
-`voice-chat` takes ~150 s to come back — three models load and decode is warmed
-before it binds — and `/health` answering is the signal that it is ready. The three
-GPU services share one card and are mutually exclusive; switch with
-`ssh root@media ~/switch_service.sh voice`. `face-detect` is on the CPU and is not
-part of that trade.
+Do not enable `wifi-roam.timer` while `wifi_dual` is running. They have
+opposite models of the link and will fight over the rover's only way in.
 
 ## Reproduce it in simulation before you fix it
 
-**A fix for a fault nobody has reproduced is a guess.** Whenever a fault can be
-put in front of a model of the thing that misbehaves — and for the navigation
-stack it almost always can, because every drive can be recorded and replayed —
-build the reproduction first, and do not change the running system until the
+**A fix for a fault nobody has reproduced is a guess.** Whenever a fault can
+be put in front of a model of the thing that misbehaves, build the
+reproduction first, and do not change the running system until the
 reproduction fails the same way the rover does.
 
-Then hold the fix to the same standard: show it working *in the reproduction*
-before deploying it, and say what the reproduction measured. "This should help"
-is not a result. Three separate fixes have been deployed to this rover on
-reasoning alone and all three left the fault exactly where it was, each costing
-a drive, a deploy and a round of the user's time to find that out.
+Then hold the fix to the same standard: show it working *in the
+reproduction* before deploying it, and say what the reproduction measured.
+"This should help" is not a result.
 
-Two things this rule does not say. It does not say simulation replaces the
-hardware: a fix that passes in the model still has to be deployed and watched on
-the rover, because the model is only as good as its last calibration. And it
-does not say a model may be trusted because it is a model — a reproduction has
-to be *validated against a recording of the real fault* before it can be used to
-judge anything. Replaying a drive and finding the model would have made
-near-enough the same choice the controller made, tick by tick, is what earns it
-the right to be believed; `ros_nav/dwb_replay.py` exists to do exactly that and
-refuses to test a fix on a recording it cannot match. Where the model and the
-hardware disagree, the hardware is right and the model has a bug.
+Simulation does not replace the hardware: a fix that passes in the model
+still has to be deployed and watched on the rover. And a model is not trusted
+for being a model — a reproduction has to be validated against a recording of
+the real fault before it can be used to judge anything. Where the model and
+the hardware disagree, the hardware is right and the model has a bug.
 
-The pieces that make this cheap already exist: `ros_nav/nav_record.py` records a
-live drive with the controller's own settings saved alongside it,
-`ros_nav/corridor_sim.py` is an offline copy of DWB, and
-`ros_nav/dwb_replay.py` scores a recording against that copy and can drive the
-copy round the recorded costmap. See [ros_nav/README.md](ros_nav/README.md).
+For the navigation stack the pieces already exist: `ros_nav/nav_record.py`,
+`ros_nav/corridor_sim.py`, `ros_nav/dwb_replay.py`. See
+[ros_nav/README.md](ros_nav/README.md). For the dual-wifi manager,
+`python3 wifi_roam/test_wifi_dual.py` replays a recording of this rover
+losing the network and refuses to report anything if its grading disagrees.
 
 ## Verify on the hardware, not by inference
 
-Prove the deploy on the machine itself — for the Banana Pi, call the affected tool
-over TCP on port 8769 and look at what comes back. "The self-test passes" and "the
-file was copied" are not evidence that the running system changed.
+Prove the deploy on the machine itself — for the Banana Pi, call the affected
+tool over TCP on port 8769 and look at what comes back. "The self-test
+passes" and "the file was copied" are not evidence that the running system
+changed.

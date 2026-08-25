@@ -62,7 +62,7 @@ matches the server also matches the ssh command carrying it.
 
 ```
 https://bpi-m4zero.local:8771/
-https://192.168.1.139:8771/
+https://192.168.1.80:8771/
 ```
 
 Windows often cannot resolve `.local`; the number works. Plain `http://` on the

@@ -337,6 +337,21 @@ a cable. Every attempt is logged, the count comes back in `nav_status` as
 its own, but a number that has climbed over an afternoon is a connector working
 loose, and nothing else on this rover would say so.
 
+An empty map with a lidar reporting happily at 10 Hz is this chain breaking at
+the first link — `board telemetry -> base_node odometry -> odom->base_link ->
+slam_toolbox` — and the log saying `Message Filter dropping message ... queue
+is full` over and over, which reads as a scan problem and is not one. One call
+settles it:
+
+```bash
+ssh bpi-m4zero 'python3 -c "import json,socket;s=socket.create_connection((\"127.0.0.1\",8769));s.sendall(b\"{\\\"call\\\":\\\"nav_status\\\"}\n\");print(s.makefile().readline())"'
+```
+
+`board_ok: false` means the daemon is holding a port the ESP32 is not talking
+on. The board answers over WiFi independently —
+`curl "http://192.168.1.22/js?json=%7B%22T%22%3A130%7D"` returns a `T:1001`
+line — so that is how to tell a dead board from a dead serial link.
+
 ## The protocol
 
 Newline-delimited JSON over TCP. One request, one reply, no streaming:

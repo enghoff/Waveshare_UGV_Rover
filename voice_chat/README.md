@@ -890,8 +890,8 @@ with buttons for `turn_in_place` and `drive`, a big red stop, the daemon's
 camera's own picture, face tracking and the headlights beside it.
 
 ```
-http://192.168.1.139:8771/
-http://bpi-m4zero.local:8771/
+https://192.168.1.80:8771/
+https://bpi-m4zero.local:8771/
 
 python voice_chat\mock_rover.py --drive
 python drive_web\drive_web.py --no-idle --bind 127.0.0.1

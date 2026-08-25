@@ -2,10 +2,12 @@
 
 **This is a local-setup document.** It describes one particular installation —
 its hostnames, addresses, keys and firewall rules — rather than anything general
-about the repository. Nothing here is required to run the code; the components
-that reach these machines take the host as an argument. Read it as a worked
-example of what deploying to the rover's board and a GPU box actually involves, and
-expect every name and number in it to be different on your own network.
+about the repository. How to push code onto these machines is
+[deploy.md](deploy.md). Nothing here is required to run the code; the
+components that reach these machines take the host as an argument. Read it as
+a worked example of what deploying to the rover's board and a GPU box actually
+involves, and expect every name and number in it to be different on your own
+network.
 
 Most of this repo runs on the workstation. Two named hosts sit outside it, and
 neither is interchangeable with the other: `bpi` is the only machine physically
@@ -18,20 +20,22 @@ wired to the rover, and `media` is the only one with a GPU.
 | CPU / RAM | 4× Cortex-A53 at 1.416 GHz, aarch64 with NEON, 3.9 GB | Ryzen 7 5700G, 8 threads, 21 GB |
 | storage | 29 GB card, ext4 mounted `commit=120` | 1 TB rootfs, 45 GB used |
 | OS | Armbian, kernel 6.18.44-current-sunxi64, Debian trixie, CPython 3.13.5 | Ubuntu 22.04.5, 6.18.33.2-microsoft-standard-WSL2 |
-| address | `bpi-m4zero.local` — `192.168.1.139` (wlan0; this form factor has no Ethernet) | `media.local` — `192.168.1.3` |
+| address | `192.168.1.80` (service address, either radio); also `bpi-m4zero.local` | `media.local` — `192.168.1.3` |
 | key | `~/.ssh/id_ed25519_rpi` | `~/.ssh/id_ed25519` (the default one) |
 
 Both are on the same 192.168.1.0/24 home LAN as the rover's ESP32
 (`192.168.1.22`).
 
-**Address them by name, not by number.** `bpi-m4zero.local` and `media.local`
-both resolve by mDNS from the workstation, from the rover and from MEDIA, and
-the name is the only identifier that stays right if the wifi address ever
-moves. Hardcoding `192.168.1.139` is the fallback when the name will not
-resolve: Windows OpenSSH asks unicast DNS for `.local` and the router answers
-NXDOMAIN, which is why the `bpi-m4zero` Host entry in `~/.ssh/config` goes
-through a multicast proxy. The ESP32 is the exception and stays a number — it
-advertises no mDNS name.
+**The rover's address is `192.168.1.80`.** That is a service address
+`wifi_dual` moves between the two radios with a gratuitous ARP, so an open
+ssh session, the console's websocket and the rover's own conversation all
+survive a failover. `.139` (onboard, `wlan0`) and `.100` (dongle, `wlan1`)
+are the interfaces' own DHCP leases and each still answers. `bpi-m4zero.local`
+and `media.local` also resolve by mDNS when it works; Windows OpenSSH asks
+unicast DNS for `.local` and the router answers NXDOMAIN, which is why the
+`bpi-m4zero` Host entry in `~/.ssh/config` goes through a multicast proxy
+(and why `192.168.1.80` is the reliable way to reach this board from a
+Windows desk). The ESP32 stays a number — it advertises no mDNS name.
 
 Measured, so the cost is known rather than assumed:
 
@@ -81,14 +85,17 @@ reported 19.9 — the missing sixth of the samples was the reader's, not the
 firmware's. And a read loop that extends its deadline whenever bytes arrive
 never returns at all; use a fixed deadline.
 
-**Network.** Wifi only: this form factor has no Ethernet. `wlan0` is
-`192.168.1.139`. `nmcli` is not on this board — it runs netplan and
-`wpa_supplicant` — and scanning or switching still needs root. Three APs are
-saved, not one: `TheGreatLord`, `TheMaharaja` and `TheGreatViking` are three
-separate routers bridged onto that same /24, so the rover keeps a
-`192.168.1.x` address whichever it lands on. TheGreatViking's router *is* the
-gateway at `192.168.1.1`; the other two answer on the LAN at `.2` and `.232`.
-[`wifi_roam/`](../wifi_roam) is what chooses between them.
+**Network.** Wifi only: this form factor has no Ethernet. Two radios, both
+associated: onboard Broadcom BCM4345/6 as `wlan0`, USB Realtek dongle as
+`wlan1`. `nmcli` is not on this board — it runs netplan and `wpa_supplicant`
+— and scanning or switching still needs root. Six SSIDs are saved, not one:
+`TheGreatLord`, `TheMaharaja` and `TheGreatViking` are three separate routers
+bridged onto that same /24, each with a 2.4 GHz name and a 5 GHz twin, so the
+rover keeps a `192.168.1.x` address whichever it lands on. TheGreatViking's
+router *is* the gateway at `192.168.1.1`; the other two answer on the LAN at
+`.2` and `.232`. [`wifi_roam/wifi_dual.py`](../wifi_roam/wifi_dual.py) is
+what chooses which radio carries traffic; see
+[wifi_roam/README.md](../wifi_roam/README.md).
 
 **There is no acceleration to offload to.** No NPU; the Mali-G31 is `disabled`
 in this board's device tree and `card0` is only the display engine
@@ -130,43 +137,42 @@ netwatch-report` reads it back. The 5 V rail everything on the USB tree shares i
 still the thing to suspect if the resets turn out to be real.
 
 **Its network is netplan, `systemd-networkd` and `wpa_supplicant` — not
-NetworkManager.** There is no `nmcli` on this board at all, and the six house
-SSIDs (three routers, each with a 5 GHz twin, all six reachable now that the
-radio is dual-band) live
-in `/etc/netplan/30-wifi.yaml`, from which netplan renders
-`/run/netplan/wpa-wlan0.conf` and runs one supplicant per interface as
-`netplan-wpa-wlan0.service`. That is why the wifi keeper in
-[wifi_roam/](../wifi_roam) had never once run on this board: it drove `nmcli`, and
-the units it installed named `Requires=NetworkManager.service`, which would have
-failed every tick had anything started them. Both are fixed as of 2026-08-23; the
-timer is installed and deliberately still switched off until somebody is there to
-watch its first hour.
+NetworkManager.** There is no `nmcli` on this board at all. The house SSIDs
+live in `/etc/netplan/30-wifi.yaml`, from which netplan renders one
+`wpa_supplicant` per interface. The single-radio keeper in
+[wifi_roam/](../wifi_roam) was written against NetworkManager and, once
+ported, still stays off here: since 2026-08-25 both radios are up at once and
+[`wifi_dual.py`](../wifi_roam/wifi_dual.py) owns them. The roamer's model is
+"notice the link has failed, spend an association finding another"; the
+manager's is the opposite, so letting both move the link is a fight over the
+rover's only way in. `install-dual.sh` disables `wifi-roam.timer` when it
+arms the manager.
 
-**The wifi is the board's own radio, as of 2026-08-24.** It is the onboard
-Broadcom BCM4345/6 — the AP6256 module — on `brcmfmac`, reached over SDIO and
-fitted with a proper antenna. It replaced the Realtek RTL8188FTV (`0bda:f179`)
-USB dongle carried over from the Pi, which is gone from the rover and from the
-USB tree it shared with the camera, the lidar's CH343 and the OAK. Measured on
-the same access point from the same spot, the onboard radio held −29 dBm against
-the dongle's −36 and moved 25 MB over ssh in 5.9 s against 8.0 s; being
-dual-band, it can also reach the 5 GHz halves of the house networks, which the
-dongle could not see at all.
+**Two radios, as of 2026-08-25.** The onboard Broadcom BCM4345/6 (AP6256,
+`brcmfmac`, SDIO, dual-band) is `wlan0`. The Realtek RTL8188FTV (`0bda:f179`)
+USB dongle that was retired on 2026-08-24 is back as `wlan1`, pinned by
+[`wifi_roam/20-usb-wlan.link`](../wifi_roam/20-usb-wlan.link) on `ID_BUS=usb`
+rather than a MAC, because the dongle is the part most likely to be replaced.
+The onboard radio is the better one (dual-band, 31 dBm against the dongle's
+2.4 GHz 0 dBm) and gets first pick; the dongle is the spare, where its
+failing costs nothing. Names, not BSSIDs, keep the two radios on different
+boxes — `TheGreatLord` and `TheGreatLord 5G` are one router, and a radio on
+each would look like redundancy and provide none.
 
-Three things on the host make that work and none of them live in this repo:
+Three things on the host make the onboard radio keep the name `wlan0`, and
+none of them live in this repo:
 
 - `/etc/systemd/network/10-onboard-wlan.link` pins the radio's MAC
-  (`ac:6a:a3:41:53:53`) to the name `wlan0`. That is why netplan's existing
-  `wlan0` stanza, `netwatch`, the daemon's `wifi_status` and `wifi_ctl.sh` all
-  kept working without a line of change — the file it replaced pinned the dongle
-  to that name instead, and a USB radio plugged in now lands on a `wlx…` name
-  and is simply ignored.
+  (`ac:6a:a3:41:53:53`) to `wlan0`. That is why netplan's existing `wlan0`
+  stanza, `netwatch`, the daemon's `wifi_status` and `wifi_ctl.sh` all kept
+  working without a line of change.
 - `dhcp-identifier: mac` in `/etc/netplan/30-wifi.yaml`. Left out,
   `systemd-networkd` derives the DHCP client id from the *interface name*, so
-  renaming the radio to `wlan0` asks the router for a fresh lease and moves the
-  rover's address for no visible reason.
-- `/etc/modprobe.d/blacklist-onboard-wifi.conf`, now deleted, used to blacklist
-  `brcmfmac` outright. It is why the board looked as though it had no radio of
-  its own.
+  renaming the radio to `wlan0` asks the router for a fresh lease and moves
+  that interface's address for no visible reason.
+- `/etc/modprobe.d/blacklist-onboard-wifi.conf`, now deleted, used to
+  blacklist `brcmfmac` outright. It is why the board looked as though it had
+  no radio of its own.
 
 Power saving is off. The udev rule that sets it (`/sbin/iw dev wlan0 set
 power_save off`) is harmless either way, since the driver's default here is
@@ -174,32 +180,38 @@ already off, but it logs a failure whenever it fires at an interface that is
 being renamed underneath it — and that log line is the first red herring
 anybody reading this journal will find.
 
-**What runs here.** Three services and a timer, all of them started by `admin`
-— `rover_daemon.py`, `oak_depth/depth_server.py` on TCP 8770 (the OAK kept
-awake as a depth camera, from a `@reboot` crontab entry of its own),
-`drive_web.py` on TCP 8771 (the browser console, idle until a tab is open),
-and `wifi_roam`'s systemd timer. `rover_daemon.py` (from `rover_daemon/` in
-this repo) is the one process that may own the UART and the camera, and
-everything that commands the rover goes through it: headlights, gimbal, face
-tracking, exposed as tools on TCP 8769. The ROS 2 stack in
-[`ros_nav/`](../ros_nav) runs beside it and does not conflict: it takes the
-*lidar* port, which is a separate USB device, and borrows the UART's encoders,
-gyro and motor commands back from the daemon over loopback rather than opening
-it. Started with `--vision` the daemon
-offers one more, `look`, which POSTs a frame to `voice-chat` on MEDIA so the
-model can be asked what it sees; without the flag the tool is not offered at
-all. `drive_gamepad_pi.py` and `track_face_pi.py` are still standalone and
-still take the UART directly, so do not run them at the same time as the
-daemon.
+**What runs here.** Four `@reboot` crontab entries for `admin`, plus two
+systemd units that need root:
 
-**Access.** `ssh bpi-m4zero` (a `~/.ssh/config` alias for `bpi-m4zero.local`,
-user `admin`, key `id_ed25519_rpi`). Key-only; `sudo` still prompts for the
-account password. The filename of the key is leftover from the Pi 1; the
-secret itself is what both boards accept.
+- `rover_daemon.py` on TCP 8769 — the one process that may own the UART and
+  the camera. Headlights, gimbal, face tracking, and (with `--ros-nav`) the
+  driving tools. Started as
+  `@reboot ~/ugv/run_daemon.sh --vision --board-bridge --ros-nav`.
+- `oak_depth/depth_server.py` on TCP 8770 — the OAK kept awake as a depth
+  camera, from a crontab entry of its own.
+- `drive_web.py` on TCP 8771 — the browser console, idle until a tab is
+  open; the rover also holds its own conversation with Alibaba from here.
+- `ros_nav/` — slam_toolbox and Nav2. Takes the lidar's USB port; borrows
+  the UART's encoders, gyro and motor commands from the daemon over loopback
+  8772, and lends navigation back over 8773.
+- `wifi-dual.service` — both radios. `wifi-roam.timer` is installed and
+  stays off.
+- `netwatch` — records the link to `/var/lib/netwatch/`.
 
-**Code.** Repo files are deployed to `~/ugv/`, mirroring their path here; the
-repo stays source of truth. Plain `scp` is fine — these are `.py` with no
-shebang, so CRLF does not bite.
+Started with `--vision` the daemon offers `look`, which POSTs a frame to
+whichever host is holding the conversation. `drive_gamepad_pi.py` and
+`track_face_pi.py` are still standalone and still take the UART directly, so
+do not run them at the same time as the daemon. How to push code here is
+[deploy.md](deploy.md).
+
+**Access.** `ssh bpi-m4zero` (a `~/.ssh/config` alias, user `admin`, key
+`id_ed25519_rpi`, HostName `192.168.1.80`). Key-only; `sudo` still prompts
+for the account password. The filename of the key is leftover from the Pi 1;
+the secret itself is what both boards accept.
+
+**Code.** Repo files are deployed to `~/ugv/`; the daemon lands flat, the
+rest mostly mirror their path here. The repo stays source of truth. See
+[deploy.md](deploy.md).
 
 ## The Raspberry Pi it replaced
 

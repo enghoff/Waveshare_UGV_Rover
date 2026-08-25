@@ -10,24 +10,17 @@ between them at all. Worse, neither will leave an association while beacons keep
 arriving, so the rover can sit at the edge of an AP's range dropping most of its
 packets while a much stronger AP goes unused three metres away.
 
-This directory is the fix: the house networks, and a small script on a 20-second
-timer that watches the link and moves it when it has to.
+This directory is the fix: the house networks, a small script on a 20-second
+timer that watches the link and moves it when it has to, and — on the board
+that is the rover today — a dual-radio manager that has replaced that timer.
+**Skip to [Two radios](#two-radios-which-is-what-this-board-does-now) for
+what this board actually runs.**
 
-**On the board that is the rover today, that timer is installed and switched
-off.** The roamer was written against NetworkManager and the Banana Pi has none,
-so until 2026-08-23 it was not merely idle here — `install.sh` skipped it and the
-units it did install named `Requires=NetworkManager.service`, which would have
-failed every tick had anything started them. That is now fixed and the script
-works on both stacks, but it has never yet chosen an access point on this board
-with a person watching, and the way it fails is a rover that needs carrying back
-to a socket. So it goes on with somebody in the building:
-
-```bash
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" systemctl enable --now wifi-roam.timer'
-```
-
-Until then the rover has whatever `wpa_supplicant` does by itself, and
-[netwatch/](../netwatch) is what records how well that works.
+**On this board the roam timer is installed and switched off**, and since
+2026-08-25 that is not caution but arithmetic: both radios are up and
+`wifi_dual.py` owns them. Do not enable the timer while the manager is
+running, and do not run `install.sh` without `ROAM=off` — that installer
+enables the timer.
 
 ## Two radios, which is what this board does now
 
@@ -538,8 +531,12 @@ cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/wifi_roam/install
 ```
 
 `ROAM=off` installs everything and leaves the roam timer disabled, which is how
-the Banana Pi is set up today — see the note at the top of this file for why, and
-for the one command that arms it.
+the Banana Pi is set up today — the dual-radio manager owns the radios, and
+arming this timer would fight it. On a board that still has one radio:
+
+```bash
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install.sh'
+```
 
 ## The same script on two quite different stacks
 

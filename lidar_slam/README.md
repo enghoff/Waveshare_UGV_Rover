@@ -47,9 +47,13 @@ why what is left reads as a rounding error rather than as a fifth of a core.
 
 The library is compiled per-machine and is not committed — the ABI is the host's —
 so there is no cross-compiler and a checked-in binary would only ever be wrong.
+`scp` adds and never removes, so leftover files from when this directory still
+held a scan matcher would stay on the host; mirror it instead, and keep the
+per-host library:
 
 ```bash
-scp lidar_slam/* bpi-m4zero:~/ugv/lidar_slam/
+rsync -a --delete --exclude 'libslam2d.so' --exclude selftest \
+    lidar_slam/ bpi-m4zero:~/ugv/lidar_slam/
 ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
 ```
 
