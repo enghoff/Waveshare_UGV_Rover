@@ -111,3 +111,34 @@ tool over TCP on port 8769 and look at what comes back. "The self-test passes"
 and "the file was copied" are not evidence that the running system changed.
 The automated deployer deliberately reuses the component restart scripts because
 they already encode these service-specific readiness checks.
+
+## Report in plain English
+
+The person reading the chat is a human, not a log. Lead with what is true, in
+the words you would use in the room — whether that is a rover in a doorway, a
+board that rebooted, a deploy that never reached the host, or a question about
+what to do next. File names, plugin names, YAML keys and tick counts are how
+you *got* there; they are not the first sentence.
+
+If the obvious story is wrong, say so in one line, then the real one. The
+doorway lock-up was not "it cannot find a path"; it was spinning because the
+speed controller asked for turns the wheels cannot hold. A silent lidar on the
+console was not "the stack exited"; the processes were up and DDS was talking
+to an address the radio no longer had. Same shape of report, different faults.
+
+**Numbers a person can feel, not a dump.** "Eight in ten commands were pivots"
+and "a thousand degrees of turning in a minute" land; a table of critic scores
+does not, until someone asks. Prefer a fraction or a comparison (3°/s asked,
+12°/s delivered; six minutes of uptime, four minutes with no scan) over a raw
+count.
+
+**What is written is not always what is running.** A README, a commit message
+or an earlier chat can name a fix that never landed in the live config, or a
+host that still has last week's bytes. Say that when it is the point. Do not
+call something done, healthy or working on a metric that misses the thing the
+person actually cares about.
+
+**What's next is one move, and how we will know.** Name the change (or the
+recording, or the check), where it goes, and what would count as proof. If that
+fails, the next evidence is the input — not another guess. Do not offer a menu
+of possible tunings.
