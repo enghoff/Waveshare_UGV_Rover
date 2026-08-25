@@ -752,6 +752,13 @@ def test_configs_agree():
           settings.count('footprint: "[[0.20') == 2, True)
     check("...and the controller checks that shape rather than one point",
           "ObstacleFootprint" in settings and "BaseObstacle" not in settings, True)
+    # A `robot_radius` was tried and rolled back, so this stays a `not in`. The
+    # case for one is that a pivot sweeps 0.244 m while the inflation ring is
+    # painted at 0.14 m, and the rover can be driven into that ten-centimetre
+    # band and then not turn out of it. Closing it costs the doorways: at 0.244
+    # the corridor drops from eight escapes of eight to five. The table is in
+    # config/nav2.yaml beside the footprint line, and corridor_sim.CIRCULAR
+    # models the other shape if the question is reopened.
     # The arrival circle has to be bigger than the smallest move the rover has.
     # One forward sample at 0.40 m/s over a 0.8 s rollout is 32 cm, so a 15 cm
     # circle was a target DWB could not aim at: it sat 23 cm from a goal for
@@ -788,20 +795,6 @@ def test_configs_agree():
     # geometry in front of it is the one it stops choosing, and at 0.325 in the
     # recorded corridor that was driving, by 61 points. See ros_nav/trap_sim.py
     # --bias.
-    # A circle, so that any cell the rover may stand in is one it may also turn
-    # in. The measured rectangle could be stood 0.21 m from a wall -- legal,
-    # because its inscribed radius is 0.14 -- and then not pivot, because a
-    # pivot sweeps 0.244. The rover was found wedged in exactly that band.
-    check("the body is a circle, so standing somewhere implies turning there",
-          "robot_radius: 0.175" in settings, True)
-    check("...in both costmaps, because two shapes is a planner that routes "
-          "through gaps the controller will not drive",
-          settings.count("robot_radius: 0.175") == 2, True)
-    check("...and the rectangle is gone from both",
-          "footprint: \"[[0.20, 0.14]" in settings, False)
-    # The point test is a collision test again, and only because of the above.
-    check("the obstacle critic is the point test that matches a circular body",
-          "\"BaseObstacle\"" in settings, True)
     check("something in the critic set prices turning, or the rover will spin",
           "PreferForward" in settings, True)
     check("the align look-ahead is back at nav2's default, not the 0.8 that trapped it",

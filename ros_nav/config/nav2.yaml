@@ -349,7 +349,7 @@ controller_server:
       # the right shape for this fault and the wrong shape for a rover that has
       # to pivot to escape, which is why the scale is small and why it was
       # regression-tested against both doorway recordings before it shipped.
-      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+      critics: ["RotateToGoal", "Oscillation", "ObstacleFootprint", "GoalAlign",
                 "PathAlign", "PathDist", "GoalDist", "PreferForward"]
       # No `getScale` override on this critic, so the number here is the number
       # that is used -- unlike ObstacleFootprint below. A full-speed pivot at
@@ -411,30 +411,7 @@ controller_server:
       #
       # A trajectory that actually reaches a lethal cell is still refused by
       # this critic whatever the scale is; 253 is a cost here and not contact.
-      # **`BaseObstacle` again, now that the body is a circle.** It reads the one
-      # cell the centre is in and refuses anything that is not free:
-      # `isValidCost` in `libdwb_critics.so` is a single comparison, `cmp w1,
-      # #0xfc; cset w0, ls`, so a cost is valid exactly when it is 252 or less
-      # and 253, 254 and 255 are all refusals. That is a point test, and a point
-      # test is only a collision test while the inscribed ring is as big as the
-      # whole robot -- which is why `ObstacleFootprint` replaced it when the
-      # footprint was a rectangle, and why it is correct again now.
-      #
-      # It is also stronger than the critic it replaces: `ObstacleFootprint`
-      # refused only on contact at 254, while this refuses at 253, the ring
-      # itself. The controller can no longer put the rover's centre inside the
-      # band at all.
-      #
-      # 0.02 rather than the 0.005 that was here, and the numbers are not
-      # comparable: `ObstacleFootprint` overrides `getScale` as `resolution *
-      # scale_` while `BaseObstacle` inherits the plain `scale_`, so 0.005 there
-      # was really 0.00025 and 0.02 here is really 0.02. That is the value the
-      # standing-bribe note above was measured at -- 187 x 0.02 = 3.74 points
-      # against moving -- and it is affordable again only because
-      # `PreferForward` now charges up to 3.9 points against standing and
-      # turning. The two roughly cancel. It was run at 0.005 and 0.02 on all
-      # three recordings before being set here.
-      BaseObstacle.scale: 0.02
+      ObstacleFootprint.scale: 0.005
       # **0.325, which is nav2's own default, and the 0.8 that was here is
       # what was trapping the rover.** The reasoning that put 0.8 here was
       # sound and the measurement under it was not, so this is worth setting
@@ -541,42 +518,47 @@ local_costmap:
       #
       # The inscribed radius of that rectangle is its half-width, 0.14 m, which is
       # what the inflation layer now uses -- and 81% of the floor comes back.
-      # **And a circle now, not that rectangle, because the rectangle could be
-      # stood somewhere it could not turn.** The paragraph above is still the
-      # honest measurement of the body; what it is not is the shape that decides
-      # whether the rover can *pivot*. A turn on the spot sweeps the
-      # circumscribed radius while the inflation layer paints its hard 253 ring
-      # at the inscribed one, and the gap between the two is a band round every
-      # wall the rover can drive into and then not turn out of. It was found
-      # wedged in exactly that band: 0.21 m from a wall, five centimetres from a
-      # legal pose, the body fitting at five of sixteen headings in the local
-      # costmap and at none at all in the planner's.
+      # `ObstacleFootprint` in the controller's critics is the other half of this
+      # change and is not optional: the critic that was there checks one point at
+      # the robot's centre, which is only a collision test while the inscribed
+      # radius is the whole robot. This rectangle's corners are 0.21 m out.
       #
-      # A radius makes the two numbers the same, so any cell it may stand in is
-      # one it may also turn in -- in the planner's map, the controller's and
-      # the behaviour server's alike.
+      # **A circle was tried here instead, and rolled back.** The argument for
+      # one is real and is worth keeping written down: the inflation layer paints
+      # its hard 253 ring at the *inscribed* radius, 0.14 m, while a turn on the
+      # spot sweeps the *circumscribed* one, 0.244 m. The ten centimetres between
+      # them are a band around every wall that the rover may legally drive into
+      # and then not turn out of, and the rover was once found wedged in exactly
+      # that band -- 0.21 m off a wall, five centimetres from a legal pose, the
+      # body fitting at five of sixteen headings in this costmap and at none at
+      # all in the planner's. A `robot_radius` makes the two numbers one number,
+      # so anywhere it may stand is somewhere it may turn: the band is 10.4 cm
+      # wide with this rectangle, 6.9 cm at a radius of 0.175, and nothing at all
+      # only at 0.244.
       #
-      # **0.175 and not 0.244.** The circumscribed radius of the measured
-      # rectangle is 0.244, and that value closes the trap completely and costs
-      # the doorways: driven round the loop from eight starts in each of the
-      # three recordings it went from eight of eight to three of eight on the
-      # corridor and two of eight on the doorway lock-up, because a 0.49 m
-      # circle leaves about 0.31 m of legal centreline in a 0.80 m doorway --
-      # narrower than one 0.32 m rollout, so almost every candidate clips it.
+      # What closing it costs is doorways, because this house has no clearance to
+      # spare. Driven round the loop for six seconds from eight starts in each of
+      # the three recordings, with each recording's costmap re-inflated at the
+      # radius under test so the comparison is fair
+      # (`dwb_replay.closed_loop(..., reinflate=True)`), median net distance and
+      # escapes:
       #
-      #     radius   corridor     doorway      lock-up    floor kept   trap left
-      #     0.175    1.43 m 7/8   0.99 m 8/8   0.94 m 7/8    104%         13%
-      #     0.200    1.36 m 4/8   0.95 m 6/8   0.95 m 8/8     99%          9%
-      #     0.244    0.35 m 3/8   0.96 m 7/8   0.24 m 2/8     90%          0%
+      #     shape    corridor     doorway      lock-up
+      #     rect     0.63 m 8/8   0.89 m 8/8   0.93 m 8/8
+      #     0.175    1.04 m 8/8   0.90 m 8/8   0.93 m 8/8
+      #     0.200    0.71 m 6/8   0.62 m 6/8   0.86 m 7/8
+      #     0.244    0.55 m 5/8   0.56 m 5/8   0.86 m 7/8
       #
-      # The trap only reaches zero at 0.244 and only at that price, so this is a
-      # dial rather than a fix. 0.175 is the chassis as measured off the rover
-      # rather than inferred from the lidar's view of it -- the forward 0.20 in
-      # the note above is a deliberate over-estimate, so the rectangle overstates
-      # the body. Swapping the critic makes almost no difference to any of this:
-      # at 0.200, `BaseObstacle` and `ObstacleFootprint` both give 4/8, so what
-      # costs the escapes is the radius and not the refusal rule.
-      robot_radius: 0.175
+      # Only 0.244 closes the band, and it is the worst row: a 0.49 m circle
+      # leaves about 0.31 m of legal centreline in a 0.80 m doorway, narrower
+      # than one 0.32 m rollout, so nearly every candidate clips it. 0.175 keeps
+      # the doorways and reads better than the rectangle here -- but it only
+      # narrows the band rather than closing it, and it describes the body as
+      # 3.8 cm smaller than the lidar measured the rear corners, so a pivot near
+      # furniture can clip. The rover's owner drove both and kept this one; where
+      # the model and the hardware disagree the hardware is right.
+      # `corridor_sim.CIRCULAR` will model the other shape if it is reopened.
+      footprint: "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]"
       # Send the whole grid every time, not just the cells that changed. Stock
       # behaviour is one full costmap followed by deltas for ever, which is right
       # for a viewer that was watching from the start and useless for one that
@@ -625,11 +607,10 @@ local_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # **0.45 m, and it must stay above the robot radius for a reason that
-        # is not about cushioning.** With a circular body the inscribed and
-        # circumscribed radii are the same number, 0.175 m, so the margin here
-        # is comfortable -- but the rule is the rule and it bites if either is
-        # ever changed.
+        # **0.45 m, and it must stay above 0.244 m for a reason that is not
+        # about cushioning.** The note that used to be here described a 25 cm
+        # radius rover and has been wrong since the footprint became the
+        # measured rectangle: the inscribed radius is 0.14 m now, not 0.25.
         #
         # What sets the floor on this number is the planner. Smac checks the
         # full oriented footprint only when the cell under the robot's centre
@@ -655,11 +636,10 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      # The same radius as the local costmap's -- see the long note there. Two
-      # costmaps disagreeing about the shape of the robot is a planner that
-      # routes through gaps the controller then refuses to drive, and this rover
-      # has already been wedged by a six-centimetre disagreement between them.
-      robot_radius: 0.175
+      # The same measured rectangle as the local costmap's -- see the note there.
+      # Two costmaps disagreeing about the shape of the robot is a planner that
+      # routes through gaps the controller then refuses to drive.
+      footprint: "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]"
       resolution: 0.05
       track_unknown_space: true
       # **No obstacle layer here, and that is the whole reason this rover stopped

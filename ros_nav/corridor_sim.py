@@ -121,7 +121,7 @@ PATH_ALIGN_SCALE = 32.0
 PATH_DIST_SCALE = 32.0
 GOAL_ALIGN_SCALE = 24.0
 GOAL_DIST_SCALE = 24.0
-OBSTACLE_SCALE = 0.02
+OBSTACLE_SCALE = 0.005
 # Tracks config/nav2.yaml. A stale copy here is not a cosmetic drift: this
 # distance decides which candidates carry the unreachable charge, and on some
 # geometry it decides whether driving or turning is the one penalised.
@@ -139,45 +139,43 @@ X_ONLY_THRESHOLD = 0.05
 RESOLUTION = 0.05
 #: What `MapGridCritic::getScale` does to every one of the four.
 MAP_GRID_RESCALE = RESOLUTION * 0.5
-#: And what `ObstacleFootprintCritic::getScale` does to the obstacle critic,
-#: which is *not* the same thing and was the model's other scale error. Its
-#: header on the rover reads `return costmap_->getResolution() * scale_;`,
-#: where the `BaseObstacleCritic` it replaced inherited the plain `scale_`.
-#: So the swap to a footprint check quietly divided the weight on obstacle cost
-#: by twenty, on top of the deliberate 0.02 -> 0.005 cut.
+#: The footprint, and the inscribed radius nav2 derives from it -- the distance
+#: from the body's origin to the nearest edge, which is what gets inflated to
+#: 253 and therefore what stops the PathDist flood. This is the body as
+#: measured off the chassis by `lidar_slam/slam2d.c`, and it is what the rover
+#: runs.
 FOOTPRINT = [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)]
-#: **Describing the rover as a circle instead, which is what it now runs.**
+#: **Describe the rover as a circle instead. False, because that is what the
+#: rover runs -- the circle was tried and rolled back.**
 #:
-#: The rectangle above is the body, measured, and it is the honest shape. What
-#: it is not is the shape that decides whether the rover can *turn*: a pivot
-#: sweeps the circumscribed radius, 0.244 m, while the inflation layer paints
-#: its hard 253 ring at the inscribed one, 0.14 m. That ten-centimetre gap is
-#: a band around every wall the rover can drive into and then not turn out of,
-#: and it is where the rover was found wedged: 0.21 m from a wall, five
-#: centimetres from a legal pose, with the body fitting at five of sixteen
-#: headings locally and none at all in the planner's map.
+#: The argument for a circle is real and worth keeping: a pivot sweeps the
+#: circumscribed radius, 0.244 m, while the inflation layer paints its hard 253
+#: ring at the inscribed one, 0.14 m. The ten centimetres between them are a
+#: band around every wall the rover may legally drive into and then not turn out
+#: of, and the rover was once found wedged in exactly that band -- 0.21 m off a
+#: wall, five centimetres from a legal pose, the body fitting at five of sixteen
+#: headings in the local costmap and none at all in the planner's. A radius
+#: makes the two numbers one number, so anywhere it may stand is somewhere it
+#: may turn.
 #:
-#: Setting `robot_radius` to the circumscribed radius closes that band by
-#: making the two radii the same number. The 253 ring becomes 0.244 m deep, so
-#: any cell the rover may stand in is a cell it may also turn round in, in
-#: every map that reads the ring -- the planner's, the controller's and the
-#: behaviour server's alike.
-#: True, because that is what the rover runs. Set it True to
-#: re-test the circular body: `dwb_replay.closed_loop(..., reinflate=True)`
-#: rebuilds a recording's inflation at the new radius so the comparison is
-#: fair. The answer, on all three recordings, was that it costs more than it
-#: buys -- see the table in config/nav2.yaml next to `robot_radius`.
-CIRCULAR = True
-#: The radius to describe it with when CIRCULAR. Not the circumscribed radius
-#: of the measured rectangle (0.244 m) -- that closes the trap completely and
-#: costs the doorways, measured. This is the value the rover's owner measured
-#: off the chassis.
+#: What it costs is doorways. Set this True and pass `reinflate=True` to
+#: `dwb_replay.closed_loop` -- which rebuilds a recording's inflation at the new
+#: radius, so an old drive can judge a shape change fairly -- to re-run the
+#: comparison. The answer, on all three recordings, is the table in
+#: config/nav2.yaml beside the `footprint` line. Only 0.244 closes the band, and
+#: it is the worst row of the four -- five escapes of eight on the corridor
+#: where the rectangle makes eight of eight.
+CIRCULAR = False
+#: The radius to describe it with when CIRCULAR. Not the circumscribed radius of
+#: the measured rectangle (0.244 m), which closes the band completely and costs
+#: the doorways; this is the value the rover's owner measured off the chassis.
 ROBOT_RADIUS_CONFIGURED = 0.175
 #: Which obstacle critic goes with it. `BaseObstacle` refuses at 253, so the
 #: controller may not put its centre in the ring at all; `ObstacleFootprint`
 #: traces the outline and refuses only on contact at 254. The first is far
-#: stricter and is what a circular body would normally use; whether this rover
-#: can afford it is a question for the recordings, not for taste.
+#: stricter and is what a circular body would normally use, and it is only a
+#: collision test at all while the ring is as big as the whole robot -- which is
+#: why the rectangle above must keep `ObstacleFootprint`.
 CIRCULAR_USES_BASE_OBSTACLE = True
 CIRCUMSCRIBED_M = max(math.hypot(x, y) for x, y in FOOTPRINT)
 ROBOT_RADIUS_M = ROBOT_RADIUS_CONFIGURED
@@ -189,19 +187,17 @@ if CIRCULAR:
                   ROBOT_RADIUS_M * math.sin(i * math.pi / 6.0))
                  for i in range(12)]
 
-#: `BaseObstacleCritic` has no `getScale` override -- checked, its header
-#: declares none -- so with a circular body the configured number *is* the
-#: weight, where `ObstacleFootprint`'s was divided by the resolution.
+#: And what `ObstacleFootprintCritic::getScale` does to the obstacle critic,
+#: which is *not* the same thing and was the model's other scale error. Its
+#: header on the rover reads `return costmap_->getResolution() * scale_;`,
+#: where the `BaseObstacleCritic` it replaced inherited the plain `scale_`.
+#: So the swap to a footprint check quietly divided the weight on obstacle cost
+#: by twenty, on top of the deliberate 0.02 -> 0.005 cut. `BaseObstacle` is
+#: correct only with a circular body -- see CIRCULAR above.
 OBSTACLE_RESCALE = (1.0 if (CIRCULAR and CIRCULAR_USES_BASE_OBSTACLE)
                     else RESOLUTION)
 INFLATION_RADIUS = 0.45
 COST_SCALING_FACTOR = 3.0
-
-#: The footprint, and the inscribed radius nav2 derives from it -- the distance
-#: from the body's origin to the nearest edge, which is what gets inflated to
-#: 253 and therefore what stops the PathDist flood.
-
-
 
 #: lidar_slam/nav_types.py, applied by drive_mixer: a standing turn slower than
 #: this does not clear stiction, so it is lifted to this. It is why a two-degree
