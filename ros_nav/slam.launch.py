@@ -34,6 +34,7 @@ scans is what `minimum_time_interval` in the config is already doing on purpose.
 """
 
 import os
+import sys
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -64,13 +65,18 @@ def generate_launch_description():
             description="where the daemon reaches this stack; it must match the "
                         "daemon's own --ros-nav"),
 
-        Node(executable=os.path.join(HERE, "lidar_node.py"),
+        # Invoked as `python script.py`, not as the script itself. Launch execs
+        # `executable` directly, and a deploy from Windows git arrives mode 644;
+        # the shebang is then never consulted and the stack comes up without
+        # odom, a scan, or the daemon's driving port. sys.executable is the
+        # interpreter ros2 launch itself is running, which is the conda env.
+        Node(executable=sys.executable,
              name="lidar_node", output="screen",
-             arguments=["--port", lidar_port]),
+             arguments=[os.path.join(HERE, "lidar_node.py"), "--port", lidar_port]),
 
-        Node(executable=os.path.join(HERE, "base_node.py"),
+        Node(executable=sys.executable,
              name="base_node", output="screen",
-             arguments=["--bridge-port", bridge_port]),
+             arguments=[os.path.join(HERE, "base_node.py"), "--bridge-port", bridge_port]),
 
         Node(package="slam_toolbox", executable="async_slam_toolbox_node",
              name="slam_toolbox", output="screen", parameters=[params]),
@@ -79,9 +85,9 @@ def generate_launch_description():
         # finished coming up: everything it serves it serves by subscription, so
         # the worst a client gets in the first few seconds is an honest "the map
         # has not arrived yet".
-        Node(executable=os.path.join(HERE, "nav_bridge.py"),
+        Node(executable=sys.executable,
              name="nav_bridge", output="screen",
-             arguments=["--port", nav_port]),
+             arguments=[os.path.join(HERE, "nav_bridge.py"), "--port", nav_port]),
 
         # slam_toolbox is a *lifecycle* node in Jazzy, and it comes up
         # `unconfigured`: the process runs, answers `ros2 node list`, and has

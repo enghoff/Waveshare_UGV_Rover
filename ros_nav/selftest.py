@@ -792,6 +792,11 @@ def test_configs_agree():
         launch = handle.read()
     check("launch injects an absolute lattice path; yaml cannot resolve a relative one",
           "lattice_filepath" in launch and "diff_5cm_0.5m.json" in launch, True)
+    with open(os.path.join(HERE, "slam.launch.py")) as handle:
+        slam_launch = handle.read()
+    check("the python nodes are started by the interpreter, so a 644 checkout still runs",
+          "sys.executable" in slam_launch
+          and 'os.path.join(HERE, "lidar_node.py")' in slam_launch, True)
 
     # The lidar looks forwards, so a reverse leg is driven blind. DWB is left
     # with no reverse sample at all; backing out of a corner is the behaviour
