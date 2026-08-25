@@ -64,6 +64,30 @@ SCORE_TOLERANCE = 0.25
 #: How much of a drive has to be near-optimal before a fix may be tested on it.
 AGREEMENT_GATE = 70.0
 
+#: What the rover was running before anybody went looking, for recordings made
+#: before `nav_record.py` learned to save the settings alongside the drive.
+#: Every recording made since carries its own and this is not consulted.
+LEGACY_LOOK_AHEAD = 0.1
+
+
+def settings_of(episode):
+    """The look-ahead this drive was actually made under, not today's.
+
+    The check in this file only means anything if the model is scoring the way
+    the controller scored *at the time*. Replaying an old drive with a new
+    setting compares a rover against a controller it never ran, and the
+    agreement collapses for a reason that has nothing to do with either being
+    wrong.
+    """
+    params = episode.get("params") or {}
+    path_look = params.get("FollowPath.PathAlign.forward_point_distance")
+    goal_look = params.get("FollowPath.GoalAlign.forward_point_distance")
+    if path_look is None:
+        path_look = LEGACY_LOOK_AHEAD
+    if goal_look is None:
+        goal_look = LEGACY_LOOK_AHEAD
+    return path_look, goal_look, bool(params)
+
 
 def turning_of(poses, floor=0.01):
     """Heading actually turned, with the noise floor taken out.
@@ -186,6 +210,7 @@ def same(a, b):
 
 def replay(episode, verbose=False, limit=None):
     """Score every recorded tick and compare with what DWB actually sent."""
+    path_look, goal_look, known = settings_of(episode)
     rows = ticks(episode)
     if limit:
         rows = rows[:limit]
@@ -235,7 +260,9 @@ def replay(episode, verbose=False, limit=None):
             continue
         kept, refused = dwb.evaluate(grid, path, path[-1], x, y, yaw,
                                      vx_now=last_vx, wz_now=last_wz,
-                                     oscillation=oscillation)
+                                     oscillation=oscillation,
+                                     path_look=path_look,
+                                     goal_look=goal_look)
         want = (row["command"]["vx"], row["command"]["wz"])
         blame.update(refused)
         if not kept:
@@ -270,7 +297,8 @@ def replay(episode, verbose=False, limit=None):
                      dwb.CANDIDATES, "" if same(got, want) else "<- differ"))
     gaps.sort()
     spreads.sort()
-    return {"ticks": len(rows), "agreed": agreed, "model_empty": model_empty,
+    return {"look": (path_look, goal_look), "look_known": known,
+            "ticks": len(rows), "agreed": agreed, "model_empty": model_empty,
             "both_empty": both_empty, "blame": blame, "replans": replans,
             "latch_resets": oscillation.resets, "same_twist": same_twist,
             "model_refused_it": model_refused_it, "gaps": gaps,
@@ -427,7 +455,12 @@ def main():
           "below the size of one cell")
     print()
     print("the model against the rover")
-    print("   %d ticks compared" % result["ticks"])
+    print("   %d ticks compared, scored the way the controller scored at the "
+          "time:" % result["ticks"])
+    print("   align look-ahead %.2f / %.2f m%s"
+          % (result["look"][0], result["look"][1],
+             "" if result["look_known"] else
+             "  (assumed -- this recording predates saving them)"))
     print("   the rover's own choice scored within %.2f of the model's best on "
           "%d of them (%.0f%%)" % (SCORE_TOLERANCE, result["agreed"], share))
     print("   median gap %.3f, p90 %.3f, worst %.3f"
@@ -461,14 +494,18 @@ def main():
     print("obeying it, which is the other half of this fault.")
     if args.loop or args.drive:
         print()
-        print("the same costmap and the same plan, driven by the model")
+        was = settings_of(episode)
+        print("the same costmap and the same plan, driven by the model at the "
+              "look-ahead")
+        print("in corridor_sim.py now (%.2f m), against the %.2f m the rover "
+              "was running" % (dwb.FORWARD_POINT_DISTANCE, was[0]))
         print("   %-34s %8s %8s %10s %s"
               % ("chassis", "went", "turned", "reversals", ""))
         for label, gain, dead in (
                 ("obeys exactly, no delay", 1.0, 0.0),
                 ("obeys exactly, 0.2 s late", 1.0, dwb.DEAD_TIME_S),
                 ("2.4x too fast, no delay", dwb.TURN_GAIN, 0.0),
-                ("2.4x too fast, 0.2 s late  <- this one",
+                ("2.4x too fast, 0.2 s late  <- the real one",
                  dwb.TURN_GAIN, dwb.DEAD_TIME_S)):
             out = closed_loop(episode, gain, dead)
             if out is None:

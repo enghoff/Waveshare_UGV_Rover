@@ -43,6 +43,7 @@ import time
 import rclpy
 from geometry_msgs.msg import Twist
 from nav2_msgs.srv import GetCostmap
+from rcl_interfaces.srv import GetParameters
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
@@ -51,6 +52,32 @@ from tf2_ros import Buffer, TransformListener
 
 POSE_HZ = 10.0
 COSTMAP_HZ = 2.0
+
+#: The controller settings a replay has to know to be a replay *of this drive*.
+#:
+#: Without these a recording is undated: `dwb_replay.py` would score it with
+#: whatever is in `corridor_sim.py` today, which after a change is a different
+#: controller from the one that produced the commands. That is not a small
+#: error -- moving the align critics' look-ahead from 0.1 to 0.8 took the
+#: model's agreement with this very recording from 82% to 1%, and the 1% was
+#: the honest number, because by then the model was describing a controller the
+#: rover had never run.
+WANTED_PARAMS = [
+    "FollowPath.PathAlign.forward_point_distance",
+    "FollowPath.GoalAlign.forward_point_distance",
+    "FollowPath.PathAlign.scale",
+    "FollowPath.GoalAlign.scale",
+    "FollowPath.PathDist.scale",
+    "FollowPath.GoalDist.scale",
+    "FollowPath.ObstacleFootprint.scale",
+    "FollowPath.sim_time",
+    "FollowPath.vx_samples",
+    "FollowPath.vtheta_samples",
+    "FollowPath.max_vel_x",
+    "FollowPath.max_vel_theta",
+    "FollowPath.acc_lim_x",
+    "FollowPath.acc_lim_theta",
+]
 
 
 def yaw_of(q):
@@ -78,6 +105,9 @@ class Recorder(Node):
             GetCostmap, "/local_costmap/get_costmap")
         self.global_client = self.create_client(
             GetCostmap, "/global_costmap/get_costmap")
+        self.param_client = self.create_client(
+            GetParameters, "/controller_server/get_parameters")
+        self.params = {}
         self.create_timer(1.0 / POSE_HZ, self.sample_pose)
         self.create_timer(1.0 / COSTMAP_HZ, self.sample_costmap)
         self.pending = None
@@ -140,6 +170,25 @@ class Recorder(Node):
                 c & 0xFF for c in grid.data))).decode("ascii"),
         }
 
+    def fetch_params(self):
+        """Ask the controller what it is running, once, at the start."""
+        if not self.param_client.wait_for_service(timeout_sec=5.0):
+            return
+        request = GetParameters.Request()
+        request.names = list(WANTED_PARAMS)
+        future = self.param_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        answer = future.result()
+        if answer is None:
+            return
+        for name, value in zip(WANTED_PARAMS, answer.values):
+            if value.type == 3:
+                self.params[name] = value.double_value
+            elif value.type == 2:
+                self.params[name] = value.integer_value
+            elif value.type == 1:
+                self.params[name] = value.bool_value
+
     def fetch_global(self):
         if not self.global_client.wait_for_service(timeout_sec=5.0):
             return
@@ -152,6 +201,7 @@ class Recorder(Node):
         return {
             "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "note": "local costmap is in the odom frame; the plan is in map",
+            "params": self.params,
             "plans": self.plans,
             "costmaps": self.costmaps,
             "poses": self.poses,
@@ -185,7 +235,15 @@ def main():
 
     rclpy.init()
     node = Recorder()
+    node.fetch_params()
     node.fetch_global()
+    if node.params:
+        print("controller settings at the time of this drive:")
+        for name in sorted(node.params):
+            print("   %-52s %s" % (name, node.params[name]))
+    else:
+        print("WARNING: could not read the controller's parameters, so this "
+              "recording will not know what settings produced it")
     print("recording %.0f s to %s -- drive the rover now" % (args.seconds,
                                                              args.out),
           flush=True)
