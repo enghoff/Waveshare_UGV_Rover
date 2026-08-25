@@ -746,19 +746,24 @@ def test_configs_agree():
     # which is where the reasoning lives, so a search over the whole file finds
     # the explanation and calls it the setting.
     settings = settings_of(text)
-    check("the footprint is the measured rectangle, not a guessed circle",
-          "robot_radius" in settings, False)
-    check("...and both costmaps carry it",
-          settings.count('footprint: "[[0.20') == 2, True)
-    check("...and the controller checks that shape rather than one point",
-          "ObstacleFootprint" in settings and "BaseObstacle" not in settings, True)
-    # A `robot_radius` was tried and rolled back, so this stays a `not in`. The
-    # case for one is that a pivot sweeps 0.244 m while the inflation ring is
-    # painted at 0.14 m, and the rover can be driven into that ten-centimetre
-    # band and then not turn out of it. Closing it costs the doorways: at 0.244
-    # the corridor drops from eight escapes of eight to five. The table is in
-    # config/nav2.yaml beside the footprint line, and corridor_sim.CIRCULAR
-    # models the other shape if the question is reopened.
+    # **A circle, because this rover pivots.** nav2 clears the robot at the
+    # inscribed radius and the robot sweeps the circumscribed one, so any
+    # non-circular body has a band round every wall it may legally stand in and
+    # not turn out of. The rectangle that was here had a 0.14 m ring and 0.21 m
+    # corners, and the rover was found wedged in exactly those ten centimetres.
+    # A radius makes the two one number. 0.20 m is the chassis measured with a
+    # tape; the old footprint was `slam2d.c`'s lidar self-return mask plus 5 cm
+    # of margin, with an unmeasured guess forwards. See config/nav2.yaml.
+    check("the body is a circle, so standing somewhere implies turning there",
+          "robot_radius: 0.200" in settings, True)
+    check("...in both costmaps, because two shapes is a planner that routes "
+          "through gaps the controller will not drive",
+          settings.count("robot_radius: 0.200") == 2, True)
+    check("...and the rectangle that could not turn where it stood is gone",
+          'footprint: "[[0.20' in settings, False)
+    # The point test is a collision test again, and only because of the above.
+    check("the obstacle critic is the point test a circular body takes",
+          "BaseObstacle" in settings and "ObstacleFootprint" not in settings, True)
     # The arrival circle has to be bigger than the smallest move the rover has.
     # One forward sample at 0.40 m/s over a 0.8 s rollout is 32 cm, so a 15 cm
     # circle was a target DWB could not aim at: it sat 23 cm from a goal for

@@ -349,7 +349,7 @@ controller_server:
       # the right shape for this fault and the wrong shape for a rover that has
       # to pivot to escape, which is why the scale is small and why it was
       # regression-tested against both doorway recordings before it shipped.
-      critics: ["RotateToGoal", "Oscillation", "ObstacleFootprint", "GoalAlign",
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
                 "PathAlign", "PathDist", "GoalDist", "PreferForward"]
       # No `getScale` override on this critic, so the number here is the number
       # that is used -- unlike ObstacleFootprint below. A full-speed pivot at
@@ -411,7 +411,30 @@ controller_server:
       #
       # A trajectory that actually reaches a lethal cell is still refused by
       # this critic whatever the scale is; 253 is a cost here and not contact.
-      ObstacleFootprint.scale: 0.005
+      # **`BaseObstacle`, which is the critic a circular body takes.** It reads
+      # the one cell the robot's centre is in and refuses anything that is not
+      # free: `isValidCost` in `libdwb_critics.so` is a single comparison, `cmp
+      # w1, #0xfc; cset w0, ls`, so a cost is valid exactly when it is 252 or
+      # less and 253, 254 and 255 are all refusals.
+      #
+      # That is a *point* test, and a point test is a collision test only while
+      # the inflation layer's inscribed ring is as big as the whole robot. With
+      # the measured rectangle it was not -- the ring was 0.14 m and the corners
+      # 0.21 m -- which is why `ObstacleFootprint` was here. With a `robot_radius`
+      # the two are the same number by construction, so this is correct again,
+      # and it is the stronger of the two: `ObstacleFootprint` refused only on
+      # contact at 254, this refuses at 253, the ring itself. The controller can
+      # no longer put the rover's centre inside the band at all.
+      #
+      # 0.02 and not the 0.005 that was here, and the two numbers are not
+      # comparable. `ObstacleFootprintCritic` overrides `getScale` as `resolution
+      # * scale_` while `BaseObstacleCritic` inherits the plain `scale_`, so
+      # 0.005 there was really 0.00025 and 0.02 here is really 0.02. That is the
+      # value the standing-bribe note above was measured at -- 187 x 0.02 = 3.74
+      # points against moving -- and it is affordable only because `PreferForward`
+      # now charges up to 3.9 points against standing and turning. The two
+      # roughly cancel.
+      BaseObstacle.scale: 0.02
       # **0.325, which is nav2's own default, and the 0.8 that was here is
       # what was trapping the rover.** The reasoning that put 0.8 here was
       # sound and the measurement under it was not, so this is worth setting
@@ -523,42 +546,54 @@ local_costmap:
       # the robot's centre, which is only a collision test while the inscribed
       # radius is the whole robot. This rectangle's corners are 0.21 m out.
       #
-      # **A circle was tried here instead, and rolled back.** The argument for
-      # one is real and is worth keeping written down: the inflation layer paints
-      # its hard 253 ring at the *inscribed* radius, 0.14 m, while a turn on the
-      # spot sweeps the *circumscribed* one, 0.244 m. The ten centimetres between
-      # them are a band around every wall that the rover may legally drive into
-      # and then not turn out of, and the rover was once found wedged in exactly
-      # that band -- 0.21 m off a wall, five centimetres from a legal pose, the
-      # body fitting at five of sixteen headings in this costmap and at none at
-      # all in the planner's. A `robot_radius` makes the two numbers one number,
-      # so anywhere it may stand is somewhere it may turn: the band is 10.4 cm
-      # wide with this rectangle, 6.9 cm at a radius of 0.175, and nothing at all
-      # only at 0.244.
+      # **And a circle now, not that rectangle, because this rover pivots.**
+      # Everything above is still the honest history of the rectangle. What it is
+      # not is a shape that can decide whether the rover may *turn*. The
+      # inflation layer paints its hard 253 ring at the *inscribed* radius,
+      # 0.14 m for that rectangle, while a turn on the spot sweeps the
+      # *circumscribed* one. The ten centimetres between them are a band around
+      # every wall the rover may legally drive into and then not turn out of, and
+      # it was found wedged in exactly that band: 0.21 m off a wall, five
+      # centimetres from a legal pose, the body fitting at five of sixteen
+      # headings in this costmap and at none at all in the planner's. This
+      # rover's entire control set is built around 32 in-place rotations, so
+      # "may I stand here" and "may I turn here" have to be the same question,
+      # and a radius is the only shape that makes them one.
       #
-      # What closing it costs is doorways, because this house has no clearance to
-      # spare. Driven round the loop for six seconds from eight starts in each of
-      # the three recordings, with each recording's costmap re-inflated at the
-      # radius under test so the comparison is fair
-      # (`dwb_replay.closed_loop(..., reinflate=True)`), median net distance and
-      # escapes:
+      # **0.20 m, which is the chassis measured with a tape rather than inferred
+      # from the lidar's view of it.** The footprint above was never a
+      # measurement of the body: it is `slam2d.c`'s self-return mask, where the
+      # returns actually span 8.5-11.2 cm behind and 8.2-10.7 cm to each side
+      # over 397 revolutions, plus about 5 cm of masking margin -- and the
+      # forward 0.20 was never measured at all, because the lidar sees straight
+      # past the body that way. It was the best number available and it is not
+      # the right kind of number for this.
       #
-      #     shape    corridor     doorway      lock-up
-      #     rect     0.63 m 8/8   0.89 m 8/8   0.93 m 8/8
-      #     0.175    1.04 m 8/8   0.90 m 8/8   0.93 m 8/8
-      #     0.200    0.71 m 6/8   0.62 m 6/8   0.86 m 7/8
-      #     0.244    0.55 m 5/8   0.56 m 5/8   0.86 m 7/8
+      # **What the replay can and cannot say about the size.** Driven round the
+      # loop for six seconds from twelve starts in each of the three recordings,
+      # with each recording's costmap re-inflated at the radius under test
+      # (`dwb_replay.closed_loop(..., reinflate=True)`), escapes out of 36:
       #
-      # Only 0.244 closes the band, and it is the worst row: a 0.49 m circle
-      # leaves about 0.31 m of legal centreline in a 0.80 m doorway, narrower
-      # than one 0.32 m rollout, so nearly every candidate clips it. 0.175 keeps
-      # the doorways and reads better than the rectangle here -- but it only
-      # narrows the band rather than closing it, and it describes the body as
-      # 3.8 cm smaller than the lidar measured the rear corners, so a pivot near
-      # furniture can clip. The rover's owner drove both and kept this one; where
-      # the model and the hardware disagree the hardware is right.
-      # `corridor_sim.CIRCULAR` will model the other shape if it is reopened.
-      footprint: "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]"
+      #     0.050  36    rect   36    0.190  34    0.213  33
+      #     0.100  36    0.150  36    0.200  33    0.230  31
+      #                  0.175  35                 0.244  31
+      #
+      # It is monotone and a five-centimetre rover wins outright, which is the
+      # whole point: the replay knows what the costmap forbids and nothing about
+      # the rover hitting anything, so shrinking the body always scores better.
+      # That column prices what a shape *costs*; it cannot choose one. The
+      # rectangle ties a 0.150 circle there because in every map that reads the
+      # ring it already is one -- only `ObstacleFootprint` ever saw its corners.
+      # So 0.20 is chosen on geometry and paid for at three escapes in 36 against
+      # the rectangle, which is the price of closing a trap we have watched
+      # happen. 0.244 costs more and buys nothing 0.213 does not.
+      #
+      # If the body is ever measured properly the number to use is
+      # `hypot(length/2, width/2)`, and if that comes out near 0.23-0.25 then
+      # this house is too tight for a circle -- the doorway escapes fall away --
+      # and the rectangle is the pragmatic choice despite the band.
+      # `corridor_sim.CIRCULAR` models either.
+      robot_radius: 0.200
       # Send the whole grid every time, not just the cells that changed. Stock
       # behaviour is one full costmap followed by deltas for ever, which is right
       # for a viewer that was watching from the start and useless for one that
@@ -607,15 +642,16 @@ local_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # **0.45 m, and it must stay above 0.244 m for a reason that is not
-        # about cushioning.** The note that used to be here described a 25 cm
-        # radius rover and has been wrong since the footprint became the
-        # measured rectangle: the inscribed radius is 0.14 m now, not 0.25.
+        # **0.45 m, and it must stay above the robot radius for a reason that
+        # is not about cushioning.** With a circular body the inscribed and
+        # circumscribed radii are the same number, 0.200 m, so the margin here
+        # is comfortable -- but the rule below is a rule and it bites if either
+        # number is ever changed.
         #
         # What sets the floor on this number is the planner. Smac checks the
         # full oriented footprint only when the cell under the robot's centre
         # is already expensive, and the threshold it uses is the inflation cost
-        # at the *circumscribed* radius -- 0.244 m for this body, worth 184
+        # at the *circumscribed* radius -- 0.200 m for this body, worth 216
         # here. `nav2_smac_planner/utils.hpp` computes that in
         # `findCircumscribedCost`, and if the inflation radius is smaller than
         # the circumscribed radius it logs an error and falls back to checking
@@ -636,10 +672,12 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      # The same measured rectangle as the local costmap's -- see the note there.
-      # Two costmaps disagreeing about the shape of the robot is a planner that
-      # routes through gaps the controller then refuses to drive.
-      footprint: "[[0.20, 0.14], [0.20, -0.14], [-0.16, -0.14], [-0.16, 0.14]]"
+      # The same radius as the local costmap's -- see the long note there. Two
+      # costmaps disagreeing about the shape of the robot is a planner that
+      # routes through gaps the controller then refuses to drive, and this rover
+      # has already been wedged by a ten-centimetre disagreement of that kind
+      # between the ring it was cleared at and the circle it swept turning.
+      robot_radius: 0.200
       resolution: 0.05
       track_unknown_space: true
       # **No obstacle layer here, and that is the whole reason this rover stopped

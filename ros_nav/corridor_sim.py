@@ -121,7 +121,7 @@ PATH_ALIGN_SCALE = 32.0
 PATH_DIST_SCALE = 32.0
 GOAL_ALIGN_SCALE = 24.0
 GOAL_DIST_SCALE = 24.0
-OBSTACLE_SCALE = 0.005
+OBSTACLE_SCALE = 0.02
 # Tracks config/nav2.yaml. A stale copy here is not a cosmetic drift: this
 # distance decides which candidates carry the unreachable charge, and on some
 # geometry it decides whether driving or turning is the one penalised.
@@ -145,37 +145,52 @@ MAP_GRID_RESCALE = RESOLUTION * 0.5
 #: measured off the chassis by `lidar_slam/slam2d.c`, and it is what the rover
 #: runs.
 FOOTPRINT = [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)]
-#: **Describe the rover as a circle instead. False, because that is what the
-#: rover runs -- the circle was tried and rolled back.**
+#: **Describe the rover as a circle. True, because that is what the rover runs.**
 #:
-#: The argument for a circle is real and worth keeping: a pivot sweeps the
-#: circumscribed radius, 0.244 m, while the inflation layer paints its hard 253
-#: ring at the inscribed one, 0.14 m. The ten centimetres between them are a
-#: band around every wall the rover may legally drive into and then not turn out
-#: of, and the rover was once found wedged in exactly that band -- 0.21 m off a
-#: wall, five centimetres from a legal pose, the body fitting at five of sixteen
-#: headings in the local costmap and none at all in the planner's. A radius
-#: makes the two numbers one number, so anywhere it may stand is somewhere it
-#: may turn.
+#: The rectangle above is not a measurement of the body: it is `slam2d.c`'s
+#: lidar self-return mask, where the returns span 8.5-11.2 cm behind and
+#: 8.2-10.7 cm to each side over 397 revolutions, plus about 5 cm of masking
+#: margin -- and its forward 0.20 was never measured at all, because the lidar
+#: sees straight past the body that way.
 #:
-#: What it costs is doorways. Set this True and pass `reinflate=True` to
-#: `dwb_replay.closed_loop` -- which rebuilds a recording's inflation at the new
-#: radius, so an old drive can judge a shape change fairly -- to re-run the
-#: comparison. The answer, on all three recordings, is the table in
-#: config/nav2.yaml beside the `footprint` line. Only 0.244 closes the band, and
-#: it is the worst row of the four -- five escapes of eight on the corridor
-#: where the rectangle makes eight of eight.
-CIRCULAR = False
-#: The radius to describe it with when CIRCULAR. Not the circumscribed radius of
-#: the measured rectangle (0.244 m), which closes the band completely and costs
-#: the doorways; this is the value the rover's owner measured off the chassis.
-ROBOT_RADIUS_CONFIGURED = 0.175
+#: More to the point it is the wrong *kind* of shape for a rover that pivots.
+#: nav2 paints its hard 253 ring at the inscribed radius, 0.14 m for that
+#: rectangle, while a turn on the spot sweeps the circumscribed one. The ten
+#: centimetres between them are a band around every wall the rover may legally
+#: drive into and then not turn out of, and the rover was found wedged in
+#: exactly that band: 0.21 m off a wall, five centimetres from a legal pose,
+#: with the body fitting at five of sixteen headings locally and none at all in
+#: the planner's map. This chassis's whole control set is 32 in-place rotations,
+#: so "may I stand here" and "may I turn here" have to be one question, and a
+#: radius is the only shape that makes them one.
+#:
+#: Set this False to model the rectangle again, and pass `reinflate=True` to
+#: `dwb_replay.closed_loop` whenever the shape changes, so a recording's
+#: inflation is rebuilt at the radius under test rather than judging a new body
+#: against the old ring.
+CIRCULAR = True
+#: The radius to describe it with. **0.20 m, measured off the chassis with a
+#: tape rather than inferred from the lidar's view of it.**
+#:
+#: Do not pick this number off the escape counts. Driven from twelve starts in
+#: each of the three recordings they run 36/36 at a five-centimetre body, 36/36
+#: at the rectangle, 35 at 0.175, 33 at 0.200, 33 at 0.213 and 31 at 0.244 --
+#: monotone, and an absurd body wins. The replay knows what the costmap forbids
+#: and nothing about the rover hitting anything, so shrinking the body always
+#: scores better. That column prices what a shape costs; it cannot choose one.
+#: 0.20 costs three escapes in 36 against the rectangle, which is the price of
+#: closing a trap that has actually been watched to happen.
+#:
+#: If the body is ever properly measured the number is `hypot(length/2,
+#: width/2)`. Near 0.23-0.25 and this house is too tight for a circle -- the
+#: doorway escapes fall away -- and the rectangle wins on pragmatism.
+ROBOT_RADIUS_CONFIGURED = 0.200
 #: Which obstacle critic goes with it. `BaseObstacle` refuses at 253, so the
 #: controller may not put its centre in the ring at all; `ObstacleFootprint`
 #: traces the outline and refuses only on contact at 254. The first is far
-#: stricter and is what a circular body would normally use, and it is only a
-#: collision test at all while the ring is as big as the whole robot -- which is
-#: why the rectangle above must keep `ObstacleFootprint`.
+#: stricter and is what a circular body takes, and it is only a collision test
+#: at all while the ring is as big as the whole robot -- which is why the
+#: rectangle needed `ObstacleFootprint` and why this is correct now.
 CIRCULAR_USES_BASE_OBSTACLE = True
 CIRCUMSCRIBED_M = max(math.hypot(x, y) for x, y in FOOTPRINT)
 ROBOT_RADIUS_M = ROBOT_RADIUS_CONFIGURED
