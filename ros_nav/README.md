@@ -1170,15 +1170,70 @@ Holding the costmap fixed is fair on this drive and would not be on another:
 the rover never got more than 22 cm from where it had been twelve seconds
 earlier, so its 3 m window would have rolled by at most four cells.
 
+### What the trap is made of, and three fixes that are not it
+
+The reproduction is good enough to kill a candidate in a few minutes, so three
+were killed before anything was changed on the rover.
+
+**A smaller body does not do it.** `trap_sim.py --rings` re-inflates the
+recorded costmap for each shape and drives the model from twelve starts. From a
+0.20 m circle down to 0.10 m, and through the measured rectangle, a forward move
+becomes *legal* far more often -- 33 ticks of 52 becomes 43 -- and the rover
+still never picks one, because the margin against driving only falls from 4.3
+points to 3.4. The one escape, at 0.10 m, takes the rover's centre within
+0.16 m of a cell the lidar saw something in, and the real body is 0.14 m to its
+nearest edge. That is a collision, not an escape, which is why the sweep reports
+clearance beside the count: the model knows what the costmap forbids and nothing
+about the rover hitting anything, so a smaller body always scores better.
+
+**Nor does letting it turn faster.** `PreferForward` charges `|theta| * 10 *
+scale`, so the cheapest turn is always the slowest one and the rover pivots at
+15 deg/s when its plan is 140 degrees away -- nine seconds of uninterrupted
+turning. Setting that scale to zero makes it choose 39 deg/s instead and turn
+604 degrees rather than 422, and it escapes 0 of 12.
+
+**Nor does turning it to face the plan first.** Driving the rotation directly to
+within 20 degrees of the plan's heading, which is what a `Spin` recovery would
+do, escapes 1 of 12 and ends a median 97 degrees off the plan, because DWB turns
+back out of the alignment as soon as it is handed control. It does not want to
+be pointed along that plan.
+
+**What it does want is to point at a wall.** `GoalDist` and `GoalAlign` flood
+from the last plan point on the window, and this build's flood runs through
+walls, so what they reward is the straight-line direction to a goal on the far
+side of one. Flooding the same seed both ways at the rover's own poses, the best
+nose bearing under the library's flood and under the wall-respecting flood
+upstream intends are 75 and 120 degrees apart; on many ticks the seed sits on an
+inscribed cell, where upstream's flood would have had no answer at all. Every
+forward move in the direction the field likes is refused by the obstacle critic,
+and the pivots that are left are separated by 0.4 points of aiming signal
+against a 3.4-point turn-rate charge. So the rover turns, and turns.
+
+**Two costmaps that disagree by more than the corridor's margin.** The plan is
+drawn on the global costmap, which is slam_toolbox's map; the critics test it
+against the local one, built from the live scan. Transformed into the same frame
+and compared cell by cell, the local costmap's lethal cells sit a median 0.15 m
+from anything the map knows about at the start of this drive, falling to 0.06 m
+by the end, with a quarter of them beyond 0.31 m and the worst at 0.75 m. The
+inscribed ring is 0.20 m, so that disagreement is enough on its own to put the
+planner's route inside the controller's walls -- which is exactly where the last
+twenty-five points of it are.
+
 ### What is still open
 
-- **The rover can be parked where it has no legal forward move at all**, and
-  nothing notices. That is the trap above, and the two candidate answers are a
-  smaller inscribed ring and a recovery that recognises "every forward rollout
-  is refused" as a different failure from "the controller cannot decide". The
-  reproduction to test either against is `dwb_replay.py
-  recordings/trap-2026-08-25-spin.json --drive`, which has to stop reporting
-  STUCK from all twelve starts.
+- **The controller aims the rover at walls, because the distance field it
+  steers by does not know they are there.** That is the trap above and it is
+  the open fault. Three candidate fixes have been tried against the
+  reproduction and all three are dead: a smaller body, removing
+  `PreferForward`'s rate charge, and turning the rover to the plan's heading
+  before handing over. What is left is to stop the local goal being a point
+  behind a wall -- prune the plan to the last point that is genuinely in free
+  space before `GoalDist` seeds from it, or give the critics a flood that
+  respects the inflated ring the way upstream's does. The reproduction to test
+  either against is `dwb_replay.py recordings/trap-2026-08-25-spin.json
+  --drive`, which has to stop reporting STUCK from all twelve starts, and
+  `trap_sim.py --rings` is the pattern for how to price a candidate rather than
+  just count its escapes.
 - **The pivot channel over-serves the smallest rotation the controller can ask
   for, by four times.** DWB's sixteen rotation samples run in 5.96 deg/s steps, and
   `drive_mixer.turn_to_pwm` lifts any pivot request below `MIN_TURN_DPS` up to it.

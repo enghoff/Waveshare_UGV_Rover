@@ -5,6 +5,7 @@
     python3 trap_sim.py --weights     # what actually decides a tick
     python3 trap_sim.py --look        # sweep the align look-ahead
     python3 trap_sim.py --bias        # what driving costs more than turning
+    python3 trap_sim.py --rings       # does a smaller body get it out? (no)
     python3 trap_sim.py               # all four
 
 **The three complaints this exists to explain.** The rover gets stuck turning
@@ -53,6 +54,43 @@ choices it had. On the rest, driving lost to pivoting by a median 4.6 points,
 and the bill is `PathAlign` +4.0 and `PathDist` +3.2 -- both saying the rover
 would end further from the planned path than it is now -- against `GoalDist`
 and `GoalAlign` pulling the other way by 1.8 each.
+
+**A smaller body is not the answer, and `--rings` is how that was settled.**
+The obvious reading of the paragraph above is that the 20 cm inscribed ring is
+what refuses the forward moves, so a smaller body would free the rover. It does
+not. Swept from a 0.20 m circle down to a 0.10 m one, and through the measured
+rectangle, on `recordings/trap-2026-08-25-spin.json`:
+
+    body                    got somewhere   forward legal   forward wins
+    circle 0.20 (as run)      0 of 12        33 of 52          0
+    circle 0.16               0 of 12        37 of 52          0
+    rectangle (measured)      0 of 12        32 of 52          0
+    circle 0.12               0 of 12        42 of 52          0
+    circle 0.10               1 of 12        43 of 52          1
+
+Shrinking the body makes a forward move *legal* far more often -- 33 ticks of 52
+becomes 43 -- and the rover still never chooses one, because the margin against
+it only falls from 4.3 points to 3.4. The single escape at 0.10 m takes the
+rover's centre within 0.16 m of a cell the lidar saw something in, and the real
+body is 0.14 m to its nearest edge and 0.24 m to a corner: that escape is a
+collision. Two other candidates were killed the same way. Removing
+`PreferForward`'s rate charge makes the rover turn faster and further -- 604
+degrees against 422 -- and it escapes 0 of 12. Turning it to the plan's heading
+first, which is what a `Spin` recovery would do, escapes 1 of 12 and ends 97
+degrees off the plan again, because DWB turns back out of the alignment as soon
+as it is handed control.
+
+**What is actually holding it is where the goal field points.** `GoalDist` and
+`GoalAlign` flood from the last plan point on the window, and this build's flood
+runs through walls, so the direction they reward is the straight-line direction
+to a goal that is on the far side of one. Measured at the rover's own poses,
+with the same seed flooded both ways, the best nose bearing under the library's
+flood and under the wall-respecting flood upstream intends are 75 and 120
+degrees apart -- and on many ticks the seed sits on an inscribed cell where the
+upstream flood would have no answer at all. So the controller is aiming the
+rover at a wall, every forward move that way is refused, and the pivots it is
+left with are separated by 0.4 points of aiming signal against 3.4 points of
+turn-rate charge. It turns for ever.
 
 **The look-ahead sweep is a measurement of the model that was, not the rover.**
 `--look` chose 0.325 over 0.8 by counting nose points that missed the flood,
@@ -389,6 +427,119 @@ def drive_bias(episode, look=None):
             "compared": len(gaps["TOTAL"])}
 
 
+#: The body as `lidar_slam/slam2d.c` masks it, which is the rectangle the rover
+#: was described by before it went back to a circle.
+MEASURED_RECT = [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)]
+
+#: What to sweep. The two ends are deliberately absurd -- a 0.10 m rover is not
+#: this rover -- because the point of the sweep is to show what shape *cannot*
+#: buy, and a range that stops at plausible bodies cannot show that.
+SHAPES = (("circle 0.20 (as run)", 0.200),
+          ("circle 0.175", 0.175),
+          ("circle 0.16", 0.160),
+          ("rectangle (measured)", None),
+          ("circle 0.12", 0.120),
+          ("circle 0.10", 0.100))
+
+
+def set_shape(radius):
+    """Describe the rover to the model as a circle, or as the rectangle.
+
+    Everything downstream of the shape has to move with it: which obstacle
+    critic is correct, what `getScale` does to it, and the inscribed radius the
+    inflation layer paints its 253 ring at. Changing the radius alone would
+    score a circular body against a rectangle's ring.
+    """
+    if radius is None:
+        dwb.CIRCULAR = False
+        dwb.FOOTPRINT = list(MEASURED_RECT)
+        dwb.INSCRIBED_M = 0.14
+        dwb.ROBOT_RADIUS_M = 0.14
+        dwb.OBSTACLE_RESCALE = dwb.RESOLUTION
+    else:
+        dwb.CIRCULAR = True
+        dwb.ROBOT_RADIUS_M = radius
+        dwb.INSCRIBED_M = radius
+        dwb.FOOTPRINT = [(radius * math.cos(i * math.pi / 6.0),
+                          radius * math.sin(i * math.pi / 6.0))
+                         for i in range(12)]
+        dwb.OBSTACLE_RESCALE = 1.0
+    dwb.CIRCUMSCRIBED_M = max(math.hypot(px, py) for px, py in dwb.FOOTPRINT)
+
+
+def ring_sweep(episode, starts=12, seconds=12.0, every=10):
+    """Does a smaller body get the rover out, and what does the escape cost?
+
+    Two measurements, because either alone misleads.
+
+    **Driven**, from `starts` poses of the recording, with the costmap
+    re-inflated at each shape: how often the model gets anywhere, and how close
+    its centre passed to a cell the lidar really saw something in. That second
+    number is the one that stops the sweep being a machine for choosing an
+    absurd body -- the model knows only what the costmap forbids, so shrinking
+    the rover always escapes more, and an escape that took less clearance than
+    the rover's real half-width is a collision rather than a fix.
+
+    **Standing still**, at the rover's own recorded poses: whether a forward
+    move is legal at all, and what it costs against the best pivot. This is the
+    apples-to-apples half. The driven runs diverge into different poses under
+    each shape, so their legality counts are not comparable across rows; these
+    are.
+    """
+    rows = dwb_replay.ticks(episode)
+    if not rows:
+        return None
+    picks = [int(i * (len(rows) - 1) / float(starts - 1)) for i in range(starts)]
+    out = []
+    for label, radius in SHAPES:
+        set_shape(radius)
+        dwb_replay._REINFLATED.clear()
+        runs = [dwb_replay.closed_loop(episode, dwb.TURN_GAIN, dwb.DEAD_TIME_S,
+                                       seconds=seconds, start=start,
+                                       reinflate=True)
+                for start in picks]
+        runs = [run for run in runs if run]
+        cache = {}
+        legal = wins = ticks = 0
+        margins = []
+        for row in rows[::every]:
+            key = row["costmap"]["t"]
+            if key not in cache:
+                cache.clear()
+                cache[key] = dwb.reinflate(dwb_replay.grid_of(row["costmap"]))
+            grid = cache[key]
+            x, y, yaw = row["pose"]["odom"]
+            path = dwb_replay.transform_plan(
+                dwb_replay.plan_in_odom(row["plan"], row["pose"]["map"],
+                                        row["pose"]["odom"]), grid, x, y)
+            if len(path) < 2:
+                continue
+            ticks += 1
+            kept, _ = dwb.evaluate(grid, path, path[-1], x, y, yaw)
+            forward = [k for k in kept if k[1] > 1e-6]
+            pivot = [k for k in kept if abs(k[1]) < 1e-6]
+            if forward:
+                legal += 1
+            if kept and kept[0][1] > 1e-6:
+                wins += 1
+            if forward and pivot:
+                margins.append(forward[0][0] - pivot[0][0])
+        margins.sort()
+        nets = sorted(run["net"] for run in runs)
+        clears = sorted(run["clearance"] for run in runs)
+        out.append({
+            "label": label,
+            "escaped": sum(1 for run in runs if not run["stuck"]),
+            "runs": len(runs),
+            "net": nets[len(nets) // 2],
+            "clearance": clears[0],
+            "legal": legal, "ticks": ticks, "wins": wins,
+            "margin": margins[len(margins) // 2] if margins else float("nan"),
+        })
+    set_shape(dwb.ROBOT_RADIUS_CONFIGURED if dwb.CIRCULAR else None)
+    return out
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--episode", default=EPISODE)
@@ -396,9 +547,12 @@ def main(argv=None):
     parser.add_argument("--weights", action="store_true")
     parser.add_argument("--look", action="store_true")
     parser.add_argument("--bias", action="store_true")
+    parser.add_argument("--rings", action="store_true",
+                        help="sweep the body the controller is told it has")
     parser.add_argument("--looks", default="0.325,0.45,0.60,0.80")
     args = parser.parse_args(argv)
-    everything = not (args.turn or args.weights or args.look or args.bias)
+    everything = not (args.turn or args.weights or args.look
+                      or args.bias or args.rings)
     episode = dwb_replay.load(args.episode)
 
     if args.turn or everything:
@@ -483,6 +637,23 @@ def main(argv=None):
                       "%+.2f, a tenth above %+.2f)" % (name, mid, low, high))
             print("   positive is a critic that would rather the rover stayed "
                   "where it is.")
+        print()
+
+    if args.rings:
+        table = ring_sweep(episode)
+        print("the body the controller is told it has, swept against this drive")
+        print("   %-22s %-14s %-8s %-26s %s"
+              % ("", "driven:", "", "standing at the rover's own poses:", ""))
+        print("   %-22s %-14s %-8s %-14s %-11s %s"
+              % ("body", "got somewhere", "closest", "forward legal",
+                 "forward wins", "what forward costs"))
+        for row in table:
+            print("   %-22s %2d of %2d       %.2f m   %2d of %2d       %2d          %+.2f points"
+                  % (row["label"], row["escaped"], row["runs"], row["clearance"],
+                     row["legal"], row["ticks"], row["wins"], row["margin"]))
+        print("   'closest' is how near the rover's centre passed to a cell the lidar")
+        print("   saw something in. The real body is 0.14 m to its nearest edge and")
+        print("   0.24 m to a corner, so an escape under that is a collision, not a fix.")
         print()
 
     if args.look or everything:
