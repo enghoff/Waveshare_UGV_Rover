@@ -1393,6 +1393,64 @@ def test_lattice_respects_the_dwb_envelope():
           linfo["length_m"] < 2.0 * ninfo["length_m"], True)
 
 
+def test_discovery_stays_on_this_board():
+    """A dead radio must not be able to take the ROS graph with it.
+
+    The console saying "only the mapping half is up" with every process still
+    listed is CycloneDDS writing to a leftover address (wlan0's .139 after a
+    failover onto the dongle). RoboStack's activate hook sets discovery to the
+    subnet; dds.sh has to override that after env.sh, in every launcher, or the
+    next interface change looks like Nav2 crashing.
+    """
+    section("discovery stays on this board")
+    dds_path = os.path.join(HERE, "dds.sh")
+    if not os.path.isfile(dds_path):
+        print("  .... skipped, no dds.sh")
+        return
+    with open(dds_path, encoding="utf-8", errors="replace") as fh:
+        dds = fh.read()
+    check("dds.sh pins discovery to localhost",
+          "ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST" in dds, True)
+    check("...and ROS_LOCALHOST_ONLY, so CycloneDDS will not keep LAN peers",
+          "ROS_LOCALHOST_ONLY=1" in dds, True)
+    for name in ("run_ros_nav.sh", "restart.sh", "run_record.sh"):
+        path = os.path.join(HERE, name)
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        check("%s sources dds.sh after env.sh" % name,
+              'DIR/dds.sh' in text and text.find('DIR/env.sh') < text.find('DIR/dds.sh'),
+              True)
+    with open(os.path.join(HERE, "sweep.sh"), encoding="utf-8", errors="replace") as fh:
+        sweep = fh.read()
+    check("sweep SIGKILLs what ignored SIGTERM, or the leftover keeps the port",
+          "pkill -9 -f" in sweep, True)
+    with open(os.path.join(HERE, "restart.sh"), encoding="utf-8", errors="replace") as fh:
+        restart = fh.read()
+    check("restart.sh will not hang SSH on a wedged ros2 node list",
+          "timeout 15 ros2 node list" in restart, True)
+    with open(os.path.join(HERE, "nav_record.py"), encoding="utf-8", errors="replace") as fh:
+        recorder = fh.read()
+    check("a hung nav_record cannot sit in spin_once past the recording window",
+          "threading.Timer" in recorder and "os._exit" in recorder, True)
+    with open(os.path.join(HERE, "run_record.sh"), encoding="utf-8", errors="replace") as fh:
+        wrapper = fh.read()
+    check("...and the shell wrapper still fires if Python itself is stuck",
+          "timeout --kill-after=15" in wrapper, True)
+    manifest_path = os.path.join(os.path.dirname(HERE), "deploy", "manifest.json")
+    if os.path.isfile(manifest_path):
+        with open(manifest_path, encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        ros_nav = next((c for c in manifest["components"]
+                        if c.get("name") == "ros_nav"), None)
+        when = []
+        for rule in (ros_nav or {}).get("special_commands") or []:
+            when.extend(rule.get("when") or [])
+        check("deploying dds.sh replaces the supervisor, or boot still has SUBNET",
+              "ros_nav/dds.sh" in when, True)
+    else:
+        print("  .... skipped, no deploy/manifest.json")
+
+
 def main():
     test_drive_model()
     test_steering_has_a_small_end()
@@ -1417,6 +1475,7 @@ def main():
     test_progress_is_not_only_translation()
     test_dwb_will_not_sample_a_turn_the_wheels_cannot_hold()
     test_lattice_respects_the_dwb_envelope()
+    test_discovery_stays_on_this_board()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0
 

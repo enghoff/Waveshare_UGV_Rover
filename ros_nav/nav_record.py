@@ -38,6 +38,7 @@ import json
 import math
 import os
 import sys
+import threading
 import time
 
 import rclpy
@@ -233,6 +234,19 @@ def main():
     parser.add_argument("--out", default="/tmp/episode.json")
     args = parser.parse_args()
 
+    # `rclpy.spin_once(..., timeout_sec=0.05)` does not return when CycloneDDS
+    # is wedged, so the wall-clock loop below never sees `end`. A --seconds 60
+    # recording then lives for tens of minutes as a second participant and
+    # takes the graph with it. This timer is independent of DDS.
+    def _abort():
+        print("nav_record: spin blocked past the recording window; "
+              "DDS is wedged", file=sys.stderr, flush=True)
+        os._exit(2)
+
+    watchdog = threading.Timer(args.seconds + 60.0, _abort)
+    watchdog.daemon = True
+    watchdog.start()
+
     rclpy.init()
     node = Recorder()
     node.fetch_params()
@@ -279,6 +293,7 @@ def main():
             print("that is the fault: it moved and did not go anywhere")
     node.destroy_node()
     rclpy.shutdown()
+    watchdog.cancel()
     return 0
 
 

@@ -30,4 +30,22 @@
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 . "$DIR/env.sh"
-exec python3 "$DIR/nav_record.py" "$@"
+# shellcheck source=/dev/null
+. "$DIR/dds.sh"
+
+# `rclpy.spin_once` does not honour its timeout when CycloneDDS is wedged, so a
+# `--seconds 60` recording can sit in the loop for tens of minutes as a second
+# participant on a four-core board. The watchdog in nav_record.py is the real
+# backstop; this is the one that still fires if Python itself is stuck.
+secs=180
+prev=
+for arg in "$@"; do
+    if [ "$prev" = "--seconds" ]; then
+        secs=${arg%%.*}
+    fi
+    prev=$arg
+done
+case $secs in
+    ''|*[!0-9]*) secs=180 ;;
+esac
+exec timeout --kill-after=15 $((secs + 90)) python3 "$DIR/nav_record.py" "$@"

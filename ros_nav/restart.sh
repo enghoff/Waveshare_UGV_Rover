@@ -90,8 +90,18 @@ fi
 echo "--- nodes:"
 # shellcheck disable=SC1091
 . "$DIR/env.sh"
-ros2 node list 2>/dev/null | sort -u
-ros2 lifecycle get /slam_toolbox 2>/dev/null
+# shellcheck disable=SC1091
+. "$DIR/dds.sh"
+# `ros2 node list` talks to DDS. When CycloneDDS is wedged it never returns, the
+# SSH client dies at 90 s, and a `restart.sh` is left running on the rover.
+# Capture first, then sort: a pipe would hide timeout's exit status.
+if nodes=$(timeout 15 ros2 node list 2>/dev/null); then
+    printf '%s\n' "$nodes" | sort -u
+else
+    echo "  !! ros2 node list did not finish in 15s -- DDS is wedged;" \
+         "process counts above are the check that still works"
+fi
+timeout 10 ros2 lifecycle get /slam_toolbox 2>/dev/null || true
 
 # And that the daemon can actually reach the bridge, which is the whole point of
 # the stack being up. Checked from here because it is one line and because the
@@ -102,4 +112,18 @@ if (exec 3<>/dev/tcp/127.0.0.1/8773) 2>/dev/null; then
     echo "  ok   something is listening on 8773"
 else
     echo "  !!   nothing is listening on 8773, so the daemon has no driving tools"
+fi
+
+# The check that would have named the silent-graph deaths: processes listed,
+# lidar still 9.9 Hz, CycloneDDS writing to a radio that is no longer there.
+# Sourced from dds.sh into this launch; if it is missing, the next failover
+# looks like Nav2 crashing.
+echo "--- discovery:"
+bridge=$(pgrep -n -f "$DIR/nav_bridge.py" || true)
+if [ -n "$bridge" ] && tr '\0' '\n' < "/proc/$bridge/environ" \
+        | grep -q '^ROS_LOCALHOST_ONLY=1$'; then
+    echo "  ok   nav_bridge is localhost-only, so a dead radio cannot take the graph"
+else
+    echo "  !!   nav_bridge is discovering on the LAN;" \
+         "dds.sh was not sourced into this launch"
 fi

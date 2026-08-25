@@ -68,6 +68,13 @@ trap stop INT TERM
 
 echo "--- run_ros_nav.sh starting $LAUNCH at $(date -Is) ---" >> "$LOG"
 while true; do
+    # After env.sh, every launch: RoboStack's activate hook sets discovery to
+    # the subnet, and a dead radio's leftover address then takes the graph down
+    # while every process is still listed. dds.sh is a file (like sweep.sh) so
+    # a deploy of it is picked up on the next child restart, not only when this
+    # supervisor itself is replaced.
+    # shellcheck disable=SC1091
+    . "$DIR/dds.sh"
     # Before every launch, not just the first. This is what makes a reload
     # idempotent: whatever the previous launch left holding the lidar is gone
     # before the new one goes looking for it. `bash` in front of it because a

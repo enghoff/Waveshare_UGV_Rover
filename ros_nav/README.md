@@ -187,6 +187,7 @@ And by hand, which is what to do when something is wrong:
 ```bash
 ssh bpi-m4zero
 . ~/ugv/ros_nav/env.sh                # bash only -- see below
+. ~/ugv/ros_nav/dds.sh                # pin discovery to this board
 ros2 topic list
 ros2 topic hz /scan                   # should be about 9.9
 ros2 lifecycle get /slam_toolbox      # must say 'active'
@@ -198,6 +199,11 @@ scripts that call `source`, which dash does not have, so `sh -c '. env.sh'` fail
 with "source: not found" — a message naming neither the file nor the shell, which
 reads as a missing package. Every launcher here starts `#!/bin/bash` for that
 reason.
+
+**`dds.sh` after `env.sh`, never instead of it.** RoboStack's activate hook sets
+discovery to the whole subnet, which is how a laptop rviz works and how a dead
+radio's leftover address takes this graph down. The launchers source both. A
+laptop that wants rviz on the LAN should source only `env.sh`.
 
 ## Saving a map
 
@@ -1178,6 +1184,23 @@ Getting the old stack back means `git revert`, not a crontab edit. The commit th
 removed it is one commit and it took `lidar_slam/`'s README with it, so the
 reasoning is recoverable along with the code.
 
+## The processes are up and the rover will not drive
+
+The console line "Nav2 is not running, so the rover will not drive itself. Only
+the mapping half of the stack is up" is this, not a crash. slam_toolbox and Nav2
+are listed. The lidar is still logging 9.9 Hz. The map picture is the last grid
+the bridge still has. What failed is the ROS graph: CycloneDDS is trying leftover
+peers from the other radio (`192.168.1.139` after a failover onto the dongle is
+the one we have actually seen) and from multicast `239.255.0.1`. Scans and TF
+stop arriving. The bridge cannot see Nav2's action server in two seconds, and
+that is the canned sentence.
+
+[`dds.sh`](dds.sh) pins discovery to loopback. The consoles talk TCP 8769 / 8773,
+not ROS, so they do not need the graph on the LAN. `sweep.sh` then SIGKILLs
+whatever ignored SIGTERM, because a wedged CycloneDDS participant sits inside
+`rclpy.spin` past the two-second wait and the next launch starts a second
+lidar_node on the same serial port.
+
 ## Reloading it after a deploy
 
 ```bash
@@ -1198,4 +1221,8 @@ Two things came out of that. The sweep is now [`sweep.sh`](sweep.sh), a separate
 file read from disk every time it is called, so anything that adds a node to this
 stack adds it there. And `restart.sh` no longer trusts a process count: it also
 looks for a death in the log after the launch started, which is what a node losing
-a port looks like from outside.
+a port looks like from outside. SIGTERM is not enough when CycloneDDS is wedged,
+so the sweep SIGKILLs what is left before the next launch.
+
+A change to [`dds.sh`](dds.sh) is picked up by a child restart: `run_ros_nav.sh`
+sources it every time around the loop, the same reason the sweep is a file.

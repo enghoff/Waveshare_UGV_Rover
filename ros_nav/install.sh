@@ -133,6 +133,10 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # One domain, so that a laptop on the same LAN running rviz does not have to be
 # told anything, and a second rover would have to be.
 export ROS_DOMAIN_ID=\${ROS_DOMAIN_ID:-42}
+# Discovery range is not set here. RoboStack's activate hook defaults it to
+# SUBNET so a laptop rviz on the LAN works. On this rover that is the wrong
+# default -- two radios and a moving /32 -- and it is overridden by dds.sh,
+# which every launcher sources after this file.
 # There is deliberately no workspace to source. This repository's own nodes are
 # plain scripts that the launch files name by absolute path, so there is nothing
 # to \`colcon build\` and therefore nothing to forget to rebuild -- which is the

@@ -30,6 +30,8 @@
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# SIGTERM first so a process that can still run its `finally:` can drop the
+# serial port and the 8773 listener.
 pkill -f "$DIR/lidar_node.py" 2>/dev/null
 pkill -f "$DIR/base_node.py" 2>/dev/null
 pkill -f "$DIR/nav_bridge.py" 2>/dev/null
@@ -48,6 +50,25 @@ pkill -f 'nav2_velocity_smoother/velocity_smoother' 2>/dev/null
 # launch's nav_bridge hits "Address already in use" against a process that is
 # already gone.
 sleep 2
+
+# SIGTERM is not enough when CycloneDDS is wedged: the Python nodes sit inside
+# `rclpy.spin` and ignore the signal for longer than the two seconds above.
+# The next launch then starts a second copy, the new nav_bridge cannot bind
+# 8773, it exits 1, and `restart.sh` still counts one of each -- the leftover.
+# Kill what is left, then wait once more for the handles.
+pkill -9 -f "$DIR/lidar_node.py" 2>/dev/null
+pkill -9 -f "$DIR/base_node.py" 2>/dev/null
+pkill -9 -f "$DIR/nav_bridge.py" 2>/dev/null
+pkill -9 -f 'async_slam_toolbox_node' 2>/dev/null
+pkill -9 -f 'nav2_lifecycle_manager/lifecycle_manager' 2>/dev/null
+pkill -9 -f 'nav2_controller/controller_server' 2>/dev/null
+pkill -9 -f 'nav2_planner/planner_server' 2>/dev/null
+pkill -9 -f 'nav2_bt_navigator/bt_navigator' 2>/dev/null
+pkill -9 -f 'nav2_behaviors/behavior_server' 2>/dev/null
+pkill -9 -f 'nav2_smoother/smoother_server' 2>/dev/null
+pkill -9 -f 'nav2_waypoint_follower/waypoint_follower' 2>/dev/null
+pkill -9 -f 'nav2_velocity_smoother/velocity_smoother' 2>/dev/null
+sleep 1
 
 # What is left, if anything, as the exit status. A caller can then say so rather
 # than discovering it later as a rover running last week's code.
