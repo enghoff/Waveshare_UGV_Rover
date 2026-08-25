@@ -381,12 +381,24 @@ def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
     two centimetres in eight seconds, so its rolling window did not roll and
     its plan was replanned to nearly the same thing eight times over. It would
     not be fair on a drive that went anywhere.
+
+    **`clearance` is here so that escaping cannot be read on its own.** The
+    model knows what the costmap forbids and nothing whatever about the rover
+    hitting anything, so a body described as smaller always escapes more
+    often -- a five-centimetre rover gets out of everything. What decides
+    whether an escape was real is how close the rover's *centre* passed to a
+    cell the lidar actually saw something in, which is measured here against
+    the recorded lethal cells rather than against the inflation derived from
+    them. Compare it with the body the rover really has: 0.14 m to the nearest
+    edge and 0.24 m to a corner. An escape that took 0.10 m of clearance is a
+    collision that the costmap was not describing.
     """
     rows = ticks(episode)
     if not rows:
         return None
     row = rows[start]
     grid = grid_of(row["costmap"])
+    observed = grid
     if reinflate:
         # Testing a change to the *shape* of the robot against a recording means
         # redoing the inflation, because the shape is what sets the ring. Never
@@ -408,6 +420,11 @@ def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
     turned = travelled = 0.0
     reversals = stalled = 0
     last_sign = 0
+    lethal = [(observed.origin_x + (c + 0.5) * observed.resolution,
+               observed.origin_y + (r + 0.5) * observed.resolution)
+              for r in range(observed.height) for c in range(observed.width)
+              if observed.cost(c, r) == goal_fit.LETHAL]
+    clearance = float("inf")
     for step in range(int(seconds / dt)):
         if step % replan_every == 0:
             # A new path resets every critic, as `setPlan` does on the rover.
@@ -437,10 +454,14 @@ def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
         travelled += abs(vx) * dt
         turned += abs(wz) * dt
         vx_now, wz_now = vx, wz
+        for lx, ly in lethal:
+            gap = math.hypot(lx - x, ly - y)
+            if gap < clearance:
+                clearance = gap
     net = math.hypot(x - origin[0], y - origin[1])
     return {"net": net, "travelled": travelled,
             "turned_deg": math.degrees(turned), "reversals": reversals,
-            "stalled": stalled,
+            "stalled": stalled, "clearance": clearance,
             "stuck": net < 0.25 and math.degrees(turned) > 90.0}
 
 
