@@ -1,219 +1,210 @@
 # Deploying this repository
 
-A commit still changes nothing on the rover by itself. The repository remains the
-source of truth: edit and commit here, deploy to the host that runs the files,
-restart the affected service, and prove the running system there. The rules around
-that are in [CLAUDE.md](../CLAUDE.md).
+A commit changes nothing on the rover by itself. The repository remains the
+source of truth: edit and commit here, deploy to the Banana Pi, restart the
+affected service and prove the running system there. The working rules are in
+[`CLAUDE.md`](../CLAUDE.md).
 
-For normal work, use [`deploy/deploy.py`](../deploy/README.md). It encodes the
-layout and restart rules below, compares each component with the commit last
-proved on that host, copies only affected components, and records state only
-after their existing verification commands pass. The manual commands in this
-file remain the recovery/reference path.
-
-The machines, addresses and keys are in [hosts.md](hosts.md). A component's own
-README is the place for how it works and how to debug it.
-
-## Automated path
+For ordinary committed work use [`deploy/deploy.py`](../deploy/README.md):
 
 ```bash
 python deploy/deploy.py --plan
 python deploy/deploy.py
 ```
 
-The deployer requires a committed worktree: recording `HEAD` while sending dirty
-tracked files would make the deployment record false. It packages only
-Git-tracked files and needs only Python plus `git`, `ssh` and `scp` locally.
-`rsync` runs on the Linux target, not on the Windows workstation.
+The deployer compares each registered component with the commit last proved on
+the rover, copies only affected source and advances state only after the existing
+restart/readiness checks pass. The manual commands below remain the recovery path.
 
-Deployment state is per component in `~/.ugv/deploy-state.json`. On the first
-run there is no baseline to guess. If the current host is already known to match
-`HEAD`, establish it without copying:
+The current installation has one deploy target: the Banana Pi M4 Zero on the
+rover (`bpi-m4zero`). The realtime Qwen Omni model is Alibaba-hosted and has no
+repository deployment target.
+
+## Where each directory runs
+
+| Directory | Runs on | Lands at / role |
+|---|---|---|
+| `rover_daemon/`, `driver_board/`, `face_tracking/` | Banana Pi | flattened into `~/ugv/`; the daemon imports the board helpers and local YuNet/aiming code |
+| `lidar_slam/` | Banana Pi | `~/ugv/lidar_slam/`; parser, room description, map renderer and USB reset support |
+| `ros_nav/` | Banana Pi | `~/ugv/ros_nav/`; ROS 2 environment remains under `~/miniforge3` |
+| `oak_depth/` | Banana Pi | `~/ugv/oak_depth/`; its unpacked DepthAI wheel remains in `vendor/` |
+| `drive_web/` | Banana Pi | `~/ugv/drive_web/` |
+| selected `voice_chat/` modules | Banana Pi | copied beside `drive_web` for the console/Alibaba realtime session |
+| `wifi_roam/` | Banana Pi | staged at `~/ugv/wifi_roam/`, then privileged copies via its installer |
+| `netwatch/` | Banana Pi | staged at `~/ugv/netwatch/`, then privileged copies via its installer |
+| `oak_camera/`, `lidar/`, `usb_cameras/`, `face_tracking/track_face.py`, workstation `driver_board/` tools, `voice_chat/mock_rover.py` | desk/workstation | bench/diagnostic tools; no deploy |
+
+The current `drive_web` deployment copies these shared voice modules beside the
+web service:
+
+```text
+console_model.py
+rover_tools.py
+session.py
+talk_frames.py
+prompts.py
+```
+
+`session.py` is the Alibaba realtime protocol. There is no local GPU voice server
+or remote face-detection service in the current deployment.
+
+## Addresses and ports
+
+The SSH host is `bpi-m4zero`. The stable rover service address is
+`192.168.1.80`, moved between its two radios by the dual-Wi-Fi manager. See
+[`hosts.md`](hosts.md) and [`wifi_roam/README.md`](../wifi_roam/README.md).
+
+The browser console is:
+
+```text
+https://192.168.1.80:8771/
+```
+
+Main rover ports:
+
+| Port | Owner |
+|---:|---|
+| 8769 | `rover_daemon` tool/control protocol |
+| 8770 | `oak_depth` |
+| 8771 | `drive_web` HTTPS/WebSocket console |
+| 8772 | board bridge: daemon lends odometry/motors to ROS |
+| 8773 | navigation bridge: ROS lends Nav2 back to daemon |
+| 8774 | loopback image/frame handoff used by the Alibaba voice session |
+
+## First deployment state
+
+The deployer refuses to invent a baseline. If the rover is already known to
+match the checkout:
 
 ```bash
 python deploy/deploy.py --adopt --host bpi
 ```
 
-Otherwise reconcile from the checkout:
+If not, reconcile from source:
 
 ```bash
 python deploy/deploy.py --full --host bpi
 ```
 
-`wifi_roam` and `netwatch` are deliberately two-stage. A normal run may copy and
-test their source under `~/ugv`, but it does not update `/usr/local` or systemd.
-After reviewing a privileged/network change, use:
+Deployment state is per component in `~/.ugv/deploy-state.json`.
+
+## Privileged network/system deployment
+
+`wifi_roam` and `netwatch` are deliberately two-stage. A normal deploy may copy
+and test their source but does not replace `/usr/local` or systemd files. After
+reviewing a privileged/network change:
 
 ```bash
 python deploy/deploy.py --system --only wifi_roam
 python deploy/deploy.py --system --only netwatch
 ```
 
-The deployer reads `secrets/bpi-sudo.key` locally and feeds it to `sudo -S`;
-it does not put the password in the command line or copy it to the board.
-`media_voice` is opt-in because MEDIA's GPU services are mutually exclusive:
+The deployer reads `secrets/bpi-sudo.key` locally and feeds it to `sudo -S`. The
+password is not put in the command line or copied to the rover.
 
-```bash
-python deploy/deploy.py --only media_voice
-```
+Do not enable `wifi-roam.timer` while `wifi_dual` is active. They are alternative
+managers of the same link. `install-dual.sh` disables the timer when the dual
+manager is armed.
 
-See [`deploy/README.md`](../deploy/README.md) for the manifest, failure semantics,
-exit codes and first-run details.
+## Runtime state and secrets
 
-## Where each directory runs
+Source deploys land under `~/ugv/`. Runtime state that must not be overwritten by
+source lives elsewhere:
 
-| Directory | Host | Lands at |
-|---|---|---|
-| `rover_daemon/`, `driver_board/`, `face_tracking/` | `bpi` | `~/ugv/` (flat for the daemon and the tracking loop; they import each other) |
-| `lidar_slam/` | `bpi` | `~/ugv/lidar_slam/` — parser, map renderer, USB replug. Its SLAM and planner are deleted. |
-| `ros_nav/` | `bpi` | `~/ugv/ros_nav/`, plus a conda environment at `~/miniforge3` built by its own `install.sh`. See [ros_nav/README.md](../ros_nav/README.md) |
-| `oak_depth/` | `bpi` | `~/ugv/oak_depth/`, plus `vendor/` filled by its own `install.sh` |
-| `wifi_roam/` | `bpi` | `~/ugv/wifi_roam/`, and from there into `/usr/local/sbin` and `/etc/systemd/system` by `install.sh` / `install-dual.sh` |
-| `netwatch/` | `bpi` | `~/ugv/netwatch/`, and from there into `/usr/local/sbin`, `/usr/local/bin` and `/etc/systemd/system` by its own `install.sh`. `netprobe.py` is the desk half and is not deployed |
-| `drive_web/` | `bpi` | `~/ugv/drive_web/`, plus copies of `voice_chat/{console_model,rover_tools,session,talk_frames,prompts,server}.py` next to it |
-| `voice_chat/server.py`, `face_detect/` | `root@media` | `/opt/<service>/` |
-| `lidar/`, `usb_cameras/`, `omni_bench/`, `voice_chat/mock_rover.py` | whichever desk is in use | nothing to deploy |
+- `~/.ugv/alibaba.key` — Alibaba DashScope key for Qwen Omni;
+- `~/.ugv/console.token` — browser microphone token;
+- `~/.ugv/tls/` — console CA/leaf certificate material;
+- `~/.ugv/deploy-state.json` — per-component deployment state.
 
-`scripting.py` and `rover_api.py` deploy flat with the daemon. If a behaviour
-store ever appears on the rover, it is data, not source — a deploy must not
-overwrite it. See [scripting.md](scripting.md).
-
-The SSH host is `bpi-m4zero`. Reach the rover at **192.168.1.80** (the service
-address `wifi_dual` moves between the two radios). `.139` and `.100` are the
-interfaces' own DHCP leases. See [wifi_roam/README.md](../wifi_roam/README.md).
-
-The drive console is `https://192.168.1.80:8771/`. See
-[drive_web/README.md](../drive_web/README.md).
+Keep these out of Git and out of `~/ugv`.
 
 ## Cross-cutting traps
 
-**Use each service's `restart.sh`.** The pattern a `pkill` would match also
-matches the ssh command carrying it, so typing the kill yourself takes down the
-session that typed it. `restart.sh` exists so that pattern lives in a file. It
-kills only the child; the supervisor brings it back with the arguments from
-crontab (or the unit). The automated deployer has explicit supervisor-change
-rules where replacing the supervisor itself is necessary.
+**Use each component's `restart.sh`.** An unguarded `pkill` pattern typed over
+SSH can match the SSH command carrying it. The restart scripts keep those
+patterns in files and preserve the supervisor's arguments.
 
-**Never relaunch `run_daemon.sh` by hand.** It drops the flags. The crontab entry
-is `@reboot ~/ugv/run_daemon.sh --vision --board-bridge --ros-nav`. Without
-`--ros-nav` the daemon offers no driving tools. Without `--board-bridge` the ROS
-stack has no odometry. There is no `--lidar` any more — argparse refuses it and
-the daemon will not start.
+**Never relaunch `run_daemon.sh` by hand.** The current supervisor arguments are:
 
-**A crontab change needs the supervisor replaced, and a `sync`.** The running
-supervisor still holds the old arguments. This card is `commit=120`; a crontab
-written and not flushed has already been lost to a restart here.
+```text
+--vision --board-bridge --ros-nav
+```
 
-**LF, not CRLF, on shell scripts.** `.py` files have no shebang. Scripts under
-`lidar_slam/`, `oak_depth/`, `wifi_roam/`, `netwatch/`, `face_tracking/` and
-`drive_web/` do, and they are held to LF by `.gitattributes`. The automated
-deployer also writes the executable mode recorded by Git into its tar archive,
-so a Windows checkout does not turn executable scripts into mode 644 on the
-rover.
+Without `--ros-nav` the daemon has no driving backend; without `--board-bridge`
+ROS has no odometry/motor path. The old direct-lidar daemon mode is gone.
 
-**Vendor wheels, not pip.** This board's Debian has no `pip` and no
-`python3-venv`. OpenCV and depthai are pinned wheels unpacked into `vendor/` by
-`install_opencv.sh` and `oak_depth/install.sh`. Both are idempotent.
+**A changed supervisor needs replacement, not only a child restart.** For ROS,
+changes to `run_ros_nav.sh`, `sweep.sh` or `dds.sh` are handled by
+`restart.sh --supervisor` via the deploy manifest.
 
-**ROS 2 lives outside `~/ugv`.** RoboStack is a conda environment at
-`~/miniforge3` because a deploy overwrites `~/ugv`. `env.sh` **must be sourced
-from bash** — RoboStack's hooks use `source`, which dash has not got, and the
-failure names neither the file nor the shell.
+**Follow a crontab write with `sync`.** The card uses `commit=120`; recent writes
+have previously disappeared across an abrupt restart.
 
-**`~/.ugv/`, not `~/ugv/`, for secrets and deployment state the rover must
-hold.** `alibaba.key` (the rover's own conversation with Alibaba),
-`console.token` (gates the microphone only), and `deploy-state.json` live outside
-the deploy tree so source deployment cannot overwrite them. `chmod 600` the key.
+**Shell scripts must remain LF.** `.gitattributes` pins scripts that carry a
+shebang. The deployer also preserves Git's executable bit in the tar archive.
 
-**`lidar_slam/` is mirrored, not copied into.** `scp` adds and never removes. The
-directory lost its SLAM and planner; leftover files on the host are stale.
-`libslam2d.so` is built per-host (aarch64) and is not committed — a change to
-`slam2d.c` or `slam2d.h` needs a rebuild on the board. The automated deployer
-mirrors this component with `--delete` while preserving the host build products.
+**Vendor wheels, not pip, on the rover.** This Debian installation has no `pip`
+or `python3-venv`. OpenCV for local YuNet and DepthAI for the OAK are pinned
+wheels unpacked into component `vendor/` directories by their installers.
 
-**The OAK has one owner.** Stop `oak_depth` before running its selftest or
-anything else against the camera.
+**ROS 2 lives outside the source deploy tree.** RoboStack is under
+`~/miniforge3`; its environment scripts must be sourced from bash.
+
+**The OAK has one owner.** Stop `oak_depth` before running another program that
+opens the OAK.
+
+**`lidar_slam/` is mirrored.** Its old SLAM/planner files have been removed, so
+additive copying would leave dead source on the rover. The deployer mirrors that
+directory while preserving the per-host `libslam2d.so` and `selftest` build
+products.
 
 ## Manual Banana Pi deployment
 
-Use this when recovering the deployment mechanism itself or when working through
-a component by hand. For ordinary committed changes, prefer `deploy/deploy.py`.
+Use this when recovering the deployment mechanism itself or deliberately working
+through a component by hand. For normal work prefer `deploy/deploy.py`.
 
 ```bash
 scp rover_daemon/*.py rover_daemon/*.sh driver_board/*.py bpi-m4zero:~/ugv/
-scp face_tracking/*.py face_tracking/*.sh \
-    face_tracking/face_detection_yunet.onnx bpi-m4zero:~/ugv/
+scp face_tracking/*.py face_tracking/*.sh face_tracking/*.onnx bpi-m4zero:~/ugv/
+
 rsync -a --delete --exclude 'libslam2d.so' --exclude selftest \
     lidar_slam/ bpi-m4zero:~/ugv/lidar_slam/
 ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2'
+
 scp -r oak_depth bpi-m4zero:~/ugv/
+scp -r ros_nav bpi-m4zero:~/ugv/
 scp -r wifi_roam bpi-m4zero:~/ugv/
 scp -r netwatch bpi-m4zero:~/ugv/
-scp -r ros_nav bpi-m4zero:~/ugv/
+
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md \
     bpi-m4zero:~/ugv/drive_web/
-scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts,server}.py \
+scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts}.py \
     bpi-m4zero:~/ugv/drive_web/
-
-ssh bpi-m4zero 'cd ~/ugv && python3 selftest.py | tail -2'
-ssh bpi-m4zero '~/ugv/restart.sh'                    # daemon; ~35 s; prints the tool count
-ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'          # prints /health
-ssh bpi-m4zero '~/ugv/drive_web/restart.sh'          # prints /health
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'            # ~30 s; prints the node list
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh --supervisor'  # when run_ros_nav.sh itself changed
 ```
 
-Installers, once, or again after changing what they install:
+Then run the component's own verification/restart, for example:
 
 ```bash
-ssh bpi-m4zero '~/ugv/install_opencv.sh'             # OpenCV 4.12, for YuNet
-ssh bpi-m4zero '~/ugv/oak_depth/install.sh'          # depthai 2.32.0.0
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install.sh'       # crontab
+ssh bpi-m4zero 'cd ~/ugv && python3 selftest.py | tail -2'
+ssh bpi-m4zero '~/ugv/restart.sh'
+ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'
+ssh bpi-m4zero '~/ugv/drive_web/restart.sh'
+ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'
+```
+
+One-time/repeatable installers:
+
+```bash
+ssh bpi-m4zero '~/ugv/install_opencv.sh'
+ssh bpi-m4zero 'sh ~/ugv/oak_depth/install.sh'
+ssh bpi-m4zero 'sh ~/ugv/drive_web/install.sh'
 ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'         # ~20 min, 4.7 GB, no sudo
+ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'
 ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --nav'
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh'
 cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on'
 cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/netwatch/install.sh'
 ```
 
-`install-dual.sh` without `DUAL=on` copies files and leaves the manager off,
-because the way it fails is a rover that needs carrying to a socket. Do not run
-`wifi_roam/install.sh` on this board without `ROAM=off` — that installer enables
-the roam timer, which fights the manager. Check with
-`ssh bpi-m4zero 'cat /run/wifi-dual.json'` (no privilege needed) and
-`python3 wifi_roam/test_wifi_dual.py` before treating a logic change as done.
-
-`oak_depth` and `drive_web` each have their own supervisor. Reloading depth is
-not the same act as reloading the daemon; reloading the console is not either.
-
-The daemon and the ROS stack start from the same crontab. The stack takes the
-best part of a minute, and `--ros-nav` does not wait for it — each driving tool
-connects when it is called and says when there is nothing to connect to.
-
-An empty map with a lidar that is reporting happily is usually the driver board,
-not the lidar. See
-[rover_daemon/README.md](../rover_daemon/README.md#when-the-board-does-not-answer).
-
-## MEDIA
-
-MEDIA deployment is intentionally opt-in in the automated deployer because the
-GPU services are mutually exclusive:
-
-```bash
-python deploy/deploy.py --only media_voice
-```
-
-Manual fallback:
-
-```bash
-scp voice_chat/{server.py,voice_history.py,voice_stream.py,voice_http.py,requirements.txt,selftest.py,test_harness.py,test_server.py,test_talk.py} \
-    root@media:/opt/voice_chat/
-ssh root@media 'systemctl daemon-reload && systemctl restart voice-chat'
-```
-
-`voice-chat` takes ~150 s to come back — three models load and decode is warmed
-before it binds — and `/health` answering is the signal that it is ready. The
-three GPU services share one card and are mutually exclusive; switch with
-`ssh root@media ~/switch_service.sh voice`. `face-detect` is on the CPU and is
-not part of that trade. See [hosts.md](hosts.md).
+`install_opencv.sh` also proves that `LocalDetector` can load after unpacking the
+wheel. A copied file is still not final proof: verify the running service on the
+rover after restart.

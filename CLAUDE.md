@@ -1,144 +1,122 @@
 # Working in this repository
 
-Rules for doing the work. Where each directory runs, how to deploy it, and how to
-restart it are in [docs/deploy.md](docs/deploy.md). The normal committed-code path
-is [`python deploy/deploy.py`](deploy/README.md). The machines, addresses and keys
-are in [docs/hosts.md](docs/hosts.md). A component's own README is where the rest
-lives.
+Rules for changing the rover. Directory ownership, deploy/restart commands and the
+manual recovery path are in [docs/deploy.md](docs/deploy.md). The normal committed
+path is [`python deploy/deploy.py`](deploy/README.md). Current host/network facts
+are in [docs/hosts.md](docs/hosts.md). A component's README describes the component
+itself.
 
 ## A change is not done until it runs on the host that uses it
 
-The rover's services run on the Banana Pi (`bpi-m4zero`). The GPU model services
-run on MEDIA. Bench scripts (`oak_camera/`, `lidar/`, `usb_cameras/`,
-`driver_board/`, `omni_bench/`, `voice_chat/mock_rover.py`) run on whichever desk
-is in use and need no deploy.
+The running rover services are on the Banana Pi (`bpi-m4zero`). The realtime voice
+model is Alibaba's hosted Qwen Omni service; there is no local GPU/MEDIA deployment
+in the current system. Bench scripts (`oak_camera/`, `lidar/`, `usb_cameras/`,
+`driver_board/`, `face_tracking/track_face.py`, `voice_chat/mock_rover.py`) run on
+whichever desk is in use and need no deploy.
 
-A commit does not sync itself to a host — the rover keeps running the old code
-until it is deployed. For committed changes, use `python deploy/deploy.py`; it
-works out which registered components changed, copies them, invokes their
-existing restart/verification path and advances deployment state only after that
-proof succeeds. Use the manual commands in `docs/deploy.md` when recovering the
-deployer itself or for an unregistered component.
+A commit does not sync itself to the rover. For committed changes use
+`python deploy/deploy.py`; it determines which registered components changed,
+copies them, invokes their existing restart/verification paths and advances state
+only after those checks pass. Use the manual commands in `docs/deploy.md` when
+recovering the deployer itself or working on an unregistered component.
 
-**Work out which hosts the changed files run on, deploy to each, restart what
-needs restarting, and verify it there — as part of the same piece of work,
-without being asked.** Say in the report which hosts were deployed to and what
-was checked on them.
+**Work out which host uses the changed files, deploy there, restart what needs
+restarting, and verify the running service there as part of the same piece of
+work.** Say what was deployed and what proved it.
 
-The repo stays source of truth: edit here and push, never edit in place on a
-host. The automated deployer therefore refuses dirty tracked files: a recorded
-commit must describe the bytes that were actually sent.
+The repository stays the source of truth: edit here and push, never edit a tracked
+file in place on the rover. The deployer therefore refuses dirty tracked files;
+the recorded commit must describe the bytes that were sent.
 
-## Credentials are in `secrets/`, so use them
+When prose and executable source/config disagree, **the source/config wins**.
+Correct the document; do not revive an old setting because a README remembers it.
 
-Every password and token is a one-line file in `secrets/`, gitignored, only on
-the workstation. **Read the file rather than stopping to ask for it.** A deploy
-that stops at "somebody will have to type this in" has not been deployed.
+## Credentials
 
-`bpi-sudo.key` is `admin`'s password on the Banana Pi. `rpi-sudo.key` is the same
-account on the Raspberry Pi it replaced — **the two are different, and the Pi's
-is silently refused by the Banana Pi**, which reads as a board that has lost its
-password rather than as the wrong file.
+Local deployment credentials live as one-line files under `secrets/`, which is
+gitignored. `bpi-sudo.key` is `admin`'s sudo password on the Banana Pi. The old
+Raspberry Pi password is different and must not be substituted for it.
 
-`sudo` on the Banana Pi prompts. Feed the password over stdin, once per `sudo`,
-because `-S` reads until end of file. The deployer does this for components that
-have an explicit `--system` installation; the manual equivalent is:
+`sudo` on the Banana Pi prompts. Feed the password over stdin once per `sudo`;
+`-S` reads until EOF, so two sudo commands chained after one `cat` leave the
+second with no password. The deployer handles this for components with an
+explicit `--system` installation. Manual equivalent:
 
 ```bash
 cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh'
 ```
 
-Two `sudo -S` calls chained after one `cat` leave the second with nothing.
+Runtime secrets the rover itself must hold live in `~/.ugv/`, outside the source
+deploy tree. In particular:
 
-Keep credentials where they are: none belongs in a commit, a chat transcript, a
-command line where `ps` can see it, or copied onto a host. Files the rover itself
-must hold live in `~/.ugv/`, outside the deploy tree, for that reason — see
-[docs/deploy.md](docs/deploy.md). Deployment state lives there too but is not a
-secret.
+- `~/.ugv/alibaba.key` — DashScope key for the realtime Qwen Omni session;
+- `~/.ugv/console.token` — gates use of the browser microphone;
+- `~/.ugv/deploy-state.json` — deployment state (not secret, but still runtime
+  state rather than source).
+
+Do not put credentials in a commit, chat transcript, process command line or a
+path that source deployment can copy back to the workstation.
 
 ## Do not fight the supervisors
 
 Each long-running service has a supervisor (crontab or systemd) and a
-`restart.sh`. The supervisor is where the arguments live. `restart.sh` kills only
-the child and lets it come back with those arguments. `deploy/manifest.json`
-contains explicit supervisor-replacement rules for source changes that alter a
-running supervisor script.
+`restart.sh`. The supervisor is where its arguments live. `restart.sh` kills the
+child and lets the supervisor bring it back with those arguments.
+`deploy/manifest.json` contains explicit supervisor-replacement rules for files
+that change the supervisor itself.
 
-- Never type an unguarded `pkill` pattern on an ssh command line. The pattern can
-  match the session that typed it.
-- Never relaunch `run_daemon.sh` by hand. It drops the flags and the rover
-  silently loses tools.
-- Changing a crontab line is not enough: the running supervisor still holds the
-  old arguments, so replace it too, and `sync` afterwards — this card is
-  `commit=120` and a restart otherwise undoes the write.
-- `ros_nav/sweep.sh` must stay a separate file. Anything that adds a node to that
-  stack adds it there. A change to `run_ros_nav.sh` itself needs
-  `~/ugv/ros_nav/restart.sh --supervisor`; the automated deployer selects that
-  path when the file changed.
+- Never type an unguarded `pkill` pattern on an SSH command line; the pattern can
+  match the session carrying it.
+- Never relaunch `run_daemon.sh` by hand; doing so drops the flags held by the
+  supervisor and can silently remove tools.
+- A changed crontab needs the running supervisor replaced too, followed by
+  `sync`; the card is mounted with `commit=120`.
+- `ros_nav/sweep.sh` stays a separate file so a long-lived shell cannot keep an
+  old parsed copy. Changes to `run_ros_nav.sh`, `sweep.sh` or the DDS supervisor
+  path require `~/ugv/ros_nav/restart.sh --supervisor`; the deployer selects that
+  route when appropriate.
 
-Do not enable `wifi-roam.timer` while `wifi_dual` is running. They have opposite
-models of the link and will fight over the rover's only way in. For that reason
-`wifi_roam` deployment is staged/tested by default and requires an explicit
-`deploy.py --system` before the running system copy is replaced.
+Do not enable `wifi-roam.timer` while `wifi_dual` is running. The two have
+opposite ownership models and will fight over the rover's only network path.
+Privileged Wi-Fi deployment is therefore staged/tested first and needs an
+explicit `deploy.py --system` before the running system copy is replaced.
 
-## Reproduce it in simulation before you fix it
+## Reproduce faults before fixing them
 
-**A fix for a fault nobody has reproduced is a guess.** Whenever a fault can be
-put in front of a model of the thing that misbehaves, build the reproduction
-first, and do not change the running system until the reproduction fails the
-same way the rover does.
+**A fix for a fault nobody reproduced is a guess.** Whenever a fault can be put
+in front of a model of the subsystem, build/replay the reproduction first and do
+not change the running system until the model fails the same way the rover did.
+Then show the proposed fix succeeding in that reproduction before deploying it.
 
-Then hold the fix to the same standard: show it working *in the reproduction*
-before deploying it, and say what the reproduction measured. "This should help"
-is not a result.
+Simulation does not replace hardware. A model must be validated against a real
+recording before it is trusted, and a fix that passes offline still has to be
+deployed and observed on the rover. Where model and hardware disagree, the
+hardware is right and the model needs work.
 
-Simulation does not replace the hardware: a fix that passes in the model still
-has to be deployed and watched on the rover. And a model is not trusted for being
-a model — a reproduction has to be validated against a recording of the real
-fault before it can be used to judge anything. Where the model and the hardware
-disagree, the hardware is right and the model has a bug.
+For navigation the existing tools include `ros_nav/nav_record.py`, replay and
+controller simulations in `ros_nav/`; see [ros_nav/README.md](ros_nav/README.md).
+For dual Wi-Fi, `python3 wifi_roam/test_wifi_dual.py` replays a captured outage and
+checks the manager's grading against the real event.
 
-For the navigation stack the pieces already exist: `ros_nav/nav_record.py`,
-`ros_nav/corridor_sim.py`, `ros_nav/dwb_replay.py`. See
-[ros_nav/README.md](ros_nav/README.md). For the dual-wifi manager,
-`python3 wifi_roam/test_wifi_dual.py` replays a recording of this rover losing
-the network and refuses to report anything if its grading disagrees.
+## Verify the running service, not the copied file
 
-## Verify on the hardware, not by inference
+Proof is taken on the machine that uses the change. For daemon-facing changes,
+call the affected function over TCP 8769 and inspect the answer. "The file was
+copied" and "a local unit test passes" do not prove the running rover changed.
+The deployer deliberately reuses component restart scripts because those scripts
+already know their readiness checks.
 
-Prove the deploy on the machine itself — for the Banana Pi, call the affected
-tool over TCP on port 8769 and look at what comes back. "The self-test passes"
-and "the file was copied" are not evidence that the running system changed.
-The automated deployer deliberately reuses the component restart scripts because
-they already encode these service-specific readiness checks.
+For pure documentation/deletion changes that do not affect a registered runtime
+component, no rover restart is needed. If a deploy manifest or source set changes,
+use `deploy.py --plan` to prove the deployer's interpretation of the new tree.
 
 ## Report in plain English
 
-The person reading the chat is a human, not a log. Lead with what is true, in
-the words you would use in the room — whether that is a rover in a doorway, a
-board that rebooted, a deploy that never reached the host, or a question about
-what to do next. File names, plugin names, YAML keys and tick counts are how
-you *got* there; they are not the first sentence.
+Lead with what is true in words a person can use: whether the rover moved, the
+network stayed up, a service restarted, or a recorded fault reproduced. File
+names, YAML keys and tick counts are supporting evidence, not the first sentence.
 
-If the obvious story is wrong, say so in one line, then the real one. The
-doorway lock-up was not "it cannot find a path"; it was spinning because the
-speed controller asked for turns the wheels cannot hold. A silent lidar on the
-console was not "the stack exited"; the processes were up and DDS was talking
-to an address the radio no longer had. Same shape of report, different faults.
-
-**Numbers a person can feel, not a dump.** "Eight in ten commands were pivots"
-and "a thousand degrees of turning in a minute" land; a table of critic scores
-does not, until someone asks. Prefer a fraction or a comparison (3°/s asked,
-12°/s delivered; six minutes of uptime, four minutes with no scan) over a raw
-count.
-
-**What is written is not always what is running.** A README, a commit message
-or an earlier chat can name a fix that never landed in the live config, or a
-host that still has last week's bytes. Say that when it is the point. Do not
-call something done, healthy or working on a metric that misses the thing the
-person actually cares about.
-
-**What's next is one move, and how we will know.** Name the change (or the
-recording, or the check), where it goes, and what would count as proof. If that
-fails, the next evidence is the input — not another guess. Do not offer a menu
-of possible tunings.
+If the obvious story is wrong, say so briefly and name the real one. Prefer
+numbers with physical meaning or a comparison over raw log volume. End with the
+single next action and what result would count as proof rather than a menu of
+untested guesses.

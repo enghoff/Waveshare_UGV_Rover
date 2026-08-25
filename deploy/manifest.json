@@ -4,10 +4,6 @@
     "bpi": {
       "ssh": "bpi-m4zero",
       "state_file": "~/.ugv/deploy-state.json"
-    },
-    "media": {
-      "ssh": "root@media",
-      "state_file": "~/.ugv/deploy-state.json"
     }
   },
   "components": [
@@ -184,8 +180,7 @@
             "voice_chat/rover_tools.py",
             "voice_chat/session.py",
             "voice_chat/talk_frames.py",
-            "voice_chat/prompts.py",
-            "voice_chat/server.py"
+            "voice_chat/prompts.py"
           ],
           "strip": "voice_chat"
         }
@@ -259,36 +254,6 @@
           "netwatch-report | tail -3"
         ]
       },
-      "triggers": [
-        "deploy/manifest.json"
-      ]
-    },
-    {
-      "name": "media_voice",
-      "host": "media",
-      "destination": "/opt/voice_chat",
-      "prune": false,
-      "sources": [
-        {
-          "patterns": [
-            "voice_chat/server.py",
-            "voice_chat/voice_history.py",
-            "voice_chat/voice_stream.py",
-            "voice_chat/voice_http.py",
-            "voice_chat/requirements.txt",
-            "voice_chat/selftest.py",
-            "voice_chat/test_harness.py",
-            "voice_chat/test_server.py",
-            "voice_chat/test_talk.py"
-          ],
-          "strip": "voice_chat"
-        }
-      ],
-      "commands": [
-        "systemctl daemon-reload && systemctl restart voice-chat",
-        "for i in $(seq 1 90); do python3 -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8767/health', timeout=3).read().decode())\" && exit 0; sleep 2; done; exit 1"
-      ],
-      "default": false,
       "triggers": [
         "deploy/manifest.json"
       ]

@@ -1,206 +1,189 @@
 # Waveshare UGV Rover
 
-Tools for bringing up, driving and instrumenting a **Waveshare UGV Rover** — the
-rover platform built on Waveshare's *General Driver for Robots* board, with an
-ESP32 on the board and a single-board Linux host beside it — a Banana Pi M4 Zero
-now, a Raspberry Pi 1 first.
+This repository is the source of truth for the software running on a Waveshare
+UGV Rover built around the General Driver for Robots board and a Banana Pi M4
+Zero. It also contains small bench tools used to bring up and diagnose the
+individual sensors and actuators.
 
-Half the repository is bench instruments. Each of those scripts drives exactly
-one thing — one camera socket, one sensor, one stored blob — so that when
-something is wrong you can establish which component is at fault before any of
-them are combined into a robot that does something. They remain the right thing
-to reach for first when a component misbehaves.
+The current system is deliberately simple about where work happens:
 
-The other half is the rover actually doing something: a daemon on the Banana Pi
-that owns the hardware and hands it out as tools, a face detector and a voice
-assistant that call those tools, and a ROS 2 stack that maps the room and drives
-the rover through it — all of it on the rover's own board, which is the machine
-that can actually act on what it computes.
+- the **Banana Pi M4 Zero** owns the rover hardware and runs the daemon, local
+  YuNet face detection, ROS 2 mapping/navigation, the OAK depth service, the web
+  console and the network watchdogs;
+- a **browser** supplies the microphone and speaker for voice interaction;
+- **Alibaba DashScope** supplies the realtime Qwen Omni model;
+- no separate GPU/MEDIA host is part of the running system.
 
-| Directory | What it drives | Runs on | Needs |
-|---|---|---|---|
-| [`oak_camera/`](oak_camera) | Luxonis OAK-D-Lite depth camera, over USB | a workstation | depthai |
-| [`lidar/`](lidar) | D500 lidar, over serial via the driver board | a workstation | pyserial |
-| [`usb_cameras/`](usb_cameras) | the machine's own UVC webcams | a workstation | OpenCV only |
-| [`driver_board/`](driver_board) | the ESP32 that drives the motors, over WiFi or USB | a workstation | nothing |
-| [`face_tracking/`](face_tracking) | the pan/tilt camera and its two servos, as one loop | a workstation, or the rover | OpenCV |
-| [`face_detect/`](face_detect) | that loop's detector as an HTTP service, for a host too slow to run it | any Linux box with spare CPU | OpenCV |
-| [`oak_depth/`](oak_depth) | the OAK as the rover's depth sensor, awake from boot | the rover's board | depthai |
-| [`rover_daemon/`](rover_daemon) | one owner of the board and the camera, as tools over TCP | the rover | pyserial |
-| [`ros_nav/`](ros_nav) | mapping and navigation: slam_toolbox and Nav2 over the rover's lidar and wheels | the rover | ROS 2 Jazzy, from RoboStack |
-| [`lidar_slam/`](lidar_slam) | the lidar's C parser, the map renderer, and the USB replug | the rover | a C compiler |
-| [`drive_web/`](drive_web) | the driving tools as a browser console, with the map on screen | the rover | nothing |
-| [`voice_chat/`](voice_chat) | speech in, speech out, with the rover's tools attached | a Linux host with an 8 GB GPU | PyTorch |
-| [`wifi_roam/`](wifi_roam), [`netwatch/`](netwatch) | keeping the rover on the network, and recording it when it is not | the rover | nothing |
+Superseded implementations are not kept beside the live ones merely as history.
+Git already holds that history. A file in the current tree should either run,
+help diagnose what runs, or document a current hardware fact or failure mode.
 
-The first four are independent: any can be run with the other components
-unplugged or unpowered, so a result from one never needs the others to be
-working. [`face_tracking/`](face_tracking) is the exception among the bench
-scripts, being the one that closes a loop between two components, so reach for it
-after both halves have been checked on their own.
+## What runs on the rover
 
-Only [`driver_board/`](driver_board) makes the rover move. Every bench script is
-standalone, needs no arguments, shares no state, imports nothing from the others,
-and quits on `q` — `drive_gamepad.py` being the exception on the last two counts,
-since it takes a controller rather than a window and stops on the pad's Back
-button.
+| Directory | Current role |
+|---|---|
+| [`rover_daemon/`](rover_daemon) | owns the driver-board UART and gimbal camera; exposes hardware and navigation as tools on TCP 8769 |
+| [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the Banana Pi; the rover daemon imports this code |
+| [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it |
+| [`lidar_slam/`](lidar_slam) | the fast LD19 parser, room description, map renderer and USB recovery code still used by the ROS stack and daemon |
+| [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |
+| [`drive_web/`](drive_web) | HTTPS browser console, map, camera view and microphone/speaker bridge |
+| [`voice_chat/`](voice_chat) | Alibaba realtime Qwen Omni session protocol, rover client helpers, prompts and console model shared with `drive_web` |
+| [`wifi_roam/`](wifi_roam) | dual-radio manager and the older single-radio recovery utilities; only one manager is enabled at a time |
+| [`netwatch/`](netwatch) | persistent evidence for network/board failures |
 
-## Layout
+The driver board is the physical owner of the motors, lights, gimbal, encoders,
+IMU and battery telemetry. The daemon keeps that UART open and lends the ROS stack
+the odometry and motor path over loopback rather than letting two processes race
+for the serial port.
 
-```
-oak_camera/     probe the device, read its calibration and crash dumps, preview
-                depth and colour — five tools, in triage order
-lidar/          lidar_view.py, a top-down view of the point cloud
-usb_cameras/    preview_usb_cameras.py, cycling through the host's UVC cameras;
-                calibrate_fov.py, measuring how wide a camera really sees
-driver_board/   drive_gamepad.py, teleop from a game pad, no host involved
-face_tracking/  the control law (aiming.py) and the two programs that run it,
-                one on a workstation and one on the rover
-face_detect/    YuNet behind an HTTP request: JPEG in, boxes out, on the CPU
-oak_depth/      the OAK kept awake on the rover as a depth camera: millimetres
-                out over HTTP, and the firmware upload that being awake requires
-rover_daemon/   lights, gimbal and face tracking as tools over TCP
-ros_nav/        ROS 2 Jazzy on the rover: the lidar as /scan, the driver board as
-                odometry and /cmd_vel, slam_toolbox mapping and Nav2 driving
-lidar_slam/     the LD19 parser in C, the map renderer, and the USB replug — what
-                is left of the rover's own SLAM, which ros_nav/ replaced
-drive_web/      the driving tools as a browser console, hosted on the rover
-voice_chat/     Whisper + a vision-language model + Kokoro, a desktop client, and
-                a window that drives the rover with no model in the loop
-wifi_roam/      the wifi keeper, as systemd units; netwatch/ records the link
-docs/           the detail — hardware facts, measurements, failure modes;
-                refs/ holds the vendor datasheets and CAD the numbers came from
-```
+Face tracking uses `face_tracking/yunet.py` on the Banana Pi. There is no remote
+face-detection service in the current system. The detector and the aiming loop are
+separate concerns: `yunet.py` finds faces; `aiming.py` decides where the gimbal
+should move.
 
-A component's directory holds everything belonging to it, output included, which
-is why `crash_dumps/` sits under `oak_camera/` rather than at the top level.
-`.cache/` is depthai's, created relative to the working directory, so it appears
-wherever you run from. A downloaded model is a dependency rather than source and
-re-fetching it costs one run, and a crash dump describes one device's one crash,
-so both are ignored; saved lidar PNGs are not.
+Voice interaction is also one current path. `drive_web/omni_bridge.py` runs the
+session on the rover and `voice_chat/session.py` speaks Alibaba's realtime API.
+Audio crosses the rover's Wi-Fi between browser and rover; tool calls stay on
+loopback; a `look` frame is handed to the same cloud session through a loopback
+frame server. See [`voice_chat/README.md`](voice_chat/README.md).
 
-## Setup
+## Bench and diagnostic tools
 
-One environment covers every component that runs on the workstation. Run the
-scripts from the repository root, by path:
+These are intentionally kept even though they are not long-running rover
+services. Each answers a useful question about the hardware without requiring the
+whole stack to be healthy.
+
+| Directory | What it is for |
+|---|---|
+| [`oak_camera/`](oak_camera) | probe the OAK, inspect calibration/crash state and preview colour/depth on a workstation |
+| [`lidar/`](lidar) | live top-down lidar view from a desk |
+| [`usb_cameras/`](usb_cameras) | UVC camera preview plus lens/FOV and aiming calibration |
+| [`driver_board/`](driver_board) | direct gamepad/board bring-up tools |
+| [`face_tracking/track_face.py`](face_tracking/track_face.py) | workstation face-tracking loop using the same YuNet/aiming model |
+| [`voice_chat/mock_rover.py`](voice_chat/mock_rover.py) | invented rover for exercising the console and conversation plumbing without hardware |
+| diagnostic scripts in [`ros_nav/`](ros_nav) | recordings, replay, controller simulations and chassis calibration used to reproduce navigation faults before changing the real rover |
+
+A diagnostic remains worth keeping when it can answer a current question such as
+"is the lidar producing valid packets?", "does YuNet see this face?" or "does
+this controller reproduce the recorded doorway fault?". Historical alternatives
+that no longer answer a current question belong in Git history instead.
+
+## Workstation setup
+
+One environment covers the ordinary workstation bench scripts:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe oak_camera\probe_device.py
 ```
 
-Requirements are `depthai>=2.32,<3`, `opencv-python>=4.10`, `numpy>=1.26` and
-`pyserial>=3.5`. Only `lidar/` needs pyserial, only `oak_camera/` needs depthai,
-and `usb_cameras/` needs neither, so a missing dependency stops one component
-rather than the suite. The depthai upper bound is deliberate and
-[documented](docs/depthai-version-pin.md). The OAK camera needs no driver install
-on Windows.
-
-The three service components have their own environments and their own setup,
-described in their own READMEs: [`face_detect/`](face_detect/README.md),
-[`voice_chat/`](voice_chat/README.md) and [`rover_daemon/`](rover_daemon/README.md).
-
-## Usage
-
-Every bench script prints what it found on stdout, and all but
-`drive_gamepad.py` open an OpenCV window that `q` quits.
+Examples:
 
 ```powershell
-# OAK-D-Lite, in triage order: each step assumes the previous one worked
-python oak_camera\probe_device.py         # boots the device, reports what it is
-python oak_camera\inspect_calibration.py  # stored calibration, user vs factory
-python oak_camera\read_crash_dump.py      # last firmware crash, then clears it
-python oak_camera\preview_depth.py        # mono pair + stereo engine
-python oak_camera\preview_rgb.py --depth  # colour + aligned depth, all 3 sensors
-
-# D500 lidar -- the rover's main power switch must be on
-python lidar\lidar_view.py                # auto-detects the serial port
-
-# the host's USB cameras
+python oak_camera\probe_device.py
+python oak_camera\preview_depth.py
+python lidar\lidar_view.py
 python usb_cameras\preview_usb_cameras.py
-
-# how wide is the rover's camera really? -- rover powered on and on the LAN
-python usb_cameras\calibrate_fov.py --selftest    # the method, with no hardware
-python usb_cameras\calibrate_fov.py sweep\
-
-# drive it -- rover powered on, pad plugged in
 python driver_board\drive_gamepad.py
-
-# track a face with the pan/tilt -- rover powered on, its camera plugged in
 python face_tracking\track_face.py
 ```
 
-Window keys, beyond `q`:
+The Banana Pi does not use this venv. Its OpenCV and DepthAI dependencies are
+pinned wheels unpacked beside the code by the component installers because the
+board does not have `pip`/`python3-venv`. See
+[`docs/deploy.md`](docs/deploy.md).
 
-| Script | Keys |
-|---|---|
-| `preview_depth.py` | mouse position reads out the distance under the cursor |
-| `preview_rgb.py --depth` | `m` cycles blend / depth / colour, `[` `]` blend weight, mouse reads distance |
-| `lidar_view.py` | `[` `]` range, `c` colour by intensity or distance, `s` save a PNG |
-| `preview_usb_cameras.py` | click or `n`/`p` to change camera, `a` re-apply auto, `s` driver settings |
-| `track_face.py` | `c` recentre, space re-target the largest face, `h` hold position |
+## Deploying the rover
 
-The first three OAK scripts open no streams, which is what makes them useful for
-separating a device fault from a pipeline fault. `preview_rgb.py --depth` is the
-heaviest load in the suite.
+A commit changes nothing on the rover until it is deployed. Normal committed-code
+workflow:
 
-## The rest of the stack
+```bash
+python deploy/deploy.py --plan
+python deploy/deploy.py
+```
 
-[`rover_daemon/`](rover_daemon/README.md) is the one process allowed to own the
-Pi's UART and camera, because the rover's hardware does not divide: two programs
-that both want to command servos or look through the lens are two programs
-corrupting each other. It exposes headlights, the gimbal and face tracking as
-tools over TCP, and publishes their schemas so no client carries a copy.
-[`voice_chat/`](voice_chat/README.md) is the client that matters — speech in,
-speech out, with those tools attached — and [`face_detect/`](face_detect/README.md)
-is the detector both tracking loops call, deliberately on a CPU so that the rover
-does not stop seeing while somebody is talking to it.
+The deployer copies only affected registered components, uses their existing
+restart/verification paths and advances per-component deployment state only after
+that proof succeeds. Privileged network installs are deliberately a separate
+`--system` step.
 
-The drive console is the same daemon with the model taken out: buttons for the
-driving tools, Nav2's own numbers polled beside them, and the map on screen. It is
-there because a conversation cannot measure a move — a model asked to turn ninety
-degrees reports what it believed happened, and what you need is what the rover
-returned next to what you asked for. The rover hosts it at
-`https://<rover>:8771/` ([drive_web/](drive_web/README.md)). The pacing and the
-wording live in `voice_chat/console_model.py`. `python voice_chat\mock_rover.py --drive`
-gives the same page an invented room when there is no rover to hand.
+See:
+
+- [`deploy/README.md`](deploy/README.md) for deployer behaviour and failure semantics;
+- [`docs/deploy.md`](docs/deploy.md) for what runs where and the manual recovery path;
+- [`docs/hosts.md`](docs/hosts.md) for this rover's host/network facts;
+- [`CLAUDE.md`](CLAUDE.md) for working rules in this repository.
+
+## Current data paths
+
+### Driving and mapping
+
+```text
+D500 lidar -> ros_nav/lidar_node.py -> /scan -> slam_toolbox + Nav2
+                                                    |
+driver board UART <- rover_daemon <- loopback 8772 -+
+       ^                                            |
+       +-------------- motor commands --------------+
+
+Nav2 result/status -> loopback 8773 -> rover_daemon -> tools / web console
+```
+
+`lidar_slam/` keeps its historical name, but its old scan matcher/planner/controller
+are gone. What remains is still used: the C parser, room-description helpers, map
+renderer and USB reset path.
+
+### Face tracking
+
+```text
+gimbal UVC camera -> MJPEG -> local YuNet -> aiming.py -> gimbal command -> driver board
+```
+
+The camera is kept as MJPEG because the Banana Pi can decode a frame cheaply and
+uncompressed capture needlessly consumes the shared USB path. Tracking is parked
+while driving where appropriate so vision does not steal timing from navigation.
+The measured detector details and calibration procedure are in
+[`docs/face-tracking.md`](docs/face-tracking.md).
+
+### Voice
+
+```text
+browser mic/speaker
+        |
+        |  wss://rover:8771/audio
+        v
+ drive_web/omni_bridge.py
+        |
+        +-- 127.0.0.1:8769 -> rover tools
+        +-- 127.0.0.1:8774 <- camera frames for `look`
+        |
+        +-- wss://dashscope-intl.aliyuncs.com/... -> Qwen realtime Omni
+```
+
+The DashScope key lives on the rover at `~/.ugv/alibaba.key`, outside the deploy
+tree. The browser microphone is separately gated by `~/.ugv/console.token`.
+Neither belongs in Git.
 
 ## Documentation
 
-The measurements, hardware facts and failure modes live in [`docs/`](docs).
+`docs/` is for current hardware facts, deployment instructions and focused
+investigations whose evidence remains useful to the current system. Component
+READMEs describe the component as it exists now.
+
+Useful starting points:
 
 | Document | Covers |
 |---|---|
-| [deploy.md](docs/deploy.md) | which directory runs on which host, how to push it, how to restart it |
-| [hosts.md](docs/hosts.md) | the machines this rover shares work with here — a local-setup document, not a general one |
-| [bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) | the dual-radio design as proposed; what actually runs is [wifi_roam/README.md](wifi_roam/README.md) |
-| [oak-d-lite.md](docs/oak-d-lite.md) | what the board is, each of the five tools, depth semantics, the calibration oddity |
-| [depthai-version-pin.md](docs/depthai-version-pin.md) | why depthai is pinned `<3`, the evidence, upstream issues |
-| [d500-lidar.md](docs/d500-lidar.md) | power, data path, packet protocol, view orientation |
-| [usb-cameras.md](docs/usb-cameras.md) | how cameras are probed and named, why a black frame is usually the pixel format |
-| [driver-board.md](docs/driver-board.md) | the gamepad controls, how the ESP32 is found, what the heartbeat failsafe does and does not cover |
-| [i2c.md](docs/i2c.md) | header TWI0 is the ESP32's bus: which chips answer, what the host already has on UART, and where to put a new sensor |
-| [face-tracking.md](docs/face-tracking.md) | the calibration, the 266 ms of dead time that makes it hard, the sweep, the servo's own limits |
-| [scaling-voice-chat.md](docs/scaling-voice-chat.md) | why batch-1 decode is bandwidth-bound, which GPUs are worth it, rent vs buy |
-| [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in, the safety supervisor |
-| [omni-build.md](docs/omni-build.md) | the costed version of that design: what survives, what to write, and what to do first |
-| [scripting.md](docs/scripting.md) | running a program on the rover instead of calling one more tool: what the MVP does, what a script costs to start, and why a saved behaviour must not become a tool |
-| [doorway-pivot.md](docs/doorway-pivot.md) | Nav2 locked up pivoting in a doorway: two fixes that shipped on bad evidence, and SmacPlannerLattice which is what actually sees a corner |
+| [`docs/deploy.md`](docs/deploy.md) | deployment, restart and verification paths |
+| [`docs/hosts.md`](docs/hosts.md) | current Banana Pi/network facts and ports |
+| [`docs/face-tracking.md`](docs/face-tracking.md) | local YuNet, aiming geometry and calibration |
+| [`docs/d500-lidar.md`](docs/d500-lidar.md) | lidar power/data/protocol facts |
+| [`docs/oak-d-lite.md`](docs/oak-d-lite.md) | OAK-D-Lite hardware and depth semantics |
+| [`docs/depthai-version-pin.md`](docs/depthai-version-pin.md) | why the rover pins DepthAI 2.x |
+| [`docs/doorway-pivot.md`](docs/doorway-pivot.md) | a focused navigation-fault investigation; current config in `ros_nav/config/` remains authoritative |
+| [`docs/scripting.md`](docs/scripting.md) | rover-side scripts exposed through the daemon |
 
-[deploy.md](docs/deploy.md), [hosts.md](docs/hosts.md) and
-[bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) are local-setup
-documents, specific to this installation. [omni-architecture.md](docs/omni-architecture.md),
-[omni-build.md](docs/omni-build.md) and [scripting.md](docs/scripting.md) are
-planning documents; the last of those also describes what is already running.
-The rest describe the hardware and the code.
-[`docs/refs/`](docs/refs) is not prose at all: the LD19 datasheet and STEP model
-and the rover kit's own drawing, kept because several measured numbers in the
-documents above are checked against them.
-
-Read the relevant one before concluding a component is dead. Several documented
-failures look exactly like broken hardware and are not: a camera that will not
-open with `io error` (USB3 firmware — pin `HIGH`), a run that captures every
-frame and then segfaults at shutdown (a stored crash dump on depthai 3.x), a
-device that stops being found at all (still booted, recovers on its own), and an
-empty lidar window on a live COM port (the rover's power switch).
+When a document disagrees with executable code or configuration, the code/config
+is authoritative and the document should be corrected rather than the runtime
+changed to match history.
