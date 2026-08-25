@@ -1,6 +1,8 @@
 """Wi-Fi scan/join helpers and the daemon tools that expose them."""
 from __future__ import annotations
 
+import json
+import os
 import socket
 import subprocess
 import threading
@@ -18,6 +20,24 @@ from rover_util import _flag, _number
 # with a passwordless sudo rule for that one path. See wifi_roam/README.md.
 WIFI_CTL = "/usr/local/sbin/wifi_ctl.sh"
 WIFI_IFACE = "wlan0"
+# Where the dual-radio manager leaves the whole picture of both radios, if it is
+# running on this rover. See wifi_roam/wifi_dual.py.
+#
+# Read straight out of /run rather than through the helper, which is the one
+# place this file reaches past `wifi_ctl.sh`, and it earns the exception: the
+# console polls this every five seconds, the file is world-readable and already
+# written, and going through the helper would spend a process on a `cat`. What
+# the helper is for is the calls that need root, and this one does not.
+#
+# **Its absence is not an error.** The rover ran one radio until August and the
+# Pi still does, so everything below has to keep working with no manager at all
+# -- which is also what happens for the first minute of every boot, since the
+# manager deliberately waits for the supplicants to have their own go first.
+WIFI_DUAL_STATUS = "/run/wifi-dual.json"
+# How stale that file may be before its author counts as gone. It is written
+# every tick, once a second, so this is a wide margin against a loaded board and
+# still narrow enough that a manager killed a minute ago stops being believed.
+WIFI_DUAL_MAX_AGE_S = 15.0
 # How long the list of access points is served for. Long, because one nmcli call
 # costs 1.8 s of wall time and half a second of CPU on this Pi and a console polls
 # this: what actually moves while the rover drives is the signal strength, and
@@ -278,6 +298,74 @@ def _wifi_networks(rows: str, configured: set[str]) -> list[dict[str, Any]]:
                   key=lambda n: (not n["configured"], -n["signal"], n["ssid"]))
 
 
+def _dual_status() -> dict[str, Any] | None:
+    """What the dual-radio manager last wrote, or None if nothing is managing.
+
+    Age-checked rather than merely read, because the failure worth catching is a
+    manager that died: its last status describes two healthy radios and a
+    service address that has since gone, and a console showing that would be
+    confidently wrong about the one thing it exists to report. A file older than
+    a few ticks is treated as no file at all.
+    """
+    try:
+        stamp = os.stat(WIFI_DUAL_STATUS).st_mtime
+        if time.time() - stamp > WIFI_DUAL_MAX_AGE_S:
+            return None
+        with open(WIFI_DUAL_STATUS, encoding="utf-8") as handle:
+            blob = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return blob if isinstance(blob, dict) and blob.get("radios") else None
+
+
+def _dual_networks(status: dict[str, Any],
+                   configured: set[str]) -> list[dict[str, Any]]:
+    """One list of access points, from whatever either radio last heard.
+
+    Merged across both radios and not just taken from the standby, because they
+    hear different things: the dongle is 2.4 GHz only, so a 5 GHz network is
+    audible to exactly one of them, and a list built from the wrong radio would
+    quietly hide half the neighbourhood.
+
+    The shape is the one the console has always been given -- ssid, signal on
+    NetworkManager's 0-100 scale, in_use, configured -- so the panel's existing
+    list keeps working whether or not there are two radios behind it.
+    """
+    on_air = {radio.get("ssid") for radio in status.get("radios") or []
+              if radio.get("ssid")}
+    best: dict[str, dict[str, Any]] = {}
+    for radio in status.get("radios") or []:
+        for entry in radio.get("seen") or []:
+            ssid = entry.get("ssid")
+            dbm = entry.get("dbm")
+            if not ssid or not isinstance(dbm, (int, float)):
+                continue
+            signal = max(0, min(100, int(2 * (dbm + 100) + 0.5)))
+            current = best.get(ssid)
+            if current is None or signal > current["signal"]:
+                best[ssid] = {"ssid": ssid, "signal": signal,
+                              "security": "", "in_use": ssid in on_air,
+                              "configured": ssid in configured or not configured,
+                              "dbm": int(dbm), "band": entry.get("band"),
+                              "router": entry.get("router")}
+    # The two networks the radios are actually on may not appear in either scan:
+    # a radio does not scan while it is the one carrying traffic, which is the
+    # whole point of having two, so the active one's own access point is often
+    # in nobody's list.
+    for radio in status.get("radios") or []:
+        ssid = radio.get("ssid")
+        if not ssid or ssid in best:
+            continue
+        dbm = radio.get("dbm")
+        best[ssid] = {"ssid": ssid,
+                      "signal": max(0, min(100, int(2 * ((dbm or -100) + 100)))),
+                      "security": "", "in_use": True, "configured": True,
+                      "dbm": dbm, "band": radio.get("band"),
+                      "router": radio.get("router")}
+    return sorted(best.values(),
+                  key=lambda n: (not n["configured"], -n["signal"], n["ssid"]))
+
+
 class RoverWifi:
     """Scan and join, mixed into Rover. Not offered to the model."""
 
@@ -334,6 +422,18 @@ class RoverWifi:
         """
         scan = bool(arguments.get("scan"))
         now = time.monotonic()
+
+        # With two radios there is a better answer available for nothing, and it
+        # is a different answer rather than a fuller one. The manager has both
+        # radios' signals, both round trips, both loss figures and a fresh list
+        # of the neighbourhood -- gathered by the standby, so none of it cost the
+        # link -- and it wrote all of it a second ago. Asking the radio again
+        # here would be slower, less complete, and would interrupt the link the
+        # caller is asking through.
+        dual = _dual_status()
+        if dual is not None:
+            return self._wifi_status_dual(dual, now)
+
         with self._wifi_lock:
             fresh = (self._wifi is not None
                      and now - self._wifi_at < WIFI_MAX_AGE_S)
@@ -375,6 +475,49 @@ class RoverWifi:
             reading["last_join"] = dict(self._wifi_join)
         return reading
 
+    def _wifi_status_dual(self, dual: dict[str, Any],
+                          now: float) -> dict[str, Any]:
+        """The same reply as always, with both radios underneath it.
+
+        Every field the console has read since this call existed is still here
+        and still means the same thing -- `connected` is the network the rover's
+        traffic is going through, `level_dbm` is that radio's signal, `address`
+        is where to reach the rover -- so a console that has not been updated
+        keeps working and simply does not mention the second radio.
+
+        What changes underneath is which radio those answers are about. It is
+        the active one, whichever that currently is, and `address` becomes the
+        service address when the rover has one: that is the whole point of
+        having it, since it is the answer that stays true across a failover.
+        """
+        radios = dual.get("radios") or []
+        active = next((radio for radio in radios
+                       if radio.get("iface") == dual.get("active")), None)
+        configured = self._wifi_configured(now)
+        networks = _dual_networks(dual, configured)
+        oldest = None
+        for radio in radios:
+            if radio.get("seen"):
+                oldest = radio.get("iface")
+                break
+        reading = {
+            "ok": True,
+            "interface": dual.get("active") or WIFI_IFACE,
+            "connected": (active or {}).get("ssid"),
+            "level_dbm": (active or {}).get("dbm"),
+            "address": dual.get("service_ip") or (active or {}).get("address"),
+            "networks": networks,
+            "configured": [n["ssid"] for n in networks if n["configured"]],
+            "scanned": bool(oldest),
+            # The standby is scanning on its own every half minute, so nothing
+            # here is ever more than that stale and nobody has to press anything.
+            "list_age_s": 0.0,
+            "dual": dual,
+        }
+        if self._wifi_join is not None:
+            reading["last_join"] = dict(self._wifi_join)
+        return reading
+
     def _tool_wifi_join(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Move the rover onto one of its configured networks.
 
@@ -401,6 +544,30 @@ class RoverWifi:
             return {"ok": False,
                     "error": f"there is no passphrase for {ssid} on this rover, so "
                              f"it cannot join it. Configured networks: {known}"}
+
+        # With two radios this stops being the destructive act the docstring
+        # above describes. The manager puts the *standby* on the requested
+        # network and moves the traffic across only once that radio is
+        # associated, addressed and answering the gateway -- so the caller's own
+        # connection is never the one taken down, and this can answer honestly
+        # instead of warning that everything is about to drop.
+        dual = _dual_status()
+        if dual is not None:
+            iface = arguments.get("iface")
+            args = [ssid] + ([str(iface)] if isinstance(iface, str) and iface
+                             else [])
+            ok, said = _wifi_ctl("join", *args, timeout=WIFI_SCAN_TIMEOUT_S)
+            if not ok:
+                return {"ok": False, "error": said}
+            with self._wifi_lock:
+                self._wifi_join = {"ssid": ssid, "ok": True,
+                                   "at": round(time.time(), 1), "seconds": 0.0,
+                                   "said": said.strip()[:200]}
+            return {"ok": True, "joining": ssid, "carried": True,
+                    "note": (f"putting the spare radio on {ssid}. Nothing will "
+                             f"drop: the rover's traffic moves across only once "
+                             f"that radio is working, and wifi_status will show "
+                             f"it happen.")}
 
         def switch() -> None:
             began = time.time()

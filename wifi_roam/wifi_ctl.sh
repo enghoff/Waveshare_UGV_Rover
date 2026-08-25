@@ -1,10 +1,20 @@
 #!/bin/sh
 # The privileged half of the rover's wifi, for the daemon to call.
 #
-#     wifi_ctl.sh list           # the access points last heard, without looking again
-#     wifi_ctl.sh scan           # ...after asking the radio to look again
-#     wifi_ctl.sh join <ssid>    # switch to one of the configured networks
-#     wifi_ctl.sh profiles       # the networks that have a passphrase on this rover
+#     wifi_ctl.sh list [iface]        # the access points last heard, without looking
+#     wifi_ctl.sh scan [iface]        # ...after asking the radio to look again
+#     wifi_ctl.sh join <ssid> [iface] # move the rover onto a configured network
+#     wifi_ctl.sh profiles [iface]    # the networks with a passphrase on this rover
+#     wifi_ctl.sh status              # both radios, from the dual-radio manager
+#
+# **`join` means two quite different things depending on whether the dual-radio
+# manager is running**, and the difference is worth knowing because one of them
+# is much better. On a rover with one radio it means what it has always meant:
+# take the link down, bring another up, and every connection to the rover dies
+# including the one that asked. With `wifi_dual.py` running it instead hands the
+# request to the manager, which puts the *standby* radio on the network and
+# moves the traffic across only once that radio is associated, addressed and
+# answering the gateway -- so nothing drops at all. See wifi_dual.py.
 #
 # It exists because the daemon runs as `admin` and two of these need root:
 # scanning and switching. On the Pi 1 that is NetworkManager, and polkit grants
@@ -75,6 +85,30 @@ find_bin() {
 # being graded on the first reading taken after it arrives.
 LOCK=${LOCK:-/run/wifi-roam.lock}
 STATE=${STATE:-/run/wifi-roam.state}
+
+# Where the dual-radio manager leaves the whole picture, and where a request for
+# a particular network is dropped for it to pick up. Both under /run, so they go
+# with the process rather than outliving it -- a stale status file describing two
+# healthy radios on a board where the manager died would be worse than none.
+DUAL_STATUS=${DUAL_STATUS:-/run/wifi-dual.json}
+DUAL_REQUEST=${DUAL_REQUEST:-/run/wifi-dual.request}
+# How stale that file may be before the manager counts as not running. It writes
+# it every tick, which is once a second, so fifteen seconds is a wide margin
+# against a board under load and still narrow enough that a manager killed a
+# minute ago does not get sent requests nothing will ever read.
+DUAL_MAX_AGE=${DUAL_MAX_AGE:-15}
+
+dual_running() {
+    [ -r "$DUAL_STATUS" ] || return 1
+    now=$(date +%s)
+    # `stat -c %Y` on this board's coreutils; the fallback is "assume it counts",
+    # because the failure that matters is sending a join to a manager that is
+    # gone, and a `stat` that will not run is not evidence either way -- while
+    # refusing on that basis would silently turn every console join back into the
+    # kind that drops the connection asking for it.
+    then=$(stat -c %Y "$DUAL_STATUS" 2>/dev/null) || return 0
+    [ $((now - then)) -le "$DUAL_MAX_AGE" ]
+}
 
 # How long to wait for a roam tick that is already mid-scan, and how long to let
 # a join spend associating. Both sit inside the 60 s the daemon allows this call,
@@ -291,7 +325,26 @@ join_wpa() {
     exit 1
 }
 
+# Which radio a command is about. Every verb below takes it as a trailing
+# argument, defaulting to wlan0, which is the onboard radio on this board and the
+# only radio on the Pi -- so every existing caller keeps working unchanged.
 case ${1:-} in
+    list|scan|profiles) [ -n "${2:-}" ] && IFACE=$2 ;;
+    join)               [ -n "${3:-}" ] && IFACE=$3 ;;
+esac
+
+case ${1:-} in
+    status)
+        # Unprivileged on purpose. The console polls this every few seconds and
+        # it is the whole picture of both radios, so it must not cost a `sudo`,
+        # a process, or a call to the radio: the manager has already written it.
+        if [ -r "$DUAL_STATUS" ]; then
+            cat "$DUAL_STATUS"
+        else
+            echo "the dual-radio manager is not running on this rover" >&2
+            exit 5
+        fi
+        ;;
     list|scan)
         case $(backend) in
             nmcli)
@@ -338,6 +391,27 @@ case ${1:-} in
             echo "no configured network called $ssid on this rover" >&2
             exit 3
         fi
+        # With two radios there is a way to do this that costs nothing, so take
+        # it. The manager owns both radios and will not be argued with by a join
+        # behind its back -- it re-pins every radio to its intended network once
+        # a second, so a direct `select_network` here would be undone inside a
+        # second and would have dropped the link on the way. Handing it the
+        # request instead gets the standby moved and the traffic transferred
+        # after it, and the caller keeps its connection.
+        if dual_running; then
+            # The interface is only named if the caller named one, so the manager
+            # is free to pick the spare -- which is the whole point.
+            if [ -n "${3:-}" ]; then
+                printf '{"ssid": "%s", "iface": "%s", "carry": true}\n' \
+                    "$ssid" "$3" > "$DUAL_REQUEST"
+            else
+                printf '{"ssid": "%s", "carry": true}\n' "$ssid" > "$DUAL_REQUEST"
+            fi
+            chmod 600 "$DUAL_REQUEST" 2>/dev/null || true
+            echo "asked the wifi manager for $ssid; watch status for how it goes"
+            exit 0
+        fi
+
         # Nothing else may be moving the link while this does. A roamer already
         # mid-check is waited out rather than fought with; one that has got as far
         # as its own association finishes first and is then overridden by this,
@@ -349,7 +423,8 @@ case ${1:-} in
         esac
         ;;
     *)
-        echo "usage: wifi_ctl.sh list|scan|profiles|join <ssid>" >&2
+        echo "usage: wifi_ctl.sh list|scan|profiles|status [iface] |" \
+             "join <ssid> [iface]" >&2
         exit 2
         ;;
 esac

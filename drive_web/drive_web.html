@@ -221,6 +221,16 @@
   #wifiList tr.here td { color: var(--accent); }
   #wifiList tr.stranger td { color: var(--dim); }
   #wifiList button { padding: 2px 10px; font-size: 12px; }
+  /* The two radios, above the neighbourhood. The active one is picked out in
+     the accent colour for the same reason the network it is on is in the list:
+     which radio is carrying the traffic is the one thing this panel is for. */
+  #wifiRadios { width: 100%; margin-top: 8px; }
+  #wifiRadios td { padding: 3px 6px; font-size: 13px; }
+  #wifiRadios td:first-child { color: var(--dim); width: 5.5em; }
+  #wifiRadios td:last-child { color: var(--dim); font-size: 12px; }
+  #wifiRadios tr.here td:first-child { color: var(--accent); }
+  #wifiRadios tr.stranger td { color: var(--dim); }
+  #wifiService { margin-top: 4px; }
 
   /* --- the transcript ---------------------------------------------------- */
   #log {
@@ -408,6 +418,8 @@
     <h2>network</h2>
     <div id="wifi" class="reading">-</div>
     <p id="wifiWhere" class="hint"></p>
+    <table id="wifiRadios" hidden><tbody id="wifiRadiosBody"></tbody></table>
+    <p id="wifiService" class="hint"></p>
     <div class="scroller" style="max-height:30vh;margin-top:6px">
       <table><tbody id="wifiList"></tbody></table>
     </div>
@@ -415,9 +427,9 @@
       <button id="wifiScan">look for networks</button>
     </div>
     <p id="wifiNote" class="hint"></p>
-    <p class="hint">The list is what the radio last heard. Nothing polls for a
-      scan: it takes the dongle off channel for several seconds, on a bus it shares
-      with the camera and the lidar.</p>
+    <p id="wifiHelp" class="hint">The list is what the radio last heard. Nothing
+      polls for a scan: it takes the dongle off channel for several seconds, on a
+      bus it shares with the camera and the lidar.</p>
   </section>
 </div>
 
@@ -449,7 +461,7 @@
 const $ = (id) => document.getElementById(id);
 let setup = null;          // the ladders and the colour key, fetched once
 let state = null;          // the last thing the server said
-let mapGen = -1, frameGen = -1, wifiPrint = "", turnsPrint = "";
+let mapGen = -1, frameGen = -1, wifiPrint = "", radioPrint = "", turnsPrint = "";
 
 // --- talking to the server --------------------------------------------------
 
@@ -861,6 +873,7 @@ function drawWifi(wifi) {
   $("wifiNote").textContent = wifi.note;
   $("wifiScan").disabled = wifi.scanning || wifi.supported === false;
   $("wifiScan").textContent = wifi.scanning ? "scanning..." : "look for networks";
+  drawRadios(wifi);
 
   // Rebuilt only when it has actually changed, so that a five-second poll does
   // not tear the rows out from under a finger reaching for one of them.
@@ -889,6 +902,51 @@ function drawWifi(wifi) {
     }
     row.append(name, signal, action);
     list.append(row);
+  }
+}
+
+// One row per radio, above the list of networks. Absent entirely on a rover with
+// one radio -- which is every rover this console has talked to until now, and
+// still the Pi -- rather than drawn empty, because a panel that shows a heading
+// with nothing under it reads as something broken.
+function drawRadios(wifi) {
+  const radios = wifi.radios || [];
+  const table = $("wifiRadios");
+  table.hidden = radios.length < 1;
+  $("wifiService").textContent = wifi.service || "";
+  // The two hints are mutually exclusive: with a spare radio doing the scanning
+  // the old warning about going off channel is simply no longer true, and the
+  // thing worth saying instead is that choosing a network is now free.
+  $("wifiHelp").textContent = wifi.safe_join
+    ? "The spare radio does the scanning and the choosing, so neither costs the "
+      + "link. Picking a network moves the spare onto it first and only then "
+      + "hands the traffic across, so this page should not drop."
+    : "The list is what the radio last heard. Nothing polls for a scan: it takes "
+      + "the dongle off channel for several seconds, on a bus it shares with the "
+      + "camera and the lidar.";
+  const print = JSON.stringify(radios);
+  if (print === radioPrint) return;
+  radioPrint = print;
+  const body = $("wifiRadiosBody");
+  body.replaceChildren();
+  for (const radio of radios) {
+    const row = document.createElement("tr");
+    row.className = radio.role.startsWith("active") ? "here"
+                  : (radio.usable ? "" : "stranger");
+    const who = document.createElement("td");
+    who.textContent = radio.role.split(",")[0];
+    const what = document.createElement("td");
+    what.textContent = radio.ssid;
+    what.className = "wrap " + (radio.verdict || "");
+    const how = document.createElement("td");
+    how.className = "num";
+    how.textContent = radio.detail;
+    const where = document.createElement("td");
+    where.className = "wrap";
+    where.textContent = radio.kind + (radio.role.includes("you chose")
+                                      ? " · you chose this" : "");
+    row.append(who, what, how, where);
+    body.append(row);
   }
 }
 

@@ -29,6 +29,217 @@ cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" systemctl enable --now 
 Until then the rover has whatever `wpa_supplicant` does by itself, and
 [netwatch/](../netwatch) is what records how well that works.
 
+## Two radios, which is what this board does now
+
+**On the Banana Pi none of the above is what is running.** Since 2026-08-25 the
+rover uses both of its radios at once — the onboard Broadcom and the USB dongle
+that was retired in August — and [wifi_dual.py](wifi_dual.py) decides which of
+them carries the traffic. `wifi-roam.timer` is disabled while that is on, and
+the installer disables it, because the two have opposite models of the problem
+and letting both move the link is a fight over the rover's only way in.
+
+The reason is one recording. `netwatch/` was running on 2026-08-24 when the
+rover lost the network twice in fourteen minutes, and what it wrote down is not
+a radio failing:
+
+```
+00:05:15 → 00:07:04   associated with TheGreatViking at -70 to -76 dBm,
+                      addressed, and not one ping answered.   120 s
+00:09:45 → 00:11:34   the same again, ending in
+                      DISCONNECTED reason=4 → SCANNING        120 s
+00:11:35              re-associated with TheGreatLord, which had been
+                      sitting at -40 dBm the whole time
+```
+
+Four minutes of a rover that was associated, addressed and carrying nothing,
+with a much better access point audible throughout. That is the document's *"one
+AP has RF signal but no LAN connectivity"* case, and no amount of choosing
+better with one radio helps: the cost is not the choice, it is that a single
+radio has to give up the link it has before it can test the one it wants.
+
+With two radios the second one is already associated and already tested, so the
+move is an address changing interface and a gratuitous ARP — tens of
+milliseconds, and TCP connections live through it. Replayed against that
+recording, the four minutes of carrying nothing become **zero seconds and three
+failovers**. See [wifi_world.py](wifi_world.py) for how that replay is done and
+why it is allowed to count.
+
+Four things about the design differ from
+[docs/bpi_dual_wifi_redundancy.md](../docs/bpi_dual_wifi_redundancy.md), and it
+is worth knowing which:
+
+- **There is no NetworkManager here**, so nothing is pinned by BSSID through
+  `nmcli`. A radio is held on a network by enabling exactly that one in its own
+  `wpa_supplicant` and disabling the rest.
+- **BSSID pinning turns out not to be needed at all.** The document assumes one
+  SSID across three access points; this house has six SSIDs, being three routers
+  with a 2.4 and a 5 GHz name each. Keeping the two radios apart is then a
+  matter of choosing different names. The mistake worth guarding against is the
+  opposite one — `TheGreatLord` and `TheGreatLord 5G` are *one box*, and a radio
+  on each would look like redundancy and provide none.
+- **The two radios are not interchangeable**, so they are not treated as though
+  they were. The onboard BCM4345/6 is dual band at 31 dBm; the dongle is
+  2.4 GHz, 1T1R, 0 dBm, and is the one that failed its own PHY, RF and LLT
+  initialisation and fell off the USB bus in August. That maps onto the
+  document's own advice — 5 GHz for bandwidth, 2.4 GHz for reach — so the
+  onboard radio gets first pick of routers and wins a tie by 3 dB, and the
+  unreliable adapter is now the spare, where its failing costs nothing.
+- **Scanning stops costing anything**, which is the largest gain here and was
+  free. A scan takes a radio off channel for seconds; it is why the roamer below
+  only ever scans when the link is already broken, and why a burst of forced
+  scans once took this rover off the network for an afternoon. The standby does
+  all the scanning now and the active radio is never interrupted — so the
+  console's list of networks is always fresh and nobody has to press anything.
+
+### One address that does not move when the radio does
+
+The rover answers on **192.168.1.80**, and that address is moved between the two
+interfaces rather than belonging to either. It is what makes a failover survivable
+by an open SSH session, the console's websocket and the rover's own conversation
+with Alibaba, none of which would survive the source address changing underneath
+them. `ssh 192.168.1.80` is the way to reach this board now; `.139` and `.100`
+are the two interfaces' own DHCP leases and each still works, through a routing
+rule per interface so a packet is answered out of the radio it arrived on.
+
+It is ARP-probed before every claim, not once at startup, because the thing to
+check for is somebody being handed it by DHCP in between two failovers. If
+anything answers, the manager says so and runs **without** a service address,
+which degrades exactly to the document's Option 1 — two DHCP addresses and a
+route metric — and costs only the connections that were already open.
+
+Two kernel settings make this mean anything, and without them the design
+inverts rather than degrades: `arp_ignore=1` and `arp_announce=2`, installed as
+[99-dual-wifi.conf](99-dual-wifi.conf). By default Linux answers an ARP request
+for any local address on any interface, so the standby would answer for the
+rover's address, the access point it is on would learn it, and the upstream
+bridge would deliver the rover's traffic to the radio that is not carrying it.
+
+### What it decides, and on what evidence
+
+Two decisions, on different clocks and different evidence — the same split
+`wifi_roam.sh` arrived at below, for the same reason:
+
+| | how often | from what | costs |
+|---|---|---|---|
+| which radio carries traffic | every second | measured: signal, round trip, loss on links that are both already up | an address and three ARP frames |
+| where the standby sits | every 30 s | a scan, which can only report a signal | an association and a DHCP round |
+
+Everything is scored in **dB-equivalents**, so the document's "prefer an access
+point that is 8–10 dB better" is expressible directly: a link's score starts at
+its signal in dBm and has penalties subtracted for latency and loss. That keeps
+a score readable — −78 is a link as good as a clean −78 dBm one, however it got
+there — and it makes the document's own worked example come out the way it says
+it should, which `test_wifi_dual.py` asserts so that a change of weights cannot
+quietly reverse it.
+
+A link is called **unusable** on three facts and deliberately not on five:
+associated, addressed, and the gateway answering. Neither the signal nor the
+SSID is one of them, and both of those are corrections the recording forced
+rather than choices — see the docstring on `Radio.usable`, which has the numbers.
+
+### The thing that could strand a wifi-only rover, and the four nets under it
+
+Holding a radio on one network means `select_network`, and `select_network`
+works by **disabling every other configured network**. A manager that died
+without undoing that would leave each radio holding one access point it may not
+be able to reach and forbidden from trying the others, on a board with no
+ethernet socket and no console. So there are four separate undos:
+
+1. a signal handler, for `systemctl stop` and for Ctrl-C;
+2. an exception handler around the main loop, for a crash;
+3. the **dead-man** — two minutes with neither radio reaching the gateway and
+   the manager frees both radios, drops the service address and stands back
+   until something answers, which is strictly worse behaviour and strictly
+   better than a manager staying certain about a plan that is not working;
+4. `ExecStopPost=/usr/local/sbin/wifi_dual.py --restore` in the unit, for the
+   case where it was killed outright and got to run none of the above.
+
+And, as everywhere else here, **nothing in it ever switches a radio off**. The
+self-test asserts that twice: once by parsing the manager's source and checking
+no string it could hand to anything mentions rfkill, and once by asking every
+scenario's model world whether anything reached for one.
+
+### Choosing a network without losing the page you chose it from
+
+`wifi_join` used to mean one thing: take the link down, bring another up, and
+hope whoever asked reconnects. With two radios it means something better, and
+the console does this now — the request goes to the **spare**, which associates,
+gets an address and is tested, and only then does the traffic move across.
+Nothing drops, and the browser does not reconnect.
+
+`wifi_ctl.sh join` therefore behaves differently depending on whether the
+manager is running, and it checks rather than assuming: with a manager it writes
+the request to `/run/wifi-dual.request` and returns immediately; without one it
+does what it always did. A join behind the manager's back would be undone within
+a second anyway, since it re-pins both radios every tick.
+
+A network somebody chose is not argued with for ten minutes — not by the
+placement, and not by the scoring either. That second half was missing at first
+and the reproduction caught it: the model promoted the asked-for radio, waited
+out the hold-down, found the other one 38 dB louder and undid the whole thing,
+which from the console looks exactly like the button not working.
+
+### Running it, and seeing what it thinks
+
+```bash
+scp -r wifi_roam bpi-m4zero:~/ugv/
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh'
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on'
+ssh bpi-m4zero 'cat /run/wifi-dual.json'          # both radios, no privilege needed
+ssh bpi-m4zero 'journalctl -u wifi-dual -f'       # silent unless something moves
+```
+
+`install-dual.sh` names the dongle `wlan1` through
+[20-usb-wlan.link](20-usb-wlan.link) — matched on `ID_BUS=usb` rather than on a
+MAC, because the dongle is the part most likely to be replaced — and copies the
+house networks into a `wlan1` stanza from the one `wlan0` already has, so the
+passphrase never has to come near a command line again. Like `install.sh` it
+leaves the thing switched off unless told otherwise, for the same reason: the
+way it fails is a rover that needs carrying to a socket.
+
+### Checking it without a rover, and the rule it exists to satisfy
+
+```bash
+python3 test_wifi_dual.py     # anywhere; ~1.4 s on the rover
+```
+
+CLAUDE.md says a fix for a fault nobody has reproduced is a guess, and that a
+reproduction has to be validated against a recording of the real fault before it
+may be used to judge anything. Both halves are here.
+
+**The calibration runs first and gates everything after it.** Every sample in
+`fixtures/outage-2026-08-24.log` is fed through the manager's own idea of
+whether a link is carrying traffic and compared with what the rover recorded at
+the time. It agrees on all 84, and on all 9,437 samples of the full two-day log
+it was cut from. If it ever disagrees, the file stops rather than printing
+scenario results underneath a failed calibration.
+
+Getting to 100% took two corrections, and both were the model being wrong rather
+than the rover:
+
+- requiring a readable signal scored **91.3%**, and every disagreement was a
+  link the rover had up and pinging in milliseconds on which the driver had not
+  filled in the level column;
+- requiring a named SSID as well scored **99.4%**, and the remaining 59 were the
+  same thing one field along — up, addressed, answering in 2 ms, and `iw` naming
+  no network.
+
+**Then the scenarios**, which are failures no recording contains because they
+have not happened yet: an access point with a signal and no path to the LAN, a
+router switched off under an associated radio, the dongle falling off the USB
+bus, only one radio present, both radios starting on one router, a rover driving
+across the house, a service address somebody else already answers for, a network
+chosen by hand, and everything failing at once.
+
+One of them is there because the rover did it. Five minutes after the manager
+was first armed the journal read `moving wlan1 from TheMaharaja to
+TheGreatViking at -50 dBm` and, twenty-nine seconds later, `moving wlan1 from
+TheGreatViking to TheMaharaja at -66 dBm`, in a house where nothing had moved.
+That is the scan noise this file already documents further down — the same
+access point read twenty-three decibels apart inside a minute — and it matters
+because a spare that is re-associating is a spare that is not ready. The model's
+scans were noiseless and had said nothing about it; they are not now.
+
 ## The three networks
 
 `TheGreatLord`, `TheMaharaja` and `TheGreatViking` are three separate routers

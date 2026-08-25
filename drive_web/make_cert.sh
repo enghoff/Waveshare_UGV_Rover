@@ -87,6 +87,20 @@ ips="IP:127.0.0.1"
 for address in $(lan_addresses); do
     ips="${ips},IP:${address}"
 done
+
+# The rover's service address, named whether or not it is held at this moment.
+# `hostname -I` would list it once `wifi_dual.py` has claimed it, and that is
+# exactly the problem: this script runs from `run_drive_web.sh` at boot and the
+# manager deliberately waits a minute before touching anything, so the
+# certificate written at boot would name every address the board has *except*
+# the one that is meant to be the stable way in. It is a constant of this board
+# rather than a lease, so it goes in unconditionally. Override with
+# SERVICE_IP= for a board that does not have one.
+SERVICE_IP=${SERVICE_IP-192.168.1.80}
+case ",${ips}," in
+    *",IP:${SERVICE_IP},"*) ;;
+    *) [ -n "$SERVICE_IP" ] && ips="${ips},IP:${SERVICE_IP}" ;;
+esac
 # Anything else worth covering -- a hostname the router hands out, say -- can be
 # given on the command line as extra SANs.
 for extra in "$@"; do

@@ -300,12 +300,16 @@ class SessionShow:
             where.append(f"joined {got}" if join.get("ok")
                          else f"could not join {got}")
 
+        dual = body.get("dual") if isinstance(body.get("dual"), dict) else None
+        radios = self.show_radios(dual) if dual else []
+
         networks = []
         for entry in body.get("networks") or []:
             in_use, configured = bool(entry.get("in_use")), bool(entry.get("configured"))
             networks.append({
                 "ssid": str(entry.get("ssid", "?")),
                 "signal": entry.get("signal", "-"),
+                "band": entry.get("band") or "",
                 "in_use": in_use, "configured": configured,
                 # Joinable means configured and not already the one in use.
                 "joinable": configured and not in_use,
@@ -313,7 +317,93 @@ class SessionShow:
                                                 else "no passphrase")})
         self.wifi.update({"supported": True, "text": text, "verdict": verdict,
                           "where": ", ".join(where), "networks": networks,
-                          "scanning": False})
+                          "radios": radios, "scanning": False,
+                          # What a join is going to cost, which is the thing a
+                          # person about to press one wants to know and which
+                          # changed completely when the second radio arrived.
+                          "safe_join": bool(dual and len(radios) > 1),
+                          "service": self.show_service(dual) if dual else ""})
+
+        # A join that costs nothing also tells nobody it finished, because the
+        # page it was asked from never reconnects. So the panel watches for the
+        # network it asked for to become the one carrying traffic, and says so.
+        # Without this it would go on claiming to be joining for the rest of the
+        # session, which is the same bug the scan note had.
+        asked = self.wifi.get("joining")
+        if asked and dual:
+            arrived = any(radio.get("ssid") == asked
+                          and radio.get("role") == "active"
+                          for radio in dual.get("radios") or [])
+            if arrived:
+                self.wifi["joining"] = None
+                self.wifi["note"] = (f"the rover is on {asked} now, and nothing "
+                                     f"dropped")
+
+    def show_radios(self, dual: dict[str, Any]) -> list[dict[str, Any]]:
+        """One row per radio: what it is on, how good it is, and what it is for.
+
+        The roles are the whole point of the panel, so they are spelled out
+        rather than left to be inferred from an ordering. `active` is the radio
+        the rover's traffic is going through; `standby` is associated, tested
+        and idle, which is the state that makes a failover cost milliseconds
+        instead of a minute; `absent` is an adapter that is not there, which for
+        the dongle is a thing that has actually happened twice.
+        """
+        rows = []
+        for radio in dual.get("radios") or []:
+            level = radio.get("dbm")
+            loss = radio.get("loss_pct") or 0.0
+            rtt = radio.get("rtt_ms")
+            detail = []
+            if isinstance(level, (int, float)):
+                detail.append(f"{level:.0f} dBm")
+            if radio.get("band") in ("2.4", "5"):
+                detail.append(f"{radio['band']} GHz")
+            if isinstance(rtt, (int, float)):
+                detail.append(f"{rtt:.0f} ms")
+            if loss:
+                detail.append(f"{loss:.0f}% lost")
+            role = radio.get("role") or "-"
+            if radio.get("asked"):
+                role += ", you chose this"
+            rows.append({
+                "iface": radio.get("iface", "?"),
+                "kind": radio.get("kind", ""),
+                "role": role,
+                "ssid": radio.get("ssid") or "not associated",
+                "detail": ", ".join(detail),
+                "address": radio.get("address") or "",
+                # The colour is the verdict on the *link*, not on the signal, so
+                # a radio with an excellent signal that is not reaching the
+                # gateway reads as broken rather than as fine.
+                "verdict": ("poor" if not radio.get("usable")
+                            else wifi_verdict(level)),
+                "usable": bool(radio.get("usable")),
+            })
+        return rows
+
+    def show_service(self, dual: dict[str, Any]) -> str:
+        """Where to reach the rover, and whether that answer survives a failover."""
+        service = dual.get("service_ip")
+        if not service:
+            refused = dual.get("service_refused_by")
+            if refused:
+                return (f"no stable address -- {refused} already answers for it, "
+                        f"so open connections will drop on a failover")
+            return "no stable address; open connections will drop on a failover"
+        parts = [f"{service} on {dual.get('service_on') or '?'}"]
+        switches = dual.get("switches")
+        if switches:
+            since = dual.get("since_switch_s")
+            moved = (f"{switches} failover{'' if switches == 1 else 's'}")
+            if isinstance(since, (int, float)):
+                moved += f", last {since / 60:.0f} min ago"
+            parts.append(moved)
+        if dual.get("surrendered"):
+            parts.append("the manager has stood back -- see its note")
+        if dual.get("note"):
+            parts.append(str(dual["note"]))
+        return "; ".join(parts)
 
     def show_tracking(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):

@@ -280,12 +280,46 @@ cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/inst
 ssh bpi-m4zero 'systemctl list-timers --no-pager wifi-roam.timer'
 ```
 
-**Its roam timer is installed and deliberately switched off on this board**, and
-`ROAM=off` on that install line is what keeps it that way. The script drove
-`nmcli` until 2026-08-23 and the Banana Pi has none, so it has never yet chosen an
-access point here; the way it fails is a rover that needs carrying to a socket, so
-it gets armed with somebody in the building. See
-[wifi_roam/README.md](wifi_roam/README.md).
+**Its roam timer is switched off on this board and stays off**, and since
+2026-08-25 that is not caution but arithmetic: the rover uses **both** of its
+radios now, and `wifi_dual.py` owns them. The roamer's whole model is
+single-radio — notice the link has failed, spend an association finding another
+— and the manager's is the opposite, so letting both move the link is a fight
+over the rover's only way in. `install-dual.sh` disables the timer when it arms
+the manager.
+
+```bash
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh'
+cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on'
+ssh bpi-m4zero 'cat /run/wifi-dual.json'      # both radios; needs no privilege
+```
+
+**The rover's address is `192.168.1.80` now.** That is a service address the
+manager moves between the two interfaces with a gratuitous ARP, so it is the one
+that keeps working across a failover and the one to use — an open ssh session,
+the console's websocket and the rover's conversation with Alibaba all survive a
+radio changing underneath them. `.139` (onboard) and `.100` (dongle) are the
+interfaces' own DHCP leases and each still answers, through one routing rule per
+interface. Both `ssh 192.168.1.80` and the workstation's `~/.ssh/config` know
+this.
+
+The onboard radio is `wlan0` and the USB dongle is `wlan1`, pinned by two
+`.link` files; `install-dual.sh` writes the dongle's netplan stanza by copying
+`wlan0`'s, so the passphrase never has to be typed again. Like `install.sh` it
+leaves the manager switched off unless given `DUAL=on`, because everything it
+does reaches for the radios and the way it fails is a rover that needs carrying
+to a socket. See [wifi_roam/README.md](wifi_roam/README.md), and
+[docs/bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) for the
+design and the five places the hardware differed from it.
+
+**`wifi_dual.py` is not deployed on reasoning.** It has a model of the house
+(`wifi_world.py`) and a self-test that first replays a recording of this rover
+losing the network and refuses to report anything if its grading disagrees with
+what the rover recorded at the time:
+
+```bash
+python3 wifi_roam/test_wifi_dual.py      # anywhere; ~1.4 s on the rover
+```
 
 `netwatch/` is the other systemd unit, and it is the one to install first on any
 board that keeps disappearing. It records the link, the load and every word the
@@ -322,6 +356,37 @@ before it binds — and `/health` answering is the signal that it is ready. The 
 GPU services share one card and are mutually exclusive; switch with
 `ssh root@media ~/switch_service.sh voice`. `face-detect` is on the CPU and is not
 part of that trade.
+
+## Reproduce it in simulation before you fix it
+
+**A fix for a fault nobody has reproduced is a guess.** Whenever a fault can be
+put in front of a model of the thing that misbehaves — and for the navigation
+stack it almost always can, because every drive can be recorded and replayed —
+build the reproduction first, and do not change the running system until the
+reproduction fails the same way the rover does.
+
+Then hold the fix to the same standard: show it working *in the reproduction*
+before deploying it, and say what the reproduction measured. "This should help"
+is not a result. Three separate fixes have been deployed to this rover on
+reasoning alone and all three left the fault exactly where it was, each costing
+a drive, a deploy and a round of the user's time to find that out.
+
+Two things this rule does not say. It does not say simulation replaces the
+hardware: a fix that passes in the model still has to be deployed and watched on
+the rover, because the model is only as good as its last calibration. And it
+does not say a model may be trusted because it is a model — a reproduction has
+to be *validated against a recording of the real fault* before it can be used to
+judge anything. Replaying a drive and finding the model would have made
+near-enough the same choice the controller made, tick by tick, is what earns it
+the right to be believed; `ros_nav/dwb_replay.py` exists to do exactly that and
+refuses to test a fix on a recording it cannot match. Where the model and the
+hardware disagree, the hardware is right and the model has a bug.
+
+The pieces that make this cheap already exist: `ros_nav/nav_record.py` records a
+live drive with the controller's own settings saved alongside it,
+`ros_nav/corridor_sim.py` is an offline copy of DWB, and
+`ros_nav/dwb_replay.py` scores a recording against that copy and can drive the
+copy round the recorded costmap. See [ros_nav/README.md](ros_nav/README.md).
 
 ## Verify on the hardware, not by inference
 

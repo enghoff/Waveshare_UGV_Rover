@@ -716,6 +716,13 @@ def test_wifi_status_without_the_helper_still_reports_the_link():
     `wifi_ctl.sh` is the privileged helper. When it is missing the page used to
     show only that sentence -- no SSID, no address -- even though the kernel
     already knew both.
+
+    The dual-radio manager is stubbed away rather than left to chance, and that
+    is not tidiness either: this test passed on a desk and failed on the rover
+    the moment `wifi_dual.py` was armed there, because the manager's status file
+    exists on one of those machines and not the other. A check whose answer
+    depends on what the host it runs on happens to be running is not checking
+    what it says it is.
     """
     import rover_daemon
     import rover_wifi
@@ -723,6 +730,8 @@ def test_wifi_status_without_the_helper_still_reports_the_link():
     rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
     real_ctl = rover_wifi._wifi_ctl
     real_live = rover_wifi._wifi_from_kernel
+    real_dual = rover_wifi._dual_status
+    rover_wifi._dual_status = lambda: None
     rover_wifi._wifi_ctl = lambda *args, **kwargs: (
         False, "/usr/local/sbin/wifi_ctl.sh is not installed on this rover; "
                "run wifi_roam/install.sh")
@@ -738,10 +747,64 @@ def test_wifi_status_without_the_helper_still_reports_the_link():
     finally:
         rover_wifi._wifi_ctl = real_ctl
         rover_wifi._wifi_from_kernel = real_live
+        rover_wifi._dual_status = real_dual
     check("wifi_status still answers", got.get("ok"), True)
     check("...with the associated network", got.get("connected"), "TheGreatLord")
     check("...and the address", got.get("address"), "192.168.1.47")
     check("...and says the helper is missing", "install" in str(got.get("note", "")), True)
+
+
+def test_wifi_status_with_two_radios():
+    """What the console is told on a rover that has a spare radio.
+
+    Every field the panel has read since this call existed still has to mean
+    what it meant -- `connected` is the network the traffic is going through and
+    `address` is where to reach the rover -- while now being about whichever
+    radio is currently active, and with the whole picture underneath for a
+    console that knows to look for it.
+
+    The address is the one worth pinning down. On a rover with a service address
+    it is that, not the active interface's DHCP lease, because the point of
+    having one is that it is the answer that stays true across a failover.
+    """
+    import rover_daemon
+    import rover_wifi
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    real_dual = rover_wifi._dual_status
+    rover_wifi._dual_status = lambda: {
+        "active": "wlan1", "standby": "wlan0", "switches": 1,
+        "service_ip": "192.168.1.80", "service_on": "wlan1",
+        "radios": [
+            {"iface": "wlan0", "kind": "onboard", "role": "standby",
+             "ssid": "TheGreatLord 5G", "band": "5", "dbm": -71,
+             "address": "192.168.1.139", "usable": True,
+             "seen": [{"ssid": "TheMaharaja 5G", "dbm": -60, "band": "5"}]},
+            {"iface": "wlan1", "kind": "usb", "role": "active",
+             "ssid": "TheMaharaja", "band": "2.4", "dbm": -55,
+             "address": "192.168.1.100", "usable": True,
+             "seen": [{"ssid": "TheGreatViking", "dbm": -80, "band": "2.4"}]},
+        ],
+    }
+    try:
+        got = rover.call("wifi_status", {})
+    finally:
+        rover_wifi._dual_status = real_dual
+    check("wifi_status answers from the manager", got.get("ok"), True)
+    check("...naming the network the traffic is on",
+          got.get("connected"), "TheMaharaja")
+    check("...with that radio's signal", got.get("level_dbm"), -55)
+    check("...and the address that survives a failover",
+          got.get("address"), "192.168.1.80")
+    check("...with both radios underneath",
+          len(got.get("dual", {}).get("radios", [])), 2)
+    # A 5 GHz network is audible to exactly one of these radios, so a list built
+    # from either alone would hide half the neighbourhood.
+    heard = {n["ssid"] for n in got.get("networks", [])}
+    check("the list merges what both radios heard",
+          {"TheMaharaja 5G", "TheGreatViking"} <= heard, True)
+    check("...and includes the networks they are actually on, which neither "
+          "scan can contain", {"TheMaharaja", "TheGreatLord 5G"} <= heard, True)
 
 
 def test_an_unfilled_signal_column_is_a_moment_not_an_answer():
@@ -1490,6 +1553,7 @@ def main():
                  test_map_png_names_the_clock,
                  test_drive_to_takes_a_place_on_the_map,
                  test_wifi_status_without_the_helper_still_reports_the_link,
+                 test_wifi_status_with_two_radios,
                  test_an_unfilled_signal_column_is_a_moment_not_an_answer,
                  test_control_calls_without_hardware,
                  test_the_probe_waits_to_be_answered,

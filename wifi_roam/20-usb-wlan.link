@@ -1,0 +1,23 @@
+# Any USB wifi adapter on this board is wlan1.
+#
+# The onboard Broadcom radio is already pinned to wlan0 by 10-onboard-wlan.link,
+# which matches its MAC. This is the other half, and it deliberately does *not*
+# match a MAC: the dongle is the part of this rover most likely to be replaced --
+# it is the one that failed its own PHY, RF and LLT initialisation in August and
+# dropped off the bus -- and a rule naming 00:2e:2d:30:74:d0 would name nothing
+# at all the day a different one is plugged in. The name would fall back to the
+# kernel's own `wlx002e2d3074d0`, which works but appears in no configuration
+# file here, so netplan would not bring it up and the dual-radio manager would
+# find one radio where it expected two.
+#
+# `ID_BUS=usb` is set by udev on the dongle and absent on the onboard radio,
+# which is on SDIO -- checked on this board, where the two netdevs differ in
+# exactly that property. Type=wlan keeps it off the USB ethernet adapters that
+# Armbian's netplan already claims with its `e*` match.
+
+[Match]
+Type=wlan
+Property=ID_BUS=usb
+
+[Link]
+Name=wlan1

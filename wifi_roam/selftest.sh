@@ -118,6 +118,17 @@ switches 0
 cp "$HERE/wifi_ctl.sh" "$WORK/bin/wifi_ctl.sh"
 chmod +x "$WORK/bin/wifi_ctl.sh"
 
+# **No dual-radio manager, unless a scenario says otherwise.** `wifi_ctl.sh join`
+# now does one of two quite different things depending on whether one is running,
+# and it decides by looking at /run -- so without this every join below tests
+# whichever half the *host* happens to be running rather than the half it says it
+# is testing. That is not hypothetical: these ran green on a desk and eleven of
+# them failed the first time they were run on the rover, where the manager had
+# just been armed, with `cannot create /run/wifi-dual.request: Permission denied`.
+# Exported rather than passed per-call so that a join added later cannot forget it.
+export DUAL_STATUS="$WORK/no-such-manager.json"
+export DUAL_REQUEST="$WORK/request.json"
+
 # The cumulative log, created up front so that the assertion spanning every
 # scenario has something to read even if no fake is ever called.
 : > "$WORK/nmcli.all"
@@ -529,6 +540,33 @@ failed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
 check "a join that times out says so" "could not associate" "$failed"
 check "and gives the other networks back before it gives up" \
     "enable_network all" "$(cat "$WORK/nmcli.log")"
+
+echo
+echo "a join with the dual-radio manager running, which costs nothing"
+# The other half of the branch above. With a manager holding both radios, a join
+# must not touch the radio itself: the manager re-pins every radio once a second,
+# so a select_network here would be undone inside a second and would have dropped
+# the link on the way. It hands over a request instead, and the manager moves the
+# *spare* and transfers the traffic after it.
+: > "$WORK/nmcli.log"
+rm -f "$DUAL_REQUEST"
+printf '{"active": "wlan0", "radios": [{"iface": "wlan0"}]}
+' > "$WORK/manager.json"
+handed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log"     DUAL_STATUS="$WORK/manager.json" DUAL_REQUEST="$DUAL_REQUEST"     STATE="$WORK/state" LOCK="$WORK/lock"     sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
+check "it hands the network to the manager instead"     "asked the wifi manager" "$handed"
+check "and writes what was asked for where the manager will find it"     "TheMaharaja" "$(cat "$DUAL_REQUEST" 2>/dev/null)"
+check_silent "and never touches the radio itself"     "$(grep 'select_network' "$WORK/nmcli.log" || true)"
+# Naming no interface is what lets the manager choose the spare, which is the
+# whole reason this path is better than the one above. A request that named the
+# active radio would be the old join with extra steps.
+check_silent "and leaves the manager to choose which radio moves"     "$(grep 'iface' "$DUAL_REQUEST" || true)"
+# A manager that died an hour ago must not swallow joins for ever. The file is
+# there; its age is what decides, and this one is older than the manager's tick.
+touch -d '1 hour ago' "$WORK/manager.json" 2>/dev/null || touch -t 200001010000 "$WORK/manager.json"
+: > "$WORK/nmcli.log"
+rm -f "$DUAL_REQUEST"
+stale=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log"     DUAL_STATUS="$WORK/manager.json" DUAL_REQUEST="$DUAL_REQUEST"     STATE="$WORK/state" LOCK="$WORK/lock"     sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
+check "a status file left by a dead manager is not believed"     "select_network" "$(cat "$WORK/nmcli.log")"
 
 echo
 echo "the roamer itself, on the rover with no NetworkManager"

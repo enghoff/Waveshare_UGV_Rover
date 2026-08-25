@@ -87,7 +87,40 @@ and a private key a deploy can overwrite -- or carry back into the repository --
 is a key in the wrong place. `run_drive_web.sh` runs it at every boot: this board
 is wifi-only and moves between three house networks, and a certificate is checked
 against the address that was *typed*, so the address it names has to be the one
-the board woke up on.
+the board woke up on. Since 2026-08-25 there is a steadier answer to type:
+`https://192.168.1.80:8771/` is the rover's service address, held by whichever
+of its two radios is carrying traffic, so it stays right across a failover and
+across a reboot. The certificate names it alongside whatever the board woke up
+on.
+
+## The network panel, and what a join costs now
+
+The panel shows two radios: the onboard one and the USB dongle, each with the
+access point it is on, its signal, its round trip and whether it is `active` —
+carrying the rover's traffic — or `standby`, which means associated, tested and
+idle. A standby in that state is why a failover is an address moving rather than
+a scan and a DHCP round, and the line under the rows says which address that is
+and how many times it has moved.
+
+Two things about the panel changed with it, and both are the panel telling the
+truth about something that used to be true and is not any more.
+
+**The list of networks is always fresh and nobody has to ask for it.** It used
+to be whatever was last heard, because a scan takes the radio off channel for
+several seconds on a bus it shares with the camera and the lidar. The standby
+does the scanning now, so the list costs the link nothing and arrives on its
+own.
+
+**Pressing `join` no longer takes the page down.** It used to mean: drop every
+connection to the rover including this one, and reconnect in a few seconds. Now
+the rover puts its *spare* radio on the network you chose, waits until that
+radio is associated, addressed and answering the gateway, and only then moves
+the traffic across. The browser does not reconnect, and the panel says so rather
+than warning about an outage that is not going to happen. On a rover with one
+radio — the Pi, or this board with the manager stopped — it still means the old
+thing, and the panel still says the old thing.
+
+See [wifi_roam/README.md](../wifi_roam/README.md) for what is deciding all this.
 
 **Both schemes arrive on one port**, which is worth a sentence because it is not
 the usual arrangement. A TLS connection opens with a handshake record -- the byte

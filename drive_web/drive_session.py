@@ -211,7 +211,12 @@ class Session(SessionShow):
         self.rejoin_at = 0.0
         self.wifi: dict[str, Any] = {"supported": None, "text": "-", "verdict": "",
                                      "where": "", "note": "", "networks": [],
-                                     "scanning": False, "joining": None}
+                                     "scanning": False, "joining": None,
+                                     # Empty until the rover answers, and empty
+                                     # for good on a rover with one radio -- the
+                                     # panel simply does not draw the section.
+                                     "radios": [], "service": "",
+                                     "safe_join": False}
 
         self.turns: list[dict[str, str]] = []
         self.clear_armed_until = 0.0
@@ -926,21 +931,38 @@ class Session(SessionShow):
         self.scanner.submit("wifi_status", {"scan": True})
 
     def wifi_join(self, ssid: str) -> None:
-        """Move the rover onto another network, and expect to lose it.
+        """Move the rover onto another network.
 
-        The daemon answers this before it acts, so the reply arriving means the
-        request was accepted and nothing more. What follows is the link going down
-        under all six connections, so the reconnect is scheduled here rather than
-        waited for: there is nothing left to be told on.
+        What that costs depends on how many radios the rover has, and the two
+        cases are different enough to be worth telling apart here rather than
+        papering over.
+
+        **With one radio** it is what it always was: the daemon answers before it
+        acts, so the reply arriving means the request was accepted and nothing
+        more, and what follows is the link going down under all six connections.
+        The reconnect is therefore scheduled rather than waited for, because
+        there is nothing left to be told on.
+
+        **With two** the rover puts its spare radio on the network and moves the
+        traffic across only once that radio is working, so nothing drops and
+        there is nothing to reconnect. Scheduling a reconnect anyway would tear
+        down six healthy connections to prove a point.
         """
         if not ssid or self.watch is None:
             return
-        self.wifi_joining = ssid
+        safe = bool(self.wifi.get("safe_join"))
         self.wifi["joining"] = ssid
-        self.wifi["note"] = (f"joining {ssid}; the rover will be unreachable for a "
-                             f"few seconds")
+        if safe:
+            self.wifi["note"] = (f"putting the spare radio on {ssid}; the rover "
+                                 f"will move across once it is working, and this "
+                                 f"page should not notice")
+        else:
+            self.wifi_joining = ssid
+            self.wifi["note"] = (f"joining {ssid}; the rover will be unreachable "
+                                 f"for a few seconds")
         self.watch_call("wifi_join", {"ssid": ssid})
-        self.rejoin_at = time.monotonic() + WIFI_REJOIN_S
+        if not safe:
+            self.rejoin_at = time.monotonic() + WIFI_REJOIN_S
 
     def rejoined(self) -> None:
         """Reconnect after a join, whatever became of the request.
