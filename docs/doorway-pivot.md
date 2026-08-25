@@ -26,9 +26,17 @@ allowed to move or replan, which looks exactly like escaping. Run on the next
 recording, made after 0.8 was deployed and the rover locked up again in the same
 doorway, it said the reverse: 0 of 14 at 0.8, 14 of 14 at 0.1. The test condemns
 whatever the rover happens to be running, every time, and would have done the
-same to the next number tried. Both look-aheads are back at Nav2's stock 0.1.
+same to the next number tried.
 [`dwb_replay.py`](../ros_nav/dwb_replay.py)'s `closed_loop` now says so in its
 own docstring, in words meant to stop this happening a third time.
+
+Both look-aheads went back to Nav2's stock 0.1 at the time, and both sit at
+Nav2's current default of 0.325 today; `config/nav2.yaml` is where the number
+lives and the comment beside it says what is and is not known about it. A third
+argument for moving it -- that a nose point the flood could not reach costs
+2881 points -- has since been withdrawn as well, because the flood in the
+installed `libdwb_critics.so` is not stopped by walls at all. See
+`corridor_sim.flood`.
 
 **The second fix was real, and still wasn't enough on its own.** Nav2 already
 carries a recovery for exactly this — `BackUp` — and the stock behaviour tree

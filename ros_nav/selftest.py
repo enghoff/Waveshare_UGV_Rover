@@ -787,19 +787,23 @@ def test_configs_agree():
           "nav2_smac_planner::SmacPlannerHybrid" in settings, False)
     # **The align look-ahead, which is a controller setting but belongs next to
     # the planner ones because it decides whether the plan gets followed.**
-    # An align critic clears `stop_on_failure_`, so a nose point it cannot
-    # reach is not refused, it is charged `unreachable_score_` -- the costmap's
-    # cell count plus one, 2881 points once scaled. At 0.8 m that landed on a
-    # median 26% of the candidates in a tick and swamped every other critic
-    # (obstacle cost moves the answer by 0.02 points; this moves it by 2881).
-    # Driven round the loop from twelve starts in each recording, 0.325 got
-    # somewhere 24 times of 24 and 0.8 managed 5. See ros_nav/trap_sim.py.
-    # The only critic in the set that prices turning as such. Without it the
-    # rover answers a corridor by pivoting 93% of the time: whichever of
-    # driving or turning the align critics happen to be charging on the
-    # geometry in front of it is the one it stops choosing, and at 0.325 in the
-    # recorded corridor that was driving, by 61 points. See ros_nav/trap_sim.py
-    # --bias.
+    # 0.325 is nav2's own default and these two checks only hold it there.
+    #
+    # **The reason recorded for it has since been withdrawn**, so read them as
+    # "this is the default and nothing has argued it away" rather than as a
+    # measured choice. The argument was that an align critic charges
+    # `unreachable_score_` -- 2881 points once scaled -- for a nose point the
+    # flood could not reach, and that at 0.8 m this landed on a median 26% of
+    # the candidates in a tick. The flood in the installed `libdwb_critics.so`
+    # is not stopped by walls at all, so no candidate is ever charged it: 0 of
+    # 8687 driving candidates and 0 of 6132 pivots over
+    # recordings/trap-2026-08-25-spin.json. See corridor_sim.flood and
+    # trap_sim.py --bias, and make a fresh case from a drive before moving it.
+    #
+    # `PreferForward` is the only critic in the set that prices turning as
+    # such, and it was added on the same withdrawn measurement. It is left in
+    # because the rover does still choose to turn far more often than to drive
+    # -- on the recorded trap, on 481 of 496 ticks the model could score.
     check("something in the critic set prices turning, or the rover will spin",
           "PreferForward" in settings, True)
     check("the align look-ahead is back at nav2's default, not the 0.8 that trapped it",

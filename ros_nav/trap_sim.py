@@ -4,7 +4,7 @@
     python3 trap_sim.py --turn        # where a pivot does not fit
     python3 trap_sim.py --weights     # what actually decides a tick
     python3 trap_sim.py --look        # sweep the align look-ahead
-    python3 trap_sim.py --bias        # is driving or turning being punished?
+    python3 trap_sim.py --bias        # what driving costs more than turning
     python3 trap_sim.py               # all four
 
 **The three complaints this exists to explain.** The rover gets stuck turning
@@ -24,35 +24,42 @@ fewer. `--turn` measures that.
 
 **What lets it get there, which is not fixed.** `--weights` scores every
 candidate of every recorded tick and reports how many points separate the best
-from the worst, critic by critic. The median tick reads:
+from the worst, critic by critic. On `recordings/trap-2026-08-25-spin.json`,
+the drive where the rover turned 3038 degrees and finished 28 cm from where it
+started, the median tick reads:
 
-    ObstacleFootprint        0.02 points
+    BaseObstacle             1.38 points
     PathDist                 2.40 points
-    PathAlign             2880.80 points
+    PathAlign                6.40 points
 
-`PathAlign` is not winning by being important. `MapGridCritic::reset` sets
-`unreachable_score_` to the cell count plus one -- 3601 on this rover's 60x60
-window -- and the align critics *return* that number instead of refusing the
-candidate, because both clear `stop_on_failure_` in their `onInit`. At
-`resolution * 0.5 * 32` that is a charge of 2881 points for a nose point that
-landed where the flood never reached, against about 5 points for the entire
-range of obstacle cost. So the controller is not choosing between routes that
-are more or less close to a wall. It is choosing whichever candidate happens to
-put a point 0.8 m ahead of the nose in a cell the flood reached, and everything
-else -- including how close the body passes to the corner -- is rounding.
+**A correction, and it is the largest one this file has carried.** Those three
+numbers used to be 0.02, 2.40 and 2880.80, and the third was the whole story:
+the align critics were believed to charge `unreachable_score_` -- 2881 points
+after scaling -- for a judged point the flood could not reach, which made every
+other critic rounding. That charge does not happen. The flood in the
+`libdwb_critics.so` installed on this rover is not stopped by walls, so a
+critic with a seed on its window reaches every cell of it and there is no
+unreachable cell to land on: 0 of 8687 driving candidates and 0 of 6132 pivots
+over that recording. `corridor_sim.flood` has the disassembly. What follows
+from it is that the four map-grid critics are back to doing the ordinary thing
+-- measuring how far a rollout ends from the plan -- and the margins between
+candidates are single points rather than thousands.
 
-That is all three complaints at once: in a passage the flood is thin so most
-nose points miss it, at a corner the nose sweeps across the wall, and beside a
-surface up to 86% of the candidates carry the same 2881-point charge, leaving
-the choice between them to be settled below the size of one cell.
+**So what makes the rover turn instead of drive is two things, and `--bias`
+measures both.** On 41% of that drive's ticks not one forward candidate was
+legal: the rover stood where every rollout that moved ended on a cell the
+obstacle critic refuses, and sixteen ways of turning on the spot were the only
+choices it had. On the rest, driving lost to pivoting by a median 4.6 points,
+and the bill is `PathAlign` +4.0 and `PathDist` +3.2 -- both saying the rover
+would end further from the planned path than it is now -- against `GoalDist`
+and `GoalAlign` pulling the other way by 1.8 each.
 
-**Read the sweep before changing the look-ahead back.** The 0.8 m that was in
-the config was chosen against a model that treated an unreachable nose point as
-a refusal rather than as a score, so the table that justified it was describing
-a controller nobody has run. `--look` re-runs that sweep with the critics doing
-what `libdwb_critics.so` actually does, and the answer inverts: driven round
-the loop from twelve starts in each of the two recordings, 0.325 m gets out of
-24 of 24 and 0.8 m gets out of 5.
+**The look-ahead sweep is a measurement of the model that was, not the rover.**
+`--look` chose 0.325 over 0.8 by counting nose points that missed the flood,
+and that count is now structurally zero, so the sweep no longer says anything
+about the look-ahead. Nothing in the config has been changed back on the
+strength of that: what it means is that the reason recorded for 0.325 is not a
+reason any more, and a fresh case has to be made from a drive.
 """
 
 from __future__ import annotations
@@ -194,7 +201,13 @@ def weights(episode):
         for vx, wz in dwb.twists(vx0, wz0):
             poses = dwb.rollout(x, y, yaw, vx, wz, vx0, wz0)
             end_x, end_y, end_yaw = poses[-1]
-            cost, reason = dwb.obstacle_footprint(grid, poses)
+            # Whichever obstacle critic the configured body takes, so this
+            # table names the one the rover is running rather than the one it
+            # used to run.
+            if dwb.CIRCULAR and dwb.CIRCULAR_USES_BASE_OBSTACLE:
+                cost, reason = dwb.base_obstacle(grid, poses)
+            else:
+                cost, reason = dwb.obstacle_footprint(grid, poses)
             if reason:
                 continue
             obstacle.append(dwb.OBSTACLE_RESCALE * dwb.OBSTACLE_SCALE * cost)
@@ -213,7 +226,8 @@ def weights(episode):
             if close is not None:
                 near.append(dwb.MAP_GRID_RESCALE * dwb.PATH_DIST_SCALE * close)
         if align and obstacle:
-            spread["ObstacleFootprint"].append(max(obstacle) - min(obstacle))
+            spread["BaseObstacle" if dwb.CIRCULAR and dwb.CIRCULAR_USES_BASE_OBSTACLE
+                   else "ObstacleFootprint"].append(max(obstacle) - min(obstacle))
             spread["PathAlign"].append(max(align) - min(align))
             spread["PathDist"].append(max(near) - min(near) if near else 0.0)
             unreachable.append(missed / float(seen or 1))
@@ -270,61 +284,109 @@ def look_sweep(episode, looks):
     return table
 
 
+#: The critics whose difference between driving and turning is worth naming,
+#: in the order `config/nav2.yaml` lists them.
+BIAS_CRITICS = ("RotateToGoal", "BaseObstacle", "GoalAlign", "PathAlign",
+                "PathDist", "GoalDist", "PreferForward")
+
+
+def score_parts(grid, path, x, y, yaw, vx, wz, vx0, wz0, path_values,
+                goal_values, look):
+    """Every critic's contribution to one candidate, or None if it is refused.
+
+    The same arithmetic `corridor_sim.evaluate` does, kept apart from it
+    because that one returns a total and the question here is which critic the
+    total came from.
+    """
+    poses = dwb.rollout(x, y, yaw, vx, wz, vx0, wz0)
+    end_x, end_y, end_yaw = poses[-1]
+    turn, reason = dwb.rotate_to_goal(x, y, yaw, path[-1], vx, wz, end_yaw,
+                                      None)
+    if reason:
+        return None
+    if dwb.CIRCULAR and dwb.CIRCULAR_USES_BASE_OBSTACLE:
+        obstacle, reason = dwb.base_obstacle(grid, poses)
+    else:
+        obstacle, reason = dwb.obstacle_footprint(grid, poses)
+    if reason:
+        return None
+    parts = {
+        "RotateToGoal": dwb.ROTATE_TO_GOAL_SCALE * turn,
+        "BaseObstacle": dwb.OBSTACLE_RESCALE * dwb.OBSTACLE_SCALE * obstacle,
+        "PreferForward": dwb.PREFER_FORWARD_SCALE * dwb.prefer_forward(vx, wz),
+    }
+    near_goal = math.hypot(path[-1][0] - x, path[-1][1] - y) <= look
+    for name, values, scale, stops in (
+            ("GoalAlign", goal_values, dwb.GOAL_ALIGN_SCALE, False),
+            ("PathAlign", path_values,
+             0.0 if near_goal else dwb.PATH_ALIGN_SCALE, False),
+            ("PathDist", path_values, dwb.PATH_DIST_SCALE, True),
+            ("GoalDist", goal_values, dwb.GOAL_DIST_SCALE, True)):
+        if stops:
+            value = 0.0
+            for px, py, _pyaw in poses:
+                value, reason = dwb.map_grid_score(grid, values, px, py, name,
+                                                   True)
+                if reason:
+                    return None
+        else:
+            point = dwb.forward_pose(end_x, end_y, end_yaw, look)
+            value, reason = dwb.map_grid_score(grid, values, point[0],
+                                               point[1], name, False)
+            if reason:
+                return None
+        parts[name] = dwb.MAP_GRID_RESCALE * scale * value
+    return parts
+
+
 def drive_bias(episode, look=None):
-    """Does the unreachable charge fall harder on driving than on pivoting?
+    """What does going forward cost more than turning on the spot, and who charges it?
 
-    **This is a tuning question and not a law, and the answer flips.** A
-    driving rollout ends `sim_time * max_vel_x` -- 0.32 m -- further into the
-    room, so the point the align critics judge it on is that much further out;
-    a pivot ends where the rover already stands, which is on the path by
-    definition. Which of the two ends up over a wall therefore depends on the
-    look-ahead and on the geometry in front of the rover, and on the corridor
-    recording it reverses between 0.45 and 0.60:
+    **This used to count a charge that cannot happen, and the count is now
+    always zero.** The four map-grid critics were believed to charge
+    `unreachable_score_` -- 2881 points after scaling -- for a judged point the
+    flood could not reach, and a sweep of that charge across the align
+    look-ahead is what chose 0.325 over 0.8. The flood in the
+    `libdwb_critics.so` this rover runs is not stopped by walls at all (see
+    `corridor_sim.flood`), so once a critic has a seed on the window there is
+    no unreachable cell to land on: measured over
+    `recordings/trap-2026-08-25-spin.json`, 0 of 8687 driving candidates and 0
+    of 6132 pivots. The charge survives only for a critic given no seed at all,
+    and then it lands on every candidate of the tick equally and decides
+    nothing.
 
-        look     driving   pivoting
-        0.200      74%        1%
-        0.325      77%       16%
-        0.450      74%       65%
-        0.600      13%       73%
-        0.800       5%       60%
-
-    Whichever side is being punished is the side the rover stops choosing. At
-    0.325 in that corridor it was driving, so the rover turned on the spot for
-    93% of a minute with clear floor ahead. On the doorway recording the same
-    sweep never exceeds eight points either way, so do not read a number off
-    one recording and treat it as the rover's character.
+    So the question is asked directly instead. For every tick where both a
+    forward candidate and a pivot were legal, this takes the best of each by
+    the full objective and reports the difference critic by critic. A positive
+    number is a critic that prefers the rover stayed where it is.
     """
     look = dwb.FORWARD_POINT_DISTANCE if look is None else look
-    drive_hit = drive_n = pivot_hit = pivot_n = 0
-    drive_worse = ticks = 0
+    gaps = collections.defaultdict(list)
+    no_forward = ticks = 0
     for grid, path, x, y, yaw, vx0, wz0, _osc in recorded_ticks(episode):
-        values = dwb.flood(grid, [grid.cell_of(px, py) for px, py in path])
-        big = grid.width * grid.height
-        d_hit = d_n = p_hit = p_n = 0
+        path_values = dwb.flood(grid, [grid.cell_of(px, py) for px, py in path])
+        seed = dwb.last_pose_on_costmap(grid, path)
+        goal_values = dwb.flood(grid, [seed] if seed else [])
+        best = {}
         for vx, wz in dwb.twists(vx0, wz0):
-            end_x, end_y, end_yaw = dwb.rollout(x, y, yaw, vx, wz, vx0, wz0)[-1]
-            nose = dwb.forward_pose(end_x, end_y, end_yaw, look)
-            value, _ = dwb.map_grid_score(grid, values, nose[0], nose[1],
-                                          "PathAlign", False)
-            if value is None:
+            parts = score_parts(grid, path, x, y, yaw, vx, wz, vx0, wz0,
+                                path_values, goal_values, look)
+            if parts is None:
                 continue
-            charged = 1 if value >= big else 0
-            if abs(vx) > 1e-9:
-                d_n += 1
-                d_hit += charged
-            else:
-                p_n += 1
-                p_hit += charged
-        drive_hit += d_hit
-        drive_n += d_n
-        pivot_hit += p_hit
-        pivot_n += p_n
-        if d_n and p_n:
-            ticks += 1
-            if d_hit / float(d_n) > p_hit / float(p_n):
-                drive_worse += 1
-    return {"drive": (drive_hit, drive_n), "pivot": (pivot_hit, pivot_n),
-            "drive_worse": drive_worse, "ticks": ticks}
+            kind = "forward" if abs(vx) > 1e-9 else "pivot"
+            total = sum(parts.values())
+            if kind not in best or total < best[kind][0]:
+                best[kind] = (total, parts)
+        ticks += 1
+        if "forward" not in best:
+            no_forward += 1
+        if "forward" in best and "pivot" in best:
+            for name in BIAS_CRITICS:
+                gaps[name].append(best["forward"][1].get(name, 0.0)
+                                  - best["pivot"][1].get(name, 0.0))
+            gaps["TOTAL"].append(best["forward"][0] - best["pivot"][0])
+    return {"gaps": gaps, "ticks": ticks, "no_forward": no_forward,
+            "compared": len(gaps["TOTAL"])}
 
 
 def main(argv=None):
@@ -365,33 +427,62 @@ def main(argv=None):
     if args.weights or everything:
         spread, unreachable = weights(episode)
         print("what decides a tick, in points between the best and worst candidate")
-        for name in ("ObstacleFootprint", "PathDist", "PathAlign"):
+        obstacle_critic = ("BaseObstacle"
+                           if dwb.CIRCULAR and dwb.CIRCULAR_USES_BASE_OBSTACLE
+                           else "ObstacleFootprint")
+        for name in (obstacle_critic, "PathDist", "PathAlign"):
             values = sorted(spread[name])
             if values:
                 print("   %-20s %9.2f" % (name, values[len(values) // 2]))
         if unreachable:
             print()
-            print("   the nose point lands where the flood never reached on a")
-            print("   median %.0f%% of the candidates in a tick, worst tick %.0f%%,"
-                  % (100 * unreachable[len(unreachable) // 2],
-                     100 * unreachable[-1]))
-            print("   and every one of those is charged %.0f points."
-                  % (dwb.MAP_GRID_RESCALE * dwb.PATH_ALIGN_SCALE * (60 * 60 + 1)))
+            worst = 100 * unreachable[-1]
+            if worst < 0.5:
+                print("   no candidate on any tick was charged the %.0f-point "
+                      "unreachable score:" % (dwb.MAP_GRID_RESCALE
+                                              * dwb.PATH_ALIGN_SCALE
+                                              * (60 * 60 + 1)))
+                print("   this build's flood is not stopped by walls, so a "
+                      "critic with a seed reaches")
+                print("   every cell of its window. See corridor_sim.flood.")
+            else:
+                print("   the nose point lands where the flood never reached on a")
+                print("   median %.0f%% of the candidates in a tick, worst tick %.0f%%,"
+                      % (100 * unreachable[len(unreachable) // 2], worst))
+                print("   and every one of those is charged %.0f points."
+                      % (dwb.MAP_GRID_RESCALE * dwb.PATH_ALIGN_SCALE
+                         * (60 * 60 + 1)))
         print()
 
     if args.bias or everything:
         bias = drive_bias(episode)
-        hit, n = bias["drive"]
-        phit, pn = bias["pivot"]
-        print("who pays the unreachable charge, driving or turning")
-        print("   a candidate that DRIVES forward is charged  %5d of %5d  (%2.0f%%)"
-              % (hit, n, 100.0 * hit / max(n, 1)))
-        print("   a candidate that TURNS on the spot          %5d of %5d  (%2.0f%%)"
-              % (phit, pn, 100.0 * phit / max(pn, 1)))
-        print("   driving is the worse-treated of the two on %d of %d ticks (%.0f%%)"
-              % (bias["drive_worse"], bias["ticks"],
-                 100.0 * bias["drive_worse"] / max(bias["ticks"], 1)))
-        print("   -- which is why the rover turns instead of going.")
+        print("why the rover turns instead of going")
+        print("   on %d of %d ticks not one forward candidate was legal at all "
+              "(%.0f%%):" % (bias["no_forward"], bias["ticks"],
+                             100.0 * bias["no_forward"] / max(bias["ticks"], 1)))
+        print("   every rollout that moved ended on a cell the obstacle critic "
+              "refuses, so")
+        print("   the only thing left to choose between was sixteen ways of "
+              "turning on the spot.")
+        if bias["compared"]:
+            print()
+            print("   on the other %d, what the best forward candidate cost "
+                  "MORE than the best pivot:" % bias["compared"])
+            rows = []
+            for name in ("TOTAL",) + BIAS_CRITICS:
+                values = sorted(bias["gaps"][name])
+                if not values:
+                    continue
+                rows.append((name, values[len(values) // 2],
+                             values[len(values) // 10],
+                             values[9 * len(values) // 10]))
+            head = rows[:1]
+            rest = sorted(rows[1:], key=lambda row: -abs(row[1]))
+            for name, mid, low, high in head + rest:
+                print("      %-14s %+7.2f points   (a tenth of ticks below "
+                      "%+.2f, a tenth above %+.2f)" % (name, mid, low, high))
+            print("   positive is a critic that would rather the rover stayed "
+                  "where it is.")
         print()
 
     if args.look or everything:

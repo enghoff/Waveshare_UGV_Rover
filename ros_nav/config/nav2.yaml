@@ -314,33 +314,28 @@ controller_server:
       # **`PreferForward` is here because nothing else in the set says anything
       # about turning as such, and this rover would rather turn than drive.**
       #
-      # The four map-grid critics charge a candidate `unreachable_score_` --
-      # 2881 points after scaling -- whenever the point they read lands on a
-      # wall or somewhere the flood could not get to. That charge is not
-      # even-handed between driving and turning, and **which of the two it
-      # punishes flips with the look-ahead**, because the two kinds of rollout
-      # put their judged point in very different places: a driving one ends
-      # 0.32 m further into the room, a pivot ends where the rover already
-      # stands. Swept over the corridor recording, the charge lands on:
+      # **The measurement that put it here has been withdrawn, and it is left
+      # in anyway.** The argument was that the four map-grid critics charge a
+      # candidate `unreachable_score_` -- 2881 points after scaling -- for a
+      # judged point the flood could not reach, that the charge falls on
+      # driving rather than on turning at this look-ahead, and that the rover
+      # was therefore being told ten times a second that going forward was
+      # ruinous. No candidate is ever charged it. The flood in the installed
+      # `libdwb_critics.so` is not stopped by walls
+      # (`MapGridQueue::validCellToQueue` is `mov w0,#1; ret`, and nothing
+      # calls `setAsObstacle`), so a critic with a seed reaches every cell of
+      # its window: 0 of 8687 driving candidates and 0 of 6132 pivots over
+      # recordings/trap-2026-08-25-spin.json. `corridor_sim.flood` has the
+      # disassembly and `trap_sim.py --bias` is the measurement.
       #
-      #     look     driving   pivoting
-      #     0.200      74%        1%      <- driving punished
-      #     0.325      77%       16%
-      #     0.450      74%       65%      <- roughly even
-      #     0.600      13%       73%      <- turning punished
-      #     0.800       5%       60%
-      #
-      # So this is a tuning question rather than a law, and it is sharply
-      # geometry-dependent: the same sweep on the doorway recording never
-      # exceeds eight points either way, which is why the corridor is where it
-      # showed up. `trap_sim.py --bias` is the measurement.
-      #
-      # So the controller was being told, tick after tick, that going forward
-      # was ruinous and turning was nearly free -- and it behaved accordingly:
-      # 93% of one recorded minute was turns on the spot, reversing direction
-      # 78 times, for 0.51 m of net travel with clear floor ahead. Sweeping the
-      # align look-ahead from 0.05 to 0.45 does not remove the gap and neither
-      # does shortening `sim_time` to 0.4 s; both were tried in `trap_sim.py`.
+      # What is still true is the behaviour this critic was reached for. On
+      # that recording the rover turned 3038 degrees and finished 28 cm from
+      # where it started, and the model -- which now agrees with its commands
+      # on 84% of ticks -- chooses a pivot on 481 of the 496 ticks it can
+      # score. Driving loses to turning by a median 4.6 points where both are
+      # legal, and on 41% of the ticks no forward candidate is legal at all.
+      # Taking this critic out would make that worse, so it stays until
+      # somebody has a drive that says otherwise.
       #
       # `PreferForwardCritic::scoreTrajectory` returns `fabs(theta) *
       # theta_scale` for a forward rollout, read out of `libdwb_critics.so`, so
@@ -403,11 +398,14 @@ controller_server:
       # -- the last being two hundred times what is here -- was run against the
       # recorded drive and moved neither the clearance the winning rollout ends
       # with (0.43 m at every value) nor how often it ends too close to pivot
-      # (8% at every value). The reason is in the align critics below: they can
-      # charge a candidate 2881 points, and the whole range of obstacle cost is
-      # worth about five. Until that is dealt with this critic cannot move the
-      # answer, so the number is left where it is rather than being changed to
-      # look better. `trap_sim.py --weights` is the measurement.
+      # (8% at every value). The reason given at the time was that the align
+      # critics could charge a candidate 2881 points; they cannot, and the
+      # honest version is smaller and still holds. Measured on
+      # recordings/trap-2026-08-25-spin.json, within one tick the obstacle
+      # critic separates best from worst by 1.38 points, `PathDist` by 2.40 and
+      # `PathAlign` by 6.40, so this scale is arguing against critics worth
+      # several times more and a change of a few hundredths in it does not
+      # decide anything. `trap_sim.py --weights` is the measurement.
       #
       # A trajectory that actually reaches a lethal cell is still refused by
       # this critic whatever the scale is; 253 is a cost here and not contact.
@@ -451,45 +449,33 @@ controller_server:
       # out of about 45, the rover had nothing to tell it which way to turn,
       # and it swung about one and a half times a second.
       #
-      # All of that is still true. What was wrong was the belief that pushing
-      # the point further out was free. **An align critic does not refuse a
-      # nose point it cannot reach -- it charges for it, and the charge is
-      # enormous.** `MapGridCritic::reset` sets `unreachable_score_` to the
-      # cell count plus one, which on this 3 m window at 5 cm is 3601, and both
-      # align critics clear `stop_on_failure_` in their `onInit` so they return
-      # that number rather than throwing. At `resolution * 0.5 * 32` it lands
-      # as 2881 points. Measured over the recorded drive, within a single tick:
+      # All of that is still true, and the rest of what stood here is not.
+      # **Both of the tables this comment has carried were produced by a model
+      # whose flood stopped at the inflated ring, and the library's flood does
+      # not stop at anything.** The first said 0.8 was needed because a nose
+      # point that missed the flood was refused; the second said 0.325 was
+      # needed because such a point was charged 2881 points. Neither event
+      # exists: `MapGridQueue::validCellToQueue` is `mov w0,#1; ret` and
+      # nothing in the library calls `setAsObstacle`, so once a critic has a
+      # seed every cell of its window carries a real distance. See
+      # `corridor_sim.flood`.
       #
-      #     ObstacleFootprint        0.02 points between best and worst
-      #     PathDist                 2.40 points
-      #     PathAlign             2880.80 points
+      # With the flood corrected the look-ahead stops mattering on the drive
+      # that is actually going wrong. Driven round the closed loop from twelve
+      # starts on recordings/trap-2026-08-25-spin.json, on the rover's own
+      # costmap and its own plan:
       #
-      # So the controller was not weighing a route that clears a corner against
-      # one that cuts it. It was picking whichever candidate happened to land a
-      # point 0.8 m ahead of the nose in a cell the flood reached -- true of a
-      # median 26% of the candidates and of 86% at the worst tick -- and
-      # everything else, the wall included, was rounding. That is the rover
-      # driving into corners, and it is also the rover having no preference
-      # left once it is beside a surface.
+      #     look-ahead   got somewhere   went (median)   turned (median)
+      #     0.325          0 of 12         0.00 m           422 deg
+      #     0.450          0 of 12         0.00 m           422 deg
+      #     0.800          0 of 12         0.00 m           498 deg
       #
-      # The earlier table here reported 0.8 getting out of 24 starting poses of
-      # 24 and 0.325 out of none. It was produced by a model that treated an
-      # unreachable nose point as a refusal, which is the one thing the library
-      # does not do, so it was describing a controller that has never run. With
-      # the critics scoring the way `libdwb_critics.so` scores them, driven
-      # round the loop from twelve starts in each of the two recordings:
-      #
-      #     look-ahead   got somewhere   went (median)   ends too close to pivot
-      #     0.325         24 of 24        0.90 m          8%
-      #     0.450         23 of 24        0.83 m         12%
-      #     0.800          5 of 24        0.44 m         17%
-      #
-      # and on the doorway lock-up recording specifically, 0.8 went 0.00 m from
-      # twelve starts of twelve while turning 176 degrees. `ros_nav/trap_sim.py`
-      # is the reproduction; run it before moving this number again. Pivots are
-      # still told apart at 0.325 -- six distinct scores across the twelve
-      # standing turns, against eight at 0.8 -- so the tie-break that 0.8 was
-      # introduced for survives the change.
+      # So 0.325 is kept because it is nav2's default and nothing argues it
+      # away, not because it was measured to be better. What that trap is
+      # really made of is in `trap_sim.py --bias`: on 41% of its ticks no
+      # forward candidate is legal at all, and on the rest driving loses to
+      # pivoting by a median 4.6 points, charged almost entirely by `PathAlign`
+      # and `PathDist`.
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.325
       GoalAlign.scale: 24.0
