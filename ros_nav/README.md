@@ -1098,8 +1098,87 @@ real controller dying. And it kills its whole process group: `ros2 run` is a
 launcher, so terminating it leaves an orphan holding the node name, and two nodes of
 one name make `ros2 lifecycle` silently answer for whichever it found first.
 
+## The rover turned 3038 degrees and finished where it started, and the model said it could not have
+
+Recorded on 2026-08-25 with `nav_record.py`: a minute of driving, 1.10 m of
+path, 3038 degrees of turning, and 28 cm between the start and the end. 506 of
+the 511 velocity commands were turns on the spot, 486 of them at exactly the
+slowest pivot the speed floor allows, and the direction reversed 93 times. The
+recording is `recordings/trap-2026-08-25-spin.json`.
+
+Replayed offline it agreed with nothing: on 329 of 511 ticks the model refused
+all twenty-nine candidates, saying the rover was sealed off from its goal, while
+the rover itself had commanded a pivot on every one of those ticks and the log
+has no "could not find a legal trajectory" anywhere in that minute. **A model
+and a rover that disagree that completely are not describing the same fault,
+and the model was the one that was wrong.**
+
+**`MapGridCritic`'s flood is not stopped by walls in the library this rover
+runs.** Every account of that critic -- upstream's source, this repository's
+own notes, four sections of this file -- says the queue refuses 253, 254 and
+255 and marks them `obstacle_score_`. In the `libdwb_critics.so` that RoboStack
+installed here it is two instructions:
+
+```
+dwb_critics::MapGridCritic::MapGridQueue::validCellToQueue:
+    mov  w0, #0x1
+    ret
+```
+
+and nothing in the whole library calls `MapGridCritic::setAsObstacle`. So the
+Manhattan distance spreads straight through walls and out the other side. Once
+a critic has one seed on its window every cell of that window carries a real
+distance, `unreachable_score_` survives only for a critic given no seed at all,
+and `PathDist` and `GoalDist` cannot refuse anything except a pose off the grid.
+
+Correcting `corridor_sim.flood` took the model's agreement with that drive from
+15% to 84%, and its hit rate on the rover's exact twist from 61 ticks to 386 of
+511. That is the first time this fault has had a model that passes its own
+gate.
+
+**What it invalidates.** Two tuning arguments rested on the charge the flood was
+believed to produce -- `unreachable_score_`, 2881 points once scaled, for a nose
+point the flood could not reach. Neither survives: measured over this recording,
+0 of 8687 driving candidates and 0 of 6132 pivots are charged it. So the reason
+recorded for moving the align look-ahead to 0.325 and for adding `PreferForward`
+is withdrawn, and the settings are left exactly where they are, because nothing
+measured argues for anything else either. `trap_sim.py --bias` and the comments
+in `config/nav2.yaml` say so where somebody about to change them will look.
+
+**What the fault actually is, now that it can be measured.** Two things, and the
+first is the larger:
+
+- **On 41% of the ticks not one forward candidate was legal.** The rover was
+  standing where every rollout that moved ended on a cell at 253 or worse, so
+  `BaseObstacle` refused it and sixteen ways of turning on the spot were the
+  only choices left. With `robot_radius: 0.20` the inflation layer paints that
+  ring 20 cm deep, and in the recorded spot -- the rover's own cell reads 220 in
+  the global costmap -- there is no forward move that leaves it.
+- **On the rest, driving lost to turning by a median 4.6 points**, and the bill
+  is `PathAlign` +4.0 and `PathDist` +3.2 against `GoalDist` and `GoalAlign`
+  pulling back 1.8 each. Both of the path critics are saying the same thing:
+  moving would end further from the planned line than standing still does. The
+  last twenty-five points of that plan lie on cells the *local* costmap calls
+  253 or 254, so the line they are measuring against runs through a wall.
+
+Driven forward from the rover's own costmap and its own plan, the model spins
+in place: 0.00 m in twelve seconds, 422 degrees of turning, twenty reversals,
+from all twelve starting points and at every align look-ahead from 0.325 to
+0.8. It does that with a chassis that obeys perfectly as well as with the
+measured one, so the delay and the over-served pivot are not what is doing it.
+Holding the costmap fixed is fair on this drive and would not be on another:
+the rover never got more than 22 cm from where it had been twelve seconds
+earlier, so its 3 m window would have rolled by at most four cells.
+
 ### What is still open
 
+- **The rover can be parked where it has no legal forward move at all**, and
+  nothing notices. That is the trap above, and the two candidate answers are a
+  smaller inscribed ring and a recovery that recognises "every forward rollout
+  is refused" as a different failure from "the controller cannot decide". The
+  reproduction to test either against is `dwb_replay.py
+  recordings/trap-2026-08-25-spin.json --drive`, which has to stop reporting
+  STUCK from all twelve starts.
 - **The pivot channel over-serves the smallest rotation the controller can ask
   for, by four times.** DWB's sixteen rotation samples run in 5.96 deg/s steps, and
   `drive_mixer.turn_to_pwm` lifts any pivot request below `MIN_TURN_DPS` up to it.

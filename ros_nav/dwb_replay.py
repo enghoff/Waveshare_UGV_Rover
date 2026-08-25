@@ -91,6 +91,29 @@ def settings_of(episode):
     return path_look, goal_look, bool(params), floor_xy, floor_theta
 
 
+def body_of(episode):
+    """Which obstacle critic this drive was recorded under, if it says.
+
+    The critic name is the body's name: `ObstacleFootprint` is the measured
+    rectangle and `BaseObstacle` is the circle that replaced it, and the
+    recorded local costmaps carry whichever inflation that body produced. The
+    model has one shape compiled into it, so replaying a drive made under the
+    other is scoring a rover that never existed -- which is a fair reason for a
+    low agreement and needs saying rather than leaving somebody to hunt for a
+    fault in the critics.
+    """
+    params = episode.get("params") or {}
+    if "FollowPath.BaseObstacle.scale" in params:
+        recorded = "BaseObstacle"
+    elif "FollowPath.ObstacleFootprint.scale" in params:
+        recorded = "ObstacleFootprint"
+    else:
+        return None, None
+    now = ("BaseObstacle" if dwb.CIRCULAR and dwb.CIRCULAR_USES_BASE_OBSTACLE
+           else "ObstacleFootprint")
+    return recorded, now
+
+
 def sample_floors_of(episode, floor_xy, floor_theta):
     """The speed floors this drive was recorded under, inferred if not saved.
 
@@ -525,6 +548,12 @@ def main():
     print("   the oscillation latch was wiped %d times by a replan and %d "
           "times by the rover having turned far enough"
           % (result["replans"], result["latch_resets"]))
+    recorded_body, model_body = body_of(episode)
+    if recorded_body and recorded_body != model_body:
+        print("   NOTE: this drive was made with %s -- a differently shaped "
+              "rover -- and the" % recorded_body)
+        print("   model is built for %s, so it is scoring a body this "
+              "recording never had." % model_body)
     if result["blame"]:
         print("   what the model refused candidates for, over every tick:")
         for reason, count in result["blame"].most_common(6):

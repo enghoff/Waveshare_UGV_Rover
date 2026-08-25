@@ -21,50 +21,56 @@ them. When all thirty-three are thrown out the controller returns no command;
 the truth, replans, and hands back the same situation with the controller's
 memory wiped.
 
-**What reproduces it: the plan, not the passage.** `--plan` is the mode that
-matters. `PathDist` floods the local costmap outward from the plan and that
-flood is stopped by 253, the inscribed ring the inflation layer paints 14 cm
-deep along every wall. When *every* cell of the plan is already inside that
-ring there is nowhere to flood from, every cell of the costmap comes back
-"unreachable", and the critic refuses all thirty-three -- wherever the rover
-is standing and whichever way it is facing. It is total, it is independent of
-the rover's pose, and it recurs on every replan. A plan within about 6 cm of
-a wall does it, which a 0.8 m passage reaches at 0.32 m off the centreline and
-a 1.2 m passage does not reach at all.
+**What reproduces it: the rover's own cell, not the plan.** Run with no
+arguments and sweep a rover across a passage. Where its centre is more than
+the inscribed radius from a wall every candidate survives; closer in, every
+forward rollout ends on a cell the obstacle critic refuses and only the twelve
+pivots are left; closer still, the pivots go too and the tick is dead. Twenty
+of the hundred and five poses the body fits in lose all twenty-nine. That is
+the log line, and it is a statement about where the rover is standing rather
+than about the room.
 
-**What does not reproduce it, having been tried.** A narrow passage on its
-own: once the obstacle layer's footprint clearing is modelled -- and it is on,
-`footprint_clearing_enabled` was read off the running node -- a rover in a
-clean 0.9 m corridor loses all thirty-three at two poses in three hundred and
-twelve. Nor does a reverse sample (`min_vel_x` below zero rescues six of
-fifty-six), nor a shorter rollout (`sim_time` from 0.8 s down to 0.3 s changes
-nothing), nor moving `PathAlign.forward_point_distance` from 0.1 m to 0.32 m,
-which is what the rolled-back attempt did.
+**What was believed to reproduce it, and does not.** `--plan` was the mode
+that mattered: `PathDist` floods outward from the plan, that flood was thought
+to stop at the 253 ring, and a plan lying inside the ring therefore left the
+critic nothing to flood from and refused all thirty-three wherever the rover
+stood. The flood in the `libdwb_critics.so` this rover runs is not stopped by
+anything -- `MapGridQueue::validCellToQueue` is `mov w0, #1; ret` and nothing
+calls `setAsObstacle`. So `--plan` now comes back nearly empty, and it is kept
+because a mode that used to reproduce a fault and no longer does is worth
+being able to re-run. `flood()` below carries the disassembly and what
+correcting it did to the model's agreement with a recorded drive: 15% to 84%.
 
-**The link still to be closed on the rover.** NavFn plans on the *global*
-costmap, in the `map` frame, and would not route through its own inflated
-ring. `PathDist` tests that plan against the *local* costmap, in the `odom`
-frame. The two only agree while `map -> odom` does, and in a metre-wide
-passage a few centimetres of disagreement is the whole margin. Confirming
-that means watching the transformed plan against the live local costmap
-during an episode, or turning `debug_trajectory_details` on and reading which
-critic names itself -- `dwb_bench.py` already starts a shadow controller that
-does the second without moving the wheels.
+Nor does a reverse sample rescue a dead tick (`min_vel_x` below zero rescues
+six of fifty-six), nor a shorter rollout (`sim_time` from 0.8 s down to 0.3 s
+changes nothing), nor moving `PathAlign.forward_point_distance` from 0.1 m to
+0.32 m, which is what the rolled-back attempt did.
 
-**A veto is not a score.** Four of the seven critics refuse candidates by
+**The two costmaps still disagree, and that is worth watching.** The planner
+works on the *global* costmap in the `map` frame and will not route through
+its own inflated ring; the critics test that plan against the *local* costmap
+in the `odom` frame. The two only agree while `map -> odom` does. In
+`recordings/trap-2026-08-25-spin.json` the last twenty-five points of the
+pruned plan lie on cells the local costmap calls 253 or 254. That no longer
+refuses anything, but it does mean the critics are measuring distance to a
+line drawn through a wall.
+
+**A veto is not a score.** Three of the seven critics refuse candidates by
 throwing, and tuning their *scales* does not touch that -- worth saying
-plainly, because `ObstacleFootprint.scale: 0.005` reads like a decision to
-care very little about obstacles and is nothing of the kind. The four, as the
-rover's own `libdwb_critics.so` has them:
+plainly, because an obstacle scale of 0.02 reads like a decision to care very
+little about obstacles and is nothing of the kind. The three, as the rover's
+own `libdwb_critics.so` has them:
 
-  * `ObstacleFootprint` walks the footprint outline at every pose of the
-    rollout and throws on 254 or 255. Its `pointCost` compares the cell
-    against 0xfe and 0xff and has no third comparison, so the 253 ring is a
-    cost here and not contact.
-  * `PathDist` and `GoalDist` are the flood described above, and they test the
-    rover's centre point rather than its body.
-  * `PathAlign` and `GoalAlign` run the same test at a point
-    `forward_point_distance` in front of the pose.
+  * `BaseObstacle` reads the one cell the rover's centre is in and throws on
+    253, 254 or 255; `ObstacleFootprint`, which a rectangular body takes
+    instead, walks the footprint outline and throws only on 254 or 255. Which
+    of the two is configured follows from whether the body is a circle.
+  * `PathDist` and `GoalDist` read the flood at the rover's centre point
+    rather than at its body, and can only throw for a pose off the window --
+    or, if their critic never got a seed at all, for every candidate at once.
+  * `PathAlign` and `GoalAlign` read the same flood at a point
+    `forward_point_distance` in front of the pose, and clear
+    `stop_on_failure_`, so they charge rather than refuse.
   * `Oscillation` latches the sign of the turn once the rover is pivoting and
     throws every candidate that turns back until it has moved 5 cm or turned
     0.2 rad -- and what clears that latch is a new `follow_path` goal, which
@@ -698,14 +704,39 @@ def obstacle_footprint(grid, poses):
 
 
 def flood(grid, seeds):
-    """`MapGridCritic`'s propagation: distance in cells, stopped by 253.
+    """`MapGridCritic`'s propagation: distance in cells, and **walls do not stop it**.
 
     Seeded from the path or from the goal and flooded four-connected, exactly
-    as `CostmapQueue` does it. A cell it refuses to enter is marked obstacle
-    and a cell it never reaches stays unreachable, and the critic throws on
-    both -- so a strip 14 cm deep along every wall is a hard refusal for the
-    rover's *centre point*, and anything the flood cannot get to behind it is
-    a refusal too.
+    as `CostmapQueue` does it, `propogateManhattanDistances` writing
+    `|dx| + |dy|` from the source into every cell the queue reaches.
+
+    **The obstacle check that every account of this critic describes is not in
+    the library this rover runs**, and modelling it was the largest error this
+    file has had. The upstream version of `MapGridQueue::validCellToQueue`
+    reads the costmap and refuses 253, 254 and 255, marking them
+    `obstacle_score_`; in the `libdwb_critics.so` installed here it is two
+    instructions::
+
+        dwb_critics::MapGridCritic::MapGridQueue::validCellToQueue:
+            mov  w0, #0x1
+            ret
+
+    and nothing in the whole library calls `MapGridCritic::setAsObstacle`. So
+    the flood runs straight through walls and out the other side, no cell is
+    ever marked obstacle, and once a critic has one seed on the window every
+    cell of it has a real distance. `unreachable_score_` therefore survives
+    only when a critic gets *no* seed at all -- the whole plan off the window
+    for `PathDist`, or `getLastPoseOnCostmap` finding nothing for `GoalDist` --
+    and then it lands on every candidate at once rather than picking between
+    them.
+
+    Modelled the other way, with the flood stopped at the inflated ring, the
+    model refused all twenty-nine candidates on 329 of the 511 ticks of
+    `recordings/trap-2026-08-25-spin.json`, because the plan's far end lay
+    inside the ring and the rover was sealed off from it. The rover itself
+    commanded a pivot on every one of those ticks and its log has no "could
+    not find a legal trajectory" in the minute. Correcting the flood took the
+    model's agreement with that drive from 15% to 84%.
     """
     values = [UNREACHABLE_SCORE] * (grid.width * grid.height)
     queue = collections.deque()
@@ -713,10 +744,6 @@ def flood(grid, seeds):
         if not (0 <= col < grid.width and 0 <= row < grid.height):
             continue
         index = row * grid.width + col
-        if goal_fit.blocked(grid.cost(col, row)) \
-                or grid.cost(col, row) == goal_fit.UNKNOWN:
-            values[index] = OBSTACLE_SCORE
-            continue
         if values[index] == UNREACHABLE_SCORE:
             values[index] = 0.0
             queue.append((col, row, 0.0))
@@ -728,10 +755,6 @@ def flood(grid, seeds):
                 continue
             index = nr * grid.width + nc
             if values[index] != UNREACHABLE_SCORE:
-                continue
-            cost = grid.cost(nc, nr)
-            if goal_fit.blocked(cost) or cost == goal_fit.UNKNOWN:
-                values[index] = OBSTACLE_SCORE
                 continue
             values[index] = distance + 1.0
             queue.append((nc, nr, distance + 1.0))
@@ -965,12 +988,19 @@ def last_pose_on_costmap(grid, path):
     Seeding the flood from that point instead means seeding it from nothing,
     every cell comes back unreachable, and a model that then let those critics
     refuse candidates threw out all of them -- on exactly those 63 ticks.
+
+    A cell that reads *unknown* is skipped as though it were off the window,
+    and that is the only cost this function looks at: the one comparison in
+    `GoalDistCritic::getLastPoseOnCostmap` is `cmp w0, #0xff`. A plan point
+    lying on the inflated ring, or on the wall itself, is a perfectly good
+    seed.
     """
     found = None
     started = False
     for px, py in path:
         col, row = grid.cell_of(px, py)
-        if 0 <= col < grid.width and 0 <= row < grid.height:
+        if 0 <= col < grid.width and 0 <= row < grid.height \
+                and grid.cost(col, row) != goal_fit.UNKNOWN:
             found = (col, row)
             started = True
         elif started:
@@ -1345,8 +1375,13 @@ def plan_sweep(widths, offsets):
             cells.append("%5d/%2d" % (dead, total))
         print("         %+.2f m       %s" % (plan_y, "".join("%8s" % c
                                                              for c in cells)))
-    print("      a plan inside the 14 cm inscribed ring leaves PathDist nothing")
-    print("      to flood from, and every candidate is refused everywhere")
+    print("      this used to be a wall of refusals and is now nearly empty:")
+    print("      a plan inside the inscribed ring was thought to leave PathDist")
+    print("      nothing to flood from, and the flood in the installed library")
+    print("      is not stopped by the ring at all -- see flood() above. What")
+    print("      is left here is the obstacle critic refusing a rover that is")
+    print("      already touching the wall, which is the default sweep's fault")
+    print("      and not this one's")
 
 
 # --- the recoveries -------------------------------------------------------------
