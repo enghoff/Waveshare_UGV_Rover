@@ -154,7 +154,7 @@ Three steps, and the first is the only slow one.
 ```bash
 scp -r ros_nav bpi-m4zero:~/ugv/
 ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'          # ~20 min, ~4.7 GB
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh'     # the @reboot entry
+ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --nav'  # mapping and Nav2
 ```
 
 Note the `sh` in front of both. A checkout that arrived by `scp` is mode 644, so
@@ -177,6 +177,10 @@ prints the `sed` line that fixes it.
 ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'        # ~30 s; prints the node list
 ssh bpi-m4zero 'tail -f ~/ugv/ros_nav/ros_nav.log'
 ```
+
+An empty map with the lidar reporting at 10 Hz is usually the driver board,
+not the scan. Check `board_ok` in `nav_status` before debugging slam_toolbox;
+see [rover_daemon/README.md](../rover_daemon/README.md#when-the-board-does-not-answer).
 
 And by hand, which is what to do when something is wrong:
 
@@ -881,9 +885,11 @@ and rotating — it loses by under one point in forty-five, entirely on the two
 critics that measure distance from the path. That is the planner's fault rather
 than the controller's: a grid Dijkstra has no curvature in it, so its route is not
 one this chassis can follow, and asking a velocity controller to follow it anyway
-is asking it to choose between the path and the goal. The lever not yet pulled is a
-planner that knows the turning radius, or the configured `smoother_server`, which
-is set up and which the stock behaviour tree never calls.
+is asking it to choose between the path and the goal. `smoother_server` is
+configured and the stock tree never calls it, which reads like the lever; it
+was tried, against the real node, and it is not — see
+[docs/doorway-pivot.md](../docs/doorway-pivot.md). What would see a corner this
+chassis cannot follow is a planner that knows the turning radius.
 
 ## "lost -- Nav2 gave up without saying why (code 102)", on the long routes
 
@@ -1110,8 +1116,10 @@ one name make `ros2 lifecycle` silently answer for whichever it found first.
   sends somebody to look at the map when what is needed is 20 cm of reverse.
 - The route being 3.0 times the direct distance is still the planner's, and the
   note above under *Where it got to* still stands: a grid Dijkstra has no curvature
-  in it, and the `smoother_server` that is configured is never called by the stock
-  behaviour tree.
+  in it. Calling the `smoother_server` that is configured but never invoked was
+  the obvious next thing to try, and it turned out not to be the fix — see
+  [docs/doorway-pivot.md](../docs/doorway-pivot.md), which measured that directly
+  against the real node rather than assuming it.
 
 ## What is deliberately not here
 
