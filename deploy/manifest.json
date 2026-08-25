@@ -1,0 +1,296 @@
+{
+  "version": 1,
+  "hosts": {
+    "bpi": {
+      "ssh": "bpi-m4zero",
+      "state_file": "~/.ugv/deploy-state.json"
+    },
+    "media": {
+      "ssh": "root@media",
+      "state_file": "~/.ugv/deploy-state.json"
+    }
+  },
+  "components": [
+    {
+      "name": "rover_daemon",
+      "host": "bpi",
+      "destination": "~/ugv",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "rover_daemon/*.py",
+            "rover_daemon/*.sh"
+          ],
+          "strip": "rover_daemon"
+        },
+        {
+          "patterns": [
+            "driver_board/*.py"
+          ],
+          "strip": "driver_board"
+        },
+        {
+          "patterns": [
+            "face_tracking/*.py",
+            "face_tracking/*.sh",
+            "face_tracking/*.onnx"
+          ],
+          "strip": "face_tracking"
+        }
+      ],
+      "commands": [
+        "cd ~/ugv && python3 selftest.py | tail -2",
+        "~/ugv/restart.sh",
+        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),3); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"list_tools\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('daemon:', len(r.get('tools',[])), 'tools')\""
+      ],
+      "special_commands": [
+        {
+          "when": [
+            "rover_daemon/run_daemon.sh"
+          ],
+          "replaces": [
+            "~/ugv/restart.sh"
+          ],
+          "commands": [
+            "pkill -f 'ugv/run_daemon[.]sh' || true; sleep 2; ~/ugv/restart.sh"
+          ]
+        }
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "lidar_slam",
+      "host": "bpi",
+      "destination": "~/ugv/lidar_slam",
+      "prune": true,
+      "preserve": [
+        "libslam2d.so",
+        "selftest"
+      ],
+      "sources": [
+        {
+          "patterns": [
+            "lidar_slam/**"
+          ],
+          "strip": "lidar_slam"
+        }
+      ],
+      "commands": [
+        "cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2"
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "oak_depth",
+      "host": "bpi",
+      "destination": "~/ugv/oak_depth",
+      "prune": false,
+      "preserve": [
+        "vendor/",
+        ".cache/",
+        "*.log"
+      ],
+      "sources": [
+        {
+          "patterns": [
+            "oak_depth/**"
+          ],
+          "strip": "oak_depth"
+        }
+      ],
+      "commands": [
+        "~/ugv/oak_depth/restart.sh"
+      ],
+      "special_commands": [
+        {
+          "when": [
+            "oak_depth/run_oak_depth.sh"
+          ],
+          "replaces": [
+            "~/ugv/oak_depth/restart.sh"
+          ],
+          "commands": [
+            "pkill -f 'oak_depth/run_oak_depth[.]sh' || true; sleep 2; args=\"$(crontab -l 2>/dev/null | sed -n 's|^@reboot .*oak_depth/run_oak_depth\\.sh *||p' | head -1)\"; setsid nohup ~/ugv/oak_depth/run_oak_depth.sh $args >/dev/null 2>&1 </dev/null & sleep 2; ~/ugv/oak_depth/restart.sh"
+          ]
+        }
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "ros_nav",
+      "host": "bpi",
+      "destination": "~/ugv/ros_nav",
+      "prune": false,
+      "preserve": [
+        "*.log",
+        "maps/",
+        "recordings/"
+      ],
+      "sources": [
+        {
+          "patterns": [
+            "ros_nav/**"
+          ],
+          "strip": "ros_nav"
+        }
+      ],
+      "commands": [
+        "~/ugv/ros_nav/restart.sh"
+      ],
+      "special_commands": [
+        {
+          "when": [
+            "ros_nav/run_ros_nav.sh",
+            "ros_nav/sweep.sh"
+          ],
+          "replaces": [
+            "~/ugv/ros_nav/restart.sh"
+          ],
+          "commands": [
+            "~/ugv/ros_nav/restart.sh --supervisor"
+          ]
+        }
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "drive_web",
+      "host": "bpi",
+      "destination": "~/ugv/drive_web",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "drive_web/*.py",
+            "drive_web/*.html",
+            "drive_web/*.sh",
+            "drive_web/README.md"
+          ],
+          "strip": "drive_web"
+        },
+        {
+          "patterns": [
+            "voice_chat/console_model.py",
+            "voice_chat/rover_tools.py",
+            "voice_chat/session.py",
+            "voice_chat/talk_frames.py",
+            "voice_chat/prompts.py",
+            "voice_chat/server.py"
+          ],
+          "strip": "voice_chat"
+        }
+      ],
+      "commands": [
+        "~/ugv/drive_web/restart.sh"
+      ],
+      "special_commands": [
+        {
+          "when": [
+            "drive_web/run_drive_web.sh"
+          ],
+          "replaces": [
+            "~/ugv/drive_web/restart.sh"
+          ],
+          "commands": [
+            "pkill -f 'drive_web/run_drive_web[.]sh' || true; sleep 2; ~/ugv/drive_web/restart.sh"
+          ]
+        }
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "wifi_roam",
+      "host": "bpi",
+      "destination": "~/ugv/wifi_roam",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "wifi_roam/**"
+          ],
+          "strip": "wifi_roam"
+        }
+      ],
+      "commands": [
+        "cd ~/ugv && python3 wifi_roam/test_wifi_dual.py"
+      ],
+      "system_install": {
+        "sudo_password_file": "secrets/bpi-sudo.key",
+        "command": "sh ~/ugv/wifi_roam/install-dual.sh DUAL=on",
+        "verify": [
+          "cat /run/wifi-dual.json"
+        ]
+      },
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "netwatch",
+      "host": "bpi",
+      "destination": "~/ugv/netwatch",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "netwatch/**"
+          ],
+          "strip": "netwatch"
+        }
+      ],
+      "commands": [],
+      "system_install": {
+        "sudo_password_file": "secrets/bpi-sudo.key",
+        "command": "sh ~/ugv/netwatch/install.sh",
+        "verify": [
+          "systemctl is-active netwatch.service",
+          "netwatch-report | tail -3"
+        ]
+      },
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
+      "name": "media_voice",
+      "host": "media",
+      "destination": "/opt/voice_chat",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "voice_chat/server.py",
+            "voice_chat/voice_history.py",
+            "voice_chat/voice_stream.py",
+            "voice_chat/voice_http.py",
+            "voice_chat/requirements.txt",
+            "voice_chat/selftest.py",
+            "voice_chat/test_harness.py",
+            "voice_chat/test_server.py",
+            "voice_chat/test_talk.py"
+          ],
+          "strip": "voice_chat"
+        }
+      ],
+      "commands": [
+        "systemctl daemon-reload && systemctl restart voice-chat",
+        "for i in $(seq 1 90); do python3 -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8767/health', timeout=3).read().decode())\" && exit 0; sleep 2; done; exit 1"
+      ],
+      "default": false,
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    }
+  ]
+}
