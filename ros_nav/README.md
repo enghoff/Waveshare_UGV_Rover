@@ -879,17 +879,15 @@ would silently swallow the recovery.
 Goals that timed out at 30 to 39 seconds now arrive in 5 to 11. In open floor DWB
 chooses to move on 61 of 62 ticks where it chose to stand still on 282 of 342.
 
-**It is not finished.** Starting close to a wall, NavFn still returns routes about
+**It is not finished.** Starting close to a wall, the planner still returns routes about
 1.9 times the direct distance, and against one of those DWB goes back to sitting
 and rotating — it loses by under one point in forty-five, entirely on the two
-critics that measure distance from the path. That is the planner's fault rather
-than the controller's: a grid Dijkstra has no curvature in it, so its route is not
-one this chassis can follow, and asking a velocity controller to follow it anyway
-is asking it to choose between the path and the goal. `smoother_server` is
-configured and the stock tree never calls it, which reads like the lever; it
-was tried, against the real node, and it is not — see
-[docs/doorway-pivot.md](../docs/doorway-pivot.md). What would see a corner this
-chassis cannot follow is a planner that knows the turning radius.
+critics that measure distance from the path. The grid Dijkstra that used to
+draw those corners has been replaced: `SmacPlannerHybrid` is given this
+chassis's turning radius (0.51 m, `max_vel_x / max_vel_theta`) and will not
+draw a corner tighter than one DWB rollout can follow. Reproduced in
+`hybrid_astar.py` on a 55 degree metre-wide bend before it replaced NavFn;
+see [docs/doorway-pivot.md](../docs/doorway-pivot.md).
 
 ## "lost -- Nav2 gave up without saying why (code 102)", on the long routes
 
@@ -1114,12 +1112,13 @@ one name make `ros2 lifecycle` silently answer for whichever it found first.
   body was in contact at all 24 headings tried, and `ComputePathToPose` returned
   error 208 with zero poses. `drive_to` answers that with "there is no route", which
   sends somebody to look at the map when what is needed is 20 cm of reverse.
-- The route being 3.0 times the direct distance is still the planner's, and the
-  note above under *Where it got to* still stands: a grid Dijkstra has no curvature
-  in it. Calling the `smoother_server` that is configured but never invoked was
-  the obvious next thing to try, and it turned out not to be the fix — see
-  [docs/doorway-pivot.md](../docs/doorway-pivot.md), which measured that directly
-  against the real node rather than assuming it.
+- The route being 3.0 times the direct distance is still the planner's, even
+  though the corners it draws are no longer tighter than the chassis. Hybrid-A*
+  will go the long way round when the short way is a cut it cannot take, and
+  that is the right trade: a followable detour against a 55-second pivot. The
+  smoother that is configured but never invoked was the obvious next thing to
+  try on the old grid paths, and it turned out not to be the fix — see
+  [docs/doorway-pivot.md](../docs/doorway-pivot.md).
 
 ## What is deliberately not here
 

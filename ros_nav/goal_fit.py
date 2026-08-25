@@ -7,10 +7,11 @@ the selftest that runs on a workstation with no ROS at all. The same reason
 `drive_mixer.py` is a module -- a copy of a *table* drifts visibly, a copy of a
 geometry test drifts invisibly.
 
-**The fault this exists to stop.** Nav2's planner is NavFn, which searches a cost
-grid as though the rover were a point, and its controller is DWB, which checks
-the real rectangle. They disagree about exactly one thing, and that thing is
-whether a spot five centimetres from a wall is somewhere the rover can go.
+**The fault this exists to stop.** Nav2's global planner used to be NavFn, which
+searches a cost grid as though the rover were a point, and its controller is DWB,
+which checks the real rectangle. They disagree about exactly one thing, and that
+thing is whether a spot five centimetres from a wall is somewhere the rover can
+go.
 Recorded on the rover: a goal was set at (4.34, -0.98), a cell whose cost was 216
 -- traversable for a point, and with the body laid over it at every one of
 twenty-four headings the footprint always overlapped the inscribed ring and at

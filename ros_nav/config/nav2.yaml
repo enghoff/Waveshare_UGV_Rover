@@ -537,15 +537,64 @@ planner_server:
     expected_planner_frequency: 1.0
     planner_plugins: ["GridBased"]
     GridBased:
-      # NavFn rather than Smac. Smac's hybrid-A* respects a turning radius, which
-      # is what a car-like robot needs and this one does not have: a skid-steer
-      # chassis turns on the spot, so the extra state dimension buys nothing and
-      # costs a great deal of search. NavFn's grid Dijkstra plus a smoother is
-      # the right planner for a differential drive on a 5 cm map.
-      plugin: "nav2_navfn_planner::NavfnPlanner"
+      # **SmacPlannerHybrid, and the comment that used to live here was the
+      # wrong half of a true fact.** This chassis *can* turn on the spot, so
+      # a minimum turning radius is not a mechanical limit the way it is for
+      # a car. It *is* a limit on what DWB can follow while driving: the only
+      # forward sample is max_vel_x, the fastest turn is max_vel_theta, and
+      # the tightest arc of those two is 0.40 / 0.78 = 0.51 m. NavFn's grid
+      # search has no such number, so the path it traces around a metre-wide
+      # doorway bends more in one rollout than that arc can, every forward
+      # option leaves the line, and the rover pivots. Recorded: 44 to 67 deg
+      # in the first 1.2 m of plan against 36 deg in 0.32 m of rollout; a
+      # legal forward candidate lost to a pivot on all 617 ticks of one
+      # drive, by a median 1.21 points. See docs/doorway-pivot.md.
+      #
+      # SimpleSmoother cannot see this. Called on the four sharpest recorded
+      # corners it returned the input unchanged, because tightness is not
+      # jaggedness. Hybrid-A* never draws a corner past the radius below.
+      # Reproduced in hybrid_astar.py on a 55 deg metre-wide bend before this
+      # replaced NavFn: the grid path's tightest 0.32 m window was 45 deg,
+      # the Hybrid-A* path's was 35.8 -- the rollout envelope itself.
+      #
+      # Dubins, not Reeds-Shepp: the controller has no reverse sample, because
+      # the lidar looks forwards. A path that asked for a reverse leg would be
+      # one DWB could not follow for a different reason. The extra state is
+      # real CPU -- 32 heading bins rather than the stock 72, a 10 m Dubins
+      # table rather than 20, and a 2 s cap, all because this is four A53
+      # cores already running slam_toolbox. `GridBased` keeps the name the
+      # behaviour tree already asks for.
+      plugin: "nav2_smac_planner::SmacPlannerHybrid"
       tolerance: 0.25
-      use_astar: true
+      downsample_costmap: false
+      downsampling_factor: 1
       allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      terminal_checking_interval: 5000
+      max_planning_time: 2.0
+      motion_model_for_search: "DUBIN"
+      angle_quantization_bins: 32
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 3.0
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: false
+      minimum_turning_radius: 0.51
+      reverse_penalty: 2.1
+      change_penalty: 0.0
+      non_straight_penalty: 1.20
+      cost_penalty: 2.0
+      retrospective_penalty: 0.025
+      lookup_table_size: 10.0
+      cache_obstacle_heuristic: true
+      smooth_path: true
+      debug_visualizations: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
 
 smoother_server:
   ros__parameters:

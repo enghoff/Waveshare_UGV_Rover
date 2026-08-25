@@ -186,7 +186,7 @@ The measurements, hardware facts and failure modes live in [`docs/`](docs).
 | [omni-architecture.md](docs/omni-architecture.md) | a clean-sheet design around one omni model: always-on sessions, barge-in, the safety supervisor |
 | [omni-build.md](docs/omni-build.md) | the costed version of that design: what survives, what to write, and what to do first |
 | [scripting.md](docs/scripting.md) | running a program on the rover instead of calling one more tool: what the MVP does, what a script costs to start, and why a saved behaviour must not become a tool |
-| [doorway-pivot.md](docs/doorway-pivot.md) | Nav2 locked up pivoting in a doorway: two fixes that shipped on bad evidence, and the corner the planner still draws too tight |
+| [doorway-pivot.md](docs/doorway-pivot.md) | Nav2 locked up pivoting in a doorway: two fixes that shipped on bad evidence, and SmacPlannerHybrid which is what actually sees a corner |
 
 [deploy.md](docs/deploy.md), [hosts.md](docs/hosts.md) and
 [bpi_dual_wifi_redundancy.md](docs/bpi_dual_wifi_redundancy.md) are local-setup

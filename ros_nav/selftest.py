@@ -761,6 +761,20 @@ def test_configs_agree():
     # the one that ends the goal.
     check("the arrival circle clears the chassis's 32 cm minimum move",
           settings.count("xy_goal_tolerance: 0.22") == 2, True)
+    # The planner has to know the turning radius DWB can follow while driving.
+    # NavFn does not, and that is the doorway lock-up: a 45 deg kink in one
+    # rollout, every forward sample leaves the line, the rover pivots. The
+    # plugin name GridBased is unchanged so the behaviour tree does not have
+    # to move; the class behind it does.
+    check("the planner is Hybrid-A*, which is the one that knows a turning radius",
+          "nav2_smac_planner::SmacPlannerHybrid" in settings, True)
+    check("NavFn is not the configured planner",
+          "nav2_navfn_planner::NavfnPlanner" in settings, False)
+    check("the turning radius is DWB's forward envelope (max_vel_x / max_vel_theta)",
+          "minimum_turning_radius: 0.51" in settings, True)
+    check("...and Hybrid-A* may enter unknown, because this rover maps as it drives",
+          "allow_unknown: true" in settings, True)
+
     # The lidar looks forwards, so a reverse leg is driven blind. DWB is left
     # with no reverse sample at all; backing out of a corner is the behaviour
     # server's `backup`, which the behaviour tree bounds to 30 cm.
@@ -1248,8 +1262,54 @@ def test_progress_is_not_only_translation():
               angle > 2 * drift)
         # And well below any real turn, or a legitimate pivot would fail to
         # register. The slowest pivot this chassis holds is about 9 deg/s.
-        check("while staying far inside the slowest real pivot",
-              angle < math.radians(9.0 * allowance) / 4.0)
+    check("while staying far inside the slowest real pivot",
+          angle < math.radians(9.0 * allowance) / 4.0)
+
+
+def test_hybrid_astar_respects_the_dwb_envelope():
+    """The doorway corner, on a map that does not need a recording.
+
+    NavFn's grid search has no turning radius, so the path it traces through
+    a metre-wide 55 deg bend kinks more in 0.32 m than DWB can follow at
+    speed. Hybrid-A* is given that radius (max_vel_x / max_vel_theta) and has
+    to stay inside it. This is the reproduction docs/doorway-pivot.md asked
+    for before SmacPlanner replaced NavFn: the same costmap, both searches,
+    the path geometry -- not a closed loop started from a NavFn deadlock.
+    """
+    section("Hybrid-A* will not draw a corner DWB cannot follow")
+    sys.path.insert(0, HERE)
+    try:
+        import hybrid_astar as smac
+        import corridor_sim as dwb
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import hybrid_astar: %s" % exc)
+        return
+
+    radius = dwb.MAX_VEL_X / dwb.MAX_VEL_THETA
+    check("the radius is DWB's only forward sample over its fastest turn",
+          smac.MIN_TURNING_RADIUS, radius, tolerance=1e-9)
+    check("...and is 0.51 m with the numbers in nav2.yaml",
+          radius, 0.51, tolerance=0.005)
+
+    grid, start, goal = smac.bent_passage()
+    navfn = smac.grid_astar(grid, (start[0], start[1]), (goal[0], goal[1]))
+    hybrid = smac.hybrid_astar(grid, start, goal)
+    check("the grid search still finds a route through the doorway",
+          navfn is not None)
+    check("Hybrid-A* finds one too", hybrid is not None)
+    if navfn is None or hybrid is None:
+        return
+    hybrid = smac.densify(hybrid)
+    ninfo = smac.describe_path(navfn, "navfn")
+    hinfo = smac.describe_path(hybrid, "hybrid")
+    check("NavFn's doorway corner is tighter than one DWB rollout (%.1f deg > %.1f)"
+          % (ninfo["tightest_deg"], math.degrees(smac.ROLLOUT_RAD)),
+          ninfo["followable"], False)
+    check("Hybrid-A* stays inside that envelope (%.1f deg)"
+          % hinfo["tightest_deg"],
+          hinfo["followable"], True)
+    check("...and does not wander off: the route is within 2x the grid one",
+          hinfo["length_m"] < 2.0 * ninfo["length_m"], True)
 
 
 def main():
@@ -1274,6 +1334,7 @@ def main():
     test_goal_fits_before_it_is_sent()
     test_a_route_is_budgeted_on_the_route()
     test_progress_is_not_only_translation()
+    test_hybrid_astar_respects_the_dwb_envelope()
     print("\n%d passed, %d failed" % (PASSED, FAILED))
     return 1 if FAILED else 0
 
