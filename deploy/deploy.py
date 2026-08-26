@@ -245,7 +245,19 @@ def stage_component(host_cfg: dict[str, Any], component: dict[str, Any],
 
         # Extract to a temporary directory on the target. rsync then gives us a
         # true mirror without requiring rsync on the Windows workstation.
-        rsync_flags = ["rsync", "-a"]
+        #
+        # --checksum is not optional here, and it cost a deploy to learn why.
+        # make_archive() normalises every mtime to the epoch so that the same
+        # commit always produces the same bytes, which means every file on the
+        # target is dated 1970. rsync's default quick check skips a file whose
+        # size and mtime both match -- and with the mtime pinned, that reduces
+        # to size alone. On 2026-08-26 a one-character fix to restart.sh
+        # ($5 -> $4, same length) was therefore never copied, while the deploy
+        # reported success and recorded the new commit as installed. The state
+        # file then claimed bytes the rover did not have, which is the one
+        # thing this program exists to prevent. Compare contents instead; these
+        # trees are a few megabytes and the read costs nothing worth measuring.
+        rsync_flags = ["rsync", "-a", "--checksum"]
         if prune:
             rsync_flags.append("--delete")
         for item in preserve:
