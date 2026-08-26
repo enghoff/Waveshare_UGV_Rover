@@ -136,6 +136,8 @@ const link = {askMs: 0, askFails: false};
 /** Every ask the page put on the wire, so that a rate nobody chose can be traced
  *  to the page having sent it rather than to the rover having invented it. */
 const asked = [];
+/** Every transcript line the console sent down, for the same reason. */
+const heard = [];
 
 /** One request, on Node's own HTTP rather than fetch.
  *
@@ -226,6 +228,9 @@ class Stream {
           const data = /^data: (.*)$/m.exec(block);
           if (!name || !data) continue;
           if (name[1] === "state") lastState = JSON.parse(data[1]);
+          // Kept so that a rate nobody asked for can be laid at the door of
+          // whatever actually asked for it.
+          if (name[1] === "log") heard.push(...JSON.parse(data[1]));
           if (this.handlers[name[1]]) this.handlers[name[1]]({data: data[1]});
         }
       });
@@ -448,6 +453,15 @@ main().then(() => {
     // all has to be distinguishable from a box showing the wrong rung.
     const box = document.getElementById("cameraRate");
     process.stdout.write(`\n  what the page put on the wire: ${asked.join("  ")}\n`);
+    const rates = heard.filter((line) => JSON.stringify(line).includes("camera"));
+    if (rates.length) {
+      process.stdout.write(`  what the console said about the camera:
+`);
+      for (const line of rates.slice(-8)) {
+        process.stdout.write(`    ${JSON.stringify(line)}
+`);
+      }
+    }
     if (box.refused.length) {
       process.stdout.write(`  values the box would not take: ${box.refused.join("  ")}\n`);
     }
