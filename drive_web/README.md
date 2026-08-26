@@ -185,3 +185,19 @@ Without physical hardware, use the mock:
 python voice_chat/mock_rover.py --drive
 python drive_web/drive_web.py --no-idle --bind 127.0.0.1
 ```
+
+The checks above are all of the rover's side of the console. The page has one of
+its own, which needs Node and therefore runs on the desk rather than the rover:
+
+```bash
+node drive_web/test_rate_box.mjs
+```
+
+It starts the mock and a console of its own, lifts the script straight out of
+`drive_web.html`, and runs it against a document that is just enough of a browser
+to hold the camera's rate drop-down honestly. What it is really testing is the
+gap between a control being moved and the rover's answer coming back, so it runs
+every case twice: once on a link that answers instantly, and once on one that
+takes over a second — which is this rover's link on a bad evening, scaled down to
+something a test can wait for. A page that only survives the first is a page that
+looks broken to anybody actually driving.
