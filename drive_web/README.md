@@ -95,17 +95,6 @@ grid and is annotated with rover pose/heading, track and camera direction. Map
 clicks become navigation requests in map coordinates rather than offsets measured
 later after the rover may already have moved.
 
-Clicking somewhere else while the rover is driving redirects it without stopping
-it. The console sends a `retarget` control call on the connection that carries
-STOP, and the daemon passes it to the bridge, which hands Nav2 a replacement
-`NavigateToPose` goal instead of cancelling the one in flight. Nav2 treats that
-as a preemption: it swaps the target on the behaviour tree's blackboard and never
-halts the tree, so the controller keeps driving the route it already has until
-the planner produces the new one, and the wheels do not stop. A redirect the
-rover will not take falls back to the older behaviour -- stop, then send the
-click once the wheels are free -- and a click that arrives while a redirect is
-still unanswered replaces the waiting one rather than queueing behind it.
-
 The network panel shows both rover radios and which one currently owns the stable
 service address. A join can be staged on the spare radio and handed over only
 when that path is usable, so the console need not disconnect merely because the

@@ -191,11 +191,6 @@ def test_schemas():
                # it. See LOCAL_ONLY in rover_daemon.py, and the script tool test
                # below for the gate.
                "script_status", "list_api",
-               # Changing where a drive in progress is going. A control call for
-               # `drive_to`'s reason twice over: it takes map coordinates, which
-               # nothing a model can see supplies, and it is only meaningful to
-               # somebody watching the rover move with the map in front of them.
-               "retarget",
                # And the network, which is a control call for a reason of its own:
                # a model that moved the rover onto another access point would be
                # cutting the wire its own conversation arrives on, and no wording

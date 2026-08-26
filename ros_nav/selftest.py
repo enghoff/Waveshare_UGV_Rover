@@ -966,22 +966,6 @@ def test_goal_fits_before_it_is_sent():
         check("...and turns round rather than reversing the length of a room",
               "REVERSE_LIMIT_M" in source and "reverse_by_turning" in source,
               True)
-        # A new target must not stop the wheels. Nav2 preempts NavigateToPose
-        # without halting the tree, so the replacement goal has to be *sent*
-        # rather than the old one cancelled -- and it has to be sent from the
-        # thread that owns the goal handle, not from the connection that asked.
-        check("a new target is staged rather than sent from its own connection",
-              "self.pending_retarget = {" in source
-              and "def retarget(self, where, yaw_deg)" in source, True)
-        check("...and the running move picks it up without cancelling",
-              "cancel" not in source.split("def retarget(")[1].split("def goto(")[0],
-              True)
-        check("...and a stop throws away a handover that has not happened yet",
-              "self.pending_retarget = None" in
-              source.split("def halt(")[1].split("def clear_estop(")[0], True)
-        check("...and the goal is placed by the same rules as a fresh one",
-              "self.goal_for(where, yaw_deg)" in
-              source.split("def retarget(")[1].split("def goto(")[0], True)
 
 
 # --- the navigation bridge ----------------------------------------------------

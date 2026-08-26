@@ -31,16 +31,6 @@ The protocol. One request per line, and every reply carries a `kind`:
     <- {"kind": "progress", "phase": "driving", "travelled_m": 0.7, ...}
     <- {"kind": "outcome", "reason": "arrived", "travelled_m": 1.0, ...}
 
-    -> {"op": "retarget", "x_m": 2.0, "y_m": -1.0}
-    <- {"kind": "reply", "ok": true, "reason": "handed over"}
-
-`retarget` is the one write that reaches into a running move, and it is the
-reason the rover no longer pauses when somebody changes their mind. It hands
-Nav2 a replacement `NavigateToPose` goal without cancelling the one in flight,
-which Nav2 takes as a preemption: it swaps the target on the behaviour tree's
-blackboard and never halts the tree, so the controller keeps driving the route
-it already has until the planner produces the new one. See `NavBridge.retarget`.
-
 A move is one request that can last a minute, and it narrates itself while it
 runs. That is not decoration: the drive console polls the daemon three times a
 second while somebody watches a move, and without the running commentary the only
@@ -309,13 +299,7 @@ class NavBridge(Node):
         self.estop = False
         self.remaining_m = None
         self.active_goal = None
-        self.active_kind = None
         self.cancelled = False
-        # A target that arrived while a move was already running. Held here
-        # rather than sent from the connection that brought it, because every
-        # call on the action client belongs to the thread running the move --
-        # `run_goal` picks this up on its next pass. See `retarget`.
-        self.pending_retarget = None
 
         self.create_timer(0.5, self.sample_trail, callback_group=self.group)
         self.get_logger().info("nav bridge ready; serving %s:%d"
@@ -614,10 +598,6 @@ class NavBridge(Node):
         with self._lock:
             goal = self.active_goal
             self.cancelled = True
-            # A stop beats a handover that has not happened yet. Without this a
-            # target clicked a moment before the stop button would be picked up
-            # by the move as it wound down and the rover would set off again.
-            self.pending_retarget = None
             if latch:
                 self.estop = True
         stop = Twist()
@@ -747,46 +727,13 @@ class NavBridge(Node):
 
         with self._lock:
             self.active_goal = handle
-            self.active_kind = kind
             self.driving = True
         try:
             result_future = handle.get_result_async()
             began = time.monotonic()
             deadline = began + limit_s
             said_at = 0.0
-            while True:
-                # **A new target takes over without the wheels stopping.**
-                # `NavigateToPose` preempts: `NavigateToPoseNavigator::onPreempt`
-                # accepts the pending goal and `initializeGoalPose` only writes it
-                # to the blackboard, so the tree is never halted and `FollowPath`
-                # keeps driving the route it has until the planner answers with
-                # the new one. Nav2 aborts the goal it replaced, which is why this
-                # is checked before the result: the abort and the handover are the
-                # same event, and reading the result first would report a failure.
-                waiting = None
-                with self._lock:
-                    if self.pending_retarget is not None:
-                        waiting, self.pending_retarget = self.pending_retarget, None
-                if waiting is not None:
-                    send = client.send_goal_async(waiting["goal"],
-                                                  feedback_callback=on_feedback)
-                    if self.wait(send, 10.0) and send.result() is not None                             and send.result().accepted:
-                        handle = send.result()
-                        result_future = handle.get_result_async()
-                        with self._lock:
-                            self.active_goal = handle
-                        # The new target gets its own clock. Keeping the old one
-                        # would have a handover late in a long move inherit a
-                        # deadline that has nearly run out.
-                        began = time.monotonic()
-                        deadline = began + waiting["limit"]
-                        say(motion, "a new target took over")
-                    else:
-                        say(motion, "the new target was refused, so the rover is "
-                                    "still going to the old one")
-                    continue
-                if result_future.done():
-                    break
+            while not result_future.done():
                 now = time.monotonic()
                 if budget is not None:
                     # Re-asked every pass rather than once at the start, because
@@ -816,12 +763,8 @@ class NavBridge(Node):
         finally:
             with self._lock:
                 self.active_goal = None
-                self.active_kind = None
                 self.driving = False
                 self.remaining_m = None
-                # Anything staged but never picked up dies with the move that
-                # would have driven it, rather than surprising the next one.
-                self.pending_retarget = None
         return outcome
 
     def finish(self, result_future, started, feedback):
@@ -1054,83 +997,6 @@ class NavBridge(Node):
                 "stand in, so the goal was moved %d cm to the nearest one it "
                 "fits" % round(placed["moved_m"] * 100))
 
-    def goal_for(self, where, yaw_deg):
-        """One `NavigateToPose` goal, fitted to the map. Shared by `goto` and
-        `retarget` so a target that arrives mid-drive is placed by the same
-        rules as one that starts a drive.
-
-        Returns `(goal, note, straight_line_metres)`, or `(None, (reason,
-        detail), 0.0)` when there is nowhere to send the rover.
-        """
-        start = self.pose()
-        if start is None:
-            return None, ("lost", "nothing is publishing the rover's position, "
-                                  "so there is no frame to drive in"), 0.0
-        gx, gy = where
-        if yaw_deg is None:
-            yaw = math.atan2(gy - start[1], gx - start[0])
-        else:
-            yaw = math.radians(yaw_deg)
-        placed, note = self.fit_goal(gx, gy, yaw)
-        if placed is None:
-            return None, ("blocked", note), 0.0
-        gx, gy, yaw = placed
-        goal = NavigateToPose.Goal()
-        goal.pose = PoseStamped()
-        goal.pose.header.frame_id = self.args.map_frame
-        goal.pose.header.stamp = self.get_clock().now().to_msg()
-        goal.pose.pose.position.x = float(gx)
-        goal.pose.pose.position.y = float(gy)
-        goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
-        goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
-        return goal, note, math.hypot(gx - start[0], gy - start[1])
-
-    def retarget(self, where, yaw_deg):
-        """Send the rover somewhere else without stopping it first.
-
-        **Why this is not just another move.** A second move is refused, and has
-        to be: the connection carrying the first one cannot be overtaken on it,
-        and two callers driving at once is two callers arguing through the
-        wheels. So a console with a new destination used to stop the rover, wait
-        for the wheels to come free, and then start again -- which is a visible
-        pause every time somebody changes their mind.
-
-        Nav2 does not need that. `NavigateToPose` preempts: a second goal is
-        taken as a replacement for the first, `initializeGoalPose` writes it to
-        the behaviour tree's blackboard and nothing halts the tree, so
-        `FollowPath` carries on driving the route it already has until the
-        planner answers with the new one. The wheels never stop.
-
-        The goal is only *staged* here. Every call on the action client belongs
-        to the thread running the move -- `run_goal` picks it up on its next
-        pass, within a twentieth of a second -- because sending it from this
-        connection would race that thread for the goal handle.
-        """
-        with self._lock:
-            if self.estop:
-                return {"ok": False, "reason": "blocked",
-                        "detail": "the stop is latched; clear it first"}
-            if not self.driving or self.active_kind != "goto":
-                return {"ok": False, "reason": "idle",
-                        "detail": "nothing is driving to a place, so there is "
-                                  "nothing to redirect"}
-        goal, note, straight = self.goal_for(where, yaw_deg)
-        if goal is None:
-            return {"ok": False, "reason": note[0], "detail": note[1]}
-        with self._lock:
-            # Still driving? The move may have ended while the goal was being
-            # fitted, and staging it then would leave it for the *next* move.
-            if not self.driving or self.active_kind != "goto":
-                return {"ok": False, "reason": "idle",
-                        "detail": "the move ended while the new target was "
-                                  "being placed"}
-            replaced = self.pending_retarget is not None
-            self.pending_retarget = {"goal": goal,
-                                     "limit": allowance_for(straight)}
-        return {"ok": True, "reason": "handed over", "replaced": replaced,
-                "detail": note or "the rover keeps driving until the new route "
-                                  "is ready"}
-
     def goto(self, where, yaw_deg, say):
         """Somewhere on the map, with a planner and a costmap between.
 
@@ -1143,10 +1009,31 @@ class NavBridge(Node):
         the old planner left the rover doing and what makes a series of goals read
         as a journey rather than a set of arrivals in random directions.
         """
-        goal, note, straight = self.goal_for(where, yaw_deg)
-        if goal is None:
-            return {"reason": note[0], "travelled_m": 0.0, "turned_deg": 0.0,
-                    "detail": note[1]}
+        start = self.pose()
+        if start is None:
+            return {"reason": "lost", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": "nothing is publishing the rover's position, so "
+                              "there is no frame to drive in"}
+        gx, gy = where
+        if yaw_deg is None:
+            yaw = math.atan2(gy - start[1], gx - start[0])
+        else:
+            yaw = math.radians(yaw_deg)
+
+        placed, note = self.fit_goal(gx, gy, yaw)
+        if placed is None:
+            return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": note}
+        gx, gy, yaw = placed
+
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = self.args.map_frame
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = float(gx)
+        goal.pose.pose.position.y = float(gy)
+        goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
+        goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
 
         # Generous, and a backstop rather than a schedule: Nav2 may legitimately
         # spend a while backing out of a corner and trying again, and a limit tight
@@ -1155,7 +1042,9 @@ class NavBridge(Node):
         # there is to go on before the planner has answered; `budget` below
         # replaces it with the route as soon as there is one. See
         # ROUTE_SAMPLE_M for the 3 m goal that used to time out on 8.8 m of route.
-        limit = allowance_for(straight)
+        straight = math.hypot(gx - start[0], gy - start[1])
+        limit = max(TIME_ALLOWANCE_MIN_ROUTE_S,
+                    TIME_ALLOWANCE_SLACK * straight / DEFAULT_SPEED_MS)
         # The longest route seen while this move has been running, kept rather
         # than recomputed from the current plan alone: the plan shortens as the
         # rover eats into it, and an allowance that shortened with it would
@@ -1258,13 +1147,6 @@ class Handler(socketserver.StreamRequestHandler):
             result = node.clear_map()
             self.write({"kind": "reply", "ok": bool(result.get("cleared")),
                         **result})
-        elif op == "retarget":
-            # Not a move, so not behind the move mutex: it is answered on the
-            # connection that brought it while the move it redirects carries on
-            # driving. Same shape as `stop` for the same reason.
-            result = node.retarget((float(request["x_m"]), float(request["y_m"])),
-                                   request.get("yaw_deg"))
-            self.write({"kind": "reply", **result})
         elif op in ("drive", "turn", "goto"):
             self.move(node, op, request)
         else:
@@ -1317,16 +1199,6 @@ def parse_args(argv):
     p.add_argument("--odom-frame", default="odom")
     p.add_argument("--base-frame", default="base_link")
     return p.parse_args(strip_ros_args(argv))
-
-
-def allowance_for(straight_m):
-    """How long a goal that far away in a straight line is allowed to take.
-
-    A backstop rather than a schedule; `budget` inside `goto` replaces it with
-    the real route as soon as the planner has produced one.
-    """
-    return max(TIME_ALLOWANCE_MIN_ROUTE_S,
-               TIME_ALLOWANCE_SLACK * straight_m / DEFAULT_SPEED_MS)
 
 
 def strip_ros_args(argv):

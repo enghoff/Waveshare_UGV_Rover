@@ -107,10 +107,6 @@ class Session(SessionShow):
         self.can_drive = False
         self.busy_since: float | None = None
         self.busy_name = ""
-        # A `retarget` waiting for its answer. One at a time: the second click
-        # replaces the first click's target rather than racing it through the
-        # stop connection.
-        self.retarget_outstanding = False
         # A click on the map that is waiting for the move it interrupted to let go
         # of the wheels: the `drive_to` arguments, and when to give up on them. The
         # place is held in map coordinates rather than as an offset, so waiting does
@@ -548,7 +544,6 @@ class Session(SessionShow):
         self.tools = []
         self.can_drive = False
         self.busy_since = None
-        self.retarget_outstanding = False
         # The move connection has just been thrown away, so the reply that would
         # have handed the wheels over is never coming. Said out loud rather than
         # left to time out, because a reconnect is already a confusing minute.
@@ -721,34 +716,7 @@ class Session(SessionShow):
         if self.busy_since is None:
             self.move("drive_to", arguments)
             return
-        if self.busy_name == "drive_to":
-            # **A drive can be redirected without being stopped.** Nav2 takes a
-            # second `NavigateToPose` goal as a replacement for the first: the
-            # target on the behaviour tree's blackboard is swapped and the tree
-            # is never halted, so the rover keeps driving the route it has until
-            # the planner produces the new one. The wheels do not stop, which is
-            # the whole difference from the path below.
-            #
-            # The click is still held in `pending_target`, because a retarget can
-            # come back refused -- the move may have ended while it was in flight,
-            # or the new place may be somewhere the costmap will not accept -- and
-            # `handle` falls back to stopping and queueing when it does.
-            again = self.retarget_outstanding
-            self.pending_target = arguments
-            self.pending_until = time.monotonic() + TARGET_HANDOVER_S
-            self.say(f"{self.new_target()}, taking over without stopping\n", "note")
-            if again:
-                # One redirect at a time on the stop connection. The newest
-                # click becomes the waiting one and goes as soon as the
-                # outstanding answer lands, so somebody clicking three times
-                # in a second gets the third place rather than a queue.
-                return
-            self.retarget_outstanding = True
-            self.log_sent("retarget", arguments)
-            self.halt.submit("retarget", arguments)
-            return
-        # Something is running that cannot be redirected, or a redirect is already
-        # in flight. Stop it, and hold this until the wheels are free:
+        # Something is running. Stop it, and hold this until the wheels are free:
         # the running call occupies the move connection and cannot be overtaken on
         # it, and the daemon would refuse a second move as "busy" in any case. The
         # stop goes out on the connection that carries nothing else, and the move it
@@ -1001,51 +969,6 @@ class Session(SessionShow):
                 self.said_lost = True
                 self.say("no rover daemon answered. Is it running, and is the "
                          "address right? This will keep looking.\n", "bad")
-            return
-        if name == "retarget":
-            self.retarget_outstanding = False
-            if self.pending_target is None:
-                # The click was dropped while this was in flight -- somebody
-                # pressed STOP, or the link was remade. Whatever the rover says
-                # now, nothing here is allowed to start it driving again.
-                self.log_reply(reply)
-                return
-            if body.get("ok"):
-                self.log_reply(reply)
-                if reply.arguments != self.pending_target:
-                    # Somebody clicked again while this was in flight, so the
-                    # rover is heading for a place that is already out of
-                    # date. Redirect it once more rather than let it go there.
-                    self.retarget_outstanding = True
-                    self.log_sent("retarget", self.pending_target)
-                    self.halt.submit("retarget", self.pending_target)
-                    return
-                # The move in flight is going there now, and it is the one that
-                # will report the arrival. Nothing is left waiting for the wheels.
-                self.pending_target = None
-                self.pending_until = 0.0
-                return
-            if body.get("reason") == "idle":
-                # The move ended between the click and the redirect landing.
-                # Its outcome is still on its way up the move connection, and
-                # this console is still counting itself busy until it lands --
-                # so sending the click now would be refused by our own move
-                # guard. Leave it waiting: `handle` hands it over the moment
-                # the move answers, which is the path it would have taken
-                # anyway. The clock is restarted so a redirect that raced the
-                # outcome does not shorten the wait for it.
-                self.pending_until = time.monotonic() + TARGET_HANDOVER_S
-                self.log_reply(reply)
-                return
-            # Refused for a real reason -- no route to the place, or no daemon.
-            # Fall back to what the console did before there was a redirect.
-            why = (body.get("detail") or body.get("error")
-                   or "no reason given")
-            self.say(f"the rover would not take the new target on the move "
-                     f"({why}), so the {self.busy_name} in flight is being "
-                     f"stopped first\n", "note")
-            self.log_reply(reply)
-            self.stop(keep_target=True)
             return
         if name == "nav_status":
             self.poll_outstanding = False
