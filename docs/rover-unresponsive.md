@@ -108,40 +108,76 @@ cached copy, and nothing had told it otherwise. Note that `netwatch`'s `sig`
 comes from `/proc/net/wireless` rather than from a live query, so a plausible
 signal reading during an outage is neither evidence for this nor against it.
 
-## A second proven mechanism: the service address on the wrong radio
+## A second proven mechanism: the failover that left the address behind
 
-Observed 2026-08-26, 16:50:31, for 11m33s. This one needs no firmware fault at
-all. The board, both radios and the router were healthy throughout and `.80`
-still went dark, so it is worth knowing before anyone reaches for the switch.
+Observed 2026-08-26, 16:50:31, for 11m33s, and it is the mechanism above with a
+second fault stacked on top of it.
 
-`wifi_dual` gives each radio's own DHCP address a routing rule pinning that
-address's traffic to that radio, exactly so a reply leaves by the radio it
-arrived on. It never adds the same rule for the service address. The main table
-holds one connected route per radio at equal metric and always resolves the tie
-towards `wlan0`, so while `.80` sat on `wlan1` the kernel said:
+`wlan0`'s data path died in the way this document already describes: it went on
+reporting `wpa=COMPLETED` on `TheGreatLord` at −44 to −48 dBm, holding `.139`
+and its default route, while passing **zero bytes and answering no gateway ping
+for eleven and a half minutes**. `wifi_dual` handled that correctly and quickly
+— it had already moved traffic, and the service address with it, onto `wlan1` at
+16:50:25, six seconds before the data path stopped.
+
+The failover still did not move the service. `wifi_dual` gives each radio's own
+DHCP address a routing rule pinning that address's traffic to that radio, exactly
+so a reply leaves by the radio it arrived on. It never adds the same rule for the
+service address. The main table holds one connected route per radio at equal
+metric and resolves the tie towards `wlan0`, so with `.80` sitting on `wlan1` the
+kernel still said:
 
 ```text
 $ ip route get 192.168.1.206 from 192.168.1.80
 192.168.1.206 from 192.168.1.80 dev wlan0
 ```
 
-`wlan0` was associated to nothing at the time. Requests to `.80` arrived
-correctly on `wlan1`; the replies left through a radio with no access point.
-`wlan1`'s own address went on serving SSH normally the whole time, and the
-outage ended by luck rather than by repair, when `wifi_dual` moved traffic back
-to `wlan0` at 17:02.
+Requests to `.80` arrived correctly on `wlan1`; the replies left through the dead
+radio. `wlan1`'s own address went on serving SSH normally throughout, so the
+rover was reachable the whole time by anyone who knew to ask for it that way.
 
-Two reasons nothing complained. The metric-50 default route `wifi_dual` does
-install carries `src 192.168.1.80`, but a default route only applies off-subnet,
-so the rover's own internet access stayed fine. And `netwatch` recorded the
-window as "gateway did not answer" because it watches `wlan0` alone
-(`NETWATCH_IFACE`), which really was offline — while from the rest of the house
-the rover was up and answering on the other radio.
+## Nothing was recovering during those eleven minutes
 
-The fix is one more rule in `route_through()` in
-[`wifi_roam/wifi_dual.py`](../wifi_roam/wifi_dual.py), pinning the service
-address to whichever radio currently holds it. Not yet written, reproduced or
-deployed.
+Worth being explicit about, because the duration invites the opposite reading.
+No part of the system was working on this outage.
+
+- `wifi_dual` had done its job as it understands it at 16:50:25 and had nothing
+  left to do. Its health test is a gateway ping bound to each radio with
+  `SO_BINDTODEVICE`, deliberately per-radio — and `wlan1` was answering, so the
+  deadman never came near firing. **Nothing anywhere tests the path the service
+  address actually uses**, which is the one that was broken.
+- `wlan0` believed it was connected. A radio that claims `COMPLETED` at −45 dBm
+  is not something anything on the rover currently kicks, however long it has
+  been passing nothing.
+- `netwatch` did record the whole window, because it watches `wlan0` alone
+  (`NETWATCH_IFACE`) — but it is a recorder and takes no action.
+
+What ended it came from outside. At 17:02:01 the access point answered the rover
+with `CTRL-EVENT-DISCONNECTED ... reason=6`, telling it that as far as the AP was
+concerned it had not been associated for some time. `wpa_supplicant` re-associated
+immediately, `rtt` was 1.8 ms again four seconds later, and `wifi_dual` moved
+traffic back to `wlan0` at 17:02:09 — which put `.80` back on the radio the main
+table already prefers, and ended the outage as a side effect. Eleven and a half
+minutes is simply how long the access point took to say something.
+
+## What to put in place
+
+Two mechanisms, and the first is much the more important:
+
+1. **Pin the service address to whichever radio holds it**, in `route_through()`
+   in [`wifi_roam/wifi_dual.py`](../wifi_roam/wifi_dual.py) — the same rule the
+   radios' own addresses already get. With it, this outage lasts the six seconds
+   of the failover instead of eleven minutes, and the dead radio stops mattering.
+   Not yet written, reproduced or deployed.
+2. **Kick a radio that claims association and passes nothing.** The evidence is
+   already in hand: `wifi_dual`'s bound ping for `wlan0` failed continuously from
+   16:50:31, and nothing is attached to that beyond declining to route through
+   it. Reassociating the supplicant is the cheap first move; reloading the driver
+   is the heavier one, and `~/diag/reset-wifi.sh` exists for it and has still
+   never been tested against a real outage.
+
+A health check on the service address itself would catch both this class and the
+next one, since it is the only thing that tests what callers actually use.
 
 ## What is not explained
 
@@ -222,14 +258,15 @@ firmware to act.
 real outage, or at all** — it is staged, not proven.
 
 ```bash
-cat secrets/bpi-sudo.key | ssh admin@192.168.1.100 '~/diag/reset-wifi.sh'
+cat secrets/bpi-sudo.key | ssh admin@192.168.1.47 '~/diag/reset-wifi.sh'   # wlan1's lease
 ```
 
 Two things about how it must be run, both of which the script also enforces:
 
-- **over `192.168.1.100`, the other radio.** The reset destroys `wlan0`, and
-  `.80` normally lives on `wlan0`, so driving it over `.80` or `.139` severs the
-  connection carrying the command halfway through — the same trap as an unguarded
+- **over `wlan1`'s own lease, the other radio** (`.47` as of 2026-08-26; check
+  it rather than trusting the number). The reset destroys `wlan0`, and `.80` is
+  usually on `wlan0`, so driving it over `.80` or `.139` severs the connection
+  carrying the command halfway through — the same trap as an unguarded
   `pkill` pattern matching the SSH session that typed it. The script re-execs
   itself detached so that a dropped session cannot leave the radio unloaded.
 - **the sudo password on stdin**, held in a private file only for the seconds the
@@ -266,7 +303,7 @@ rather than a deployed component, so they are one reflash away from gone.
 
 Next time the rover is unresponsive, do not power cycle it. Instead:
 
-1. `ssh admin@192.168.1.100`;
+1. `ssh bpi-m4zero`, or the USB radio's own lease directly;
 2. read `~/diag/blackbox.log`.
 
 `wlan0[gw=none]` alongside `wlan1[gw=4ms]` proves it is one radio's firmware and
@@ -274,9 +311,15 @@ makes the reset script the right fix — and makes the real repair a faster
 failover in `wifi_dual` rather than a reboot. Both radios dead at once means the
 cause is somewhere else entirely and this document covers only half the problem.
 
-Half of that measurement now exists. On 2026-08-26 one radio was dead while the
-other served SSH for eleven minutes, so a silent rover is demonstrably not a
-dead board. What it does not settle is which of the two mechanisms was at work:
-that outage was a plain loss of association on `wlan0`, visible in `wifi_dual`'s
-own log, not the cached-association firmware lockup. The firmware case still
-needs to be caught in the act.
+That measurement now exists, and it came out as this document predicted. During
+the 2026-08-26 outage `wlan0` sat at −45 dBm claiming `COMPLETED` and moved no
+bytes for eleven and a half minutes while `wlan1` served SSH normally throughout.
+A silent rover is not a dead board, and the fault is one radio.
+
+What the same event added is that failing over off the dead radio is not by
+itself enough, because the service address does not follow — see the failover
+section above. The remaining unknown is narrower than it was: whether the dead
+data path is the firmware control channel wedging, as the `-110` timeouts show
+elsewhere, or the access point silently dropping the client, which is what
+`reason=6` at the end of this one suggests. Neither was in evidence at 16:50:31;
+the traffic simply stopped.
