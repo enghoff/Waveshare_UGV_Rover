@@ -85,6 +85,9 @@ MAP_MIN_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_MIN_PIXELS")
 MAP_MAX_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_MAX_PIXELS")
 MAP_PIXELS = prompts._literal(prompts.ROVER_NAV, "MAP_PIXELS")
 CAMERA_FOV_DEG = prompts._literal(prompts.ROVER_NAV, "CAMERA_FOV_DEG")
+MAP_POINT_MAX_AGE_S = prompts._literal(prompts.ROVER_NAV, "MAP_POINT_MAX_AGE_S")
+MAP_POINT_CLEAR_M = prompts._literal(prompts.ROVER_NAV, "MAP_POINT_CLEAR_M")
+MAP_POINT_HINT = prompts._literal(prompts.ROVER_NAV, "MAP_POINT_HINT")
 # The longest single route the mock will accept. This used to be read out of the
 # rover's own navigator so the two could not drift apart; that navigator is gone
 # and Nav2 has no equivalent ceiling, so this is now simply the mock's own limit,
@@ -119,6 +122,18 @@ def _length(path) -> float:
 
 def _wrap(radians: float) -> float:
     return (radians + math.pi) % (2 * math.pi) - math.pi
+
+
+def _fraction(value: Any, what: str) -> float:
+    """A place on the map picture, 0 to 1. Refused outside it, as the rover does."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{what} must be a number")
+    number = float(value)
+    if not 0.0 <= number <= 1.0:
+        raise ValueError(
+            f"{what} is a fraction of the map picture, from 0 at one edge to 1 at "
+            f"the other, and {number:g} is off the picture")
+    return number
 
 # What the invented camera sees. Two faces, because one is the boring case: the
 # tracker's "next" is only meaningful where there is somebody else to move to.
@@ -179,6 +194,11 @@ class Rover:
         # Absent if lidar_slam is not beside this checkout, which is also the
         # state a rover running an older daemon is in, and the console handles it.
         self.report = _move_report()
+        # The map picture last handed to the model, and what it takes to read a
+        # place on it back out. Mirrors the daemon's `_map_shown` field for field,
+        # because `drive_to_map_point` is refused here for the same four reasons it
+        # is refused there and a client cannot tell the two apart.
+        self._map_shown: dict[str, Any] | None = None
 
     # --- what the move is doing, for anything polling nav_status --------------
     # Three lines around each move rather than one wrapper, because a mock's moves
@@ -530,6 +550,87 @@ class Rover:
             return None, "there is no room to stand there"
         return None, "no clear route through what the lidar has seen"
 
+    def drive_to_map_point(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """A place named as a fraction of the last map picture, driven to.
+
+        Refused here for the same four reasons the rover refuses it -- no picture
+        taken, a picture too old to still be in front of the model, a fraction off
+        the edge of it, and a point the rover could not stand on -- because a
+        conversation that gets past this mock and then hits one of those against the
+        rover is a conversation this mock failed to test. The conversion is the
+        rover's own `mapimg.tap_to_point`, so a fraction means the same place here
+        as it does there; what differs is only how the room is decided, which is a
+        formula here and an occupancy grid there.
+        """
+        shown = self._map_shown
+        if shown is None:
+            return {"ok": False,
+                    "error": "you have not looked at the map yet, so there is no "
+                             "picture to point at. Take one with show_map first, "
+                             "then point at a place on it"}
+        age = time.monotonic() - shown["at"]
+        if age > MAP_POINT_MAX_AGE_S:
+            return {"ok": False,
+                    "error": "the map you are pointing at was drawn %.0f seconds "
+                             "ago and is not in front of you any more, so a place "
+                             "on it would be a guess. Take a fresh one with "
+                             "show_map and point at that" % age}
+        try:
+            across = _fraction(arguments.get("across"), "across")
+            down = _fraction(arguments.get("down"), "down")
+        except ValueError as error:
+            return {"ok": False, "error": str(error)}
+
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "lidar_slam"))
+        import mapimg
+
+        pixels = shown["pixels"]
+        x_m, y_m = mapimg.tap_to_point(
+            across * pixels, down * pixels, shown["half_extent_m"], shown["scale"],
+            shown["resolution_m"], rover_up=shown["rover_up"], pose=shown["pose"])
+
+        px, py, heading = shown["pose"]
+        dx, dy = x_m - px, y_m - py
+        cos, sin = math.cos(heading), math.sin(heading)
+        pointed = {"ahead_m": round(dx * cos + dy * sin, 2),
+                   "left_m": round(-dx * sin + dy * cos, 2),
+                   "range_m": round(math.hypot(dx, dy), 2),
+                   "x_m": round(x_m, 2), "y_m": round(y_m, 2)}
+        blocked = self._point_blocked(x_m, y_m)
+        if blocked is not None:
+            return {"ok": False, "error": blocked, "pointed_at": pointed}
+        result = self.drive_to({"x_m": x_m, "y_m": y_m,
+                                **({"speed_ms": arguments["speed_ms"]}
+                                   if arguments.get("speed_ms") is not None
+                                   else {})})
+        return {**result, "pointed_at": pointed}
+
+    def _point_blocked(self, x_m: float, y_m: float) -> str | None:
+        """Why the rover could not stand here, in the map's own vocabulary.
+
+        The same two refusals the rover makes off its occupancy grid, decided from
+        the formula this room is instead: a wall or a table leg is what comes out
+        black, and anything outside the room is what comes out grey. The wording is
+        the rover's, because it is the wording a model has to be able to act on.
+        """
+        near_solid = (
+            min(abs(x_m + ROOM_BACK_M), abs(x_m - ROOM_FORWARD_M),
+                abs(y_m + ROOM_RIGHT_M), abs(y_m - ROOM_LEFT_M)) < MAP_POINT_CLEAR_M
+            or any(math.hypot(x_m - lx, y_m - ly) < LEG_RADIUS_M + MAP_POINT_CLEAR_M
+                   for lx, ly in LEGS))
+        inside = (-ROOM_BACK_M < x_m < ROOM_FORWARD_M
+                  and -ROOM_RIGHT_M < y_m < ROOM_LEFT_M)
+        if near_solid and inside:
+            return ("that point is on or within %.0f cm of something solid -- black "
+                    "on the map -- so the rover cannot stand there. Point at green "
+                    "floor instead" % (MAP_POINT_CLEAR_M * 100))
+        if not inside:
+            return ("that point is grey on the map, which means the rover has never "
+                    "seen it rather than that it is empty, so there is no route to "
+                    "plan there. Point at green floor instead")
+        return None
+
     def turn_in_place(self, arguments: dict[str, Any]) -> dict[str, Any]:
         angle = float(arguments.get("angle_deg", 0.0))
         self._begin("turn_in_place", {"angle_deg": round(angle, 1)}, "turning")
@@ -613,7 +714,18 @@ class Rover:
         body = self.map_png(mapped)
         png = base64.b64decode(body["png_base64"])
         _name, error = self._post(png, "image/png")
-        result = {"ok": True, "caption": body["caption"], **self._described()}
+        # What `drive_to_map_point` needs to turn a place on this picture back into
+        # a place in the room, taken from what was actually drawn rather than what
+        # was asked for -- whole cells at whole pixels do not reach every size, and
+        # a fraction of the wrong width is a point in the wrong place.
+        self._map_shown = {
+            "half_extent_m": body["half_extent_m"], "scale": body["scale"],
+            "rover_up": body["rover_up"], "resolution_m": 0.05,
+            "pixels": body["pixels"],
+            "pose": (self.x, self.y, self.heading), "at": time.monotonic(),
+        }
+        result = {"ok": True, "caption": body["caption"] + MAP_POINT_HINT,
+                  **self._described()}
         if error:
             result["note"] = ("the map could not be sent as a picture, so answer "
                               "from the description alone")

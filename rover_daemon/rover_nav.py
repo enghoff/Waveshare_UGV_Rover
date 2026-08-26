@@ -62,6 +62,50 @@ MAP_MIN_PIXELS = 200
 MAP_MAX_PIXELS = 1200
 MAP_PIXELS = 480           # the default picture size, and what the console asks for
 
+# How long a map picture stays something the model can point at. The picture does
+# not outlive its exchange -- the conversation drops the image the way it drops the
+# one `look` takes -- so past this the model is not pointing at a map, it is
+# recalling one, and "the doorway was up and to the left" recalled is a guess with
+# a fifteen-metre drive on the end of it. Refusing costs a second of redrawing and
+# says exactly what to do instead. Generous rather than tight, because a spoken
+# exchange about a room legitimately runs a minute or two before anybody decides
+# where to go.
+MAP_POINT_MAX_AGE_S = 120.0
+# How much room around the named point has to be free of anything solid before the
+# rover is sent to it. Roughly the chassis's own half-width, so a point aimed at a
+# wall a couple of cells thick is caught here -- with a single cell it is possible
+# to slip between the pixels of a wall and have the refusal come back a minute
+# later from Nav2 instead of immediately and in the map's own vocabulary.
+MAP_POINT_CLEAR_M = 0.15
+# Added to the caption of the model's own map, and not to the renderer's, because
+# the drive console draws the same picture and has a mouse for this. The rule about
+# who states a fact still holds: the tool schema says what the two numbers mean,
+# and this says only that the picture in front of the model is a thing it may point
+# at, which is a fact about this reply.
+MAP_POINT_HINT = (
+    " You can drive to anywhere green on this picture with drive_to_map_point, by "
+    "saying how far across it is from the left and how far down from the top, each "
+    "as a fraction from 0 to 1. The rover is in the middle, at 0.5 and 0.5."
+)
+
+def _fraction(value: Any, what: str) -> float:
+    """A place on the map picture, as a fraction of its width or height.
+
+    Refused outside the picture rather than clamped, which is the opposite of what
+    the rest of this file does with a number out of range. Every other bound here
+    is a limit of the hardware, where the nearest legal value is the honest answer
+    to what was asked for. This one is not a limit at all: a fraction outside nought
+    to one is a model that has read the convention the wrong way round, and clamping
+    would answer a misunderstanding by driving to the edge of the room.
+    """
+    number = _number(value, what)
+    if not 0.0 <= number <= 1.0:
+        raise ValueError(
+            f"{what} is a fraction of the map picture, from 0 at one edge to 1 at "
+            f"the other, and {number:g} is off the picture")
+    return number
+
+
 def _map_cells(half_extent_m: float, resolution_m: float) -> int:
     """How many cells across the crop will be. Mirrors `mapimg.render`, which centres
     an odd number of cells on the rover's own cell -- rounding rather than truncating,
@@ -208,17 +252,179 @@ class RoverNav:
             return {"ok": False, "error": "there is nowhere to send a picture"}
         half, scale = _model_map_view(arguments, self.nav.slam.config.resolution_m)
         png, caption = self.nav.map_png(half, scale, camera=self._camera_cone())
+        self._remember_map(half, scale, png)
         sent = self.vision.post(png)
         # The caption is the answer whether or not the picture arrives. The frame
         # server stashes bytes without decoding them and the upload declares no
         # media type, so a PNG should be as acceptable as the JPEGs `look` sends --
         # but that has not been confirmed at the model itself, and a tool that says
         # nothing when the image is refused would leave the model inventing a map.
-        result = {"ok": True, "caption": caption, **self.nav.describe()}
+        result = {"ok": True, "caption": caption + MAP_POINT_HINT,
+                  **self.nav.describe()}
         if not sent.get("ok"):
             result["note"] = ("the map could not be sent as a picture, so answer "
                               "from the description alone: " + str(sent.get("error")))
         return result
+
+    def _remember_map(self, half_extent_m: float, scale: int, png: bytes) -> None:
+        """Keep what was just drawn, so a point on the picture can be read back.
+
+        The five numbers are what turns a place on the image into a place in the
+        room: how much floor is in frame, how many pixels a cell came out as, how
+        big the picture is, which way the page is turned, and -- the one that is
+        not a property of the picture at all -- the pose the rover was at when it
+        was drawn. That last one is why this is remembered rather than worked out
+        later. A point on a map is a fixed place in the room, and it stays the
+        place that was pointed at however long the model spends talking about it
+        before it asks to go there; recovering it from the pose *now* would move
+        the destination by however far the rover has driven in the meantime.
+
+        The resolution is read after the render and not before, because the render
+        is what fetched the map that carries it, and `tap_to_point` has to be the
+        exact inverse of the sampling that drew this picture rather than of the one
+        before it.
+
+        The picture size comes out of the PNG header, which is where `map_png`'s
+        own reply reads it from too: whole cells at whole pixels cannot reach every
+        size exactly, so the size asked for is not reliably the size drawn, and a
+        fraction of the wrong width is a point in the wrong place.
+        """
+        self._map_shown = {
+            "half_extent_m": half_extent_m,
+            "scale": scale,
+            # `show_map` never turns the page; only a console asks for that. Kept
+            # as a field rather than assumed, so that the conversion below stays
+            # correct if the model's map ever gains the option.
+            "rover_up": False,
+            "resolution_m": self.nav.slam.config.resolution_m,
+            "pixels": int.from_bytes(png[16:20], "big"),
+            # Read back off the navigator rather than returned by the render. A
+            # console fetching its own map in the same instant would replace this
+            # object first and leave the pose a fraction of a second late, which is
+            # centimetres on a rover that is driving and nothing at all on one that
+            # is being spoken to -- and both are far inside how accurately anybody
+            # can point at a picture.
+            "pose": self.nav.slam.pose,
+            "at": time.monotonic(),
+        }
+
+    def _map_point(self, shown: dict[str, Any],
+                   across: float, down: float) -> tuple[float, float]:
+        """A fraction of the picture -> a point in the map's own frame.
+
+        Straight through `mapimg.tap_to_point`, which is the function the drive
+        console puts every mouse click through. Sharing it is the point: the model
+        pointing at the middle of a doorway and a person clicking the same pixel
+        have to arrive at the same place in the room, and two copies of this
+        arithmetic would eventually disagree about which way `left` runs.
+        """
+        import mapimg
+
+        pixels = shown["pixels"]
+        return mapimg.tap_to_point(
+            across * pixels, down * pixels, shown["half_extent_m"], shown["scale"],
+            shown["resolution_m"], rover_up=shown["rover_up"], pose=shown["pose"])
+
+    def _map_point_blocked(self, x_m: float, y_m: float) -> str | None:
+        """Why the rover cannot be sent to this point, or None if it can.
+
+        Read off the same occupancy grid the picture was drawn from, so a refusal
+        can be phrased in the colour the model was looking at. That matters more
+        than it sounds: "that point is black on the map" is a sentence the model
+        can act on by pointing somewhere else, where Nav2's own "no valid path" a
+        minute later is not, and nothing connects it back to the picture.
+
+        Two states are refused and a third deliberately is not. Solid is refused
+        because the rover cannot stand there, and never-seen because grey on this
+        map means the lidar has not been there rather than that the floor is clear
+        -- which is exactly the reading a model shown a flat grey area is most
+        likely to get wrong. What is *not* checked here is whether a route exists:
+        floor the rover has seen but that is walled off from where it stands looks
+        the same in the grid, and telling the two apart means flooding the map,
+        which is tens of milliseconds on a room and seconds on a floor. Nav2 owns
+        that question, answers it properly and says so in words, so it keeps it.
+        """
+        import numpy as np
+
+        slam = self.nav.slam
+        with slam.lock:
+            grid = np.asarray(slam.grid())
+            resolution = slam.config.resolution_m
+            cells = slam.config.grid_cells
+            occupied_at = slam.config.occupied_at
+        ix = int(round(x_m / resolution)) + cells // 2
+        iy = int(round(y_m / resolution)) + cells // 2
+        if not (0 <= ix < cells and 0 <= iy < cells):
+            return ("that point is off the edge of the map the rover keeps, which "
+                    "is about %.0f metres across" % (cells * resolution))
+        margin = max(1, int(round(MAP_POINT_CLEAR_M / resolution)))
+        patch = grid[max(0, ix - margin):ix + margin + 1,
+                     max(0, iy - margin):iy + margin + 1]
+        if (patch >= occupied_at).any():
+            return ("that point is on or within %.0f cm of something solid -- black "
+                    "on the map -- so the rover cannot stand there. Point at green "
+                    "floor instead" % (MAP_POINT_CLEAR_M * 100))
+        if grid[ix, iy] == 0:
+            return ("that point is grey on the map, which means the rover has never "
+                    "seen it rather than that it is empty, so there is no route to "
+                    "plan there. Point at green floor instead")
+        return None
+
+    def _tool_drive_to_map_point(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Drive to a place the model has pointed at on the map picture.
+
+        The tool that lets a model name a place on the map at all, and the reason
+        it can is that it names it in the frame it can actually see. `drive_to` has
+        always taken a point in the map's own frame and has always hidden that pair
+        from models, because a model has no way to learn where the rover is in that
+        frame and would have to invent the numbers. A fraction of the picture needs
+        no such knowledge: the model has the image in front of it, the rover is in
+        the middle of it by construction, and the daemon holds the pose the picture
+        was drawn at and does the conversion.
+
+        So the picture is really the argument, and everything below is about making
+        sure the model is pointing at one that exists: taken at all, taken recently
+        enough to still be in front of it, pointed at within its edges, and at
+        somewhere the rover could stand.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": NO_DRIVING}
+        shown = self._map_shown
+        if shown is None:
+            return {"ok": False,
+                    "error": "you have not looked at the map yet, so there is no "
+                             "picture to point at. Take one with show_map first, "
+                             "then point at a place on it"}
+        age = time.monotonic() - shown["at"]
+        if age > MAP_POINT_MAX_AGE_S:
+            return {"ok": False,
+                    "error": "the map you are pointing at was drawn %.0f seconds "
+                             "ago and is not in front of you any more, so a place "
+                             "on it would be a guess. Take a fresh one with "
+                             "show_map and point at that" % age}
+        across = _fraction(arguments.get("across"), "across")
+        down = _fraction(arguments.get("down"), "down")
+        x_m, y_m = self._map_point(shown, across, down)
+        # Where the point sits relative to the rover, said in the terms the other
+        # driving tools use. It is the model's own check on itself: a doorway it
+        # believes is a couple of metres away, coming back as eleven metres behind
+        # it, is a misread picture, and the sentence says so before the wheels turn.
+        px, py, heading = shown["pose"]
+        dx, dy = x_m - px, y_m - py
+        cos, sin = math.cos(heading), math.sin(heading)
+        pointed = {"ahead_m": round(dx * cos + dy * sin, 2),
+                   "left_m": round(-dx * sin + dy * cos, 2),
+                   "range_m": round(math.hypot(dx, dy), 2),
+                   "x_m": round(x_m, 2), "y_m": round(y_m, 2)}
+        blocked = self._map_point_blocked(x_m, y_m)
+        if blocked is not None:
+            return {"ok": False, "error": blocked, "pointed_at": pointed}
+        speed = arguments.get("speed_ms")
+        outcome = self.nav.drive_to(x_m=x_m, y_m=y_m,
+                                    speed_ms=None if speed is None
+                                    else _number(speed, "speed_ms"))
+        return {"ok": outcome.reason in ("arrived", "timed out"), **outcome.asdict(),
+                "pointed_at": pointed, **self._nav_context()}
 
     def _tool_nav_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Every number the driving loop has. A control call, not a model tool.

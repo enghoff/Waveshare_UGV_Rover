@@ -51,7 +51,8 @@ recoveries, and a standard set of topics that any ROS tool can look at.
         v
   rover_daemon --ros-nav               drive, drive_to, turn_in_place,
                                        stop_driving, describe_surroundings,
-                                       show_map, map_png, nav_status, clear_map
+                                       show_map, drive_to_map_point,
+                                       map_png, nav_status, clear_map
 ```
 
 The two loopback ports are the whole interface between the two halves of this

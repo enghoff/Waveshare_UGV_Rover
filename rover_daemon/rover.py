@@ -14,8 +14,8 @@ from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_util import _flag, _level, _number  # noqa: F401
 from rover_wifi import RoverWifi
 from tool_schemas import (
-    LIGHT_MAX, LOOK_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
-    STOP_SCRIPT_TOOL, TOOLS,
+    LIGHT_MAX, LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL,
+    START_SCRIPT_TOOL, STOP_SCRIPT_TOOL, TOOLS,
 )
 
 
@@ -67,6 +67,10 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
         # and they run on whichever thread asked for the move.
         self._tracking_parked = False
         self.nav = None
+        # The map picture the model was last shown, and what it takes to read a
+        # place on it back out as a place in the room. None until it has looked.
+        # See :meth:`_remember_map` in [rover_nav.py](rover_nav.py).
+        self._map_shown: dict[str, Any] | None = None
         self._skip_centre = None
         self._skip_until = 0.0
         # What the loop last saw, for tracking_status and count_faces while it
@@ -138,7 +142,12 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
         if self.nav is not None:
             tools += NAV_TOOLS
             if self.vision is not None:
+                # Both of these need a picture on its way to the model rather
+                # than only a lidar: one takes the map and the other is how a
+                # place on that map is named, so a rover with nowhere to send a
+                # picture would be offering a model a way to point at nothing.
                 tools.append(MAP_TOOL)
+                tools.append(MAP_POINT_TOOL)
         if local and self.scripts is not None:
             tools += self.script_tools()
         return tools

@@ -15,6 +15,7 @@ The hardware paths are not covered and cannot be: they need the rover.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -26,6 +27,12 @@ sys.path.insert(0, HERE)
 SIBLING = os.path.join(os.path.dirname(HERE), "face_tracking")
 if os.path.isdir(SIBLING):
     sys.path.insert(0, SIBLING)
+# The same for the map renderer, which the daemon reaches through
+# `ros_navigator`'s own version of this dance. One check draws a real map and
+# reads the picture back, and without this it fails on the import instead.
+RENDERER = os.path.join(os.path.dirname(HERE), "lidar_slam")
+if os.path.isdir(RENDERER):
+    sys.path.insert(0, RENDERER)
 
 from test_aiming import (
     test_aiming_through_a_missed_frame, test_one_move_puts_a_face_in_the_middle,
@@ -154,7 +161,8 @@ def test_schemas():
     # map, which need a lidar; but a conditional schema still has to have a handler,
     # and the point of this test is that none of them lie.
     every = (rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
-             + rover_daemon.NAV_TOOLS + [rover_daemon.MAP_TOOL]
+             + rover_daemon.NAV_TOOLS
+             + [rover_daemon.MAP_TOOL, rover_daemon.MAP_POINT_TOOL]
              + [rover_daemon.SCRIPT_TOOL, rover_daemon.START_SCRIPT_TOOL,
                 rover_daemon.STOP_SCRIPT_TOOL])
     # The schemas cross a network and go into a prompt, so they have to be JSON.
@@ -823,6 +831,224 @@ def test_drive_to_takes_a_place_on_the_map():
           offered & {"x_m", "y_m"}, set())
     check("...only the offsets it can actually work out",
           offered, {"ahead_m", "left_m", "speed_ms"})
+
+
+def test_a_point_on_the_map_picture_is_the_place_it_looks_like():
+    """A fraction of the map picture means where it appears to on the picture.
+
+    The one thing this tool has to get right, and the one thing nothing else
+    would notice if it got wrong. A model is handed a top-down picture and says
+    where on it to go; the daemon turns that into a point in the map's own frame
+    using the pose the picture was drawn at. Get the axes, the flip or the pose
+    wrong and every part still works -- a picture is drawn, a fraction is
+    accepted, a route is planned, the rover drives -- to somewhere else in the
+    room, and the only symptom is a rover that goes the wrong way.
+
+    So this is read off the picture rather than out of the arithmetic that drew
+    it. Three obstacles go onto a synthetic map at known places, the rover's own
+    renderer draws them, and their blobs are found in the PNG by colour. Their
+    pixel centroids are then handed to the tool as fractions, and what comes back
+    has to be the obstacle that was pointed at. Nothing here works a pixel out
+    from a world coordinate, which is what would reduce it to the renderer
+    agreeing with itself.
+
+    Deliberately at a pose that is neither the origin nor an axis-aligned
+    heading, because both of those hide a swapped axis and a dropped rotation.
+    """
+    import threading
+
+    import mapimg
+    import numpy as np
+
+    import rover_daemon
+
+    resolution, cells = 0.05, 800
+    pose = (0.6, -0.35, math.radians(40.0))
+    obstacles = [(1.6, 0.9), (-0.4, 1.4), (2.2, -1.2)]
+
+    class Synthetic:
+        """The three things `mapimg.render` asks a map for."""
+
+        class config:
+            resolution_m = resolution
+            grid_cells = cells
+            occupied_at = 50
+
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.pose = pose
+            self.trail = ()
+            grid = np.zeros((cells, cells), dtype=np.int8)
+            # Four metres of seen floor around the rover, so that anything left
+            # grey in the picture is grey on purpose.
+            span = int(4.0 / resolution)
+            cx = int(pose[0] / resolution) + cells // 2
+            cy = int(pose[1] / resolution) + cells // 2
+            grid[cx - span:cx + span, cy - span:cy + span] = -100
+            for wx, wy in obstacles:
+                ix = int(round(wx / resolution)) + cells // 2
+                iy = int(round(wy / resolution)) + cells // 2
+                grid[ix - 2:ix + 3, iy - 2:iy + 3] = 100        # 25 cm of solid
+            self._grid = grid
+
+        def grid(self):
+            return self._grid
+
+    asked = []
+
+    class FakeNav:
+        def __init__(self):
+            self.slam = Synthetic()
+
+        def map_png(self, half, scale, rover_up=False, camera=None):
+            return mapimg.render(self.slam, half, scale, self.slam.trail,
+                                 rover_up=rover_up, camera=camera)
+
+        def describe(self):
+            return {"clear_ahead_m": 2.0, "text": "an invented room"}
+
+        class Outcome:
+            reason = "arrived"
+
+            def asdict(self):
+                return {"reason": "arrived", "travelled_m": 1.0, "turned_deg": 0.0}
+
+        def drive_to(self, **kwargs):
+            asked.append(kwargs)
+            return self.Outcome()
+
+    def blobs(mask):
+        """Four-connected runs of at least four True cells, as (row, col) lists."""
+        seen = np.zeros(mask.shape, dtype=bool)
+        found = []
+        for start in zip(*np.nonzero(mask)):
+            if seen[start]:
+                continue
+            stack, blob = [start], []
+            seen[start] = True
+            while stack:
+                row, col = stack.pop()
+                blob.append((row, col))
+                for drow, dcol in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nrow, ncol = row + drow, col + dcol
+                    if (0 <= nrow < mask.shape[0] and 0 <= ncol < mask.shape[1]
+                            and mask[nrow, ncol] and not seen[nrow, ncol]):
+                        seen[nrow, ncol] = True
+                        stack.append((nrow, ncol))
+            if len(blob) >= 4:
+                found.append(blob)
+        return found
+
+    # A vision address nothing answers on: the picture cannot be posted, which
+    # `show_map` reports and carries on from, and the view is recorded either way.
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0",
+                               vision="127.0.0.1:9")
+    # No camera, so no violet cone is washed over the map. The blobs below are
+    # found by exact colour and the cone recolours every solid pixel under it.
+    rover.device = None
+    rover.nav = FakeNav()
+
+    first = rover.call("drive_to_map_point", {"across": 0.5, "down": 0.4})
+    check("pointing at a map that has not been taken is refused",
+          first.get("ok"), False)
+    check("...and says to take one", "show_map" in first.get("error", ""), True)
+
+    shown = rover.call("show_map", {"across_m": 6})
+    check("the map is drawn", shown.get("ok"), True)
+    check("...and its caption says the picture may be pointed at",
+          "drive_to_map_point" in shown.get("caption", ""), True)
+    view = rover._map_shown
+    png, _caption = rover.nav.map_png(view["half_extent_m"], view["scale"])
+    image = mapimg._decode(png)
+    check("the picture is the size the remembered view says it is",
+          image.shape[0], view["pixels"])
+
+    solid = np.all(image == np.array(mapimg.C_OCCUPIED, dtype=np.uint8), axis=2)
+    edge = max(6, view["scale"] * 3)          # the border and the one-metre bar
+    solid[:edge, :] = solid[-edge:, :] = solid[:, :edge] = solid[:, -edge:] = False
+    pointed = []
+    for blob in blobs(solid):
+        row = sum(r for r, _ in blob) / len(blob)
+        col = sum(c for _, c in blob) / len(blob)
+        answer = rover.call("drive_to_map_point",
+                            {"across": col / view["pixels"],
+                             "down": row / view["pixels"]})
+        pointed.append((answer["pointed_at"]["x_m"],
+                        answer["pointed_at"]["y_m"], answer))
+    check("every obstacle drawn is one blob in the picture",
+          len(pointed), len(obstacles))
+    for wx, wy in obstacles:
+        near = min(pointed, key=lambda p: math.hypot(p[0] - wx, p[1] - wy))
+        # A cell and a half: the blob's own centroid is quantised to whole
+        # pixels, and the picture is drawn at four pixels to a five-centimetre
+        # cell. Anything wrong with the axes or the pose is metres out, not this.
+        check(f"the obstacle at {wx:+.1f},{wy:+.1f} is where the picture puts it",
+              math.hypot(near[0] - wx, near[1] - wy) < 0.08, True)
+        check("...and driving onto it is refused", near[2].get("ok"), False)
+        check("...as something solid", "solid" in near[2].get("error", ""), True)
+
+    middle = rover.call("drive_to_map_point",
+                        {"across": 0.5, "down": 0.5})["pointed_at"]
+    check("the middle of the picture is where the rover is",
+          (abs(middle["x_m"] - pose[0]) < 0.08,
+           abs(middle["y_m"] - pose[1]) < 0.08), (True, True))
+    check("...so pointing at it is no distance away", middle["range_m"] < 0.08, True)
+
+    # Somewhere green, a good way out but not against the edge of what has been
+    # seen, so the route is a real one rather than a nudge.
+    free = np.all(image == np.array(mapimg.C_REACHABLE, dtype=np.uint8), axis=2)
+    rows, cols = np.nonzero(free)
+    middle_px = view["pixels"] / 2.0
+    out = np.hypot(rows - middle_px, cols - middle_px)
+    pick = int(np.argmin(np.abs(out - view["pixels"] * 0.3)))
+    answer = rover.call("drive_to_map_point",
+                        {"across": cols[pick] / view["pixels"],
+                         "down": rows[pick] / view["pixels"], "speed_ms": 0.2})
+    check("a green pixel is driven to", answer.get("ok"), True)
+    check("...as a place on the map rather than an offset",
+          sorted(k for k in asked[-1] if k != "speed_ms"), ["x_m", "y_m"])
+    check("...at the point the picture named",
+          (round(asked[-1]["x_m"], 2), round(asked[-1]["y_m"], 2)),
+          (answer["pointed_at"]["x_m"], answer["pointed_at"]["y_m"]))
+    check("...with the speed that was asked for", asked[-1]["speed_ms"], 0.2)
+    check("...and says where it went, in the rover's own terms",
+          sorted(answer["pointed_at"]),
+          ["ahead_m", "left_m", "range_m", "x_m", "y_m"])
+
+    # Grey needs a view wider than the rover has seen for there to be any.
+    rover.call("show_map", {"across_m": 12})
+    wide = rover._map_shown
+    wide_png, _ = rover.nav.map_png(wide["half_extent_m"], wide["scale"])
+    grey = np.all(mapimg._decode(wide_png)
+                  == np.array(mapimg.C_UNKNOWN, dtype=np.uint8), axis=2)
+    rows, cols = np.nonzero(grey)
+    unseen = rover.call("drive_to_map_point",
+                        {"across": cols[0] / wide["pixels"],
+                         "down": rows[0] / wide["pixels"]})
+    check("a grey pixel is refused", unseen.get("ok"), False)
+    check("...as somewhere never seen rather than as somewhere empty",
+          "grey" in unseen.get("error", ""), True)
+
+    off = rover.call("drive_to_map_point", {"across": 1.4, "down": 0.5})
+    check("a fraction past the edge of the picture is refused",
+          off.get("ok"), False)
+    check("...and is not quietly clamped to the edge instead",
+          "fraction" in off.get("error", ""), True)
+
+    rover._map_shown["at"] -= rover_daemon.MAP_POINT_MAX_AGE_S + 1
+    stale = rover.call("drive_to_map_point", {"across": 0.5, "down": 0.4})
+    check("a map the model is no longer looking at is refused",
+          stale.get("ok"), False)
+    check("...and says to take a fresh one",
+          "show_map" in stale.get("error", ""), True)
+
+    schema = next(s for s in [rover_daemon.MAP_POINT_TOOL]
+                  if s["function"]["name"] == "drive_to_map_point")
+    check("the model is offered the picture and not the metres",
+          set(schema["function"]["parameters"]["properties"]),
+          {"across", "down", "speed_ms"})
+    check("...and both fractions are required",
+          schema["function"]["parameters"]["required"], ["across", "down"])
 
 
 def test_wifi_status_without_the_helper_still_reports_the_link():
@@ -1668,6 +1894,7 @@ def main():
                  test_map_png_names_the_clock,
                  test_show_map_takes_across_and_size,
                  test_drive_to_takes_a_place_on_the_map,
+                 test_a_point_on_the_map_picture_is_the_place_it_looks_like,
                  test_wifi_status_without_the_helper_still_reports_the_link,
                  test_wifi_status_with_two_radios,
                  test_an_unfilled_signal_column_is_a_moment_not_an_answer,

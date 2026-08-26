@@ -65,6 +65,7 @@ Core hardware/vision tools include:
 | `tracking_status()` | detector/target/gimbal state |
 | `look()` | take a picture for the active model session when vision is configured |
 | `show_map()` | top-down lidar map for that same session; optional `across_m` and `pixels` |
+| `drive_to_map_point(across, down)` | drive to a place named as a fraction of the last `show_map` picture |
 
 With `--ros-nav`, the daemon also exposes the navigation/driving tools backed by
 Nav2. Their schemas and bounds are in `tool_schemas.py`; navigation behavior and
@@ -73,6 +74,22 @@ of room to show (`across_m`) and how big a picture (`pixels`), the same two knob
 the console uses, and leaves them optional so "show me the map" is still a room.
 It is not shown `half_extent_m`: that is how `map_png` talks, and a model handed
 the half would pass six meaning six metres across and get twelve.
+
+`drive_to_map_point` is how a model names a place on the map. `drive_to` has taken
+a point in the map's own frame since the console learned to send taps, but that
+pair is withheld from every model: nothing a model can see says where the rover is
+in that frame, so it could only invent the numbers. A fraction of the picture needs
+no such knowledge — the model has the image in front of it and the rover is in the
+middle of it by construction — so it says where on the picture to go and the daemon
+converts, using the pose the picture was drawn at and the same `mapimg.tap_to_point`
+the console puts a mouse click through. `across` is 0 at the left edge and 1 at the
+right, `down` is 0 at the top and 1 at the bottom.
+
+Four things are refused rather than driven: a picture that has not been taken, one
+older than `MAP_POINT_MAX_AGE_S` (the model is no longer looking at it, so a place
+on it is a guess), a fraction outside the picture, and a point that is solid or
+never-seen on the occupancy grid. Whether a *route* exists is left to Nav2, which
+owns that question and answers it in words.
 
 A tool is offered only when its backend exists. In particular, `look` is withheld
 when no current voice/image destination has been registered. An advertised tool

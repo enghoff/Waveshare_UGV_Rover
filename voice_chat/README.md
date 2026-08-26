@@ -142,6 +142,21 @@ about somewhere the rover is no longer looking.
 across. Those names are deliberate: `map_png`'s `half_extent_m` is half of the
 same quantity, and a model handed it would pass six and get twelve.
 
+Once a map has been taken, `drive_to_map_point` lets the model drive to a place on
+it by saying whereabouts on the picture that place is — `across` from 0 at the left
+edge to 1 at the right, `down` from 0 at the top to 1 at the bottom, with the rover
+in the middle at 0.5 and 0.5. The reply to `show_map` says so in its caption, so
+the model is told the picture can be pointed at on the turn it is looking at one.
+
+The point of naming a place this way is that it is the only frame the model
+genuinely has. Metres on the map would have to be invented, because nothing the
+model can see says where the rover is in that frame; a fraction of the picture is
+a property of the image on its screen. The daemon holds the pose the picture was
+drawn at, so the place stays the place that was pointed at however long the
+conversation takes to get round to going there — but not indefinitely: past
+`MAP_POINT_MAX_AGE_S` the picture has left the model's context and it is asked to
+take a fresh one rather than point at a map it is remembering.
+
 ## Rover connection
 
 `rover_tools.RoverClient` talks to TCP 8769. It discovers the rover, remembers the

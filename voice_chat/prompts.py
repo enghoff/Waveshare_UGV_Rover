@@ -135,6 +135,7 @@ def tools(*, vision: bool = True, nav: bool = False) -> list[dict]:
         found += list(_literal(DAEMON, "NAV_TOOLS"))
         if vision:
             found.append(_literal(DAEMON, "MAP_TOOL"))
+            found.append(_literal(DAEMON, "MAP_POINT_TOOL"))
     return found
 
 

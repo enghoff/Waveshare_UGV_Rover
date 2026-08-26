@@ -440,6 +440,78 @@ MAP_TOOL: dict[str, Any] = {
 }
 
 
+
+# The point a model names on the map picture, as a fraction of the picture's own
+# width and height. The bounds live here beside the schema for the reason the map
+# bounds above do: prompts.py reads this file with ast and cannot import rover_nav.
+MAP_POINT_MIN = 0.0
+MAP_POINT_MAX = 1.0
+
+# **Why a fraction of a picture and not a pair of metres.** The daemon's `drive_to`
+# has taken a point in the map's own frame ever since the drive console learned to
+# send taps, and those two arguments are deliberately withheld from every model --
+# the argument is written out in `_tool_drive_to` in rover_nav.py. It comes to this:
+# nothing a model can see says where the rover is in that frame, because the room
+# reaches it as bearings and the map as a picture centred on itself, so a model
+# handed metres could only invent them, and an invented pair is a fifteen-metre
+# drive to a place nobody chose.
+#
+# A fraction of the picture is the same destination named in the one frame a model
+# genuinely has in front of it. It has just looked at the map; every number it
+# needs to point at a doorway is a property of the image on its screen rather than
+# of a coordinate system it has never been told. The daemon holds the pose the
+# picture was drawn at and does the conversion, which is the same arithmetic and
+# the same function the console uses for a mouse click.
+MAP_POINT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "drive_to_map_point",
+        "description": (
+            "Drive to a place you can see on the map picture, by saying "
+            "whereabouts on that picture it is. Look at the map with show_map "
+            "first, then point at the spot on it. across is how far along the "
+            "picture from the left: 0 at the left edge, 0.5 in the middle, 1 at "
+            "the right edge. down is how far from the top: 0 at the top edge, "
+            "0.5 in the middle, 1 at the bottom. The rover is the red triangle "
+            "in the very middle, at 0.5 across and 0.5 down. Which part of the "
+            "picture is in front of the rover depends on how the page is turned, "
+            "and the map's own caption says which way that is, so read it rather "
+            "than assuming the top of the picture is ahead. Point at green, "
+            "which is floor the rover can reach: black is something solid and "
+            "grey is floor it has never seen, and both are refused. Use this for "
+            "somewhere you can see on the map, and drive_to instead when you "
+            "know how far away the place is in metres. It plans a route around "
+            "whatever is in the way and can take minutes over a long one."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "across": {
+                    "type": "number",
+                    "minimum": MAP_POINT_MIN, "maximum": MAP_POINT_MAX,
+                    "description": "How far across the picture, from 0 at the "
+                                   "left edge to 1 at the right.",
+                },
+                "down": {
+                    "type": "number",
+                    "minimum": MAP_POINT_MIN, "maximum": MAP_POINT_MAX,
+                    "description": "How far down the picture, from 0 at the top "
+                                   "edge to 1 at the bottom.",
+                },
+                "speed_ms": {
+                    "type": "number", "minimum": 0.05, "maximum": 0.5,
+                    "description": "Metres per second. Leave it out for a "
+                                   "sensible walking pace. This chassis will not "
+                                   "move below about a third of a metre a "
+                                   "second, so anything smaller is treated as "
+                                   "that.",
+                },
+            },
+            "required": ["across", "down"],
+        },
+    },
+}
+
 # Offered only to a client on the loopback interface, which is the condition the
 # three tools below share and the only one here that is about the caller rather
 # than about the hardware. The rest of that argument is in `LOCAL_ONLY` in
