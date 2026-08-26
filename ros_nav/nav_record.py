@@ -204,7 +204,18 @@ class Recorder(Node):
         circle and this being noticed, and it is invisible from here: the reply
         arrives, it is simply empty.
         """
-        if not self.param_client.wait_for_service(timeout_sec=5.0):
+        # **Twenty seconds, not five, and the difference is the whole block.**
+        # Under the loopback-only discovery `dds.sh` pins, a node that has just
+        # started takes about five and a half seconds to see
+        # `/controller_server/get_parameters` -- measured on the rover, where a
+        # 5 s wait returned False and a 10 s wait returned True after 0.5 s more.
+        # So a five-second limit sat exactly on the boundary and lost the
+        # settings to a race, which looks identical to the dead-parameter-name
+        # bug this method was written to fix: the recording simply arrives with
+        # no settings and a warning nobody can act on.
+        if not self.param_client.wait_for_service(timeout_sec=20.0):
+            print("the controller's parameter service never appeared, so this "
+                  "recording will not carry its settings", file=sys.stderr)
             return
         missing = []
         for name in WANTED_PARAMS:
