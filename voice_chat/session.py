@@ -253,6 +253,11 @@ class Session:
         # The assistant message currently being spoken, which is what a truncate
         # has to name. Learned from the audio deltas rather than announced.
         self._item_id: str | None = None
+        # The response whose audio is allowed to reach the speaker. Cancelling a
+        # response does not guarantee its already-in-flight deltas disappear, so
+        # the receive side has to know which generation still owns the speaker.
+        self._response_id: str | None = None
+        self._response_audio_enabled = False
         # Raised when the item a commit produced actually appears in the
         # conversation. Waited on rather than assumed, because a
         # `response.create` that arrives before then is discarded without a word
@@ -366,19 +371,26 @@ class Session:
     async def interrupt(self) -> None:
         """Stop the reply, drop what has not been heard, and say how far it got.
 
-        Three things, and all three are needed. Cancelling stops the model
-        generating; flushing stops the speaker playing what already arrived; and
-        the truncate is what stops the model believing it said the part nobody
-        heard. Without the third, the rover is interrupted and then answers the
-        next question as though the interrupted sentence had landed.
+        Generation and playback end at different times. Cancelling stops the
+        model generating; flushing stops the speaker playing what already arrived;
+        and the truncate is what stops the model believing it said the part nobody
+        heard. Playback may still be busy after `response.done`, so flushing must
+        not depend on the server still calling the response active.
         """
-        if not self.responding:
+        playing = bool(self.speaker is not None and
+                       getattr(self.speaker, "busy", False))
+        if not self.responding and not playing:
             return
         played = self.speaker.played_ms() if self.speaker else 0
         dropped = self.speaker.flush() if self.speaker else 0.0
-        await self.send({"type": "response.cancel"})
+        if self.responding:
+            await self.send({"type": "response.cancel"})
         await self._truncate(played)
         self.responding = False
+        # A cancel can race audio already on the wire. Keep the response id for
+        # stale-event comparisons, but close its gate until response.created opens
+        # the next generation.
+        self._response_audio_enabled = False
         if not self.quiet:
             self.indicator.say(f"  [interrupted after {played / 1000:.1f}s"
                                f", {dropped:.1f}s unheard]")
@@ -424,9 +436,11 @@ class Session:
 
         elif kind == "input_audio_buffer.speech_started":
             # Only meaningful with server-side turn detection. It is also the
-            # barge-in signal: the service heard somebody start talking, and if
-            # the rover is mid-sentence that somebody is interrupting it.
-            if self.speaker is not None and self.responding:
+            # barge-in signal: the service heard somebody start talking. Server
+            # generation may already be done while browser playback is not, so
+            # either condition means the old voice has to get out of the way.
+            if self.speaker is not None and (
+                    self.responding or getattr(self.speaker, "busy", False)):
                 await self.interrupt()
             self.indicator.set("hearing")
 
@@ -444,13 +458,26 @@ class Session:
                 self.indicator.say(f"you: {text}")
 
         elif kind == "response.created":
+            response = event.get("response") or {}
+            self._response_id = response.get("id")
+            self._response_audio_enabled = True
             self.responding = True
             self._asked = max(self._asked - 1, 0)
             if self.speaker is not None:
+                # `response.done` means generation ended, not that a remote
+                # browser has finished playing its queue. Make a new response a
+                # hard playback-generation boundary before resetting its counters.
+                self.speaker.flush()
                 self.speaker.begin()
             self.indicator.set("thinking")
 
         elif kind == "response.audio.delta":
+            response_id = event.get("response_id")
+            if not self._response_audio_enabled:
+                return
+            if (self._response_id and response_id and
+                    response_id != self._response_id):
+                return
             self._item_id = event.get("item_id") or self._item_id
             if self.speaker is not None:
                 self.speaker.write(_from_pcm16(base64.b64decode(event["delta"])))
@@ -471,8 +498,16 @@ class Session:
             self._pending.append(asyncio.create_task(self._perform(event)))
 
         elif kind == "response.done":
+            response = event.get("response") or {}
+            response_id = response.get("id")
+            # A cancelled response can finish after the next response has already
+            # been created. Do not let its late done event mark the new generation
+            # idle.
+            if (self._response_id and response_id and
+                    response_id != self._response_id):
+                return
             self.responding = False
-            usage = (event.get("response") or {}).get("usage") or {}
+            usage = response.get("usage") or {}
             if usage:
                 self.usage = usage
             if self._pending:
