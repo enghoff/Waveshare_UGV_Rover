@@ -163,6 +163,12 @@ class World:
         # and made a broken manager look fixed.
         self.excursions = True
         self.next_octet = 140
+        # The routing the manager installs, kept because the fault of
+        # 2026-08-26 lives here and nowhere else: an address can be on the right
+        # radio and still be answered out of the wrong one.
+        self.rules = {}             # source address -> routing table
+        self.tables = {}            # routing table -> iface it points at
+        self.stranded = []          # (t, address, holder, the radio it leaves by)
 
     # --- driving it ---------------------------------------------------------
     def at(self, when, action):
@@ -181,6 +187,44 @@ class World:
             action(self)
         self.t = end
         self.settle()
+        self.check_service_path()
+
+    def egress(self, address):
+        """Which radio a reply from this address actually leaves by.
+
+        A source rule wins, if the address has one and that table has anything
+        in it. Otherwise the main table decides, and the main table holds one
+        connected route per radio at the same metric, so the kernel breaks the
+        tie by interface order and picks the same radio every time regardless of
+        which one is carrying traffic.
+
+        That last part is calibrated, not assumed. With the service address on
+        `wlan1` the rover answered `ip route get 192.168.1.206 from
+        192.168.1.80` with `dev wlan0`.
+        """
+        table = self.rules.get(address)
+        if table is not None and table in self.tables:
+            return self.tables[table]
+        for iface, radio in self.radios.items():
+            if radio.present and radio.address:
+                return iface
+        return None
+
+    def check_service_path(self):
+        """An address on one radio and answered out of another is stranded.
+
+        Checked every tick rather than at the end of a scenario, because the
+        interesting version of this fault is transient: it opens at a failover
+        and closes again when something unrelated moves the traffic back.
+        """
+        for address, holder in self.claimed.items():
+            radio = self.radios.get(holder)
+            if radio is None or not radio.present or not radio.address:
+                continue
+            leaves_by = self.egress(address)
+            if leaves_by is not None and leaves_by != holder:
+                self.stranded.append((round(self.t, 1), address, holder,
+                                      leaves_by))
 
     def settle(self):
         for radio in self.radios.values():
@@ -447,9 +491,25 @@ class SimPlatform:
         return True
 
     def set_interface_table(self, iface, address, table):
+        self.world.rules[address] = table
+        self.world.tables[table] = iface
         return True
 
     def clear_interface_table(self, address, table):
+        # The real one flushes the table and leaves any other rule pointing at
+        # it, which then matches nothing and falls through to the main table.
+        # Modelled the same way, so a rule left behind fails here too.
+        self.world.rules.pop(address, None)
+        self.world.tables.pop(table, None)
+        return True
+
+    def set_source_rule(self, address, table):
+        self.world.rules[address] = table
+        return True
+
+    def clear_source_rule(self, address, table):
+        if self.world.rules.get(address) == table:
+            del self.world.rules[address]
         return True
 
     def sysctl(self, key, value):

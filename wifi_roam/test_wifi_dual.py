@@ -21,8 +21,8 @@ associated radio, the dongle falling off the USB bus, a rover driving out of one
 cell and into another, a service address somebody else has taken, and both
 radios landing on the same router.
 
-Two assertions span every scenario in the file rather than living in one of
-them, because both are about what must never happen anywhere:
+Three assertions span every scenario in the file rather than living in one of
+them, because each is about what must never happen anywhere:
 
 - **no scenario ever asks for a radio to be switched off.** A soft rfkill block
   is saved and restored across reboots by systemd and this board has no ethernet
@@ -31,6 +31,9 @@ them, because both are about what must never happen anywhere:
 - **no scenario ever leaves the service address on two interfaces at once.** The
   model refuses it outright rather than checking afterwards, so a manager that
   added before it removed would fail where it did it rather than somewhere later.
+- **no scenario ever answers the service address out of a radio it is not on.**
+  Being on the right radio is not the same as being reachable through it, and on
+  2026-08-26 the difference was eleven and a half minutes.
 """
 from __future__ import annotations
 
@@ -506,6 +509,61 @@ def scoring_prefers_the_onboard_radio_only_in_ties():
           "ten decibels should beat the tiebreak")
 
 
+def the_service_address_follows_the_failover():
+    """2026-08-26, 16:50: the failover was right and the address stayed behind.
+
+    The radio carrying the traffic kept its association and quietly stopped
+    delivering anything. The manager did the right thing and did it in seconds:
+    it moved the traffic to the standby, and moved the service address with it.
+    The rover then went on answering that address out of the radio that had just
+    died, for eleven and a half minutes, until an unrelated re-association moved
+    the traffic back and fixed it by accident.
+
+    So what is checked here is not where the address sits, which was right the
+    whole time, but which radio a reply to it leaves by.
+    """
+    world, platform, manager = build()
+    settle(manager, world, 90)
+    was = manager.active.iface
+    on = manager.active.link.ssid
+    check(world.claimed.get(wifi_dual.SERVICE_IP) == was,
+          "the service address did not start on the radio carrying traffic")
+    for ap in world.aps:
+        if ap.ssid == on:
+            ap.reaches_lan = False
+    settle(manager, world, 120)
+    now = manager.active.iface
+    check(now != was, "traffic stayed on the radio that stopped delivering")
+    check(world.claimed.get(wifi_dual.SERVICE_IP) == now,
+          "the service address did not move with the traffic")
+    leaves_by = world.egress(wifi_dual.SERVICE_IP)
+    check(leaves_by == now,
+          "the service address sits on %s and is answered out of %s, which is "
+          "the radio that just died" % (now, leaves_by))
+
+
+def the_service_address_is_answered_out_of_the_radio_it_sits_on():
+    """The assertion that spans the file, and the one the rover paid for.
+
+    Every world every scenario above ran in was asked, on every tick, whether
+    the address callers use would have been answered out of the radio holding
+    it. A failover that moves the address and not its routing looks perfect in
+    every other check here -- right radio, right address, traffic flowing -- and
+    is completely unreachable from outside.
+    """
+    guilty = [world for world in WORLDS if world.stranded]
+    for world in guilty[:2]:
+        when, address, holder, leaves_by = world.stranded[0]
+        check(False,
+              "at t=%.0fs %s sat on %s and was answered out of %s (%d tick(s) "
+              "like it)" % (when, address, holder, leaves_by,
+                            len(world.stranded)))
+    check(not guilty,
+          "%d of %d scenarios answered the service address out of the wrong "
+          "radio" % (len(guilty), len(WORLDS)))
+    check(bool(WORLDS), "no scenario ran, so this assertion proves nothing")
+
+
 def nothing_ever_switches_a_radio_off():
     """The assertion that spans the whole file, and keeps the rover rebootable.
 
@@ -579,8 +637,12 @@ def main():
         ("the document's worked example", the_documents_worked_example),
         ("the onboard radio wins ties only",
          scoring_prefers_the_onboard_radio_only_in_ties),
+        ("the service address follows the failover",
+         the_service_address_follows_the_failover),
         ("nothing ever switches a radio off",
          nothing_ever_switches_a_radio_off),
+        ("the service address is answered out of its own radio",
+         the_service_address_is_answered_out_of_the_radio_it_sits_on),
     ]
     for name, scenario in scenarios:
         before = len(FAILED)

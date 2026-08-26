@@ -599,6 +599,24 @@ class Platform:
         self._ip("rule", "del", "from", address, "lookup", str(table))
         self._ip("route", "flush", "table", str(table))
 
+    def set_source_rule(self, address, table):
+        """Send one address's replies out of a radio whose lease it is not.
+
+        The service address is the only address here that moves, and it gets no
+        table of its own: it borrows the table of whichever radio is holding it,
+        because what it needs is exactly what that radio's own address needs --
+        this subnet and this gateway, out of this interface. Only the rule moves.
+
+        The `src` on those routes stays the radio's own address, which is
+        correct: `src` picks a source for a packet that has not chosen one, and
+        a reply from the service address has already chosen.
+        """
+        self._ip("rule", "del", "from", address, "lookup", str(table))
+        return self._ip("rule", "add", "from", address, "lookup", str(table))
+
+    def clear_source_rule(self, address, table):
+        self._ip("rule", "del", "from", address, "lookup", str(table))
+
     def sysctl(self, key, value):
         """arp_ignore and arp_announce, without which two radios on one subnet
         answer for each other and the bridges upstream learn the wrong port."""
@@ -1432,6 +1450,7 @@ class Manager:
             self.note = ("%s is already answered for by %s, so this rover has "
                          "no stable address" % (self.service_ip, holder))
             self.say(self.note)
+            self.clear_service_rules()
             if self.service_on:
                 self.platform.del_service_ip(self.service_on, self.service_ip)
                 self.service_on = None
@@ -1453,6 +1472,47 @@ class Manager:
                 continue
             self.platform.set_interface_table(other.iface, other.address,
                                               TABLE_BASE + index)
+        self.route_service_ip()
+
+    def route_service_ip(self):
+        """Make the address that moves leave by the radio it moved to.
+
+        Each radio's own address gets a rule above, so a packet reaching the
+        standby is answered out of the standby. The service address had none,
+        and fell through to the main table -- which holds one connected route
+        per radio at the same metric and breaks the tie the same way every time.
+        So a failover put the address on the healthy radio and went on answering
+        it out of the sick one, which is invisible from the rover: every link
+        check here is bound to a radio and they all pass.
+
+        That is the eleven and a half minutes of 2026-08-26. The rover was up,
+        associated, carrying traffic and completely unreachable at the only
+        address anything bookmarks.
+
+        Rewritten rather than moved, because the address can be on one radio
+        only: every other radio's copy goes first and the holder's is added
+        afterwards, so a failover interrupted halfway leaves nothing behind
+        pointing at a radio that is not carrying anything.
+        """
+        if not self.service_ip or not self.service_on:
+            return
+        holder = None
+        for index, radio in enumerate(self.radios):
+            if radio.iface == self.service_on:
+                holder = index
+            else:
+                self.platform.clear_source_rule(self.service_ip,
+                                                TABLE_BASE + index)
+        if holder is not None:
+            self.platform.set_source_rule(self.service_ip,
+                                          TABLE_BASE + holder)
+
+    def clear_service_rules(self):
+        """Every trace of the rule above, for when the address is given up."""
+        if not self.service_ip:
+            return
+        for index, _radio in enumerate(self.radios):
+            self.platform.clear_source_rule(self.service_ip, TABLE_BASE + index)
 
     # --- giving up, and coming back ----------------------------------------
     def check_deadman(self):
@@ -1496,6 +1556,7 @@ class Manager:
         status quo.
         """
         if self.service_ip and self.service_on:
+            self.clear_service_rules()
             self.platform.del_service_ip(self.service_on, self.service_ip)
             self.service_on = None
         for index, radio in enumerate(self.radios):

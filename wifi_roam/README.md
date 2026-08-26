@@ -21,6 +21,16 @@ normally use the stable service address. `wifi_dual.py` moves `.80` between the
 interfaces and sends gratuitous ARP so open TCP sessions can survive a radio
 handover without changing source address.
 
+Moving the address is only half of a handover. Each address here also gets a
+policy rule pinning its traffic to one routing table per radio, so a reply
+leaves by the radio the request arrived on. Without that the main table decides,
+and with two radios on one subnet it holds one connected route each at the same
+metric and breaks the tie the same way regardless of which radio is carrying
+traffic. `.80` had no such rule until 2026-08-26, which is why a failover that
+worked in every other respect left the rover unreachable at its own service
+address for eleven and a half minutes; see
+[`docs/rover-unresponsive.md`](../docs/rover-unresponsive.md).
+
 ## Why two associated radios
 
 The failure this solves is not simply "choose the strongest AP". A single radio
