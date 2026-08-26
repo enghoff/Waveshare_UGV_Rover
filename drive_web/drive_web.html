@@ -162,11 +162,18 @@
      middle and hid the room behind it. Same cap both ways means the panel is always
      square, so the picture always fits it exactly, with nothing cropped and nothing
      letterboxed. On a wide column the panel is narrower than the card and centred
-     in it. */
-  #mapShot { --cap: min(68vh, 700px);
-             aspect-ratio: 1 / 1; cursor: crosshair;
-             max-width: var(--cap); max-height: var(--cap);
-             margin-inline: auto; }
+     in it.
+
+     The width half of that cap now sits on the wrapper rather than on the picture,
+     which comes to the same layout and buys one thing: the zoom pair under the
+     picture lines up with the picture's right-hand edge instead of the card's, and
+     on a wide column those are several inches apart. */
+  #mapFrame { --cap: min(68vh, 700px); max-width: var(--cap); margin-inline: auto; }
+  #mapShot { aspect-ratio: 1 / 1; cursor: crosshair; max-height: var(--cap); }
+  /* Bottom right of the picture and outside it: a control drawn on top of a map
+     covers part of the room, and this map is clicked to drive into that room. */
+  #mapZoom { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+  #mapZoom button { width: 34px; padding: 4px 0; font-size: 16px; line-height: 1.1; }
   /* Capped rather than filling its column: when the window is narrow enough that
      this stack is alone on a row, a frame stretched across the whole page is a
      wall of carpet, not more information. */
@@ -320,9 +327,15 @@
 <div class="stack hero">
   <section id="mapCard">
     <h2>map &mdash; click to drive there, again to change your mind</h2>
-    <div class="shot" id="mapShot">
-      <img id="mapImg" alt="the rover's map" hidden>
-      <span class="empty" id="mapEmpty">no map yet</span>
+    <div id="mapFrame">
+      <div class="shot" id="mapShot">
+        <img id="mapImg" alt="the rover's map" hidden>
+        <span class="empty" id="mapEmpty">no map yet</span>
+      </div>
+      <div id="mapZoom">
+        <button data-zoom="-1" title="closer">+</button>
+        <button data-zoom="1" title="wider">&minus;</button>
+      </div>
     </div>
     <div id="legend"></div>
     <p id="plan">-</p>
@@ -330,20 +343,8 @@
     <p id="mapError"></p>
     <details><summary>what the picture means</summary><p id="caption"></p></details>
     <div class="row" style="margin-top:8px">
-      <label>across</label>
-      <button data-zoom="-1">closer</button>
-      <button data-zoom="1">wider</button>
-      <label style="min-width:auto;margin-left:8px">size</label>
-      <button data-size="-1">smaller</button>
-      <button data-size="1">bigger</button>
-      <button id="refreshMap" style="margin-left:8px">refresh</button>
-    </div>
-    <div class="row">
-      <label class="check"><input type="checkbox" id="mapAuto"> auto</label>
-      <label class="check"><input type="checkbox" id="mapFit"> fit the panel</label>
       <label class="check"><input type="checkbox" id="roverUp"> rover up</label>
-    </div>
-    <div class="row">
+      <button id="refreshMap">refresh</button>
       <button id="describe">describe surroundings</button>
       <button id="clearMap">clear map</button>
     </div>
@@ -361,14 +362,17 @@
       <span class="empty" id="frameEmpty">no picture yet</span>
     </div>
     <div class="row" style="margin-top:8px">
-      <button id="takePicture">take a picture</button>
-      <label class="check"><input type="checkbox" id="cameraAuto"> every few seconds</label>
+      <label for="cameraRate">every</label>
+      <select id="cameraRate"></select>
     </div>
     <p id="frameNote" class="hint"></p>
     <p id="frameError"></p>
   </section>
 
-  <section id="voiceCard">
+  <!-- The microphone, the face detector, the lamps and the battery are one card:
+       four short controls that each need three lines, and four separate cards to
+       hold them was mostly borders. -->
+  <section id="boardCard">
     <h2>talk to it</h2>
     <div class="row">
       <button id="micButton">start talking</button>
@@ -378,11 +382,6 @@
     <p id="voiceSaid" class="hint"></p>
     <p id="voiceError"></p>
     <p id="voiceNote"></p>
-    <p class="hint">The conversation is held by the rover, not by this browser:
-      the tools it calls and the pictures it takes never leave the board. What
-      crosses the wifi is your voice and its voice. It is created when you press
-      this and closed when you press it again, when the tab goes, or after two
-      quiet minutes &mdash; the account behind it is metered.</p>
     <details id="voiceTokenBox"><summary>token</summary>
       <div class="row">
         <input type="password" id="voiceToken" size="24" placeholder="from ~/.ugv/console.token">
@@ -392,10 +391,8 @@
         password on it, because behind it is an account with a free tier and
         nothing to fall back on. Driving stays as open as it has always been.</p>
     </details>
-  </section>
 
-  <section id="boardCard">
-    <h2>face tracking</h2>
+    <h2 style="margin-top:14px">face tracking</h2>
     <div class="row">
       <button data-track="start_tracking">start</button>
       <button data-track="stop_tracking">stop</button>
@@ -530,8 +527,6 @@ function render(next) {
     : [drawn && `drawn ${drawn}`, next.map.settings, next.map.note]
         .filter(Boolean).join(" -- ");
   $("mapError").textContent = next.map.error || "";
-  $("mapAuto").checked = next.map.auto;
-  $("mapFit").checked = next.map.fit;
   $("roverUp").checked = next.map.rover_up;
   $("clearMap").textContent = next.clear_armed
     ? "clear map -- press again" : "clear map";
@@ -541,7 +536,9 @@ function render(next) {
               next.frame.taking, next.frame.error);
   $("frameNote").textContent = next.frame.note;
   $("frameError").textContent = next.frame.error || "";
-  $("cameraAuto").checked = next.frame.auto;
+  // The rover holds the rate, like everything else here, so a second browser that
+  // changes it is followed rather than argued with.
+  $("cameraRate").value = String(next.frame.every_s);
 
   $("tracking").textContent = next.tracking;
   $("lights").textContent = next.lights.text;
@@ -997,9 +994,6 @@ function wire() {
   for (const button of document.querySelectorAll("[data-zoom]")) {
     button.onclick = () => post({do: "map", zoom: +button.dataset.zoom});
   }
-  for (const button of document.querySelectorAll("[data-size]")) {
-    button.onclick = () => post({do: "map", size: +button.dataset.size});
-  }
   for (const button of document.querySelectorAll("[data-track]")) {
     button.onclick = () => post({do: "track", name: button.dataset.track});
   }
@@ -1008,15 +1002,12 @@ function wire() {
       level: button.dataset.light === "on" ? setup.light_max : 0});
   }
   $("refreshMap").onclick = () => post({do: "map"});
-  $("mapAuto").onchange = () => post({do: "map", auto: $("mapAuto").checked});
-  $("mapFit").onchange = () => post({do: "map", fit: $("mapFit").checked});
   $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
   $("resetLidar").onclick = () => post({do: "reset_lidar"});
   $("describe").onclick = () => post({do: "describe"});
   $("clearMap").onclick = () => post({do: "clear_map"});
-  $("takePicture").onclick = () => post({do: "picture"});
-  $("cameraAuto").onchange = () => post({do: "camera_auto",
-                                         on: $("cameraAuto").checked});
+  $("cameraRate").onchange = () => post({do: "camera_rate",
+                                         seconds: +$("cameraRate").value});
   $("wifiScan").onclick = () => post({do: "wifi_scan"});
 
   $("mapImg").onclick = (event) => {
@@ -1070,21 +1061,6 @@ function keys() {
   });
 }
 
-function watchTheWidth() {
-  // What the map panel came out as, so the server can ask the rover for a picture
-  // that size. Debounced, and hard: dragging a window edge fires this on every
-  // frame, and a map request per frame is a minute of a single ARMv6 core spent
-  // on one drag. The server drops it again unless the rung actually changed.
-  let timer = null;
-  const tell = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => post({do: "panel",
-      map_px: Math.round($("mapShot").getBoundingClientRect().width)}), 400);
-  };
-  new ResizeObserver(tell).observe($("mapShot"));
-  tell();
-}
-
 async function start() {
   setup = await (await fetch("/setup")).json();
   const pad = $("turnPad");
@@ -1098,6 +1074,16 @@ async function start() {
       button.onclick = () => turn(sign * magnitude);
       pad.append(button);
     }
+  }
+  // How often the camera takes one. The rungs come from the rover so that the
+  // page offers what the pump will actually honour rather than a list written
+  // down twice.
+  for (const seconds of setup.camera_rates_s) {
+    const option = document.createElement("option");
+    option.value = String(seconds);
+    option.textContent = seconds < 1 ? `${Math.round(seconds * 1000)} ms`
+                                     : `${seconds} s`;
+    $("cameraRate").append(option);
   }
   const legend = $("legend");
   for (const [colour, label] of setup.legend) {
@@ -1121,7 +1107,6 @@ async function start() {
   addEventListener("pagehide", () => { if (voice.wanted()) voice.stop(true); });
   wire();
   keys();
-  watchTheWidth();
   listen();
 }
 

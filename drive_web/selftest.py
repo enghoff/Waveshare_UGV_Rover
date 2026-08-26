@@ -15,8 +15,8 @@ import _paths  # noqa: F401
 
 from test_drive_web import (
     test_a_browser_leaving, test_a_second_click_takes_over,
-    test_choosing_a_network, test_finding_the_rover_again,
-    test_idle_console_waits_for_a_browser, test_map_size_for_a_panel,
+    test_camera_rate, test_choosing_a_network, test_finding_the_rover_again,
+    test_idle_console_waits_for_a_browser,
     test_one_console_at_a_time, test_pictures_are_not_replayed,
     test_signal_verdict, test_stopping_an_unwatched_rover,
     test_the_audio_socket, test_two_radios, test_web_console,
@@ -29,7 +29,7 @@ def main() -> int:
     test_choosing_a_network()
     test_two_radios()
     test_signal_verdict()
-    test_map_size_for_a_panel()
+    test_camera_rate()
     test_web_console()
     test_stopping_an_unwatched_rover()
     test_idle_console_waits_for_a_browser()

@@ -92,28 +92,37 @@ def test_signal_verdict() -> None:
     check("and no reading at all", verdict(None), "poor")
 
 
-def test_map_size_for_a_panel() -> None:
-    """Which map to ask the rover for once the browser has said how wide its panel
-    turned out to be.
+def test_camera_rate() -> None:
+    """How often the camera panel asks for a frame.
 
-    Rounded *down* the ladder, and that is not a detail: the picture costs the rover
-    roughly its own area to draw, so a panel a few pixels over a rung must not buy
-    the rung above it. Everything the browser gains by asking for more it throws
-    away again scaling the picture back into the panel.
+    The rate arrives from a page, so it is snapped to a rung rather than believed:
+    a nought coming out of a hand-written POST would have the pump asking the rover
+    for a picture on every tick of its own loop, on the core that is also running
+    SLAM. There is deliberately no rung that means off -- the panel is a view of
+    what the rover can see -- and the pump additionally waits for each frame to
+    arrive before asking for the next, so the fastest rung is a floor on the
+    interval and not a promise about it.
     """
     try:
-        from console_model import size_for_panel
+        import drive_web
+        from console_model import CAMERA_AUTO_S, CAMERA_RATES_S
     except ImportError as exc:
-        SKIP.append(f"map size for a panel ({type(exc).__name__})")
+        SKIP.append(f"camera rate ({type(exc).__name__})")
         return
 
-    check("a panel exactly on a rung takes that rung", size_for_panel(480), 480)
-    check("...and one just over it does not take the next", size_for_panel(639), 480)
-    check("...until it reaches it", size_for_panel(640), 640)
-    # A phone in one column, or a window dragged narrow. There is no rung below the
-    # smallest, and asking for nothing is not an option.
-    check("a panel narrower than any rung takes the smallest", size_for_panel(210), 320)
-    check("and a very wide one stops at the largest", size_for_panel(4000), 800)
+    session = drive_web.Session(None, 3.0, 480)
+    check("the console starts on a rung the drop-down offers",
+          session.frame_every_s in CAMERA_RATES_S, True)
+    session.act({"do": "camera_rate", "seconds": 0.5})
+    check("a rate from the drop-down is taken", session.frame_every_s, 0.5)
+    session.act({"do": "camera_rate", "seconds": 0.0})
+    check("...and one that is not on the ladder is snapped to the nearest",
+          session.frame_every_s, min(CAMERA_RATES_S))
+    session.act({"do": "camera_rate"})
+    check("...and a rate with no number in it falls back to the default",
+          session.frame_every_s, CAMERA_AUTO_S)
+    check("nothing on the page can switch the camera off",
+          0 in CAMERA_RATES_S, False)
 
 
 def test_web_console() -> None:
@@ -203,15 +212,15 @@ def test_web_console() -> None:
     check("...and keeps the daemon's reason",
           "install" in explained.wifi["note"], True)
 
-    # Stepping the size by hand has to turn "fit the panel" off, or the next window
-    # resize would silently undo the press.
-    session.map_settings({"fit": True})
-    session.panel_px = 700.0
-    session.fit_map()
-    check("fitting the panel picks the rung below its width", session.map_size, 640)
-    session.map_settings({"size": -1})
-    check("...and pressing smaller steps down from there", session.map_size, 480)
-    check("...and stops the panel choosing", session.map_fit, False)
+    # Zooming changes how much room is in the picture and never how big the picture
+    # is. The rover derives pixels per cell from the two, so a zoom that resized the
+    # picture would leave every cell the same size on screen, which is not zooming.
+    before = session.map_size
+    session.map_settings({"zoom": 1})
+    check("widening the view shows more room", session.half_extent > 3.0, True)
+    check("...in a picture that is still the same size", session.map_size, before)
+    session.map_settings({"zoom": -1})
+    check("...and closing it again comes back to the rung it left", session.half_extent, 3.0)
 
     # The map is square and the daemon says how big it came out, but a mock or an
     # older daemon may not -- and the page sets the panel's aspect ratio from this

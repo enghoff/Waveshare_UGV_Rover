@@ -286,11 +286,9 @@ class Session(SessionShow):
                     "rover_up": self.rover_up,
                     "age_s": (None if not self.map_gen
                               else round(time.monotonic() - self.map_drawn_at, 1)),
-                    "settings": f"{2 * self.half_extent:.0f} m across, "
-                                f"{self.map_size} px picture, {facing}"},
+                    "settings": f"{2 * self.half_extent:.0f} m across, {facing}"},
             "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
                       "error": self.frame_error, "every_s": self.frame_every_s,
-                      "rates_s": list(CAMERA_RATES_S),
                       "taking": self.frame_outstanding},
             "tracking": self.track_text,
             "lights": {"level": self.light_level,
@@ -808,14 +806,26 @@ class Session(SessionShow):
         self.log_sent("stop_driving", {})
         self.halt.submit("stop_driving")
 
+    def camera_rate(self, seconds: float | None) -> None:
+        """How often the camera panel asks for a frame, from the drop-down.
+
+        Snapped to a rung rather than taken at its word: the number arrives from a
+        page, and a rate of nought would have the pump asking for a picture on every
+        tick of its own loop.
+        """
+        wanted = CAMERA_AUTO_S if seconds is None else float(seconds)
+        self.frame_every_s = CAMERA_RATES_S[rung(CAMERA_RATES_S, wanted)]
+        # And take one straight away, so that choosing a faster rate is answered by
+        # a picture rather than by the old pace running on until the next frame
+        # happened to fall due anyway. take_picture() guards itself against there
+        # being no camera and against one already on its way.
+        self.take_picture()
+
     def take_picture(self) -> None:
         """On its own connection, because it is the slowest call here: a camera that
         has to be opened takes the rover up to four seconds to deliver a first
         buffer, and while it is doing that nothing else on that socket is answered."""
-        if self.camera is None:
-            self.say("not connected, so no picture was asked for\n", "bad")
-            return
-        if self.frame_outstanding:
+        if self.camera is None or self.frame_outstanding:
             return
         self.frame_outstanding = True
         self.frame_at = time.monotonic()
@@ -890,9 +900,9 @@ class Session(SessionShow):
             return
         if self.map_outstanding:
             # One at a time, but do not lose the request: the map takes seconds, and
-            # a zoom pressed while one is in flight would otherwise be dropped on the
-            # floor -- silently, and for good if auto-refresh is off. Remember that
-            # the settings moved and ask again as soon as this one lands.
+            # a zoom pressed while one is in flight would otherwise be dropped on
+            # the floor and the next picture would come back at the old extent.
+            # Remember that the settings moved and ask again as soon as this lands.
             self.map_wanted = True
             return
         self.map_wanted = False

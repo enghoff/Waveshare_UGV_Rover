@@ -77,7 +77,9 @@ from typing import Any
 
 import _paths  # noqa: F401 — console_model, rover_tools
 import wsframe
-from console_model import LIGHT_MAX, MAP_LEGEND, Reply, TURN_PRESETS_DEG
+from console_model import (
+    CAMERA_RATES_S, LIGHT_MAX, MAP_LEGEND, MAP_SIZE_PX, Reply, TURN_PRESETS_DEG,
+)
 from drive_session import (
     KEEPALIVE_S, LINK_LOST_S, ORPHAN_GRACE_S, RECONNECT_MAX_S, RECONNECT_S,
     ROVER_HTTP_PORT, Session,
@@ -653,6 +655,10 @@ def setup() -> dict[str, Any]:
     return {"presets_deg": list(TURN_PRESETS_DEG),
             "light_max": LIGHT_MAX,
             "legend": [list(entry) for entry in MAP_LEGEND],
+            # The rungs the camera's drop-down offers. Here rather than in the
+            # state, because they never change and the state goes out ten times a
+            # second.
+            "camera_rates_s": list(CAMERA_RATES_S),
             # The audio rates come from the module that talks to the service, so
             # that the page resamples to what is actually wanted rather than to a
             # number written down twice.
@@ -666,9 +672,9 @@ def main(argv=None) -> int | str:
                         help="the daemon (default: %(default)s)")
     parser.add_argument("--half-extent", type=float, default=3.0, metavar="M",
                         help="metres each way shown in the map (default: %(default)s)")
-    parser.add_argument("--map-size", type=int, default=480, metavar="PX",
-                        help="how big a map to ask for before the panel has a "
-                             "width to go on (default: %(default)s)")
+    parser.add_argument("--map-size", type=int, default=MAP_SIZE_PX, metavar="PX",
+                        help="how big a map to ask the rover for; the browser "
+                             "scales it into the panel (default: %(default)s)")
     parser.add_argument("--port", type=int, default=ROVER_HTTP_PORT,
                         help="where to serve the page (default: %(default)s)")
     parser.add_argument("--bind", default="0.0.0.0", metavar="ADDRESS",
