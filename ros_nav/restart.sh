@@ -134,7 +134,7 @@ else
     # away underneath a running graph.
     off=$(ss -lunp 2>/dev/null |
           grep "pid=$bridge," |
-          awk '{print $5}' |
+          awk '{print $4}' |
           sed 's/:[0-9]*$//' |
           grep -vxE '127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\[::\]|\*' |
           sort -u |
