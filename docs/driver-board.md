@@ -46,6 +46,71 @@ publishes no mDNS name and sets no DHCP hostname, so a rover that has joined a
 home network is an anonymous lease with nothing to look up. `--host` skips the
 search once you know the address.
 
+## When the IMU freezes
+
+The board's IMU can hang while the board itself stays perfectly healthy, and the
+failure is quiet: the ESP32 keeps answering over both the serial port and WiFi,
+and keeps sending `T:1001` telemetry at the usual rate. Only the numbers stop
+moving. Seen on 2026-08-26, where `ax`, `ay`, `az`, `gx`, `gy`, `gz`, the three
+magnetometer axes *and* the battery voltage were all byte-identical for over an
+hour, with `az` sitting on exactly 16384.
+
+**How to be sure.** Ask twice, a second apart, and compare:
+
+```bash
+python3 - <<'EOF'
+import http.client, json
+from urllib.parse import quote
+c = http.client.HTTPConnection("192.168.1.22", timeout=6)
+c.request("GET", "/js?json=" + quote(json.dumps({"T": 130}), safe=""))
+print(c.getresponse().read().decode())
+EOF
+```
+
+Live readings jitter in the last digit or two even on a stationary rover, and
+`az` sits near 8400 rather than on a round power of two. `{"T":126}` asks the
+board's own fusion for roll/pitch/yaw; all-zero there alongside frozen `T:1001`
+values is the same fault seen from the other side.
+
+**Why it matters more than it looks.** `ros_nav/base_node.py` takes the rover's
+whole heading from the gyro -- `d_yaw` comes from consecutive `gz` readings and
+nothing else -- so a frozen gyro is a rover whose odometry can never turn. Nav2
+still accepts goals and still drives; it simply never believes the rover has
+rotated. Worse, `base_node` reads the stuck value as an enormous zero-offset and
+says so, which is the tell in the log:
+
+    gyro bias -769.134 deg/s over 35954 still samples
+
+Anything outside roughly a degree per second is not a bias, it is a dead sensor.
+
+**The fix is to reboot the board**, which the firmware documents as `CMD_REBOOT`
+in `json_cmd.h` -- the same header that defines the `CMD_BASE_FEEDBACK 130` and
+`CMD_LED_CTRL 132` this repository already uses, so the numbering is known
+rather than guessed:
+
+```bash
+python3 - <<'EOF'
+import http.client, json
+from urllib.parse import quote
+c = http.client.HTTPConnection("192.168.1.22", timeout=4)
+try:
+    c.request("GET", "/js?json=" + quote(json.dumps({"T": 600}), safe=""))
+    c.getresponse().read()
+except Exception:
+    pass          # the board drops the link as it goes down; that is the reply
+EOF
+```
+
+Send it over WiFi rather than the serial port: the daemon owns the UART, and
+interleaving with its traffic is a needless risk. The board is back in about
+three seconds. Do it with the motors stopped.
+
+**Then restart `ros_nav`.** `base_node` keeps its bias estimate across the
+board coming back, so it will spend a while averaging dead readings together
+with live ones -- ours reported 346 deg/s of rotation on a stationary rover
+until it was restarted. `~/ugv/ros_nav/restart.sh` and a half-minute of standing
+still gets it back to the tenth-of-a-degree figure it should have.
+
 ## Stopping
 
 It stops the motors on the way out, and sets the firmware's heartbeat to 500 ms
