@@ -39,7 +39,7 @@ import rover_tools
 # answer without the driving loop noticing.
 
 POLL_S = 0.3               # how often to ask for nav_status while connected
-MAP_AUTO_S = 2.0           # how often to refresh the map when auto is on
+MAP_AUTO_S = 2.0           # how often to redraw the map; it is always redrawing
 LOG_LINES = 500            # trimmed, so an afternoon of testing does not grow forever
 TURN_ROWS = 40
 # drive_to can take minutes of segments and turns -- the navigator allows a route
@@ -73,17 +73,24 @@ TURN_PRESETS_DEG = (15, 45, 90)
 # route home off the widest picture, and the caption says that too.
 MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
 
-# How big a picture to ask for. This is a separate control from the zoom, and the
-# separation is the point: widening the view must show more room in the same picture,
-# not send back a bigger picture. The rover works out pixels per cell from the two.
-MAP_SIZES_PX = (320, 480, 640, 800)
+# How big a picture to ask for, and one number rather than a ladder. It is a
+# separate thing from the zoom, and the separation is the point: widening the view
+# must show more room in the same picture, not send back a bigger picture. The rover
+# works out pixels per cell from the extent and this. The browser scales whatever
+# arrives into whatever width the panel came out at, and on a picture made of 5 cm
+# squares drawn with no antialiasing there is nothing in that scaling to lose -- so
+# a picture that used to be chosen from the panel's width is now simply the size the
+# rover can afford, every time.
+MAP_SIZE_PX = 480
 
-# Auto-refresh for the camera, and it is off until asked for. Face tracking and SLAM
-# already cannot share this one core, and a picture every few seconds opens the
-# camera on the same core the driving loop is using -- so continuous frames are a
-# thing to switch on while looking at something, not a thing to leave running while
-# measuring a turn.
-CAMERA_AUTO_S = 3.0
+# How often the camera takes one, and what the drop-down offers. There is no longer
+# an off: the panel is a view of what the rover can see, and a view that has to be
+# switched on is a photograph. The cost is real -- face tracking and SLAM already
+# cannot share this one core -- so the rungs stop at half a second, and the pump
+# additionally never asks again until the last frame has actually arrived, which is
+# what keeps the fastest rung from queueing up work a cold camera cannot deliver.
+CAMERA_RATES_S = (0.5, 1.0, 1.5, 2.0, 3.0)
+CAMERA_AUTO_S = 1.0        # the rung the console starts on
 
 # How often to ask what face tracking is doing. It reads state the daemon already
 # has -- no camera, no detector, no lock -- so it is cheap, and it has to be asked
@@ -343,20 +350,6 @@ def rung(ladder: tuple, value: float) -> int:
         return ladder.index(value)
     except ValueError:
         return min(range(len(ladder)), key=lambda i: abs(ladder[i] - value))
-
-
-def size_for_panel(width_px: float) -> int:
-    """Which rung of MAP_SIZES_PX to ask for when a panel this wide is what there is.
-
-    Rounded down rather than to nearest, and that is the whole of the policy. The
-    picture costs the rover roughly its own area to draw, so overshooting a 500 px
-    column with an 800 px map spends seconds of a single ARMv6 core producing detail
-    the browser immediately throws away. Undershooting costs less and is scaled back
-    up by the browser, and on a picture made of 5 cm squares drawn with no
-    antialiasing there is nothing there to lose.
-    """
-    fits = [size for size in MAP_SIZES_PX if size <= width_px]
-    return fits[-1] if fits else MAP_SIZES_PX[0]
 
 
 class Reply:

@@ -11,10 +11,10 @@ from typing import Any
 import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
-    BATTERY_POLL_S, BATTERY_STALE_S, CAMERA_AUTO_S, CLEAR_ARM_S, Channel,
-    LIGHT_MAX, MAP_AUTO_S, MAP_EXTENTS_M, MAP_SIZES_PX, MOVE_TIMEOUT_S,
+    BATTERY_POLL_S, BATTERY_STALE_S, CAMERA_AUTO_S, CAMERA_RATES_S, CLEAR_ARM_S,
+    Channel, LIGHT_MAX, MAP_AUTO_S, MAP_EXTENTS_M, MOVE_TIMEOUT_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
-    WIFI_SCAN_TIMEOUT_S, rung, size_for_panel, tap_to_point,
+    WIFI_SCAN_TIMEOUT_S, rung, tap_to_point,
 )
 from drive_show import SessionShow, _number, _png_width  # noqa: F401
 
@@ -173,12 +173,6 @@ class Session(SessionShow):
         self.map_error = ""
         self.map_note = ""
         self.map_caption = ""
-        self.map_auto = True
-        # Whether the size asked for follows the panel. On, because the whole reason
-        # this console is a page is that the panel has a size and the fixed box it
-        # replaced did not; off is for pinning a size to compare two pictures at.
-        self.map_fit = True
-        self.panel_px = 0.0
         # Which way is up. Off, the page keeps the heading the rover started with, so
         # the room holds still and the arrow turns -- right for watching where the
         # rover has got to. On, the page turns with the rover, so ahead is always up
@@ -193,7 +187,11 @@ class Session(SessionShow):
         self.frame_gen = 0
         self.frame_note = ""
         self.frame_error = ""
-        self.frame_auto = False
+        # How often to take one. There is no off switch: the panel is a window on
+        # what the rover can see, and one that has to be switched on is a
+        # photograph. The pump waits for the last frame before asking for the next,
+        # so this is a floor on the interval rather than a promise about it.
+        self.frame_every_s = CAMERA_AUTO_S
 
         self.track_outstanding = False
         self.track_at = 0.0
@@ -285,14 +283,14 @@ class Session(SessionShow):
                     "caption": self.map_caption, "error": self.map_error,
                     "drawing": self.map_outstanding,
                     "half_extent_m": self.half_extent, "size_px": self.map_size,
-                    "rover_up": self.rover_up, "auto": self.map_auto,
-                    "fit": self.map_fit,
+                    "rover_up": self.rover_up,
                     "age_s": (None if not self.map_gen
                               else round(time.monotonic() - self.map_drawn_at, 1)),
                     "settings": f"{2 * self.half_extent:.0f} m across, "
                                 f"{self.map_size} px picture, {facing}"},
             "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
-                      "error": self.frame_error, "auto": self.frame_auto,
+                      "error": self.frame_error, "every_s": self.frame_every_s,
+                      "rates_s": list(CAMERA_RATES_S),
                       "taking": self.frame_outstanding},
             "tracking": self.track_text,
             "lights": {"level": self.light_level,
@@ -355,14 +353,14 @@ class Session(SessionShow):
         # draw. Asking every two seconds for a picture that takes two and a half is
         # how you keep a single-core Pi permanently drawing maps while it is also
         # running the SLAM it is drawing them from.
-        if (self.picture is not None and self.map_auto and not self.map_outstanding
+        if (self.picture is not None and not self.map_outstanding
                 and now - self.map_at > max(MAP_AUTO_S, self.map_cost)):
             self.refresh_map()
         # Paced off what the last one cost, like the map: a cold camera takes seconds
         # to produce a frame, and asking again while it is still opening would keep a
         # single-core Pi taking pictures for the whole time it is meant to be driving.
-        if (self.camera is not None and self.frame_auto and not self.frame_outstanding
-                and now - self.frame_at > max(CAMERA_AUTO_S, self.frame_cost)):
+        if (self.camera is not None and not self.frame_outstanding
+                and now - self.frame_at > max(self.frame_every_s, self.frame_cost)):
             self.take_picture()
         # Asked, not remembered: the daemon parks tracking by itself when the wheels
         # turn, so the only honest source for this panel is the daemon.
@@ -635,10 +633,8 @@ class Session(SessionShow):
             self.watch_call("describe_surroundings")
         elif what == "map":
             self.map_settings(action)
-        elif what == "picture":
-            self.take_picture()
-        elif what == "camera_auto":
-            self.frame_auto = bool(action.get("on"))
+        elif what == "camera_rate":
+            self.camera_rate(_number(action.get("seconds"), CAMERA_AUTO_S))
         elif what == "track":
             name = action.get("name")
             if name in ("start_tracking", "stop_tracking"):
@@ -655,9 +651,6 @@ class Session(SessionShow):
             self.wifi_scan()
         elif what == "wifi_join":
             self.wifi_join(str(action.get("ssid") or ""))
-        elif what == "panel":
-            self.panel_px = _number(action.get("map_px"), 0.0) or 0.0
-            self.fit_map()
 
     def watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.watch is None:
@@ -868,55 +861,21 @@ class Session(SessionShow):
         self.picture.submit("clear_map")
 
     def map_settings(self, action: dict[str, Any]) -> None:
-        """Zoom, size and which way is up, from the buttons that step the ladders.
+        """Zoom and which way is up, from the two controls left under the map.
 
-        An extent and a size, never a magnification: the rover derives pixels per
-        cell from the two, which is what keeps the picture the same size when the
-        view widens. Asking for a magnification instead resized the picture on every
-        zoom, which is not zooming.
+        An extent, never a magnification: the picture is always the same number of
+        pixels and the rover derives pixels per cell from the extent, which is what
+        keeps the picture the same size when the view widens. Asking for a
+        magnification instead resized the picture on every zoom, which is not
+        zooming.
         """
         if "zoom" in action:
             index = rung(MAP_EXTENTS_M, self.half_extent) + int(action["zoom"])
             self.half_extent = MAP_EXTENTS_M[
                 max(0, min(len(MAP_EXTENTS_M) - 1, index))]
-        if "size" in action:
-            # Stepping the size by hand is a statement that the panel is not to
-            # choose it, or the next resize would undo the press.
-            self.map_fit = False
-            index = rung(MAP_SIZES_PX, self.map_size) + int(action["size"])
-            self.map_size = MAP_SIZES_PX[max(0, min(len(MAP_SIZES_PX) - 1, index))]
         if "rover_up" in action:
             self.rover_up = bool(action["rover_up"])
-        if "auto" in action:
-            self.map_auto = bool(action["auto"])
-        if "fit" in action:
-            self.map_fit = bool(action["fit"])
-            if self.map_fit and self.fit_map():
-                return
         self.refresh_map()
-
-    def fit_map(self) -> bool:
-        """Match the size asked for to the width the panel turned out to have.
-
-        This is the part the tkinter window this replaced could not do at all: its
-        map sat in a box of a fixed size, so the only way to fill a wider window
-        was to press "bigger" and hope. Here the page reports what the column came
-        out as and the rung below it is asked for -- rounded down, because the
-        picture costs the rover its own area to draw and the browser scales what
-        arrives.
-
-        Only when the rung actually changes, and that matters more than it looks:
-        dragging a window edge produces a resize event per frame, and a map request
-        per frame would be a minute of a single ARMv6 core spent on one drag.
-        """
-        if not self.map_fit or self.panel_px <= 0:
-            return False
-        wanted = size_for_panel(self.panel_px)
-        if wanted == self.map_size:
-            return False
-        self.map_size = wanted
-        self.refresh_map()
-        return True
 
     def refresh_map(self) -> None:
         """On its own connection, because the map is the slowest thing here.
