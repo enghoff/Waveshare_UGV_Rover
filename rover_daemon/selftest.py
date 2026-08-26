@@ -27,12 +27,16 @@ sys.path.insert(0, HERE)
 SIBLING = os.path.join(os.path.dirname(HERE), "face_tracking")
 if os.path.isdir(SIBLING):
     sys.path.insert(0, SIBLING)
-# The same for the map renderer, which the daemon reaches through
-# `ros_navigator`'s own version of this dance. One check draws a real map and
-# reads the picture back, and without this it fails on the import instead.
-RENDERER = os.path.join(os.path.dirname(HERE), "lidar_slam")
-if os.path.isdir(RENDERER):
-    sys.path.insert(0, RENDERER)
+# The same for the map renderer, and it needs both layouts rather than one:
+# `lidar_slam` is a sibling of this file in the repository and a *subdirectory*
+# of the rover's ~/ugv, which is the two-candidate dance ros_navigator.py does
+# for the same import. One check draws a real map and reads the picture back,
+# and with only the repository layout it passes here and fails on the rover.
+for RENDERER in (os.path.join(os.path.dirname(HERE), "lidar_slam"),
+                 os.path.join(HERE, "lidar_slam")):
+    if os.path.isdir(RENDERER):
+        sys.path.insert(0, RENDERER)
+        break
 
 from test_aiming import (
     test_aiming_through_a_missed_frame, test_one_move_puts_a_face_in_the_middle,

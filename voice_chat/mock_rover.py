@@ -126,6 +126,9 @@ def _wrap(radians: float) -> float:
 
 def _fraction(value: Any, what: str) -> float:
     """A place on the map picture, 0 to 1. Refused outside it, as the rover does."""
+    if value is None:
+        raise ValueError(f"{what} is missing; a place on the map picture needs "
+                         f"both across and down")
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         raise ValueError(f"{what} must be a number")
     number = float(value)

@@ -98,6 +98,12 @@ def _fraction(value: Any, what: str) -> float:
     to one is a model that has read the convention the wrong way round, and clamping
     would answer a misunderstanding by driving to the edge of the room.
     """
+    if value is None:
+        # Named rather than left to `_number`, whose "down must be a number" is
+        # true and unhelpful: what has gone wrong is a place with only half of
+        # itself given, and the model has to be told the other half is wanted.
+        raise ValueError(f"{what} is missing; a place on the map picture needs "
+                         f"both across and down")
     number = _number(value, what)
     if not 0.0 <= number <= 1.0:
         raise ValueError(
