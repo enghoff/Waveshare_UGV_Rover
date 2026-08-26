@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 import tempfile
 import time
@@ -942,3 +943,123 @@ def test_what_the_browser_heard() -> None:
           round(dropped, 3), 0.06)
     check("...after which what was queued is what was heard",
           speaker.played_ms(), 40)
+
+
+
+def test_a_slow_browser_is_shown_the_newest_state() -> None:
+    """A browser on a link that cannot keep up gets fewer states, all of them now.
+
+    Reproduced on the rover on 2026-08-26. Its radio had begun losing every packet
+    over about 1100 bytes -- nothing lost at 500, a third at 1000, all of them at
+    1200 -- which left the link carrying some 20 kB/s while this console writes a
+    full state ten times a second, about 55 kB/s. The difference went into the
+    kernel's send buffer, which Linux grows into the hundreds of kilobytes, and TCP
+    then owes the browser every stale update in order before it may deliver the
+    current one. Measured on the running rover: 580 kB stood queued for one browser,
+    the page was drawing map generation 2473 while the console served 2502, and photo
+    3229 against 3286 -- twenty-nine maps and fifty-seven photos, about a minute of
+    rover either way. The page's own age readout said the map had been drawn 0.8 s
+    ago, because that number is taken here as we publish and cannot see the minute
+    that follows.
+
+    What is pinned here is the decision, because the effect needs a kernel that grows
+    a send buffer the way Linux does and cannot be seen on a desk that does not: with
+    no room on the socket, a state is dropped rather than queued, `seen_version` stays
+    where it was, and whatever is current when there is room next goes out in its
+    place. The size of what that leaves is measured on the rover, where the fault was.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"a slow browser is shown the newest state ({type(exc).__name__})")
+        return
+
+    import json
+    import threading
+
+    class Jammed:
+        """One browser, its link full until it is not, and what reached it."""
+
+        def __init__(self) -> None:
+            self.room = False
+            self.heard: list[bytes] = []
+
+        def write(self, data: bytes) -> None:
+            self.heard.append(data)
+
+        def flush(self) -> None:
+            pass
+
+        def setsockopt(self, *_args) -> None:
+            pass
+
+        def settimeout(self, *_args) -> None:
+            pass
+
+        def states(self) -> list[int]:
+            """The state numbers this browser was actually sent, in order."""
+            whole = b"".join(self.heard)
+            return [int(n) for n in re.findall(rb'"n":(\d+)', whole)]
+
+    def publish(session, n: int) -> None:
+        with session.lock:
+            session.published = json.dumps({"n": n}, separators=(",", ":"))
+            session.version += 1
+            session.lock.notify_all()
+
+    session = drive_web.Session(None, 3.0, 480)
+    page = Jammed()
+    stream = drive_web.Handler.__new__(drive_web.Handler)
+    stream.session = session
+    stream.connection = page
+    stream.wfile = page
+    stream.send_response = lambda *_a, **_k: None
+    stream.send_header = lambda *_a, **_k: None
+    stream.end_headers = lambda: None
+    stream._room_for_one_more = lambda: page.room
+
+    watching = threading.Thread(target=stream._events, daemon=True)
+    watching.start()
+    try:
+        publish(session, 1)
+        time.sleep(0.3)
+        check("a state is not written to a browser whose link is full",
+              page.states(), [])
+
+        for n in range(2, 51):
+            publish(session, n)
+        time.sleep(0.3)
+        check("...nor are the forty-nine that came along behind it",
+              page.states(), [])
+
+        page.room = True
+        for _ in range(40):
+            if page.states():
+                break
+            time.sleep(0.05)
+        check("when the link clears, what goes out is the newest state",
+              page.states()[:1], [50])
+        check("...and the fifty it was holding are never sent",
+              max(page.states()), 50)
+
+        # And the other half of the same rule. A picture is asked for by the name it
+        # had in some state, and that state may be a minute old by the time the
+        # browser acts on it -- so the name says which run drew it and nothing more,
+        # and what comes back is the picture the rover has now.
+        session.map_png = b"\x89PNG the newest one"
+        shot = drive_web.Handler.__new__(drive_web.Handler)
+        shot.session = session
+        shot.wfile = Jammed()
+        shot.send_response = lambda *_a, **_k: None
+        shot.send_header = lambda *_a, **_k: None
+        shot.end_headers = lambda: None
+        shot.path = "/map.png?gen=deadbeef-1"
+        shot.do_GET()
+        check("a picture asked for by an old name still comes back current",
+              b"".join(shot.wfile.heard), b"\x89PNG the newest one")
+    finally:
+        session.running = False
+        with session.lock:
+            session.lock.notify_all()
+        page.room = True
+        watching.join(timeout=2.0)

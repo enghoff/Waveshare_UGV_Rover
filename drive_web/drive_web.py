@@ -67,11 +67,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import select
 import socket
 import ssl
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -112,6 +114,34 @@ TLS_KEY = os.path.join(TLS_DIR, "console.key")
 # browser opens connections speculatively and sometimes sends nothing down them,
 # and each of those parks a thread inside the peek below until this expires.
 HANDSHAKE_S = 10.0
+
+# How much of the rover the kernel may hold on one browser's behalf.
+#
+# **A live picture is worth nothing late, and TCP will not let it be late alone.**
+# Every byte written to a browser is a promise to deliver it, in order, ahead of
+# everything written after it. So a link that cannot keep up does not thin the
+# stream out, it delays all of it, and whatever the kernel is willing to hold
+# becomes the lag. Left alone Linux grows that buffer into the hundreds of
+# kilobytes: on 2026-08-26 this rover's radio had begun dropping every packet over
+# about 1100 bytes, the console was writing 55 kB/s of state into a link carrying
+# 20, and 580 kB stood queued for one browser. The page was drawing a map
+# twenty-nine generations old and a photo fifty-seven -- about a minute of rover
+# either way -- while its own age readout said the map was drawn 0.8 s ago, because
+# that number is taken here as we publish and cannot see the minute that follows.
+#
+# Sixteen kilobytes is three states: more than any ordinary link will ever notice,
+# little enough that one falling behind is found out within an update or two
+# instead of half a megabyte later.
+STREAM_SNDBUF = 16 * 1024
+# How long one write to a browser may take before that browser is taken as gone.
+# Only ever reached by a tab that stopped reading altogether -- a slow link still
+# moves a 5 kB state in well under a second -- and such a tab used to hold its
+# thread inside a write, and its place in the watcher count, for as long as this
+# process lived.
+STREAM_WRITE_S = 30.0
+# How long to hold off after throwing a state away, so that a jammed socket is not
+# retried in a tight loop while the rover keeps publishing into it.
+DROPPED_PAUSE_S = 0.05
 
 class Handler(BaseHTTPRequestHandler):
     """The page, the stream, the two pictures, and one POST.
@@ -324,6 +354,7 @@ class Handler(BaseHTTPRequestHandler):
         survived trimming and a page that has been open all along gets one line.
         """
         session = self.session
+        self._bound_the_backlog()
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -339,14 +370,31 @@ class Handler(BaseHTTPRequestHandler):
                 with session.lock:
                     if session.version == seen_version:
                         session.lock.wait(KEEPALIVE_S)
-                    state, seen_version = session.published, session.version
+                    state, version = session.published, session.version
                     lines = [line for line in session.log if line["seq"] > cursor]
-                    if lines:
-                        cursor = lines[-1]["seq"]
                 out = ""
-                if state:
-                    out += f"event: state\ndata: {state}\n\n"
+                if not state:
+                    # Nothing published yet, or a publish invalidated and being
+                    # rebuilt. There is no picture here to be late with.
+                    seen_version = version
+                elif version != seen_version:
+                    if self._room_for_one_more():
+                        out += f"event: state\ndata: {state}\n\n"
+                        seen_version = version
+                    elif not lines:
+                        # The link is behind, so this state is already history.
+                        # Dropping it costs the page one update. Writing it would
+                        # cost the page every update after it, because the newest
+                        # cannot be delivered until this one has been. seen_version
+                        # stays put, so whatever is current when there is room next
+                        # is what goes out in its place.
+                        time.sleep(DROPPED_PAUSE_S)
+                        continue
                 if lines:
+                    # The transcript is not a picture and is never dropped: a few
+                    # hundred bytes, each line said once, and a browser that missed
+                    # one would have a hole in it rather than an old view.
+                    cursor = lines[-1]["seq"]
                     out += ("event: log\ndata: "
                             + json.dumps(lines, separators=(",", ":")) + "\n\n")
                 self._chunk(out or ": keepalive\n\n")
@@ -356,6 +404,28 @@ class Handler(BaseHTTPRequestHandler):
             with session.lock:
                 session.listeners -= 1
                 session.lock.notify_all()
+
+    def _bound_the_backlog(self) -> None:
+        """Stop the kernel becoming a queue of where the rover used to be.
+
+        See `STREAM_SNDBUF` for what this is defending against and what it cost.
+        The write timeout is the other half of the same thought: a tab that stops
+        reading altogether used to hold this thread inside a single write, and its
+        place in the watcher count, for as long as the console ran.
+        """
+        try:
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF,
+                                       STREAM_SNDBUF)
+            self.connection.settimeout(STREAM_WRITE_S)
+        except OSError:
+            pass            # an unusual socket is not a reason to refuse a page
+
+    def _room_for_one_more(self) -> bool:
+        """Whether this socket can take a state now rather than owe it later."""
+        try:
+            return bool(select.select([], [self.connection], [], 0)[1])
+        except (OSError, ValueError):
+            return True     # let the write find out, and report it as it always did
 
     def _chunk(self, text: str) -> None:
         body = text.encode("utf-8")
