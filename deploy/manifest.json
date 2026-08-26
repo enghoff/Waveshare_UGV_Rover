@@ -145,7 +145,8 @@
           "when": [
             "ros_nav/run_ros_nav.sh",
             "ros_nav/sweep.sh",
-            "ros_nav/dds.sh"
+            "ros_nav/dds.sh",
+          "ros_nav/cyclonedds-loopback.xml"
           ],
           "replaces": [
             "~/ugv/ros_nav/restart.sh"

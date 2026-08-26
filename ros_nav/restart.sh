@@ -116,14 +116,38 @@ fi
 
 # The check that would have named the silent-graph deaths: processes listed,
 # lidar still 9.9 Hz, CycloneDDS writing to a radio that is no longer there.
-# Sourced from dds.sh into this launch; if it is missing, the next failover
-# looks like Nav2 crashing.
+#
+# This looks at the sockets, not at an environment variable, and that difference
+# is the whole point. The previous version asked whether ROS_LOCALHOST_ONLY=1
+# was in nav_bridge's environment. It was -- in every node, every time,
+# including on 2026-08-26 while the graph was dying, because those same nodes
+# were bound to 192.168.1.102, an address wlan0 had already lost. A check that
+# reads back the setting you made only tells you that you made it. Ask the
+# kernel what the process actually did instead.
 echo "--- discovery:"
-bridge=$(pgrep -n -f "$DIR/nav_bridge.py" || true)
-if [ -n "$bridge" ] && tr '\0' '\n' < "/proc/$bridge/environ" \
-        | grep -q '^ROS_LOCALHOST_ONLY=1$'; then
-    echo "  ok   nav_bridge is localhost-only, so a dead radio cannot take the graph"
+bridge=$(pgrep -n -f "$DIR/nav_bridge[.]py" || true)
+if [ -z "$bridge" ]; then
+    echo "  !!   no nav_bridge running, so discovery cannot be checked"
 else
-    echo "  !!   nav_bridge is discovering on the LAN;" \
-         "dds.sh was not sourced into this launch"
+    # The local-address column with the port stripped. Loopback and the two
+    # wildcards are fine; anything else is a radio, and a radio is what goes
+    # away underneath a running graph.
+    off=$(ss -lunp 2>/dev/null |
+          grep "pid=$bridge," |
+          awk '{print $5}' |
+          sed 's/:[0-9]*$//' |
+          grep -vxE '127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\[::\]|\*' |
+          sort -u |
+          tr '\n' ' ')
+    if [ -z "$off" ]; then
+        echo "  ok   CycloneDDS is on loopback only, so a radio that moves or"
+        echo "       drops its address cannot take the graph down"
+    else
+        echo "  !!   CycloneDDS is bound to ${off}-- a radio address."
+        echo "       When wifi_dual moves or loses it, every DDS write fails and"
+        echo "       the graph goes silent while every process stays listed and"
+        echo "       the lidar keeps logging 9.9 Hz."
+        echo "       CYCLONEDDS_URI is not reaching this launch: check that"
+        echo "       cyclonedds-loopback.xml deployed beside dds.sh."
+    fi
 fi

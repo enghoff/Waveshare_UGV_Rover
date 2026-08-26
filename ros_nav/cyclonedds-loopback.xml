@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keep CycloneDDS off both radios.
+
+     Every node in this stack runs on this board, and the console and the daemon
+     reach it over TCP 8769 / 8773 rather than over ROS, so the graph has no
+     reason to leave the loopback interface. Saying so here is what makes it
+     true: `ROS_LOCALHOST_ONLY=1` was set for months and did not do it. On
+     2026-08-26 every Nav2 node was found holding a UDP socket bound to
+     192.168.1.102 -- wlan0's DHCP address at the moment the launch started.
+     When wifi_dual roamed wlan0 to another router that address went away, every
+     `ddsi_udp_conn_write` began failing, and the graph went silent while all
+     fourteen processes stayed up and the lidar kept logging 9.9 Hz.
+
+     Interfaces is the enforcement. Multicast is off because loopback multicast
+     is not dependable here, and unicast discovery to localhost replaces it --
+     which is why a peer is named explicitly. MaxAutoParticipantIndex has to
+     cover every participant in the launch: the stack runs about fourteen and
+     probing stops at the limit, so a short one silently hides the last nodes
+     started rather than failing.
+
+     A laptop that wants rviz on the LAN has to unset CYCLONEDDS_URI, exactly as
+     it already has to undo the variables in dds.sh. -->
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config
+                                https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface address="127.0.0.1"/>
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+      <EnableMulticastLoopback>true</EnableMulticastLoopback>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>60</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer address="localhost"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
