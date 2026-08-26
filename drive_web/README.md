@@ -145,9 +145,16 @@ Only the microphone/session creation is token-gated; the existing LAN driving
 controls remain separate. The browser remembers a supplied token in local
 storage.
 
-A session is created on demand and closed when the user ends it or the console
-loses its active microphone owner. One browser owns the microphone at a time so
-two people cannot feed one model context.
+A session is created on demand and closed when the user ends it, when the tab
+goes, or when no browser has been attached for `IDLE_STOP_S` (120 s). One
+browser owns the microphone at a time so two people cannot feed one model
+context. The account behind the session is metered, which is why the microphone
+is the one control here with a token on it.
+
+What crosses the Wi-Fi is audio in both directions and nothing else: the
+conversation, the tool calls it makes and the pictures it takes are all held on
+the board. The page used to say so in a paragraph under the button; it says it
+here instead.
 
 ## Tool calls and vision
 
