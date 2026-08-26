@@ -182,6 +182,7 @@ Useful starting points:
 | [`docs/oak-d-lite.md`](docs/oak-d-lite.md) | OAK-D-Lite hardware and depth semantics |
 | [`docs/depthai-version-pin.md`](docs/depthai-version-pin.md) | why the rover pins DepthAI 2.x |
 | [`docs/doorway-pivot.md`](docs/doorway-pivot.md) | a focused navigation-fault investigation; current config in `ros_nav/config/` remains authoritative |
+| [`docs/rover-unresponsive.md`](docs/rover-unresponsive.md) | why the rover disappears from the network, and how to get in without the power switch |
 | [`docs/scripting.md`](docs/scripting.md) | rover-side scripts exposed through the daemon |
 
 When a document disagrees with executable code or configuration, the code/config
