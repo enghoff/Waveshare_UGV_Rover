@@ -460,13 +460,17 @@ let setup = null;          // the ladders and the colour key, fetched once
 let state = null;          // the last thing the server said
 let mapGen = -1, frameGen = -1, wifiPrint = "", radioPrint = "", turnsPrint = "";
 // The camera rate this browser has asked for and has not yet been told about,
-// and when it asked. The one thing on this page that is neither the rover's
-// answer nor a half-typed number; render() says why it has to exist.
-let rateAsked = null, rateAskedAt = 0;
-// How long the drop-down will go on showing a rate the rover has not confirmed.
-// Only ever reached when the ask went out and nothing ever came back to match it
-// -- a second browser moving the rate in the same breath, say. Generous, because
-// the link it has to survive has been measured taking ten seconds to carry one.
+// and when that ask reached the rover -- nought while it is still on its way.
+// The one thing on this page that is neither the rover's answer nor a half-typed
+// number; render() says why it has to exist.
+let rateAsked = null, rateLandedAt = 0;
+// How long after an ask has landed the drop-down will go on showing a rate the
+// rover has not confirmed. Reached only when the rover was told and then said
+// something else -- a second browser moving the rate in the same breath, say.
+// It deliberately does not run while the ask is still in flight: on this rover's
+// link an ask has been watched taking over fifteen seconds to arrive, and a
+// timer that gave up on it would put the box back exactly where the driver
+// moved it from, which is the fault this all exists to stop.
 const RATE_PATIENCE_MS = 15000;
 
 // --- talking to the server --------------------------------------------------
@@ -559,7 +563,7 @@ function render(next) {
   // seconds, which does not read as lag; it reads as the setting not taking. So
   // until the rover says the new rate out loud, the box shows what was asked for.
   if (rateAsked === null || next.frame.every_s === rateAsked
-      || Date.now() - rateAskedAt > RATE_PATIENCE_MS) {
+      || (rateLandedAt && Date.now() - rateLandedAt > RATE_PATIENCE_MS)) {
     rateAsked = null;
     $("cameraRate").value = String(next.frame.every_s);
   }
@@ -1036,9 +1040,11 @@ function wire() {
   $("cameraRate").onchange = async () => {
     const asked = +$("cameraRate").value;
     rateAsked = asked;
-    rateAskedAt = Date.now();
+    rateLandedAt = 0;
     const sent = await post({do: "camera_rate", seconds: asked});
-    if (!sent && rateAsked === asked) rateAsked = null;
+    if (rateAsked !== asked) return;   // a later choice has taken this one over
+    if (sent) rateLandedAt = Date.now();
+    else rateAsked = null;             // it never got out; show the rover again
   };
   $("wifiScan").onclick = () => post({do: "wifi_scan"});
 
