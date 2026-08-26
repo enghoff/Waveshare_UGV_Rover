@@ -1170,7 +1170,7 @@ Holding the costmap fixed is fair on this drive and would not be on another:
 the rover never got more than 22 cm from where it had been twelve seconds
 earlier, so its 3 m window would have rolled by at most four cells.
 
-### What the trap is made of, and three fixes that are not it
+### What the trap is made of, and four fixes that are not it
 
 The reproduction is good enough to kill a candidate in a few minutes, so three
 were killed before anything was changed on the rover.
@@ -1219,7 +1219,55 @@ inscribed ring is 0.20 m, so that disagreement is enough on its own to put the
 planner's route inside the controller's walls -- which is exactly where the last
 twenty-five points of it are.
 
+### The controller is aimed round the corner, and that is the trap
+
+The rover is not being asked to do anything it cannot do. It is being aimed at
+somewhere it cannot get to, and the reason is a distance measured the wrong way.
+
+DWB does not steer at the goal an operator asked for. It keeps the part of the
+plan that fits inside its own local costmap and treats the far end of that
+piece as the goal, which the goal critics then flood outward from. "Fits inside
+the costmap" is tested as a straight-line distance from the rover -- half the
+window, so 1.5 m here. Where the route turns a corner the plan doubles back
+inside that circle, so the piece kept is far longer than the circle is wide: on
+`recordings/trap-2026-08-25-spin.json` it is a median 3.34 m of driving whose
+far end is 1.48 m away. On 34 of 52 ticks that far end is a cell the rover's
+centre may not occupy. Because this build's flood runs through walls, the
+critics then reward the straight-line direction to a point behind one, the
+obstacle critic refuses every forward move that way, and pivoting is free.
+
+`trap_sim.py --aim` cuts the same plan at a distance of *driving* instead and
+drives the model from twelve starts. The threshold is sharp: as run the rover
+gets nowhere from all twelve starts; cut at 1.5 m of driving it gets somewhere
+from eleven, moving 1.15 m, and the far end of the plan is a wall on 2 ticks of
+52 rather than 34. It falls away again below about 0.6 m, where the seed lands
+inside the rover's own inflated ring instead.
+
+Two warnings go with that result. The escapes clear a real lidar return by 0.20
+to 0.23 m and the rover's own corner is 0.24 m out, so this gets the rover
+moving without getting it through the 0.70 m gap cleanly; approaching the gap
+centred is a separate problem from being aimed somewhere reachable. And the cut
+is a *change*, not a missing piece of the model: `dwb_core` has a forward-prune
+parameter, but modelling one as present at its 2.0 m default drops the model's
+agreement with the recorded drive from 84% to 47%, so whatever the rover ran
+was not applying one. `dwb_replay.FORWARD_AIM_M` stays `None` for that reason.
+
+Nothing has been changed on the rover for this. The two candidate deployments
+are `FollowPath.forward_prune_distance`, if the installed `dwb_core` declares
+it and it binds -- the recording says it did not at 2.0 -- and shrinking
+`local_costmap` from 3.0 m to 2.0 m, which reaches the same place indirectly by
+moving the costmap edge and scores 10 of 12. The first is the honest fix and
+the second is a proxy that will mis-size itself on different geometry. Both
+need the parameter checked on the running controller first.
+
 ### What is still open
+
+- **The controller aims the rover round the corner at a wall, because the plan
+  is cut to a straight-line radius and the distance field it steers by floods
+  through walls.** Cutting the plan by driving distance instead gets the model
+  out of the trap from eleven of twelve starts (`trap_sim.py --aim`); nothing
+  is deployed yet and the escapes still clip the corner. The older reading of
+  this bullet follows and still holds for what happens once it is aimed badly.
 
 - **The controller aims the rover at walls, because the distance field it
   steers by does not know they are there.** That is the trap above and it is

@@ -198,7 +198,41 @@ def plan_in_odom(plan, pose_map, pose_odom):
     return out
 
 
-def transform_plan(path, grid, x, y):
+#: How much of the plan the controller may aim at, measured *along the path*
+#: rather than as the crow flies. `None` is the rover as it stands, and has to
+#: stay the default: modelling this cut as always present drops the model's
+#: agreement with the recorded drive from 84% to 47%, which is the evidence
+#: that the installed DWB does not apply one. It is a proposed change, not a
+#: correction -- `trap_sim.py --aim` is where it is priced.
+FORWARD_AIM_M = None
+
+
+def aim_prune(path, limit=None):
+    """Cut the plan at `limit` metres of *driving*, not of straight-line distance.
+
+    DWB keeps plan points while they are within half the local costmap of the
+    rover, which is a radius. A plan that turns a corner doubles back inside
+    that radius, so the piece DWB keeps can be far longer than the radius: on
+    the trap recording it is a median 3.34 m of driving whose far end is
+    1.48 m away, and that far end sits on a cell the rover's centre may not
+    occupy on 65% of ticks. The goal critics then flood from a seed behind a
+    wall -- this build's flood runs straight through walls -- and aim the
+    rover at it, which is the trap.
+    """
+    limit = FORWARD_AIM_M if limit is None else limit
+    if limit is None or len(path) < 2:
+        return path
+    out = [path[0]]
+    run = 0.0
+    for a, b in zip(path, path[1:]):
+        run += math.hypot(b[0] - a[0], b[1] - a[1])
+        if run > limit:
+            break
+        out.append(b)
+    return out if len(out) >= 2 else path[:2]
+
+
+def transform_plan(path, grid, x, y, forward_aim=None):
     """`DWBLocalPlanner::transformGlobalPlan`, which is where the goal comes from.
 
     This was the model's first real error and it invalidated everything built
@@ -216,6 +250,9 @@ def transform_plan(path, grid, x, y):
     comes back empty, every cell reads "unreachable", and the model refuses all
     thirty-three candidates on almost every tick -- which is exactly what it
     did: 2201 refusals, none of them anything the rover agreed with.
+
+    `forward_aim`, when set, adds a third step that DWB does not do: cut the
+    kept piece at that many metres of driving. See `aim_prune`.
     """
     if len(path) < 2:
         return path
@@ -232,7 +269,7 @@ def transform_plan(path, grid, x, y):
         out.append((px, py))
     if len(out) < 2:
         out = path[best_i:best_i + 2]
-    return out
+    return aim_prune(out, forward_aim)
 
 
 def ticks(episode):
@@ -366,7 +403,8 @@ _REINFLATED = {}
 
 
 def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
-                path_look=None, goal_look=None, reinflate=False):
+                path_look=None, goal_look=None, reinflate=False,
+                forward_aim=None):
     """Let the model drive, on the costmap and plan the rover really had.
 
     `replay` asks whether the model scores the way DWB scores, one recorded
@@ -429,7 +467,7 @@ def closed_loop(episode, gain, dead_time, seconds=12.0, start=0,
         if step % replan_every == 0:
             # A new path resets every critic, as `setPlan` does on the rover.
             oscillation.reset()
-        path = transform_plan(full, grid, x, y)
+        path = transform_plan(full, grid, x, y, forward_aim)
         if len(path) < 2:
             break
         kept, _ = dwb.evaluate(grid, path, path[-1], x, y, yaw,
