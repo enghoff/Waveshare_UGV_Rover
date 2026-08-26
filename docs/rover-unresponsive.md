@@ -24,11 +24,13 @@ That is the recovery procedure for an unresponsive rover, and until something
 else is shown to work on a real outage it is the only one.
 
 Every record downstream of that has to be read accordingly. `netwatch-report`
-prints `hard -- no shutdown recorded -- the board went down unasked` for any run
-that ended without a SIGTERM, and it genuinely cannot tell a pulled plug from a
-spontaneous reset, so it says the pessimistic thing. In this installation those
-endings are overwhelmingly **the operator recovering the rover**: they mark the
-moment a fault was cleared, not the moment one began.
+marks any run that ended without a SIGTERM as `hard -- no shutdown recorded --
+a recovery power cycle, or a reset`, because nothing on the board can see a plug
+being pulled and the two leave the same evidence behind. In this installation
+those endings are overwhelmingly **the operator recovering the rover**: they
+mark the moment a fault was cleared, not the moment one began. That note used to
+read "the board went down unasked", which is how this got taken backwards in the
+first place.
 
 Reading them as crashes inverts the whole diagnosis. It turns the repair into
 the symptom, makes the board look like failing hardware, and draws attention to

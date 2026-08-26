@@ -53,8 +53,8 @@ board that reset spontaneously otherwise leave very similar journal evidence.
 **What an unclean ending does not mean is that the board failed.** The recorder
 cannot see a plug being pulled, so it reports the only thing it knows — that no
 `stop` record was written — and `netwatch-report` phrases that as `hard -- no
-shutdown recorded -- the board went down unasked`. On this rover the only way
-back into a machine that has gone silent on the network is a power cycle, so
+shutdown recorded -- a recovery power cycle, or a reset`. On this rover the only
+way back into a machine that has gone silent on the network is a power cycle, so
 almost every one of those endings is **the operator recovering the rover**. It
 marks a repair, not a fault.
 

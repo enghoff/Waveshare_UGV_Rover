@@ -225,7 +225,12 @@ def print_boots(bs):
         note = ""
         if ended == "hard":
             hard += 1
-            note = "no shutdown recorded -- the board went down unasked"
+            # Deliberately not "the board went down unasked". Nothing here can
+            # see a plug being pulled, and on this rover a silent rover is
+            # recovered with the power switch, so most unclean endings are the
+            # operator repairing a fault rather than a board causing one. A note
+            # that asserts a crash turns the repair into the symptom.
+            note = "no shutdown recorded -- a recovery power cycle, or a reset"
         elif same:
             note = "same boot: the service was restarted, the board was not"
         print("  %-10s %-20s %-9s %-10s %s"
