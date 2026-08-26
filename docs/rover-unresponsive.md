@@ -13,6 +13,34 @@ This document is evidence and a possible workaround, not a closed case. One
 outage is explained; another one on the same afternoon is not, and other causes
 of an unresponsive rover almost certainly remain.
 
+## Recovery is a power cycle, so the record is full of repairs, not faults
+
+There is no remote way back into a rover that has gone silent. Nothing on the
+board notices and rebuilds the network path by itself, no watchdog is armed
+(`/dev/watchdog` is unheld, `bootstatus` is clean and `RuntimeWatchdogUSec=0`),
+and the one alternative below — reaching the radio that is still working —
+only helps when a radio still is. **Somebody walks over and cuts the power.**
+That is the recovery procedure for an unresponsive rover, and until something
+else is shown to work on a real outage it is the only one.
+
+Every record downstream of that has to be read accordingly. `netwatch-report`
+prints `hard -- no shutdown recorded -- the board went down unasked` for any run
+that ended without a SIGTERM, and it genuinely cannot tell a pulled plug from a
+spontaneous reset, so it says the pessimistic thing. In this installation those
+endings are overwhelmingly **the operator recovering the rover**: they mark the
+moment a fault was cleared, not the moment one began.
+
+Reading them as crashes inverts the whole diagnosis. It turns the repair into
+the symptom, makes the board look like failing hardware, and draws attention to
+the end of the log when the thing that needs explaining — whatever made the
+rover go quiet while it was still running — is earlier, in the samples before
+the ending. Those samples describe a healthy machine: associated, memory free,
+well under thermal limits, every watched process alive, sitting there
+unreachable until the power went off.
+
+So: the board dying is not a root cause here. It is what recovery looks like in
+the log.
+
 ## The board does not crash
 
 `netwatch` samples every ten seconds and fsyncs its transitions to
@@ -23,9 +51,9 @@ load around 6 on four cores, every watched process alive, 3.2–3.4 GB free, CPU
 70 °C against a critical trip at 110 °C, and no throttling. A board that is
 scheduling a Python process every ten seconds is not hung.
 
-So `netwatch-report`'s tally of runs that "ended without a shutdown" is counting
-**operator power cycles**, not spontaneous resets. That distinction is easy to
-get backwards and it inverts the whole diagnosis.
+This is the evidence behind the section above: the runs `netwatch-report` tallies
+as ending without a shutdown are operator power cycles, and the board was still
+scheduling work normally right up to the moment the power went off.
 
 Also ruled out for these events, from the same records: no out-of-memory kill
 anywhere in the logs, no kernel panic or oops, no USB over-current, nothing
@@ -78,6 +106,41 @@ cached copy, and nothing had told it otherwise. Note that `netwatch`'s `sig`
 comes from `/proc/net/wireless` rather than from a live query, so a plausible
 signal reading during an outage is neither evidence for this nor against it.
 
+## A second proven mechanism: the service address on the wrong radio
+
+Observed 2026-08-26, 16:50:31, for 11m33s. This one needs no firmware fault at
+all. The board, both radios and the router were healthy throughout and `.80`
+still went dark, so it is worth knowing before anyone reaches for the switch.
+
+`wifi_dual` gives each radio's own DHCP address a routing rule pinning that
+address's traffic to that radio, exactly so a reply leaves by the radio it
+arrived on. It never adds the same rule for the service address. The main table
+holds one connected route per radio at equal metric and always resolves the tie
+towards `wlan0`, so while `.80` sat on `wlan1` the kernel said:
+
+```text
+$ ip route get 192.168.1.206 from 192.168.1.80
+192.168.1.206 from 192.168.1.80 dev wlan0
+```
+
+`wlan0` was associated to nothing at the time. Requests to `.80` arrived
+correctly on `wlan1`; the replies left through a radio with no access point.
+`wlan1`'s own address went on serving SSH normally the whole time, and the
+outage ended by luck rather than by repair, when `wifi_dual` moved traffic back
+to `wlan0` at 17:02.
+
+Two reasons nothing complained. The metric-50 default route `wifi_dual` does
+install carries `src 192.168.1.80`, but a default route only applies off-subnet,
+so the rover's own internet access stayed fine. And `netwatch` recorded the
+window as "gateway did not answer" because it watches `wlan0` alone
+(`NETWATCH_IFACE`), which really was offline — while from the rest of the house
+the rover was up and answering on the other radio.
+
+The fix is one more rule in `route_through()` in
+[`wifi_roam/wifi_dual.py`](../wifi_roam/wifi_dual.py), pinning the service
+address to whichever radio currently holds it. Not yet written, reproduced or
+deployed.
+
 ## What is not explained
 
 **The 12:27 event — the one actually power-cycled — has no kernel message at
@@ -121,19 +184,29 @@ The rover holds three addresses, and only one of them depends on the radio that
 fails:
 
 ```text
-wlan0 (built-in Broadcom)  192.168.1.139   + 192.168.1.80  <- the one that vanishes
-wlan1 (USB Realtek)        192.168.1.100
+wlan0 (built-in Broadcom)  192.168.1.139
+wlan1 (USB Realtek)        192.168.1.47
+whichever carries traffic  192.168.1.80    <- the one that vanishes
 ```
 
 `192.168.1.80` is the service address `wifi_dual` parks on whichever radio is
-carrying traffic — normally `wlan0`. `192.168.1.100` is the USB adapter's own
-DHCP lease on a different radio, different chipset and different router, and
-nothing moves it.
+carrying traffic, and that is not always `wlan0`. The other two are the radios'
+own DHCP leases, on different chipsets associated to different routers. A lease
+is not a promise: `wlan1` answered on `.100` when this was first written and on
+`.47` on 2026-08-26. Remember the pair, not the numbers, and read the current
+ones with `ip -4 -o addr` whenever a shell is available.
 
-**So the first thing to try when the rover is unresponsive is
-`ssh admin@192.168.1.100`, before reaching for the power switch.** Getting a
-shell there while `.80` is dead would confirm the fault is one radio rather than
-the board, which is the single measurement this investigation still lacks.
+**So the first thing to try when the rover is unresponsive is a shell on a
+radio's own address, before reaching for the power switch.** Getting in there
+while `.80` is dead shows the fault is one radio, or one route, rather than the
+board. On 2026-08-26 that worked: `.47` served SSH throughout an eleven-minute
+outage of `.80`.
+
+Multicast DNS is the other way in, and it is more robust than any single address
+because it is answered per interface: a query arriving on a radio is answered on
+that radio, carrying that radio's own lease. `ssh bpi-m4zero` therefore follows
+whichever radio is alive without anyone having to know which one that is. It
+resolved to `.139` and to `.47` on the same afternoon.
 
 ## Resetting the Broadcom radio without rebooting
 
@@ -198,3 +271,10 @@ Next time the rover is unresponsive, do not power cycle it. Instead:
 makes the reset script the right fix — and makes the real repair a faster
 failover in `wifi_dual` rather than a reboot. Both radios dead at once means the
 cause is somewhere else entirely and this document covers only half the problem.
+
+Half of that measurement now exists. On 2026-08-26 one radio was dead while the
+other served SSH for eleven minutes, so a silent rover is demonstrably not a
+dead board. What it does not settle is which of the two mechanisms was at work:
+that outage was a plain loss of association on `wlan0`, visible in `wifi_dual`'s
+own log, not the cached-association firmware lockup. The firmware case still
+needs to be caught in the act.
