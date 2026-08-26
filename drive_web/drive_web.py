@@ -80,7 +80,7 @@ from typing import Any
 import _paths  # noqa: F401 — console_model, rover_tools
 import wsframe
 from console_model import (
-    CAMERA_RATES_S, LIGHT_MAX, MAP_LEGEND, MAP_SIZE_PX, Reply, TURN_PRESETS_DEG,
+    LIGHT_MAX, MAP_LEGEND, MAP_SIZE_PX, Reply, TURN_PRESETS_DEG,
 )
 from drive_session import (
     KEEPALIVE_S, LINK_LOST_S, ORPHAN_GRACE_S, RECONNECT_MAX_S, RECONNECT_S,
@@ -725,10 +725,6 @@ def setup() -> dict[str, Any]:
     return {"presets_deg": list(TURN_PRESETS_DEG),
             "light_max": LIGHT_MAX,
             "legend": [list(entry) for entry in MAP_LEGEND],
-            # The rungs the camera's drop-down offers. Here rather than in the
-            # state, because they never change and the state goes out ten times a
-            # second.
-            "camera_rates_s": list(CAMERA_RATES_S),
             # The audio rates come from the module that talks to the service, so
             # that the page resamples to what is actually wanted rather than to a
             # number written down twice.

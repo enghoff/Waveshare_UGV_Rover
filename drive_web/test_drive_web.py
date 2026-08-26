@@ -93,37 +93,76 @@ def test_signal_verdict() -> None:
     check("and no reading at all", verdict(None), "poor")
 
 
-def test_camera_rate() -> None:
-    """How often the camera panel asks for a frame.
+def test_pictures_wait_for_the_last_one() -> None:
+    """When the console asks the rover for the next map and the next frame.
 
-    The rate arrives from a page, so it is snapped to a rung rather than believed:
-    a nought coming out of a hand-written POST would have the pump asking the rover
-    for a picture on every tick of its own loop, on the core that is also running
-    SLAM. There is deliberately no rung that means off -- the panel is a view of
-    what the rover can see -- and the pump additionally waits for each frame to
-    arrive before asking for the next, so the fastest rung is a floor on the
-    interval and not a promise about it.
+    Both used to run on a clock started when the request went out, and the map's
+    was two seconds. A map takes the rover longer than that to draw, so by the
+    time one arrived its own timer had already expired and the console asked for
+    the next in the same breath -- an unbroken queue of renders on the core that
+    is also running SLAM, and the reason a stop could take a moment to be heard.
+
+    The clock now starts when the picture lands, so whatever the rover charged
+    for it is spent before the gap begins and the gap is really a gap. What is
+    checked here is that ordering: nothing goes out while one is in flight,
+    nothing goes out in the moment one arrives, and something goes out once the
+    gap has passed since it arrived.
     """
     try:
         import drive_web
-        from console_model import CAMERA_AUTO_S, CAMERA_RATES_S
+        from console_model import PICTURE_GAP_S, Reply
     except ImportError as exc:
-        SKIP.append(f"camera rate ({type(exc).__name__})")
+        SKIP.append(f"pictures wait for the last one ({type(exc).__name__})")
         return
 
+    class Fake:
+        """A channel that records rather than connects."""
+
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append(name)
+
     session = drive_web.Session(None, 3.0, 480)
-    check("the console starts on a rung the drop-down offers",
-          session.frame_every_s in CAMERA_RATES_S, True)
-    session.act({"do": "camera_rate", "seconds": 0.5})
-    check("a rate from the drop-down is taken", session.frame_every_s, 0.5)
-    session.act({"do": "camera_rate", "seconds": 0.0})
-    check("...and one that is not on the ladder is snapped to the nearest",
-          session.frame_every_s, min(CAMERA_RATES_S))
-    session.act({"do": "camera_rate"})
-    check("...and a rate with no number in it falls back to the default",
-          session.frame_every_s, CAMERA_AUTO_S)
-    check("nothing on the page can switch the camera off",
-          0 in CAMERA_RATES_S, False)
+    session.picture, session.camera = Fake(), Fake()
+    # Enough of a link that the pump does not spend the test looking for a rover:
+    # a channel in the list and an answer recently enough not to count as lost.
+    session.channels = [session.picture]
+    session.answered_at = time.monotonic()
+
+    session.pump()
+    check("a console with nothing on screen asks for a map at once",
+          session.picture.sent, ["map_png"])
+    check("...and for a frame", session.camera.sent, ["camera_jpeg"])
+    session.pump()
+    session.pump()
+    check("neither is asked for again while the first is still coming",
+          (len(session.picture.sent), len(session.camera.sent)), (1, 1))
+
+    # The rover answers, and both took longer than the gap. Under the old clock
+    # that alone made the next one due; under this one the gap has not started.
+    session.handle(Reply("map_png", {}, {"ok": True, "png_base64": ""}, 2.4))
+    session.handle(Reply("camera_jpeg", {}, {"ok": True, "jpeg_base64": ""}, 0.9))
+    session.pump()
+    check("a picture that took the rover seconds does not buy the next one early",
+          (len(session.picture.sent), len(session.camera.sent)), (1, 1))
+
+    # Half the gap after they landed: still too soon for either.
+    session.map_done_at -= PICTURE_GAP_S / 2
+    session.frame_done_at -= PICTURE_GAP_S / 2
+    session.pump()
+    check("...and neither goes out half way through the gap",
+          (len(session.picture.sent), len(session.camera.sent)), (1, 1))
+
+    # And past it, which is the only thing that releases them.
+    session.map_done_at -= PICTURE_GAP_S
+    session.frame_done_at -= PICTURE_GAP_S
+    session.pump()
+    check("once the gap has passed since the map landed, the next one is asked for",
+          session.picture.sent, ["map_png", "map_png"])
+    check("...and the next frame with it",
+          session.camera.sent, ["camera_jpeg", "camera_jpeg"])
 
 
 def test_web_console() -> None:
@@ -409,7 +448,7 @@ def test_idle_console_waits_for_a_browser() -> None:
     quiet.picture = Fake()
     quiet.channels = [quiet.watch]
     quiet.poll_at = 0.0
-    quiet.map_at = 0.0
+    quiet.map_done_at = 0.0
     quiet.pump()
     check("an idle console does not poll with nobody watching",
           quiet.watch.sent, [])

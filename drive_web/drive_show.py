@@ -186,7 +186,6 @@ class SessionShow:
         # like a broken button rather than a picture already as big as that view can
         # be drawn.
         took = body.get("render_s")
-        self.map_cost = float(took or 0.0)
         note = f"{width} px at {body.get('scale', '?')} px/cell"
         if body.get("bytes"):
             note += f", {body['bytes'] / 1000:.0f} kB"

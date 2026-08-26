@@ -361,10 +361,6 @@
       <img id="frameImg" alt="what the camera can see" hidden>
       <span class="empty" id="frameEmpty">no picture yet</span>
     </div>
-    <div class="row" style="margin-top:8px">
-      <label for="cameraRate">every</label>
-      <select id="cameraRate"></select>
-    </div>
     <p id="frameNote" class="hint"></p>
     <p id="frameError"></p>
   </section>
@@ -459,25 +455,12 @@ const $ = (id) => document.getElementById(id);
 let setup = null;          // the ladders and the colour key, fetched once
 let state = null;          // the last thing the server said
 let mapGen = -1, frameGen = -1, wifiPrint = "", radioPrint = "", turnsPrint = "";
-// The camera rate this browser has asked for and has not yet been told about,
-// and when that ask reached the rover -- nought while it is still on its way.
-// The one thing on this page that is neither the rover's answer nor a half-typed
-// number; render() says why it has to exist.
-let rateAsked = null, rateLandedAt = 0;
-// How long after an ask has landed the drop-down will go on showing a rate the
-// rover has not confirmed. Reached only when the rover was told and then said
-// something else -- a second browser moving the rate in the same breath, say.
-// It deliberately does not run while the ask is still in flight: on this rover's
-// link an ask has been watched taking over fifteen seconds to arrive, and a
-// timer that gave up on it would put the box back exactly where the driver
-// moved it from, which is the fault this all exists to stop.
-const RATE_PATIENCE_MS = 15000;
 
 // --- talking to the server --------------------------------------------------
 
-// Answers with whether the ask got out. Every control here but one throws that
-// away, because a button that has been pressed has nothing left to decide. The
-// drop-down does, and it is the one that waits for this.
+// Answers with whether the ask got out, which every control here throws away: a
+// button that has been pressed has nothing left to decide, and what became of it
+// arrives in the next state like everything else.
 function post(action) {
   return fetch("/do", {method: "POST", headers: {"Content-Type": "application/json"},
                        body: JSON.stringify(action)})
@@ -534,9 +517,10 @@ function render(next) {
   }
   $("caption").textContent = next.map.caption;
   // How old the picture is, said out loud. The rover takes a couple of seconds to
-  // draw one and the auto-refresh paces itself off that, so what is on screen is
-  // always a moment ago rather than now -- and without a number there is no telling
-  // a map that is two seconds behind from one that stopped arriving a minute ago.
+  // draw one and the next is asked for half a second after this one landed, so what
+  // is on screen is always a moment ago rather than now -- and without a number
+  // there is no telling a map that is two seconds behind from one that stopped
+  // arriving a minute ago.
   const drawn = next.map.age_s === null ? ""
     : next.map.age_s < 1 ? "just now" : `${next.map.age_s.toFixed(0)} s ago`;
   $("mapNote").textContent = next.map.drawing
@@ -553,20 +537,6 @@ function render(next) {
               next.frame.taking, next.frame.error);
   $("frameNote").textContent = next.frame.note;
   $("frameError").textContent = next.frame.error || "";
-  // The rover holds the rate, like everything else here, so a second browser that
-  // changes it is followed rather than argued with. The hand is the exception.
-  // The ask goes up in a POST and the answer comes back down this stream, and
-  // every state that crosses it on the way still carries the old rung -- so
-  // without this the box is dragged back off the rung the driver just moved it
-  // to, ten times a second, until the ask lands. On this desk that is a flicker.
-  // Over the rover's own link it has been measured at the best part of ten
-  // seconds, which does not read as lag; it reads as the setting not taking. So
-  // until the rover says the new rate out loud, the box shows what was asked for.
-  if (rateAsked === null || next.frame.every_s === rateAsked
-      || (rateLandedAt && Date.now() - rateLandedAt > RATE_PATIENCE_MS)) {
-    rateAsked = null;
-    $("cameraRate").value = String(next.frame.every_s);
-  }
 
   $("tracking").textContent = next.tracking;
   $("lights").textContent = next.lights.text;
@@ -1034,18 +1004,6 @@ function wire() {
   $("resetLidar").onclick = () => post({do: "reset_lidar"});
   $("describe").onclick = () => post({do: "describe"});
   $("clearMap").onclick = () => post({do: "clear_map"});
-  // Awaited, unlike everything else on this page, because this is the control
-  // that has to put itself right when the ask never left: a rate the rover was
-  // never told about must not go on being shown as though it were the rover's.
-  $("cameraRate").onchange = async () => {
-    const asked = +$("cameraRate").value;
-    rateAsked = asked;
-    rateLandedAt = 0;
-    const sent = await post({do: "camera_rate", seconds: asked});
-    if (rateAsked !== asked) return;   // a later choice has taken this one over
-    if (sent) rateLandedAt = Date.now();
-    else rateAsked = null;             // it never got out; show the rover again
-  };
   $("wifiScan").onclick = () => post({do: "wifi_scan"});
 
   $("mapImg").onclick = (event) => {
@@ -1112,16 +1070,6 @@ async function start() {
       button.onclick = () => turn(sign * magnitude);
       pad.append(button);
     }
-  }
-  // How often the camera takes one. The rungs come from the rover so that the
-  // page offers what the pump will actually honour rather than a list written
-  // down twice.
-  for (const seconds of setup.camera_rates_s) {
-    const option = document.createElement("option");
-    option.value = String(seconds);
-    option.textContent = seconds < 1 ? `${Math.round(seconds * 1000)} ms`
-                                     : `${seconds} s`;
-    $("cameraRate").append(option);
   }
   const legend = $("legend");
   for (const [colour, label] of setup.legend) {

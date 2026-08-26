@@ -39,7 +39,15 @@ import rover_tools
 # answer without the driving loop noticing.
 
 POLL_S = 0.3               # how often to ask for nav_status while connected
-MAP_AUTO_S = 2.0           # how often to redraw the map; it is always redrawing
+# How long the rover is left alone between pictures -- the map and the camera
+# frame alike -- measured from the moment one arrived rather than from the moment
+# it was asked for. That is the difference that matters on this host: a map takes
+# a couple of seconds to draw, so a two-second interval timed from the request
+# was reached before the picture it was pacing had even landed, and the console
+# asked for the next one in the same breath as it received the last. Measuring
+# from the arrival makes the gap a gap, and half a second of a core that is also
+# running SLAM is enough for the rest of the console to be answered.
+PICTURE_GAP_S = 0.5
 LOG_LINES = 500            # trimmed, so an afternoon of testing does not grow forever
 TURN_ROWS = 40
 # drive_to can take minutes of segments and turns -- the navigator allows a route
@@ -55,8 +63,10 @@ MOVE_TIMEOUT_S = 240.0
 #
 # The sizes cover the range that matters rather than making a keypad: the small ones
 # are where the coast after the power comes off is a large fraction of the whole
-# turn, and 90 is what a model asks for when it wants to face another way.
-TURN_PRESETS_DEG = (15, 45, 90)
+# turn, 90 is what a model asks for when it wants to face another way, and 180 is
+# the one that gets a rover out of a corner it has driven into -- either way round,
+# because which shoulder it swings on decides what it hits on the way.
+TURN_PRESETS_DEG = (15, 45, 90, 180)
 
 # How far each way the map covers, as a ladder rather than a zoom multiplier, so the
 # same handful of extents come back and one picture can be compared with an earlier
@@ -82,15 +92,6 @@ MAP_EXTENTS_M = (0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
 # a picture that used to be chosen from the panel's width is now simply the size the
 # rover can afford, every time.
 MAP_SIZE_PX = 480
-
-# How often the camera takes one, and what the drop-down offers. There is no longer
-# an off: the panel is a view of what the rover can see, and a view that has to be
-# switched on is a photograph. The cost is real -- face tracking and SLAM already
-# cannot share this one core -- so the rungs stop at half a second, and the pump
-# additionally never asks again until the last frame has actually arrived, which is
-# what keeps the fastest rung from queueing up work a cold camera cannot deliver.
-CAMERA_RATES_S = (0.5, 1.0, 1.5, 2.0, 3.0)
-CAMERA_AUTO_S = 1.0        # the rung the console starts on
 
 # How often to ask what face tracking is doing. It reads state the daemon already
 # has -- no camera, no detector, no lock -- so it is cheap, and it has to be asked

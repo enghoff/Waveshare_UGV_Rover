@@ -11,8 +11,8 @@ from typing import Any
 import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
-    BATTERY_POLL_S, BATTERY_STALE_S, CAMERA_AUTO_S, CAMERA_RATES_S, CLEAR_ARM_S,
-    Channel, LIGHT_MAX, MAP_AUTO_S, MAP_EXTENTS_M, MOVE_TIMEOUT_S,
+    BATTERY_POLL_S, BATTERY_STALE_S, CLEAR_ARM_S,
+    Channel, LIGHT_MAX, MAP_EXTENTS_M, MOVE_TIMEOUT_S, PICTURE_GAP_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
     WIFI_SCAN_TIMEOUT_S, rung, tap_to_point,
 )
@@ -154,14 +154,17 @@ class Session(SessionShow):
 
         self.map_outstanding = False
         self.map_wanted = False        # the view moved while one was already in flight
-        self.map_at = 0.0
+        # When the last map finished arriving, which is where the gap before the
+        # next one is measured from. It is deliberately not when the last one was
+        # asked for: the rover takes seconds to draw one, and a clock started at
+        # the request has usually run out before the picture it was pacing lands.
+        self.map_done_at = 0.0
         # When the picture on screen was drawn, as against when one was last asked
         # for. The two differ by however long the rover took, and the page shows the
         # first: a map is a photograph of a moment, and a console that displays one
         # without saying how old it is invites reading a stale picture as the room
         # the rover is in now.
         self.map_drawn_at = 0.0
-        self.map_cost = 0.0            # how long the rover said the last one took
         self.map_png: bytes = b""
         self.map_gen = 0
         self.map_shape = (0, 0)
@@ -177,17 +180,12 @@ class Session(SessionShow):
         self.rover_up = False
 
         self.frame_outstanding = False
-        self.frame_at = 0.0
+        self.frame_done_at = 0.0       # when the last frame landed; see map_done_at
         self.frame_cost = 0.0          # how long the last one took to arrive
         self.frame_jpeg: bytes = b""
         self.frame_gen = 0
         self.frame_note = ""
         self.frame_error = ""
-        # How often to take one. There is no off switch: the panel is a window on
-        # what the rover can see, and one that has to be switched on is a
-        # photograph. The pump waits for the last frame before asking for the next,
-        # so this is a floor on the interval rather than a promise about it.
-        self.frame_every_s = CAMERA_AUTO_S
 
         self.track_outstanding = False
         self.track_at = 0.0
@@ -284,8 +282,7 @@ class Session(SessionShow):
                               else round(time.monotonic() - self.map_drawn_at, 1)),
                     "settings": f"{2 * self.half_extent:.0f} m across, {facing}"},
             "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
-                      "error": self.frame_error, "every_s": self.frame_every_s,
-                      "taking": self.frame_outstanding},
+                      "error": self.frame_error, "taking": self.frame_outstanding},
             "tracking": self.track_text,
             "lights": {"level": self.light_level,
                        "text": "-" if self.light_level is None else
@@ -343,18 +340,17 @@ class Session(SessionShow):
             # third-of-a-second poll safe: a replan lasts about as long as the
             # planner takes and would otherwise come and go between two of these.
             self.watch.submit("nav_status", {"since_seq": self.move_seq})
-        # Auto-refresh leaves the rover as long to breathe as the last map took to
-        # draw. Asking every two seconds for a picture that takes two and a half is
-        # how you keep a single-core Pi permanently drawing maps while it is also
-        # running the SLAM it is drawing them from.
+        # Both pictures ask again a fixed gap after the last one arrived, rather
+        # than on a clock of their own. Whatever the rover charged for the last one
+        # is therefore already spent before the gap starts, which is the only way
+        # to leave a host that is also running SLAM any room at all: a two-second
+        # timer measured from the request left none whenever the map took longer
+        # than two seconds to draw, and it usually does.
         if (self.picture is not None and not self.map_outstanding
-                and now - self.map_at > max(MAP_AUTO_S, self.map_cost)):
+                and now - self.map_done_at > PICTURE_GAP_S):
             self.refresh_map()
-        # Paced off what the last one cost, like the map: a cold camera takes seconds
-        # to produce a frame, and asking again while it is still opening would keep a
-        # single-core Pi taking pictures for the whole time it is meant to be driving.
         if (self.camera is not None and not self.frame_outstanding
-                and now - self.frame_at > max(self.frame_every_s, self.frame_cost)):
+                and now - self.frame_done_at > PICTURE_GAP_S):
             self.take_picture()
         # Asked, not remembered: the daemon parks tracking by itself when the wheels
         # turn, so the only honest source for this panel is the daemon.
@@ -626,8 +622,6 @@ class Session(SessionShow):
             self.watch_call("describe_surroundings")
         elif what == "map":
             self.map_settings(action)
-        elif what == "camera_rate":
-            self.camera_rate(_number(action.get("seconds"), CAMERA_AUTO_S))
         elif what == "track":
             name = action.get("name")
             if name in ("start_tracking", "stop_tracking"):
@@ -774,21 +768,6 @@ class Session(SessionShow):
         self.log_sent("stop_driving", {})
         self.halt.submit("stop_driving")
 
-    def camera_rate(self, seconds: float | None) -> None:
-        """How often the camera panel asks for a frame, from the drop-down.
-
-        Snapped to a rung rather than taken at its word: the number arrives from a
-        page, and a rate of nought would have the pump asking for a picture on every
-        tick of its own loop.
-        """
-        wanted = CAMERA_AUTO_S if seconds is None else float(seconds)
-        self.frame_every_s = CAMERA_RATES_S[rung(CAMERA_RATES_S, wanted)]
-        # And take one straight away, so that choosing a faster rate is answered by
-        # a picture rather than by the old pace running on until the next frame
-        # happened to fall due anyway. take_picture() guards itself against there
-        # being no camera and against one already on its way.
-        self.take_picture()
-
     def take_picture(self) -> None:
         """On its own connection, because it is the slowest call here: a camera that
         has to be opened takes the rover up to four seconds to deliver a first
@@ -796,7 +775,6 @@ class Session(SessionShow):
         if self.camera is None or self.frame_outstanding:
             return
         self.frame_outstanding = True
-        self.frame_at = time.monotonic()
         self.frame_note = "taking one..."
         self.camera.submit("camera_jpeg")
 
@@ -875,7 +853,6 @@ class Session(SessionShow):
             return
         self.map_wanted = False
         self.map_outstanding = True
-        self.map_at = time.monotonic()
         self.picture.submit("map_png", {"half_extent_m": self.half_extent,
                                         "pixels": self.map_size,
                                         "rover_up": self.rover_up})
@@ -976,6 +953,7 @@ class Session(SessionShow):
             return
         if name == "map_png":
             self.map_outstanding = False
+            self.map_done_at = time.monotonic()
             self.show_map(body)
             if self.map_wanted:
                 self.refresh_map()
@@ -985,6 +963,7 @@ class Session(SessionShow):
             return
         if name == "camera_jpeg":
             self.frame_outstanding = False
+            self.frame_done_at = time.monotonic()
             self.frame_cost = reply.seconds
             self.show_picture(body)
             return

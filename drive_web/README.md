@@ -95,6 +95,12 @@ grid and is annotated with rover pose/heading, track and camera direction. Map
 clicks become navigation requests in map coordinates rather than offsets measured
 later after the rover may already have moved.
 
+The map and the camera frame refresh themselves and there is no rate control for
+either. The console asks for the next one `PICTURE_GAP_S` after the last one
+arrived — half a second — rather than on a clock started when the request went
+out, so what the rover charged for the picture is spent before the gap begins.
+Neither is ever asked for twice at once.
+
 The network panel shows both rover radios and which one currently owns the stable
 service address. A join can be staged on the spare radio and handed over only
 when that path is usable, so the console need not disconnect merely because the
@@ -185,19 +191,3 @@ Without physical hardware, use the mock:
 python voice_chat/mock_rover.py --drive
 python drive_web/drive_web.py --no-idle --bind 127.0.0.1
 ```
-
-The checks above are all of the rover's side of the console. The page has one of
-its own, which needs Node and therefore runs on the desk rather than the rover:
-
-```bash
-node drive_web/test_rate_box.mjs
-```
-
-It starts the mock and a console of its own, lifts the script straight out of
-`drive_web.html`, and runs it against a document that is just enough of a browser
-to hold the camera's rate drop-down honestly. What it is really testing is the
-gap between a control being moved and the rover's answer coming back, so it runs
-every case twice: once on a link that answers instantly, and once on one that
-takes over a second — which is this rover's link on a bad evening, scaled down to
-something a test can wait for. A page that only survives the first is a page that
-looks broken to anybody actually driving.
