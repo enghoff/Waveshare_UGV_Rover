@@ -6,7 +6,7 @@
     python3 trap_sim.py --look        # sweep the align look-ahead
     python3 trap_sim.py --bias        # what driving costs more than turning
     python3 trap_sim.py --rings       # does a smaller body get it out? (no)
-    python3 trap_sim.py --aim         # how far along the plan it aims  (yes)
+    python3 trap_sim.py --aim         # how far ahead it aims           (yes)
     python3 trap_sim.py               # all four
 
 **The three complaints this exists to explain.** The rover gets stuck turning
@@ -93,40 +93,40 @@ rover at a wall, every forward move that way is refused, and the pivots it is
 left with are separated by 0.4 points of aiming signal against 3.4 points of
 turn-rate charge. It turns for ever.
 
-**What does get it out is cutting the plan by driving distance, and `--aim`
-is where that was found.** DWB keeps plan points while they are within half
-the local costmap of the rover. That is a *radius*, and where the route turns
-a corner the plan doubles back inside it, so the piece kept can be far longer
-than the radius: on this drive it is a median 3.34 m of driving whose far end
-is only 1.48 m away as the crow flies. The end of that piece is the goal every
-goal critic floods from, and on 34 of 52 ticks it is a cell the rover's centre
-may not occupy -- around the corner, behind a wall. The flood in this build
-runs through walls, so the direction the critics reward is the straight line
-to a point on the far side of one.
+**What does get it out is aiming it nearer, and `--aim` is where that was
+found.** DWB hands the critics the plan out to `min(half the local costmap,
+FollowPath.forward_prune_distance)` of the rover, measured as a radius. That
+radius is 1.5 m here, because the window is 3 m and the parameter is 2.0. Where
+the route turns a corner the plan doubles back inside the circle, so the piece
+kept is a median 3.34 m of driving whose far end is only 1.48 m away -- and
+that far end is the goal every goal critic floods from. On 34 of 52 ticks it is
+a cell the rover's centre may not occupy: around the corner, behind a wall.
+This build's flood runs through walls, so the direction the critics reward is
+the straight line to a point on the far side of one.
 
-Cut the same plan at a distance of *driving* instead and the seed stops being
-a wall, on a threshold that is sharp:
+Bring the radius in and the seed stops being a wall, on a plateau with clear
+edges:
 
-    plan cut at            the seed is a wall   got somewhere   moved
-    wherever the costmap    34 of 52 ticks        0 of 12       0.00 m
-    ends (as run)
-    2.0 m of driving         5 of 52             11 of 12       1.15 m
-    1.5 m of driving         2 of 52             11 of 12       1.15 m
-    1.0 m of driving        13 of 52              8 of 12       1.13 m
-    0.4 m of driving         0 of 52              2 of 12       0.12 m
+    forward_prune_distance   seed is a wall   got somewhere   clearance
+    2.0 m (as set)            34 of 52          0 of 12       0.34 m
+    1.4 m                     50 of 52          0 of 12       0.34 m
+    1.2 m                     20 of 52          0 of 12       0.34 m
+    1.1 m                     17 of 52          3 of 12       0.33 m
+    1.0 m                      0 of 52         10 of 12       0.25 m
+    0.9 m                      0 of 52          9 of 12       0.25 m
+    0.7 m                      3 of 52         10 of 12       0.24 m
 
-It falls away again at the short end, where the seed lands inside the rover's
-own inflated ring instead. The escapes clear a real lidar return by 0.20 to
-0.23 m against a body whose corner is 0.24 m out, so this gets the rover
-moving without getting it through the gap cleanly -- centring in the gap is a
-separate question from being aimed at somewhere reachable.
+Above 1.1 m the seed sits past the corner; below about 0.6 m it lands inside
+the rover's own inflated ring instead. The escapes clear a real lidar return by
+0.20 to 0.25 m against a body whose corner is 0.24 m out, so this gets the rover
+moving without getting it through the 0.70 m gap cleanly. Centring in the gap
+is a separate question from being aimed at somewhere reachable.
 
-**This is a change and not a missing piece of the model.** `dwb_core` does
-have a forward-prune parameter, and modelling one as always present is the
-obvious explanation for the numbers above -- but it is wrong: with the cut
-modelled at DWB's 2.0 m default the model's agreement with the recorded drive
-falls from 84% to 47%, so the controller the rover actually ran was not
-applying one. `dwb_replay.FORWARD_AIM_M` therefore stays `None`.
+**The plateau is this room's, not a general truth.** What sets its upper edge
+is how far the rover is from the corner, so the number transfers only as a
+principle: aim nearer than the first bend. The general fix is to seed the goal
+critics from a point the flood can actually reach, and this is a mitigation
+that the reproduction can price today.
 
 **The look-ahead sweep is a measurement of the model that was, not the rover.**
 `--look` chose 0.325 over 0.8 by counting nose points that missed the flood,
@@ -470,10 +470,10 @@ MEASURED_RECT = [(0.20, 0.14), (0.20, -0.14), (-0.16, -0.14), (-0.16, 0.14)]
 #: What to sweep. The two ends are deliberately absurd -- a 0.10 m rover is not
 #: this rover -- because the point of the sweep is to show what shape *cannot*
 #: buy, and a range that stops at plausible bodies cannot show that.
-#: How far along the plan the controller is allowed to aim, in metres of
-#: driving. `None` is the rover as it stands, which aims at whatever the
-#: costmap radius happens to leave -- a median 3.34 m of plan on this drive.
-AIM_LIMITS = (None, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4)
+#: `FollowPath.forward_prune_distance` values to price. 2.0 is what the running
+#: controller has, and at 2.0 the 3 m costmap's own 1.5 m radius wins, so the
+#: parameter does nothing until it drops below 1.5.
+AIM_LIMITS = (2.0, 1.4, 1.2, 1.1, 1.0, 0.9, 0.8, 0.7, 0.6)
 
 SHAPES = (("circle 0.20 (as run)", 0.200),
           ("circle 0.175", 0.175),
@@ -582,14 +582,15 @@ def ring_sweep(episode, starts=12, seconds=12.0, every=10):
 
 
 def aim_sweep(episode, starts=12, seconds=12.0, every=10):
-    """How far along the plan may the controller aim, and does shortening it help?
+    """How far ahead may the controller aim, and does shortening it help?
 
-    DWB keeps the plan while it is within half the local costmap of the rover,
-    which is a *radius*. Where the route turns a corner the plan doubles back
-    inside that radius, so the piece kept can be much longer than the radius
-    itself, and its far end -- which is the goal every goal critic flods from
-    -- ends up around the corner and behind a wall. Cutting the same plan at a
-    given distance of *driving* is the change being priced here.
+    DWB hands the critics the plan out to `min(half the local costmap,
+    forward_prune_distance)` of the rover, as a radius. Where the route turns a
+    corner the plan doubles back inside that radius, so the piece kept is far
+    longer than the radius itself and its far end -- the goal every goal critic
+    floods from -- ends up around the corner and behind a wall. Bringing the
+    radius in is the change being priced here, and it is one parameter of the
+    running controller rather than a patch.
 
     `escaped` is measured the way `ring_sweep` measures it and carries the same
     warning: read `clearance` beside it. Unlike the body sweep the shape is not
@@ -604,7 +605,7 @@ def aim_sweep(episode, starts=12, seconds=12.0, every=10):
     for limit in AIM_LIMITS:
         runs = [dwb_replay.closed_loop(episode, dwb.TURN_GAIN, dwb.DEAD_TIME_S,
                                        seconds=seconds, start=start,
-                                       forward_aim=limit)
+                                       forward_prune=limit)
                 for start in picks]
         runs = [run for run in runs if run]
         ticks = blocked = 0
@@ -750,13 +751,13 @@ def main(argv=None):
 
     if args.aim:
         table = aim_sweep(episode)
-        print("how far along the plan the controller is allowed to aim")
+        print("how far ahead the controller is aimed, and whether pulling it in helps")
         print("   %-26s %-10s %-13s %-13s %-14s %s"
-              % ("cut the plan at", "aim point", "it is a wall",
+              % ("forward_prune_distance", "aim point", "it is a wall",
                  "got somewhere", "and moved", "clearance"))
         for row in table:
-            label = ("wherever the costmap ends" if row["limit"] is None
-                     else "%.1f m of driving" % row["limit"])
+            label = ("%.1f m" % row["limit"] + (
+                "  (as set; costmap wins)" if row["limit"] >= 1.5 else ""))
             print("   %-26s %5.2f m    %2d of %2d      %2d of %2d       %5.2f m       "
                   "%.2f m worst, %.2f m typical"
                   % (label, row["aim"], row["blocked"], row["ticks"],

@@ -304,6 +304,53 @@ controller_server:
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
+      # **How far ahead the critics are allowed to look, and the fix for the
+      # rover spinning in a corridor for a minute without going anywhere.**
+      #
+      # DWB does not steer at the goal. It hands the critics the part of the
+      # plan within `min(half the local costmap, this)` of the rover and treats
+      # the far end of that piece as the goal, which `GoalDist` and `GoalAlign`
+      # flood outward from. `dwb_local_planner.cpp` measures it as a radius:
+      #
+      #     transform_end_threshold = std::min(dist_threshold, forward_prune_dist);
+      #     auto transformation_end = std::find_if(transformation_begin, ...,
+      #       [&](const auto & p) { return euclidean_distance(p, robot_pose.pose)
+      #                                    > transform_end_threshold; });
+      #
+      # The `first_after_integrated_distance` call above it bounds only where
+      # the *start* of the plan may be found, not the end. So the default 2.0
+      # never bound against a 3 m window -- the costmap's own 1.5 m won -- and
+      # a plan that turns a corner doubles back inside that circle. On
+      # `recordings/trap-2026-08-25-spin.json` the piece handed to the critics
+      # is a median 3.34 m of driving whose far end is 1.48 m away, and on 34
+      # of 52 ticks that far end is a cell the rover's centre may not occupy:
+      # round the corner and behind a wall. The flood in the installed
+      # `libdwb_critics.so` runs through walls, so the critics reward the
+      # straight line towards it, the obstacle critic refuses every forward
+      # move that way, and pivoting costs nothing. The rover turns for ever.
+      #
+      # `trap_sim.py --aim` prices this against that recording, driving the
+      # model from twelve starts. There is a plateau with hard edges:
+      #
+      #     2.0 m (as it was)   seed is a wall 34 of 52 ticks    0 of 12 escape
+      #     1.2 m                              20 of 52          0 of 12
+      #     1.1 m                              17 of 52          3 of 12
+      #     1.0 m                               0 of 52         10 of 12
+      #     0.9 m                               0 of 52          9 of 12
+      #     0.7 m                               3 of 52         10 of 12
+      #
+      # Above 1.1 m the seed sits past the corner; below about 0.6 m it lands
+      # inside the rover's own inflated ring instead. 0.9 is the middle of the
+      # part where the seed is never a wall.
+      #
+      # Two things this is not. It is not a general number: what sets the upper
+      # edge is how far this rover was from that corner, so it transfers only
+      # as "aim nearer than the first bend". And it is not the whole fault --
+      # the escapes clear a real lidar return by 0.20 to 0.25 m against a body
+      # whose corner is 0.24 m out, so the rover gets moving without getting
+      # through the 0.70 m gap cleanly. The general fix is to seed the goal
+      # critics from a point the flood can reach at all.
+      forward_prune_distance: 0.9
       # `ObstacleFootprint` rather than `BaseObstacle`, because the footprint is
       # now a rectangle. `BaseObstacle` scores and vetoes on the cost of the one
       # cell the robot's centre is in, which is a collision test only while the
