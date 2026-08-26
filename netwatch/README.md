@@ -50,6 +50,21 @@ the moment of failure next to the verdict instead of hundreds of lines earlier.
 This distinction matters because a rover recovered by a manual power cycle and a
 board that reset spontaneously otherwise leave very similar journal evidence.
 
+**What an unclean ending does not mean is that the board failed.** The recorder
+cannot see a plug being pulled, so it reports the only thing it knows — that no
+`stop` record was written — and `netwatch-report` phrases that as `hard -- no
+shutdown recorded -- the board went down unasked`. On this rover the only way
+back into a machine that has gone silent on the network is a power cycle, so
+almost every one of those endings is **the operator recovering the rover**. It
+marks a repair, not a fault.
+
+Read them that way round or the diagnosis inverts: a tally of hard endings
+becomes a tally of crashes, the board starts looking like failing hardware, and
+attention goes to the end of a run when the thing that needs explaining is in
+the samples before it — a healthy, still-scheduling board that had stopped
+being reachable. See
+[`docs/rover-unresponsive.md`](../docs/rover-unresponsive.md).
+
 ## Why it writes under `/var/lib`
 
 Logs live at:

@@ -27,9 +27,13 @@ provided by Alibaba's hosted realtime Qwen Omni service.
 The rover service address is **`192.168.1.80`**. `wifi_dual` moves that address
 between the two associated Wi-Fi interfaces and sends a gratuitous ARP on
 failover, so callers do not need to know which radio is active. The interfaces
-also retain their own DHCP leases (`.139` for onboard `wlan0` and `.100` for the
-USB `wlan1` in the current installation), but those are interface addresses, not
-the address applications should normally bookmark.
+also retain their own DHCP leases (`.139` for onboard `wlan0` and `.47` for the
+USB `wlan1` on 2026-08-26), but those are interface addresses, not the address
+applications should normally bookmark, and they change when a lease does. They
+are worth knowing anyway: when the rover stops answering on `192.168.1.80` a
+radio's own address, or the name over multicast DNS, is the way in that does not
+need the power switch. See
+[`rover-unresponsive.md`](rover-unresponsive.md).
 
 On Windows, `.local` resolution is not dependable with every SSH setup. The
 `bpi-m4zero` SSH config entry should therefore target the stable service address
@@ -106,7 +110,10 @@ for the active path to fail before beginning a new association.
 [`netwatch/`](../netwatch) records link/board evidence persistently under
 `/var/lib/netwatch/`. This matters because `/var/log` is backed by volatile/zram
 logging on this installation and evidence would otherwise disappear across the
-power-cycle used to recover a lost rover.
+power-cycle used to recover a lost rover. A power cycle is the only recovery
+known to work on a rover that has gone silent, so the unclean endings in that
+record are repairs rather than faults; see
+[`rover-unresponsive.md`](rover-unresponsive.md) before reading them as crashes.
 
 ## Services and ports
 
