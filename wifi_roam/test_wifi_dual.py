@@ -564,6 +564,38 @@ def the_service_address_is_answered_out_of_the_radio_it_sits_on():
     check(bool(WORLDS), "no scenario ran, so this assertion proves nothing")
 
 
+def a_router_that_will_not_hold_the_standby():
+    """2026-08-26: the spare unassociated for minutes, with strong routers listed.
+
+    Holding a radio on one network is done by disabling every other one, which
+    is what `select_network` means. So a radio held on a router that will not
+    keep it has nowhere to fall back to: it joins, loses carrier, retries the
+    same access point, and the manager re-pins it there after every scan because
+    it is still the loudest router the other radio is not on. The console shows
+    a spare that is "not associated" beside a list of networks at full strength
+    that it is not permitted to try.
+
+    Being associated to something beats being on the router the placement rules
+    would prefer, so what is checked is that it ends up on the air at all.
+    """
+    world, platform, manager = build()
+    settle(manager, world, 120)
+    spare = manager.standby
+    check(spare is not None and spare.link.associated,
+          "the spare never associated at all, so this proves nothing")
+    iface, refused_by = spare.iface, spare.link.ssid
+    for ap in world.aps:
+        if ap.ssid == refused_by:
+            ap.refuses.add(iface)
+    settle(manager, world, 420)
+    spare = manager.radio(iface)
+    check(spare.link.associated,
+          "%s spent seven minutes unassociated, still held on %s with every "
+          "other network disabled" % (iface, refused_by))
+    check(spare.link.ssid != refused_by,
+          "%s is still on %s, which will not keep it" % (iface, refused_by))
+
+
 def nothing_ever_switches_a_radio_off():
     """The assertion that spans the whole file, and keeps the rover rebootable.
 
@@ -639,6 +671,8 @@ def main():
          scoring_prefers_the_onboard_radio_only_in_ties),
         ("the service address follows the failover",
          the_service_address_follows_the_failover),
+        ("a router that will not hold the standby",
+         a_router_that_will_not_hold_the_standby),
         ("nothing ever switches a radio off",
          nothing_ever_switches_a_radio_off),
         ("the service address is answered out of its own radio",

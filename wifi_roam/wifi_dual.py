@@ -199,6 +199,22 @@ SCANS_REMEMBERED = int(os.environ.get("SCANS_REMEMBERED", "3"))
 # manager stayed certain about a plan that was not working.
 DEADMAN_S = float(os.environ.get("DEADMAN_S", "120"))
 
+# The dead-man above is about both radios at once. This one is about one radio
+# that cannot join the network it is being held on. Holding is `select_network`,
+# which disables every other network the radio knows, so a radio held on an
+# access point that will not keep it has nothing else it is allowed to try -- it
+# retries the same one, loses it, and retries it again, while the console shows
+# a spare that is "not associated" beside a list of strong networks. After this
+# long with no link at all, the radio gets every network back and may take
+# whatever it can hold: being on the air somewhere beats being on the router the
+# placement rules would have preferred.
+STRANDED_S = float(os.environ.get("STRANDED_S", "90"))
+# And it is not sent straight back to the one that would not have it. Ten
+# minutes, the same figure as a person's choice, because that is roughly how
+# long an access point's bad spell lasts and this rover's radios have several a
+# day.
+REFUSED_S = float(os.environ.get("REFUSED_S", "600"))
+
 STATUS_PATH = os.environ.get("STATUS_PATH", "/run/wifi-dual.json")
 
 # Where a person at the console asks for a particular network. A file rather
@@ -853,6 +869,8 @@ class Radio:
         self.gone = False
         self.asked_ssid = None      # what a person asked this radio for
         self.asked_at = -1e9
+        self.linked_at = None       # last time it was associated and addressed
+        self.refused = {}           # ssid -> when it would not keep this radio
 
     # --- readings -----------------------------------------------------------
     @property
@@ -1016,7 +1034,8 @@ class Manager:
                  margin_db=MARGIN_DB, hold_s=HOLD_S, cooldown_s=COOLDOWN_S,
                  scan_every_s=SCAN_EVERY_S, deadman_s=DEADMAN_S,
                  window=WINDOW, status_path=STATUS_PATH,
-                 request_path=REQUEST_PATH, sticky_s=STICKY_S):
+                 request_path=REQUEST_PATH, sticky_s=STICKY_S,
+                 stranded_s=STRANDED_S, refused_s=REFUSED_S):
         self.platform = platform
         self.service_ip = service_ip or None
         self.gateway = gateway
@@ -1029,6 +1048,8 @@ class Manager:
         self.status_path = status_path
         self.request_path = request_path
         self.sticky_s = sticky_s
+        self.stranded_s = stranded_s
+        self.refused_s = refused_s
 
         self.radios = []
         self.active = None
@@ -1087,6 +1108,7 @@ class Manager:
             return
         self.read_request()
         self.choose_active()
+        self.free_stranded()
         self.place_radios()
         self.hold_intents()
         self.write_status()
@@ -1305,9 +1327,19 @@ class Manager:
         known = self.platform.networks(radio.iface)
         if not known:
             return
-        candidates = [entry for entry in radio.seen
-                      if entry.ssid in known
-                      and usable_dbm(entry.dbm) is not None]
+        heard = [entry for entry in radio.seen
+                 if entry.ssid in known
+                 and usable_dbm(entry.dbm) is not None]
+        now = self.platform.now()
+        candidates = [entry for entry in heard
+                      if now - radio.refused.get(entry.ssid, -1e9)
+                      >= self.refused_s]
+        if not candidates and heard:
+            # Everything this radio can hear has turned it away recently, which
+            # is more likely to be the radio than the routers. Forgetting and
+            # trying again beats sitting still with a list of grudges.
+            radio.refused.clear()
+            candidates = heard
         if not candidates:
             return
         # Whatever the other radios are on, or are being moved to. Written as a
@@ -1334,6 +1366,14 @@ class Manager:
                 return
             free = candidates
         best = max(free, key=lambda entry: self.placement_score(radio, entry))
+        if radio.intent == best.ssid and radio.pinned == best.ssid:
+            # Already being held exactly there, and still trying to get on.
+            # Saying it again would mean another `select_network`, and
+            # `select_network` restarts the association -- so a radio slow to
+            # join would be interrupted every time this ran and never finish,
+            # while the log filled with "moving from nothing to" lines about a
+            # radio that was not being moved anywhere.
+            return
         here = radio.link.ssid
         if here == best.ssid:
             radio.intent = best.ssid
@@ -1391,6 +1431,46 @@ class Manager:
         levels.sort()
         median = levels[len(levels) // 2]
         return median + (BAND_BONUS_DB if band_of(entry.freq) == "5" else 0.0)
+
+    def free_stranded(self):
+        """Give up holding a radio on a network it has not managed to join.
+
+        The clock is the last moment the radio was associated *and* addressed,
+        and it is deliberately not restarted by re-pinning: the failure this
+        exists for looks like progress from the outside, because the manager
+        re-chooses the same loudest access point after every scan and pins it
+        again, so a deadline measured from the last pin would never expire.
+
+        Freeing it is `release`, the same call every exit path makes: every
+        network the radio knows is enabled again and the supplicant may take
+        whatever it can actually hold. The network that would not have it is
+        remembered so the next placement does not send it straight back.
+
+        Only ever the radio that has no link at all. A radio that is associated
+        and addressed but cannot reach the gateway is a different fault with a
+        different answer -- moving the traffic, which `choose_active` has
+        already done by the time this runs.
+        """
+        now = self.platform.now()
+        for radio in self.radios:
+            if radio.gone:
+                continue
+            if radio.linked_at is None:
+                radio.linked_at = now
+            if radio.link.associated and radio.address:
+                radio.linked_at = now
+                continue
+            if not radio.pinned or now - radio.linked_at < self.stranded_s:
+                continue
+            self.say("%s has been held on %s for %.0f s without joining it, so "
+                     "every network is enabled again and it may take what it "
+                     "can" % (radio.iface, radio.pinned,
+                              now - radio.linked_at))
+            radio.refused[radio.pinned] = now
+            self.platform.release(radio.iface)
+            radio.pinned = None
+            radio.intent = None
+            radio.linked_at = now
 
     def hold_intents(self):
         """Keep each radio where it was put, and never move the active one.

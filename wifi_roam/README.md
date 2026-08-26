@@ -31,6 +31,26 @@ worked in every other respect left the rover unreachable at its own service
 address for eleven and a half minutes; see
 [`docs/rover-unresponsive.md`](../docs/rover-unresponsive.md).
 
+## When a radio cannot join what it is being held on
+
+Holding a radio on one router is `wpa_cli select_network`, and that works by
+disabling every other network the radio knows. So a radio held on an access
+point that will not keep it has nowhere it is permitted to fall back to: it
+joins, loses carrier, retries the same one, and the console shows a spare that
+is "not associated" beside a list of networks at full strength that it is not
+allowed to try.
+
+After `STRANDED_S` (90 s) with no association and no address, the manager
+therefore stops holding it: `release` re-enables every network, the supplicant
+takes whatever it can actually hold, and the network that would not have it is
+left out of that radio's next placement for `REFUSED_S` (10 minutes). Being on
+the air somewhere beats being on the router the placement rules would prefer.
+
+A placement that has not changed is also no longer re-announced. Repeating the
+same choice meant another `select_network`, which restarts the association --
+so a radio slow to join was interrupted every time the manager scanned, and the
+log filled with "moving from nothing to" lines about a radio nothing was moving.
+
 ## Why two associated radios
 
 The failure this solves is not simply "choose the strongest AP". A single radio

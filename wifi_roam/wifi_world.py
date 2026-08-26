@@ -92,7 +92,7 @@ SCAN_EXCURSION_DB = 26.0
 
 class AccessPoint:
     def __init__(self, ssid, x, y, freq=2437, up=True, latency_ms=2.5,
-                 loss_pct=0.0, reaches_lan=True):
+                 loss_pct=0.0, reaches_lan=True, refuses=()):
         self.ssid = ssid
         self.x, self.y = x, y
         self.freq = freq
@@ -103,6 +103,12 @@ class AccessPoint:
         # the document singles out, and the one that RSSI alone cannot see. It
         # is modelled separately from `up` precisely so a scenario can build it.
         self.reaches_lan = reaches_lan
+        # Interfaces this access point will not keep associated, whatever the
+        # signal says. Separate from `up` again, because the rover's onboard
+        # radio does exactly this and only to itself: it associates, holds for a
+        # few seconds, loses carrier and its lease, and tries again, while the
+        # other radio sits on the same access point perfectly happily.
+        self.refuses = set(refuses)
 
     @property
     def router(self):
@@ -234,7 +240,8 @@ class World:
                 continue
             if radio.associating_until is not None and self.t >= radio.associating_until:
                 radio.associating_until = None
-                if radio.trying and self.ap(radio.trying) and self.ap(radio.trying).up:
+                trying = self.ap(radio.trying) if radio.trying else None
+                if trying and trying.up and radio.iface not in trying.refuses:
                     radio.ssid = radio.trying
                     radio.dhcp_until = self.t + DHCP_S
             if radio.dhcp_until is not None and self.t >= radio.dhcp_until:
@@ -242,7 +249,8 @@ class World:
                 radio.address = "192.168.1.%d" % self.next_octet
                 self.next_octet += 1
             ap = self.ap(radio.ssid)
-            if radio.ssid and (ap is None or not ap.up):
+            if radio.ssid and (ap is None or not ap.up
+                               or radio.iface in ap.refuses):
                 # The access point went away under an associated radio, which is
                 # the one thing a supplicant notices by itself.
                 radio.ssid = None
@@ -266,7 +274,8 @@ class World:
         if radio.ssid or radio.associating_until is not None:
             return
         options = [ap for ap in self.aps
-                   if ap.up and radio.can_use(ap) and ap.ssid in radio.enabled]
+                   if ap.up and radio.can_use(ap) and ap.ssid in radio.enabled
+                   and radio.iface not in ap.refuses]
         if not options:
             return
         best = max(options, key=lambda ap: ap.dbm_at(self.x, self.y))

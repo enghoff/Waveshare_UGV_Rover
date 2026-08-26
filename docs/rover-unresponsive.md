@@ -179,6 +179,15 @@ Two mechanisms, and the first is much the more important:
 A health check on the service address itself would catch both this class and the
 next one, since it is the only thing that tests what callers actually use.
 
+3. **Stop holding a radio on a router that will not have it.** Watched live on
+   2026-08-26: the spare sat unassociated for minutes with two routers at full
+   strength in the console list, because holding a radio on one network disables
+   every other one and the one it was held on kept dropping it. That matters
+   here and not only in the Wi-Fi component -- a spare that cannot associate is
+   a rover with nothing to fail over to, which turns the first fault above into
+   an outage rather than a six-second blip. Done: `wifi_dual` now frees a radio
+   that has been held somewhere for ninety seconds without joining it.
+
 ## What is not explained
 
 **The 12:27 event — the one actually power-cycled — has no kernel message at
