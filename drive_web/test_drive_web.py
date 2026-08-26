@@ -738,38 +738,82 @@ def test_a_second_click_takes_over() -> None:
     check("...and it is the place under the cursor",
           (first["x_m"], first["y_m"]), (3.0, -1.0))
 
-    # Now the same again while that move is still running. The move connection is
-    # occupied, so nothing may go out on it yet -- but the stop must.
+    # Now the same again while that move is still running. The wheels must not
+    # stop: the new place goes out as a `retarget`, which Nav2 takes as a
+    # replacement goal without halting the behaviour tree, so the rover keeps
+    # driving the route it has until the planner produces the new one.
     session.act({"do": "tap", "col": 160, "row": 240})
-    check("a click during a move stops what is running",
-          [name for name, _ in session.halt.sent], ["stop_driving"])
-    check("...and does not try to overtake it on the move connection",
+    check("a click during a drive redirects it instead of stopping it",
+          [name for name, _ in session.halt.sent], ["retarget"])
+    check("...to the place under the cursor",
+          (session.halt.sent[0][1]["x_m"], session.halt.sent[0][1]["y_m"]),
+          (2.0, 0.0))
+    check("...and does not try to overtake the move on its own connection",
           len(session.moves.sent), 1)
-    check("...and says so, naming where it will go instead",
-          "new target" in session.log[-2]["text"], True)
+    check("...and says so without promising a stop",
+          "without stopping" in session.log[-2]["text"], True)
 
-    # The rover answers the move it was told to stop. That is the wheels coming
-    # free, and the click that was waiting goes then.
-    session.handle(Reply("drive_to", first, {"ok": True, "reason": "stopped",
-                                             "travelled_m": 0.4}, 1.2))
-    check("the waiting click goes once the old move has answered",
-          [name for name, _ in session.moves.sent], ["drive_to", "drive_to"])
-    second = session.moves.sent[1][1]
-    check("...to the second place, not the first",
-          (second["x_m"], second["y_m"]), (2.0, 0.0))
-    check("...and nothing is left waiting", session.pending_target, None)
-    check("...and the console counts itself busy again",
+    # The rover takes it. The move already in flight is the one that reports the
+    # arrival, so nothing new is sent and nothing is left waiting.
+    session.handle(Reply("retarget", session.halt.sent[0][1],
+                         {"ok": True, "reason": "handed over"}, 0.1))
+    check("a taken redirect starts no second move", len(session.moves.sent), 1)
+    check("...and leaves nothing waiting for the wheels",
+          session.pending_target, None)
+    check("...and the console is still busy with the move it began with",
           session.busy_name, "drive_to")
 
-    # A third place clicked before the handover replaces the waiting one, and sends
-    # no second stop: the first one is already on its way.
+    # A redirect the rover will not take falls back to what the console did
+    # before there was one: stop, and send the click when the wheels come free.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "tap", "col": 240, "row": 160})
+    session.handle(Reply("retarget", session.halt.sent[0][1],
+                         {"ok": False, "reason": "blocked",
+                          "detail": "there is no route to that place"}, 0.1))
+    check("a refused redirect stops the move instead",
+          [name for name, _ in session.halt.sent], ["retarget", "stop_driving"])
+    check("...keeping the click, which goes when the move answers",
+          (session.pending_target or {}).get("x_m"), 3.0)
+    session.handle(Reply("drive_to", {}, {"ok": True, "reason": "stopped"}, 1.2))
+    check("...as an ordinary move to the place that was clicked",
+          [(name, a.get("x_m")) for name, a in session.moves.sent],
+          [("drive_to", 3.0)])
+
+    # And if the move ended while the redirect was in flight, the wheels are free
+    # and there was never anything to redirect: it is just a drive.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "tap", "col": 240, "row": 160})
+    session.handle(Reply("retarget", session.halt.sent[0][1],
+                         {"ok": False, "reason": "idle"}, 0.1))
+    check("a redirect that arrived too late sends nothing on its own",
+          [name for name, _ in session.moves.sent], [])
+    check("...and no stop for a rover that has already stopped",
+          [name for name, _ in session.halt.sent], ["retarget"])
+    check("...but keeps the click", (session.pending_target or {}).get("x_m"), 3.0)
+    session.handle(Reply("drive_to", {}, {"ok": True, "reason": "arrived"}, 2.0))
+    check("...which goes as an ordinary drive when the move finally answers",
+          [(name, a.get("x_m")) for name, a in session.moves.sent],
+          [("drive_to", 3.0)])
+
+    # A third place clicked while a redirect is outstanding replaces the waiting
+    # one rather than queueing, and still never stops the rover.
     session = console()
     session.busy_since, session.busy_name = 100.0, "drive_to"
     session.act({"do": "tap", "col": 240, "row": 160})
     session.act({"do": "tap", "col": 160, "row": 240})
     check("a further click replaces the waiting one rather than queueing behind it",
           (session.pending_target or {}).get("y_m"), 0.0)
-    check("...without a second stop", len(session.halt.sent), 1)
+    check("...without a second redirect while the first is unanswered",
+          len(session.halt.sent), 1)
+    session.handle(Reply("retarget", session.halt.sent[0][1],
+                         {"ok": True, "reason": "handed over"}, 0.1))
+    check("...which goes as soon as the first is answered",
+          [(name, a.get("y_m")) for name, a in session.halt.sent],
+          [("retarget", -1.0), ("retarget", 0.0)])
+    check("...and the wheels were never stopped for any of it",
+          [name for name, _ in session.halt.sent if name == "stop_driving"], [])
 
     # STOP after a click must not be followed by the rover setting off for it. This
     # is the one that would be unforgivable.
@@ -778,6 +822,13 @@ def test_a_second_click_takes_over() -> None:
           None)
     session.handle(Reply("drive_to", {}, {"ok": True, "reason": "stopped"}, 0.3))
     check("...so the move that answers is the end of it, not the start of another",
+          session.moves.sent, [])
+    # The redirect that was in flight when STOP was pressed answers afterwards,
+    # and this is the one that would be unforgivable: a rover that stopped and
+    # then set off again on its own.
+    session.handle(Reply("retarget", {"x_m": 3.0, "y_m": -1.0},
+                         {"ok": True, "reason": "handed over"}, 0.4))
+    check("...and a redirect answering after STOP starts nothing either",
           session.moves.sent, [])
 
     # The same goes for the stop that follows the last browser leaving: the target

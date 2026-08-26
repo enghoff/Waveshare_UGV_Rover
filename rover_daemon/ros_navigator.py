@@ -403,6 +403,36 @@ class RosNavigator:
                             "have"}
         return {"stopped": True, "latched": bool(answer.get("latched"))}
 
+    def retarget(self, x_m: float, y_m: float,
+                 yaw_deg: float | None = None) -> dict[str, Any]:
+        """Send the rover somewhere else without stopping it on the way.
+
+        The console used to do this by stopping the move in flight, waiting for
+        the wheels to come free and starting again, because a second move is
+        refused -- and that showed as a pause every time somebody changed their
+        mind about where the rover was going.
+
+        Nav2 does not need the pause. A second `NavigateToPose` goal is a
+        preemption rather than a new job: the behaviour tree's target is
+        replaced and the tree is never halted, so the controller keeps driving
+        the route it already has until the planner answers with the new one.
+        This goes on its own connection, like `stop`, because the connection
+        carrying the move is blocked for as long as the move lasts.
+
+        `idle` back means there was nothing to redirect, and the caller should
+        send an ordinary `drive_to` instead.
+        """
+        answer = self.ask({"op": "retarget", "x_m": float(x_m),
+                           "y_m": float(y_m),
+                           **({} if yaw_deg is None
+                              else {"yaw_deg": float(yaw_deg)})},
+                          STOP_TIMEOUT_S)
+        if answer.get("ok"):
+            self.report.say("driving", "a new target took over")
+        return {"ok": bool(answer.get("ok")),
+                "reason": answer.get("reason") or "unreachable",
+                "detail": answer.get("detail") or answer.get("error") or ""}
+
     def clear_estop(self) -> dict[str, Any]:
         answer = self.ask({"op": "clear_estop"}, STOP_TIMEOUT_S)
         return {"latched": bool(answer.get("latched"))}

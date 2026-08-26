@@ -62,6 +62,11 @@ def _source(name: str, *repository: str) -> Path:
 
 
 DAEMON = _source("tool_schemas.py", "rover_daemon", "tool_schemas.py")
+#: The navigation half of the daemon, read for the map limits a mock has to
+#: enforce if it is to stand in for the rover. `mock_rover` asks for these by
+#: name, and without this line every console test that needs a mock fails on
+#: the import rather than on anything it was testing.
+ROVER_NAV = _source("rover_nav.py", "rover_daemon", "rover_nav.py")
 
 
 def _assignments(tree: ast.Module) -> dict[str, ast.expr]:

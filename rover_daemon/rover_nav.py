@@ -165,6 +165,28 @@ class RoverNav:
         return {"ok": outcome.reason == "arrived", **outcome.asdict(),
                 **self._nav_context()}
 
+    def _tool_retarget(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Change where a drive in progress is going, without stopping it.
+
+        A control call and not a model tool, for `drive_to`'s reason twice over:
+        it takes map coordinates, which nothing a model can see supplies, and it
+        only means anything to somebody watching the rover move. A console with
+        the map on screen has both.
+
+        Answered as soon as the new target is staged, not when the rover gets
+        there -- the move already in flight is what reports the arrival, and it
+        keeps reporting on the connection it was started on.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": NO_DRIVING}
+        x, y = arguments.get("x_m"), arguments.get("y_m")
+        if x is None or y is None:
+            return {"ok": False, "error": "a new target is a place on the map, "
+                                          "so it needs both x_m and y_m"}
+        yaw = arguments.get("yaw_deg")
+        return self.nav.retarget(_number(x, "x_m"), _number(y, "y_m"),
+                                 None if yaw is None else _number(yaw, "yaw_deg"))
+
     def _tool_stop_driving(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
             return {"ok": True, "stopped": True,
