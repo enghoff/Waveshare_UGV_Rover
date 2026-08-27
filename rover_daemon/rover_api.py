@@ -77,11 +77,6 @@ DEFAULT_ADDRESS = "127.0.0.1:8769"
 # stopped answering is an error rather than a hang.
 TIMEOUT_S = 120.0
 CONNECT_TIMEOUT_S = 3.0
-# How long a finished `alongside` block waits for its job to unwind. The
-# runner's own grace before a SIGKILL, and for the same reason: it is what a
-# job needs to notice it is over and put its lights out, and one still inside
-# a blocking call after two seconds is not going to be talked round.
-ALONGSIDE_JOIN_S = 2.0
 
 
 class RoverError(Exception):
@@ -312,8 +307,19 @@ class alongside:
     the script has, so `every` and `wait` inside it raise `Stopped` the moment the
     block finishes -- which is what makes the loop above right rather than
     reckless: with no `for_s` in it, it flashes for as long as the turn takes and
-    not a tick longer. Leaving the block sets that ending and waits
-    `ALONGSIDE_JOIN_S` for the job to unwind through its own `finally`.
+    not a tick longer.
+
+    **And the block waits for it, however long that takes.** Which way round the
+    two halves go is not for this to decide: asked to flash the headlights while
+    it turned, the model wrote the turn as the job and the flashing as the block,
+    which is the same behaviour read the other way and the way the English
+    sentence runs. That only works if leaving the block waits for a job that is
+    one long call rather than cutting it off -- a drive stopped half way through
+    and then described as done being exactly the kind of lie this rover must not
+    tell. So there is no grace period here: a job that loops ends at its next
+    `every` or `wait`, a job that is a single move ends when the move does, and
+    what bounds a job that ends at neither is what bounds every other runaway,
+    which is the script being stopped and the `SIGKILL` behind it.
 
     **Tidying up belongs after the block, not in the job.** The thread is a daemon
     thread, so that a program which walks away from a job can never hold the
@@ -362,8 +368,12 @@ class alongside:
 
     def __exit__(self, kind, value, traceback) -> bool:
         self._ending.set()
-        if self._thread is not None:
-            self._thread.join(ALONGSIDE_JOIN_S)
+        thread = self._thread
+        if thread is not None:
+            # In slices rather than one open-ended join, so that stopping the
+            # script still gets through to a main thread that is waiting here.
+            while thread.is_alive() and not _stop.is_set():
+                thread.join(0.2)
         if value is None and self.error is not None:
             raise self.error
         return False

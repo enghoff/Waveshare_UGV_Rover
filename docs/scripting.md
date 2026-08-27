@@ -531,7 +531,13 @@ lights.set(0)
 
 The job is given the same kind of ending the script has, so `every` and `wait`
 inside it raise `Stopped` when the block finishes: a loop with no end written into
-it is exactly right there, and flashes for as long as the turn takes. Two things
+it is exactly right there, and flashes for as long as the turn takes. Leaving the
+block then waits for the job however long it takes, which matters because which
+half goes where is not this design's to decide — asked out loud, the model wrote
+the turn as the job and the flashing as the block, the same behaviour read the
+way the English sentence runs. A job that is one long move has to be waited for
+rather than cut off, since a drive stopped half way through and then described as
+done is exactly the kind of lie this rover must not tell. Two things
 that made bare threads worse than useless are fixed by going through the block
 rather than around it. A job that raised used to leave the run reported as
 `finished, ok: true` with the traceback printed into the output, where a model

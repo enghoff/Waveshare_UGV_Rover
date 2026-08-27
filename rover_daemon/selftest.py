@@ -1418,6 +1418,28 @@ def test_two_things_at_once():
         check("...and stop when the block that started them ends",
               [at for at in fake.when("set_lights", "->") if at > ended + 0.5], [])
 
+        # The other way round, which is how the model actually wrote it: the slow
+        # move is the job and the quick repeated thing is the block. Leaving the
+        # block has to wait for a job that is one long call rather than cut it
+        # off, or the rover stops half way through a drive it then reports as
+        # done. The flashing here is over in a third of a second and the turn
+        # takes the stand-in a second and a half.
+        before = len(fake.when("turn_in_place", "<-"))
+        inverted = runner.run(
+            "def turning():\n"
+            "    drive.turn(180)\n"
+            "with alongside(turning):\n"
+            "    for tick in every(0.1, ticks=3):\n"
+            "        lights.set(255 if tick % 2 == 0 else 0)\n"
+            "print('both done')\n", limit_s=15)
+        check("a block whose job is the slow half finishes",
+              inverted["outcome"], "finished")
+        check("...having waited for the move rather than cutting it short",
+              len(fake.when("turn_in_place", "<-")) > before, True)
+        check(f"...which is why it took the turn's own time "
+              f"({inverted['script_seconds']:.1f}s)",
+              inverted["script_seconds"] >= _StandInDaemon.TURN_S, True)
+
         failed = runner.run(
             "from rover_api import drive, alongside\n"
             "def bad():\n"
