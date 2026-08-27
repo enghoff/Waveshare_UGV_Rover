@@ -152,7 +152,12 @@ def signal_but_no_lan():
     dark = settle(manager, world, 120)
     check(manager.active.iface != was,
           "traffic stayed on %s after it stopped reaching the LAN" % was)
-    check(dark == 0,
+    # Not zero any more, and that is the price of SURRENDER_WORSE_S rather than
+    # a regression that crept in. The radio left here is forty decibels worse --
+    # in this house they always are, being on routers at 2 m and 33 m -- so the
+    # manager now waits out the failure before surrendering to it. What must not
+    # grow is the wait itself, which is what the two bounds below hold.
+    check(dark <= wifi_dual.SURRENDER_WORSE_S + wifi_dual.DEAD_PINGS + 4,
           "%.0f s with nothing carrying traffic at all" % dark)
     check(manager.active.usable, "the radio it moved to is not usable either")
     # The number that matters is not how long the manager was confused -- it was
@@ -161,7 +166,8 @@ def signal_but_no_lan():
     # bounding it here is what stops somebody widening it back to the ten-second
     # window and putting ten seconds of retransmits into every hard failure.
     moved_at = manager.switched_at
-    check(moved_at - broke_at <= wifi_dual.DEAD_PINGS + 2,
+    check(moved_at - broke_at
+          <= wifi_dual.DEAD_PINGS + 2 + wifi_dual.SURRENDER_WORSE_S,
           "took %.0f s to notice the active link had stopped delivering"
           % (moved_at - broke_at))
 
@@ -567,7 +573,10 @@ def a_lease_that_changes_under_the_active_radio():
     for ap in world.aps:
         if ap.ssid == sick.link.ssid:
             ap.reaches_lan = False
-    settle(manager, world, 30)
+    # Long enough to cover the wait before an emergency move to a much worse
+    # radio; this scenario is about what happens after the failover, not about
+    # how quickly it comes.
+    settle(manager, world, 30 + wifi_dual.SURRENDER_WORSE_S)
     carrier = manager.active.iface
     check(carrier != sick.iface, "the traffic never left the radio that died")
     check(world.egress(wifi_dual.SERVICE_IP) == carrier,
@@ -623,6 +632,77 @@ def the_service_address_is_answered_out_of_the_radio_it_sits_on():
           "%d of %d scenarios answered the service address out of the wrong "
           "radio" % (len(guilty), len(WORLDS)))
     check(bool(WORLDS), "no scenario ran, so this assertion proves nothing")
+
+
+def a_ten_second_blip_with_a_much_worse_spare():
+    """2026-08-27: a router that went quiet cost the rover three failovers.
+
+    The rover had been driven across the house and parked beside TheGreatLord at
+    -20 dBm, with the dongle hearing TheMaharaja at -78. The gateway then went
+    quiet for about ten seconds at a time. Each time, the manager handed the
+    service address to the dongle, the dongle lost the gateway itself moments
+    later and handed it back, and every one of those moves rewrote the ARP cache
+    of every device in the house -- over a fault that healed on its own.
+
+    The rule under test is that an emergency move looks at what it is moving to.
+    Ten seconds of silence from a strong link is not a reason to hand the rover
+    to one fifteen decibels down; the other half of the rule, that thirty still
+    is, is `a_failure_that_does_not_heal_still_moves` below.
+    """
+    world, platform, manager = build(aps=W.house().aps)
+    settle(manager, world, 150)
+    was = manager.active.iface
+    on = manager.active.link.ssid
+    switches_before = manager.switches
+    spare = manager.standby
+    check(spare is not None and spare.effective() is not None,
+          "the scenario needs a standby with a grade of its own")
+    check(manager.active.effective() - spare.effective()
+          >= wifi_dual.SURRENDER_DROP_DB,
+          "the spare is not enough worse for this scenario to mean anything")
+
+    for ap in world.aps:
+        if ap.ssid == on:
+            ap.reaches_lan = False
+    settle(manager, world, 10)
+    for ap in world.aps:
+        if ap.ssid == on:
+            ap.reaches_lan = True
+    settle(manager, world, 60)
+
+    check(manager.active.iface == was,
+          "the traffic moved to a much worse radio over a ten-second blip")
+    check(manager.switches == switches_before,
+          "%d failover(s) for a fault that healed itself"
+          % (manager.switches - switches_before))
+    check(manager.active.usable, "the radio it stayed on never recovered")
+
+
+def a_failure_that_does_not_heal_still_moves():
+    """Waiting is not refusing, which is the half that keeps the rover safe.
+
+    The same setup as above with the access point left broken. However much
+    worse the only remaining radio is, the traffic has to end up on it: a rover
+    on a poor link beats a rover on none, and the wait is bounded for exactly
+    that reason.
+    """
+    world, platform, manager = build(aps=W.house().aps)
+    settle(manager, world, 150)
+    was = manager.active.iface
+    on = manager.active.link.ssid
+    for ap in world.aps:
+        if ap.ssid == on:
+            ap.reaches_lan = False
+    broke_at = world.t
+    settle(manager, world, wifi_dual.SURRENDER_WORSE_S + 60)
+    check(manager.active.iface != was,
+          "the traffic never left a link that stayed dead")
+    check(manager.active.usable, "it moved to a radio that is not usable")
+    moved_at = manager.switched_at
+    bound = wifi_dual.SURRENDER_WORSE_S + wifi_dual.DEAD_PINGS + 4
+    check(moved_at - broke_at <= bound,
+          "took %.0f s to give up on a dead link, with a bound of %.0f"
+          % (moved_at - broke_at, bound))
 
 
 def a_router_that_will_not_hold_the_standby():
@@ -736,6 +816,10 @@ def main():
          a_lease_that_changes_under_the_active_radio),
         ("a router that will not hold the standby",
          a_router_that_will_not_hold_the_standby),
+        ("a ten-second blip with a much worse spare",
+         a_ten_second_blip_with_a_much_worse_spare),
+        ("a failure that does not heal still moves",
+         a_failure_that_does_not_heal_still_moves),
         ("nothing ever switches a radio off",
          nothing_ever_switches_a_radio_off),
         ("the service address is answered out of its own radio",

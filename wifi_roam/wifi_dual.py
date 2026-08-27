@@ -164,6 +164,37 @@ BAND_BONUS_DB = float(os.environ.get("BAND_BONUS_DB", "3"))
 MARGIN_DB = float(os.environ.get("MARGIN_DB", "8"))
 HOLD_S = float(os.environ.get("HOLD_S", "2"))
 COOLDOWN_S = float(os.environ.get("COOLDOWN_S", "60"))
+# The two figures above damp a move to a *better* radio. These damp the other
+# kind: the emergency move, made when the radio carrying the traffic stops
+# reaching the gateway. That path deliberately skips the margin and the
+# hold-down, because a link that has stopped delivering is not an argument about
+# decibels -- and on 2026-08-27 that cost the rover three failovers in four
+# minutes while it sat still. The router went quiet for about ten seconds at a
+# time; the onboard radio at -20 dBm lost the gateway, the manager handed the
+# service address to a dongle at -78, and the dongle lost the gateway itself ten
+# seconds later and handed it straight back.
+#
+# So an emergency move stays immediate when the radio left is comparable, which
+# is the ordinary case and the one `signal_but_no_lan` bounds at DEAD_PINGS + 2.
+# It is only when the best left is this much worse than the failing radio was
+# *while it worked* that the manager waits instead, on the reasoning that a good
+# link which has just gone quiet is likelier to come back within the minute than
+# a link fifteen decibels down is to carry the rover well. Each failover also
+# rewrites the ARP cache of every device in the house, so doing it twice for a
+# fault that heals itself is worse than sitting out the fault.
+SURRENDER_DROP_DB = float(os.environ.get("SURRENDER_DROP_DB", "15"))
+# And it is a wait, never a refusal: after this long the traffic moves anyway,
+# because a rover on a poor link beats a rover on none.
+#
+# **This figure is bought, not free**, and the price is stated here rather than
+# discovered later. A radio whose access point has genuinely died, with only a
+# much worse radio left, now carries nothing for this long before the traffic
+# moves -- `signal_but_no_lan` used to bound that at DEAD_PINGS + 2 and now
+# bounds it at DEAD_PINGS + 2 + this. Fifteen seconds because the gateway losses
+# of 2026-08-27 healed in about ten, and because in this house the two radios
+# are on routers tens of decibels apart whatever happens, so the drop threshold
+# above cannot tell a transient fault from a fatal one and only the clock can.
+SURRENDER_WORSE_S = float(os.environ.get("SURRENDER_WORSE_S", "15"))
 # How much of the recent past a link is judged on. Ten pings at one a second, so
 # loss resolves to 10% over ten seconds -- fine enough to catch the sustained
 # loss the document wants failover on, coarse enough that one dropped packet on
@@ -871,6 +902,13 @@ class Radio:
         self.asked_at = -1e9
         self.linked_at = None       # last time it was associated and addressed
         self.refused = {}           # ssid -> when it would not keep this radio
+        # What this radio was worth while it was still working, and when it
+        # stopped being usable. Both are for the emergency-move decision: once
+        # the pings stop, a radio's own grade describes the failure rather than
+        # the link, so the comparison has to be against what it was earning
+        # before it failed.
+        self.good_effective = None
+        self.unusable_since = None
 
     # --- readings -----------------------------------------------------------
     @property
@@ -1035,7 +1073,9 @@ class Manager:
                  scan_every_s=SCAN_EVERY_S, deadman_s=DEADMAN_S,
                  window=WINDOW, status_path=STATUS_PATH,
                  request_path=REQUEST_PATH, sticky_s=STICKY_S,
-                 stranded_s=STRANDED_S, refused_s=REFUSED_S):
+                 stranded_s=STRANDED_S, refused_s=REFUSED_S,
+                 surrender_drop_db=SURRENDER_DROP_DB,
+                 surrender_worse_s=SURRENDER_WORSE_S):
         self.platform = platform
         self.service_ip = service_ip or None
         self.gateway = gateway
@@ -1050,12 +1090,15 @@ class Manager:
         self.sticky_s = sticky_s
         self.stranded_s = stranded_s
         self.refused_s = refused_s
+        self.surrender_drop_db = surrender_drop_db
+        self.surrender_worse_s = surrender_worse_s
 
         self.radios = []
         self.active = None
         self.service_on = None
         self.service_refused = None     # the MAC that answered for the address
         self.better_since = None
+        self.waiting_on = None          # a failing radio being waited out
         self.promote = None             # a radio a person asked the traffic onto
         # What each radio's rule and routing table were last written for. The
         # kernel deletes a route when the address it hangs off goes away, so a
@@ -1217,7 +1260,53 @@ class Manager:
                 del radio.pings[:-self.window]
 
     # --- the two decisions --------------------------------------------------
+    def hold_through_failure(self, best):
+        """Whether to sit out the active radio's failure rather than surrender.
+
+        The emergency move exists because a link that has stopped reaching the
+        gateway is not an argument about signal strength, and it is right nearly
+        every time: the radio has died, another is fine, move. What it never
+        asked is what the rover is moving *to*.
+
+        On 2026-08-27 that mattered. The rover was parked beside TheGreatLord at
+        -20 dBm with the dongle hearing TheMaharaja at -78. The gateway went
+        quiet for about ten seconds; the traffic went to the dongle, which lost
+        the gateway itself a moment later and handed it back -- three failovers
+        in four minutes over a fault that healed on its own, each one rewriting
+        the ARP cache of every device in the house.
+
+        The comparison is against what the failing radio was earning while it
+        still worked, not what it scores now: once the pings stop, its grade
+        describes the failure rather than the link. Within `surrender_drop_db`
+        of that, this returns False and the move happens at once, exactly as
+        before. Further down than that, the manager waits -- and only for
+        `surrender_worse_s`, after which it moves anyway.
+        """
+        if self.active is None or self.active.gone:
+            return False
+        good = self.active.good_effective
+        candidate = best.effective()
+        if good is None or candidate is None:
+            return False
+        if good - candidate < self.surrender_drop_db:
+            return False
+        since = self.active.unusable_since
+        if since is None:
+            return False
+        return self.platform.now() - since < self.surrender_worse_s
+
     def choose_active(self):
+        # Before anything is decided: remember what each radio is worth while it
+        # works, and when it stopped. hold_through_failure needs both, and this
+        # is the only place that sees every radio on every tick.
+        now = self.platform.now()
+        for radio in self.radios:
+            if radio.usable:
+                radio.good_effective = radio.effective()
+                radio.unusable_since = None
+            elif radio.unusable_since is None:
+                radio.unusable_since = now
+
         usable = [radio for radio in self.radios if radio.usable]
         if not usable:
             return
@@ -1244,10 +1333,24 @@ class Manager:
         best = max(usable, key=lambda r: r.effective())
 
         if self.active is None or self.active.gone or not self.active.usable:
+            if self.hold_through_failure(best):
+                # Said once rather than every tick: the line worth having in the
+                # journal is the one explaining a failover that did not happen.
+                if self.waiting_on != self.active.iface:
+                    self.waiting_on = self.active.iface
+                    self.say("%s lost the gateway, but the only radio left is "
+                             "%.0f dB worse, so waiting up to %.0f s for it to "
+                             "come back rather than moving the traffic there"
+                             % (self.active.iface,
+                                self.active.good_effective - best.effective(),
+                                self.surrender_worse_s))
+                return
+            self.waiting_on = None
             why = ("nothing was carrying traffic yet" if self.active is None
                    else "%s lost the gateway" % self.active.iface)
             self.make_active(best, why)
             return
+        self.waiting_on = None
 
         if best is self.active:
             self.better_since = None
