@@ -735,26 +735,70 @@ planner_server:
       # a doorway that will not take an arc is to turn on the spot. The
       # differential control set in config/lattices/ is Nav2's own 5 cm,
       # 0.5 m sample -- 0.5 m is that envelope to a centimetre -- and it
-      # includes in-place rotations. rotation_penalty stays at Nav2's 5.0 so
-      # a doorway that *can* take an arc gets one; a pivot is the fallback,
-      # not the shortcut. Reproduced in lattice.py on a 55 deg metre-wide
-      # bend before this replaced Hybrid: the grid path's tightest 0.32 m
-      # window was 45 deg, the lattice path's was 34.9, with no pivot.
+      # includes in-place rotations. Reproduced in lattice.py on a 55 deg
+      # metre-wide bend before this replaced Hybrid: the grid path's tightest
+      # 0.32 m window was 45 deg, the lattice path's was 34.9, with no pivot.
       #
       # Reverse expansion is off: the lidar looks forwards, DWB has no reverse
       # sample, and a path that asked for a reverse leg would be one the
       # controller could not follow for a different reason. The filepath is
       # empty here because yaml cannot resolve a relative path; nav.launch.py
       # overlays the absolute one next to this file. `GridBased` keeps the
-      # name the behaviour tree already asks for. 2 s and a 10 m heuristic
-      # table because this is four A53 cores already running slam_toolbox.
+      # name the behaviour tree already asks for. The 10 m heuristic table is
+      # what four A53 cores already running slam_toolbox will pay for.
+      #
+      # **"There is no route to there" was a stopwatch, not a room.** A long
+      # goal in this house failed over and over on 2026-08-27 -- one of them
+      # thirteen times in 47 seconds from a standstill, and then drove the
+      # moment a recovery spin had turned the rover round, which is what made
+      # the start heading look like the cause. It is not. See
+      # max_planning_time below: the query costs about two seconds and the
+      # budget was two seconds, so it was a coin toss, and anything that
+      # nudges the search -- the start heading, another node waking up on one
+      # of the four cores -- decided which way it landed.
+      #
+      # Measured with plan_bench.py, which runs this same planner from this
+      # same file against a recorded costmap while the rover stands still.
+      # One query, one start heading, ten times: **four plans and six "no
+      # valid path found", with every one of the four landing at 2.01 to
+      # 2.09 s.** Swept across sixteen start headings it was 9 of 16, and
+      # re-running the identical sweep moved which headings failed.
+      #
+      # Nav2 reports the clock running out as `NoValidPathCouldBeFound`,
+      # because `max_iterations` is a million and is never what stops it. That
+      # arrives as error 208, which nav_codes.py renders as "there is no route
+      # to there that the rover fits through" -- so a timeout reads as a room
+      # with no way through it, and sends somebody to look at the map. Believe
+      # the message only after checking how long the plan took.
       plugin: "nav2_smac_planner::SmacPlannerLattice"
       tolerance: 0.25
       allow_unknown: true
       max_iterations: 1000000
       max_on_approach_iterations: 1000
       terminal_checking_interval: 5000
-      max_planning_time: 2.0
+      # **3 s, not 2, and 2 was the whole fault above.** An eight to twelve
+      # metre route across a mapped house costs this board between about one
+      # and two and a half seconds, and the budget sat inside that spread --
+      # so a large share of long goals were being cut off mid-search and
+      # reported as impossible. The rover said so at the time and it read as
+      # something else: `Planner loop missed its desired rate of 1.0000 Hz.
+      # Current loop rate is 0.6251 Hz`, which is a 1.6 s plan on a goal that
+      # did succeed.
+      #
+      # Measured with plan_bench.py on the recorded costmap: the same sixteen
+      # start headings that gave 9 plans and 7 refusals at 2 s give **16 of
+      # 16 at 3 s**, and every heading that had been failing came back in
+      # 1.93 to 2.27 s. Nothing needed more than that.
+      #
+      # 3.0 is about 30% clear of the worst plan measured, over some thirty
+      # samples of the expensive class. It is deliberately not larger: this
+      # blocks the behaviour tree, the tree asks for a replan every second,
+      # and a *failed* plan now costs three seconds on every rung of the
+      # recovery ladder, which the bridge's own allowance in route_cost.py
+      # has to cover. If long plans creep up again the answer is to make the
+      # search cheaper -- a smaller map window, or a coarser angular
+      # resolution -- rather than to keep raising this.
+      max_planning_time: 3.0
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
       analytic_expansion_max_cost: 200.0
@@ -763,6 +807,21 @@ planner_server:
       change_penalty: 0.05
       non_straight_penalty: 1.05
       cost_penalty: 2.0
+      # **Nav2's 5.0, and it was lowered to 2.0 and put back.** The argument
+      # for lowering it was that an in-place rotation is the one move the
+      # heuristic cannot see coming -- `getTraversalCost` charges it a flat
+      # `rotation_penalty` and `getHeuristicCost` repays nothing for it more
+      # than half a `lookup_table_size` from the goal -- so a cheaper rotation
+      # should be a cheaper search. Measured on the real planner with
+      # plan_bench.py, the same query from sixteen start headings: 9 of 16
+      # planned at 5.0 and **5 of 16 at 2.0**. It is worse, and the reason is
+      # the obvious one once seen: cheap rotations widen the branching in the
+      # heading dimension, so the search has more states to get through, not
+      # fewer. The model that said otherwise counted expansions to the first
+      # solution and was wrong; the rover settled it.
+      #
+      # Do not lower it again without running that sweep. What was actually
+      # wrong is max_planning_time above.
       rotation_penalty: 5.0
       retrospective_penalty: 0.015
       lattice_filepath: ""

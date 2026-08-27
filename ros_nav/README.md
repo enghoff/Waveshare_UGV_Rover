@@ -1310,6 +1310,81 @@ and at 2.0 it changes nothing.
   try on the old grid paths, and it turned out not to be the fix — see
   [docs/doorway-pivot.md](../docs/doorway-pivot.md).
 
+## "There is no route to there" was the clock, not the room
+
+Long goals started failing outright. On 2026-08-27 one of them was refused
+thirteen times in 47 seconds from a standstill and then drove the moment a
+recovery spin had turned the rover round, which made the start heading look like
+the cause -- a route that has to begin with a turn on the spot is exactly the
+sort of thing a lattice planner might be bad at. It was not that.
+
+**The planner was running out of its two seconds, and Nav2 says so in the words
+of a different fault.** `SmacPlannerLattice` throws `NoValidPathCouldBeFound`
+when the search ends without reaching the goal and `max_iterations` has *not*
+been exhausted -- and `max_iterations` is a million here, so the thing that
+stops it is always the clock. That arrives as error 208, which
+[`nav_codes.py`](nav_codes.py) renders as "there is no route to there that the
+rover fits through". A timeout therefore reads as a room with no way through it,
+and sends somebody to look at the map.
+
+[`plan_bench.py`](plan_bench.py) settled it without the rover moving. It starts a
+second `planner_server` beside the live one, from this same `config/nav2.yaml`,
+in its own namespace and its own `benchmap`/`benchbase` frames, and feeds its
+global costmap a recorded grid instead of slam_toolbox's. Against
+`recordings/trap-2026-08-25-spin.json` the bench costmap came back identical to
+the recorded one in all 68,540 cells, which is what makes anything measured on it
+a statement about the room the rover was in.
+
+The measurement that mattered is the dullest one available -- the same query, run
+again:
+
+| | at `max_planning_time: 2.0` | at 3.0 |
+|---|---|---|
+| one start heading, ten runs | 4 planned, 6 refused | — |
+| ...and every success took | 2.01 to 2.09 s | — |
+| swept over sixteen start headings | 9 planned | **16 planned** |
+| ...slowest plan among them | 1.99 s | 2.27 s |
+
+So it is a coin toss, and the coin is a wall-clock deadline on four cores that
+are also running slam_toolbox, DWB and the daemon. Re-running the identical
+sixteen-heading sweep moved *which* headings failed. The start heading is real
+but small: it shifts the cost of a query that already costs about the budget,
+which is why turning the rover round appeared to fix it and why thirteen goals
+under 5.5 m in that session produced no aborts at all while nine of 6 m and over
+produced twenty-four.
+
+**`max_planning_time` is 3.0 now**, which is about 30% clear of the worst plan
+measured. It is deliberately not larger: planning blocks the behaviour tree, the
+tree asks for a replan every second, and a *failed* plan now costs three seconds
+on every rung of the recovery ladder, which the bridge's allowance in
+[`route_cost.py`](route_cost.py) has to cover. If long plans creep up again the
+answer is to make the search cheaper rather than to keep raising this.
+
+### A model said `rotation_penalty`, and the rover said no
+
+Worth recording because it is the failure this repository keeps having. The
+tempting explanation is structural and reads well: `getTraversalCost` charges an
+in-place rotation a flat `rotation_penalty` whatever it achieves, while
+`getHeuristicCost` returns `max(obstacle_heuristic, distance_heuristic)` and the
+distance heuristic -- the only one of the two that knows which way the rover is
+pointing -- is zero outside a window of `lookup_table_size` metres around the
+goal. More than five metres out a rotation therefore costs and repays nothing,
+so A* should expand everything it can drive to before buying the eight rotations
+a half-turn needs.
+
+A Python model of that search agreed enthusiastically: the same route cost it 5.4
+times as many expansions from its worst start heading as its best, peaking
+exactly at 180 degrees, and dropping `rotation_penalty` from 5.0 to 2.0 took the
+spread to 2.0. Priced against the doorway it looked free -- `lattice.py` draws
+the same 34.9-degree arc with no pivot at every value from 5.0 down to 0.5.
+
+Run on the real planner it was **worse**: 5 of 16 start headings planned at 2.0
+against 9 of 16 at 5.0. Cheap rotations widen the branching in the heading
+dimension, so the search has more states to get through, not fewer. The model was
+counting expansions to the first solution and had no notion of the frontier it
+left behind. `rotation_penalty` stays at 5.0, and the note beside it in
+`config/nav2.yaml` says not to lower it again without running that sweep.
+
 ## What is deliberately not here
 
 **AMCL and the map server.** They localise against a map saved earlier, and this

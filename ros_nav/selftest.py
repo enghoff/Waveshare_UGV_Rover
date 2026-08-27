@@ -813,6 +813,16 @@ def test_configs_agree():
           "forward_point_distance: 0.8" in settings, False)
     check("in-place turns are expensive, so a doorway that takes an arc gets one",
           "rotation_penalty: 5.0" in settings, True)
+    # **The budget, and it is the one that was failing long goals.** A route
+    # of eight to twelve metres across a mapped house costs this board one to
+    # two and a half seconds, so a 2 s budget cut a large share of them off
+    # mid-search -- and Nav2 reports that as `NoValidPathCouldBeFound`, which
+    # reaches the operator as "there is no route to there". Measured with
+    # plan_bench.py: one query at one start heading, ten times, planned 4 and
+    # refused 6 at 2 s with every success landing at 2.01-2.09 s; at 3 s the
+    # whole sixteen-heading sweep planned, none of it needing over 2.27 s.
+    check("the planner has 3 s, because a house-sized route costs this board 2",
+          "max_planning_time: 3.0" in settings, True)
     check("...and reverse expansion is off, because the lidar looks forwards",
           "allow_reverse_expansion: false" in settings, True)
     check("...and the lattice may enter unknown, because this rover maps as it drives",
