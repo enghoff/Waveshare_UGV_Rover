@@ -20,6 +20,15 @@ Type=simple
 # radio that is halfway through a DHCP round costs it the lease it was about to
 # get. It also damps a restart loop, since Restart= sends it through this again.
 ExecStartPre=/bin/sleep 60
+# How long a radio may sit pinned to a network it has not actually joined before
+# the manager gives up and lets the supplicant take whatever it can. The built-in
+# default is 90 s, and on 2026-08-27 that was the whole of a service-address
+# outage: the radio carrying .80 lost its link, was placed on a router that
+# rejected its association four times over, and nothing reconsidered until the
+# timer ran out. 25 s still covers an association and about four DHCP attempts,
+# which is what a slow but working network needs -- shorter than that and a
+# placement gets cut off mid-DHCP, which costs it the lease it was about to get.
+Environment=STRANDED_S=25
 ExecStart=/usr/local/sbin/wifi_dual.py
 # The one line that keeps a wifi-only rover recoverable. `select_network`
 # disables every other configured network, so a manager that died without
