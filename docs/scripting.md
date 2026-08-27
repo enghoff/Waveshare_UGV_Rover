@@ -545,6 +545,22 @@ run. Tidying up therefore belongs after the block, not in the job — a daemon
 thread is cut where it stands and its `finally` never runs, which is why the
 headlights go out on the line after the block above.
 
+On the rover, a job flashing the headlights through `drive.turn(90)` and
+`drive.turn(-90)` put eight light changes inside 2.8 seconds of moving and none
+after them, in a run that cost 12.4 MB and ended with the rover facing the way it
+started. And asked out loud — "flash your lights while you turn around", through
+the rover's own session — the model wrote a program for it, which is the part that
+was in doubt. It took two attempts both times it was asked. The first ask went
+wrong in a way worth keeping: it wrote `with alongside(drive.turn(180)):`, which
+reads exactly right in English and is backwards in Python, since the argument is
+evaluated before the block and the rover therefore turned before anything could
+run beside it. The callable check named the fix, the model took it, and the
+description now says the job is a function written with `def` and passed by name;
+asked again, it got the shape right first time. What remains is a forgotten import
+— `alongside` left out of the `from rover_api import ...` line that the tool
+description spells out in full — which costs one wasted half-second run and is
+then corrected from the error.
+
 What it does on the rover, measured there rather than inferred:
 
 | | |
