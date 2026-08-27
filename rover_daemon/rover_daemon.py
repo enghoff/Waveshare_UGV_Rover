@@ -70,6 +70,23 @@ LOCAL_ONLY = ("run_script", "start_script", "script_stop", "list_api")
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
 
+def _requests(rfile):
+    """The client's lines, ending quietly when the client goes away.
+
+    A script's process can end with one of its connections still mid-request --
+    it is killed, or its last line runs while a job it started is waiting on an
+    answer -- and a connection dropped without a shutdown arrives here as a reset
+    rather than as end of file. That is a client leaving, which is how every
+    conversation this daemon has ends, and not something to print a traceback
+    about into the log of a rover that is working perfectly.
+    """
+    try:
+        for raw in rfile:
+            yield raw
+    except OSError:
+        return
+
+
 class Handler(socketserver.StreamRequestHandler):
     """One client connection: newline-delimited JSON, one reply per request."""
 
@@ -77,7 +94,7 @@ class Handler(socketserver.StreamRequestHandler):
         self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         rover: Rover = self.server.rover
         local = self.client_address[0] in LOOPBACK
-        for raw in self.rfile:
+        for raw in _requests(self.rfile):
             raw = raw.strip()
             if not raw:
                 continue

@@ -1307,6 +1307,126 @@ def test_scripts_run_and_say_what_happened():
         runner.close()
 
 
+class _StandInDaemon:
+    """A daemon on loopback that takes its time over a turn, and remembers when.
+
+    The offline checks could not ask about two calls at once before, because that
+    needs something at the far end still holding the first when the second
+    arrives. `turn_in_place` sleeps here; everything else answers at once; and
+    what was called and when is kept both ways round, since the question these
+    tests ask is about order in time rather than about answers.
+    """
+
+    TURN_S = 1.5
+
+    def __init__(self) -> None:
+        import socketserver
+        import threading
+
+        heard = self.heard = []  # (seconds in, name, "->" arriving or "<-" answered)
+        began = time.monotonic()
+        turn_s = self.TURN_S
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self) -> None:
+                for line in self.rfile:
+                    if not line.strip():
+                        continue
+                    name = json.loads(line).get("call")
+                    heard.append((time.monotonic() - began, name, "->"))
+                    if name == "turn_in_place":
+                        time.sleep(turn_s)
+                    heard.append((time.monotonic() - began, name, "<-"))
+                    self.wfile.write(json.dumps({"ok": True}).encode() + b"\n")
+                    self.wfile.flush()
+
+        class Server(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+            daemon_threads = True
+
+        self._server = Server(("127.0.0.1", 0), Handler)
+        self.address = "127.0.0.1:%d" % self._server.server_address[1]
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    def when(self, name: str, arrow: str):
+        """The times a call arrived, or was answered, in the order it happened."""
+        return [at for at, called, direction in self.heard
+                if called == name and direction == arrow]
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+
+
+def test_two_things_at_once():
+    """A job runs while the rover turns, and is over when the block that started it is.
+
+    Everything that moves this rover blocks until the move is over, so a program
+    written as one list of calls can only do one thing at a time -- and a model
+    asked to turn and flash the headlights together produced a turn and then some
+    flashing. What is checked here is the fix from the far end's point of view:
+    light changes arriving while the turn the daemon is still working on has not
+    been answered yet.
+
+    Then the two failures that made threads unusable on their own. A job that
+    raised used to leave a run reported as finished, with the traceback printed
+    into the output where a model reads it as something the program meant to say;
+    and a thread the program walked away from used to hold the rover's one script
+    slot open for as long as it ran, behind a script that thought it had finished.
+    """
+    import scripting
+
+    fake = _StandInDaemon()
+    runner = scripting.Runner(fake.address)
+    try:
+        done = runner.run(
+            "from rover_api import lights, drive, every, alongside\n"
+            "def flashing():\n"
+            "    for tick in every(0.3):\n"
+            "        lights.set(255 if tick % 2 == 0 else 0)\n"
+            "with alongside(flashing):\n"
+            "    drive.turn(90)\n"
+            "print('turned')\n", limit_s=15)
+        check("a script with a job alongside it finishes", done["outcome"], "finished")
+        began = (fake.when("turn_in_place", "->") or [0.0])[0]
+        ended = (fake.when("turn_in_place", "<-") or [0.0])[0]
+        during = [at for at in fake.when("set_lights", "->") if began < at < ended]
+        check(f"the lights change while the rover is still turning ({len(during)}x)",
+              len(during) >= 2, True)
+        # One more may already be on its way when the block ends -- the job is
+        # stopped at its next `every`, not mid-call -- and none after that.
+        check("...and stop when the block that started them ends",
+              [at for at in fake.when("set_lights", "->") if at > ended + 0.5], [])
+
+        failed = runner.run(
+            "from rover_api import drive, alongside\n"
+            "def bad():\n"
+            "    raise RuntimeError('the job fell over')\n"
+            "with alongside(bad):\n"
+            "    drive.turn(90)\n", limit_s=15)
+        check("a job that fails fails the script", failed["outcome"], "failed")
+        check("...and names the line inside the job",
+              failed["error"], "line 3: RuntimeError: the job fell over")
+
+        started = time.monotonic()
+        left = runner.run(
+            "import threading, time\n"
+            "threading.Thread(target=time.sleep, args=(30,)).start()\n"
+            "print('done')\n", limit_s=15)
+        took = time.monotonic() - started
+        check("a script is over when its last line has run", left["outcome"],
+              "finished")
+        # In terms of the module's own startup allowance rather than a number
+        # written here, for the reason the runaway test gives: a fixed bound
+        # measures which machine the test is running on. The thread sleeps thirty
+        # seconds, so there is no reading of this that passes by accident.
+        check(f"...even with a thread of its own still going ({took:.1f}s)",
+              took < scripting.STARTUP_S + 4.0, True)
+    finally:
+        runner.close()
+        fake.close()
+
+
 def test_the_script_tools_are_offered_to_the_rover_and_not_to_the_lan():
     """Who is shown the three scripting tools, and whether they are usable.
 
@@ -1908,6 +2028,7 @@ def main():
                  test_reading_the_network,
                  test_the_api_only_calls_tools_that_exist,
                  test_scripts_run_and_say_what_happened,
+                 test_two_things_at_once,
                  test_the_script_tools_are_offered_to_the_rover_and_not_to_the_lan,
                  test_one_script_at_a_time,
                  test_a_behaviour_runs_until_it_is_stopped, test_where,

@@ -495,12 +495,55 @@ sixty lines inside it:
   kill that takes the whole process group.
 * [rover_api.py](../rover_daemon/rover_api.py) — the script's end. The existing
   tools as named primitives, plus a frame, the detector run on a frame, absolute
-  gimbal angles, the live scan, `every`, and `call()` underneath them for a tool
-  that arrived after the module did.
+  gimbal angles, the live scan, `every`, `alongside` for the one thing a list of
+  calls cannot express, and `call()` underneath them for a tool that arrived
+  after the module did.
 * The five calls above, loopback-gated in the daemon's connection handler, three
   of them — `run_script`, `start_script` and `script_stop` — also offered as
   tools to whichever client is on loopback, with the primitives above written
   into the first one's description and pointed at from the second.
+
+**Two things at once, added 2026-08-27.** Everything that moves this rover blocks
+until the move is over, so a program written as one list of calls can only ever
+do one thing at a time — and asked to turn and flash the headlights together, the
+model did the only thing the surface allowed: a turn, then some flashing, or the
+two chopped into alternating bursts. Threads were not the missing piece; they ran
+perfectly well and achieved nothing, because every script shared one connection to
+the daemon behind a lock and a `drive` holds that line for the length of the move.
+Against a stand-in daemon whose turn takes three seconds, the shared line let a
+single light change through and then nothing; a connection per thread flashed all
+the way through the move. The daemon has always been threaded per connection, and
+setting the lights holds the board only for the length of one JSON line, so the
+concurrency was there to be had and it was the script's end declining it.
+
+So the connection is per thread now, and the idiom on top of it is `alongside`,
+which a model reaches for as a `with` block:
+
+```python
+def flashing():
+    for tick in every(0.5):
+        lights.set(255 if tick % 2 == 0 else 0)
+
+with alongside(flashing):
+    drive.turn(90)
+lights.set(0)
+```
+
+The job is given the same kind of ending the script has, so `every` and `wait`
+inside it raise `Stopped` when the block finishes: a loop with no end written into
+it is exactly right there, and flashes for as long as the turn takes. Two things
+that made bare threads worse than useless are fixed by going through the block
+rather than around it. A job that raised used to leave the run reported as
+`finished, ok: true` with the traceback printed into the output, where a model
+reads it as something the program meant to say — it is now re-raised as the block
+ends, at the line inside the job. And a thread the program walked away from used
+to hold the rover's one script slot open for as long as it ran: a six-second
+thread kept the slot shut for six seconds behind a script that reported nought
+seconds of its own. `alongside` uses a daemon thread, and the harness no longer
+waits for threads a script left behind, so the slot is free when the last line has
+run. Tidying up therefore belongs after the block, not in the job — a daemon
+thread is cut where it stands and its `finally` never runs, which is why the
+headlights go out on the line after the block above.
 
 What it does on the rover, measured there rather than inferred:
 
