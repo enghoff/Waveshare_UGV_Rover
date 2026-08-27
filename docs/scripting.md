@@ -556,10 +556,14 @@ reads exactly right in English and is backwards in Python, since the argument is
 evaluated before the block and the rover therefore turned before anything could
 run beside it. The callable check named the fix, the model took it, and the
 description now says the job is a function written with `def` and passed by name;
-asked again, it got the shape right first time. What remains is a forgotten import
-— `alongside` left out of the `from rover_api import ...` line that the tool
-description spells out in full — which costs one wasted half-second run and is
-then corrected from the error.
+asked again, it got the shape right first time. What went wrong after that was a forgotten
+import: `alongside` left out of the `from rover_api import ...` line that the
+tool description spelled out in full, costing a wasted half-second run each time
+before the model corrected itself from the NameError. So a program is handed the
+primitives ready-made now — the six namespaces, the loose functions and the three
+exceptions are in the namespace it starts with, and the tool description says it
+imports nothing. Importing them still works and changes nothing; what is gone is
+the step there was to get wrong.
 
 What it does on the rover, measured there rather than inferred:
 

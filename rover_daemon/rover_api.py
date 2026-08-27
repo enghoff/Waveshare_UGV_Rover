@@ -1,14 +1,12 @@
 """The rover as a program sees it: the primitives a script is written against.
 
-This is imported by scripts, not by the daemon. It runs in a child process that
-the daemon started, and it reaches the hardware the same way any other client
-does -- a line of JSON to `rover_daemon.py` on the loopback port. That is the
+This is what a script runs against, and nothing the daemon imports. It is loaded
+in a child process the daemon started, and it reaches the hardware the same way
+any other client does -- a line of JSON to `rover_daemon.py` on the loopback port. That is the
 whole isolation story: a script can ask for things and cannot touch anything, so
 however badly one is written it cannot take the UART or the camera away from the
 daemon that owns them, and stopping it is a signal rather than a language
 feature. See [docs/scripting.md](../docs/scripting.md).
-
-    from rover_api import camera, drive, gimbal, lights, every, alongside
 
     gimbal.look_at(pan=0, tilt=0)
     for _ in every(2.0, for_s=60):
@@ -24,6 +22,11 @@ blocks until the move is over:
     with alongside(flashing):
         drive.turn(90)
     lights.set(0)
+
+**A script does not import any of this.** The names below are in the namespace a
+program starts with -- the six that follow, the loose functions under them and the
+three exceptions -- because the import line was the step a model kept getting
+wrong. `from rover_api import ...` still works and changes nothing.
 
 **A failed call raises rather than returning a flag.** The daemon answers
 `{"ok": false, "error": ...}` because that reads well in a conversation, but a
@@ -548,6 +551,33 @@ _NAMESPACES = (("lights", lights), ("gimbal", gimbal), ("camera", camera),
 _FUNCTIONS = (every, wait, alongside, time_left, call)
 
 
+def namespace() -> dict:
+    """The names a program starts with, taken from the lists that describe them.
+
+    A script is handed the primitives ready-made rather than being expected to
+    import them, because the import line was a step a model kept getting wrong:
+    asked to flash the headlights while the rover turned, it twice wrote a
+    perfectly good program whose `from rover_api import ...` line was missing the
+    one name the program was about, and lost a run to a NameError before
+    correcting itself from the error. Nothing is taken away by this -- importing
+    them still works, and is what a program written by hand should probably still
+    do -- but the commonest way for a model's first attempt to fail is gone.
+
+    The exceptions come too, since a script that means to catch a refusal cannot
+    do it without naming one.
+
+    Built from `_NAMESPACES` and `_FUNCTIONS` rather than listed again here, for
+    the reason `reference` and `signatures` are: three descriptions of one surface
+    are three things to keep in step, and this is the one whose drift would show
+    up as a name a model was told about that is not actually there.
+    """
+    ready: dict = dict(_NAMESPACES)
+    ready.update({func.__name__: func for func in _FUNCTIONS})
+    ready.update({error.__name__: error
+                  for error in (RoverError, Stopped, Deadline)})
+    return ready
+
+
 def _members(thing: object):
     """Every public callable on a namespace, as (name, signature, first line).
 
@@ -591,9 +621,11 @@ def reference() -> str:
     for func in _FUNCTIONS:
         lines.append(f"{func.__name__}{inspect.signature(func)}")
         lines.append(f"    {(func.__doc__ or '').strip().split(chr(10))[0]}")
-    lines += ["", "Raises RoverError when the rover refuses a call, Stopped when "
-                  "somebody stops the script, Deadline when a run that was given "
-                  "a limit goes past it."]
+    lines += ["", "Every name above is defined already when a script starts, and "
+                  "those three exceptions with them; importing them from "
+                  "rover_api works too. RoverError is raised when the rover "
+                  "refuses a call, Stopped when somebody stops the script, "
+                  "Deadline when a run that was given a limit goes past it."]
     return "\n".join(lines)
 
 
@@ -666,8 +698,8 @@ def main() -> int:
     result = {"ok": True}
     try:
         code = compile(source, "<script>", "exec")
-        namespace = {"__name__": "__main__", "__builtins__": __builtins__}
-        exec(code, namespace)
+        exec(code, {"__name__": "__main__", "__builtins__": __builtins__,
+                    **namespace()})
     except Stopped:
         result = {"ok": False, "stopped": True, "error": "stopped"}
     except Deadline as error:

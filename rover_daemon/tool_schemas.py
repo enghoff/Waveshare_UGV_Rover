@@ -551,10 +551,9 @@ SCRIPT_TOOL: dict[str, Any] = {
             "move is over, so doing two things at once means a "
             "`with alongside(job):` block, where job is a function you wrote "
             "with def and pass by name rather than call: it runs while the block "
-            "drives, and ends when the block does. It is written against "
-            "these primitives and can reach nothing else on the rover:\n"
-            "from rover_api import lights, gimbal, camera, tracking, drive, "
-            "power, every, wait, alongside\n"
+            "drives, and ends when the block does. These primitives are "
+            "defined for it already -- it imports nothing, and can reach "
+            "nothing else on the rover:\n"
             "{api}"
         ),
         "parameters": {

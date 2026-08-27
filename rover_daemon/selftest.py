@@ -1284,6 +1284,26 @@ def test_scripts_run_and_say_what_happened():
               True)
         check("a syntax error names its line too",
               runner.run("def (:")["error"].startswith("line 1: SyntaxError"), True)
+
+        # A program starts with the primitives already defined, because the import
+        # line was the step a model kept leaving a name out of. Proved against an
+        # address with nothing on it: reaching the daemon and failing to is a
+        # different error from never having heard of `lights`, and it is the one
+        # that says the name was there.
+        bare = runner.run("lights.set(255)")
+        check("a script needs no import to reach a primitive",
+              bare["error"].startswith("line 1: RoverError"), True)
+        check("...and the exceptions are there to be caught by name",
+              runner.run("try:\n"
+                         "    lights.set(255)\n"
+                         "except RoverError:\n"
+                         "    print('refused')\n")["output"].strip(),
+              "refused")
+        # And the import that a program written by hand would use still works.
+        check("importing them anyway changes nothing",
+              runner.run("from rover_api import lights\n"
+                         "lights.set(255)\n")["error"].startswith(
+                             "line 2: RoverError"), True)
         # `ok` on a blocking run is the script's own fate, because that is what
         # the caller asked. Everywhere else it means the daemon answered.
         check("a failed script reports ok false", broken["ok"], False)
