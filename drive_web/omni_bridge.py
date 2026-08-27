@@ -257,9 +257,11 @@ class Omni:
     one lock, and no shared mutable state that both sides write.
     """
 
-    def __init__(self, rover_address: str, note, model: str | None = None) -> None:
+    def __init__(self, rover_address: str, note, model: str | None = None,
+                 frame_port: int = FRAME_PORT) -> None:
         self.rover_address = rover_address
         self.model = model or omni.MODEL
+        self.frame_port = frame_port
         self._note = note
         self._lock = threading.Lock()
 
@@ -336,6 +338,11 @@ class Omni:
         thread = self._thread
         if thread is not None:
             thread.join(timeout=5.0)
+        with self._lock:
+            frames, self._frames = self._frames, None
+        if frames is not None:
+            frames.shutdown()
+            frames.server_close()
 
     # --- what the audio socket does -------------------------------------------
 
@@ -369,6 +376,37 @@ class Omni:
 
     # --- the session itself ----------------------------------------------------
 
+    def _frame_server(self) -> Frames:
+        """The loopback receiver `look` posts its pictures to, bound once and kept.
+
+        **It outlives the conversation on purpose, and that is a fix rather than
+        an oversight.** It used to be built at the top of every conversation and
+        torn down at the end of it, which read as tidy and was not: the daemon
+        holds one connection to this receiver and is never told a conversation
+        has ended, so the port stayed spoken for by that still-open connection
+        after the receiver had gone. Refreshing the console ends the conversation
+        deliberately, and pressing start again a few seconds later then died on
+        `[Errno 98] Address already in use` -- before the model had been dialled
+        at all, so what a person saw was a rover that had stopped answering.
+        Reproduced on the rover on 2026-08-27 and pinned by
+        `test_a_second_conversation_starts_at_once`.
+
+        Binding once means nothing is ever rebound, and it suits the daemon
+        better than the old arrangement did: its one kept-open connection stays
+        good from one conversation to the next instead of having to be remade.
+        What each new conversation gets is an empty receiver, not a new one.
+        """
+        with self._lock:
+            frames = self._frames
+        if frames is not None:
+            frames.forget()
+            return frames
+        frames = Frames(port=self.frame_port, host=FRAME_HOST)
+        frames.serve_in_background()
+        with self._lock:
+            self._frames = frames
+        return frames
+
     def _send_audio(self, pcm: bytes) -> None:
         wire = self._wire
         if wire is not None:
@@ -399,10 +437,6 @@ class Omni:
             self._audio = None
             self._session = None
             self._speaker = None
-            if self._frames is not None:
-                self._frames.shutdown()
-                self._frames.server_close()
-                self._frames = None
             with self._lock:
                 if self.state != "error":
                     self.state, self.since = "off", 0.0
@@ -419,17 +453,16 @@ class Omni:
         notes = Notes(self._note)
 
         # The frame server first, so that `set_vision` below has somewhere real to
-        # point. It is this process, on loopback, and it exists only while a
-        # conversation does -- `look` outside one has nowhere to post, which is
-        # the truth and is what its error says.
-        frames = Frames(port=FRAME_PORT, host=FRAME_HOST)
-        frames.serve_in_background()
-        self._frames = frames
+        # point. It is this process, on loopback, and it is the same one every
+        # conversation uses -- see `_frame_server` for why building a fresh one
+        # here was what stopped a second conversation from ever starting.
+        frames = self._frame_server()
 
         rover = rover_tools.RoverClient(self.rover_address)
         try:
             answer = await asyncio.to_thread(
-                rover.call, "set_vision", {"address": f"{FRAME_HOST}:{FRAME_PORT}"})
+                rover.call, "set_vision",
+                {"address": f"{FRAME_HOST}:{self.frame_port}"})
             if not answer.get("ok"):
                 self._note(f"microphone: the daemon would not take set_vision "
                            f"({answer.get('error')}), so look has nowhere to post",

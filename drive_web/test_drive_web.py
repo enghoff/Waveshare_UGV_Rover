@@ -985,6 +985,107 @@ def test_what_the_browser_heard() -> None:
 
 
 
+def test_a_second_conversation_starts_at_once() -> None:
+    """Pressing start again straight after a refresh must reach the model.
+
+    Reproduced on the rover on 2026-08-27. Refreshing the console ends the
+    conversation on purpose -- the page says so on `pagehide`, so a tab closed at
+    bedtime cannot quietly spend the account's free quota -- and pressing start
+    again a few seconds later failed with `[Errno 98] Address already in use`.
+    The port that was in use is not the model's. It is the little loopback
+    receiver the daemon posts `look`'s pictures to, which a conversation built
+    before it dialled anything, so the failure landed before a single word
+    reached the model and read as a rover that had stopped answering.
+
+    What holds the port is the daemon: it keeps one connection to that receiver
+    and is never told the conversation has ended, so an open connection on the
+    port outlives the receiver that accepted it and the next `bind` is refused.
+    A rebind is refused whether or not `SO_REUSEADDR` is set -- that forgives a
+    port left in TIME_WAIT and this one is not -- so the fix is to stop
+    rebinding, and the receiver now lives as long as the console does.
+    """
+    try:
+        import http.client
+        import json
+        import socket
+
+        import omni_bridge
+        import talk_frames
+    except Exception as error:                         # noqa: BLE001
+        SKIP.append(f"a second conversation ({type(error).__name__}: {error})")
+        return
+
+    # A JPEG only in the sense the receiver checks for.
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 32 + b"\xff\xd9"
+
+    def free_port() -> int:
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        return port
+
+    def post(connection) -> dict:
+        """One picture, over a connection the caller keeps -- as the daemon does."""
+        connection.request("POST", "/frame", body=jpeg,
+                           headers={"Content-Type": "image/jpeg",
+                                    "Content-Length": str(len(jpeg))})
+        return json.loads(connection.getresponse().read())
+
+    # 1. The trap, walked into exactly as a conversation used to walk into it.
+    port = free_port()
+    receiver = talk_frames.Frames(port=port, host="127.0.0.1")
+    receiver.serve_in_background()
+    daemon = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        check("the daemon files a picture with the receiver",
+              post(daemon).get("ok"), True)
+        # The conversation ends. The daemon is not told and does not let go.
+        receiver.shutdown()
+        receiver.server_close()
+        try:
+            talk_frames.Frames(port=port, host="127.0.0.1").server_close()
+            refused = ""
+        except OSError as error:
+            refused = str(error)
+        if sys.platform.startswith("linux"):
+            check("...and the next conversation cannot have the port back",
+                  "in use" in refused, True)
+        else:
+            SKIP.append("the port a finished receiver leaves behind "
+                        f"(this kernel hands it straight back: {refused or 'ok'})")
+    finally:
+        daemon.close()
+
+    # 2. And the console no longer asks for it back, because it never let go.
+    port = free_port()
+    said: list[str] = []
+    omni = omni_bridge.Omni("127.0.0.1:1", lambda text, err=False: said.append(text),
+                            frame_port=port)
+    daemon = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        first = omni._frame_server()
+        picture = post(daemon).get("image")
+        check("a conversation has somewhere for the pictures to go",
+              bool(picture), True)
+
+        # The conversation ends -- a refresh, the button, or the idle watch --
+        # and the next one starts while the daemon's connection is still open.
+        second = omni._frame_server()
+        check("the next conversation is served by the same receiver",
+              second is first, True)
+        check("...so the daemon's kept-open connection is still good",
+              post(daemon).get("ok"), True)
+        check("...and a picture from the conversation before is gone",
+              first.take(picture), None)
+    finally:
+        daemon.close()
+        omni.close()
+
+    check("closing the console is what finally gives the port up",
+          omni._frames, None)
+
+
 def test_a_slow_browser_is_shown_the_newest_state() -> None:
     """A browser on a link that cannot keep up gets fewer states, all of them now.
 

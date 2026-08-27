@@ -92,6 +92,16 @@ class Frames(http.server.ThreadingHTTPServer):
             self._frames[name] = (jpeg, now)
             return name
 
+    def forget(self) -> None:
+        """Drop everything stashed. A new conversation starts with no pictures.
+
+        The names go on counting, deliberately: a name belongs to the
+        conversation that was handed it, and one that has been forgotten must
+        come back empty rather than come back holding somebody else's picture.
+        """
+        with self._lock:
+            self._frames.clear()
+
     def take(self, name: str) -> bytes | None:
         """The frame under this name, removed. One picture answers one question."""
         with self._lock:
