@@ -31,6 +31,18 @@ worked in every other respect left the rover unreachable at its own service
 address for eleven and a half minutes; see
 [`docs/rover-unresponsive.md`](../docs/rover-unresponsive.md).
 
+Those routes also have to be rebuilt when a lease changes, which is not the same
+event as a failover. The kernel deletes a route when the address it is anchored
+to goes away -- `kernel_route_lifetime.sh` measures that on the board, and
+dropping the `src` does not save them either, because the gateway they point
+through is in the prefix that left. Until 2026-08-27 they were written only when
+traffic moved between radios, so a renewal emptied the table the service address
+points at and nothing put it back. That matters here because this LAN has a
+second DHCP server on it besides the router -- a TP-Link extender at
+`192.168.1.232`, which also beacons as `TheMaharaja` -- and whichever answers
+first decides, so the rover's addresses change several times an hour without a
+radio ever losing its association.
+
 ## When a radio cannot join what it is being held on
 
 Holding a radio on one router is `wpa_cli select_network`, and that works by

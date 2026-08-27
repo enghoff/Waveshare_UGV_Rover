@@ -1057,6 +1057,11 @@ class Manager:
         self.service_refused = None     # the MAC that answered for the address
         self.better_since = None
         self.promote = None             # a radio a person asked the traffic onto
+        # What each radio's rule and routing table were last written for. The
+        # kernel deletes a route when the address it hangs off goes away, so a
+        # lease changing under a radio empties that radio's table with nothing
+        # said anywhere; this is how the manager notices and puts it back.
+        self.applied = {}               # iface -> the address it was written for
         self.switched_at = -1e9
         self.switches = 0
         self.history = []
@@ -1108,6 +1113,7 @@ class Manager:
             return
         self.read_request()
         self.choose_active()
+        self.refresh_routes()
         self.free_stranded()
         self.place_radios()
         self.hold_intents()
@@ -1548,11 +1554,63 @@ class Manager:
         src = self.service_ip if self.service_on == radio.iface else radio.address
         self.platform.set_default(radio.iface, self.gateway, src=src, metric=50)
         for index, other in enumerate(self.radios):
-            if other.gone or not other.address:
+            now = None if other.gone else other.address
+            was = self.applied.get(other.iface)
+            if was and was != now:
+                # The old rule names an address this radio no longer has. Left
+                # behind it matches nothing and its table has already been
+                # emptied by the kernel, which is how a rule for a lease three
+                # renewals old ends up in `ip rule` pointing at nothing.
+                self.platform.clear_interface_table(was, TABLE_BASE + index)
+                self.applied.pop(other.iface, None)
+            if not now:
                 continue
-            self.platform.set_interface_table(other.iface, other.address,
+            self.platform.set_interface_table(other.iface, now,
                                               TABLE_BASE + index)
+            self.applied[other.iface] = now
         self.route_service_ip()
+
+    def refresh_routes(self):
+        """Put back what a DHCP renewal quietly took away.
+
+        Everything above is written once, when the traffic moves between
+        radios. That was enough until it was noticed what a changing lease does
+        to it: **the kernel deletes a route when the address it is anchored to
+        goes away**, silently, in every table at once. `kernel_route_lifetime.sh`
+        measures it on this board -- two routes before the address is removed,
+        none afterwards -- and removing the `src` does not save them either,
+        because the gateway they point through sits in the prefix that went with
+        it. So they have to be rebuilt, and the only question is when.
+
+        This house makes that an hourly event rather than a curiosity. A second
+        DHCP server answers alongside the router -- a TP-Link extender at
+        192.168.1.232 -- and whichever replies first decides, so the rover's
+        addresses genuinely change several times an hour without a radio ever
+        losing its association. On 2026-08-27 the dongle went .47, .100, .47,
+        .100, .47 inside eight minutes.
+
+        Until this method existed, each of those emptied the table that the
+        service address's policy rule points at, and nothing rebuilt it until
+        the next failover happened to. With one radio sick and the other
+        healthy -- exactly the rover's state that afternoon -- there is no next
+        failover, and the rule then falls through to the main table, which holds
+        one connected route per radio at the same metric and breaks the tie the
+        same way every time. That is the eleven-and-a-half-minute fault of
+        2026-08-26 with a renewal as its cause instead of a handover.
+
+        A tick's worth of that window remains and cannot be closed from here:
+        the kernel acts the moment the lease lands and nothing tells this
+        process. One second of replies leaving by the wrong radio on a bridged
+        LAN is a different animal from eleven minutes of it, and the model
+        holds the fix to that bound.
+        """
+        if self.surrendered or self.active is None or self.active.gone:
+            return
+        for radio in self.radios:
+            now = None if radio.gone else radio.address
+            if self.applied.get(radio.iface) != now:
+                self.route_through(self.active)
+                return
 
     def route_service_ip(self):
         """Make the address that moves leave by the radio it moved to.
@@ -1640,8 +1698,11 @@ class Manager:
             self.platform.del_service_ip(self.service_on, self.service_ip)
             self.service_on = None
         for index, radio in enumerate(self.radios):
-            if radio.address:
-                self.platform.clear_interface_table(radio.address,
+            # By what was installed rather than by what the radio holds now: a
+            # lease that changed since leaves the rule under the old address.
+            address = self.applied.pop(radio.iface, None) or radio.address
+            if address:
+                self.platform.clear_interface_table(address,
                                                     TABLE_BASE + index)
             radio.intent = None
             radio.pinned = None

@@ -542,6 +542,67 @@ def the_service_address_follows_the_failover():
           "the radio that just died" % (now, leaves_by))
 
 
+def a_lease_that_changes_under_the_active_radio():
+    """2026-08-27: a DHCP renewal emptied the table the service address uses.
+
+    The rover spent that afternoon in the state this builds: the onboard radio
+    associated and passing nothing, the dongle carrying everything perfectly
+    well, and therefore no failover due for as long as that lasted. Meanwhile
+    the dongle's lease kept changing -- .47, .100, .47, .100, .47 in eight
+    minutes, because a second DHCP server answers on this LAN alongside the
+    router -- and every one of those changes took the dongle's routing table
+    away with it, measured on the board in `kernel_route_lifetime.sh`.
+
+    The manager wrote those routes only when traffic moved between radios. So
+    the service address's rule was left pointing at an empty table, which falls
+    through to the main table, which answers out of whichever radio comes first
+    -- the sick one. Nothing was going to rebuild it, because the thing that
+    rebuilt it was the failover that was never coming.
+    """
+    world, platform, manager = build()
+    settle(manager, world, 120)
+    # Put the rover in the state it was actually in: the onboard radio is
+    # associated and useless, and the dongle is carrying the traffic.
+    sick = manager.active
+    for ap in world.aps:
+        if ap.ssid == sick.link.ssid:
+            ap.reaches_lan = False
+    settle(manager, world, 30)
+    carrier = manager.active.iface
+    check(carrier != sick.iface, "the traffic never left the radio that died")
+    check(world.egress(wifi_dual.SERVICE_IP) == carrier,
+          "the service address was already answered out of the wrong radio")
+
+    was = manager.active.address
+    now = world.renew(carrier)
+    check(was != now, "the model did not actually change the lease")
+    settle(manager, world, 20)
+
+    check(manager.active.iface == carrier,
+          "the renewal moved the traffic, which is not what a renewal is")
+    check(world.egress(wifi_dual.SERVICE_IP) == carrier,
+          "after the renewal the service address sits on %s and is answered "
+          "out of %s" % (carrier, world.egress(wifi_dual.SERVICE_IP)))
+
+    # The window that remains is one tick, and it is not closable from the
+    # manager: the kernel takes the routes the instant the lease lands and
+    # tells nobody. A second of replies leaving by the wrong radio on a bridged
+    # LAN is a different animal from the eleven and a half minutes of
+    # 2026-08-26, and this is where that difference is held.
+    longest = run = 0
+    previous = None
+    for when, _address, _holder, _leaves in world.stranded:
+        run = run + 1 if previous is not None and when - previous <= 1.5 else 1
+        longest = max(longest, run)
+        previous = when
+    check(longest <= 2,
+          "the service address was answered out of the wrong radio for %d "
+          "consecutive ticks after the renewal" % longest)
+    # Cleared deliberately, having been checked here with a bound. The sweep
+    # below stays at zero tolerance for the version of this fault that lasts.
+    world.stranded = []
+
+
 def the_service_address_is_answered_out_of_the_radio_it_sits_on():
     """The assertion that spans the file, and the one the rover paid for.
 
@@ -671,6 +732,8 @@ def main():
          scoring_prefers_the_onboard_radio_only_in_ties),
         ("the service address follows the failover",
          the_service_address_follows_the_failover),
+        ("a lease that changes under the active radio",
+         a_lease_that_changes_under_the_active_radio),
         ("a router that will not hold the standby",
          a_router_that_will_not_hold_the_standby),
         ("nothing ever switches a radio off",

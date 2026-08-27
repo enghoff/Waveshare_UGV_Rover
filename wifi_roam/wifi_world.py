@@ -195,6 +195,44 @@ class World:
         self.settle()
         self.check_service_path()
 
+    def assign(self, radio, address):
+        """Give a radio an address, and take away what hung off the old one.
+
+        The second half is the part worth modelling. **A route dies with the
+        address it is anchored to**: when a lease changes, the kernel removes
+        the routes that named the old address as their source, and the ones
+        pointing through a gateway in the prefix that left with it, in every
+        table at once and without a line in any log. That is measured on the
+        board itself by `kernel_route_lifetime.sh` -- two routes before, none
+        after -- and it is the whole reason `wifi_dual.refresh_routes` exists.
+
+        The *rule* survives, and is modelled surviving, because that is what the
+        rover looks like afterwards: `ip rule` still saying `from 192.168.1.139
+        lookup 101` hours after .139 stopped being anywhere on the board, and
+        the table it names holding nothing at all.
+        """
+        if radio.address == address:
+            return
+        radio.address = address
+        for table, iface in list(self.tables.items()):
+            if iface == radio.iface:
+                del self.tables[table]
+
+    def renew(self, iface, address=None):
+        """A lease that changes under a radio that never lost its association.
+
+        Not a hypothetical: this house has two DHCP servers -- the router at
+        .1 and a TP-Link extender at .232 -- and whichever answers first
+        decides, so on 2026-08-27 the dongle went .47, .100, .47, .100, .47
+        inside eight minutes while sitting on one access point throughout.
+        """
+        radio = self.radios[iface]
+        if address is None:
+            address = "192.168.1.%d" % self.next_octet
+            self.next_octet += 1
+        self.assign(radio, address)
+        return address
+
     def egress(self, address):
         """Which radio a reply from this address actually leaves by.
 
@@ -235,7 +273,8 @@ class World:
     def settle(self):
         for radio in self.radios.values():
             if not radio.present:
-                radio.ssid = radio.address = None
+                radio.ssid = None
+                self.assign(radio, None)
                 radio.associating_until = radio.dhcp_until = None
                 continue
             if radio.associating_until is not None and self.t >= radio.associating_until:
@@ -246,7 +285,7 @@ class World:
                     radio.dhcp_until = self.t + DHCP_S
             if radio.dhcp_until is not None and self.t >= radio.dhcp_until:
                 radio.dhcp_until = None
-                radio.address = "192.168.1.%d" % self.next_octet
+                self.assign(radio, "192.168.1.%d" % self.next_octet)
                 self.next_octet += 1
             ap = self.ap(radio.ssid)
             if radio.ssid and (ap is None or not ap.up
@@ -254,7 +293,7 @@ class World:
                 # The access point went away under an associated radio, which is
                 # the one thing a supplicant notices by itself.
                 radio.ssid = None
-                radio.address = None
+                self.assign(radio, None)
             self.reassociate(radio)
 
     def reassociate(self, radio):
