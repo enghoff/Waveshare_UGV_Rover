@@ -194,11 +194,6 @@
     position: absolute; inset: 0; display: grid; place-items: center;
     padding: 0 16px; text-align: center; color: var(--dim); font-size: 13px;
   }
-  .shot.busy::after {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: repeating-linear-gradient(-45deg, transparent 0 12px,
-                rgba(125,140,160,.10) 12px 24px);
-  }
 
   #legend { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 8px; }
   #legend span { display: inline-flex; align-items: center; gap: 5px;
@@ -510,8 +505,8 @@ function render(next) {
   $("lidarNote").textContent = next.lidar.note;
   $("plan").textContent = next.plan;
 
-  drawPicture($("mapShot"), $("mapImg"), $("mapEmpty"), "/map.png", next.map.gen,
-              () => mapGen, (g) => mapGen = g, next.map.drawing, next.map.error);
+  drawPicture($("mapImg"), $("mapEmpty"), "/map.png", next.map.gen,
+              () => mapGen, (g) => mapGen = g, next.map.error);
   if (next.map.width) {
     $("mapShot").style.aspectRatio = `${next.map.width} / ${next.map.height}`;
   }
@@ -532,9 +527,8 @@ function render(next) {
   $("clearMap").textContent = next.clear_armed
     ? "clear map -- press again" : "clear map";
 
-  drawPicture($("cameraShot"), $("frameImg"), $("frameEmpty"), "/frame.jpg",
-              next.frame.gen, () => frameGen, (g) => frameGen = g,
-              next.frame.taking, next.frame.error);
+  drawPicture($("frameImg"), $("frameEmpty"), "/frame.jpg", next.frame.gen,
+              () => frameGen, (g) => frameGen = g, next.frame.error);
   $("frameNote").textContent = next.frame.note;
   $("frameError").textContent = next.frame.error || "";
 
@@ -843,8 +837,7 @@ function drawStatus(status) {
   $("statusError").textContent = status.error || "";
 }
 
-function drawPicture(shot, img, empty, url, gen, get, set, busy, error) {
-  shot.classList.toggle("busy", !!busy);
+function drawPicture(img, empty, url, gen, get, set, error) {
   if (gen && gen !== get()) {
     set(gen);
     // The generation is in the URL, so the browser fetches each picture once and
