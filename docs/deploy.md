@@ -100,7 +100,10 @@ python deploy/deploy.py --system --only netwatch
 ```
 
 The deployer reads `secrets/bpi-sudo.key` locally and feeds it to `sudo -S`. The
-password is not put in the command line or copied to the rover.
+password is not put in the command line or copied to the rover. `admin`'s password
+on the Banana Pi is not the old Raspberry Pi one. By hand, `-S` reads until EOF, so
+one `cat` feeds exactly one `sudo`; two chained after a single `cat` leave the
+second waiting with no password.
 
 Do not enable `wifi-roam.timer` while `wifi_dual` is active. They are alternative
 managers of the same link. `install-dual.sh` disables the timer when the dual
