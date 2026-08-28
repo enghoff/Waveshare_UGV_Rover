@@ -1345,8 +1345,8 @@ again:
 | swept over sixteen start headings | 9 planned | **16 planned** |
 | ...slowest plan among them | 1.99 s | 2.36 s |
 
-The right-hand column was taken after the change was deployed, with the bench
-reading `config/nav2.yaml` off the rover rather than an override.
+The right-hand column was taken with the bench reading `config/nav2.yaml` off
+the rover after the first deploy, when the budget there was 3.0.
 
 So it is a coin toss, and the coin is a wall-clock deadline on four cores that
 are also running slam_toolbox, DWB and the daemon. Re-running the identical
@@ -1356,20 +1356,30 @@ which is why turning the rover round appeared to fix it and why thirteen goals
 under 5.5 m in that session produced no aborts at all while nine of 6 m and over
 produced twenty-four.
 
-**`max_planning_time` is 3.0 now, and the margin is about 20% rather than
-generous.** The worst plan over some fifty samples of the expensive class is
-2.36 s, and they cluster at 2.2 to 2.4 rather than tailing off, so 3.0 covers
-what has been measured and not much past it. Every sample was taken with the
-rover standing still, too: a driving rover has DWB at 10 Hz and slam_toolbox
-adding scans on the same four cores, and what that does to the tail is not
-measured here.
+**`max_planning_time` is 4.0, and it was 3.0 first.** Three seconds was the
+same mistake made smaller. Asked of the *live* planner on the *live* map, one
+plan came back at 3.12 s -- a single sample in roughly seventy, but a ceiling
+with the tail of the distribution poking over it is exactly what was wrong at
+two seconds, and one spurious "there is no route" every seventy long goals is
+not a fix. Across the recorded map and the live one the expensive class runs
+1.1 to 2.5 s with that one excursion above it.
 
 Raising it costs nothing on a plan that succeeds, because the planner returns
-the moment it has a route. It costs time only on plans that were going to fail,
-where it is spent on every rung of the recovery ladder and has to fit the
-bridge's allowance in [`route_cost.py`](route_cost.py). So if refusals on long
-goals come back, raise it -- but the better answer is to make the search
-cheaper, with a smaller map window or a coarser angular resolution.
+the moment it has a route rather than spending its budget. The cost falls only
+on plans that were going to fail, where it is spent on every rung of the
+recovery ladder and has to fit the bridge's allowance in
+[`route_cost.py`](route_cost.py). That is why the number is generous rather
+than tight.
+
+Two things every measurement here shares, and both understate it. They were
+taken with the rover standing still, so DWB was not also running at 10 Hz on
+the same four cores. And the deadline is soft: `terminal_checking_interval` is
+5000 iterations, so the search notices the clock late and overshoots rather
+than stopping on it -- which is how a 3.12 s plan returned a route at all.
+
+If long goals start being refused again, the better answer is to make the
+search cheaper -- a smaller map window, or a coarser angular resolution --
+rather than to keep raising this.
 
 ### A model said `rotation_penalty`, and the rover said no
 

@@ -821,8 +821,8 @@ def test_configs_agree():
     # plan_bench.py: one query at one start heading, ten times, planned 4 and
     # refused 6 at 2 s with every success landing at 2.01-2.09 s; at 3 s the
     # whole sixteen-heading sweep planned, none of it needing over 2.27 s.
-    check("the planner has 3 s, because a house-sized route costs this board 2",
-          "max_planning_time: 3.0" in settings, True)
+    check("the planner has 4 s, because a house-sized route costs this board 2 to 3",
+          "max_planning_time: 4.0" in settings, True)
     check("...and reverse expansion is off, because the lidar looks forwards",
           "allow_reverse_expansion: false" in settings, True)
     check("...and the lattice may enter unknown, because this rover maps as it drives",

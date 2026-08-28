@@ -791,24 +791,31 @@ planner_server:
       # where it gave 4. Confirmed again after this was deployed, reading
       # this file off the rover.
       #
-      # **The margin is about 20%, not more.** The worst plan seen over some
-      # fifty samples of the expensive class is 2.36 s, and they cluster at
-      # 2.2 to 2.4 rather than tailing off, so 3.0 covers what has been
-      # measured and not much beyond it. Every one of those samples was taken
-      # with the rover standing still: a driving rover has DWB at 10 Hz and
-      # slam_toolbox adding scans on the same four cores, and what that does
-      # to the tail is not measured here. The one driving sample there is --
-      # `Planner loop missed its desired rate of 1.0000 Hz. Current loop rate
-      # is 0.6251 Hz` -- is 1.6 s, which is inside it.
+      # **It was 3.0 for about an hour, and 3.0 was the same mistake made
+      # smaller.** Asking the *live* planner on the *live* map turned up a
+      # plan at 3.12 s -- one sample in roughly seventy, but a ceiling with
+      # the distribution's tail poking over it is precisely what was wrong at
+      # 2.0, and one spurious "there is no route" every seventy long goals is
+      # not a fix. Across the recorded map and the live one together the
+      # expensive class runs 1.1 to 2.5 s with that one excursion above it.
       #
-      # Raising this costs nothing on a plan that succeeds, because the
-      # planner returns the moment it has a route; it costs time only on
-      # plans that were going to fail, where it is spent on every rung of the
-      # recovery ladder and has to fit the bridge's allowance in
-      # route_cost.py. So if refusals on long goals come back, raise it --
-      # but the better answer is to make the search cheaper, with a smaller
-      # map window or a coarser angular resolution.
-      max_planning_time: 3.0
+      # Raising it costs nothing on a plan that succeeds, because the planner
+      # returns the moment it has a route rather than using its budget up.
+      # The cost falls only on plans that were going to fail, where it is
+      # spent on every rung of the recovery ladder and has to fit the
+      # bridge's allowance in route_cost.py. That is why the number is
+      # generous rather than tight.
+      #
+      # Two things every measurement here shares, and both understate it:
+      # they were taken with the rover standing still, so DWB was not also
+      # running at 10 Hz on the same four cores, and the deadline is soft --
+      # `terminal_checking_interval` is 5000 iterations, so the search
+      # notices the clock late and overshoots rather than stopping on it.
+      #
+      # If long goals start being refused again, the better answer is to make
+      # the search cheaper -- a smaller map window, or a coarser angular
+      # resolution -- rather than to keep raising this.
+      max_planning_time: 4.0
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
       analytic_expansion_max_cost: 200.0
