@@ -8,12 +8,13 @@ describes the component.
 
 ## Report in plain English
 
-Lead with what is true in words a person can use — the rover moved, the network
-stayed up, a service restarted, a recorded fault reproduced. File names and tick
-counts are supporting evidence, not the first sentence. If the obvious story is
-wrong, say so briefly and name the real one. Prefer numbers with physical meaning
-over raw log volume, and end with the single next action and what would count as
-proof rather than a menu of guesses.
+Write for the person who owns the rover but does not carry its code in their head.
+They want the conclusion and the decision, not the workings. Lead with what is the
+case now: what works, what does not, and what it means for the rover. Anything they
+cannot act on — the investigation, the options weighed, the names of files and
+settings — is a supporting clause at most, and usually is not needed at all. Say
+plainly when something is unproven, failed or was skipped. Two sentences beat two
+paragraphs. Finish with the next step if there is one.
 
 ## Reproduce faults before fixing them
 
