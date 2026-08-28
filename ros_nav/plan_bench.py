@@ -35,7 +35,10 @@ mid-search -- and Nav2 reports the clock running out as
 there". Anything that nudged the search decided which side of the line a query
 landed on, the rover's start heading among them, which is why a goal behind the
 rover looked like the cause. Raising the budget to 3 s planned all sixteen
-headings, none of them needing more than 2.27 s.
+headings, and re-run against the deployed config the same ten repeats gave ten
+plans. Nothing has yet needed more than 2.36 s -- but they cluster at 2.2 to
+2.4 rather than tailing off, so the margin is about 20% and it is worth
+re-measuring after anything that makes the map bigger.
 
 **A warning worth heeding.** The board dropped off the network twice while this
 bench was running long sweeps on it, both times needing a power cycle -- see
@@ -342,7 +345,7 @@ def verify(node, grid):
     return 0 if same >= 0.99 * total else 1
 
 
-def sweep(node, start_xy, goal_xy, step, repeat, out):
+def sweep(node, start_xy, goal_xy, step, repeat, out, budget):
     sx, sy = start_xy
     gx, gy = goal_xy
     bearing = math.atan2(gy - sy, gx - sx)
@@ -362,11 +365,14 @@ def sweep(node, start_xy, goal_xy, step, repeat, out):
             r["yaw_deg"] = math.degrees(yaw)
             r["off_nose_deg"] = off
             rows.append(r)
+            # A refused plan reports no planning time at all, so the seconds
+            # shown for one are the bench's own wall clock. That is the
+            # number that says whether it was refused or merely cut off.
             print("%8.1f %8.1f %5s %7s %8s %8.2f %9s  %s"
                   % (r["yaw_deg"], off, "yes" if r["ok"] else "NO",
                      r.get("poses", "-"),
                      ("%.2f" % r["length_m"]) if r["ok"] else "-",
-                     r["plan_s"],
+                     r["plan_s"] if r["ok"] else r["wall_s"],
                      ("%.0f deg" % r["pivot_deg"]) if r["ok"] else "-",
                      r["why"]))
     good = [r for r in rows if r["ok"]]
@@ -374,7 +380,7 @@ def sweep(node, start_xy, goal_xy, step, repeat, out):
     print("%d of %d start headings planned" % (len(good), len(rows)))
     if good:
         print("slowest successful plan %.2f s against a max_planning_time of "
-              "%.1f s" % (max(r["plan_s"] for r in good), 2.0))
+              "%.1f s" % (max(r["plan_s"] for r in good), budget))
     if out:
         with open(out, "w") as handle:
             json.dump({"start": [sx, sy], "goal": [gx, gy],
@@ -475,7 +481,12 @@ def main():
 
     grid = Grid.load(args.map)
     params = "/tmp/plan_bench_params.yaml"
-    bench_params(CONFIG, params)
+    whole = bench_params(CONFIG, params)
+    #: What the child planner will actually be given, so the summary cannot
+    #: quote a budget nobody is running. This whole investigation was about a
+    #: message that described a different failure from the one that happened.
+    budget = float(whole["planner_server"]["ros__parameters"]["GridBased"]
+                   ["max_planning_time"])
     if args.set:
         with open(params) as handle:
             doc = yaml.safe_load(handle)
@@ -487,6 +498,8 @@ def main():
             except ValueError:
                 pass
             block[name] = value
+            if name == "max_planning_time":
+                budget = float(value)
             print("override: GridBased.%s = %r" % (name, value))
         with open(params, "w") as handle:
             yaml.safe_dump(doc, handle, default_flow_style=False)
@@ -543,7 +556,8 @@ def main():
             return 1
         start = [float(v) for v in args.start.split(",")]
         goal = [float(v) for v in args.goal.split(",")]
-        sweep(node, start, goal, args.step, args.repeat, args.out)
+        sweep(node, start, goal, args.step, args.repeat, args.out,
+              budget)
         return 0
     finally:
         try:

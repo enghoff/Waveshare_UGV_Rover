@@ -1340,10 +1340,13 @@ again:
 
 | | at `max_planning_time: 2.0` | at 3.0 |
 |---|---|---|
-| one start heading, ten runs | 4 planned, 6 refused | — |
-| ...and every success took | 2.01 to 2.09 s | — |
+| one start heading, ten runs | 4 planned, 6 refused | **10 planned** |
+| ...and every success took | 2.01 to 2.09 s | 1.94 to 2.28 s |
 | swept over sixteen start headings | 9 planned | **16 planned** |
-| ...slowest plan among them | 1.99 s | 2.27 s |
+| ...slowest plan among them | 1.99 s | 2.36 s |
+
+The right-hand column was taken after the change was deployed, with the bench
+reading `config/nav2.yaml` off the rover rather than an override.
 
 So it is a coin toss, and the coin is a wall-clock deadline on four cores that
 are also running slam_toolbox, DWB and the daemon. Re-running the identical
@@ -1353,12 +1356,20 @@ which is why turning the rover round appeared to fix it and why thirteen goals
 under 5.5 m in that session produced no aborts at all while nine of 6 m and over
 produced twenty-four.
 
-**`max_planning_time` is 3.0 now**, which is about 30% clear of the worst plan
-measured. It is deliberately not larger: planning blocks the behaviour tree, the
-tree asks for a replan every second, and a *failed* plan now costs three seconds
-on every rung of the recovery ladder, which the bridge's allowance in
-[`route_cost.py`](route_cost.py) has to cover. If long plans creep up again the
-answer is to make the search cheaper rather than to keep raising this.
+**`max_planning_time` is 3.0 now, and the margin is about 20% rather than
+generous.** The worst plan over some fifty samples of the expensive class is
+2.36 s, and they cluster at 2.2 to 2.4 rather than tailing off, so 3.0 covers
+what has been measured and not much past it. Every sample was taken with the
+rover standing still, too: a driving rover has DWB at 10 Hz and slam_toolbox
+adding scans on the same four cores, and what that does to the tail is not
+measured here.
+
+Raising it costs nothing on a plan that succeeds, because the planner returns
+the moment it has a route. It costs time only on plans that were going to fail,
+where it is spent on every rung of the recovery ladder and has to fit the
+bridge's allowance in [`route_cost.py`](route_cost.py). So if refusals on long
+goals come back, raise it -- but the better answer is to make the search
+cheaper, with a smaller map window or a coarser angular resolution.
 
 ### A model said `rotation_penalty`, and the rover said no
 

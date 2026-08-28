@@ -787,17 +787,27 @@ planner_server:
       #
       # Measured with plan_bench.py on the recorded costmap: the same sixteen
       # start headings that gave 9 plans and 7 refusals at 2 s give **16 of
-      # 16 at 3 s**, and every heading that had been failing came back in
-      # 1.93 to 2.27 s. Nothing needed more than that.
+      # 16 at 3 s**, and the same one query ten times over gives 10 of 10
+      # where it gave 4. Confirmed again after this was deployed, reading
+      # this file off the rover.
       #
-      # 3.0 is about 30% clear of the worst plan measured, over some thirty
-      # samples of the expensive class. It is deliberately not larger: this
-      # blocks the behaviour tree, the tree asks for a replan every second,
-      # and a *failed* plan now costs three seconds on every rung of the
-      # recovery ladder, which the bridge's own allowance in route_cost.py
-      # has to cover. If long plans creep up again the answer is to make the
-      # search cheaper -- a smaller map window, or a coarser angular
-      # resolution -- rather than to keep raising this.
+      # **The margin is about 20%, not more.** The worst plan seen over some
+      # fifty samples of the expensive class is 2.36 s, and they cluster at
+      # 2.2 to 2.4 rather than tailing off, so 3.0 covers what has been
+      # measured and not much beyond it. Every one of those samples was taken
+      # with the rover standing still: a driving rover has DWB at 10 Hz and
+      # slam_toolbox adding scans on the same four cores, and what that does
+      # to the tail is not measured here. The one driving sample there is --
+      # `Planner loop missed its desired rate of 1.0000 Hz. Current loop rate
+      # is 0.6251 Hz` -- is 1.6 s, which is inside it.
+      #
+      # Raising this costs nothing on a plan that succeeds, because the
+      # planner returns the moment it has a route; it costs time only on
+      # plans that were going to fail, where it is spent on every rung of the
+      # recovery ladder and has to fit the bridge's allowance in
+      # route_cost.py. So if refusals on long goals come back, raise it --
+      # but the better answer is to make the search cheaper, with a smaller
+      # map window or a coarser angular resolution.
       max_planning_time: 3.0
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
