@@ -5,8 +5,11 @@ this rover. It records the names, addresses and hardware facts needed to operate
 and deploy the current system. General deployment instructions are in
 [`deploy.md`](deploy.md).
 
-There is no separate MEDIA/GPU host in the current system. Voice inference is
-provided by Alibaba's hosted realtime Qwen Omni service.
+No GPU host serves the rover: voice inference is provided by Alibaba's hosted
+realtime Qwen Omni service, and nothing the rover runs depends on a local GPU.
+A Jetson Orin Nano does exist on the same network as a bench machine and is
+recorded at the end of this document, but it is not a deploy target and no rover
+service calls it.
 
 ## Banana Pi M4 Zero
 
@@ -185,3 +188,96 @@ it in place on the rover: fix the repository and deploy it.
 
 When this document and executable source/config disagree, the executable source
 or config is authoritative and this document should be corrected.
+
+## Jetson Orin Nano (bench GPU host, not a rover service)
+
+This board is on the same LAN but is **not** part of the running rover: it is not
+a deploy target, `deploy/manifest.json` knows only the `bpi` host, and no rover
+service talks to it. It is recorded here because it is the only machine on this
+network with a usable GPU, and because its login model has no password fallback.
+
+| | Current installation |
+|---|---|
+| hostname | `jetson-orin` |
+| user | `jetson` |
+| board | NVIDIA Jetson Orin Nano Engineering Reference Developer Kit (Super) |
+| CPU | 6× Cortex-A78AE at 1.728 GHz, aarch64 |
+| RAM | 7.5 GB, shared with the GPU |
+| swap | **none** — no swap file and no zram unit |
+| storage | 915 GB NVMe (`/dev/nvme0n1`), root on p1, about 1% used |
+| OS | Ubuntu 24.04.4 LTS, kernel `6.8.12-tegra` |
+| L4T/JetPack | R39.2.1 (`/etc/nv_tegra_release`), fully updated 2026-08-30 |
+| boot firmware | 39.2.1 in QSPI, slot A, both slots `normal` (`nvbootctrl`) |
+| GPU driver | 595.78, reporting CUDA 13.2 |
+| Python | system CPython 3.12 |
+| power mode | `nvpmodel` **1 = 25W**; mode 2 `MAXN_SUPER` is available and unused |
+| time zone | `Etc/UTC`, clock synchronised |
+
+The CUDA *runtime* is present through the L4T packages, but there is **no CUDA
+toolkit**: `/usr/local/cuda` does not exist, there is no `nvcc`, and PyTorch is
+not installed. Nothing on this box can currently compile or run GPU code beyond
+what the driver itself provides. Docker is running and
+`nvidia-container-toolkit` is installed, so the container route to CUDA is the
+one that is closest to working.
+
+### Network
+
+Both radios are up and the board answers on two addresses:
+
+- `enP8p1s0` — wired, `192.168.1.86`, MAC `74:25:54:da:e3:13`, netplan connection
+  `netplan-lan`;
+- `wlP1p1s0` — Wi-Fi, `192.168.1.88`, MAC `f0:68:e3:a8:b4:87`, associated to SSID
+  `TheGreatLord` on 5 GHz.
+
+Both are DHCP, so either address can move. As of 2026-08-30 the wired interface is
+**down with no carrier** — a cable or switch-port problem, not configuration — so
+Wi-Fi is currently the only way in. Note that `192.168.1.86` may still answer ping
+while the Jetson is unreachable, because the lease moves or an ARP entry goes
+stale; a successful ping to that address is not evidence the board is up. Unlike the rover, this host **is** managed by NetworkManager (`nmcli`
+works here), and there is no service address that floats between the interfaces.
+`l4tbr0`/`usb0`/`usb1` are the USB-device-mode bridge and stay down; `can0` is
+down.
+
+### Access
+
+SSH is **key-only** (`allow-pw: false` from the autoinstall). The authorised key
+is `~/.ssh/id_ed25519` on the Windows workstation — the default identity, so no
+`-i` is needed:
+
+```bash
+ssh jetson@192.168.1.86
+```
+
+There is no `jetson-orin` entry in the workstation's `~/.ssh/config`; the name
+resolves over mDNS on this network but the address is the dependable form.
+
+`sudo` prompts — it is not NOPASSWD — and the password is
+`secrets/jetson-orin.key`, fed over stdin the same way the rover's is:
+
+```bash
+cat secrets/jetson-orin.key | ssh jetson@192.168.1.86 'sudo -S -p "" <command>'
+```
+
+As on the rover, `-S` reads until EOF, so one `cat` feeds exactly one `sudo`.
+
+Because `sudo` authenticates the invoking user's own password through PAM, that
+file **is** the `jetson` account password. A keyboard and monitor on the board is
+therefore a genuine way back in if SSH is ever lost. This was not true of the
+as-installed system, where the password was an unknown random hash and losing the
+SSH key meant reflashing.
+
+### Known-failing services
+
+`dnsmasq`, `isc-dhcp-server` and `isc-dhcp-server6` fail on every boot and have
+done since before the 2026-08-30 update. They serve the USB device-mode bridge
+`l4tbr0`, which nothing here uses; `dnsmasq` cannot bind port 53 because another
+resolver already holds it. Treat them as expected noise rather than a fault.
+
+`nvpmodel.service` is a different case and is now fixed. The 39.2.1 update
+repointed `/etc/nvpmodel.conf` at the Super board config and left no saved-mode
+file, so at boot the service tried to apply default mode 1, found that the change
+needed a reboot, and prompted for confirmation it could never receive under
+systemd. It died leaving **no power mode set at all**. Committing the mode
+(`echo YES | nvpmodel -m 1`, which reboots) wrote `/var/lib/nvpmodel/status` and
+the service has run clean since. If `nvpmodel -q` ever reports "power mode is not
+set", this is the cause and the cure.
