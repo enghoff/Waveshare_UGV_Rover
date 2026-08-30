@@ -13,9 +13,11 @@
 # re-running selftest.py and reading both.
 #
 # Unpacked rather than installed for the same reason OpenCV is beside yunet.py:
-# this board's Debian has no pip and no python3-venv, and `sudo` here wants a
-# password no deploy script has. A wheel is a zip, numpy is already present from
-# Debian, and that is the whole dependency list.
+# the rover's Debian has no pip and no python3-venv, and `sudo` there wants a
+# password no deploy script has. A wheel is a zip, numpy is already present, and
+# that is the whole dependency list. The Jetson has pip and could install this
+# properly, but unpacking works on both and one code path is worth more than the
+# convenience of a second.
 #
 # Pinned by hash as well as version. This runs unattended from a deploy and the
 # file arrives over a wifi link that drops; a truncated download would unpack into
@@ -23,9 +25,32 @@
 set -e
 
 VERSION=2.32.0.0
-WHEEL=depthai-$VERSION-cp313-cp313-manylinux_2_28_aarch64.whl
-SHA256=13b1fc97cbbdd89557a99461287618df388a27d521b7cfb8d0b81636b8b3c437
-URL=https://files.pythonhosted.org/packages/7d/45/3ff68807991dd1c18077d8c04e3c99137e7556be8d23c3688e52802e0ca1/$WHEEL
+
+# One wheel per interpreter, unlike OpenCV's abi3 one, so the file is chosen by
+# whichever python3 is on this host rather than pinned to a single board: the
+# Banana Pi runs Debian's CPython 3.13 and the Jetson runs Ubuntu 24.04's 3.12.
+# Only the interpreter tag differs between these two -- the *version* is the
+# camera's firmware and must not move, because 3.x kills this camera's left mono
+# sensor and therefore its stereo depth.
+PYTAG=$(python3 -c 'import sys; print("cp%d%d" % sys.version_info[:2])')
+case "$PYTAG" in
+    cp312)
+        SHA256=b3192ffff904482254def4cd2b9aac0c4d082a0787303bdc980768da4368331c
+        URLDIR=6a/ab/73a17bfd2ed5686350ad38012edc22e16d817ecf8bd1dd6aff200777dfc5
+        ;;
+    cp313)
+        SHA256=13b1fc97cbbdd89557a99461287618df388a27d521b7cfb8d0b81636b8b3c437
+        URLDIR=7d/45/3ff68807991dd1c18077d8c04e3c99137e7556be8d23c3688e52802e0ca1
+        ;;
+    *)
+        echo "no depthai $VERSION wheel is pinned for $PYTAG. PyPI publishes cp39" >&2
+        echo "through cp314 for this release: add that filename's sha256 and its" >&2
+        echo "package path to the case above, or pass a wheel as an argument." >&2
+        exit 1
+        ;;
+esac
+WHEEL=depthai-$VERSION-$PYTAG-$PYTAG-manylinux_2_28_aarch64.whl
+URL=https://files.pythonhosted.org/packages/$URLDIR/$WHEEL
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 VENDOR="$DIR/vendor"
@@ -37,17 +62,6 @@ for arg in "$@"; do
         *) LOCAL="$arg" ;;
     esac
 done
-
-# The wheel is built for one interpreter, unlike OpenCV's abi3 one, so a host with
-# a different Python needs a different file rather than this one unpacked anyway.
-python3 - <<'PY'
-import sys
-if sys.version_info[:2] != (3, 13):
-    raise SystemExit(
-        f"this pins a cp313 wheel and this host runs "
-        f"{sys.version_info.major}.{sys.version_info.minor}; fetch the matching "
-        f"depthai 2.32.0.0 wheel from PyPI and pass it as an argument")
-PY
 
 if [ -z "$FORCE" ] && PYTHONPATH="$VENDOR" python3 -c 'import depthai' 2>/dev/null; then
     echo "depthai $(PYTHONPATH="$VENDOR" python3 -c 'import depthai; print(depthai.__version__)') is already at $VENDOR"

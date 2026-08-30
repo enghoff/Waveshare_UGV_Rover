@@ -63,6 +63,14 @@ put it: a v3 regression in the mono init path, with two open upstream issues.
 Nothing else about 3.x recommends it here either. CAM_A works no better than on
 2.x, and the colour sensor is not what this service is for.
 
+The version is pinned; the *interpreter* is not. Unlike OpenCV's abi3 wheel,
+depthai ships one build per CPython, so `install.sh` picks the file from whatever
+`python3` it finds and checks it against the hash pinned for that interpreter.
+It knows 3.12 and 3.13 — Ubuntu 24.04 on the Jetson and Debian trixie on the
+Banana Pi — and tells you what to add if it meets anything else. All of them are
+the same 2.32.0.0 release, so this changes which file is fetched and never which
+firmware the camera gets.
+
 ## What it does, and what that costs
 
 The pipeline is deliberately modest. Mono at 480p because the OV7251 sensors are
