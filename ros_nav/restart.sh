@@ -59,18 +59,26 @@ tail -6 "$DIR/ros_nav.log"
 # runs before every launch to prevent it; this is how you find out that it did.
 #
 # Which mapper is expected depends on how the launch was started, so it is read
-# off the running launch's own command line rather than assumed. `rtabmap:=off`
-# -- the default, and what boots -- wants slam_toolbox and no RTAB-Map;
-# `rtabmap:=compare` wants both; `rtabmap:=primary` wants RTAB-Map and no
-# slam_toolbox. Getting this wrong in either direction is worth catching: two
-# mappers publishing `map -> odom` is a rover whose pose flickers between two
-# answers, and none at all is a rover with no map.
-mode=off
-if pgrep -af 'ros2 launch.*ros_nav' 2>/dev/null | grep -q 'rtabmap:=compare'; then
-    mode=compare
-elif pgrep -af 'ros2 launch.*ros_nav' 2>/dev/null | grep -q 'rtabmap:=primary'; then
-    mode=primary
-fi
+# off the running launch's own command line rather than assumed.
+# `rtabmap:=primary` -- what boots since 2026-08-31 -- wants RTAB-Map and no
+# slam_toolbox; `rtabmap:=off` wants slam_toolbox and no RTAB-Map;
+# `rtabmap:=compare` wants both. Getting this wrong in either direction is worth
+# catching: two mappers publishing `map -> odom` is a rover whose pose flickers
+# between two answers, and none at all is a rover with no map.
+#
+# A launch started with no `rtabmap:=` at all -- which is what a hand relaunch
+# is -- gets the launch file's own default, so that is read out of the launch
+# file rather than repeated here. A copy of it that had drifted would report a
+# missing slam_toolbox on a rover that is mapping perfectly well.
+mode=$(sed -n 's/^ *"rtabmap", default_value="\([a-z]*\)".*/\1/p' \
+       "$DIR/slam.launch.py" | head -1)
+mode=${mode:-primary}
+launch_cmd=$(pgrep -af 'ros2 launch.*ros_nav' 2>/dev/null || true)
+case "$launch_cmd" in
+    *rtabmap:=compare*) mode=compare ;;
+    *rtabmap:=primary*) mode=primary ;;
+    *rtabmap:=off*)     mode=off ;;
+esac
 case "$mode" in
     off)      want_slam=1; want_rtab=0 ;;
     compare)  want_slam=1; want_rtab=1 ;;

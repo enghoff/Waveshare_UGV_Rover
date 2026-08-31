@@ -24,7 +24,7 @@ help diagnose what runs, or document a current hardware fact or failure mode.
 |---|---|
 | [`rover_daemon/`](rover_daemon) | owns the driver-board UART and gimbal camera; exposes hardware and navigation as tools on TCP 8769 |
 | [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the Banana Pi; the rover daemon imports this code |
-| [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it |
+| [`ros_nav/`](ros_nav) | ROS 2 Jazzy, RTAB-Map and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it |
 | [`lidar_slam/`](lidar_slam) | the fast LD19 parser, room description, map renderer and USB recovery code still used by the ROS stack and daemon |
 | [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |
 | [`drive_web/`](drive_web) | HTTPS browser console, map, camera view and microphone/speaker bridge |
@@ -121,7 +121,7 @@ See:
 ### Driving and mapping
 
 ```text
-D500 lidar -> ros_nav/lidar_node.py -> /scan -> slam_toolbox + Nav2
+D500 lidar -> ros_nav/lidar_node.py -> /scan -> RTAB-Map + Nav2  
                                                     |
 driver board UART <- rover_daemon <- loopback 8772 -+
        ^                                            |

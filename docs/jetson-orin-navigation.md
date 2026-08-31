@@ -48,7 +48,7 @@ base_node.py ---------------------> /odom, /imu/data_raw
 lidar_node.py --------------------> /scan
         |
         v
-slam_toolbox ---------------------> /map, map -> odom
+RTAB-Map -------------------------> /map, map -> odom
         |
         v
 Nav2 -----------------------------> /cmd_vel

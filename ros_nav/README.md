@@ -39,8 +39,9 @@ recoveries, and a standard set of topics that any ROS tool can look at.
   lidar_node.py --> /scan                       (the D500, on its own USB port)
         |
         v
-  slam_toolbox  --> /map, map -> odom
-        |
+  RTAB-Map      --> /map, map -> odom   (the mapper, since 2026-08-31; the
+        |                                launch's rtabmap:= argument can put
+        |                                slam_toolbox back)
         v
   Nav2          --> /cmd_vel  (back to base_node, and out to the wheels)
         |
@@ -108,7 +109,7 @@ both are now somebody else's problem:
 | `turn_in_place` | `Spin` | rotates on the spot, collision-checked through the sweep |
 | `drive_to` | `NavigateToPose` | a planned route, a follower, and the recovery behaviours |
 | `stop_driving` | goal cancel, plus a zero `Twist` | the cancel is the correct act, the Twist is the quick one |
-| `clear_map` | `/slam_toolbox/reset` | throws the pose graph away |
+| `clear_map` | `/rtabmap/rtabmap/reset`, or `/slam_toolbox/reset` | throws the pose graph away — whichever mapper is answering |
 
 `drive` is a narrower promise than it used to be, and the tool description says so:
 it goes straight and stops, where the old one wove around obstacles. Weaving now
@@ -143,7 +144,7 @@ contained preferred the placement as written and the nearest agreed to 2 cm.
 **What is genuinely lost.** A pose graph has no per-revolution match score and a
 velocity controller has no chosen steering arc, so `nav_status` reports None for
 the first and the consoles show a dash. That is no loss: `position_trusted` now
-means "slam_toolbox is still publishing where we are", which is the failure the old
+means "the mapper is still publishing where we are", which is the failure the old
 number was really being watched for. `steering_deg` is filled in from the planned
 route instead — the bearing to a point a lookahead ahead — which is a fair reading
 of which way the rover is trying to go.
@@ -486,22 +487,29 @@ The whole story, the measurements and the one assumption it rests on are in
 build step, and the manifest rebuilds it before every restart for the reason
 `lidar_slam/` already learned.
 
-## RTAB-Map, running beside slam_toolbox rather than instead of it
+## RTAB-Map is the mapper, and slam_toolbox is what to go back to
 
-There is a second mapper on the rover now. It is not switched on at boot, it does
-not steer anything, and the reason it is here is to answer one question with
-numbers instead of opinions: **would RTAB-Map be a better owner of `map -> odom`
-than slam_toolbox on this rover?**
+**RTAB-Map owns `map -> odom` and publishes `/map` on this rover as of
+2026-08-31.** slam_toolbox is still installed, still configured, and still
+maintained by everything in this file that describes it; going back is one word
+in the boot entry and a restart.
 
 ```bash
-ros2 launch ~/ugv/ros_nav/slam.launch.py rtabmap:=compare   # both, one steering
-~/ugv/ros_nav/native.sh python3 ~/ugv/ros_nav/slam_compare.py --seconds 300
+ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav --slam-toolbox'
+ssh orin '~/ugv/ros_nav/restart.sh --supervisor'
 ```
 
-`rtabmap:=off` is the default and is what boots. `compare` runs both mappers off
-the same `/scan` and the same wheels with RTAB-Map forbidden to publish a
-transform; `primary` runs RTAB-Map instead and does not start slam_toolbox at
-all.
+Which mapper runs is the launch's `rtabmap` argument, and **the boot entry is the
+only place that choice lives** — the supervisor takes its arguments from the
+crontab and `restart.sh` reads them back out of it, so a hand relaunch cannot
+quietly install a different mapper than the one that boots. `primary` is
+RTAB-Map with slam_toolbox not started, `off` is slam_toolbox alone, and
+`compare` is both at once with RTAB-Map forbidden a transform, which is how the
+two get measured against each other on one drive:
+
+```bash
+~/ugv/ros_nav/compare_run.sh --seconds 300      # puts the boot stack back after
+```
 
 **No setting ever has two things publishing `map -> odom`,** and that is the
 whole design rather than a detail. A frame in TF has exactly one parent, so two
@@ -589,11 +597,62 @@ its frame `map` and those are two different frames with the same name. The tool
 refuses to report the frame-dependent numbers if the two graphs did not begin
 within twenty seconds of each other.
 
-### What does not work yet under `primary`
+### What the numbers said, and what they did not
 
-The daemon's `reset_map` goes through `nav_bridge.py` to slam_toolbox's own reset
-service, and RTAB-Map does not have that service. `primary` is there for testing
-and is deliberately not what boots; this is the gap to close before it could be.
+Three minutes with both mappers running off one lidar, rover parked:
+
+| | slam_toolbox | RTAB-Map |
+|---|---|---|
+| corrections to where it thinks it is | 31 | 21 |
+| largest one | 2.17 m, 21° | 0.235 m, 2.7° |
+| CPU, % of one core | 3.0 | 9.9 |
+| memory | 240 MB | 197 MB |
+
+and the two grids agreed about 87% of the 20493 cells both had seen. **The
+decisive column is the second row.** A parked rover has not moved, so every one
+of those corrections is a mapper changing its mind about a rover that is standing
+still, and slam_toolbox moved it two metres and twenty degrees while RTAB-Map's
+worst was a quarter of a metre. Nav2's controller reads that transform every tick,
+so a two-metre step is a rover that believes it is somewhere else for as long as
+it takes the next correction to arrive.
+
+**What this does not measure is loop closure,** which is the thing either mapper
+is really for and which a stationary rover cannot exercise: neither reported a
+single closure, because neither had anywhere to return to. `compare_run.sh
+--closed-loop`, driven round a circuit and back to the start, is the run that
+would, and it has not been done. The cutover rests on the steadier pose, the
+lower memory, and a tenth of a core.
+
+### What the cutover had to change
+
+Two things, and both of them fail silently, which is why `primary` was a testing
+setting until they were done.
+
+**The grid has to come out of the namespace.** RTAB-Map runs under `/rtabmap` so
+that in compare mode its occupancy grid cannot be mistaken for the one the rover
+is steering on. Everything downstream reads `/map` — Nav2's global costmap has a
+static layer subscribed to it, and `nav_bridge` answers `map_png` from it — so a
+primary RTAB-Map still in its namespace publishes to nobody. Nothing errors: the
+global costmap comes up entirely unknown, the planner will not cross unknown
+space, and every goal is refused as a planning failure on a stack whose every
+node is listed and healthy. `run_rtabmap.sh --primary` remaps the grid back to
+`/map`, and only `--primary` does.
+
+**Clearing the map has to reach whichever mapper is running.** The daemon's
+`clear_map` went through `nav_bridge` to slam_toolbox's own reset service, and
+RTAB-Map does not have it — it answers a bare `std_srvs/Empty` at
+`/rtabmap/rtabmap/reset`, its node name inside its own namespace. The bridge now
+holds a client for each and asks whichever one is answering, which is a question
+about the running stack rather than a flag someone has to keep in step with the
+crontab. There is never more than one mapper up to answer it, except in compare
+mode, where slam_toolbox is asked first because it is the one steering.
+
+One thing did not have to change, and it is the one most likely to have: the two
+mappers publish their grids with the same QoS. RTAB-Map's `/map` is reliable and
+transient-local, which is what `nav_bridge` and Nav2's `map_subscribe_transient_local`
+already expected of slam_toolbox — checked on the rover with `ros2 topic info -v`
+rather than assumed, because a durability mismatch is the same silent nothing the
+`/scan` QoS trap was.
 
 ## Why the rover zig-zagged, and how to see it without a rover
 

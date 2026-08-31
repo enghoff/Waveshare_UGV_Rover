@@ -9,13 +9,14 @@ Which mapper owns the map is the `rtabmap` argument, and it has three settings
 because replacing a mapper on a rover that has to keep working is three steps
 rather than one:
 
-  off       slam_toolbox alone, which is what boots today.
+  primary   RTAB-Map, publishing `map -> odom` and `/map`, with slam_toolbox not
+            started at all. The default, and what boots since 2026-08-31.
   compare   both of them, from the same scan and the same wheels, with RTAB-Map
-            forbidden to publish a transform. slam_toolbox still steers the
-            rover; RTAB-Map is a passenger keeping its own opinion, and
+            forbidden to publish a transform. slam_toolbox steers the rover;
+            RTAB-Map is a passenger keeping its own opinion, and
             slam_compare.py reads the two opinions and prints the difference.
-  primary   RTAB-Map instead, publishing `map -> odom`, and slam_toolbox is not
-            started at all.
+  off       slam_toolbox alone, which is what this rover ran before and what to
+            go back to if RTAB-Map disappoints.
 
 **No setting ever has two things publishing `map -> odom`.** A frame in TF has
 exactly one parent, so two publishers do not give a controller two opinions to
@@ -23,10 +24,11 @@ choose between -- they give it one transform that flickers between them, and
 whichever landed last is where the rover thinks it is. That is why `compare`
 turns RTAB-Map's transform off rather than pointing it at a second frame name.
 
-`primary` is available for testing and is deliberately not what boots. One thing
-does not work under it yet: the daemon's `reset_map` calls slam_toolbox's own
-reset service through nav_bridge, and RTAB-Map does not have that service. See
-the README.
+The default here and the crontab's boot entry are two different places the same
+choice is written, and they are kept saying the same thing on purpose: a bare
+`ros2 launch` by hand should bring up the mapper the rover actually boots with,
+or debugging a fault means debugging a stack that is not the one that failed.
+restart.sh reads this default back out of this file for the same reason.
 
 Launched by path rather than by package name, and there is no package: the nodes
 here are plain scripts and there is nothing to `colcon build`. That is a
@@ -40,7 +42,7 @@ What comes up, and why in this order:
 
   lidar_node   the D500 as /scan, and the room in words as /surroundings
   base_node    the driver board as /odom and the odom -> base_link transform
-  slam_toolbox /scan plus that transform as /map, and map -> odom on top
+  the mapper   /scan plus that transform as /map, and map -> odom on top
   nav_bridge   all of the above, served to the rover daemon on loopback 8773
 
 The bridge is here rather than in nav.launch.py on purpose. Most of what it hands
@@ -91,8 +93,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "params", default_value=os.path.join(HERE, "config", "slam_toolbox.yaml"),
             description="slam_toolbox parameters"),
+        # restart.sh reads this default_value out of this file with sed, so that
+        # a launch started without the argument -- which is what a hand relaunch
+        # is -- is checked against the mapper it will actually have started.
         DeclareLaunchArgument(
-            "rtabmap", default_value="off",
+            "rtabmap", default_value="primary",
             choices=["off", "compare", "primary"],
             description="off: slam_toolbox alone. compare: RTAB-Map alongside "
                         "it, publishing no transform, for slam_compare.py to "

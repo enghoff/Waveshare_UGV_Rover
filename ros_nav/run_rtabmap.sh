@@ -48,15 +48,31 @@ DB="$DB_DIR/rtabmap.db"
 # In `compare` the transform is off and RTAB-Map is a passenger: it reads /scan
 # and takes the odometry off TF, builds its own graph, and publishes it as topics
 # under /rtabmap that slam_compare.py reads. Nothing it decides can move the
-# rover. `--primary` is the eventual cutover and slam.launch.py will not start
+# rover. `--primary` is the cutover, and slam.launch.py will not start
 # slam_toolbox alongside it.
+#
+# The transform is not the only thing that has to move at a cutover, and the
+# other half is quieter about being missing. Everything downstream reads the
+# occupancy grid off `/map`: Nav2's global costmap has a static layer subscribed
+# to it, and nav_bridge answers `map_png` from it. Left in the namespace the grid
+# is `/rtabmap/map`, which nothing subscribes to -- and the way that fails is not
+# an error anywhere. The costmap comes up with every cell unknown, the global
+# planner will not cross unknown space, and the rover refuses every goal with a
+# planner failure while `ros2 node list` shows a stack that is entirely healthy.
+# So `--primary` also puts the grid where the rest of the stack is already
+# looking, and `compare` deliberately does not.
 if [ "$MODE" = primary ]; then
     PUBLISH_TF=true
+    MAP_REMAP=(-r map:=/map)
+    GRID=/map
 else
     PUBLISH_TF=false
+    MAP_REMAP=()
+    GRID=/rtabmap/map
 fi
 
-echo "run_rtabmap.sh: mode=$MODE publish_tf=$PUBLISH_TF db=$DB${DELETE_DB:+ (fresh)}"
+echo "run_rtabmap.sh: mode=$MODE publish_tf=$PUBLISH_TF grid=$GRID" \
+     "db=$DB${DELETE_DB:+ (fresh)}"
 
 # `--delete_db_on_start` comes before `--ros-args` because it is RTAB-Map's own
 # argument rather than rcl's, and rcl takes everything after the separator.
@@ -64,12 +80,19 @@ echo "run_rtabmap.sh: mode=$MODE publish_tf=$PUBLISH_TF db=$DB${DELETE_DB:+ (fre
 # The namespace is what keeps this out of the way in compare mode: RTAB-Map
 # publishes its occupancy grid as `map`, which unqualified would be the same
 # `/map` slam_toolbox publishes and Nav2's global costmap subscribes to. Under
-# /rtabmap it is a second opinion nobody is steering on.
+# /rtabmap it is a second opinion nobody is steering on. The namespace stays in
+# primary mode as well -- the node keeps its own name for everything else it
+# publishes -- and only the grid is remapped back out of it, by MAP_REMAP above.
+#
+# The remap is `map:=/map` rather than `/rtabmap/map:=/map` because a remap rule
+# is matched after the namespace is applied: the plain name on the left is this
+# node's `map`, and the absolute name on the right is where it is to appear.
 # shellcheck disable=SC2086
 exec "$DIR/native.sh" ros2 run rtabmap_slam rtabmap $DELETE_DB \
     --ros-args \
         -r __ns:=/rtabmap \
         -r __node:=rtabmap \
+        "${MAP_REMAP[@]+"${MAP_REMAP[@]}"}" \
         --params-file "$DIR/config/rtabmap.yaml" \
         -p publish_tf:="$PUBLISH_TF" \
         -p database_path:="$DB" \

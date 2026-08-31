@@ -1557,8 +1557,17 @@ def test_discovery_stays_on_this_board():
     check("...and only --primary turns it on",
           runrtab.find("MODE = primary") < 0
           and 'if [ "$MODE" = primary ]' in runrtab, True)
-    check("RTAB-Map keeps its grid out of /map, or Nav2 reads two maps",
-          "__ns:=/rtabmap" in runrtab, True)
+    check("in compare mode RTAB-Map keeps its grid out of /map, or Nav2 reads two",
+          "__ns:=/rtabmap" in runrtab and "MAP_REMAP=()" in runrtab, True)
+    # ...and the other half of the same rule, which is the one that bites at a
+    # cutover. Everything downstream reads the grid off `/map`: Nav2's global
+    # costmap has a static layer subscribed to it and nav_bridge answers map_png
+    # from it. A primary RTAB-Map still in its namespace publishes `/rtabmap/map`
+    # to nobody, and nothing reports an error -- the costmap is simply all
+    # unknown, the global planner will not cross unknown space, and every goal
+    # comes back as a planner failure on a stack that looks perfectly healthy.
+    check("...and primary mode puts it back on /map, or Nav2 has no map at all",
+          "MAP_REMAP=(-r map:=/map)" in runrtab, True)
     with open(os.path.join(HERE, "slam.launch.py"), encoding="utf-8",
               errors="replace") as fh:
         slam_launch_text = fh.read()
@@ -1568,6 +1577,21 @@ def test_discovery_stays_on_this_board():
     check("RTAB-Map is launched through its wrapper, not as a conda Node()",
           "run_rtabmap.sh" in slam_launch_text
           and 'package="rtabmap' not in slam_launch_text, True)
+    # restart.sh checks the running stack against the mapper it should have, and
+    # a launch started by hand names no mapper at all -- so it reads the default
+    # out of slam.launch.py with a sed pattern. A pattern that stopped matching
+    # would not fail: it would fall back to a guess and then report a missing
+    # mapper on a rover that is mapping perfectly well.
+    with open(os.path.join(HERE, "restart.sh"), encoding="utf-8",
+              errors="replace") as fh:
+        restart_text = fh.read()
+    declared = re.findall(r'^ *"rtabmap", default_value="([a-z]*)"',
+                          slam_launch_text, re.M)
+    check("the launch still declares a default mapper in the form restart.sh reads",
+          declared[:1] in (["off"], ["compare"], ["primary"]), True)
+    check("...and restart.sh is still the thing reading it, rather than a copy",
+          'default_value="\\([a-z]*\\)"' in restart_text
+          and "slam.launch.py" in restart_text, True)
     rtab_cfg_path = os.path.join(HERE, "config", "rtabmap.yaml")
     if os.path.isfile(rtab_cfg_path):
         with open(rtab_cfg_path, encoding="utf-8", errors="replace") as fh:
@@ -1593,6 +1617,27 @@ def test_discovery_stays_on_this_board():
               "Icp/Strategy" in rtab_settings and "Icp/PM" not in rtab_settings, True)
         check("...and RTAB-Map's own loop closure is switched on",
               "RGBD/ProximityBySpace" in rtab_cfg, True)
+    # Clearing the map has to reach whichever mapper is running. The two share
+    # nothing -- slam_toolbox has a Reset service of its own, RTAB-Map answers a
+    # bare std_srvs Empty at its node name inside its own namespace -- so a
+    # bridge that knows only one of them is a `clear_map` that reports "there is
+    # no map to clear" on a rover that is mapping perfectly well.
+    with open(os.path.join(HERE, "nav_bridge.py"), encoding="utf-8",
+              errors="replace") as fh:
+        bridge_text = fh.read()
+    check("clear_map can reach either mapper, not just slam_toolbox",
+          "/slam_toolbox/reset" in bridge_text
+          and "/rtabmap/rtabmap/reset" in bridge_text, True)
+    # The boot entry is the only place the mapper choice lives -- the supervisor
+    # reads its arguments from the crontab and restart.sh reads them back out of
+    # it -- so the installer has to be able to write it.
+    with open(os.path.join(HERE, "install-boot.sh"), encoding="utf-8",
+              errors="replace") as fh:
+        boot = fh.read()
+    check("the boot entry can name the mapper, or a cutover cannot survive a reboot",
+          "rtabmap:=primary" in boot and "rtabmap:=off" in boot, True)
+    check("...and an install that does not name one keeps the mapper in place",
+          "keeping the mapper the entry already had" in boot, True)
     with open(os.path.join(HERE, "native.sh"), encoding="utf-8",
               errors="replace") as fh:
         native = fh.read()
