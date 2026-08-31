@@ -95,11 +95,29 @@ grid and is annotated with rover pose/heading, track and camera direction. Map
 clicks become navigation requests in map coordinates rather than offsets measured
 later after the rover may already have moved.
 
-The map and the camera frame refresh themselves and there is no rate control for
-either. The console asks for the next one `PICTURE_GAP_S` after the last one
-arrived — half a second — rather than on a clock started when the request went
-out, so what the rover charged for the picture is spent before the gap begins.
-Neither is ever asked for twice at once.
+The map and the camera frame refresh themselves. The console asks for the next one
+a fixed gap after the last one *arrived*, rather than on a clock started when the
+request went out, so what the rover charged for the picture is spent before the gap
+begins; neither is ever asked for twice at once.
+
+Which gap depends on whether anything is happening. A move in flight gets
+`PICTURE_GAP_S` — half a second — because the map is drawn around a pose that is
+changing and so the next picture is a different picture. A rover that is doing
+nothing gets `PARKED_MAP_GAP_S` (five seconds) and `PARKED_FRAME_GAP_S` (two), the
+camera being the one that can still see something change; while face tracking runs
+the camera goes back to the fast gap. The status poll has the same two paces,
+`POLL_S` against `PARKED_POLL_S`.
+
+The reason is arithmetic. Measured on the rover, one open browser cost about
+1.1 Mbit/s of the wi-fi it shares with everything else, and almost none of it was
+news: the state is pushed whenever it differs from the last one, so a field that
+counts — the map's age in tenths of a second, an in-flight stopwatch — was a fresh
+8 kB state ten times a second by itself. Nothing in the state counts any more; the
+map's age is published only once it is late enough to be worth saying and the
+browser counts the ordinary case itself, the network list moved out to
+`/wifi.json`, and "drawing"/"taking" mean slower than usual rather than in flight.
+With those and the two paces, the same browser on a parked rover measures 78 kbit/s
+end to end — 36 of stream and 42 of pictures.
 
 There is one line of words on the page and it sits under the header: the notice.
 It is for what no panel shows — a map click that was dropped, a button that was
