@@ -36,7 +36,36 @@
 
 set -u
 
-IFACE=${IFACE:-wlan0}
+# Where the radios and the routing table are read from, overridable so the
+# self-test can build a board whose radio has whatever name it likes.
+SYSNET=${SYSNET:-/sys/class/net}
+ROUTES=${ROUTES:-/proc/net/route}
+
+# Which radio a command is about when nobody has named one. It used to be
+# `wlan0`, which is what both earlier boards called their only radio and what
+# the Jetson calls neither of its two -- the onboard Realtek is `wlP1p1s0` and
+# the dongle keeps the kernel's `wlx002e2d3074d0`. So the radio is found: a
+# wireless interface is the one with a `wireless/` directory beside it in sysfs,
+# and the one to default to is whichever of them the kernel is currently sending
+# the rover's traffic through, by lowest-metric default route. `wlan0` survives
+# only as the answer for a host with no radio at all, where nothing was going to
+# work anyway.
+default_iface() {
+    radios=$(for dir in "$SYSNET"/*/wireless; do
+                 [ -d "$dir" ] || continue
+                 dirname "$dir"
+             done | sed 's:.*/::')
+    [ -n "$radios" ] || { echo wlan0; return; }
+    for routed in $(awk '$2 == "00000000" { print $7, $1 }' "$ROUTES" 2>/dev/null |
+                        sort -n | awk '{ print $2 }'); do
+        for radio in $radios; do
+            [ "$routed" = "$radio" ] && { echo "$radio"; return; }
+        done
+    done
+    echo "$radios" | head -1
+}
+
+IFACE=${IFACE:-$(default_iface)}
 
 # The three house access points this rover is allowed to join. Used when there
 # is no NetworkManager to ask, and as the fallback when wpa_cli cannot be
@@ -326,8 +355,8 @@ join_wpa() {
 }
 
 # Which radio a command is about. Every verb below takes it as a trailing
-# argument, defaulting to wlan0, which is the onboard radio on this board and the
-# only radio on the Pi -- so every existing caller keeps working unchanged.
+# argument, and without one it is the radio carrying the rover's traffic --
+# see default_iface above -- so every existing caller keeps working unchanged.
 case ${1:-} in
     list|scan|profiles) [ -n "${2:-}" ] && IFACE=$2 ;;
     join)               [ -n "${3:-}" ] && IFACE=$3 ;;

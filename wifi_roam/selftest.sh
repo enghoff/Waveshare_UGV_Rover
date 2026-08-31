@@ -512,6 +512,54 @@ check "a scan names the neighbour as well" \
 check "at the 0-100 figure the panel already ranks by" \
     "TheGreatViking:64:" "$scanned"
 
+echo
+echo "which radio a command is about when nobody names one"
+# The Jetson's onboard Realtek is wlP1p1s0 and its dongle is wlx002e2d3074d0, so
+# a helper that defaults to wlan0 asks the kernel about an interface that is not
+# there and answers nothing -- which is what left the console's network panel
+# empty on the day the rover became a Jetson. The board is built here rather
+# than looked for, because the machine running this test is not that board.
+mkdir -p "$WORK/net/enP8p1s0" "$WORK/net/wlP1p1s0/wireless" \
+    "$WORK/net/wlx002e2d3074d0/wireless"
+printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n' \
+    > "$WORK/netroute"
+printf 'wlx002e2d3074d0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\n' \
+    >> "$WORK/netroute"
+printf 'wlP1p1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n' \
+    >> "$WORK/netroute"
+
+: > "$WORK/nmcli.log"
+env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    SYSNET="$WORK/net" ROUTES="$WORK/netroute" \
+    sh "$HERE/wifi_ctl.sh" list > /dev/null 2>&1
+check "the radio carrying the traffic is the one asked about" \
+    "iw dev wlP1p1s0 link" "$(cat "$WORK/nmcli.log")"
+check_silent "and no interface is assumed to be called wlan0" \
+    "$(grep 'wlan0' "$WORK/nmcli.log" || true)"
+
+# The wired interface has no wireless/ directory, so it is never a candidate --
+# and on this board it is the one holding a default route whenever the cable is
+# in, which would otherwise be the interface every reading came from.
+printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n' \
+    > "$WORK/netroute"
+printf 'enP8p1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n' \
+    >> "$WORK/netroute"
+: > "$WORK/nmcli.log"
+env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    SYSNET="$WORK/net" ROUTES="$WORK/netroute" \
+    sh "$HERE/wifi_ctl.sh" list > /dev/null 2>&1
+check "a wired default route does not make the ethernet port a radio" \
+    "iw dev wlP1p1s0 link" "$(cat "$WORK/nmcli.log")"
+
+# A trailing argument still wins, which is how the dual-radio manager asks about
+# one particular radio.
+: > "$WORK/nmcli.log"
+env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
+    SYSNET="$WORK/net" ROUTES="$WORK/netroute" \
+    sh "$HERE/wifi_ctl.sh" list wlx002e2d3074d0 > /dev/null 2>&1
+check "and a caller that names a radio is still obeyed" \
+    "iw dev wlx002e2d3074d0 link" "$(cat "$WORK/nmcli.log")"
+
 named=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
     sh "$HERE/wifi_ctl.sh" profiles 2>&1)
 check "profiles are the ones wpa_supplicant already holds" \

@@ -4,6 +4,14 @@
 #
 #     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install.sh EverGreen'   # first time
 #     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install.sh'             # script/timer only
+#     ssh orin 'sudo ~/ugv/wifi_roam/install.sh --helper-only'     # console helper alone
+#
+# `--helper-only` puts down the privileged helper and the sudo rule the console
+# needs to list and switch networks, and nothing else -- no roamer, no timer, no
+# profile edits. That is what a host wants when the console's network panel is
+# blank but the keeper itself has not been ported to it: the Jetson runs
+# NetworkManager and holds two radios on deliberately different routers, and the
+# roamer is a one-radio script that would start moving them. See docs/hosts.md.
 #
 # The passphrase is only needed for profiles that do not exist yet; an existing
 # profile is left holding the key it already has, because a working link is not
@@ -17,6 +25,11 @@
 
 set -eu
 
+HELPER_ONLY=0
+if [ "${1:-}" = "--helper-only" ]; then
+    HELPER_ONLY=1
+    shift
+fi
 PSK=${1:-}
 NETS="TheGreatLord TheMaharaja TheGreatViking"
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -28,7 +41,10 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # there are no profiles to add here. Everything below is installed on both, and
 # the roamer works on both -- it reaches the radio through wifi_ctl.sh, which
 # speaks whichever stack it finds.
-if command -v nmcli >/dev/null 2>&1; then
+if [ "$HELPER_ONLY" = 1 ]; then
+    HAS_NM=0
+    echo "helper only: leaving the network profiles exactly as they are"
+elif command -v nmcli >/dev/null 2>&1; then
     HAS_NM=1
     for s in $NETS; do
         if nmcli -t -f NAME con show | grep -qx "$s"; then
@@ -69,10 +85,14 @@ if [ -r "$HERE/selftest.sh" ]; then
     fi
 fi
 
-install -m 755 "$HERE/wifi_roam.sh" /usr/local/sbin/wifi_roam.sh
+# The helper goes down on every host, because it is the half the console
+# needs, and it needs no timer, no unit and no decision about roaming.
 install -m 755 "$HERE/wifi_ctl.sh" /usr/local/sbin/wifi_ctl.sh
-install -m 644 "$HERE/wifi-roam.service" "$HERE/wifi-roam.timer" \
-    "$HERE/wifi-radio-on.service" /etc/systemd/system/
+if [ "$HELPER_ONLY" = 0 ]; then
+    install -m 755 "$HERE/wifi_roam.sh" /usr/local/sbin/wifi_roam.sh
+    install -m 644 "$HERE/wifi-roam.service" "$HERE/wifi-roam.timer" \
+        "$HERE/wifi-radio-on.service" /etc/systemd/system/
+fi
 
 # The daemon runs as `admin` and needs two privileged things -- a scan and a
 # switch -- for the console's network panel. This is the narrow way to give it
@@ -96,6 +116,12 @@ else
     exit 1
 fi
 rm -f "$tmp"
+if [ "$HELPER_ONLY" = 1 ]; then
+    echo "helper only: no roamer, no timer and no units on this host"
+    echo "  the console can list and switch networks now; nothing roams"
+    exit 0
+fi
+
 systemctl daemon-reload
 
 # The radio switch first, and `--now` on purpose: both stacks restore that switch

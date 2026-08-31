@@ -1055,6 +1055,93 @@ def test_a_point_on_the_map_picture_is_the_place_it_looks_like():
           schema["function"]["parameters"]["required"], ["across", "down"])
 
 
+def test_the_radio_is_found_and_not_assumed_to_be_wlan0():
+    """The Jetson has two radios and neither of them is called `wlan0`.
+
+    This is the fault the console showed on the day the rover became a Jetson:
+    the network panel had nothing in it at all, not even the access point the
+    console itself was arriving over. Everything this file reads about the link
+    -- the signal, the SSID, the address -- went to an interface named here, and
+    a board whose onboard Realtek is `wlP1p1s0` and whose dongle is
+    `wlx002e2d3074d0` does not have it. So the radio has to be found.
+
+    It cannot be found on the machine running this test, which is the point of
+    building a sysfs and a routing table in a directory: the interesting board
+    is precisely the one this is not being run on.
+    """
+    import shutil
+    import tempfile
+
+    import rover_wifi
+
+    root = tempfile.mkdtemp(prefix="rover-net-")
+    net = os.path.join(root, "net")
+    for name, radio in (("enP8p1s0", False), ("lo", False),
+                        ("wlP1p1s0", True), ("wlx002e2d3074d0", True)):
+        os.makedirs(os.path.join(net, name, "wireless") if radio
+                    else os.path.join(net, name))
+    route = os.path.join(root, "route")
+    header = ("Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask"
+              "\t\tMTU\tWindow\tIRTT\n")
+
+    def write_route(*rows: str) -> None:
+        with open(route, "w", encoding="ascii") as handle:
+            handle.write(header)
+            handle.writelines(rows)
+
+    real_net, real_route = rover_wifi.SYS_NET, rover_wifi.PROC_ROUTE
+    real_ssid, real_level = rover_wifi._wifi_ssid, rover_wifi._wifi_level_dbm
+    real_addr = rover_wifi._iface_address
+    rover_wifi.SYS_NET, rover_wifi.PROC_ROUTE = net, route
+    try:
+        check("the wired interface is not mistaken for a radio",
+              rover_wifi._wireless_ifaces(),
+              ["wlP1p1s0", "wlx002e2d3074d0"])
+
+        # Two default routes, one per radio, which is what this rover actually
+        # has: both associated, to different routers. The kernel sends the
+        # rover's traffic out of the cheaper one, so that is the one the panel
+        # is reporting on.
+        write_route("wlx002e2d3074d0\t00000000\t0101A8C0\t0003\t0\t0\t600"
+                    "\t00000000\t0\t0\t0\n",
+                    "wlP1p1s0\t00000000\t0101A8C0\t0003\t0\t0\t100"
+                    "\t00000000\t0\t0\t0\n")
+        check("the radio carrying the traffic is the one reported on",
+              rover_wifi._wifi_iface(), "wlP1p1s0")
+
+        # And when that one loses its route, the answer moves with the traffic
+        # rather than staying on a radio that is no longer carrying any.
+        write_route("wlx002e2d3074d0\t00000000\t0101A8C0\t0003\t0\t0\t600"
+                    "\t00000000\t0\t0\t0\n")
+        check("...and it moves when the traffic does",
+              rover_wifi._wifi_iface(), "wlx002e2d3074d0")
+
+        # With the helper missing there is no list of neighbours to be had, but
+        # both associations are still worth showing: they are two separate ways
+        # into this rover, on deliberately different routers.
+        heard = {"wlP1p1s0": ("TheGreatLord", -47),
+                 "wlx002e2d3074d0": ("TheGreatViking", -68)}
+        rover_wifi._wifi_ssid = lambda iface=None: heard[iface][0]
+        rover_wifi._wifi_level_dbm = lambda iface=None: heard[iface][1]
+        rover_wifi._iface_address = lambda iface=None: "192.168.1.77"
+        live = rover_wifi._wifi_from_kernel()
+        check("without the helper the associated radio still reports itself",
+              (live or {}).get("connected"), "TheGreatViking")
+        check("...and the other radio's network is named too",
+              [n["ssid"] for n in (live or {}).get("networks", [])],
+              ["TheGreatLord", "TheGreatViking"])
+        check("...on the same 0-100 scale as every other list here",
+              [n["signal"] for n in (live or {}).get("networks", [])], [100, 64])
+        check("...and neither is offered as somewhere to join, since it could not",
+              [n["in_use"] for n in (live or {}).get("networks", [])],
+              [True, True])
+    finally:
+        rover_wifi.SYS_NET, rover_wifi.PROC_ROUTE = real_net, real_route
+        rover_wifi._wifi_ssid, rover_wifi._wifi_level_dbm = real_ssid, real_level
+        rover_wifi._iface_address = real_addr
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_wifi_status_without_the_helper_still_reports_the_link():
     """The console's network panel has to work without NetworkManager.
 
@@ -2061,6 +2148,7 @@ def main():
                  test_show_map_takes_across_and_size,
                  test_drive_to_takes_a_place_on_the_map,
                  test_a_point_on_the_map_picture_is_the_place_it_looks_like,
+                 test_the_radio_is_found_and_not_assumed_to_be_wlan0,
                  test_wifi_status_without_the_helper_still_reports_the_link,
                  test_wifi_status_with_two_radios,
                  test_an_unfilled_signal_column_is_a_moment_not_an_answer,
