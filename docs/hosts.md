@@ -35,16 +35,17 @@ speech path is unchanged.
 | GPU driver | 595.78, reporting CUDA 13.2; no CUDA toolkit and no `nvcc` |
 | Python | system CPython 3.12, and unlike the Banana Pi it **has pip** |
 | power mode | `nvpmodel` **1 = 25W**; mode 2 `MAXN_SUPER` is available and unused |
-| rover address | `192.168.1.88` on Wi-Fi, by DHCP |
+| rover address | `192.168.1.88` (onboard radio) and `192.168.1.77` (dongle), both by DHCP |
 | mDNS | `jetson-orin.local`, which Windows does resolve here |
 | GPIO driver-board UART | `/dev/ttyTHS1` at 115200 |
 | lidar serial | `/dev/ttyACM0` at 230400 |
 
 **There is no floating service address.** The Banana Pi kept `192.168.1.80` on
-whichever radio was healthy and `wifi_dual` moved it; the Orin has one working
-radio and answers on its own DHCP lease. That lease can move -- this LAN has a
-second DHCP server on it -- so `jetson-orin.local` is the name to prefer, and the
-address is the thing to re-check when it stops answering. See
+whichever radio was healthy and `wifi_dual` moved it. The Orin has two working
+radios since 2026-08-31, but nothing moves an address between them, so each
+answers on its own DHCP lease and either will do. Those leases can move -- this
+LAN has a second DHCP server on it -- so `jetson-orin.local` is the name to
+prefer, and the addresses are the thing to re-check when it stops answering. See
 [What is still missing](#what-is-still-missing).
 
 ## Hardware links
@@ -119,10 +120,56 @@ Wi-Fi only in practice, and **managed by NetworkManager** -- `nmcli` works here,
 which it did not on the Banana Pi. That is the largest single difference from the
 old host, and the reason `wifi_roam` is staged but not installed.
 
-- `wlP1p1s0` -- onboard Realtek RTL8822CE, `192.168.1.88`, associated on 5 GHz;
+- `wlP1p1s0` -- onboard Realtek RTL8822CE, `192.168.1.88`, dual band;
+- `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, `192.168.1.77`,
+  2.4 GHz only, working since 2026-08-31 -- see [The second radio](#the-second-radio);
 - `enP8p1s0` -- wired, **down with no carrier**: a cable or switch-port problem
-  rather than configuration, unchanged since 2026-08-30;
-- the USB RTL8188FTV dongle is plugged in and **has no driver** -- see below.
+  rather than configuration, unchanged since 2026-08-30.
+
+Both radios associate at boot and are deliberately held on **different routers**,
+the onboard on `TheGreatLord` and the dongle on `TheGreatViking`, so that a
+router going down does not take both. Each has its own DHCP lease and either
+answers SSH and the daemon on 8769. That is two ways in, not failover: nothing
+moves a service address between them, which is what `wifi_dual` did on the Banana
+Pi and what still needs porting.
+
+### The second radio
+
+The dongle kept its old name from the Banana Pi days -- the MAC is the same
+`00:2e:2d:30:74:d0` that `wifi_roam/20-usb-wlan.link` mentions -- but nothing
+renames it here, so it appears under the kernel's own `wlx...` name. Its
+NetworkManager profile pins that name, so installing that `.link` file would
+rename the interface out from under the profile and the radio would come up
+unconfigured.
+
+Two things had to be fixed to make it work at all, and both are traps for any
+other device on this board that needs a driver or firmware:
+
+**NVIDIA's L4T kernel is built with `CONFIG_RTL8XXXU` unset**, and with no
+`drivers/net/wireless/realtek` directory in `/lib/modules` at all, so the dongle
+sat on the USB bus with no driver bound and no interface. The driver it needs is
+in-tree and has supported this exact device (`0bda:f179`, RTL8188FU) for
+several releases; it simply was not compiled. It is now built out of tree from
+unmodified `linux-6.8.12` sources from kernel.org -- the same version this kernel
+is based on, and the Makefile in the kernel's own headers tree is byte-identical
+to it -- and registered with **DKMS as `rtl8xxxu/6.8.12`**, so a JetPack kernel
+update rebuilds it instead of silently dropping it. The kernel does not enforce
+module signatures (`CONFIG_MODULE_SIG_FORCE` unset, lockdown off), which is why
+an unsigned out-of-tree module loads at all.
+
+**This kernel cannot read Ubuntu's compressed firmware.** `CONFIG_FW_LOADER_COMPRESS`
+is unset, while `linux-firmware` on Ubuntu 24.04 ships every blob as `.zst`. The
+driver therefore found the device, identified it correctly, and then failed with
+`Direct firmware load for rtlwifi/rtl8188fufw.bin failed with error -2` beside a
+`/lib/firmware/rtlwifi/rtl8188fufw.bin.zst` that plainly exists. The fix is an
+uncompressed copy alongside it:
+
+```bash
+sudo zstd -d /lib/firmware/rtlwifi/rtl8188fufw.bin.zst            -o /lib/firmware/rtlwifi/rtl8188fufw.bin
+```
+
+Expect the same failure from any other firmware-loading device added to this
+board, and read "no such file" as "the file is there, compressed".
 
 `l4tbr0`/`usb0`/`usb1` are the USB-device-mode bridge and stay down; `can0` is
 down.
@@ -204,15 +251,16 @@ cannot drive. Sensing is unaffected -- the lidar, the map and
 which measures it by driving the rover, or recovering the old file from the
 Banana Pi's disk, which describes the same chassis and is therefore still true.
 
-**The second radio.** The RTL8188FTV dongle is on the bus at `1-2.3` with no
-driver bound: this kernel carries no `drivers/net/wireless/realtek` at all, and
-there is no `rtl8188fu` module and no dkms tree. Building it out of tree is
-possible -- matching headers are installed at
-`/lib/modules/6.8.12-1021-tegra/build` -- but that is only half of it, because
-`wifi_dual.py` drives `wpa_cli` against netplan and `systemd-networkd` while this
-host runs NetworkManager. Until both are done there is one radio, no failover and
-no floating service address. `wifi_roam` is staged and its replay test passes;
-its system install has deliberately not been run.
+**Failover between the two radios.** Both radios now work and are associated to
+different routers, but that is redundancy a person can use, not redundancy the
+rover uses: nothing watches the two paths and nothing moves a service address to
+the healthier one. `wifi_dual.py` does exactly that on the Banana Pi by driving
+`wpa_cli` against netplan and `systemd-networkd`, and this host runs
+NetworkManager, so it needs porting rather than installing. Two interfaces on one
+subnet also want a policy rule each, or replies leave by whichever radio the main
+routing table prefers -- the fault that once left the rover unreachable at its own
+address for eleven minutes. `wifi_roam` is staged and its replay test passes; its
+system install has deliberately **not** been run.
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.
