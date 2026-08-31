@@ -1,252 +1,193 @@
-# Dual-radio Wi-Fi on the rover
+# The rover's Wi-Fi
 
-The Banana Pi runs both Wi-Fi radios at once and keeps a stable rover service
-address on whichever healthy path is better. This is the current network manager;
-the older single-radio roam timer is retained only as an installed recovery
-alternative and must remain disabled while `wifi_dual` is active.
+One radio, one network it comes up on, and nothing that changes networks by
+itself.
 
-Current radios:
+The rover joins `TheGreatViking` at every boot, on its onboard radio, and stays
+there. It holds profiles for the two other house networks as well, with
+autoconnect switched off, so the only thing that ever puts it on one of those is
+a person at the console pressing `join`. Nothing scans unprompted, nothing roams,
+and nothing hands the link between radios.
 
-- `wlan0` — onboard Broadcom BCM4345/6, dual-band, preferred radio;
-- `wlan1` — USB Realtek RTL8188FTV, 2.4 GHz, redundant/standby radio.
-
-The application address is:
+The address to reach it at is:
 
 ```text
 192.168.1.80
 ```
 
-The two interfaces also keep their own DHCP addresses, but applications should
-normally use the stable service address. `wifi_dual.py` moves `.80` between the
-interfaces and sends gratuitous ARP so open TCP sessions can survive a radio
-handover without changing source address.
+That address is a fixed extra address on each of the three profiles, alongside
+the DHCP lease NetworkManager also takes. It is on all three because the house
+networks are separate SSIDs bridged onto one LAN, so the rover answers there
+whichever of them it is on -- including one somebody chose by hand. The console's
+certificate names it, which is why the browser gets a clean padlock at
+`https://192.168.1.80:8771/`.
 
-Moving the address is only half of a handover. Each address here also gets a
-policy rule pinning its traffic to one routing table per radio, so a reply
-leaves by the radio the request arrived on. Without that the main table decides,
-and with two radios on one subnet it holds one connected route each at the same
-metric and breaks the tie the same way regardless of which radio is carrying
-traffic. `.80` had no such rule until 2026-08-26, which is why a failover that
-worked in every other respect left the rover unreachable at its own service
-address for eleven and a half minutes; see
-[`docs/rover-unresponsive.md`](../docs/rover-unresponsive.md).
+The per-radio DHCP lease still works and is the way back in if the service
+address is ever unreachable, as is `jetson-orin.local`.
 
-Those routes also have to be rebuilt when a lease changes, which is not the same
-event as a failover. The kernel deletes a route when the address it is anchored
-to goes away -- `kernel_route_lifetime.sh` measures that on the board, and
-dropping the `src` does not save them either, because the gateway they point
-through is in the prefix that left. Until 2026-08-27 they were written only when
-traffic moved between radios, so a renewal emptied the table the service address
-points at and nothing put it back. That matters here because this LAN has a
-second DHCP server on it besides the router -- a TP-Link extender at
-`192.168.1.232`, which also beacons as `TheMaharaja` -- and whichever answers
-first decides, so the rover's addresses change several times an hour without a
-radio ever losing its association.
+## What is here
 
-## When a radio cannot join what it is being held on
+| File | What it does |
+|---|---|
+| [`install-profiles.sh`](install-profiles.sh) | writes the three NetworkManager profiles and decides which one autoconnects |
+| [`wifi_ctl.sh`](wifi_ctl.sh) | the privileged helper: list, scan, join, profiles, status |
+| [`install.sh`](install.sh) | puts both on the rover, with the sudo rule the console needs |
+| [`install-mdns.sh`](install-mdns.sh) | makes `jetson-orin.local` resolvable |
+| [`selftest.sh`](selftest.sh) | drives both scripts against a fake board, with no radio |
 
-Holding a radio on one router is `wpa_cli select_network`, and that works by
-disabling every other network the radio knows. So a radio held on an access
-point that will not keep it has nowhere it is permitted to fall back to: it
-joins, loses carrier, retries the same one, and the console shows a spare that
-is "not associated" beside a list of networks at full strength that it is not
-allowed to try.
+## The profiles, which are the whole policy
 
-After `STRANDED_S` (90 s) with no association and no address, the manager
-therefore stops holding it: `release` re-enables every network, the supplicant
-takes whatever it can actually hold, and the network that would not have it is
-left out of that radio's next placement for `REFUSED_S` (10 minutes). Being on
-the air somewhere beats being on the router the placement rules would prefer.
+`install-profiles.sh` is where the rover's network behaviour actually lives.
+There is no daemon and no timer; there is a set of NetworkManager profiles, and
+what they say is what the rover does.
 
-A placement that has not changed is also no longer re-announced. Repeating the
-same choice meant another `select_network`, which restarts the association --
-so a radio slow to join was interrupted every time the manager scanned, and the
-log filled with "moving from nothing to" lines about a radio nothing was moving.
+| Profile | Autoconnect | Pinned to | Address |
+|---|---|---|---|
+| `TheGreatViking` | **yes** | the onboard radio | DHCP + `192.168.1.80` |
+| `TheGreatLord` | no | the onboard radio | DHCP + `192.168.1.80` |
+| `TheMaharaja` | no | the onboard radio | DHCP + `192.168.1.80` |
 
-## Why two associated radios
+Three settings in that table are each load-bearing.
 
-The failure this solves is not simply "choose the strongest AP". A single radio
-can stay associated to a weak access point that still emits beacons while packet
-loss makes the link practically unusable. Testing another AP with that same radio
-requires interrupting the only path the rover currently has.
+**Only one profile autoconnects.** A second one set to autoconnect would put the
+rover on whichever network it happened to see first, which is a choice nobody
+made -- and it is how the old roaming behaviour would come back by the side door.
 
-With two radios the standby can remain associated and tested while the active
-radio carries traffic. A handover is then an address/routing change rather than a
-scan/association/DHCP sequence performed after the rover is already unreachable.
+**Every profile is pinned to the onboard radio.** This is the opposite of what
+this file used to do, and deliberately so: with no failover there is no spare
+radio to keep a network free for, and an unpinned profile is one NetworkManager
+may bring up on the USB dongle instead. The radio is found by its bus rather than
+by name, because the onboard Realtek is `wlP1p1s0` here and was `wlan0` on both
+earlier boards.
 
-A `netwatch` recording from 2026-08-24 captured exactly that failure: the rover
-spent two roughly two-minute periods associated and addressed on a poor link while
-a much stronger AP was available. Replaying the recording against the dual-radio
-logic produces immediate failovers instead of minutes of dead connectivity.
-`test_wifi_dual.py` contains that replay and refuses to grade synthetic scenarios
-if its interpretation disagrees with the recording.
+**`autoconnect-retries 0`.** NetworkManager's default of four attempts blocks a
+profile after a handful of failures, which is exactly what a rover parked out of
+range does before it is carried back inside -- and what once left this rover's
+radio off the air for six hours after a single link timeout.
 
-## What runs
+The profiles are matched by the network each one is *for*, never by its name. The
+rover has carried a profile called `TheGreatViking-dongle`, and a loop looking
+for one called `TheGreatViking` would have added a second profile for the same
+network rather than finding the one already there. Duplicates are deleted, since
+two answers to "how do I join this" is one too many.
 
-`wifi_dual.py` owns active-path selection. It evaluates the already-associated
-links every second using current signal plus measured reachability/latency/loss.
-The standby periodically scans and may move to a better independent access point.
-The active radio is not taken off channel merely to refresh the network list.
+All three networks share one passphrase, which lives in `~/.ugv/wifi.key` on the
+rover, outside the deploy tree. It is only used for a profile that does not exist
+yet -- an existing one keeps the key it has, because a working link is not worth
+risking to a typo -- and it is read from that file rather than taken as an
+argument, because an argument is readable in `ps` by every account on the machine.
 
-The manager distinguishes two decisions:
+## The USB dongle
 
-| Decision | Evidence | Typical cadence |
-|---|---|---:|
-| which associated radio carries `.80` | association, address, gateway reachability, signal and live path quality | 1 s |
-| where the standby should associate | scan results plus configured-network/router grouping | ~30 s |
+Its driver is built, loaded and kept working -- see
+[`dongle_driver/`](../dongle_driver) -- and NetworkManager is told to leave the
+interface alone, in `/etc/NetworkManager/conf.d/99-unmanaged-usb-wifi.conf`. The
+radio is on the bus and available; nothing routes through it.
 
-A link is usable only when it is associated, addressed and can reach the gateway.
-Signal by itself is not proof of connectivity; conversely a driver temporarily
-omitting a signal value is not proof that a link carrying packets is dead.
+The match is by driver (`rtl8xxxu`) rather than by interface name, because the
+name is the kernel's MAC-derived `wlx...` and a replacement dongle would have a
+different one while being the same thing.
 
-The onboard radio wins a near tie because it is dual-band and has proven faster
-and more reliable. The USB dongle remains valuable as an independent path even
-though it is the weaker adapter.
+To hand it back, delete that file and restart NetworkManager.
 
-## Keeping the two radios independent
+## Choosing a network by hand
 
-The house networks are multiple SSIDs bridged onto the same LAN. Names on the
-same physical router are grouped so `wlan0` on a router's 5 GHz SSID and `wlan1`
-on that same router's 2.4 GHz SSID are not mistaken for redundancy.
+The console's network panel has a "look for networks" button and a `join` button
+on each network the rover holds a passphrase for. Both go through
+`wifi_ctl.sh`, because scanning and activating a connection are polkit-guarded
+and polkit grants those to an active local session, which a daemon is not. The
+sudo rule `install.sh` writes covers that one path and nothing else.
 
-The manager holds each radio on one chosen network, and how it does that depends
-on the board. On the Banana Pi -- netplan, `systemd-networkd`, one
-`wpa_supplicant` per interface -- it enables exactly one of that supplicant's
-networks and disables the rest. On the Jetson it brings a NetworkManager profile
-up on the interface, and disables nothing at all: an active connection is left
-alone and the same profile is never put on two devices at once, so the two radios
-cannot collapse onto one network without anything being taken away from them.
+**A join costs the link.** The rover has one radio: it takes the current network
+down and brings another up, so every connection to the rover dies, including the
+browser that asked. The console warns before it happens and reconnects a few
+seconds later. This is why nothing calls it unprompted.
 
-The second is much the safer, because it removes the only way this design could
-strand a wifi-only rover. A manager that dies under NetworkManager leaves nothing
-to undo and every network still autoconnectable.
+A chosen network is held until somebody chooses another or the rover reboots.
+There is no cooldown and no reconsidering, because nothing is doing any
+considering -- **a reboot always comes back to `TheGreatViking`.**
 
-The service address is safe only with the accompanying ARP settings in
-[`99-dual-wifi.conf`](99-dual-wifi.conf):
-
-- `arp_ignore=1`
-- `arp_announce=2`
-
-Without them Linux can answer ARP for `.80` on the wrong interface and teach the
-LAN to deliver rover traffic to the standby radio.
-
-Before claiming `.80`, the manager ARP-probes it. If another host answers, the
-manager runs without the service address rather than creating a duplicate IP.
-The individual DHCP addresses remain usable for recovery.
-
-## Manual network selection
-
-A console request to join a network is staged on the spare radio. The manager
-associates it, obtains an address, checks reachability and only then promotes it.
-The browser therefore does not need to disconnect merely because the user chose a
-different AP.
-
-Requests go through `/run/wifi-dual.request`; status is published to:
-
-```text
-/run/wifi-dual.json
+```bash
+ssh orin 'sudo -n /usr/local/sbin/wifi_ctl.sh profiles'   # what it can join
+ssh orin '/usr/local/sbin/wifi_ctl.sh status'             # every radio, one line each
+ssh orin 'sudo -n /usr/local/sbin/wifi_ctl.sh join TheGreatLord'
 ```
 
-The normal console/network helpers use the same mechanism rather than moving a
-radio behind the manager's back, which the manager would undo within the second.
-
-A manually chosen network is held long enough to make the user's choice meaningful
-instead of immediately being undone by a small score difference.
-
-## Failure containment
-
-Selecting one network on an interface disables the alternatives in that
-supplicant. A manager that crashed without undoing its choices could therefore
-strand a Wi-Fi-only rover. Four recovery layers exist:
-
-1. signal/normal shutdown restores both interfaces;
-2. exceptions in the manager restore them;
-3. a dead-man condition releases both when neither path can reach the gateway for
-   a sustained period;
-4. systemd `ExecStopPost` runs the explicit `--restore` path even after an
-   abnormal service stop.
-
-The manager does not use `rfkill` to turn radios off. A degraded manager should
-leave normal supplicant behavior available rather than disable the hardware it
-would need for recovery.
+`status` is deliberately unprivileged and reads the kernel rather than
+NetworkManager, so it still answers on a rover whose sudo rule was never
+installed and on one where NetworkManager is the thing that is broken. It lists
+the dongle too, with no network beside it, because a status that hid it would
+look like a radio had gone missing.
 
 ## Install and deploy
 
-Normal source deployment:
+Normal source deployment stages the scripts and runs the self-test:
 
 ```bash
 python deploy/deploy.py --only wifi_roam
 ```
 
-That stages/tests source but deliberately does not replace privileged running
-files. After reviewing a network change and ensuring there is a recovery path:
+That deliberately does not replace the privileged running copy. After reviewing
+the change and making sure there is a way back in:
 
 ```bash
 python deploy/deploy.py --system --only wifi_roam
 ```
 
-On the current rover that system install is `install.sh --dual`: the three house
-networks, the `wifi_ctl.sh` helper the console needs to list and switch between
-them, and the dual-radio manager armed. The one-radio roamer is deliberately not
-installed and must never run alongside the manager -- they are alternative owners
-of the same radios, one moving a radio when it thinks the link has failed and the
-other holding both where it put them, and arming either disables the other.
+**A first system install wants a reboot afterwards.** `install.sh` writes the
+profiles, installs the helper and its sudo rule, and retires the units the rover
+used to run -- but it does not activate anything, because activating would cut
+the SSH session running the install. NetworkManager keeps the connection that is
+already up, so the rover stays exactly where it is until it is rebooted, and the
+reboot brings the whole new arrangement up at once. The script says so when there
+was something to retire.
 
-The profiles are handled by `install-profiles.sh`, which is where the rule that
-matters lives: **one profile per network and not one of them pinned to a radio.**
-A pinned profile is one the spare radio cannot use, which is the whole point of
-having a spare. It also matches profiles by the network each is for rather than
-by its name, deletes duplicates, and sets `autoconnect-retries 0` so a profile
-is never given up on. The passphrase for a network that has no profile yet is
-read from `~/.ugv/wifi.key` on the rover, never from an argument.
+What it retires, on a rover that still has them: `wifi-dual.service`,
+`wifi-roam.timer` and `wifi-roam.service`, `wifi-radio-on.service`,
+`dongle-keeper.timer` and `dongle-keeper.service`, and the privileged scripts,
+sysctl drop-in and link file that went with them.
 
-Manual equivalent:
+## What used to be here, and why it is not
 
-```bash
-scp -r wifi_roam bpi-m4zero:~/ugv/
-cat secrets/bpi-sudo.key | ssh bpi-m4zero \
-  'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on'
-```
+The rover ran a dual-radio failover manager (`wifi_dual.py`), and before that a
+single-radio roaming timer (`wifi_roam.sh`). Both are gone, along with their
+units, their simulations and the recordings they were calibrated against. Git
+history has them.
 
-Check it without privilege:
+They solved a real problem -- a radio can stay associated to an access point that
+still beacons while packet loss makes the link unusable, and testing another one
+with the same radio means interrupting the only path the rover has -- and they
+solved it by keeping two radios associated and moving the service address between
+them. That bought a failover measured at about twenty seconds on this rover.
 
-```bash
-ssh bpi-m4zero 'cat /run/wifi-dual.json'
-ssh bpi-m4zero 'journalctl -u wifi-dual -f'
-```
-
-`install-dual.sh` installs the USB-interface naming rule, system configuration and
-service. It also disables the old `wifi-roam.timer` when dual mode is enabled.
-Do **not** enable that timer while `wifi-dual` is running: they are alternative
-owners of the same link and will fight each other's decisions.
+It cost a manager that owned both radios and could be argued with by anything
+else that touched them, four separate recovery layers against the case where it
+died holding a radio somewhere it could not associate, per-radio routing tables
+that had to be rebuilt every time a lease changed, and a console panel explaining
+which radio was carrying what. The rover sits in a house within range of three
+access points that share a passphrase. Joining one of them and staying there is
+the behaviour that was actually wanted.
 
 ## Tests and reproduction
 
 ```bash
-python3 wifi_roam/test_wifi_dual.py
+sh wifi_roam/selftest.sh
 ```
 
-The test suite first replays the captured rover outage and checks that the
-manager's classification agrees with what actually happened. Only after that
-calibration passes does it run synthetic scenarios such as:
+No radio, no root and no NetworkManager needed: it builds a sysfs with an onboard
+radio and a USB one, a routing table, a `/proc/net/wireless`, and a fake nmcli
+that remembers what it was told, then checks the state the scripts leave things
+in. The assertions worth knowing about are that exactly one profile autoconnects,
+that none of them is left free to land on the dongle, that the passphrase never
+reaches a command line, and that a second run changes nothing.
 
-- signal present but gateway unreachable;
-- one router disappearing;
-- USB dongle disappearing;
-- only one radio present;
-- both radios initially on one physical router;
-- service-address conflict;
-- explicit user network choice;
-- both links failing.
-
-This follows the repository rule for network changes: reproduce a real failure
-before changing the logic, then verify the same recording with the proposed fix.
+It is also run by `install.sh` before the helper is put in place, so a copy that
+arrived with CRLF line endings or arrived half written fails there rather than on
+a rover that has driven out of range.
 
 ## Relationship to `netwatch`
 
-[`netwatch/`](../netwatch) is deliberately separate. `wifi_dual` changes the
-network; `netwatch` only records it. Keeping the recorder independent means an
-outage has evidence from a component that was not also trying to repair the link.
-
-If the rover becomes unreachable, inspect `netwatch-report`, `/run/wifi-dual.json`
-and the external `netprobe.py` log together before changing thresholds.
+[`netwatch/`](../netwatch) records the network and changes nothing. It was kept
+separate so that an outage had evidence from a component that was not also trying
+to repair the link; with nothing left here that repairs anything, the separation
+costs nothing and is still the right shape.

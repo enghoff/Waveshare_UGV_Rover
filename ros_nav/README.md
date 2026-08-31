@@ -1581,8 +1581,9 @@ The console line "Nav2 is not running, so the rover will not drive itself. Only
 the mapping half of the stack is up" is this, not a crash. slam_toolbox and Nav2
 are listed. The lidar is still logging 9.9 Hz. The map picture is the last grid
 the bridge still has. What failed is the ROS graph: CycloneDDS is trying leftover
-peers from the other radio (`192.168.1.139` after a failover onto the dongle is
-the one we have actually seen) and from multicast `239.255.0.1`. Scans and TF
+peers from an address the rover no longer has (`192.168.1.139`, a DHCP lease
+that had moved, is the one we have actually seen) and from multicast
+`239.255.0.1`. Scans and TF
 stop arriving. The bridge cannot see Nav2's action server in two seconds, and
 that is the canned sentence.
 

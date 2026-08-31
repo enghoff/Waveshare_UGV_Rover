@@ -24,7 +24,7 @@ the fix succeeding there before deploying. Simulation does not replace hardware:
 validate the model against a real recording, still observe the fix on the rover, and
 where they disagree the hardware is right. Navigation has `ros_nav/nav_record.py`
 with replay and controller simulations ([ros_nav/README.md](ros_nav/README.md));
-`wifi_roam/test_wifi_dual.py` replays a captured outage against the real event.
+`wifi_roam/selftest.sh` drives the network scripts against a fake board.
 
 ## Where things run
 

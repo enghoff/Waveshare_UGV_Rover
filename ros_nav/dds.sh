@@ -6,8 +6,10 @@
 # Sourced after env.sh, never instead of it. RoboStack's activate hook sets
 # `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`, which is how a laptop on the LAN can
 # run rviz without being told a domain. On this rover that is the wrong default.
-# There are two radios and a /32 service address that wifi_dual moves, so
-# CycloneDDS keeps trying leftover peers and `ddsi_udp_conn_write` fails. The
+# The rover's addresses change under it -- this LAN has a second DHCP server
+# answering beside the router, and a person at the console can put the rover on
+# another network -- so CycloneDDS keeps trying leftover peers and
+# `ddsi_udp_conn_write` fails. The
 # graph then goes silent -- /scan, TF, the map all stop arriving at nav_bridge --
 # while every process is still listed. The daemon reports the stack dead. The
 # lidar is still logging 9.9 Hz.
@@ -19,7 +21,8 @@
 # The XML is the part that actually works, and the reason it exists is worth
 # keeping. `ROS_LOCALHOST_ONLY=1` was set here for months and was believed to be
 # the guard. It was not. On 2026-08-26 the stack came up healthy at 15:07:46,
-# wifi_dual roamed wlan0 to another router at 15:14:19, and the graph died at
+# the roaming manager that then ran moved wlan0 to another router at 15:14:19 --
+# nothing roams by itself any more, but a lease still moves -- and the graph died at
 # that second -- because every Nav2 node was holding a UDP socket bound to
 # 192.168.1.102, wlan0's address when the launch started. The variable was set
 # in all of them the whole time. Whatever it is meant to do, in this build of
@@ -45,7 +48,7 @@ else
     # Loud, because the silent version of this is a stack that comes up looking
     # perfect and dies at the next roam.
     echo "dds.sh: $_dds_cfg is missing -- CycloneDDS will discover on the LAN" \
-         "and the next wifi_dual failover will take the graph down" >&2
+         "and the next change of the rover's address will take the graph down" >&2
 fi
 
 unset _dds_dir _dds_cfg

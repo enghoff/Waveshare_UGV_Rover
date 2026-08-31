@@ -1507,8 +1507,8 @@ def test_discovery_stays_on_this_board():
     """A dead radio must not be able to take the ROS graph with it.
 
     The console saying "only the mapping half is up" with every process still
-    listed is CycloneDDS writing to a leftover address (wlan0's .139 after a
-    failover onto the dongle). RoboStack's activate hook sets discovery to the
+    listed is CycloneDDS writing to a leftover address (wlan0's .139 after its
+    DHCP lease moved). RoboStack's activate hook sets discovery to the
     subnet; dds.sh has to override that after env.sh, in every launcher, or the
     next interface change looks like Nav2 crashing.
     """

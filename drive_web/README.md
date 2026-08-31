@@ -69,8 +69,8 @@ CA and leaf certificate under:
 
 That directory is outside `~/ugv` so a source deploy cannot overwrite private
 keys. `run_drive_web.sh` checks the certificate at startup. The stable service
-address `192.168.1.80` is included so a Wi-Fi radio failover does not change the
-URL the user trusts.
+address `192.168.1.80` is included so the URL the user trusts keeps working
+whichever network the rover is on and whatever DHCP does with its lease.
 
 The certificate can be regenerated manually:
 
@@ -133,10 +133,12 @@ every state pushed down the stream ten times a second, and the panels underneath
 them had come to say the same things better. What is worth keeping out of the
 transcript — a failure, and a move's own verdict on itself — is now the notice.
 
-The network panel shows both rover radios and which one currently owns the stable
-service address. A join can be staged on the spare radio and handed over only
-when that path is usable, so the console need not disconnect merely because the
-user selected another AP. See [`wifi_roam/README.md`](../wifi_roam/README.md).
+The network panel shows the network the rover is on, its signal and address, and
+what the radio last heard. Nothing there happens by itself: pressing "look for
+networks" is what causes a scan, and pressing `join` is the only thing that moves
+the rover onto one of the other house networks. That join costs the page -- the
+rover has one radio, so the link goes down and the console reconnects a few
+seconds later. See [`wifi_roam/README.md`](../wifi_roam/README.md).
 
 ## Microphone: Alibaba Qwen Omni
 

@@ -134,23 +134,19 @@ client as merely a slow network.
 Run the external probe from whatever desk is observing the rover; there is no
 special monitoring host in the current system.
 
-## Reading it with dual Wi-Fi
+## Reading it alongside the rover's Wi-Fi
 
-[`wifi_roam/wifi_dual.py`](../wifi_roam/wifi_dual.py) is the current network
-manager. Netwatch remains independent and passive. That separation is deliberate:
-the component used as evidence should not also be the component changing routes,
-associations and service-address ownership.
+Nothing on the rover manages the network any more: it autoconnects one profile
+and stays there until a person says otherwise, so there is no manager whose
+decisions have to be told apart from the weather. Netwatch remains independent
+and passive, which still matters -- the component used as evidence should not
+also be the component changing anything.
 
 During an outage, combine:
 
 - `netwatch-report` from the rover;
 - the off-rover `netprobe.py` log;
-- `/run/wifi-dual.json` and `journalctl -u wifi-dual`.
-
-The 2026-08-24 recording that showed the rover remaining associated on a link that
-carried no traffic is also the calibration input for `test_wifi_dual.py`. The
-network manager is therefore tested against evidence this independent recorder
-captured before the manager existed.
+- `wifi_ctl.sh status` and `journalctl -u NetworkManager`.
 
 ## Tests
 

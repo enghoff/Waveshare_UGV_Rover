@@ -40,17 +40,15 @@ speech path is unchanged.
 | GPIO driver-board UART | `/dev/ttyTHS1` at 115200 |
 | lidar serial | `/dev/ttyACM0` at 230400 |
 
-**Use `192.168.1.80`.** It is the address that stays true: `wifi_dual` holds it
-on whichever radio is healthy and moves it, with a gratuitous ARP, when the
-traffic moves. Each radio also has its own DHCP lease -- `192.168.1.88` for the
-onboard one at the time of writing -- and those are useful for getting at one
-particular radio, but they move, because this LAN has a second DHCP server
-answering alongside the router. `jetson-orin.local` resolves to whichever radio
-answers first and is the name to use when the service address is not available.
+**Use `192.168.1.80`.** It is the address that stays true: it is written into
+each of the rover's three network profiles as a fixed address, so it is there
+whichever house network the rover is on. The radio also has a DHCP lease of its
+own -- `192.168.1.88` at the time of writing -- which is useful and does move,
+because this LAN has a second DHCP server answering alongside the router.
+`jetson-orin.local` is the name to use when the service address is not available.
 
-The manager ARP-probes `.80` before claiming it, every time. If anything answers
-for it the rover runs without a service address rather than starting an address
-war, and says so in its status.
+NetworkManager checks `.80` is free before claiming it and logs a conflict rather
+than starting an address war.
 
 ## Hardware links
 
@@ -143,71 +141,60 @@ device that stops hearing from its host watchdogs itself after 1500 ms. See
 ## Network
 
 Wi-Fi only in practice, and **managed by NetworkManager** -- `nmcli` works here,
-which it did not on the Banana Pi. That is the largest single difference from the
-old host, and the reason the roaming half of `wifi_roam` is staged but not
-installed. Its privileged helper `/usr/local/sbin/wifi_ctl.sh` **is** installed,
-along with a `NOPASSWD` rule letting `jetson` run that one path, because the
-console's network panel cannot list or switch networks without it. That is what
-`wifi_roam/install.sh --no-roamer` puts down -- the three house networks, the
-helper and the sudo rule -- and it is what the manifest's system install for
-`wifi_roam` runs on this host. Nothing roams by itself here.
+which it did not on the Banana Pi. Nothing else manages it: the rover joins one
+network at boot because one profile is set to autoconnect, and it moves only when
+somebody at the console tells it to. There is no roamer and no failover manager;
+both used to run here and both were removed on 2026-08-31, along with the second
+radio's part in carrying traffic. See
+[`wifi_roam/README.md`](../wifi_roam/README.md).
 
-- `wlP1p1s0` -- onboard Realtek RTL8822CE, `192.168.1.88`, dual band;
-- `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, 2.4 GHz only. Its
-  address is whatever DHCP last gave it and does move -- `.77` and `.90` on the
-  same afternoon -- because it no longer sticks to one network. Do not rely on
-  it; see [The second radio](#the-second-radio), which it is not reliably doing;
+The privileged helper `/usr/local/sbin/wifi_ctl.sh` is installed, with a
+`NOPASSWD` rule letting `jetson` run that one path, because the console's network
+panel cannot list or switch networks without it. That, the three profiles and the
+mDNS responder are the whole of what `wifi_roam/install.sh` puts on this host.
+
+- `wlP1p1s0` -- onboard Realtek RTL8822CE, dual band, **the rover's link**. It
+  holds `192.168.1.80` and a DHCP lease of its own;
+- `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, 2.4 GHz only,
+  **carrying nothing**. Its driver is loaded and the interface exists;
+  NetworkManager is told to leave it alone by
+  `/etc/NetworkManager/conf.d/99-unmanaged-usb-wifi.conf`. See
+  [The second radio](#the-second-radio);
 - `enP8p1s0` -- wired, **down with no carrier**: a cable or switch-port problem
   rather than configuration, unchanged since 2026-08-30.
 
-Both radios associate at boot and end up on **different routers**, so that a
-router going down does not take both. Which radio is on which network is not
-fixed and deliberately so -- **no profile is pinned to an interface**, because a
-profile tied to one radio is a profile the spare cannot use, and the spare
-existing to take an access point the active one is not on is the whole point.
-As of 2026-08-31 the onboard radio is on `TheGreatLord` and the dongle takes the
-strongest network that one is not using -- `TheMaharaja` when it is up, which at
-the moment is not for long: see [The second radio](#the-second-radio).
-
-Each radio has its own DHCP lease and either answers SSH and the daemon on 8769,
-and since 2026-08-31 **this is failover rather than merely two ways in**:
-`wifi_dual` runs here, pings the gateway out of both radios every second, holds
-`192.168.1.80` on the healthier one and moves it when that changes. What it
-decided last is in `/run/wifi-dual.json`, and the console's network panel reads
-it -- see [`wifi_roam/README.md`](../wifi_roam/README.md).
+`192.168.1.80` is a fixed address written into each of the three profiles,
+alongside the DHCP lease NetworkManager also takes. It does not move between
+radios any more -- there is only one radio in play -- and it is on all three
+profiles because the house networks are bridged onto one LAN, so the rover
+answers there whichever of them it is on.
 
 ```bash
-ssh orin 'sudo -n /usr/local/sbin/wifi_ctl.sh status'   # both radios, one line each
-ssh orin 'journalctl -u wifi-dual -n 20'                # and why it did it
+ssh orin '/usr/local/sbin/wifi_ctl.sh status'           # every radio, one line each
+ssh orin 'journalctl -u NetworkManager -n 20'           # and what it did about it
 ```
 
-Measured on 2026-08-31, by taking the radio that was carrying the traffic off its
-network while watching over an SSH session to `192.168.1.80`. The session did not
-drop. The manager held for fifteen seconds first, because the only radio left was
-33 dB worse and a blip is not worth a handover, then moved the traffic and the
-address together: **about twenty seconds from the fault to the rover answering
-out of the other radio.** The one it had just left came back by itself half a
-minute later as the new standby, on a different router.
-
-Two NetworkManager-specific things showed up in that log and are worth knowing.
-NetworkManager removed the service address the moment it reconfigured the
-interface -- `192.168.1.80 is no longer on wlP1p1s0; putting it back` -- which is
-why the manager re-asserts it every tick rather than only when the traffic moves.
-And the radio that was released found its own way back onto a network, because
-nothing had been disabled to hold it: under `wpa_supplicant` that recovery is
-four separate mechanisms and here it is NetworkManager's ordinary autoconnect.
+`status` needs no sudo and reads the kernel rather than NetworkManager, so it
+answers on a rover where NetworkManager is itself the problem. The dongle appears
+in it with no network beside it, which is the honest report rather than a fault.
 
 ### Which networks this rover can join
 
-All three house networks, on either radio. NetworkManager holds one profile per
-network, named after it, with **no interface pinned** and
-`autoconnect-retries 0`:
+All three house networks, on the onboard radio. NetworkManager holds one profile
+per network, named after it, every one pinned to that radio, with
+`autoconnect-retries 0` and the service address:
 
-| Profile | Network | Pinned to |
-|---|---|---|
-| `TheGreatLord` | `TheGreatLord` | nothing |
-| `TheMaharaja` | `TheMaharaja` | nothing |
-| `TheGreatViking` | `TheGreatViking` | nothing |
+| Profile | Autoconnect | Pinned to | Address |
+|---|---|---|---|
+| `TheGreatViking` | **yes** | `wlP1p1s0` | DHCP + `192.168.1.80` |
+| `TheGreatLord` | no | `wlP1p1s0` | DHCP + `192.168.1.80` |
+| `TheMaharaja` | no | `wlP1p1s0` | DHCP + `192.168.1.80` |
+
+**Only `TheGreatViking` comes up by itself**, which is why a reboot always puts
+the rover back on it whatever was chosen before. The other two are joined only
+from the console, and that join costs the link: one radio means taking the
+current network down to bring another up, so the browser reconnects a few seconds
+later.
 
 All three share one passphrase, which lives in `~/.ugv/wifi.key` on the rover,
 outside the deploy tree. `wifi_roam/install-profiles.sh` owns this arrangement
@@ -215,30 +202,35 @@ and is re-run by every `--system` deploy of `wifi_roam`; it writes a missing
 profile as a keyfile rather than using `nmcli con add`, which would put the
 passphrase in `ps` for every account on the machine to read.
 
-It was not always this way, and the two habits it replaced are worth knowing
-because both look reasonable. Each network used to be pinned to one radio, which
-meant neither radio could take the other's network -- there was no spare, only
-two singles. And the dongle's profile was called `TheGreatViking-dongle`, which
-is why `wifi_ctl.sh` matches profiles by the network each is for and never by
-name: a console comparing names against SSIDs called the rover's own second
-network "no passphrase" and refused to join it.
+Two earlier habits are worth knowing because both look reasonable and neither is
+what is wanted now. Profiles were pinned to one radio each, so neither radio
+could take the other's network; then they were unpinned entirely, so either could
+take any -- which is right when a spare radio is meant to carry traffic and wrong
+now, because an unpinned profile is one NetworkManager may bring up on the
+dongle. And the dongle's profile was called `TheGreatViking-dongle`, which is why
+`wifi_ctl.sh` matches profiles by the network each is for and never by name: a
+console comparing names against SSIDs called the rover's own second network "no
+passphrase" and refused to join it.
 
-The onboard radio also fills its scan list in **over several scans** rather than
-all at once: measured on 2026-08-31, three consecutive scans returned 2, then 8,
-then 27 access points. One press of the console's "look for networks" can
-therefore show almost nothing on a radio that has been quiet for a while; the
-list is cumulative and the next press fills it in.
+The onboard radio fills its scan list in **over several scans** rather than all
+at once: measured on 2026-08-31, three consecutive scans returned 2, then 8, then
+27 access points. One press of the console's "look for networks" can therefore
+show almost nothing on a radio that has been quiet for a while; the list is
+cumulative and the next press fills it in.
 
 ### The second radio
 
-The dongle kept its old name from the Banana Pi days -- the MAC is the same
-`00:2e:2d:30:74:d0` that `wifi_roam/20-usb-wlan.link` mentions -- but nothing
-renames it here, so it appears under the kernel's own `wlx...` name. That used
-to be load-bearing -- its profile pinned that exact name, so installing the
-`.link` file would have renamed the interface out from under the profile and the
-radio would have come up unconfigured. Since the profiles were unpinned on
-2026-08-31 no profile names an interface at all, so the `.link` file is now a
-question of taste rather than a trap.
+**It carries nothing, and that is deliberate.** The rover uses its onboard
+radio; NetworkManager is told to leave the dongle alone, matched by driver rather
+than by interface name. The hardware stays present and working so it can be
+picked up again -- `wifi_ctl.sh join <ssid> <iface>` will use it, and so will
+whatever wants a second radio next -- rather than because anything currently
+depends on it.
+
+It appears under the kernel's own MAC-derived `wlx...` name, `wlx002e2d3074d0`.
+That name used to be load-bearing, back when a profile pinned it; no profile
+names it now, so a `.link` file renaming it would be a question of taste rather
+than a trap.
 
 Its driver is built on this host rather than shipped with the kernel, and is a
 deploy component of its own -- see [`dongle_driver/README.md`](../dongle_driver/README.md),
@@ -296,11 +288,10 @@ The console is at:
 https://192.168.1.80:8771/
 ```
 
-**That address is the one that survives a failover**, and the certificate happens
-to be valid for it. `wifi_dual` holds `192.168.1.80` on whichever radio is
-healthy and moves it across with a gratuitous ARP when the traffic moves, so a
-browser pointed at it keeps working when a radio dies -- the TCP connections open
-at that moment are what a failover costs, and nothing else. Verified 2026-08-31.
+**That address is the one that stays true**, and the certificate happens to be
+valid for it. `192.168.1.80` is written into all three of the rover's network
+profiles as a fixed address, so a browser pointed at it keeps working whichever
+house network the rover is on and whatever DHCP does with the lease beside it.
 
 `https://jetson-orin.local:8771/` is the fallback and also validates. It follows
 whichever radio is up, because `avahi-daemon` publishes the name on every
@@ -365,9 +356,11 @@ never be copied into Git.
 
 ## What is still missing
 
-One thing. Failover between the two radios used to be on this list and is done:
-`wifi_dual` is ported to NetworkManager and running -- see
-[the Network section](#network). So is the chassis calibration, below.
+One thing. Failover between the two radios used to be on this list; it was
+built, it worked, and it was then removed on 2026-08-31 in favour of one radio on
+one network -- see [the Network section](#network) and
+[`wifi_roam/README.md`](../wifi_roam/README.md). The chassis calibration is done
+too, below.
 
 **The chassis calibration is done.** `~/ugv/odometry.json` holds the gyro's scale
 and the wheels' counts per metre, and is deliberately gitignored as belonging to
@@ -401,19 +394,16 @@ unchanged in v6.19 today. See
 so `rx_urb_retired` climbing towards thirty-two is the theory being confirmed on
 this rover in its own time.
 
-**A keeper**, which is proved. `dongle-keeper.timer` checks the spare every
-minute and reloads its driver after three consecutive checks with no
-association. Demonstrated here twice on the hardware: with the module removed it
-noticed and reloaded within 29 seconds, and with the radio present but not
-associating it counted to three and had the radio back on the air two and a half
-minutes after the fault. It only ever touches the spare -- it finds its interface
-by which driver has it bound, and the radio carrying the rover's traffic is a
-different driver on a different bus.
+**A keeper**, which was proved and is now gone. `dongle-keeper.timer` checked
+the dongle every minute and reloaded its driver after three consecutive checks
+with no association; demonstrated twice on the hardware, recovering the radio
+within 29 seconds in one case and two and a half minutes in the other. It was
+removed on 2026-08-31 with the rest of the second radio's networking: nothing
+associates the dongle any more, so there is no association for a keeper to miss.
 
-**Two settings**, already described above: `autoconnect-retries 0`, where NM's
-default of four had it give up hours before anybody looked, and unpinned
-profiles, so the spare retries on whichever network is best rather than only its
-own.
+**A setting**, `autoconnect-retries 0`, where NM's default of four had a profile
+given up on hours before anybody looked. That one is still in place and applies
+to the radio the rover actually uses.
 
 What could not be done is a reproduction on demand. After the profiles were
 unpinned the dongle held `TheGreatViking` -- the network it had died on twice --
@@ -422,10 +412,9 @@ to say behaving exactly like the stock driver. So the patch is a real fix for a
 real bug that matches the symptom, and it is not yet known to be the fix for
 this one.
 
-What is still missing is that a reload is a repair, not a diagnosis: nothing
-reports how often the spare needed rescuing. The other half of that gap is
-closed -- `wifi_dual` now moves the service address to the healthy radio when one
-of them is out, so a deaf dongle costs the rover a spare rather than its address.
+None of it costs the rover anything now. A deaf dongle is a spare part that is
+not working, not a link that is down: the onboard radio carries the traffic and
+holds the service address, and it is a different driver on a different bus.
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.

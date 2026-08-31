@@ -221,15 +221,15 @@
         }
       ],
       "commands": [
-        "cd ~/ugv && python3 wifi_roam/test_wifi_dual.py"
+        "sh ~/ugv/wifi_roam/selftest.sh | tail -1"
       ],
       "system_install": {
         "sudo_password_file": "secrets/jetson-orin.key",
-        "command": "sh ~/ugv/wifi_roam/install.sh --dual",
+        "command": "sh ~/ugv/wifi_roam/install.sh",
         "verify": [
-          "/usr/local/sbin/wifi_ctl.sh list | head -5",
+          "/usr/local/sbin/wifi_ctl.sh status",
           "sudo -n /usr/local/sbin/wifi_ctl.sh profiles",
-          "systemctl is-active wifi-dual"
+          "nmcli -t -f NAME,AUTOCONNECT,DEVICE con show | grep -E 'TheGreat|Maharaja'"
         ]
       },
       "triggers": [
@@ -255,7 +255,8 @@
         "command": "sh ~/ugv/dongle_driver/install.sh",
         "verify": [
           "dkms status rtl8xxxu",
-          "cat /sys/module/rtl8xxxu/parameters/rx_urb_recover"
+          "cat /sys/module/rtl8xxxu/parameters/rx_urb_recover",
+          "nmcli -t -f DEVICE,TYPE,STATE dev | grep wifi"
         ]
       },
       "triggers": [

@@ -1,9 +1,0 @@
-[Unit]
-Description=Notice when the rover's spare radio has stopped, and reload its driver
-# It reads what NetworkManager has done with the radio, so there is no point
-# asking before NetworkManager has had a chance to do anything.
-After=NetworkManager.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/dongle-keeper.sh

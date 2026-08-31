@@ -126,52 +126,21 @@ echo "dkms: $(dkms status "$NAME")"
 
 # --- load it --------------------------------------------------------------
 #
-# Reloading takes this radio down for a second or two, and since `wifi_dual` was
-# armed here that is no longer certainly the spare: the manager gives the traffic
-# to whichever radio scores better, and the dongle wins whenever it is the one
-# sitting next to a router. So this can take down the link the command arrives
-# over, and what makes it survivable rather than safe is the manager -- it notices
-# the radio is gone and moves the traffic and the service address to the other
-# one, measured at about twenty seconds. Prefer to run it when the onboard radio
-# is active; check with `wifi_ctl.sh status` first if it matters.
+# Reloading takes this radio down for a second or two, which costs the rover
+# nothing: the dongle carries no traffic. NetworkManager is told to leave it
+# alone -- see wifi_roam/install-profiles.sh -- so the rover's link is the
+# onboard radio and is not on this bus at all. Confirm with
+# `wifi_ctl.sh status` if it matters: the dongle's line should name no network.
 modprobe -r "$NAME" 2>/dev/null || true
 modprobe "$NAME"
 sleep 5
 echo "loaded: $(modinfo -F filename "$NAME")"
 echo "recovery: rx_urb_recover=$(cat /sys/module/$NAME/parameters/rx_urb_recover)"
 
-# --- the keeper -----------------------------------------------------------
+# --- and what it is for ---------------------------------------------------
 #
-# The backstop for whatever the patch does not cover. Proved on this machine
-# first, because it needs no radio and takes a second: a copy that arrived with
-# CRLF line endings, or half written, fails here rather than at three in the
-# morning on a rover whose spare radio it was supposed to be watching.
-if [ -r "$HERE/selftest.sh" ]; then
-    if out=$(sh "$HERE/selftest.sh" 2>&1); then
-        echo "keeper selftest: $(echo "$out" | tail -1)"
-    else
-        echo "$out" | grep -E 'FAIL|failed'
-        echo "not installing the keeper"
-        exit 1
-    fi
-fi
-
-install -m 755 "$HERE/keeper.sh" /usr/local/sbin/dongle-keeper.sh
-install -m 644 "$HERE/dongle-keeper.service" "$HERE/dongle-keeper.timer" \
-    /etc/systemd/system/
-systemctl daemon-reload
-
-# `KEEPER=off` is for one situation and it is worth naming: a rover being worked
-# on, where a driver reload arriving in the middle of a measurement would make
-# the measurement a lie.
-if [ "${KEEPER:-on}" = off ]; then
-    echo "keeper: left disabled (KEEPER=off)"
-    echo "  arm it with: systemctl enable --now dongle-keeper.timer"
-else
-    systemctl enable --now dongle-keeper.timer > /dev/null 2>&1
-    echo "keeper: $(systemctl is-active dongle-keeper.timer) and $(systemctl is-enabled dongle-keeper.timer)"
-    systemctl list-timers --no-pager dongle-keeper.timer | sed -n 2p
-fi
-
-echo "--- one dry run"
-/usr/local/sbin/dongle-keeper.sh -n || echo "(dry run exited $?)"
+# Nothing on this rover routes through the dongle. The driver is built and kept
+# working so the radio is there to be picked up again -- by a person choosing it
+# with `wifi_ctl.sh join <ssid> <iface>`, or by whatever wants a second radio
+# next -- rather than because anything currently depends on it.
+echo "the dongle is on the bus with its driver bound; nothing routes through it"

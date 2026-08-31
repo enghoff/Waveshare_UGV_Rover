@@ -149,7 +149,7 @@ else
         echo "       drops its address cannot take the graph down"
     else
         echo "  !!   CycloneDDS is bound to ${off}-- a radio address."
-        echo "       When wifi_dual moves or loses it, every DDS write fails and"
+        echo "       When that address moves or goes away, every DDS write fails and"
         echo "       the graph goes silent while every process stays listed and"
         echo "       the lidar keeps logging 9.9 Hz."
         echo "       CYCLONEDDS_URI is not reaching this launch: check that"

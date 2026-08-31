@@ -21,8 +21,8 @@ def test_choosing_a_network() -> None:
     and three routers.
 
     The unscanned case is the one worth pinning down. Nothing polls for a scan --
-    it takes the dongle off channel for seconds, on a bus it shares with the camera
-    -- so what a console normally sees is a list of one, and a panel that treated
+    it takes the radio off channel for seconds, and the caller is very likely
+    asking through it -- so what a console normally sees is a list of one, and a panel that treated
     that as "there is nothing else out there" would be wrong in the ordinary case
     rather than the rare one.
     """
@@ -309,91 +309,57 @@ def test_web_console() -> None:
           drive_web._png_width(header), 484)
 
 
-def test_two_radios() -> None:
-    """The panel when the rover has a spare radio, which changes what a join means.
+def test_the_network_panel() -> None:
+    """The network panel, and what pressing `join` costs on a rover with one radio.
 
-    Everything the panel showed with one radio still has to be right -- the
-    reading at the top is the link the traffic is going through, and the address
-    is where to reach the rover -- while three things become true that were not:
-    there are two rows above the network list, the address is one that survives a
-    failover, and pressing `join` no longer takes the page down with it.
+    It costs the page. The rover takes its link down and brings another up, so
+    every connection this console holds dies with it -- which is why the panel
+    warns before it happens, why a reconnect is scheduled rather than waited
+    for, and why nothing here ever chooses a network on its own.
     """
     import drive_web
 
     session = drive_web.Session(None, 3.0, 480)
-    dual = {
-        "active": "wlan0", "standby": "wlan1", "switches": 2,
-        "since_switch_s": 300.0, "service_ip": "192.168.1.80",
-        "service_on": "wlan0", "surrendered": False, "note": "",
-        "radios": [
-            {"iface": "wlan0", "kind": "onboard", "role": "active",
-             "ssid": "TheGreatLord 5G", "router": "TheGreatLord", "band": "5",
-             "dbm": -38, "rtt_ms": 2.4, "loss_pct": 0.0, "usable": True,
-             "address": "192.168.1.139", "asked": None,
-             "seen": [{"ssid": "TheMaharaja 5G", "dbm": -70, "band": "5",
-                       "router": "TheMaharaja"}]},
-            {"iface": "wlan1", "kind": "usb", "role": "standby",
-             "ssid": "TheMaharaja", "router": "TheMaharaja", "band": "2.4",
-             "dbm": -69, "rtt_ms": 6.0, "loss_pct": 0.0, "usable": True,
-             "address": "192.168.1.144", "asked": None,
-             "seen": [{"ssid": "TheGreatViking", "dbm": -75, "band": "2.4",
-                       "router": "TheGreatViking"}]},
-        ],
-    }
-    session.show_wifi({"ok": True, "connected": "TheGreatLord 5G",
+    session.show_wifi({"ok": True, "connected": "TheGreatViking",
                        "level_dbm": -38, "address": "192.168.1.80",
-                       "list_age_s": 0.0, "dual": dual,
+                       "list_age_s": 0.0,
                        "networks": [
-                           {"ssid": "TheGreatLord 5G", "signal": 84,
+                           {"ssid": "TheGreatViking", "signal": 84,
                             "in_use": True, "configured": True},
-                           {"ssid": "TheGreatViking", "signal": 50,
-                            "in_use": False, "configured": True}]})
-    check("both radios reach the panel", len(session.wifi["radios"]), 2)
-    check("the one carrying traffic is named as such",
-          session.wifi["radios"][0]["role"], "active")
-    check("...and the spare as the spare", session.wifi["radios"][1]["role"],
-          "standby")
-    check("a radio's row says what it is on and how good it is",
-          "2.4 GHz" in session.wifi["radios"][1]["detail"], True)
-    check("the address shown is the one that survives a failover",
-          "192.168.1.80" in session.wifi["service"], True)
-    check("...and how many times it has moved",
-          "2 failovers" in session.wifi["service"], True)
-    check("choosing a network is offered as free", session.wifi["safe_join"], True)
+                           {"ssid": "TheGreatLord", "signal": 50,
+                            "in_use": False, "configured": True},
+                           {"ssid": "Alister", "signal": 40,
+                            "in_use": False, "configured": False}]})
+    check("the reading is the network the rover is on",
+          session.wifi["text"].startswith("TheGreatViking"), True)
+    check("...and the address to reach it at",
+          "192.168.1.80" in session.wifi["where"], True)
+    # The other two house networks are the ones a person may choose; the
+    # neighbour's is shown so the list is honest and is not offered.
+    offered = [n["ssid"] for n in session.wifi_networks if n["joinable"]]
+    check("the house networks it is not on are the ones offered",
+          offered, ["TheGreatLord"])
+    check("...and a network with no passphrase says why it is not",
+          [n["note"] for n in session.wifi_networks if n["ssid"] == "Alister"],
+          ["no passphrase"])
 
-    # A join with a spare radio must not schedule the reconnect that a join with
-    # one radio has to: the page is not going to lose anything, and tearing six
-    # working connections down to prove it would be the fault it exists to avoid.
     session.watch = object()
     calls: list[tuple] = []
     session.watch_call = lambda name, args: calls.append((name, args))
-    session.wifi_join("TheGreatViking")
-    check("a join is still sent", calls[0][0], "wifi_join")
-    check("...but nothing is scheduled to reconnect", session.rejoin_at, 0.0)
-    check("...and the panel says the page should not notice",
-          "should not notice" in session.wifi["note"], True)
+    session.wifi_join("TheGreatLord")
+    check("a join is sent", calls[0][0], "wifi_join")
+    check("...and says the rover is about to go away",
+          "unreachable" in session.wifi["note"], True)
+    check("...so the page schedules its own reconnect",
+          session.rejoin_at > 0.0, True)
 
-    # ...and it stops saying that once the rover is actually there, rather than
-    # claiming to be joining for the rest of the session.
-    dual["radios"][1]["role"] = "active"
-    dual["radios"][1]["ssid"] = "TheGreatViking"
-    dual["radios"][0]["role"] = "standby"
-    dual["active"] = "wlan1"
-    session.show_wifi({"ok": True, "connected": "TheGreatViking",
-                       "level_dbm": -75, "address": "192.168.1.80",
-                       "list_age_s": 0.0, "dual": dual, "networks": []})
+    # ...and it stops claiming to be joining once the rover answers from the
+    # network it was sent to, rather than saying so for the rest of the session.
+    session.show_wifi({"ok": True, "connected": "TheGreatLord",
+                       "level_dbm": -55, "address": "192.168.1.80",
+                       "list_age_s": 0.0, "networks": []})
     check("the join is seen to have landed", session.wifi["joining"], None)
-    check("...and said so", "nothing dropped" in session.wifi["note"], True)
-
-    # A rover with one radio must be unaffected by all of the above.
-    old = drive_web.Session(None, 3.0, 480)
-    old.show_wifi({"ok": True, "connected": "Sonic", "level_dbm": -42,
-                   "address": "192.168.1.47", "list_age_s": 1.0,
-                   "networks": [{"ssid": "Sonic", "signal": 80,
-                                 "in_use": True, "configured": True}]})
-    check("one radio draws no radio rows", old.wifi["radios"], [])
-    check("...and keeps the old warning about what a join costs",
-          old.wifi["safe_join"], False)
+    check("...and said so", "on TheGreatLord now" in session.wifi["note"], True)
 
 
 def test_stopping_an_unwatched_rover() -> None:

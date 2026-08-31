@@ -1,33 +1,82 @@
 #!/bin/sh
-# One NetworkManager profile per house network, and every one of them usable on
-# either radio.
+# The rover's three NetworkManager profiles, on the onboard radio, with
+# `TheGreatViking` as the one it comes up on.
 #
 #     sh install-profiles.sh          # called by install.sh; needs root
 #
-# **Nothing here is pinned to an interface.** A profile tied to one radio is a
-# profile the other radio cannot use, and that is the whole of what the second
-# radio is for: whichever one is spare takes an access point the active one is
-# not on, so that a router going down does not take both. Pinning also made the
-# interface names load-bearing, which is why `20-usb-wlan.link` could not be
-# installed on the Jetson -- renaming the dongle would have taken its profile
-# away from it.
+# **Only `TheGreatViking` autoconnects.** The rover joins it at every boot if it
+# is on the air, and joins nothing else by itself. The other two networks keep
+# profiles -- passphrase, address, everything ready -- but with autoconnect off,
+# so the only thing that ever puts the rover on one of them is a person pressing
+# `join` in the console. That is the whole of the network policy: one network by
+# default, the other two on request.
 #
 # Profiles are matched by the network each one is *for*, never by its name. The
-# rover had one called `TheGreatViking-dongle`, from the days when each radio
-# had its own, and a loop looking for a profile called `TheGreatViking` would
-# have added a second profile for the same network rather than finding it.
+# rover has had profiles called `TheGreatViking-dongle` in the past, and a loop
+# looking for one called `TheGreatViking` would have added a second profile for
+# the same network rather than finding the one already there.
 #
 # Split out of install.sh so it can be driven by the self-test, which has no
 # NetworkManager, no radio and no root. See selftest.sh.
 
 set -eu
 
-# The three house access points this rover is allowed to join. They share one
-# passphrase.
-NETS=${NETS:-"TheGreatLord TheMaharaja TheGreatViking"}
-# Where NetworkManager keeps its profiles, and where the passphrase for a new
-# one is read from. Both overridable for the self-test.
+# The three house access points this rover is allowed to join, the first of them
+# the one it comes up on. They share one passphrase.
+HOME_NET=${HOME_NET:-TheGreatViking}
+NETS=${NETS:-"TheGreatViking TheGreatLord TheMaharaja"}
+# Where NetworkManager keeps its profiles and its drop-in configuration, and
+# where the passphrase for a new profile is read from. All overridable for the
+# self-test.
 NM_DIR=${NM_DIR:-/etc/NetworkManager/system-connections}
+NM_CONF_DIR=${NM_CONF_DIR:-/etc/NetworkManager/conf.d}
+
+# The radio the rover uses. Everything here is pinned to it, which is the
+# opposite of what this file used to do and is the point of the change: with no
+# failover there is no spare radio to leave a network free for, and an unpinned
+# profile is one NetworkManager could bring up on the USB dongle instead.
+#
+# Found rather than named, because the onboard Realtek is `wlP1p1s0` here and
+# was `wlan0` on both earlier boards. It is the wireless interface that is not a
+# USB one: a USB device has a `device/driver` link under `/sys/bus/usb`, which
+# is what the `wlx` name and the dongle's whole existence hang off.
+onboard_iface() {
+    if [ -n "${WIFI_IFACE:-}" ]; then
+        echo "$WIFI_IFACE"
+        return
+    fi
+    for dir in "${SYSNET:-/sys/class/net}"/*/wireless; do
+        [ -d "$dir" ] || continue
+        iface=$(basename "$(dirname "$dir")")
+        # `readlink` on the device link says which bus it is on. A dongle's
+        # resolves through `/usb`; the onboard card's through PCI.
+        case $(readlink -f "${SYSNET:-/sys/class/net}/$iface/device" 2>/dev/null) in
+            */usb*) continue ;;
+        esac
+        echo "$iface"
+        return
+    done
+    # No non-USB radio at all. Nothing here can be pinned sensibly, and saying so
+    # is better than pinning all three to a dongle.
+    echo ""
+}
+
+IFACE=$(onboard_iface)
+
+# The address the rover answers on, put on every profile because the three house
+# networks are bridged onto one LAN -- so it is reachable whichever of them the
+# rover is on, including one a person chose by hand.
+#
+# It used to be moved between the two radios by a failover manager, and this is
+# what is left of that: a fixed address on the one radio, alongside the DHCP
+# lease rather than instead of it. A /32, which is the form that manager used and
+# the form proven on this LAN -- the DHCP lease in the same prefix is what
+# carries the subnet and default routes, so this address needs to add neither.
+#
+# The lease is the way back in if this address is ever taken by something else;
+# NetworkManager checks for that before claiming it and logs a conflict rather
+# than starting an address war.
+SERVICE_IP=${SERVICE_IP:-192.168.1.80/32}
 
 # The passphrase is only needed for a profile that does not exist yet; an
 # existing one is left holding the key it already has, because a working link is
@@ -112,10 +161,10 @@ for want in $NETS; do
             keep=$name
             continue
         fi
-        # A second profile for the same network is not redundancy. With nothing
-        # pinning either of them, NetworkManager can bring both up -- one per
-        # radio, both on the same access point -- and the rover loses the second
-        # path it believes it has.
+        # A second profile for the same network is a second answer to "how do I
+        # join this", and which one NetworkManager picks is not something to
+        # leave to chance when one of them may be a leftover pinned to the
+        # dongle.
         nmcli con delete "$name" > /dev/null
         echo "$want: deleted a duplicate profile ($name)"
     done <<PROFILES
@@ -131,25 +180,58 @@ PROFILES
         keep=$want
         echo "$want: added"
     elif [ "$keep" != "$want" ]; then
-        # The name is not what a profile is matched by any more, but a name that
-        # says which radio a network belongs to is a leftover of the arrangement
-        # this script exists to undo, and it reads as a fact about the rover.
+        # The name is not what a profile is matched by any more, but a name like
+        # `TheGreatViking-dongle` is a leftover of an arrangement that is gone
+        # and it reads as a fact about the rover.
         nmcli con mod "$keep" connection.id "$want"
         echo "$want: renamed from $keep, which no longer describes it"
         keep=$want
-    else
-        echo "$want: already known"
     fi
 
-    # An empty interface name is what unpins it. Autoconnect is what reconnects
-    # the rover at all, and the retry limit is what decides whether it still
-    # tries an hour later: NM's default of four attempts blocks a profile after
-    # a handful of failures, which is exactly what a rover parked out of range
-    # does before it is carried back inside -- and what left this rover's dongle
-    # off the air for six hours after one link timeout.
+    # Autoconnect for the home network and nothing else. `autoconnect-retries 0`
+    # is what decides whether the rover is still trying an hour later: NM's
+    # default of four attempts blocks a profile after a handful of failures,
+    # which is exactly what a rover parked out of range does before it is
+    # carried back inside.
+    if [ "$want" = "$HOME_NET" ]; then
+        auto=yes
+    else
+        auto=no
+    fi
     nmcli con mod "$keep" \
-        connection.interface-name "" \
-        connection.autoconnect yes \
+        connection.interface-name "$IFACE" \
+        connection.autoconnect "$auto" \
         connection.autoconnect-priority 0 \
-        connection.autoconnect-retries 0
+        connection.autoconnect-retries 0 \
+        ipv4.method auto \
+        ipv4.addresses "$SERVICE_IP"
+    if [ "$auto" = yes ]; then
+        echo "$want: on the air at boot, on ${IFACE:-any radio}, holding $SERVICE_IP"
+    else
+        echo "$want: ready, joined only when somebody asks, holding $SERVICE_IP"
+    fi
 done
+
+# The USB dongle carries nothing. Its driver stays -- see dongle_driver/ -- and
+# the interface stays on the bus, so the hardware is still there to be picked up
+# again; what is gone is NetworkManager's licence to put a network on it. Without
+# this, `TheGreatViking` autoconnecting on any free radio would come up on the
+# dongle as well and the rover would hold the same address twice.
+#
+# Matched by driver rather than by interface name because the name is the
+# kernel's MAC-derived `wlx...`, and a different dongle would have a different
+# one while still being the same thing: a Realtek USB radio that is not the
+# rover's link.
+unmanaged=$NM_CONF_DIR/99-unmanaged-usb-wifi.conf
+if [ -d "$NM_CONF_DIR" ]; then
+    cat > "$unmanaged" <<'UNMANAGED'
+# The USB Wi-Fi dongle is not a network path on this rover. Its driver is built
+# and loaded (see dongle_driver/), the device enumerates, and NetworkManager
+# leaves it alone. Delete this file and restart NetworkManager to hand it back.
+[device-usb-wifi]
+match-device=driver:rtl8xxxu
+managed=0
+UNMANAGED
+    chmod 644 "$unmanaged"
+    echo "dongle: left unmanaged (driver loaded, no connection)"
+fi

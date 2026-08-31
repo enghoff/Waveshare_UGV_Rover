@@ -29,7 +29,7 @@ help diagnose what runs, or document a current hardware fact or failure mode.
 | [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |
 | [`drive_web/`](drive_web) | HTTPS browser console, map, camera view and microphone/speaker bridge |
 | [`voice_chat/`](voice_chat) | Alibaba realtime Qwen Omni session protocol, rover client helpers, prompts and console model shared with `drive_web` |
-| [`wifi_roam/`](wifi_roam) | dual-radio manager and the older single-radio recovery utilities; only one manager is enabled at a time |
+| [`wifi_roam/`](wifi_roam) | the rover's network profiles -- one it joins at boot, two it joins only when asked -- and the privileged helper the console scans and switches through |
 | [`netwatch/`](netwatch) | persistent evidence for network/board failures |
 
 The driver board is the physical owner of the motors, lights, gimbal, encoders,

@@ -13,6 +13,17 @@ This document is evidence and a possible workaround, not a closed case. One
 outage is explained; another one on the same afternoon is not, and other causes
 of an unresponsive rover almost certainly remain.
 
+**It was written about the Banana Pi, which is no longer the rover.** The
+diagnosis carries over -- a radio whose data path dies while it goes on reporting
+a healthy association looks exactly like a dead board from a workstation, on any
+hardware -- but two things it describes do not. The rover is a Jetson with
+different radios and NetworkManager rather than netplan and `wpa_supplicant`, and
+the dual-radio failover manager whose behaviour several sections below turn on
+was removed on 2026-08-31. Those sections are kept as the record of what
+happened; where they say what to *do*, read
+[Getting in without the power switch](#getting-in-without-the-power-switch),
+which has been brought up to date.
+
 ## Recovery is a power cycle, so the record is full of repairs, not faults
 
 There is no remote way back into a rover that has gone silent. Nothing on the
@@ -113,6 +124,13 @@ signal reading during an outage is neither evidence for this nor against it.
 Observed 2026-08-26, 16:50:31, for 11m33s, and it is the mechanism above with a
 second fault stacked on top of it.
 
+*History.* The failover manager described here no longer exists, and neither does
+the arrangement that made this fault possible: the rover has one radio carrying
+traffic, and the service address is a fixed address on its network profiles
+rather than something moved between interfaces. The section is kept because the
+fault it records -- an address that follows nothing, on a host with two routes to
+the same subnet -- is a trap for anything that tries this again.
+
 `wlan0`'s data path died in the way this document already describes: it went on
 reporting `wpa=COMPLETED` on `TheGreatLord` at −44 to −48 dBm, holding `.139`
 and its default route, while passing **zero bytes and answering no gateway ping
@@ -162,31 +180,20 @@ minutes is simply how long the access point took to say something.
 
 ## What to put in place
 
-Two mechanisms, and the first is much the more important:
+The two address-and-failover items that used to head this list were about the
+dual-radio manager. Both were built, and both went with it. What is left is the
+one that was never specific to having a spare:
 
-1. **Pin the service address to whichever radio holds it**, in `route_through()`
-   in [`wifi_roam/wifi_dual.py`](../wifi_roam/wifi_dual.py) — the same rule the
-   radios' own addresses already get. With it, this outage lasts the six seconds
-   of the failover instead of eleven minutes, and the dead radio stops mattering.
-   Not yet written, reproduced or deployed.
-2. **Kick a radio that claims association and passes nothing.** The evidence is
-   already in hand: `wifi_dual`'s bound ping for `wlan0` failed continuously from
-   16:50:31, and nothing is attached to that beyond declining to route through
-   it. Reassociating the supplicant is the cheap first move; reloading the driver
-   is the heavier one, and `~/diag/reset-wifi.sh` exists for it and has still
-   never been tested against a real outage.
+**Kick a radio that claims association and passes nothing.** This is the fault
+this whole document is about, and nothing on the rover acts on it: the link
+reports `COMPLETED` at a healthy signal while moving no bytes, and it stays that
+way until somebody power-cycles the board. Reassociating is the cheap first move
+and reloading the driver is the heavier one; `~/diag/reset-wifi.sh` exists for it
+and has still never been tested against a real outage.
 
-A health check on the service address itself would catch both this class and the
-next one, since it is the only thing that tests what callers actually use.
-
-3. **Stop holding a radio on a router that will not have it.** Watched live on
-   2026-08-26: the spare sat unassociated for minutes with two routers at full
-   strength in the console list, because holding a radio on one network disables
-   every other one and the one it was held on kept dropping it. That matters
-   here and not only in the Wi-Fi component -- a spare that cannot associate is
-   a rover with nothing to fail over to, which turns the first fault above into
-   an outage rather than a six-second blip. Done: `wifi_dual` now frees a radio
-   that has been held somewhere for ninety seconds without joining it.
+A health check that pings the gateway and acts on the answer -- rather than
+reading the association state, which is the thing that lies -- would catch this
+class. Nothing does it today.
 
 ## What is not explained
 
@@ -219,35 +226,39 @@ NTP catches up, which is why three separate boots can all appear to start at
 `netwatch` writes to `/var/lib/netwatch/` and fsyncs precisely because of this.
 It is the only record of these events that exists.
 
-The gap this leaves: **`wifi_dual` logs its failover decisions only to the
-journal**, so whether it moved the service address during either outage, and how
-fast, is not recorded anywhere. Its thresholds say it should call a link dead
-after three unanswered pings and its deadman should hand both radios back after
-120 s, but neither can be confirmed against these events.
+The gap this leaves: **nothing on the rover records what it did about the
+network**, only what the network was. `netwatch` is a recorder by design, and
+NetworkManager's own journal does not survive a power cut on a board whose clock
+only becomes trustworthy once NTP has caught up.
 
 ## Getting in without the power switch
 
-The rover holds three addresses, and only one of them depends on the radio that
-fails:
+**This section is about the current rover, the Jetson, and not about the board
+the rest of this document investigates.**
+
+There are three ways to address it, and on this rover all three arrive on the
+same radio:
 
 ```text
-wlan0 (built-in Broadcom)  192.168.1.139
-wlan1 (USB Realtek)        192.168.1.47
-whichever carries traffic  192.168.1.80    <- the one that vanishes
+192.168.1.80          the service address, fixed on every network profile
+192.168.1.88          the onboard radio's own DHCP lease, which moves
+jetson-orin.local     mDNS, and the one to try when the numbers fail
 ```
 
-`192.168.1.80` is the service address `wifi_dual` parks on whichever radio is
-carrying traffic, and that is not always `wlan0`. The other two are the radios'
-own DHCP leases, on different chipsets associated to different routers. A lease
-is not a promise: `wlan1` answered on `.100` when this was first written and on
-`.47` on 2026-08-26. Remember the pair, not the numbers, and read the current
-ones with `ip -4 -o addr` whenever a shell is available.
+A lease is not a promise -- this LAN has a second DHCP server answering beside
+the router -- so read the current one with `ip -4 -o addr` whenever a shell is
+available. The USB dongle no longer carries traffic and holds no address, so it
+is not a second way in; if that ever matters during an outage it can be given one
+by hand from a console on the board.
 
-**So the first thing to try when the rover is unresponsive is a shell on a
-radio's own address, before reaching for the power switch.** Getting in there
-while `.80` is dead shows the fault is one radio, or one route, rather than the
-board. On 2026-08-26 that worked: `.47` served SSH throughout an eleven-minute
-outage of `.80`.
+**So try the name and the lease before reaching for the power switch.** Something
+answering on the lease while `192.168.1.80` does not is an addressing or routing
+fault rather than a dead board. When nothing answers at all, the recovery is
+still the power switch.
+
+The Jetson has one advantage the Banana Pi did not: **a keyboard and a monitor on
+the board is a genuine way back in**, because `sudo` there authenticates the
+`jetson` account's own password and `secrets/jetson-orin.key` is that password.
 
 Multicast DNS is the other way in, and it is more robust than any single address
 because it is answered per interface: a query arriving on a radio is answered on
@@ -312,22 +323,23 @@ rather than a deployed component, so they are one reflash away from gone.
 
 Next time the rover is unresponsive, do not power cycle it. Instead:
 
-1. `ssh bpi-m4zero`, or the USB radio's own lease directly;
+1. `ssh orin`, or the radio's own lease directly;
 2. read `~/diag/blackbox.log`.
 
-`wlan0[gw=none]` alongside `wlan1[gw=4ms]` proves it is one radio's firmware and
-makes the reset script the right fix — and makes the real repair a faster
-failover in `wifi_dual` rather than a reboot. Both radios dead at once means the
-cause is somewhere else entirely and this document covers only half the problem.
+A radio reporting a healthy association with `gw=none` proves it is the firmware
+and makes the reset script the right fix rather than a reboot. Anything else
+dead alongside it means the cause is somewhere other than the radio, and this
+document covers only half the problem.
 
 That measurement now exists, and it came out as this document predicted. During
 the 2026-08-26 outage `wlan0` sat at −45 dBm claiming `COMPLETED` and moved no
 bytes for eleven and a half minutes while `wlan1` served SSH normally throughout.
 A silent rover is not a dead board, and the fault is one radio.
 
-What the same event added is that failing over off the dead radio is not by
-itself enough, because the service address does not follow — see the failover
-section above. The remaining unknown is narrower than it was: whether the dead
+What the same event added is that failing over off the dead radio was not by
+itself enough, because the service address did not follow - see the failover
+section above, and note that neither that failover nor the second radio it moved
+to exists on the rover any more. The remaining unknown is narrower than it was: whether the dead
 data path is the firmware control channel wedging, as the `-110` timeouts show
 elsewhere, or the access point silently dropping the client, which is what
 `reason=6` at the end of this one suggests. Neither was in evidence at 16:50:31;

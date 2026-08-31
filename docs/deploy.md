@@ -50,10 +50,11 @@ or remote face-detection service in the current deployment.
 
 ## Addresses and ports
 
-The SSH host is `orin`. There is no floating service address on this host: it
-has one working radio and answers on its own DHCP lease, `192.168.1.88` at the
-time of writing, so prefer the name `jetson-orin.local`. The dual-radio manager
-and the `192.168.1.80` it moved belonged to the Banana Pi. See
+The SSH host is `orin`. The rover answers on `192.168.1.80`, which is a fixed
+address written into each of its three network profiles rather than anything that
+moves or is managed -- so it is there whichever house network the rover is on.
+The radio's own DHCP lease, `192.168.1.88` at the time of writing, and the name
+`jetson-orin.local` both work and are the way back in if `.80` ever does not. See
 [`hosts.md`](hosts.md) and [`wifi_roam/README.md`](../wifi_roam/README.md).
 
 The browser console is:
@@ -107,10 +108,6 @@ password is not put in the command line or copied to the rover. That file is the
 By hand, `-S` reads until EOF, so
 one `cat` feeds exactly one `sudo`; two chained after a single `cat` leave the
 second waiting with no password.
-
-Do not enable `wifi-roam.timer` while `wifi_dual` is active. They are alternative
-managers of the same link. `install-dual.sh` disables the timer when the dual
-manager is armed.
 
 ## Runtime state and secrets
 
@@ -247,7 +244,7 @@ ssh orin 'sh ~/ugv/drive_web/install.sh'
 ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
 ssh orin 'sh ~/ugv/ros_nav/install.sh'
 ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav'
-ssh orin 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on' < secrets/jetson-orin.key
+ssh orin 'sudo -S -p "" sh ~/ugv/wifi_roam/install.sh' < secrets/jetson-orin.key
 ssh orin 'sudo -S -p "" sh ~/ugv/netwatch/install.sh' < secrets/jetson-orin.key
 ```
 

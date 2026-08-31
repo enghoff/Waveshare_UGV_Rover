@@ -1,198 +1,27 @@
 #!/bin/sh
-# Drive wifi_roam.sh through every decision it can make, with no radio present.
+# Drive the two scripts in this directory with no radio present.
 #
 #     ./selftest.sh          # anywhere: the workstation, the rover, a VM
 #
-# The script reads the link out of three files and acts through nmcli and
-# systemctl, and every one of those is replaceable from here, so a fake /proc, a
-# fake nmcli and a fake systemctl are enough to put the rover anywhere: healthy,
-# fading, associated with no address, off the air entirely, or holding a radio
-# that somebody switched off. That matters because the interesting branches are the ones that
-# only happen when something has gone wrong, and waiting for a real dongle to go
-# wrong is not a test strategy -- the last time one did, it took the rover off
-# the network for the afternoon.
+# `install-profiles.sh` decides what the rover joins and what it does not, and
+# `wifi_ctl.sh` is the privileged helper the console calls. Both reach the world
+# through nmcli, sysfs and /proc, and every one of those is replaceable from
+# here, so a fake nmcli and a fake sysfs are enough to put the rover on a board
+# with two radios, or one, or none, without owning any of them.
 #
-# The races are covered too, which took a fake that answers differently the second
-# time it is asked. Both of the script's second looks -- the one under the lock and
-# the one after the scan -- exist because a rover can recover between two reads of
-# /proc in the same run, and a static fake cannot express that at all. So the fake
-# nmcli rewrites the fake /proc while it is pretending to scan, which is exactly
-# what a deliberate join finishing does, and the lock itself is tested by holding
-# it from here while the script runs.
+# It is run by `install.sh` before the helper is put in place, so a copy that
+# arrived with CRLF line endings or arrived half written fails here rather than
+# on a rover that has driven out of range.
 
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-WORK=${TMPDIR:-/tmp}/wifi-roam-selftest.$$
+WORK=${TMPDIR:-/tmp}/wifi-selftest.$$
 mkdir -p "$WORK/bin"
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
-PATH="$WORK/bin:$PATH"
-export PATH
-
 pass=0
 fail=0
-
-# --- the world the script gets to see -------------------------------------
-
-# A fake nmcli. The scan it answers with is the real one from the rover's usual
-# spot, trimmed; anything that would change the radio is recorded rather than
-# done. It records twice: once per run for the assertions below, and once
-# cumulatively for the one assertion that spans every scenario in this file --
-# that the radio is never, in any state, switched off.
-cat > "$WORK/bin/nmcli" <<'FAKE'
-#!/bin/sh
-echo "nmcli $*" >> "$NMCLI_LOG"
-echo "nmcli $*" >> "$NMCLI_ALL"
-case "$*" in
-    "radio wifi")    echo "${RADIO:-enabled}" ;;
-    "radio wifi on") exit "${RADIO_ON_STATUS:-0}" ;;
-    *"dev wifi list"*)
-        [ -n "${SCAN_EMPTY:-}" ] && exit 0
-        # A rover that came back while the scan was running. The scan is the slow
-        # part -- thirty-two seconds, measured -- so it is the window a deliberate
-        # join finishes in, and rewriting the fake /proc here is the only way to
-        # put a script that reads it twice through that race. The paths come from
-        # the script's own environment, so this heals whatever world was set up.
-        if [ -n "${HEAL_ON_SCAN:-}" ]; then
-            echo up > "$OPERSTATE"
-            printf 'Inter-|\n face |\n wlan0: 0000   66.  -41.  -256  0 0 0 0 572 0\n' \
-                > "$WIRELESS"
-            printf 'Iface\tDestination\nwlan0\t00000000\nwlan0\t0001A8C0\n' \
-                > "$ROUTES"
-        fi
-        printf '%s\n' "$SCAN"
-        ;;
-    *"con up"*) exit "${CON_UP_STATUS:-0}" ;;
-    # What wifi_ctl.sh checks an SSID against before it will join it. The
-    # dongle's profile is deliberately not named after its network,
-    # because on the rover it is not: two radios held on two routers need
-    # a profile each, and the second is called TheGreatViking-dongle.
-    "-t -f TYPE,NAME con show")
-        printf '802-11-wireless:TheGreatLord\n802-11-wireless:TheMaharaja\n'
-        printf '802-11-wireless:TheGreatViking-dongle\n'
-        printf '802-3-ethernet:Wired connection 1\n'
-        ;;
-    "-g 802-11-wireless.ssid con show TheGreatViking-dongle")
-        echo TheGreatViking ;;
-    "-g 802-11-wireless.ssid con show "*)
-        echo "$5" ;;
-    # And that profile is pinned to the radio it belongs to, which is
-    # what makes naming an interface on the way up a contradiction.
-    "-g connection.interface-name con show TheGreatViking-dongle")
-        echo wlx002e2d3074d0 ;;
-    "-g connection.interface-name con show "*) ;;
-esac
-exit 0
-FAKE
-chmod +x "$WORK/bin/nmcli"
-
-# And a fake systemctl, which the one remaining repair acts through.
-cat > "$WORK/bin/systemctl" <<'FAKE'
-#!/bin/sh
-echo "systemctl $*" >> "$NMCLI_LOG"
-echo "systemctl $*" >> "$NMCLI_ALL"
-# `is-active` has to answer with a word rather than a status, because that is how
-# the script picks which supplicant to restart -- and a board where netplan runs
-# one per interface is a different answer from a board where Debian's own unit is
-# the one holding the radio.
-case "$*" in
-    "is-active netplan-wpa-wlan0.service")
-        [ -n "${NETPLAN_UNIT_ACTIVE:-}" ] && echo active
-        ;;
-    "is-active "*) ;;
-esac
-exit "${SYSTEMCTL_STATUS:-0}"
-FAKE
-chmod +x "$WORK/bin/systemctl"
-
-cat > "$WORK/bin/rfkill" <<'FAKE'
-#!/bin/sh
-echo "rfkill $*" >> "$NMCLI_LOG"
-echo "rfkill $*" >> "$NMCLI_ALL"
-exit "${RFKILL_STATUS:-0}"
-FAKE
-chmod +x "$WORK/bin/rfkill"
-
-# The kernel's radio switches, as /sys presents them: one directory per switch,
-# a type and a soft-block flag. `switch off` here means the rover is soft-blocked
-# -- which on this stack survives a reboot, because systemd saves and restores it.
-switches() {   # soft-blocked: 1 or 0
-    mkdir -p "$WORK/rfkill/rfkill0" "$WORK/rfkill/rfkill1"
-    echo bluetooth > "$WORK/rfkill/rfkill0/type"
-    echo 0 > "$WORK/rfkill/rfkill0/soft"
-    echo wlan > "$WORK/rfkill/rfkill1/type"
-    echo "$1" > "$WORK/rfkill/rfkill1/soft"
-}
-switches 0
-
-# The privileged half, executable, because the roamer execs it the way systemd
-# does and a checkout that arrived by scp is not.
-cp "$HERE/wifi_ctl.sh" "$WORK/bin/wifi_ctl.sh"
-chmod +x "$WORK/bin/wifi_ctl.sh"
-
-# **No dual-radio manager, unless a scenario says otherwise.** `wifi_ctl.sh join`
-# now does one of two quite different things depending on whether one is running,
-# and it decides by looking at /run -- so without this every join below tests
-# whichever half the *host* happens to be running rather than the half it says it
-# is testing. That is not hypothetical: these ran green on a desk and eleven of
-# them failed the first time they were run on the rover, where the manager had
-# just been armed, with `cannot create /run/wifi-dual.request: Permission denied`.
-# Exported rather than passed per-call so that a join added later cannot forget it.
-export DUAL_STATUS="$WORK/no-such-manager.json"
-export DUAL_REQUEST="$WORK/request.json"
-
-# The cumulative log, created up front so that the assertion spanning every
-# scenario has something to read even if no fake is ever called.
-: > "$WORK/nmcli.all"
-
-# The rover as the kernel would describe it. The first argument is the operstate
-# word the kernel would show: "up" is associated, "dormant" is an interface that is
-# up and looking, "down" is one that is not up at all. Level is the driver's dBm.
-world() {   # operstate level route
-    echo "$1" > "$WORK/operstate"
-    printf 'Inter-|\n face |\n wlan0: 0000   66.  %s.  -256  0 0 0 0 572 0\n' \
-        "$2" > "$WORK/wireless"
-    if [ "$3" = 1 ]; then
-        printf 'Iface\tDestination\nwlan0\t00000000\nwlan0\t0001A8C0\n' \
-            > "$WORK/routes"
-    else
-        printf 'Iface\tDestination\neth0\t00000000\n' > "$WORK/routes"
-    fi
-}
-
-_run() {   # $1 = flags for the script, then any VAR=value overrides
-    flags=$1
-    shift
-    : > "$WORK/nmcli.log"
-    # WIFI_CTL is the real script beside this one, not a fake: the roamer's scan
-    # and join go through it now, so pointing it at the installed copy would
-    # test whatever is on this machine, and faking it would leave the two halves
-    # of the rover's wifi never once exercised together. The fake nmcli and fake
-    # wpa_cli underneath it are where the pretending happens.
-    #
-    # A copy with the mode bit set, though, rather than the file in the checkout.
-    # The roamer execs this path the way systemd will, and a checkout that
-    # arrived by scp is mode 644 -- so testing the file where it lies passes on
-    # the workstation, where every file looks executable, and fails on the rover
-    # with "the scan came back empty", which reads as a dead radio.
-    env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
-        SCAN="$SCAN" WIFI_CTL="$WORK/bin/wifi_ctl.sh" \
-        OPERSTATE="$WORK/operstate" WIRELESS="$WORK/wireless" \
-        ROUTES="$WORK/routes" STATE="$WORK/state" LOCK="$WORK/lock" \
-        "$@" sh "$HERE/wifi_roam.sh" $flags 2>&1
-}
-
-run() { _run "" "$@"; }
-dry() { _run "-n" "$@"; }
-
-# TheGreatLord is the one we are on, and TheMaharaja is the loudest alternative.
-SCAN='*:TheGreatLord:52
- :TheMaharaja:84
- :TheGreatViking:66
- :Alister:90'
-
-# --- the assertions --------------------------------------------------------
 
 check() {   # what, expected-substring, actual
     if case "$3" in *"$2"*) true ;; *) false ;; esac; then
@@ -206,16 +35,6 @@ check() {   # what, expected-substring, actual
     fi
 }
 
-check_loud() {   # what, actual
-    if [ -n "$2" ]; then
-        pass=$((pass + 1))
-        echo "  ok    $1"
-    else
-        fail=$((fail + 1))
-        echo "  FAIL  $1 -- said nothing at all"
-    fi
-}
-
 check_silent() {   # what, actual
     if [ -z "$2" ]; then
         pass=$((pass + 1))
@@ -226,344 +45,47 @@ check_silent() {   # what, actual
     fi
 }
 
-echo "a link that is fine"
-rm -f "$WORK/state"
-world up -41 1
-check_silent "says nothing at all" "$(run)"
-check_silent "and does not touch nmcli" "$(cat "$WORK/nmcli.log")"
+# --- the board ------------------------------------------------------------
+#
+# The Jetson as it is: an onboard Realtek on PCI called `wlP1p1s0`, a USB dongle
+# keeping the kernel's MAC-derived name, and a wired port that is down. Built
+# here rather than looked for, because the machine running this test is not that
+# board -- and the interesting case, a rover whose radio is not called `wlan0`,
+# cannot be arranged on it.
+mkdir -p "$WORK/net/enP8p1s0" \
+         "$WORK/net/wlP1p1s0/wireless" \
+         "$WORK/net/wlx002e2d3074d0/wireless" \
+         "$WORK/devices/pci0000:00/0000:01:00.0" \
+         "$WORK/devices/platform/usb1/1-2"
+ln -sf "$WORK/devices/pci0000:00/0000:01:00.0" "$WORK/net/wlP1p1s0/device"
+ln -sf "$WORK/devices/platform/usb1/1-2" "$WORK/net/wlx002e2d3074d0/device"
 
-echo
-echo "a link that is fading"
-rm -f "$WORK/state"
-world up -83 1
-check "counts the first strike" "1 of 3" "$(run)"
-check "counts the second" "2 of 3" "$(run)"
-out=$(run)
-check "switches on the third" "joining TheMaharaja at 84" "$out"
-check "to the loudest of ours, not the loudest AP" \
-    "con up TheMaharaja" "$(cat "$WORK/nmcli.log")"
-check "and only scans once it has decided to look" \
-    "dev wifi list --rescan yes" "$(cat "$WORK/nmcli.log")"
-run > /dev/null
-run > /dev/null
-check "then sits out the cooldown before moving again" \
-    "last looked around" "$(run)"
+printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n' \
+    > "$WORK/netroute"
+printf 'wlx002e2d3074d0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\n' \
+    >> "$WORK/netroute"
+printf 'wlP1p1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n' \
+    >> "$WORK/netroute"
 
-echo
-echo "a link that recovers before the strikes run out"
-rm -f "$WORK/state"
-world up -83 1
-check "one strike" "1 of 3" "$(run)"
-world up -41 1
-check_silent "and the count is dropped" "$(run)"
-world up -83 1
-check "so the next bad check starts over" "1 of 3" "$(run)"
+# /proc/net/wireless, for the signal `status` reports.
+mkdir -p "$WORK/proc"
+{
+    printf 'Inter-| sta-|   Quality        |   Discarded packets\n'
+    printf ' face | tus | link level noise |  nwid  crypt   frag\n'
+    printf 'wlP1p1s0: 0000   66.  -41.  -256  0 0 0 0 572 0\n'
+} > "$WORK/proc/wireless"
 
-echo
-echo "associated, but DHCP never answered"
-rm -f "$WORK/state"
-world up -41 0
-check "is a fault in its own right" "associated with no address" "$(run)"
-
-echo
-echo "off the air altogether"
-rm -f "$WORK/state"
-world dormant -41 0
-out=$(run)
-check "does not wait for three strikes" "not associated" "$out"
-check "and joins the strongest known network" "joining TheMaharaja at 84" "$out"
-check "waits a minute before trying again" "last looked around" "$(run)"
-
-echo
-echo "off the air, and staying that way"
-printf '9 0\n' > "$WORK/state"
-world dormant -41 0
-check "repairs instead of scanning again" "restarting the supplicant" "$(run)"
-check "and does it through a service, which a reboot would undo anyway" \
-    "systemctl try-restart wpa_supplicant.service" "$(cat "$WORK/nmcli.log")"
-printf '9 0\n' > "$WORK/state"
-check "and says so when even that will not go through" \
-    "could not restart the supplicant" "$(run SYSTEMCTL_STATUS=1)"
-
-echo
-echo "a driver that will not say how strong the link is"
-rm -f "$WORK/state"
-world up -256 1
-# -256 is this dongle's "no value" sentinel, and it turns up in the level column
-# for the odd single sample -- three times in two minutes of 1 Hz sampling, with
-# good reads either side. Read as a number it is a link 200 dB down, which used to
-# put "down to -256 dBm (1 of 3)" in the journal five times in half an hour, and
-# three in a row would have carried the rover off a link measuring -42.
-check "is not read as a link 200 dB down" "is not a reading" "$(run)"
-check_silent "and nothing is scanned over it" \
-    "$(grep 'dev wifi list' "$WORK/nmcli.log" || true)"
-world up -83 1
-check "nor does it leave a strike behind it" "1 of 3" "$(run)"
-
-echo
-echo "a link that comes good while the scan is running"
-rm -f "$WORK/state"
-world dormant -41 0
-out=$(run HEAL_ON_SCAN=1)
-check "spends no association on a fault that is already over" \
-    "came good at -41 dBm" "$out"
-check_silent "and brings nothing up" \
-    "$(grep 'con up' "$WORK/nmcli.log" || true)"
-
-echo
-echo "a deliberate join already in flight"
-rm -f "$WORK/state"
-world dormant -41 0
-if command -v flock > /dev/null 2>&1; then
-    # Held by this shell on a descriptor of its own, for exactly the scenarios that
-    # need it and not a moment longer. The obvious version -- a backgrounded
-    # `flock "$WORK/lock" sleep N` -- is wrong twice over: the lock lives on the
-    # descriptor the child inherits, so killing flock does not release it, and a
-    # timeout long enough for this Pi, where a process spawn costs a hundred times
-    # what it does on a desk, is long enough to leak into the scenarios below. It
-    # did: nine seconds took out the next nine assertions in this file.
-    exec 8> "$WORK/lock"
-    if flock -n 8; then
-        check "stands aside rather than choosing a network of its own" \
-            "being changed by something else" "$(run)"
-        check_silent "and brings nothing up" \
-            "$(grep 'con up' "$WORK/nmcli.log" || true)"
-        printf '2 0\n' > "$WORK/state"
-        run > /dev/null
-        check "and charges the link no strike for somebody else's work" \
-            "2 0" "$(cat "$WORK/state")"
-    else
-        fail=$((fail + 1))
-        echo "  FAIL  could not take the lock to test it with"
-    fi
-    exec 8>&-
-else
-    echo "  --    no flock here, so the lock goes untested"
-fi
-
-echo
-echo "a radio that answers nothing"
-rm -f "$WORK/state"
-world dormant -41 0
-check "is not the same as an empty neighbourhood" \
-    "scan came back empty" "$(run SCAN_EMPTY=1)"
-
-echo
-echo "an association that fails"
-rm -f "$WORK/state"
-world dormant -41 0
-check "is reported, not swallowed" "could not bring up" "$(run CON_UP_STATUS=4)"
-
-echo
-echo "an interface that is not even up"
-rm -f "$WORK/state"
-world down -41 0
-# The one this file was too kind to catch. `carrier` answers EINVAL rather than 0
-# for an interface that is administratively down, an awk that read it printed
-# nothing at all, and the defaults then reported a flawless link for a rover that
-# had no radio -- silently, three times a minute, until somebody noticed by hand.
-check "is a fault, not a healthy link" "not associated" "$(run)"
-
-echo
-echo "no interface there at all"
-rm -f "$WORK/state"
-check "is the same fault and not a reason to keep quiet" \
-    "not associated" "$(run OPERSTATE=$WORK/no-such-dongle)"
-
-echo
-echo "a radio that is switched off"
-rm -f "$WORK/state"
-world down -41 0
-out=$(run RADIO=disabled)
-check "is turned back on" "the radio is switched off; turning it on" "$out"
-check "which is the one thing here that touches that switch" \
-    "nmcli radio wifi on" "$(cat "$WORK/nmcli.log")"
-check_silent "and nothing is scanned while it is off" \
-    "$(grep 'dev wifi list' "$WORK/nmcli.log" || true)"
-rm -f "$WORK/state"
-check "and a switch that will not move is reported" \
-    "could not turn the radio on" "$(run RADIO=disabled RADIO_ON_STATUS=1)"
-
-echo
-echo "nothing worth moving to"
-rm -f "$WORK/state"
-world up -83 1
-SCAN='*:TheGreatLord:20
- :TheMaharaja:12'
-run > /dev/null; run > /dev/null
-check "leaves a bad link alone" "nothing better is audible" "$(run)"
-SCAN='*:TheGreatLord:52
- :TheMaharaja:84
- :TheGreatViking:66'
-
-echo
-echo "a dry run"
-rm -f "$WORK/state"
-world up -83 1
-check "reaches a decision" "joining TheMaharaja" "$(dry STRIKES=1)"
-check_silent "without bringing anything up" "$(grep 'con up' "$WORK/nmcli.log" || true)"
-if [ -e "$WORK/state" ]; then
-    fail=$((fail + 1))
-    echo "  FAIL  and without leaving state behind"
-else
-    pass=$((pass + 1))
-    echo "  ok    and without leaving state behind"
-fi
-
-echo
-echo "a state file left half written"
-printf 'nonsense\n' > "$WORK/state"
-world up -41 1
-check_silent "is read as no history rather than crashing" "$(run)"
-
-echo
-echo "a /proc that cannot be read"
-rm -f "$WORK/state"
-world up -41 1
-# Which awk is installed decides *what* this says -- mawk gives up on a directory
-# where gawk skips it and reads on -- so the only assertion that holds on both is
-# that it says something. That is the whole of the branch: the version that
-# substituted a healthy link for a link it could not read is why a rover with its
-# radio switched off looked fine for fifteen minutes, in silence.
-check_loud "is never passed off as a healthy link" "$(run WIRELESS=$WORK)"
-
-echo
-echo "the daemon's own join, the other thing that moves this link"
-rm -f "$WORK/state"
-: > "$WORK/nmcli.log"
-ctl=$(env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" SCAN="$SCAN" \
-    STATE="$WORK/state" LOCK="$WORK/lock" \
-    sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
-check "brings up the profile that already holds the passphrase" \
-    "con up TheMaharaja" "$(cat "$WORK/nmcli.log")"
-check "and bounds the wait, so the daemon is never left guessing" \
-    "nmcli -w" "$(cat "$WORK/nmcli.log")"
-# The stamp is what gives a hand-picked network the same cooldown as one the roamer
-# picked itself. Without it the rover was moved back off it on the next bad reading.
-check "clears the roamer's strikes and stamps its clock" \
-    "0 " "$(cat "$WORK/state")"
-check_silent "and says nothing when it worked" "$ctl"
-: > "$WORK/nmcli.log"
-check "a network with no passphrase here is still refused" \
-    "no configured network called" \
-    "$(env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
-        STATE="$WORK/state" LOCK="$WORK/lock" \
-        sh "$HERE/wifi_ctl.sh" join Alister 2>&1)"
-check_silent "and brings nothing up on the way to refusing it" \
-    "$(grep 'con up' "$WORK/nmcli.log" || true)"
-
-# The dongle's network is reached through a profile that is not named after it,
-# which is the arrangement on the rover: two radios pinned to two routers, so
-# two profiles, and the second one is TheGreatViking-dongle. Comparing SSIDs
-# against profile names told the console there was no passphrase for a network
-# the rover holds the key for, and then refused the join it had greyed out.
-: > "$WORK/nmcli.log"
-named=$(env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
-    STATE="$WORK/state" LOCK="$WORK/lock" \
-    sh "$HERE/wifi_ctl.sh" profiles 2>&1)
-check "a profile is reported by the network it is for, not by its own name" \
-    "TheGreatViking" "$named"
-check_silent "and its own name is never offered as a network" \
-    "$(echo "$named" | grep -- '-dongle' || true)"
-
-: > "$WORK/nmcli.log"
-env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
-    STATE="$WORK/state" LOCK="$WORK/lock" \
-    sh "$HERE/wifi_ctl.sh" join TheGreatViking > /dev/null 2>&1
-check "joining that network brings up the profile that holds it" \
-    "con up TheGreatViking-dongle" "$(cat "$WORK/nmcli.log")"
-# The profile pins its own radio. Naming a different one here is how a join
-# fails with the profile and the interface contradicting each other.
-check_silent "and does not argue with the radio the profile is pinned to" \
-    "$(grep 'con up TheGreatViking-dongle ifname' "$WORK/nmcli.log" || true)"
-
-
-echo
-echo "the same helper, on a rover with no NetworkManager"
-# The Banana Pi: netplan and wpa_supplicant, no nmcli. WIFI_BACKEND forces
-# that path even though the fake nmcli is still on PATH for the roam tests
-# above. The fakes record rather than associate, and the scan they answer
-# with is the one measured on that dongle -- TheGreatLord plus a neighbour.
-cat > "$WORK/bin/wpa_cli" <<'FAKE'
-#!/bin/sh
-echo "wpa_cli $*" >> "$NMCLI_LOG"
-case "$*" in
-    *list_networks*)
-        printf 'network id / ssid / bssid / flags\n'
-        printf '0\tTheMaharaja\tany\t\n'
-        printf '1\tTheGreatViking\tany\t\n'
-        printf '2\tTheGreatLord\tany\t[CURRENT]\n'
-        ;;
-    *scan_results*)
-        printf 'bssid / frequency / signal level / flags / ssid\n'
-        printf 'b0:19:21:b9:4e:fe\t2427\t-46\t[WPA2-PSK-CCMP][ESS]\tTheGreatLord\n'
-        printf 'e0:cc:7a:97:21:74\t2437\t-68\t[WPA2-PSK-CCMP][ESS]\tTheGreatViking\n'
-        ;;
-    *scan*) echo OK ;;
-    *select_network*) echo OK ;;
-    *enable_network*) echo OK ;;
-    *status*)
-        # A supplicant that will not settle, for the one scenario that needs the
-        # join to run out of time rather than succeed.
-        if [ -n "${WPA_NEVER_JOINS:-}" ]; then
-            printf 'wpa_state=SCANNING\n'
-        else
-            printf 'wpa_state=COMPLETED\nssid=TheMaharaja\n'
-        fi
-        ;;
-esac
-exit 0
-FAKE
-chmod +x "$WORK/bin/wpa_cli"
-cat > "$WORK/bin/iw" <<'FAKE'
-#!/bin/sh
-echo "iw $*" >> "$NMCLI_LOG"
-case "$*" in
-    *link*)
-        printf 'Connected to b0:19:21:b9:4e:fe (on wlan0)\n\tSSID: TheGreatLord\n'
-        ;;
-    *scan\ dump*)
-        printf 'BSS b0:19:21:b9:4e:fe(on wlan0) -- associated\n'
-        printf '\tsignal: -46.00 dBm\n'
-        printf '\tSSID: TheGreatLord\n'
-        printf '\tRSN:\n'
-        ;;
-esac
-exit 0
-FAKE
-chmod +x "$WORK/bin/iw"
-
-: > "$WORK/nmcli.log"
-listed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    SCAN_WAIT=0 SCAN_GIVE_UP=0 \
-    sh "$HERE/wifi_ctl.sh" list 2>&1)
-check "lists the cached BSS without asking the radio to look" \
-    "*:TheGreatLord:100:WPA2" "$listed"
-check_silent "and does not start a scan to do it" \
-    "$(grep 'wpa_cli .*scan' "$WORK/nmcli.log" || true)"
-
-: > "$WORK/nmcli.log"
-scanned=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    SCAN_WAIT=0 SCAN_GIVE_UP=0 \
-    sh "$HERE/wifi_ctl.sh" scan 2>&1)
-check "a scan names the neighbour as well" \
-    "TheGreatViking" "$scanned"
-check "at the 0-100 figure the panel already ranks by" \
-    "TheGreatViking:64:" "$scanned"
-
-
-echo
-echo "the house networks, and the pinning that stopped them being redundant"
-# Two radios are only two paths if either of them can take any network. Pinning
-# a profile to one radio meant the spare could not use it, which is the whole of
-# what the spare is for -- and the rover was left with one network per radio and
-# no profile at all for the third. This drives the fixer against a fake
-# NetworkManager that remembers what it was told, so the assertions are about
-# the state it ends in rather than the commands it was sent.
-mkdir -p "$WORK/nmbin" "$WORK/nm"
+echo "the house networks, and the pinning that decides what the rover joins"
+# The rover as it was found under the old failover arrangement: three unpinned
+# profiles, every one of them set to autoconnect, one still named after the
+# radio it used to belong to, a stray duplicate, and nothing for the third
+# network. This drives the fixer against a fake NetworkManager that remembers
+# what it was told, so the assertions are about the state it ends in rather than
+# the commands it was sent.
+mkdir -p "$WORK/nmbin" "$WORK/nm" "$WORK/nmconf"
 cat > "$WORK/nmbin/nmcli" <<'FAKE'
 #!/bin/sh
-# name|ssid|pinned-interface, one line per profile.
+# name|ssid|pinned-interface|autoconnect|addresses, one line per profile.
 echo "nmcli $*" >> "$NMCLI_LOG"
 rewrite() { mv "$PROFILES.new" "$PROFILES"; }
 case "$1 $2" in
@@ -575,6 +97,8 @@ esac
 case "$*" in
     "-g 802-11-wireless.ssid con show "*)
         awk -F'|' -v n="$5" '$1 == n { print $2 }' "$PROFILES" ;;
+    "-g connection.interface-name con show "*)
+        awk -F'|' -v n="$5" '$1 == n { print $3 }' "$PROFILES" ;;
     "con delete "*)
         awk -F'|' -v n="$3" '$1 != n' "$PROFILES" > "$PROFILES.new"; rewrite ;;
     "con reload")
@@ -583,31 +107,47 @@ case "$*" in
             [ -e "$f" ] || continue
             id=$(sed -n 's/^id=//p' "$f")
             grep -q "^$id|" "$PROFILES" && continue
-            printf '%s|%s|\n' "$id" "$(sed -n 's/^ssid=//p' "$f")" >> "$PROFILES"
+            printf '%s|%s|||\n' "$id" "$(sed -n 's/^ssid=//p' "$f")" >> "$PROFILES"
         done ;;
     "con mod "*" connection.id "*)
         awk -F'|' -v o="$3" -v n="$5" 'BEGIN { OFS = "|" }
             $1 == o { $1 = n } { print }' "$PROFILES" > "$PROFILES.new"; rewrite ;;
     "con mod "*"connection.interface-name"*)
-        awk -F'|' -v n="$3" 'BEGIN { OFS = "|" }
-            $1 == n { $3 = "" } { print }' "$PROFILES" > "$PROFILES.new"; rewrite ;;
+        # The settings run is one call: read the pairs off the command line so
+        # the fake records what the profile actually ends up holding.
+        name=$3; shift 3
+        iface=; auto=; addr=
+        while [ $# -gt 1 ]; do
+            case $1 in
+                connection.interface-name) iface=$2 ;;
+                connection.autoconnect)    auto=$2 ;;
+                ipv4.addresses)            addr=$2 ;;
+            esac
+            shift 2
+        done
+        awk -F'|' -v n="$name" -v i="$iface" -v a="$auto" -v d="$addr" \
+            'BEGIN { OFS = "|" }
+             $1 == n { $3 = i; $4 = a; $5 = d } { print }' \
+            "$PROFILES" > "$PROFILES.new"; rewrite ;;
 esac
 exit 0
 FAKE
 chmod +x "$WORK/nmbin/nmcli"
 
-# The rover as it was found: the onboard radio's network pinned to it, the
-# dongle's network pinned to the dongle and named after it, a stray second
-# profile for that same network, and nothing at all for the third.
-printf 'TheGreatLord|TheGreatLord|wlP1p1s0\n' > "$WORK/profiles"
-printf 'TheGreatViking-dongle|TheGreatViking|wlx002e2d3074d0\n' >> "$WORK/profiles"
-printf 'TheGreatViking spare|TheGreatViking|\n' >> "$WORK/profiles"
+printf 'TheGreatLord|TheGreatLord||yes|\n' > "$WORK/profiles"
+printf 'TheGreatViking-dongle|TheGreatViking||yes|\n' >> "$WORK/profiles"
+printf 'TheGreatViking spare|TheGreatViking||yes|\n' >> "$WORK/profiles"
 echo not-the-real-key > "$WORK/wifi.key"
 
+profiles_run() {
+    env PATH="$WORK/nmbin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
+        PROFILES="$WORK/profiles" NM_DIR="$WORK/nm" NM_CONF_DIR="$WORK/nmconf" \
+        PSK_FILE="$WORK/wifi.key" SYSNET="$WORK/net" \
+        sh "$HERE/install-profiles.sh" 2>&1
+}
+
 : > "$WORK/nmcli.log"
-said=$(env PATH="$WORK/nmbin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
-    PROFILES="$WORK/profiles" NM_DIR="$WORK/nm" PSK_FILE="$WORK/wifi.key" \
-    sh "$HERE/install-profiles.sh" 2>&1)
+said=$(profiles_run)
 
 check "the network with no profile at all is given one" \
     "TheMaharaja: added" "$said"
@@ -625,195 +165,172 @@ check "and the one named after a radio is renamed to its network" \
 check "every network ends up with exactly one profile" \
     "TheGreatLord TheGreatViking TheMaharaja" \
     "$(cut -d'|' -f2 "$WORK/profiles" | sort | tr '\n' ' ' | sed 's/ $//')"
-check "...filed under its own name" \
-    "TheGreatLord TheGreatViking TheMaharaja" \
-    "$(cut -d'|' -f1 "$WORK/profiles" | sort | tr '\n' ' ' | sed 's/ $//')"
 
-# The point of the exercise. A profile tied to one radio is a profile the spare
-# radio cannot use, so there is no second path to fail over to.
-check_silent "and not one of them is left tied to a radio" \
-    "$(awk -F'|' '$3 != ""' "$WORK/profiles")"
+echo
+echo "one network at boot, and only one"
+# The whole of the rover's network policy. The home network comes up by itself;
+# the other two are ready and wait to be asked for. A second profile set to
+# autoconnect is the failover behaviour coming back by the side door -- the
+# rover would join whichever it saw first and nobody would have chosen.
+check "the home network is the one that autoconnects" \
+    "TheGreatViking|wlP1p1s0|yes" "$(cat "$WORK/profiles")"
+check_silent "and it is the only one that does" \
+    "$(awk -F'|' '$4 == "yes" && $2 != "TheGreatViking"' "$WORK/profiles")"
+check "the others are kept, ready to be joined by hand" \
+    "TheGreatLord|wlP1p1s0|no" "$(cat "$WORK/profiles")"
+
+# A profile that is not pinned is one NetworkManager may bring up on the dongle,
+# which is the radio this rover deliberately does not use.
+check_silent "not one profile is left free to land on the dongle" \
+    "$(awk -F'|' '$3 != "wlP1p1s0"' "$WORK/profiles")"
+check "the onboard radio is found by its bus, not by being called wlan0" \
+    "on wlP1p1s0" "$said"
+
+# The address the rover answers on. It is on every profile because the three
+# networks are bridged onto one LAN, so a network chosen by hand is still
+# reachable at the address the console and the certificate are written for.
+check_silent "every network carries the rover's service address" \
+    "$(awk -F'|' '$5 != "192.168.1.80/32"' "$WORK/profiles")"
+check "and keeps its DHCP lease alongside it" \
+    "ipv4.method auto" "$(cat "$WORK/nmcli.log")"
 # NM gives up on a profile after four failed attempts. That is what left this
 # rover's dongle off the air for six hours after a single link timeout.
 check "every profile is told to keep trying for ever" \
     "connection.autoconnect-retries 0" "$(cat "$WORK/nmcli.log")"
 
+echo
+echo "the dongle, whose driver stays and whose networking does not"
+check "NetworkManager is told to leave it alone" \
+    "managed=0" "$(cat "$WORK/nmconf/99-unmanaged-usb-wifi.conf")"
+check "and told by driver, so a replacement dongle is covered too" \
+    "match-device=driver:rtl8xxxu" "$(cat "$WORK/nmconf/99-unmanaged-usb-wifi.conf")"
+
 # Run twice: an install that is not idempotent is one nobody dares repeat, and
-# this one is expected to be re-run by every system deploy.
+# this one is re-run by every system deploy.
 : > "$WORK/nmcli.log"
-again=$(env PATH="$WORK/nmbin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
-    PROFILES="$WORK/profiles" NM_DIR="$WORK/nm" PSK_FILE="$WORK/wifi.key" \
-    sh "$HERE/install-profiles.sh" 2>&1)
-check "a second run finds all three and changes nothing" \
-    "TheGreatLord: already known" "$again"
-check_silent "and adds no profile the second time" \
+again=$(profiles_run)
+check_silent "a second run adds no profile" \
     "$(echo "$again" | grep -- ': added' || true)"
+check_silent "and deletes nothing" \
+    "$(echo "$again" | grep -- 'deleted a duplicate' || true)"
+check "and leaves the same one network autoconnecting" \
+    "TheGreatViking|wlP1p1s0|yes" "$(cat "$WORK/profiles")"
+
 echo
 echo "which radio a command is about when nobody names one"
 # The Jetson's onboard Realtek is wlP1p1s0 and its dongle is wlx002e2d3074d0, so
 # a helper that defaults to wlan0 asks the kernel about an interface that is not
 # there and answers nothing -- which is what left the console's network panel
-# empty on the day the rover became a Jetson. The board is built here rather
-# than looked for, because the machine running this test is not that board.
-mkdir -p "$WORK/net/enP8p1s0" "$WORK/net/wlP1p1s0/wireless" \
-    "$WORK/net/wlx002e2d3074d0/wireless"
-printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n' \
-    > "$WORK/netroute"
-printf 'wlx002e2d3074d0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\n' \
-    >> "$WORK/netroute"
-printf 'wlP1p1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n' \
-    >> "$WORK/netroute"
+# empty on the day the rover became a Jetson.
+cat > "$WORK/bin/nmcli" <<'FAKE'
+#!/bin/sh
+echo "nmcli $*" >> "$NMCLI_LOG"
+case "$*" in
+    "-t -f TYPE,NAME con show")
+        printf '802-11-wireless:TheGreatViking\n'
+        printf '802-11-wireless:TheGreatLord\n'
+        printf '802-3-ethernet:Wired connection 1\n' ;;
+    "-g 802-11-wireless.ssid con show "*) echo "$5" ;;
+    "-g connection.interface-name con show "*) echo "${PINNED:-}" ;;
+    *"dev wifi list"*)
+        printf '*:TheGreatViking:88:WPA2\n :TheGreatLord:64:WPA2\n' ;;
+esac
+exit "${NMCLI_STATUS:-0}"
+FAKE
+chmod +x "$WORK/bin/nmcli"
+
+ctl() {
+    env PATH="$WORK/bin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
+        SYSNET="$WORK/net" ROUTES="$WORK/netroute" WIRELESS="$WORK/proc" \
+        sh "$HERE/wifi_ctl.sh" "$@" 2>&1
+}
 
 : > "$WORK/nmcli.log"
-env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    SYSNET="$WORK/net" ROUTES="$WORK/netroute" \
-    sh "$HERE/wifi_ctl.sh" list > /dev/null 2>&1
-check "the radio carrying the traffic is the one asked about" \
-    "iw dev wlP1p1s0 link" "$(cat "$WORK/nmcli.log")"
-check_silent "and no interface is assumed to be called wlan0" \
+ctl list > /dev/null
+check_silent "no interface is assumed to be called wlan0" \
     "$(grep 'wlan0' "$WORK/nmcli.log" || true)"
-
-# The wired interface has no wireless/ directory, so it is never a candidate --
-# and on this board it is the one holding a default route whenever the cable is
-# in, which would otherwise be the interface every reading came from.
-printf 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n' \
-    > "$WORK/netroute"
-printf 'enP8p1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n' \
-    >> "$WORK/netroute"
-: > "$WORK/nmcli.log"
-env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    SYSNET="$WORK/net" ROUTES="$WORK/netroute" \
-    sh "$HERE/wifi_ctl.sh" list > /dev/null 2>&1
-check "a wired default route does not make the ethernet port a radio" \
-    "iw dev wlP1p1s0 link" "$(cat "$WORK/nmcli.log")"
-
-# A trailing argument still wins, which is how the dual-radio manager asks about
-# one particular radio.
-: > "$WORK/nmcli.log"
-env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    SYSNET="$WORK/net" ROUTES="$WORK/netroute" \
-    sh "$HERE/wifi_ctl.sh" list wlx002e2d3074d0 > /dev/null 2>&1
-check "and a caller that names a radio is still obeyed" \
-    "iw dev wlx002e2d3074d0 link" "$(cat "$WORK/nmcli.log")"
-
-# The same question asked of NetworkManager, where naming a radio used to be
-# accepted and then ignored. It is the question failover asks -- what can the
-# *spare* reach from where the rover is standing -- and a merged list of what
-# both radios heard is the wrong answer to it, because the spare cannot use half
-# of it. Asked with no radio it must still merge, which is what the console wants.
-: > "$WORK/nmcli.log"
-env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" SCAN="$SCAN" \
-    sh "$HERE/wifi_ctl.sh" list wlx002e2d3074d0 > /dev/null 2>&1
-check "one radio's hearing is asked of that radio" \
-    "dev wifi list ifname wlx002e2d3074d0" "$(cat "$WORK/nmcli.log")"
-: > "$WORK/nmcli.log"
-env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" SCAN="$SCAN" \
-    sh "$HERE/wifi_ctl.sh" list > /dev/null 2>&1
-check_silent "and with no radio named the list still merges both" \
+check_silent "and with no radio named the list is not narrowed to one" \
     "$(grep 'dev wifi list ifname' "$WORK/nmcli.log" || true)"
 
-named=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    sh "$HERE/wifi_ctl.sh" profiles 2>&1)
-check "profiles are the ones wpa_supplicant already holds" \
-    "TheMaharaja" "$named"
+: > "$WORK/nmcli.log"
+ctl list wlx002e2d3074d0 > /dev/null
+check "a caller that names a radio is obeyed" \
+    "dev wifi list ifname wlx002e2d3074d0" "$(cat "$WORK/nmcli.log")"
 
 : > "$WORK/nmcli.log"
-ctl=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    STATE="$WORK/state" LOCK="$WORK/lock" \
-    sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
-check "a join selects the network that already holds the passphrase" \
-    "select_network 0" "$(cat "$WORK/nmcli.log")"
-check_silent "and says nothing when it worked" "$ctl"
-check "a network with no passphrase here is still refused" \
-    "no configured network called" \
-    "$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-        STATE="$WORK/state" LOCK="$WORK/lock" \
-        sh "$HERE/wifi_ctl.sh" join Alister 2>&1)"
-
-# A join that never completes is the case that can strand a wifi-only board:
-# select_network has already disabled the other two networks, and leaving them
-# that way pins the rover to the one AP it has just failed to reach.
+ctl scan > /dev/null
+check "a scan asks the radio to look again" "--rescan yes" "$(cat "$WORK/nmcli.log")"
 : > "$WORK/nmcli.log"
-failed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
-    STATE="$WORK/state" LOCK="$WORK/lock" JOIN_WAIT=1 WPA_NEVER_JOINS=1 \
-    sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
-check "a join that times out says so" "could not associate" "$failed"
-check "and gives the other networks back before it gives up" \
-    "enable_network all" "$(cat "$WORK/nmcli.log")"
+ctl list > /dev/null
+check "and a list settles for what it last heard" \
+    "--rescan no" "$(cat "$WORK/nmcli.log")"
 
 echo
-echo "a join with the dual-radio manager running, which costs nothing"
-# The other half of the branch above. With a manager holding both radios, a join
-# must not touch the radio itself: the manager re-pins every radio once a second,
-# so a select_network here would be undone inside a second and would have dropped
-# the link on the way. It hands over a request instead, and the manager moves the
-# *spare* and transfers the traffic after it.
+echo "profiles, and the joins they do and do not allow"
+check "profiles are reported as networks, not as profile names" \
+    "TheGreatViking" "$(ctl profiles)"
+
 : > "$WORK/nmcli.log"
-rm -f "$DUAL_REQUEST"
-printf '{"active": "wlan0", "radios": [{"iface": "wlan0"}]}
-' > "$WORK/manager.json"
-handed=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log"     DUAL_STATUS="$WORK/manager.json" DUAL_REQUEST="$DUAL_REQUEST"     STATE="$WORK/state" LOCK="$WORK/lock"     sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
-check "it hands the network to the manager instead"     "asked the wifi manager" "$handed"
-check "and writes what was asked for where the manager will find it"     "TheMaharaja" "$(cat "$DUAL_REQUEST" 2>/dev/null)"
-check_silent "and never touches the radio itself"     "$(grep 'select_network' "$WORK/nmcli.log" || true)"
-# Naming no interface is what lets the manager choose the spare, which is the
-# whole reason this path is better than the one above. A request that named the
-# active radio would be the old join with extra steps.
-check_silent "and leaves the manager to choose which radio moves"     "$(grep 'iface' "$DUAL_REQUEST" || true)"
-# A manager that died an hour ago must not swallow joins for ever. The file is
-# there; its age is what decides, and this one is older than the manager's tick.
-touch -d '1 hour ago' "$WORK/manager.json" 2>/dev/null || touch -t 200001010000 "$WORK/manager.json"
+joined=$(env PINNED=wlP1p1s0 PATH="$WORK/bin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
+    SYSNET="$WORK/net" ROUTES="$WORK/netroute" WIRELESS="$WORK/proc" \
+    sh "$HERE/wifi_ctl.sh" join TheGreatLord 2>&1)
+check "a join brings up the profile that already holds the passphrase" \
+    "con up TheGreatLord" "$(cat "$WORK/nmcli.log")"
+check_silent "and says nothing when it worked" "$joined"
+# A pinned profile and a named interface contradict each other, and NM refuses
+# the pair rather than choosing one. Every profile on this rover is pinned.
+check_silent "and does not argue with the radio the profile is pinned to" \
+    "$(grep 'con up TheGreatLord ifname' "$WORK/nmcli.log" || true)"
+
 : > "$WORK/nmcli.log"
-rm -f "$DUAL_REQUEST"
-stale=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log"     DUAL_STATUS="$WORK/manager.json" DUAL_REQUEST="$DUAL_REQUEST"     STATE="$WORK/state" LOCK="$WORK/lock"     sh "$HERE/wifi_ctl.sh" join TheMaharaja 2>&1)
-check "a status file left by a dead manager is not believed"     "select_network" "$(cat "$WORK/nmcli.log")"
+ctl join TheGreatViking wlx002e2d3074d0 > /dev/null
+check "an unpinned profile still goes on the radio the caller named" \
+    "ifname wlx002e2d3074d0" "$(cat "$WORK/nmcli.log")"
+
+: > "$WORK/nmcli.log"
+check "a network this rover has no passphrase for is refused" \
+    "no configured network called" "$(ctl join Alister)"
+check_silent "and nothing is brought up on the way to refusing it" \
+    "$(grep 'con up' "$WORK/nmcli.log" || true)"
+check "a join with no network named is refused too" \
+    "join needs an SSID" "$(ctl join)"
 
 echo
-echo "the roamer itself, on the rover with no NetworkManager"
-# Everything above drove the NetworkManager path. This is the same script on the
-# board that is actually the rover now -- netplan, wpa_supplicant, no nmcli -- and
-# it is here because the roamer was nmcli-only for as long as that board has
-# existed, which is to say it has never once run on the rover it was written for.
-rm -f "$WORK/state"
-world down -90 0
-switches 0
-out=$(_run "" WIFI_BACKEND=wpa RFKILL="$WORK/rfkill" SCAN_WAIT=0 SCAN_GIVE_UP=0)
-check "goes looking on a board with no nmcli at all" "not associated" "$out"
-check "picks the strongest of ours that is not the one it is on"     "joining TheGreatViking at 64" "$out"
-check "and joins it the way a supplicant is joined"     "select_network 1" "$(cat "$WORK/nmcli.log")"
-check_silent "without ever reaching for nmcli"     "$(grep -c 'nmcli' "$WORK/nmcli.log" | grep -v '^0$' || true)"
+echo "status, which has to answer when everything else is broken"
+# It is what a person reaches for when the console is not loading, so it goes to
+# the kernel rather than to NetworkManager and needs no privilege.
+cat > "$WORK/bin/iw" <<'FAKE'
+#!/bin/sh
+[ "$2" = wlP1p1s0 ] && echo "        SSID: TheGreatViking"
+exit 0
+FAKE
+cat > "$WORK/bin/ip" <<'FAKE'
+#!/bin/sh
+case "$*" in
+    *wlP1p1s0*) echo "2: wlP1p1s0    inet 192.168.1.80/32 scope global" ;;
+esac
+exit 0
+FAKE
+chmod +x "$WORK/bin/iw" "$WORK/bin/ip"
 
-echo
-echo "a rover found with its radio switched off, on that same board"
-# The fault that has no way back: the switch survives a reboot on both stacks, so
-# a rover that is soft-blocked stays soft-blocked, and a board with no ethernet
-# has nothing else to be reached by.
-rm -f "$WORK/state"
-world down -90 0
-switches 1
-out=$(_run "" WIFI_BACKEND=wpa RFKILL="$WORK/rfkill" SCAN_WAIT=0 SCAN_GIVE_UP=0)
-check "notices the block before spending a scan on it"     "the radio is switched off" "$out"
-check "and unblocks it" "rfkill unblock wifi" "$(cat "$WORK/nmcli.log")"
-check_silent "and does not scan while it is blocked"     "$(grep 'scan_results' "$WORK/nmcli.log" || true)"
-switches 0
+: > "$WORK/nmcli.log"
+state=$(ctl status)
+check "it names the network the rover is on" "TheGreatViking" "$state"
+check "with the signal the driver reports" "-41 dBm" "$state"
+check "and the address to reach it at" "192.168.1.80" "$state"
+# The dongle is deliberately carrying nothing. A status that hid it would look
+# like a radio had gone missing.
+check "the dongle is listed, and honestly" "not associated" "$state"
+check_silent "and none of it costs a call to NetworkManager" \
+    "$(cat "$WORK/nmcli.log")"
 
-echo
-echo "the repair, on a board that runs one supplicant per interface"
-# Restarting the wrong supplicant is the quietest failure available here: on a
-# netplan box `wpa_supplicant.service` exists, is restartable, and manages
-# nothing, so the repair would report success and change nothing at all.
-rm -f "$WORK/state"
-world dormant -90 0
-printf '9 0
-' > "$WORK/state"
-out=$(_run "" WIFI_BACKEND=wpa RFKILL="$WORK/rfkill" NETPLAN_UNIT_ACTIVE=1     SCAN_WAIT=0 SCAN_GIVE_UP=0)
-check "restarts the one that is actually holding the interface"     "netplan-wpa-wlan0.service" "$out"
-check "and does it through systemd"     "systemctl try-restart netplan-wpa-wlan0.service" "$(cat "$WORK/nmcli.log")"
-
-echo
-echo "across every scenario above"
-check_silent "the radio is never switched off, in any of them" \
-    "$(grep -F 'radio wifi off' "$WORK/nmcli.all" 2>/dev/null || true)"
+# A host with no radio at all is the one case where there is nothing to say, and
+# saying nothing quietly would read as a healthy rover with no networks.
+mkdir -p "$WORK/empty"
+check "a host with no radio says so rather than answering blank" \
+    "no wireless interface" \
+    "$(env PATH="$WORK/bin:$PATH" NMCLI_LOG="$WORK/nmcli.log" SYSNET="$WORK/empty" \
+        ROUTES="$WORK/netroute" sh "$HERE/wifi_ctl.sh" status 2>&1)"
 
 echo
 echo "$pass passed, $fail failed"

@@ -90,45 +90,35 @@ not be made to happen on demand, so there was nothing to fix in front of.
 That is why the counters ship rather than being taken out once the patch was
 written. If `rx_urb_errors` climbs on this rover, the mechanism is confirmed and
 the patch is doing the work; if the radio goes deaf again while both counters
-sit at zero, the cause is somewhere else and the keeper below is what is keeping
-the rover on the air.
+sit at zero, the cause is somewhere else.
 
-## The keeper
+Neither outcome costs the rover anything now. See
+[What this radio is for](#what-this-radio-is-for).
 
-`keeper.sh`, run every minute by `dongle-keeper.timer`. If the spare radio has
-not been associated to anything for three checks running, it reloads the driver
-and lets NetworkManager reconnect.
+## What this radio is for
 
-This is a backstop, not the fix, and it is here because the original fault was
-silent and total for six hours on a rover with nothing watching. A radio nobody
-watches is not a spare, whatever its driver does.
+**Nothing routes through it.** The rover uses its onboard radio, and
+NetworkManager is told to leave this one alone -- see
+[`wifi_roam/README.md`](../wifi_roam/README.md). The driver is built and kept
+working so the hardware is there to be picked up again, by a person choosing it
+with `wifi_ctl.sh join <ssid> <iface>` or by whatever wants a second radio next,
+not because anything currently depends on it.
 
-Two things keep it safe. **It only ever touches the spare**: it finds its
-interface by asking which one the `rtl8xxxu` driver has bound, never by name,
-and the rover's primary radio is a different driver on a different bus
-(`rtl88x2ce`, PCIe), so the worst this can do is disturb a radio that is already
-not working — never the link a console or an SSH session is arriving over. And
-it is slow to act: three consecutive misses, then a five-minute cooldown, so a
-legitimate two-second roam is never mistaken for a fault and a reload is never
-piled on top of the last one.
+That is also why a driver reload here is free: it takes down a radio carrying no
+traffic, on a different bus from the one the rover's link is on.
 
-`selftest.sh` drives it through all of that with no radio present — working,
-roaming, dead, dead again too soon, and the module not loaded at all. The states
-that matter most are the ones where it must do nothing.
-
-It was also watched doing the job on the rover, twice, on 2026-08-31. With the
-module removed it noticed and reloaded within 29 seconds. With the radio present
-but not associating it counted 1 of 3, 2 of 3, reloaded on the third, and the
-radio was back on the air with an address two and a half minutes after the
-fault — on `TheMaharaja`, the stronger of the two networks the primary was not
-using, which is the unpinned profiles doing their part.
+There used to be a keeper -- `keeper.sh`, run every minute by
+`dongle-keeper.timer` -- which reloaded the driver after three checks with no
+association. It worked, and was watched doing the job on the rover twice on
+2026-08-31, recovering the radio within 29 seconds in one case and two and a
+half minutes in the other. It went on 2026-08-31 with the rest of the second
+radio's networking: nothing associates this dongle any more, so there is no
+association for a keeper to miss. Git history has it if a second radio ever
+carries traffic again.
 
 ```bash
-sh dongle_driver/selftest.sh                     # anywhere
-ssh orin 'systemctl status dongle-keeper.timer'  # is it armed
-ssh orin 'journalctl -u dongle-keeper -n 20'     # what it has been deciding
-ssh orin '/usr/local/sbin/dongle-keeper.sh -n'   # what it would do right now
+ssh orin '/usr/local/sbin/wifi_ctl.sh status'   # both radios; this one names no network
+ssh orin 'dkms status rtl8xxxu'                 # the driver is built for this kernel
 ```
 
-Install it switched off with `KEEPER=off`, for a rover being worked on where a
-driver reload arriving mid-measurement would make the measurement a lie.
+
