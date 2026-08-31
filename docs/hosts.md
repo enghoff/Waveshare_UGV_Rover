@@ -123,10 +123,14 @@ without being told to. Intel's udev rule was already in
 is in group `users`, so libusb can open the camera.
 
 Measured here with the rest of the rover running: OAK-D-LITE at USB `HIGH`,
-320x240 depth at 10.0 fps, 43-48% of pixels valid, 73.0 degrees across a 7.5 cm
-baseline, no device errors. It costs **1.5% of one core and 157 MB**, against
-13% of a core on the Banana Pi. The gimbal camera and the driver board are
-unaffected beside it.
+320x240 depth, 43-48% of pixels valid, 73.0 degrees across a 7.5 cm baseline, no
+device errors. It costs **1.5% of one core and 157 MB**, against 13% of a core on
+the Banana Pi. The gimbal camera and the driver board are unaffected beside it.
+
+That was taken at 10 fps, which was the default until later the same day. **The
+service now runs at 2 fps**, because nothing reads `/depth` yet and a parked rover
+has nothing new to look at; `oak_depth/depth_server.py` explains the reasoning and
+`--fps` raises it again.
 
 `~/ugv/oak_depth/run_oak_depth.sh` from the `jetson` crontab is what keeps it
 open, and its being alive is the whole of the camera being awake: a booted

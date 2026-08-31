@@ -76,7 +76,17 @@ firmware the camera gets.
 The pipeline is deliberately modest. Mono at 480p because the OV7251 sensors are
 native there, left-right check and subpixel on, a 5×5 median, and the depth map
 decimated 2× **on the device** so 320×240 crosses the wire rather than 640×480.
-Measured with the service running and the rover otherwise doing its usual work:
+
+**The default is two frames a second**, lowered from ten on 2026-08-31. Nothing
+consumes `/depth` yet and a parked rover is not looking at anything new, so the
+job is to have a range ready when somebody asks rather than to stream one; two
+frames a second means the answer is never more than half a second old. Raising it
+is `--fps`, and because the rate is baked into the pipeline when it is built,
+changing it is a restart and a fresh firmware upload rather than a live retune.
+
+The table below was measured at the old 10 fps default, with the service running
+and the rover otherwise doing its usual work. The rates and the link cost scale
+with `--fps`; the rest does not:
 
 | | on the Jetson Orin Nano, 2026-08-31 | on the Banana Pi, 2026-08-23 |
 |---|---|---|
@@ -91,9 +101,10 @@ The two valid-pixel figures are different rooms rather than different hardware:
 the fraction of the frame stereo can range is a property of what the camera is
 looking at, and a near, textureless wall returns no disparity at all.
 
-The 1.5 MB/s is the number the pipeline was designed around rather than a
-by-product: everything on this rover shares one 480 Mbps root port — the wifi
-dongle, the tracking camera, the lidar's serial adapter and this — and
+The link cost is the number the pipeline was designed around rather than a
+by-product — 1.5 MB/s at the 10 fps this was measured at, and about 300 kB/s at
+today's default of 2. Everything on this rover shares one 480 Mbps root port — the
+wifi dongle, the tracking camera, the lidar's serial adapter and this — and
 [docs/oak-usb-link.md](../docs/oak-usb-link.md) has the OAK alone saturating near
 40 MB/s when colour and aligned depth are paired. Losing the wifi adapter to USB
 contention means losing the way to say "stop". `--fps` and `--decimation` are the

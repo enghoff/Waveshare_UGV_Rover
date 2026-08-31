@@ -1,8 +1,8 @@
 """Stereo depth from the OAK, on the rover, kept alive from boot. Millimetres out.
 
-    python3 depth_server.py                 # loopback 8770, 320x240 depth at 10 fps
+    python3 depth_server.py                 # loopback 8770, 320x240 depth at 2 fps
     python3 depth_server.py --bind 0.0.0.0  # ...reachable from the LAN as well
-    python3 depth_server.py --fps 5         # slower, and a third of the USB traffic
+    python3 depth_server.py --fps 10        # video rate, and five times the USB traffic
 
     GET /health     is the device up, what is it, and how is the depth
     GET /depth      the newest frame as a coarse grid and per-sector ranges
@@ -58,17 +58,27 @@ VENDOR = HERE / "vendor"
 DEFAULT_PORT = 8770
 DEFAULT_BIND = "127.0.0.1"
 # Mono at 480p because the OV7251 sensors are native there and 400p is a crop, and
-# depth decimated 2x on the device. 320x240 of uint16 at 10 fps is 1.5 MB/s on a
-# bus this rover also runs its camera, its wifi dongle and its lidar over; the
-# undecimated 640x480 at 15 would be 9. The rover has never needed depth at video
-# rate and the link is the thing worth spending carefully -- 40 MB/s is where it
-# saturates, and losing the wifi adapter means losing the way to say "stop".
-DEFAULT_FPS = 10
+# depth decimated 2x on the device.
+#
+# **Two frames a second, not ten.** Nothing on this rover consumes /depth yet, and
+# a parked rover is not looking at anything new; the camera is here so that a
+# range is available when somebody asks for one, which two frames a second
+# satisfies with a worst-case staleness of half a second. 320x240 of uint16 at 2
+# fps is 300 kB/s on a bus this rover also runs its camera, its wifi dongle and
+# its lidar over -- where the old 10 fps default cost 1.5 MB/s and the undecimated
+# 640x480 at 15 would cost 9. The link is the thing worth spending carefully: 40
+# MB/s is where it saturates, and losing the wifi adapter means losing the way to
+# say "stop".
+#
+# Raise it with --fps when something actually reads this at rate. The rate is
+# fixed when the pipeline is built, so changing it is a restart and a fresh
+# firmware upload -- there is no way to retune a running device.
+DEFAULT_FPS = 2
 DECIMATION = 2
 # How long a frame may be missing before this process gives up and lets the
 # supervisor open the device again from scratch. Nothing else recovers a Myriad
 # that has been browned out or unplugged, so exiting *is* the repair. Generous
-# enough not to fire on a slow moment: at 10 fps this is fifty frames.
+# enough not to fire on a slow moment: at the default 2 fps this is ten frames.
 FRAME_TIMEOUT_S = 5.0
 # Depths outside this are not measurements. The 7.5 cm baseline stops overlapping
 # below about 20 cm, and beyond 6 m one disparity step is more than a metre.
