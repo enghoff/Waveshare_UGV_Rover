@@ -244,7 +244,15 @@ SERVICE_RETRY_S = 1.0
 
 # --- the board ------------------------------------------------------------
 
-DEFAULT_SERIAL = "/dev/ttyS4"
+# One name per board for the same three header pins, and only one of them is
+# ever present: ttyTHS1 is UART1 on the Jetson Orin Nano's 40-pin header, ttyS4
+# is UART4 on the Banana Pi M4 Zero, ttyAMA0 is the Pi 1. Kept in step with
+# SERIAL_CANDIDATES in rover_daemon/board_link.py, which this deliberately does
+# not import: this script is meant to run on a bare checkout with the daemon
+# stopped, which is exactly when there is nothing else to depend on.
+SERIAL_CANDIDATES = ("/dev/ttyTHS1", "/dev/ttyS4", "/dev/ttyAMA0")
+DEFAULT_SERIAL = next((p for p in SERIAL_CANDIDATES if os.path.exists(p)),
+                      SERIAL_CANDIDATES[0])
 BAUD = 115200
 SERIAL_CONSOLE_HINT = ("Is a getty still on it? `systemctl status serial-getty@"
                        + DEFAULT_SERIAL.rsplit("/", 1)[-1] + "`")

@@ -328,6 +328,9 @@ def selected_components(manifest: dict[str, Any], names: list[str] | None,
                         host_filter: str | None) -> list[dict[str, Any]]:
     components = []
     requested = set(names or [])
+    if host_filter is not None and host_filter not in manifest["hosts"]:
+        raise DeployError("unknown host: %s (manifest knows %s)"
+                          % (host_filter, ", ".join(sorted(manifest["hosts"]))))
     known = {item["name"] for item in manifest["components"]}
     unknown = requested - known
     if unknown:
@@ -350,7 +353,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adopt", action="store_true", help="record HEAD as deployed for selected components without copying anything")
     parser.add_argument("--system", action="store_true", help="allow privileged system installers (wifi_roam/netwatch)")
     parser.add_argument("--only", action="append", metavar="COMPONENT", help="limit to one component; repeatable")
-    parser.add_argument("--host", choices=("bpi", "media"), help="limit to one target host")
+    # Deliberately not `choices=`: those are fixed when the parser is built and
+    # the manifest is not read until after that, so the list went stale -- it was
+    # still offering `media`, a GPU host this repository stopped deploying to
+    # some time ago. The manifest is the source of truth for what hosts exist,
+    # so the name is checked against it in selected_components() instead.
+    parser.add_argument("--host", metavar="HOST",
+                        help="limit to one target host, as named in manifest.json")
     return parser.parse_args()
 
 

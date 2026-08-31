@@ -5,7 +5,7 @@ to the same ESP32 -- what differs is both ends of the pipe: the pad arrives over
 Bluetooth as a joystick device instead of through XInput, and the board is
 reached down the GPIO UART instead of over WiFi or a USB cable.
 
-    python3 drive_gamepad_pi.py                    # the GPIO UART, /dev/ttyS4
+    python3 drive_gamepad_pi.py                    # the GPIO UART, found by name
     python3 drive_gamepad_pi.py --serial /dev/ttyUSB0
     python3 drive_gamepad_pi.py --host 192.168.1.22  # over the network instead
     python3 drive_gamepad_pi.py --device /dev/input/js1
@@ -60,9 +60,16 @@ import sys
 import time
 
 # The GPIO UART, which is where this board's ESP32 is wired -- there is no USB
-# serial to find. ttyS4 is UART4 on the Banana Pi M4 Zero's 40-pin header;
-# ttyAMA0 is the same pins on the Pi 1.
-DEFAULT_SERIAL = "/dev/ttyS4"
+# serial to find. One name per board for those three header pins, and only one
+# of them is ever present: ttyTHS1 is UART1 on the Jetson Orin Nano's 40-pin
+# header, ttyS4 is UART4 on the Banana Pi M4 Zero, ttyAMA0 is the Pi 1. Kept
+# in step with
+# SERIAL_CANDIDATES in rover_daemon/board_link.py, which this deliberately does
+# not import: this script is meant to run on a bare checkout with the daemon
+# stopped, which is exactly when there is nothing else to depend on.
+SERIAL_CANDIDATES = ("/dev/ttyTHS1", "/dev/ttyS4", "/dev/ttyAMA0")
+DEFAULT_SERIAL = next((p for p in SERIAL_CANDIDATES if os.path.exists(p)),
+                      SERIAL_CANDIDATES[0])
 BAUD = 115200
 
 # Freeing that port took disabling the serial console: a getty on it will fight

@@ -1,15 +1,15 @@
 {
   "version": 1,
   "hosts": {
-    "bpi": {
-      "ssh": "bpi-m4zero",
+    "orin": {
+      "ssh": "orin",
       "state_file": "~/.ugv/deploy-state.json"
     }
   },
   "components": [
     {
       "name": "rover_daemon",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv",
       "prune": false,
       "sources": [
@@ -59,7 +59,7 @@
     },
     {
       "name": "lidar_slam",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv/lidar_slam",
       "prune": true,
       "preserve": [
@@ -83,7 +83,7 @@
     },
     {
       "name": "oak_depth",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv/oak_depth",
       "prune": false,
       "preserve": [
@@ -121,7 +121,7 @@
     },
     {
       "name": "ros_nav",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv/ros_nav",
       "prune": false,
       "preserve": [
@@ -162,7 +162,7 @@
     },
     {
       "name": "drive_web",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv/drive_web",
       "prune": false,
       "sources": [
@@ -208,7 +208,7 @@
     },
     {
       "name": "wifi_roam",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv/wifi_roam",
       "prune": false,
       "sources": [
@@ -223,7 +223,7 @@
         "cd ~/ugv && python3 wifi_roam/test_wifi_dual.py"
       ],
       "system_install": {
-        "sudo_password_file": "secrets/bpi-sudo.key",
+        "sudo_password_file": "secrets/jetson-orin.key",
         "command": "sh ~/ugv/wifi_roam/install-dual.sh DUAL=on",
         "verify": [
           "cat /run/wifi-dual.json"
@@ -235,7 +235,7 @@
     },
     {
       "name": "netwatch",
-      "host": "bpi",
+      "host": "orin",
       "destination": "~/ugv/netwatch",
       "prune": false,
       "sources": [
@@ -248,7 +248,7 @@
       ],
       "commands": [],
       "system_install": {
-        "sudo_password_file": "secrets/bpi-sudo.key",
+        "sudo_password_file": "secrets/jetson-orin.key",
         "command": "sh ~/ugv/netwatch/install.sh",
         "verify": [
           "systemctl is-active netwatch.service",

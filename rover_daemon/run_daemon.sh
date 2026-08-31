@@ -19,11 +19,13 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/rover_daemon.log"
 RETRY=15
 
-# Wait for the port to exist at all. On a cold boot this is the SD card and the
+# Wait for the port to exist at all. On a cold boot this is the disk and the
 # kernel, not the board -- there is nothing to retry against until it is here.
-# ttyS4 is UART4 on the Banana Pi M4 Zero's 40-pin header; ttyAMA0 is the Pi 1.
+# One name per board for the same header pins: ttyTHS1 is UART1 on the Jetson
+# Orin Nano, ttyS4 is UART4 on the Banana Pi M4 Zero, ttyAMA0 is the Pi 1. Kept
+# in step with SERIAL_CANDIDATES in board_link.py.
 i=0
-while [ ! -e /dev/ttyAMA0 ] && [ ! -e /dev/ttyS4 ] && [ $i -lt 40 ]; do
+while [ ! -e /dev/ttyTHS1 ] && [ ! -e /dev/ttyAMA0 ] && [ ! -e /dev/ttyS4 ]         && [ $i -lt 40 ]; do
     sleep 3
     i=$((i + 1))
 done

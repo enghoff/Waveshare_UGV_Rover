@@ -9,10 +9,13 @@ import threading
 import time
 from typing import Any
 
-# Banana Pi M4 Zero puts the 40-pin UART on UART4 as ttyS4. The Pi 1 used
-# ttyAMA0 for the same header pins. Prefer whichever exists so one default
-# works on both; fall back to ttyS4 so a missing port still has a name to report.
-SERIAL_CANDIDATES = ("/dev/ttyS4", "/dev/ttyAMA0")
+# The same three header pins have a different name on every board this rover has
+# been built on: UART4 as ttyS4 on the Banana Pi M4 Zero, ttyAMA0 on the Pi 1,
+# and ttyTHS1 on the Jetson Orin Nano, whose 40-pin header brings out UART1.
+# Prefer whichever exists so one default works everywhere; only one of them is
+# ever present, so the order here settles nothing but the name in the message a
+# host with no board at all prints.
+SERIAL_CANDIDATES = ("/dev/ttyTHS1", "/dev/ttyS4", "/dev/ttyAMA0")
 
 
 def default_serial() -> str:
