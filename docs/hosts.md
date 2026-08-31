@@ -113,10 +113,25 @@ against roughly a third of that on four Cortex-A53 cores.
 
 ### OAK-D-Lite
 
-**Not fitted.** No Movidius device is on the bus, so `oak_depth` is not deployed
-and the depth service on 8770 is not running. `oak_depth/install.sh` already
-picks its depthai wheel by interpreter, so it is ready for 3.12 whenever the
-camera is plugged back in.
+Fitted and awake since 2026-08-31, serving stereo depth on loopback 8770. It is
+on the USB2 bus as `03e7:2485` when idle and `03e7:f63b` once a host has booted
+it, because the Myriad X has no flash and is handed its firmware over USB on
+every open -- so **the firmware version is the depthai version**, pinned at
+2.32.0.0 by `oak_depth/install.sh`, which picked the CPython 3.12 wheel here
+without being told to. Intel's udev rule was already in
+`/etc/udev/rules.d/97-myriad-usbboot.rules` from the installation, and `jetson`
+is in group `users`, so libusb can open the camera.
+
+Measured here with the rest of the rover running: OAK-D-LITE at USB `HIGH`,
+320x240 depth at 10.0 fps, 43-48% of pixels valid, 73.0 degrees across a 7.5 cm
+baseline, no device errors. It costs **1.5% of one core and 157 MB**, against
+13% of a core on the Banana Pi. The gimbal camera and the driver board are
+unaffected beside it.
+
+`~/ugv/oak_depth/run_oak_depth.sh` from the `jetson` crontab is what keeps it
+open, and its being alive is the whole of the camera being awake: a booted
+device that stops hearing from its host watchdogs itself after 1500 ms. See
+[`oak_depth/README.md`](../oak_depth/README.md).
 
 ## Network
 
@@ -251,7 +266,7 @@ only that unused bridge. Treat them as expected noise rather than a fault.
 | Port | Binding/owner | Purpose |
 |---:|---|---|
 | 8769 | rover LAN / `rover_daemon` | hardware/tool protocol |
-| 8770 | rover LAN / `oak_depth` | depth service -- **not running, no camera** |
+| 8770 | loopback / `oak_depth` | stereo depth from the OAK-D-Lite |
 | 8771 | rover LAN / `drive_web` | HTTPS console + audio WebSocket |
 | 8772 | loopback / daemon | board telemetry + motor bridge for ROS |
 | 8773 | loopback / ROS nav bridge | navigation backend for daemon |
@@ -265,6 +280,7 @@ here has:
 @reboot /home/jetson/ugv/run_daemon.sh --vision --board-bridge --ros-nav
 @reboot /home/jetson/ugv/ros_nav/run_ros_nav.sh --nav
 @reboot /home/jetson/ugv/drive_web/run_drive_web.sh
+@reboot /home/jetson/ugv/oak_depth/run_oak_depth.sh
 ```
 
 The console is at:

@@ -21,9 +21,10 @@ being awake. See [docs/oak-on-the-pi.md](../docs/oak-on-the-pi.md), which worked
 this out while ruling the OAK off the *old* rover.
 
 The camera used to be the rover's face detector, running an SSD on that same VPU
-because a Pi 1 could not run one at all. The board is now a Banana Pi M4 Zero and
-YuNet on its four A53 cores is faster than the VPU was -- 146 ms a frame against
-190 through the old loopback service -- so face detection has moved to the CPU
+because a Pi 1 could not run one at all. Every board since has run YuNet faster
+than the VPU did -- 146 ms a frame on the Banana Pi's four A53 cores against 190
+through the old loopback service, and 24 ms on the Jetson Orin Nano the rover
+carries now -- so face detection has moved to the CPU
 (`face_tracking/yunet.py`) and the camera is free to do the thing it is actually
 built for. Its two mono sensors and 7.5 cm baseline are the only depth sense on
 this rover that sees anything above or below the lidar's one horizontal plane.

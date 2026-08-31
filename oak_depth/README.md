@@ -3,12 +3,12 @@
 Millimetres out over HTTP on `127.0.0.1:8770`, from the OAK-D-Lite's mono pair,
 kept awake from boot by a `crontab` entry. This is the camera doing what it is
 built for: until 2026-08-23 it was the rover's *face detector*, because the Pi 1
-could not run one, and the Banana Pi that replaced it runs YuNet faster than the
-camera's VPU did — see [face_tracking/yunet.py](../face_tracking/yunet.py).
+could not run one, and every board since runs YuNet faster than the camera's VPU
+did — see [face_tracking/yunet.py](../face_tracking/yunet.py).
 
 ```
-  admin@bpi-m4zero (on the rover)
-  -------------------------------
+  jetson@jetson-orin (on the rover)
+  ---------------------------------
   OAK-D-LITE ==USB2/XLink==> depth_server.py ==> GET /health  is it awake
    CAM_B + CAM_C                 |                  /depth    ranges, in mm
    stereo on the VPU             |                  /depth.png a picture of it
@@ -78,14 +78,18 @@ native there, left-right check and subpixel on, a 5×5 median, and the depth map
 decimated 2× **on the device** so 320×240 crosses the wire rather than 640×480.
 Measured with the service running and the rover otherwise doing its usual work:
 
-| | |
-|---|---|
-| depth | 320×240 at 10.0 fps, 61–66% of pixels valid |
-| the lens, read off the stored calibration | 73.0° across, 7.5 cm baseline |
-| USB | negotiated `HIGH`; about 1.5 MB/s of the link |
-| this board | 13% of one core, 156 MB resident |
-| face tracking beside it | 6.6 → 6.2 frames a second |
-| the scan matcher beside it | 8394 scans, 2 dropped, no window overruns |
+| | on the Jetson Orin Nano, 2026-08-31 | on the Banana Pi, 2026-08-23 |
+|---|---|---|
+| depth | 320×240 at 10.0 fps, 43–48% of pixels valid | 320×240 at 10.0 fps, 61–66% valid |
+| the lens, read off the stored calibration | 73.0° across, 7.5 cm baseline | the same camera |
+| USB | negotiated `HIGH` | negotiated `HIGH`; about 1.5 MB/s of the link |
+| this board | **1.5% of one core**, 157 MB resident | 13% of one core, 156 MB resident |
+| face tracking beside it | still opens the gimbal camera and counts faces | 6.6 → 6.2 frames a second |
+| the scan matcher beside it | not measured here — ROS is waiting on a chassis calibration | 8394 scans, 2 dropped, no window overruns |
+
+The two valid-pixel figures are different rooms rather than different hardware:
+the fraction of the frame stereo can range is a property of what the camera is
+looking at, and a near, textureless wall returns no disparity at all.
 
 The 1.5 MB/s is the number the pipeline was designed around rather than a
 by-product: everything on this rover shares one 480 Mbps root port — the wifi
@@ -144,30 +148,37 @@ from here steers anything:
 
 ## Running it
 
-`crontab` for `admin`, beside the daemon's own entry, for the reason
+`crontab` for `jetson`, beside the daemon's own entry, for the reason
 [run_daemon.sh](../rover_daemon/run_daemon.sh) gives — a system unit would need a
 sudo password no script has, and cron needs none:
 
 ```
-@reboot /home/admin/ugv/run_daemon.sh --vision --board-bridge --ros-nav
-@reboot /home/admin/ugv/oak_depth/run_oak_depth.sh
+@reboot /home/jetson/ugv/run_daemon.sh --vision --board-bridge --ros-nav
+@reboot /home/jetson/ugv/oak_depth/run_oak_depth.sh
 ```
 
+The source is deployed by [`deploy/deploy.py`](../deploy/README.md), which
+restarts and verifies it; the wheel and the udev rule are one-off installs that
+a deploy does not do, because the wheel is not tracked and the rule needs root.
+
 ```bash
-scp -r oak_depth bpi-m4zero:~/ugv/
-ssh bpi-m4zero '~/ugv/oak_depth/install.sh'            # depthai, unpacked into vendor/
-ssh bpi-m4zero 'python3 ~/ugv/oak_depth/selftest.py'   # with the service stopped
-ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'            # ~10 s; prints /health
-ssh bpi-m4zero 'curl -s http://127.0.0.1:8770/depth'
-tail -f ~/ugv/oak_depth/oak_depth.log
+python deploy/deploy.py --only oak_depth       # source, restart, /health
+ssh orin 'sh ~/ugv/oak_depth/install.sh'       # depthai, unpacked into vendor/
+ssh orin 'python3 ~/ugv/oak_depth/selftest.py' # with the service stopped
+ssh orin '~/ugv/oak_depth/restart.sh'          # ~10 s; prints /health
+ssh orin 'curl -s http://127.0.0.1:8770/depth'
+ssh orin 'tail -f ~/ugv/oak_depth/oak_depth.log'
 ```
 
 **Use `restart.sh` rather than typing the `pkill` yourself.** The pattern that
 matches the server also matches the ssh command carrying it, so
-`ssh bpi-m4zero 'pkill -f oak_depth/depth_server.py'` kills that ssh session as well —
+`ssh orin 'pkill -f oak_depth/depth_server.py'` kills that ssh session as well —
 the output disappears and it reads as the service failing to come back when it is
-merely restarting. This repository has now made that mistake twice, once per
-supervisor.
+merely restarting. This repository has now made that mistake three times: twice
+by hand, and once in the deploy manifest, which carried the supervisor
+replacement inline and so failed the first deploy of this component to the
+Jetson with exit 255. Replacing the supervisor is `restart.sh --supervisor`, and
+that is what the manifest calls.
 
 **Restarting it is the fix for almost anything.** The VPU has no flash and boots
 from its host every time, so a device that has been unplugged, browned out, or
@@ -183,9 +194,10 @@ stopped, and never point two things at the OAK.
 ## The udev rule — this is the part that will catch you
 
 `/dev/bus/usb/*` is `root:root` at mode 0664, so libusb cannot open the camera as
-`admin` and every call fails with `LIBUSB_ERROR_ACCESS` — which from the library's
-side is indistinguishable from the camera not being plugged in. Intel's own rule is
-shipped here and grants group `users`, which `admin` is already in:
+an ordinary user and every call fails with `LIBUSB_ERROR_ACCESS` — which from the
+library's side is indistinguishable from the camera not being plugged in. Intel's
+own rule is shipped here and grants group `users`, which both `jetson` on the
+Orin and `admin` on the old board are already in:
 
 ```bash
 sudo cp ~/ugv/oak_depth/97-myriad-usbboot.rules /etc/udev/rules.d/
