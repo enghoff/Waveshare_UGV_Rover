@@ -122,8 +122,9 @@ old host, and the reason the roaming half of `wifi_roam` is staged but not
 installed. Its privileged helper `/usr/local/sbin/wifi_ctl.sh` **is** installed,
 along with a `NOPASSWD` rule letting `jetson` run that one path, because the
 console's network panel cannot list or switch networks without it. That is what
-`wifi_roam/install.sh --helper-only` puts down, and it is what the manifest's
-system install for `wifi_roam` runs on this host; nothing roams by itself here.
+`wifi_roam/install.sh --no-roamer` puts down -- the three house networks, the
+helper and the sudo rule -- and it is what the manifest's system install for
+`wifi_roam` runs on this host. Nothing roams by itself here.
 
 - `wlP1p1s0` -- onboard Realtek RTL8822CE, `192.168.1.88`, dual band;
 - `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, `192.168.1.77`,
@@ -131,32 +132,45 @@ system install for `wifi_roam` runs on this host; nothing roams by itself here.
 - `enP8p1s0` -- wired, **down with no carrier**: a cable or switch-port problem
   rather than configuration, unchanged since 2026-08-30.
 
-Both radios associate at boot and are deliberately held on **different routers**,
-the onboard on `TheGreatLord` and the dongle on `TheGreatViking`, so that a
-router going down does not take both. Each has its own DHCP lease and either
-answers SSH and the daemon on 8769. That is two ways in, not failover: nothing
-moves a service address between them, which is what `wifi_dual` did on the Banana
-Pi and what still needs porting.
+Both radios associate at boot and end up on **different routers**, so that a
+router going down does not take both. Which radio is on which network is not
+fixed and deliberately so -- **no profile is pinned to an interface**, because a
+profile tied to one radio is a profile the spare cannot use, and the spare
+existing to take an access point the active one is not on is the whole point.
+As of 2026-08-31 the onboard radio is on `TheGreatLord` and the dongle on
+`TheMaharaja`, which is the strongest network the onboard one is not using.
+
+Each radio has its own DHCP lease and either answers SSH and the daemon on 8769.
+That is two ways in, not failover: nothing watches the two paths, nothing moves
+a service address between them, and nothing moves the spare when the
+neighbourhood changes. `wifi_dual` did all three on the Banana Pi and still
+needs porting.
 
 ### Which networks this rover can join
 
-Two of the three house networks, not three. NetworkManager holds one profile per
-radio, and each is pinned to its radio by `connection.interface-name`, which is
-how the two stay on different routers:
+All three house networks, on either radio. NetworkManager holds one profile per
+network, named after it, with **no interface pinned** and
+`autoconnect-retries 0`:
 
 | Profile | Network | Pinned to |
 |---|---|---|
-| `TheGreatLord` | `TheGreatLord` | `wlP1p1s0` |
-| `TheGreatViking-dongle` | `TheGreatViking` | `wlx002e2d3074d0` |
+| `TheGreatLord` | `TheGreatLord` | nothing |
+| `TheMaharaja` | `TheMaharaja` | nothing |
+| `TheGreatViking` | `TheGreatViking` | nothing |
 
-**There is no profile for `TheMaharaja`**, so the console lists it as a network
-with no passphrase and will not join it. Adding one needs the key in
-`secrets/wifi.key` and a decision about which radio it is for.
+All three share one passphrase, which lives in `~/.ugv/wifi.key` on the rover,
+outside the deploy tree. `wifi_roam/install-profiles.sh` owns this arrangement
+and is re-run by every `--system` deploy of `wifi_roam`; it writes a missing
+profile as a keyfile rather than using `nmcli con add`, which would put the
+passphrase in `ps` for every account on the machine to read.
 
-Note that a profile's name is not its network. `wifi_ctl.sh` reports and joins by
-network and looks the profile up, and a join does not name an interface for a
-profile that already pins one, because NetworkManager refuses that rather than
-resolving it.
+It was not always this way, and the two habits it replaced are worth knowing
+because both look reasonable. Each network used to be pinned to one radio, which
+meant neither radio could take the other's network -- there was no spare, only
+two singles. And the dongle's profile was called `TheGreatViking-dongle`, which
+is why `wifi_ctl.sh` matches profiles by the network each is for and never by
+name: a console comparing names against SSIDs called the rover's own second
+network "no passphrase" and refused to join it.
 
 The onboard radio also fills its scan list in **over several scans** rather than
 all at once: measured on 2026-08-31, three consecutive scans returned 2, then 8,
@@ -168,10 +182,12 @@ list is cumulative and the next press fills it in.
 
 The dongle kept its old name from the Banana Pi days -- the MAC is the same
 `00:2e:2d:30:74:d0` that `wifi_roam/20-usb-wlan.link` mentions -- but nothing
-renames it here, so it appears under the kernel's own `wlx...` name. Its
-NetworkManager profile pins that name, so installing that `.link` file would
-rename the interface out from under the profile and the radio would come up
-unconfigured.
+renames it here, so it appears under the kernel's own `wlx...` name. That used
+to be load-bearing -- its profile pinned that exact name, so installing the
+`.link` file would have renamed the interface out from under the profile and the
+radio would have come up unconfigured. Since the profiles were unpinned on
+2026-08-31 no profile names an interface at all, so the `.link` file is now a
+question of taste rather than a trap.
 
 Two things had to be fixed to make it work at all, and both are traps for any
 other device on this board that needs a driver or firmware:
@@ -259,6 +275,7 @@ Unchanged in shape, and still outside `~/ugv`:
 
 ```text
 ~/.ugv/alibaba.key     DashScope API key, mode 600
+~/.ugv/wifi.key        the one passphrase all three house networks share, mode 600
 ~/.ugv/console.token   token gating microphone/session creation
 ~/.ugv/tls/            console certificate/CA
 ~/.ugv/deploy-state.json
@@ -296,16 +313,22 @@ dual-radio manager have deliberately **not** been. The roamer is a one-radio
 script that would start moving the two radios this rover deliberately keeps
 apart.
 
-The dongle's profile also still carries NetworkManager's default retry limit,
-which the roamer's full install is what normally clears. It went off the air at
-03:31 on 2026-08-31 after a link timeout and had not been retried six hours
-later, so a transient outage currently costs the second radio until somebody
-brings it back:
+**The dongle's radio can go deaf, and nothing notices.** On 2026-08-31 it lost
+its link at 03:31 and heard nothing at all for the next six hours: `iw scan`
+succeeded and returned zero access points while the onboard radio could hear
+twenty-seven. The device was on the bus, the driver was bound and the interface
+was up -- only the receiver was dead. Reloading the driver cured it instantly and
+it re-associated within a second:
 
 ```bash
-ssh orin 'nmcli con mod TheGreatViking-dongle connection.autoconnect-retries 0'
-ssh orin 'nmcli con up TheGreatViking-dongle'
+ssh orin 'sudo -S -p "" sh -c "modprobe -r rtl8xxxu; sleep 2; modprobe rtl8xxxu"'     < secrets/jetson-orin.key
 ```
+
+Two things made it worse than it had to be. NetworkManager's default retry limit
+of four attempts meant it stopped trying long before anybody looked -- every
+profile now carries `autoconnect-retries 0`. And nothing on this rover watches
+the spare radio, so a dead second path is invisible until somebody asks. That is
+the strongest argument for porting `wifi_dual`.
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.
