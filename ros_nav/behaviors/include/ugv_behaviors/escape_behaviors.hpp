@@ -117,7 +117,12 @@ constexpr double kDefaultEscapeTimeLimit = 3.0;
 ///
 /// Whether the footprint is a circle is measured here rather than assumed:
 /// `onConfigure` subscribes to the same footprint topic the collision checker
-/// uses and compares the shortest vertex to the longest.
+/// uses, compares the shortest vertex to the longest **about the polygon's own
+/// centroid**, and checks that the centroid is where the rover is. Measuring
+/// from the message origin instead would measure the rover's distance from
+/// `odom`, because that topic carries the footprint already placed at the
+/// rover's pose -- which had this scoring 0.98 with the rover parked far out and
+/// 0.03 near the origin, so a turn worked once and then never again.
 class EscapeSpin : public nav2_behaviors::Spin
 {
 public:
@@ -137,9 +142,17 @@ protected:
 
   rclcpp::Subscription<geometry_msgs::msg::PolygonStamped>::SharedPtr footprint_sub_;
   /// -1 until a footprint has been seen; then the shortest vertex divided by the
-  /// longest, which is 1.0 for a true circle and 0.98 for Nav2's sixteen-sided
-  /// approximation of one.
+  /// longest **measured about the polygon's own centroid**, which is 1.0 for a
+  /// true circle and 0.98 for Nav2's sixteen-sided approximation of one.
+  ///
+  /// About the centroid and not about the message origin, because the footprint
+  /// is published in the costmap's frame already placed at the rover's pose --
+  /// so distances from the origin are distances from `odom` and say more about
+  /// where the rover is parked than about its shape.
   double footprint_roundness_{-1.0};
+  /// How far that centroid is from `base_link`, the point the rover turns about.
+  /// Huge until a footprint has been seen, so that nothing is claimed early.
+  double footprint_offset_{1e9};
 
   double escape_time_limit_{kDefaultEscapeTimeLimit};
   rclcpp::Time escaping_since_;

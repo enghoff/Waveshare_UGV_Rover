@@ -44,22 +44,56 @@ void EscapeSpin::onConfigure()
 
 void EscapeSpin::onFootprint(geometry_msgs::msg::PolygonStamped::SharedPtr msg)
 {
-  // The footprint arrives in the robot frame, so a vertex's distance from the
-  // origin is its distance from the point the rover turns about. A circle has
-  // every vertex the same distance out; Nav2's sixteen-sided stand-in for one
-  // has the shortest at cos(pi/16) = 0.98 of the longest.
+  // **This arrives in the costmap's own frame -- `odom` here -- not in the robot
+  // frame.** It is the footprint already placed at the rover's pose, which is
+  // what the collision checker wants and is a trap for anything that reads it as
+  // a shape. Measuring each vertex from the message origin measures its distance
+  // from the odom origin, so the answer depends on where the rover is standing:
+  // parked far out, all sixteen vertices are nearly equidistant and any
+  // footprint looks like a perfect circle; near the origin the same footprint
+  // scores 0.03. Watched here swinging between 0.03 and 0.98 within a few
+  // seconds of driving, which made a turn succeed once and then never again.
+  //
+  // So the shape is measured about its own centroid, which is position- and
+  // rotation-invariant, and the centroid is then checked against where the rover
+  // actually is. Both halves are needed: the first says the footprint is a
+  // circle, the second says it is a circle centred on the point the rover
+  // rotates about, and only the two together make a rotation provably safe.
   if (msg->polygon.points.size() < 3) {
     footprint_roundness_ = -1.0;
     return;
   }
+  double centre_x = 0.0;
+  double centre_y = 0.0;
+  for (const auto & point : msg->polygon.points) {
+    centre_x += static_cast<double>(point.x);
+    centre_y += static_cast<double>(point.y);
+  }
+  centre_x /= static_cast<double>(msg->polygon.points.size());
+  centre_y /= static_cast<double>(msg->polygon.points.size());
+
   double shortest = std::numeric_limits<double>::max();
   double longest = 0.0;
   for (const auto & point : msg->polygon.points) {
-    const double radius = std::hypot(static_cast<double>(point.x),
-                                     static_cast<double>(point.y));
+    const double radius = std::hypot(static_cast<double>(point.x) - centre_x,
+                                     static_cast<double>(point.y) - centre_y);
     shortest = std::min(shortest, radius);
     longest = std::max(longest, radius);
   }
+
+  // And that the centroid is the rover, not some shape offset from it. A
+  // footprint drawn around a point the rover does not turn about would rotate
+  // about that point and sweep ground the circle argument does not cover.
+  geometry_msgs::msg::PoseStamped pose;
+  double offset = std::numeric_limits<double>::max();
+  if (nav2_util::getCurrentPose(
+      pose, *this->tf_, msg->header.frame_id, this->robot_base_frame_,
+      this->transform_tolerance_))
+  {
+    offset = std::hypot(pose.pose.position.x - centre_x,
+                        pose.pose.position.y - centre_y);
+  }
+  footprint_offset_ = offset;
   const double roundness = (longest > 1e-6) ? (shortest / longest) : -1.0;
   // Said once, and again only if it changes: the whole justification for
   // turning a refused spin rests on this number, so it should be findable in
@@ -67,21 +101,29 @@ void EscapeSpin::onFootprint(geometry_msgs::msg::PolygonStamped::SharedPtr msg)
   if (std::fabs(roundness - footprint_roundness_) > 0.01) {
     RCLCPP_INFO(
       this->logger_,
-      "footprint: %zu vertices, shortest %.2f of the longest -- %s",
-      msg->polygon.points.size(), roundness,
-      roundness >= 0.9 ? "a circle, so a refused turn is always overruled"
-                       : "not a circle, so Nav2's spin check is kept");
+      "footprint: %zu vertices, shortest %.2f of the longest about its centroid, "
+      "centroid %.3f m from base_link -- %s",
+      msg->polygon.points.size(), roundness, offset,
+      (roundness >= 0.9 && offset <= 0.03)
+        ? "a circle on the turning centre, so a refused turn is overruled"
+        : "not a circle on the turning centre, so Nav2's spin check is kept");
   }
   footprint_roundness_ = roundness;
 }
 
 bool EscapeSpin::footprintIsCircular() const
 {
-  // 0.9 admits Nav2's 0.98 polygon and any finer one, and excludes this rover's
-  // own measured rectangle, whose shortest vertex is 0.14 m against a longest of
-  // 0.21 -- a ratio of 0.66. A body that shape really can sweep a corner into a
-  // wall while turning, and must keep Nav2's check.
-  return footprint_roundness_ >= 0.9;
+  // 0.9 admits Nav2's sixteen-sided stand-in for a circle, which scores
+  // cos(pi/16) = 0.98, and any finer one. It excludes this rover's own measured
+  // rectangle, whose shortest vertex is 0.14 m against a longest of 0.21 -- a
+  // ratio of 0.66 about its centroid. A body that shape really can sweep a
+  // corner into a wall while turning, and must keep Nav2's check.
+  //
+  // 3 cm on the offset is the 5 cm costmap cell, near enough: a footprint whose
+  // centroid is further than that from base_link is not centred on the point the
+  // rover turns about, and rotating it sweeps ground this argument does not
+  // cover.
+  return footprint_roundness_ >= 0.9 && footprint_offset_ <= 0.03;
 }
 
 ResultStatus EscapeSpin::onRun(const std::shared_ptr<const SpinActionGoal> command)
@@ -148,9 +190,9 @@ ResultStatus EscapeSpin::onCycleUpdate()
   // made the first version of this take three attempts to understand.
   RCLCPP_WARN(
     this->logger_,
-    "spin refused: roundness %.2f circular %d in_contact %d escaping %d "
-    "relative_yaw %.3f", footprint_roundness_, circular ? 1 : 0,
-    in_contact ? 1 : 0, escaping_ ? 1 : 0, relative_yaw_);
+    "spin refused: roundness %.2f offset %.3f circular %d in_contact %d "
+    "escaping %d relative_yaw %.3f", footprint_roundness_, footprint_offset_,
+    circular ? 1 : 0, in_contact ? 1 : 0, escaping_ ? 1 : 0, relative_yaw_);
   if (!circular && !in_contact) {
     // A non-circular body standing somewhere legal really can sweep a corner
     // into something, so Nav2 is entitled to this one. (It is also the only
