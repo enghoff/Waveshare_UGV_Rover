@@ -764,8 +764,47 @@ corrects them only at keyframes; slam_toolbox corrects continuously against its
 buffer. `icp_odometry` from `rtabmap_odom` is RTAB-Map's own answer to that and is
 what its 2D lidar setups all use — the package is installed and nothing launches
 it yet, because putting it in front means it, and not `base_node`, publishes
-`odom -> base_link`, and that is not a change to make on a guess. It wants a
-recorded drive first.
+`odom -> base_link`, and that is not a change to make on a guess.
+
+### The drive of 2026-08-31, replayed into everything
+
+One 5-minute drive, 2969 scans, replayed into each arrangement. Walls per square
+metre of floor is the column to read: a mapper that has lost track draws the same
+wall twice, and the count of wall cells rises against the floor it found.
+
+| | walls per m² | what happened |
+|---|---|---|
+| **slam_toolbox** | **45.3** | the best map of the six, and the cleanest picture |
+| RTAB-Map, as deployed | 64.9 | 184 closures, and walls visibly doubled |
+| RTAB-Map, keyframes every 10 cm | 55.1 | 2.6× the nodes |
+| RTAB-Map, keyframes every 5 cm | 51.0 | 2× the nodes, closest RTAB-Map got |
+| RTAB-Map + lidar odometry, no guess | *broken* | 27 × 26 m of blur for a 13 × 17 m room |
+| RTAB-Map + lidar odometry, wheels as guess | *did not run* | see below |
+
+**So slam_toolbox is better on this rover's data, and the gap is not a
+misconfiguration any more.** Keyframe density is the one lever that moved
+RTAB-Map, and it closes about half the distance for two to two and a half times
+the nodes — 1001 against 511 over five minutes, and a database that grows with
+them.
+
+Two things about that table are worth keeping. The first is that **walls per m²
+scored the broken run best**: pure scan-to-scan lidar odometry lost track,
+smeared the room over four times the area, and its wall cells divided by that
+enormous floor came out lowest of anything tried. The picture is the arbiter and
+the number is the summary, never the other way round. The second is why the
+guided version never ran: `guess_frame_id` hands icp_odometry the wheels'
+*absolute* pose, and a recording that starts ten metres into a drive hands it a
+ten-metre jump as its first motion guess. ICP cannot converge from that, and
+having failed it keeps the same stale guess and fails identically for ever. Fixing
+that means starting the odometry at the recording's own origin, and it is the one
+route not yet closed off.
+
+RTAB-Map's real advantage is appearance-based loop closure over a camera, and
+this rover gives it no images — `config/rtabmap.yaml` explains why that was the
+right way to compare the two, and it also means the comparison was always between
+RTAB-Map's second-best mechanism and slam_toolbox's only one. The question
+becomes worth reopening when the OAK-D's colour is on a ROS topic, and by then
+`record_drive.sh` and a bag will answer it in an afternoon rather than a week.
 
 One thing did not have to change, and it is the one most likely to have: the two
 mappers publish their grids with the same QoS. RTAB-Map's `/map` is reliable and
