@@ -422,6 +422,10 @@ class SimPlatform:
         self.scans = 0
         self.garps = []
         self.pins = []
+        # (iface, ssid) pairs this platform will refuse to move a radio onto,
+        # and a record of every time it did. See pin().
+        self.refuse_pin = set()
+        self.refused_pins = []
 
     # --- clocks and noises --------------------------------------------------
     def now(self):
@@ -490,6 +494,14 @@ class SimPlatform:
     def pin(self, iface, ssid):
         radio = self.world.radios.get(iface)
         if radio is None or not radio.present or ssid not in radio.knows:
+            return False
+        # A move refused outright, which is what NetworkManager does when the
+        # radio cannot find or cannot join the network: `nmcli con up` fails
+        # there and then. On wpa_supplicant `select_network` almost always
+        # succeeded and the failure turned up later as a radio that never
+        # associated, so this state did not exist until the port.
+        if (iface, ssid) in self.refuse_pin:
+            self.refused_pins.append((round(self.world.t, 1), iface, ssid))
             return False
         self.pins.append((round(self.world.t, 1), iface, ssid))
         radio.pinned = ssid

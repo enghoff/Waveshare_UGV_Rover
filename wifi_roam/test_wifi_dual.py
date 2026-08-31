@@ -777,6 +777,64 @@ def nothing_ever_switches_a_radio_off():
     check(bool(WORLDS), "no scenario ran, so this assertion proves nothing")
 
 
+def a_network_that_refuses_the_move_outright():
+    """Watched on the rover: a hundred seconds of asking the same router.
+
+    NetworkManager fails `con up` there and then when a radio cannot find or
+    cannot join a network, where `select_network` almost always succeeded and
+    left the failure to turn up later as a radio that never associated. So the
+    port introduced a state the manager had never had to handle: a move refused
+    immediately.
+
+    Forgetting it produces a loop, and that is what the rover did. The next
+    placement picks the loudest network no other radio is on -- which is the one
+    that has just refused -- so every scan asked again and the other candidate
+    was never tried. Remembering the refusal is what breaks the loop, and
+    `place_one` clearing every grudge when nothing is left to try is what stops
+    the memory cornering the radio.
+    """
+    world, platform, manager = build()
+    settle(manager, world, 60)
+    spare = manager.standby
+    check(spare is not None, "no standby radio to move")
+    held_by_active = wifi_dual.router(manager.active.link.ssid or "")
+
+    # Every network the spare could be moved to, and all but one of them
+    # refusing. Which one it settles on is then not a guess about the scoring.
+    sim = world.radios[spare.iface]
+    free = sorted({ap.ssid for ap in world.aps
+                   if wifi_dual.router(ap.ssid) != held_by_active
+                   and sim.can_use(ap)})
+    check(len(free) >= 2, "the house model has too few routers for this")
+    allowed = free[-1]
+    for ssid in free:
+        if ssid != allowed:
+            platform.refuse_pin.add((spare.iface, ssid))
+
+    # And knock the spare off where it is, so it has to move somewhere.
+    if spare.link.ssid:
+        world.ap(spare.link.ssid).up = False
+    settle(manager, world, 240)
+
+    refused = [ssid for _, iface, ssid in platform.refused_pins
+               if iface == spare.iface]
+    worst = max((refused.count(ssid) for ssid in set(refused)), default=0)
+    check(worst <= 2,
+          "a network that refused the move was asked %d times, so the manager "
+          "is looping rather than learning" % worst)
+    # Which network it lands on is left to the scoring -- the routers shuffle
+    # once one of them goes down, and pinning that here would be a test of the
+    # scoring rather than of the learning. What matters is that it is not still
+    # trying to get onto one that will not have it.
+    now = manager.radio(spare.iface)
+    landed = now.link.ssid if now else None
+    check(landed is not None,
+          "the spare never associated with anything at all")
+    check((spare.iface, landed) not in platform.refuse_pin,
+          "the spare is reported as being on %s, which refuses it" % landed)
+    check(manager.active is not None and manager.active.usable,
+          "the rover ended up with nothing carrying traffic")
+
 class FakeNmcli:
     """A NetworkManager that answers `nmcli` and remembers what it was told.
 
@@ -987,6 +1045,8 @@ def main():
          nothing_ever_switches_a_radio_off),
         ("the service address is answered out of its own radio",
          the_service_address_is_answered_out_of_the_radio_it_sits_on),
+        ("a network that refuses the move outright",
+         a_network_that_refuses_the_move_outright),
         ("the NetworkManager translation", the_networkmanager_translation),
         ("a DHCP renewal strips the service address",
          the_service_address_survives_a_dhcp_renewal_stripping_it),

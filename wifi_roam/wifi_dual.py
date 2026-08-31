@@ -1742,8 +1742,22 @@ class Manager:
                 continue
             if self.platform.pin(radio.iface, radio.intent):
                 radio.pinned = radio.intent
-            else:
-                radio.intent = None
+                continue
+            # The move was refused outright, which is a NetworkManager thing:
+            # `con up` fails when the radio cannot find or cannot join the
+            # network, where `select_network` almost always succeeded and left
+            # the failure to show up later as a radio that never associated.
+            #
+            # Remembering it matters because forgetting it produces a loop. The
+            # next placement picks the loudest network no other radio is on,
+            # which is the one that just refused, so the manager would spend
+            # every scan asking again and never try the other candidate. Watched
+            # on the rover: a hundred seconds of that before the radio got
+            # anywhere. `place_one` clears every grudge when they add up to
+            # nothing left to try, so this cannot corner the radio.
+            self.say("%s would not take %s" % (radio.iface, radio.intent))
+            radio.refused[radio.intent] = self.platform.now()
+            radio.intent = None
 
     # --- acting -------------------------------------------------------------
     def make_active(self, radio, why):
