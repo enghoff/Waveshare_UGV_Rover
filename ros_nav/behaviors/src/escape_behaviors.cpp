@@ -184,15 +184,18 @@ ResultStatus EscapeSpin::onCycleUpdate()
       in_contact = false;
     }
   }
-  // A warning rather than a debug line, and deliberately: it only fires when a
-  // spin has been refused, which should be rare, and when one is refused this is
-  // the state that explains what happened next. A silent decision here is what
-  // made the first version of this take three attempts to understand.
-  RCLCPP_WARN(
-    this->logger_,
-    "spin refused: roundness %.2f offset %.3f circular %d in_contact %d "
-    "escaping %d relative_yaw %.3f", footprint_roundness_, footprint_offset_,
-    circular ? 1 : 0, in_contact ? 1 : 0, escaping_ ? 1 : 0, relative_yaw_);
+  // Once per refusal, not once per cycle: an escape runs at 10 Hz for as long as
+  // the turn takes, and a 180 degree turn would put sixty identical lines in the
+  // log. Printed at all because a silent decision here is what made this take
+  // three attempts to get right -- when a turn is refused, this is the state the
+  // answer was computed from.
+  if (!escaping_) {
+    RCLCPP_WARN(
+      this->logger_,
+      "spin refused: roundness %.2f offset %.3f circular %d in_contact %d "
+      "relative_yaw %.3f", footprint_roundness_, footprint_offset_,
+      circular ? 1 : 0, in_contact ? 1 : 0, relative_yaw_);
+  }
   if (!circular && !in_contact) {
     // A non-circular body standing somewhere legal really can sweep a corner
     // into something, so Nav2 is entitled to this one. (It is also the only

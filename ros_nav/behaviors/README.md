@@ -31,6 +31,18 @@ which is inside the chassis and therefore genuinely touching:
 | stock Nav2 | 0.0° | 0.00 m | 0.00 m |
 | these plugins | 90.0° | 0.50 m | 0.00 m |
 
+And on the rover, the 180° turn that started this, which used to come back
+`blocked -- turning that way would sweep through something`:
+
+```text
+turn +180 -> arrived, turned 186.8
+turn -180 -> arrived, turned -189.9
+turn  +90 -> arrived, turned  97.2
+```
+
+The few degrees of overshoot are the chassis's own stiction floor, which the
+README in the directory above measures; they are not this.
+
 Nav2 1.3.12, which is what this rover runs, has no parameter that turns the
 check off — checked against the strings in `libnav2_spin_behavior.so` and its
 neighbours, not assumed. That is why this is compiled code and not a setting.
@@ -41,24 +53,50 @@ Each class calls Nav2's own implementation first and returns its answer
 untouched unless it is specifically `COLLISION_AHEAD`. **Every healthy motion
 this rover makes is still Nav2's code, byte for byte.**
 
-When Nav2 does refuse, the rover's current pose decides what happens:
+Turning and driving are then treated quite differently, because the geometry is
+quite different: a rotation about the body's own centre covers the same ground
+whatever the heading, while a translation genuinely covers new ground. So the
+driving half keeps Nav2's check almost entirely and the turning half does not
+need it at all.
 
-- **standing somewhere legal** — the obstruction is genuinely in the way, which
-  is what the check is for. The refusal stands, untouched. This is what keeps
-  the rover from driving into walls, and it is the case that matters most.
-- **already in contact** — stock Nav2 will now refuse every motion in every
-  direction, for ever. This is the state these plugins exist for.
+`EscapeSpin` goes further than that, and has to. **A rover with a circular
+footprint is never refused a turn at all**, whether or not it is in contact.
 
-In that second state, `EscapeSpin` allows the rotation. That is sound because
-the footprint is a circle centred on `base_link`: rotating it about its own
-centre maps it onto itself, so a turn cannot sweep ground the rover is not
-already standing on. It is the same fact that makes Nav2's check useless here —
-with a circular body it is either vacuous or an unconditional veto, and
-`corridor_sim` shows exactly that, 90.1° or 0.0° and never anything between.
+Rotating a circle about its own centre maps it onto itself, so the ground
+covered is identical at every heading: if the rover fits where it stands it fits
+at every heading, and if it does not, no heading helps. Nav2's check cannot add
+information — it can only agree with the pose the rover is already in, or
+disagree with it wrongly. It disagrees because it does not test a circle. A
+radius becomes a sixteen-sided polygon and the test walks that outline across a
+5 cm grid, so rotating it crosses a slightly different set of cells and one
+marginal cell becomes "turning that way would sweep through something" on a
+rover standing in open floor. That was watched here on a 180° turn, and it is
+what the first version of these plugins failed to fix: escaping only when
+already in contact left the common case — standing legally, refused anyway —
+untouched.
 
-**If the footprint ever stops being a circle that reasoning stops holding.**
-`../selftest.py` fails if `nav2.yaml` grows a footprint polygon, which is the
-alarm for it.
+Reproduced at a desk too: a single lethal cell 0.16 m out leaves the rover legal
+where it stands and refused at 108 of 120 headings. A straight wall will not
+show it, because a half-plane is symmetric enough that a near-circular outline
+clips it at every heading or none — which is why the first version of the desk
+test passed while the rover was still stuck.
+
+**If the footprint ever stops being a circle that reasoning stops holding**, so
+the plugin measures it rather than trusting the config: it reads the same
+footprint topic the collision checker does, takes the shortest vertex over the
+longest **about the polygon's own centroid**, and checks that centroid against
+`base_link`. Nav2's circle scores 0.98 with an offset of 0.001 m; the rover's
+old measured rectangle would score 0.66. A non-circular body keeps Nav2's check
+except when already in contact.
+
+The centroid matters and cost a debugging round. `published_footprint` carries
+the footprint **already placed at the rover's pose in the costmap's frame**, not
+a shape in `base_link` — so measuring vertices from the message origin measures
+the rover's distance from `odom`. Parked far out, every footprint scores as a
+perfect circle; near the origin the same one scores 0.03. It was watched
+swinging between the two within seconds of driving, which made one turn succeed
+and every later one fail, and made the success look like the fix working when it
+was luck.
 
 `EscapeDriveOnHeadingAction` — and `EscapeBackUpAction`, the same template with
 the sign flipped, exactly as Nav2 builds them — allows the motion only when the
@@ -67,9 +105,11 @@ deeper in. Driving forward off a rear obstacle passes. Reversing into that same
 obstacle does not, and neither does driving forward into a wall while something
 is behind: the wedged case, where no is still the honest answer.
 
-Escaping is time limited by `escape_time_limit` (3 s). A rover still in contact
-after that stops and reports the collision, because at that point it is grinding
-rather than escaping.
+Escaping is limited by **lack of progress** rather than by the clock
+(`escape_time_limit`, 3 s). Against elapsed time it would be wrong: a 180° turn
+at the recovery speed of 0.5 rad/s takes over six seconds, so a stopwatch would
+cut off exactly the manoeuvre this exists to allow. A rover that has not moved
+for three seconds is grinding, and stops.
 
 ## Building it
 
@@ -98,19 +138,32 @@ finds the class, `LD_LIBRARY_PATH` so it can then load the library. A missing
 one of those shows up as `Failed to create behavior`, which reads like a typo in
 the class name rather than a path.
 
-`build.sh` prints what it produced and runs `ldd -r` over it, because the build
-that matters is not the one that compiled but the one the behaviour server can
-load: an undefined symbol appears only at plugin-load time, in the launch log,
-long after the deploy said it was fine.
+**The build is keyed on a hash of the sources, never on their timestamps, and
+without that it never rebuilds at all.** `deploy.py` packs every file with
+`mtime = 0` on purpose, so that an unchanged file has an unchanged tar and
+rsync's quick check can skip it. The consequence here is that every source on
+the rover is dated 1970 and is therefore older than any object file already
+built, so an incremental build finds nothing to do — for ever. This was not
+theoretical: three deploys in a row rebuilt these plugins and the running
+behaviour server kept the library from the first one, while the source beside it
+plainly said otherwise. It is the same fault `lidar_slam/build.sh` avoids by
+having no build cache at all.
+
+`build.sh` also prints what it produced and runs `ldd -r` over it, because the
+build that matters is not the one that compiled but the one the behaviour server
+can load: an undefined symbol appears only at plugin-load time, in the launch
+log, long after the deploy said it was fine.
 
 ## What is proved and what is not
 
-The fix is proved in the model and the plugins are proved to load and run on the
-rover — `ros_nav.log` names all three classes at startup, and turning the rover
-through the replaced `Spin` still works normally.
+**The turn is proved on the hardware.** The 180° turn that started this now
+completes in both directions, repeatably, and the log shows it going through the
+escape path with the footprint measured at 0.98 roundness and a 1 mm centroid
+offset.
 
-**The escape itself has not been watched on the hardware.** That needs somebody
-to put an object behind the rover and ask it to drive away, which is not
-something a deploy can do. Until then the honest statement is that the fault
-reproduces in a model that was read off this rover's own libraries, and the fix
-succeeds in that same model.
+**The drive-away has not been watched on the hardware.** That needs somebody to
+put an object behind the rover and ask it to drive off, which is not something a
+deploy can do — [`../escape_test.py`](../escape_test.py) is that run as one
+command. Until then the honest statement for the driving half is that the fault
+reproduces in a model read off this rover's own libraries, and the fix succeeds
+in that same model.

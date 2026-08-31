@@ -1725,6 +1725,20 @@ def test_discovery_stays_on_this_board():
                          if c.get("name") == "ros_nav"), [])
     check("a deploy rebuilds the plugin, or the rover runs last week's .so",
           any("behaviors/build.sh" in cmd for cmd in ros_nav_cmds), True)
+    # deploy.py packs every file with mtime = 0 so rsync can skip an unchanged
+    # one, which leaves every source on the rover older than every object file.
+    # An incremental build then finds nothing to do, for ever -- watched here,
+    # three deploys running, with the behaviour server holding the first
+    # build's library. The build has to key on content.
+    with open(os.path.join(HERE, "behaviors", "build.sh"),
+              encoding="utf-8", errors="replace") as fh:
+        plugin_build = fh.read()
+    check("...and keys the rebuild on the sources' content, not their timestamps",
+          "sha256sum" in plugin_build and "rm -rf \"$BUILD\"" in plugin_build, True)
+    with open(os.path.join(os.path.dirname(HERE), "deploy", "deploy.py"),
+              encoding="utf-8", errors="replace") as fh:
+        check("...which is needed because the deployer still dates files 1970",
+              "info.mtime = 0" in fh.read(), True)
     check("...and it builds before it restarts, not after",
           ([i for i, c in enumerate(ros_nav_cmds) if "behaviors/build.sh" in c] or [99])[0]
           < ([i for i, c in enumerate(ros_nav_cmds) if "restart.sh" in c] or [-1])[0],
