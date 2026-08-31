@@ -1053,7 +1053,7 @@ DWB topic and the rover runs MPPI; a bench started from today's
 is how four of the faults in this stack were found, and it stays because the
 recordings and the reasoning are still evidence. MPPI's equivalent is
 `visualize: true` in the `FollowPath` block, which publishes candidate
-trajectories on `/controller_server/trajectories` for rviz � a picture rather than
+trajectories on `/controller_server/trajectories` for rviz — a picture rather than
 a per-critic score, so it is a weaker instrument.
 
 `/evaluation` is DWB publishing its own decision — every candidate twist, what each
@@ -1270,7 +1270,7 @@ and at 2.0 it changes nothing.
 ### What is still open
 
 **Read the first two bullets as DWB's, because the controller is MPPI now.** Both
-describe a fault in how DWB picked an aim point � a plan cut to a straight-line
+describe a fault in how DWB picked an aim point — a plan cut to a straight-line
 radius, and a distance field flooded over a costmap that does not stop it at
 walls. MPPI has neither: it scores whole trajectories against the costmap
 directly, with no map-grid flood anywhere in it. So the mechanism is gone and the
@@ -1282,7 +1282,7 @@ still the reproduction, and it still reproduces DWB.
   is cut to a straight-line radius and the distance field it steers by floods
   through walls.** Pulling `FollowPath.forward_prune_distance` in to 0.9 m gets
   the model out from nine or ten of twelve starts (`trap_sim.py --aim`). **It was
-  never deployed** � this bullet used to say it was, and the running controller
+  never deployed** — this bullet used to say it was, and the running controller
   was asked on 2026-08-31 and answered 2.0, which is DWB's own default. The
   parameter appears in `trap_sim.py` and `dwb_replay.py` and has never appeared
   in `config/nav2.yaml`. It is a mitigation in a model, and under MPPI there is
@@ -1466,12 +1466,52 @@ returns a weighted average of it, so there is nothing to prune — it will ask f
 measured, which is 0.33. That is the same fiction the section above called
 "Every acceleration and deceleration was a fiction", and it is back.
 
-Two things make it a smaller fiction than it was. MPPI re-seeds each tick from the
+One thing makes it a smaller fiction than it was: MPPI re-seeds each tick from the
 speed `/odom` reports rather than from the speed it asked for, so an overspeed
 appears in the next tick's state 100 ms later instead of compounding. And the
 manoeuvre that used to be approximated — turn to line up, then drive — is a single
 candidate MPPI can score, because it optimises a sequence over the horizon rather
 than one arc held for the whole of it.
+
+### What happened when it drove, on 2026-08-31
+
+**It is fine on a straight line and it is not fine on a turn.** Two drives, with
+`/cmd_vel_nav` recorded through both.
+
+A 1.5 m goal straight ahead on clear floor arrived in 3.5 seconds: 1.245 m
+travelled, no recoveries, 0.2 degrees of turning in the whole drive. Of its 35
+forward commands 11 were under the 0.33 m/s floor, and every one of them was in a
+ramp — 0.09, 0.14, 0.20, 0.24, 0.28 climbing and 0.39 down to 0.22 stopping — with
+0.40 held in between. The rover does 0.33 through both ramps instead, which costs a
+few centimetres at each end and did not stop it arriving.
+
+A 1.2 m goal about 90 degrees off the nose did not arrive. Forty-five seconds, 176
+degrees of net turning, 1.5 m travelled, one recovery, and it finished nose-first
+15 cm from a wall in a cell the planner then called occupied — at which point
+`backup` and `spin` both refused on collision and it had to be freed by driving the
+wheels directly through the board bridge. Of 324 ticks, 211 were pivots, and 170 of
+the 190 ticks with any forward speed at all were below the floor.
+
+**The mechanism is the turning radius, not the speed.** Asked for a tight arc, MPPI
+pairs a small `vx` with a large `wz`. The wheels cannot hold the small `vx`, so the
+mixer drives 0.33 m/s and the arc comes out at 0.4–0.5 m of radius instead of the
+near-pivot that was asked for. The rover runs wide of the path, is corrected, and
+runs wide again. That is the fault written up above as "tight curves were a fiction
+too", and DWB was cured of it by having its sample set cut to `{0.0, 0.40}` — a cure
+MPPI cannot take.
+
+**The place to fix it is `drive_mixer`, not the controller.** A linear command under
+about half the floor is one the chassis cannot serve at all, and answering it with a
+pivot would be closer to what was asked than answering with 0.33 m/s of forward
+travel. That is a change to a control law that the base node, the selftest and
+`steering_sim.py` all share, and it wants its own reproduction before it is made, so
+it is written down here rather than done.
+
+One drive is not a verdict. The failing goal was in a cluttered corner the rover had
+already wedged itself in once, and the planner was replanning a 3.76 m route for a
+1.17 m goal while this was going on. What can be said is that MPPI as configured here
+has not been shown to match tuned DWB, and that the mechanism above is a specific
+thing to test rather than a hunch.
 
 **`VelocityDeadbandCritic` looks like the fix for the floor and is not.** It scores
 `max(deadband − |v|, 0)` summed over the horizon, so a 0.33 m/s deadband on `vx`

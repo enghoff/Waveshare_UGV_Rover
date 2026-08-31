@@ -148,15 +148,42 @@ controller_server:
     # until the only forward speed it could choose was one the wheels have --
     # `vx_samples: 2` meant it sampled exactly {0.0, 0.40}, stop or go.
     #
-    # **MPPI cannot be constrained that way, and this is the one real thing
-    # given up in the swap.** It samples a continuous distribution and returns a
-    # weighted average of it, so there is no set of samples to prune: it will
-    # ask for 0.15 m/s, and `drive_mixer.pwm_for` will answer with the slowest
-    # PWM it measured, which is 0.33. Every such command is roughly a doubling.
-    # What is different from the DWB fault this replaced is that it is corrected
-    # rather than compounded -- MPPI re-seeds from the speed `/odom` reports,
-    # not from the speed it asked for, so an overspeed shows up in the next
-    # tick's state 100 ms later.
+    # **MPPI cannot be constrained that way, and it is the one real thing given
+    # up in the swap.** It samples a continuous distribution and returns a
+    # weighted average of it, so there is no set of samples to prune: it asks
+    # for speeds under the floor, and `drive_mixer.pwm_for` answers with the
+    # slowest PWM it ever measured, which is 0.33.
+    #
+    # **Measured on the rover on 2026-08-31, off `/cmd_vel_nav`, and it is worse
+    # on a turn than on a straight.** Driving 1.25 m down a clear line, 11 of 35
+    # forward commands were under the floor and every one of them was in the
+    # acceleration or the deceleration ramp -- 0.09, 0.14, 0.20, 0.24, 0.28 on
+    # the way up and 0.39 down to 0.22 on the way down -- with the rover holding
+    # 0.40 in between and arriving. That is a cheap fiction. Then a 1.2 m goal
+    # about 90 degrees off the nose: 170 of the 190 forward commands were under
+    # the floor, 211 of 324 ticks were pivots, and after 45 s and 176 degrees of
+    # turning it had gone 1.5 m and stopped 15 cm from a wall.
+    #
+    # **The mechanism is the turning radius, not the speed.** Asked for a tight
+    # arc, MPPI pairs a small vx with a large wz; the wheels cannot hold the
+    # small vx, so the mixer drives 0.33 m/s and the arc comes out at 0.4-0.5 m
+    # of radius instead of the near-pivot that was asked for. The rover leaves
+    # the path, is corrected, and does it again -- which is the DWB fault
+    # recorded in the README under "tight curves were a fiction too", and DWB
+    # was cured of it by having its sample set cut to {0.0, 0.40}. That cure is
+    # not available here.
+    #
+    # What is genuinely better than DWB's version is that MPPI re-seeds each
+    # tick from the speed `/odom` reports rather than from the speed it asked
+    # for, so an overspeed appears in the next tick's state 100 ms later instead
+    # of compounding. On a straight line that is enough. On a turn it is not.
+    #
+    # **The place to fix this is `drive_mixer`, not here.** A linear command
+    # under about half the floor is a request the chassis cannot serve at all,
+    # and answering it with a pivot would be closer to it than answering with
+    # 0.33 m/s of forward travel. That is a change to a control law three things
+    # share and it wants its own reproduction, so it is written down rather than
+    # made.
     #
     # **`VelocityDeadbandCritic` looks like the answer to this and is not.** It
     # scores `max(deadband - |v|, 0)` summed over the horizon, so a deadband of

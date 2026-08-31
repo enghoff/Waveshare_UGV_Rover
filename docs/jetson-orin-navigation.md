@@ -435,7 +435,18 @@ Create an MPPI parameter set that respects the measured rover motion envelope an
 
 Promote MPPI only if it materially improves navigation without reducing safety or reliability.
 
-**Status, 2026-08-31: the parameter set exists and the benchmark does not.** The
+**Status, 2026-08-31: configured, deployed, driven twice, and not yet good
+enough.** A 1.5 m goal straight ahead arrived cleanly in 3.5 s with no recoveries.
+A 1.2 m goal 90 degrees off the nose did not arrive: 45 s, 176 degrees of net
+turning, 1.5 m travelled, and the rover finished nose-first 15 cm from a wall in a
+cell the planner then called occupied, with both recoveries refusing on collision.
+The cause is the velocity floor below - asked for a tight arc, MPPI pairs a small
+`vx` with a large `wz`, the wheels cannot hold the small `vx`, and the arc comes
+out at 0.4-0.5 m of radius rather than the near-pivot asked for. `ros_nav/README.md`
+has the recorded commands. The acceptance test below is what should settle it, and
+the candidate fix is in `drive_mixer` rather than in the controller.
+
+The
 `nav/mppi-controller` branch replaces the `FollowPath` plugin in
 `ros_nav/config/nav2.yaml` with `nav2_mppi_controller::MPPIController` and carries
 the measured envelope across unchanged - 0.40 m/s forward, no reverse, 0.78 rad/s,
