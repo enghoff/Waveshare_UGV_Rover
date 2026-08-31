@@ -167,6 +167,15 @@ def _model_map_view(arguments: dict[str, Any],
 class RoverNav:
     """Lidar tools and scripting, mixed into Rover."""
 
+    @property
+    def driving(self) -> bool:
+        """True while a move has the wheels, for the parts of the rover that care.
+
+        False on a daemon with no navigator, which is the honest answer there: a
+        rover that cannot be told to drive is not driving.
+        """
+        return self.nav is not None and self.nav.driving
+
     def _tool_drive(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}

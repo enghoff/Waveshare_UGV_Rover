@@ -592,6 +592,11 @@ class RoverCamera:
             "tracking": self._tracking.is_set(),
             "following_someone": bool(seen["locked"]) if fresh else False,
             "faces_in_view": seen["faces"] if fresh else 0,
+            # What the camera is doing with nobody to follow: sweeping the room, or
+            # holding still and watching where the rover is driving. Absent while
+            # somebody is being followed, and while the loop is still inside the
+            # couple of seconds it gives a lost face before it does either.
+            "searching": seen.get("searching") if fresh else None,
             "pan": round(self.pan), "tilt": round(self.tilt),
         }
         # How fast the loop is actually going round, which is the difference
@@ -634,6 +639,28 @@ class RoverCamera:
         self.centre_gimbal()
         return True
 
+    def _searching(self, current, gimbal):
+        """What to do with the camera when there is nobody to look at.
+
+        Two answers, and which one is right depends on whether the wheels are
+        turning. Parked, the rover sweeps: it has nothing else to do and somebody
+        walking into the room is only found by looking for them. Driving, it holds
+        still and looks where it is going -- see `Ahead`, which is where that is
+        argued -- and picks the sweep up again when it stops.
+
+        Asked once a frame rather than switched by the navigator when a move
+        begins, so that a move which ends between two frames is noticed by the
+        thing that cares, and so that neither driving nor tracking has to know the
+        other is running. Whichever behaviour is already in hand is kept, because
+        both carry the state of a move in progress -- which way the sweep was
+        going, how far the camera still has to turn -- and rebuilding one every
+        frame would leave the camera starting its journey over and over.
+        """
+        from aiming import Ahead, Scan
+
+        wanted = Ahead if self.driving else Scan
+        return current if isinstance(current, wanted) else wanted(gimbal)
+
     def _loop(self) -> None:
         """The face-tracking control loop, from track_face_pi.py's main().
 
@@ -643,7 +670,7 @@ class RoverCamera:
         """
         from aiming import (
             GAIN, GRACE_FRAMES, LOST_GRACE_S, MAX_DT, SCAN_AFTER_S, SCAN_RATE,
-            Gimbal, Scan, Target, clamp, scan_rate_for,
+            Gimbal, Target, clamp, scan_rate_for,
         )
 
         width, height = self.size
@@ -663,7 +690,7 @@ class RoverCamera:
         # with zero. See Gimbal.begin().
         gimbal.begin(time.monotonic(), self.pan, self.tilt)
         target = Target(self._acquire_score)
-        scan = None
+        search = None
         last_tick = time.monotonic()
         self._loop_fps = 0.0
         self._wait_ms = self._aim_ms = 0.0
@@ -711,7 +738,7 @@ class RoverCamera:
                         print("[rover] the face detector is not answering; holding still",
                               file=sys.stderr, flush=True)
                         target.drop()
-                        scan = None
+                        search = None
                         stalled = True
                     continue
                 if stalled:
@@ -740,10 +767,10 @@ class RoverCamera:
                     # its own this frame. Carry on to the angle already worked
                     # out; re-reading the remembered pixel would apply the same
                     # correction again -- see Gimbal.keep_going().
-                    scan = None
+                    search = None
                     gimbal.keep_going(dt)
                 elif tracking:
-                    scan = None
+                    search = None
                     # Positive x is right of centre and positive y is *above* it,
                     # which is not the picture's own row order.
                     error_x = (target.centre[0] - width / 2) / (width / 2)
@@ -762,9 +789,8 @@ class RoverCamera:
                         target.drop()
                         gimbal.forget()
                     if now - target.seen_at > SCAN_AFTER_S:
-                        if scan is None:
-                            scan = Scan(gimbal)
-                        scan.step(gimbal, scan_rate_for(dt, gimbal.pan_gain), dt)
+                        search = self._searching(search, gimbal)
+                        search.step(gimbal, scan_rate_for(dt, gimbal.pan_gain), dt)
                 gimbal.record(now)
 
                 aimed = time.monotonic()
@@ -778,6 +804,11 @@ class RoverCamera:
                         "at": now,
                         "centre": target.centre if tracking else None,
                         "where": [_where(face, width, height) for face in faces],
+                        # Sweeping and watching the road ahead look identical from
+                        # outside -- a camera pointing somewhere, with nobody in
+                        # front of it -- and the console said "sweeping" through
+                        # both. In its own words, so that one place decides.
+                        "searching": None if search is None else search.state(),
                     }
                 self._aim_ms += 0.2 * ((time.monotonic() - aimed) * 1e3 - self._aim_ms)
         finally:

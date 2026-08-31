@@ -1013,4 +1013,57 @@ class Scan:
             self.direction = -self.direction
 
     def state(self):
-        return "scanning, levelling" if self.levelling else "scanning"
+        return "sweeping, levelling" if self.levelling else "sweeping"
+
+
+class Ahead:
+    """Where the camera looks while the rover is driving and nobody is in view.
+
+    Straight forward, at the same height the sweep uses, and then still. It is the
+    sweep's sibling and takes the same `step(gimbal, rate, dt)`, so the loop can
+    hold one or the other and never both.
+
+    A sweep is the wrong thing to do with a camera on a moving rover. Panning and
+    driving compound: the picture moves at the sum of the two, so the smear the
+    sweep rate was measured against is no longer what the detector gets, and the
+    one direction the camera is *not* looking often enough is the one the rover is
+    about to arrive in. Somebody the rover is driving towards walks into this view
+    by itself, which is the case the sweep exists to cover and the one case it
+    cannot help with here.
+
+    Held at SCAN_TILT rather than level for the reason that number exists: the
+    rover is on the floor and faces are above it. Level would spend the drive
+    looking at carpet.
+    """
+
+    #: Within this many degrees of the pose counts as arrived. A degree is the
+    #: resolution the command is rounded to anyway -- see Gimbal.changed() -- so
+    #: anything finer is a servo command the board would not act on.
+    CLOSE_DEG = 1.0
+
+    def __init__(self, gimbal):
+        self.turning = self._far(gimbal)
+
+    def _far(self, gimbal):
+        return (abs(gimbal.pan) > self.CLOSE_DEG
+                or abs(gimbal.tilt - SCAN_TILT) > self.CLOSE_DEG)
+
+    def step(self, gimbal, rate, dt):
+        """Walk to the pose at the sweep's own pace, then stop moving.
+
+        Paced rather than placed, because the trip is seconds of looking at the
+        room like any other: a camera slewed across at the servo's top speed sees
+        nothing on the way, and somebody standing off to one side is exactly who
+        this is turning away from. Both axes at once, unlike the sweep, which
+        separates them so its first pass is not a diagonal -- here there is no
+        pass to spoil, only a pose to reach.
+        """
+        if not self.turning:
+            return
+        travel = rate * dt
+        gimbal.move(clamp(-gimbal.pan, -travel, travel),
+                    clamp(SCAN_TILT - gimbal.tilt, -travel, travel), dt)
+        self.turning = self._far(gimbal)
+
+    def state(self):
+        return "watching ahead, turning back" if self.turning else "watching ahead"

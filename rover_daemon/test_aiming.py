@@ -235,3 +235,51 @@ def test_the_approach_to_a_face_never_turns_back():
     slow, fast = approach((600, 60), 0.4), approach((600, 60), 1.0)
     check("more gain arrives sooner rather than overshooting further",
           min(fast) <= min(slow) + 1.0, True)
+
+
+def test_the_camera_settles_ahead_instead_of_sweeping():
+    """Driving with nobody in view points the camera forward and leaves it there.
+
+    The sweep is what a parked rover does with an idle camera. Under way it is the
+    wrong move twice over: the pan adds to the rover's own motion, so the picture
+    smears past what the sweep rate was measured for, and the direction it spends
+    least time looking at is the one the rover is driving into. `Ahead` is the
+    other answer -- forward, at the height faces are at, and then still.
+
+    The check is that it arrives and *stops*: a pose-holder that keeps issuing
+    corrections is a servo that never settles, and on this rover that is a stream
+    of board commands behind the loop that is trying to see somebody.
+    """
+    import aiming
+    from aiming import Ahead, Gimbal
+
+    dt = 0.25
+    gimbal = Gimbal(aiming.GAIN, (640, 480))
+    gimbal.pan, gimbal.tilt = -120.0, -20.0     # turned away and looking at the floor
+    ahead = Ahead(gimbal)
+    check("a camera pointing elsewhere has to turn back", ahead.state(),
+          "watching ahead, turning back")
+
+    rate = aiming.scan_rate_for(dt, gimbal.pan_gain)
+    step_was = None
+    for _ in range(200):
+        before = gimbal.pan
+        ahead.step(gimbal, rate, dt)
+        moved = abs(gimbal.pan - before)
+        if moved > 0.01:
+            step_was = moved
+        if not ahead.turning:
+            break
+    check("it never slews faster than the sweep would",
+          step_was is not None and step_was <= rate * dt + 1e-9, True)
+    check("it ends up looking straight ahead", round(gimbal.pan), 0)
+    check("...at the height faces are at", round(gimbal.tilt), aiming.SCAN_TILT)
+    check("...and says so", ahead.state(), "watching ahead")
+
+    # Arrived is arrived. The gimbal must be left alone from here, or every frame
+    # of a long drive is another servo command for a camera already pointing where
+    # it was asked to.
+    settled = (gimbal.pan, gimbal.tilt)
+    for _ in range(10):
+        ahead.step(gimbal, rate, dt)
+    check("and then holds still", (gimbal.pan, gimbal.tilt), settled)

@@ -260,6 +260,19 @@ class RosNavigator:
             pass
 
     @property
+    def driving(self) -> bool:
+        """True from the moment a move takes the wheels until it has let go.
+
+        The mutex is the fact rather than a flag kept beside it, so this cannot
+        drift out of step with what is actually running. Read by anything that has
+        to behave differently while the rover is under way -- the lidar reset
+        refuses, and face tracking stops sweeping -- neither of which is worth a
+        callback into: a caller that asks each time it acts is never left holding a
+        stale answer from a move that ended while it was busy.
+        """
+        return self._move_mutex.locked()
+
+    @property
     def reachable(self) -> bool:
         """Whether the last thing said to the bridge was answered. For the startup
         banner, and not a health check: it is only as fresh as the last request."""
@@ -437,7 +450,7 @@ class RosNavigator:
         """
         import usbreset
 
-        if self._move_mutex.locked():
+        if self.driving:
             return {"ok": False,
                     "error": "the rover is moving; the reset takes the camera "
                              "down with it, so stop first"}

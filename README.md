@@ -141,9 +141,10 @@ gimbal UVC camera -> MJPEG -> local YuNet -> aiming.py -> gimbal command -> driv
 ```
 
 The camera is kept as MJPEG because the Banana Pi can decode a frame cheaply and
-uncompressed capture needlessly consumes the shared USB path. The measured
-detector details and calibration procedure are in
-[`docs/face-tracking.md`](docs/face-tracking.md).
+uncompressed capture needlessly consumes the shared USB path. Tracking runs while
+the rover drives; with nobody in view it stops sweeping and watches the way it is
+going until the wheels stop. The measured detector details and calibration
+procedure are in [`docs/face-tracking.md`](docs/face-tracking.md).
 
 ### Voice
 

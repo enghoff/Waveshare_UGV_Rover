@@ -127,6 +127,17 @@ The control loop also distinguishes:
 - detector/camera failure, where blind sweeping should stop rather than pretending
   the last observation is current.
 
+With no target the loop has two behaviours rather than one, and which is right
+depends on the wheels. Parked, it sweeps (`Scan`). Under way it holds the camera
+straight ahead at the scanning height and stops sweeping (`Ahead`): the pan would
+otherwise add to the rover's own motion, smearing the picture past what the sweep
+rate was measured for, and the direction it looks at least often is the one the
+rover is driving into. A face found while driving is followed exactly as it would
+be standing still. The loop asks the navigator once a frame -- `Rover.driving`,
+which is the move mutex and not a flag kept beside it -- so a move that begins or
+ends between two frames is picked up by the next one. `tracking_status()` reports
+which of the two is running as `searching`.
+
 The exact gains, deadband, scan speed and target grace are executable policy in
 `face_tracking/aiming.py`. Treat that file as authoritative if a prose value in an
 older investigation differs.

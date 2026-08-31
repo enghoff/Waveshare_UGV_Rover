@@ -41,6 +41,7 @@ for RENDERER in (os.path.join(os.path.dirname(HERE), "lidar_slam"),
 from test_aiming import (
     test_aiming_through_a_missed_frame, test_one_move_puts_a_face_in_the_middle,
     test_the_approach_to_a_face_never_turns_back,
+    test_the_camera_settles_ahead_instead_of_sweeping,
 )
 from test_harness import FAIL, PASS, SKIP, check
 from test_ros_nav import TESTS as ROS_NAV_TESTS
@@ -290,6 +291,52 @@ def test_gimbal():
     check("a non-numeric angle is refused", rover.call("look_at", {"pan": "left"})["ok"], False)
     check("center_camera returns to zero", rover.call("center_camera", {}),
           {"ok": True, "pan": 0, "tilt": 0, "stopped_tracking": False})
+
+
+def test_what_the_camera_does_with_nobody_in_view():
+    """Sweep when parked, watch the road when driving, and change over mid-run.
+
+    The tracking loop asks this once a frame instead of being told by the
+    navigator when a move starts and stops, so this is the whole of the decision
+    and worth having offline: the loop itself needs a camera, a detector and a
+    person to stand in front of it.
+    """
+    try:
+        from aiming import Ahead, Gimbal, Scan
+    except ImportError as exc:
+        SKIP.append(f"searching behaviour ({type(exc).__name__}: needs aiming.py)")
+        return
+    import rover_daemon
+
+    class FakeNav:
+        """Only the one thing the camera asks a navigator."""
+
+        def __init__(self):
+            self.driving = False
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    gimbal = Gimbal(0.5, (640, 480))
+
+    check("a rover with no navigator is not driving", rover.driving, False)
+    parked = rover._searching(None, gimbal)
+    check("...so an idle camera sweeps", isinstance(parked, Scan), True)
+
+    rover.nav = FakeNav()
+    check("a navigator with the wheels free is not driving either", rover.driving, False)
+    check("and the sweep already running is kept, not restarted",
+          rover._searching(parked, gimbal), parked)
+
+    rover.nav.driving = True
+    check("the wheels turning is driving", rover.driving, True)
+    moving = rover._searching(parked, gimbal)
+    check("...and the sweep gives way to watching ahead",
+          isinstance(moving, Ahead), True)
+    check("which is then kept for as long as the move lasts",
+          rover._searching(moving, gimbal), moving)
+
+    rover.nav.driving = False
+    check("the move ending puts the sweep back",
+          isinstance(rover._searching(moving, gimbal), Scan), True)
 
 
 def test_default_camera():
@@ -2131,6 +2178,8 @@ def main():
                  test_map_view, test_flags, test_aiming_through_a_missed_frame,
                  test_one_move_puts_a_face_in_the_middle,
                  test_the_approach_to_a_face_never_turns_back,
+                 test_the_camera_settles_ahead_instead_of_sweeping,
+                 test_what_the_camera_does_with_nobody_in_view,
                  *ROS_NAV_TESTS):
         try:
             test()

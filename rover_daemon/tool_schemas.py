@@ -110,8 +110,10 @@ TOOLS: list[dict[str, Any]] = [
             "description": (
                 "Start following a face with the camera. The rover keeps whoever "
                 "it finds centred in view, and sweeps to look for somebody if "
-                "there is nobody about. It picks the largest face it can see, "
-                "which is normally the nearest person."
+                "there is nobody about -- except while it is driving, when it "
+                "keeps running but watches the way it is going instead of "
+                "sweeping. It picks the largest face it can see, which is "
+                "normally the nearest person."
             ),
             "parameters": {"type": "object", "properties": {}},
         },
@@ -144,8 +146,9 @@ TOOLS: list[dict[str, Any]] = [
             "name": "tracking_status",
             "description": (
                 "Report whether face tracking is running, whether a face is "
-                "currently being followed, how many are in view, and where the "
-                "camera is pointing."
+                "currently being followed, how many are in view, where the "
+                "camera is pointing, and -- with nobody in view -- whether it is "
+                "sweeping the room or watching where the rover is driving."
             ),
             "parameters": {"type": "object", "properties": {}},
         },
