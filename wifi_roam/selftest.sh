@@ -64,11 +64,24 @@ case "$*" in
         printf '%s\n' "$SCAN"
         ;;
     *"con up"*) exit "${CON_UP_STATUS:-0}" ;;
-    # What wifi_ctl.sh checks an SSID against before it will join it.
-    "-t -f NAME,TYPE con show")
-        printf 'TheGreatLord:802-11-wireless\nTheMaharaja:802-11-wireless\n'
-        printf 'TheGreatViking:802-11-wireless\nWired connection 1:802-3-ethernet\n'
+    # What wifi_ctl.sh checks an SSID against before it will join it. The
+    # dongle's profile is deliberately not named after its network,
+    # because on the rover it is not: two radios held on two routers need
+    # a profile each, and the second is called TheGreatViking-dongle.
+    "-t -f TYPE,NAME con show")
+        printf '802-11-wireless:TheGreatLord\n802-11-wireless:TheMaharaja\n'
+        printf '802-11-wireless:TheGreatViking-dongle\n'
+        printf '802-3-ethernet:Wired connection 1\n'
         ;;
+    "-g 802-11-wireless.ssid con show TheGreatViking-dongle")
+        echo TheGreatViking ;;
+    "-g 802-11-wireless.ssid con show "*)
+        echo "$5" ;;
+    # And that profile is pinned to the radio it belongs to, which is
+    # what makes naming an interface on the way up a contradiction.
+    "-g connection.interface-name con show TheGreatViking-dongle")
+        echo wlx002e2d3074d0 ;;
+    "-g connection.interface-name con show "*) ;;
 esac
 exit 0
 FAKE
@@ -438,6 +451,32 @@ check "a network with no passphrase here is still refused" \
         sh "$HERE/wifi_ctl.sh" join Alister 2>&1)"
 check_silent "and brings nothing up on the way to refusing it" \
     "$(grep 'con up' "$WORK/nmcli.log" || true)"
+
+# The dongle's network is reached through a profile that is not named after it,
+# which is the arrangement on the rover: two radios pinned to two routers, so
+# two profiles, and the second one is TheGreatViking-dongle. Comparing SSIDs
+# against profile names told the console there was no passphrase for a network
+# the rover holds the key for, and then refused the join it had greyed out.
+: > "$WORK/nmcli.log"
+named=$(env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
+    STATE="$WORK/state" LOCK="$WORK/lock" \
+    sh "$HERE/wifi_ctl.sh" profiles 2>&1)
+check "a profile is reported by the network it is for, not by its own name" \
+    "TheGreatViking" "$named"
+check_silent "and its own name is never offered as a network" \
+    "$(echo "$named" | grep -- '-dongle' || true)"
+
+: > "$WORK/nmcli.log"
+env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" \
+    STATE="$WORK/state" LOCK="$WORK/lock" \
+    sh "$HERE/wifi_ctl.sh" join TheGreatViking > /dev/null 2>&1
+check "joining that network brings up the profile that holds it" \
+    "con up TheGreatViking-dongle" "$(cat "$WORK/nmcli.log")"
+# The profile pins its own radio. Naming a different one here is how a join
+# fails with the profile and the interface contradicting each other.
+check_silent "and does not argue with the radio the profile is pinned to" \
+    "$(grep 'con up TheGreatViking-dongle ifname' "$WORK/nmcli.log" || true)"
+
 
 echo
 echo "the same helper, on a rover with no NetworkManager"

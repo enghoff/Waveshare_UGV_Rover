@@ -148,10 +148,40 @@ dual_running() {
 LOCK_WAIT=${LOCK_WAIT:-30}
 JOIN_WAIT=${JOIN_WAIT:-25}
 
-# NAME:TYPE, so a wifi profile can be told from the wired one and from `lo`.
+# The wifi profiles on this host, by the name NetworkManager files them under.
+# TYPE first and the prefix stripped, rather than splitting fields, because `-t`
+# escapes a colon inside a name instead of dropping it and a split would cut the
+# name in half at it.
+wifi_profile_names() {
+    nmcli -t -f TYPE,NAME con show | sed -n 's/^802-11-wireless://p'
+}
+
+# ...and the network each of them is *for*, which is not the same thing. This
+# rover's dongle joins `TheGreatViking` through a profile called
+# `TheGreatViking-dongle`, because the two radios are held on different routers
+# and each needs a profile of its own pinned to it. Reporting names here is what
+# made the console label a network the rover holds the key for "no passphrase"
+# and then refuse to join it.
 profiles_nmcli() {
-    nmcli -t -f NAME,TYPE con show |
-        awk -F: '$2 == "802-11-wireless" { print $1 }'
+    wifi_profile_names | while IFS= read -r name; do
+        ssid=$(nmcli -g 802-11-wireless.ssid con show "$name" 2>/dev/null)
+        printf '%s
+' "${ssid:-$name}"
+    done
+}
+
+# The other direction, for the join, which has to name a profile rather than a
+# network. Nothing is returned for a network this rover has no profile for, and
+# the caller has already refused that case by then.
+profile_for_ssid() {
+    wifi_profile_names | while IFS= read -r name; do
+        ssid=$(nmcli -g 802-11-wireless.ssid con show "$name" 2>/dev/null)
+        if [ "${ssid:-$name}" = "$1" ]; then
+            printf '%s
+' "$name"
+            break
+        fi
+    done
 }
 
 profiles_wpa() {
@@ -316,7 +346,18 @@ join_nmcli() {
     # passphrase: the profile already exists and holds the key. `-w` so that a
     # join which is never going to complete gives up inside the time the daemon
     # is prepared to wait, rather than being killed at 90 s with nobody told.
-    nmcli -w "$JOIN_WAIT" con up "$1" ifname "$IFACE"
+    profile=$(profile_for_ssid "$1")
+    [ -n "$profile" ] || profile=$1
+    # A profile that pins itself to one radio -- both of this rover's do, which
+    # is how they stay on different routers -- has to come up on that radio, and
+    # naming a different one here is a join that fails with the profile and the
+    # interface contradicting each other.
+    if [ -n "$(nmcli -g connection.interface-name con show "$profile" 2>/dev/null)" ]
+    then
+        nmcli -w "$JOIN_WAIT" con up "$profile"
+    else
+        nmcli -w "$JOIN_WAIT" con up "$profile" ifname "$IFACE"
+    fi
 }
 
 join_wpa() {
