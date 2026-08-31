@@ -178,6 +178,21 @@ ssh orin 'journalctl -u NetworkManager -n 20'           # and what it did about 
 answers on a rover where NetworkManager is itself the problem. The dongle appears
 in it with no network beside it, which is the honest report rather than a fault.
 
+Measured here on 2026-08-31, by rebooting the rover twice and choosing a network
+by hand in between. It came up on `TheGreatViking` by itself both times, once
+from a boot where the last thing anybody had asked for was `TheGreatLord` -- a
+hand-picked network does not survive a reboot, and is not meant to. A join from
+the console cost **about six seconds** of the rover being unreachable, after
+which it answered at `192.168.1.80` again on the new network. The dongle came up
+`unmanaged` with no address.
+
+**The link is a good deal weaker than it was.** `TheGreatViking` is 2.4 GHz and
+reads **-65 to -66 dBm** from where the rover stands, against the -37 to -40 dBm
+the onboard radio saw on `TheGreatLord`'s 5 GHz. That is the price of choosing
+one network and staying on it, and it is worth knowing before blaming a slow
+camera stream on something else. `TheGreatViking 5G` is audible at -88 dBm,
+which is not worth having.
+
 ### Which networks this rover can join
 
 All three house networks, on the onboard radio. NetworkManager holds one profile
