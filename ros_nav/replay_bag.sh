@@ -48,6 +48,9 @@ OUT=""
 EXTRA=()
 # Every topic, unless a mapper mode needs some of them held back.
 PLAY_TOPICS=()
+# Set by the lidar-odometry mode, to point the mapper at its odometry topic
+# instead of the transform tree.
+ODOM_REMAP=()
 
 BAG="${1:-}"
 if [ -z "$BAG" ]; then
@@ -154,19 +157,23 @@ else
         # the wheels off TF and correcting them once per keyframe, it matches
         # every scan against a running local map and produces `odom` itself.
         #
-        # **The wheels are not played in this mode**, and that is not squeamish-
-        # ness about spending CPU on them. A frame in TF has exactly one parent,
-        # so base_node's `odom -> base_link` from the recording and this node's
-        # cannot both exist: tf2 would take whichever arrived last and the
-        # comparison would be of neither. PLAY_TOPICS below drops /tf and /odom
-        # and keeps /tf_static, which carries base_link -> laser and belongs to
-        # the rover rather than to whatever is producing odometry.
+        # **The wheels are kept, as the guess**, and that is the whole design
+        # rather than a convenience. Run without them -- pure scan-to-scan ICP,
+        # which the first version of this mode did -- it loses track on this
+        # rover and spreads a 13 by 17 metre room over 27 by 26 metres of blur.
+        # The wheels are a poor absolute measurement and a very good hint about
+        # what just happened between two scans 3 cm apart, which is exactly what
+        # ICP needs to start from.
         #
-        # What that costs is the guess. In production icp_odometry would be given
-        # the wheels through guess_frame_id, with base_node publishing them under
-        # a frame of their own; here it starts each match from where the last one
-        # ended, which is the harder version of the job and therefore the honest
-        # one to measure.
+        # So the recording plays in full, base_node's `odom -> base_link` stays
+        # the transform tree's, and icp_odometry is told to read it as its guess
+        # (guess_frame_id) and to publish its own answer as a *topic* rather than
+        # a transform. A frame in TF has exactly one parent, so a second
+        # publisher of `odom -> base_link` would give the mapper one flickering
+        # answer instead of two to choose between; a topic collides with nothing.
+        # rtabmap then takes its odometry from that topic, which is what naming
+        # no odom_frame_id at all means to it.
+        #
         # `qos`, not `qos_scan`: this node names it differently from the mapper,
         # and getting it wrong is the same silent nothing this rover has now met
         # three times. lidar_node publishes /scan best-effort on purpose and the
@@ -175,16 +182,18 @@ else
         # discovers the topic, logs that it is subscribed to it, and is never
         # delivered a single scan. Read off `ros2 param list` on the running
         # node, which has `qos` and nothing called `qos_scan` at all.
-        PLAY_TOPICS=(--topics /scan /tf_static)
+        ODOM_REMAP=(-p "odom_frame_id:=" -r odom:=/odom_icp)
         "$DIR/native.sh" ros2 run rtabmap_odom icp_odometry \
             --ros-args \
                 -r __node:=icp_odometry \
                 --params-file "$DIR/config/rtabmap.yaml" \
                 -p use_sim_time:=true \
                 -p frame_id:=base_link \
-                -p odom_frame_id:=odom \
-                -p publish_tf:=true \
+                -p odom_frame_id:=odom_icp \
+                -p guess_frame_id:=odom \
+                -p publish_tf:=false \
                 -p subscribe_scan:=true \
+                -r odom:=/odom_icp \
                 -p qos:=2 \
                 -p "Odom/Strategy:='0'" \
                 -p "Odom/ScanKeyFrameThr:='0.8'" \
@@ -207,6 +216,7 @@ else
             -p publish_tf:=true \
             -p database_path:="$RESULT.db" \
             -r scan:=/scan -r map:=/map \
+            "${ODOM_REMAP[@]+"${ODOM_REMAP[@]}"}" \
             "${PARAMS[@]+"${PARAMS[@]}"}" > "$RESULT.log" 2>&1 &
     pids+=($!)
 fi
