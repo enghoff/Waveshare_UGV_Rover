@@ -130,7 +130,10 @@ the Banana Pi. The gimbal camera and the driver board are unaffected beside it.
 That was taken at 10 fps, which was the default until later the same day. **The
 service now runs at 2 fps**, because nothing reads `/depth` yet and a parked rover
 has nothing new to look at; `oak_depth/depth_server.py` explains the reasoning and
-`--fps` raises it again.
+`--fps` raises it again. At 2 fps it costs 0.5% of a core, and the board's
+`VDD_IN` rail reads 6.32 W against 6.49 W at 10 -- a saving of about 180 mW, which
+is small and near the noise. The gimbal camera and the driver board are unaffected
+either way.
 
 `~/ugv/oak_depth/run_oak_depth.sh` from the `jetson` crontab is what keeps it
 open, and its being alive is the whole of the camera being awake: a booted

@@ -84,6 +84,15 @@ frames a second means the answer is never more than half a second old. Raising i
 is `--fps`, and because the rate is baked into the pipeline when it is built,
 changing it is a restart and a fresh firmware upload rather than a live retune.
 
+**What the drop to 2 fps actually bought, measured the same day:** the Orin's
+`VDD_IN` rail fell from 6.49 W to 6.32 W, each averaged over forty one-second
+samples with the rest of the rover running, and this service's own CPU from 1.5%
+of a core to 0.5%. So about 180 mW, or 3% of the board — real, but small enough
+to sit inside the rail's own 300 mW sample-to-sample spread, and it should be
+read as "a little" rather than as a figure to plan around. Note also that
+`VDD_IN` is the *Orin's* input, so how much of the camera's own USB draw it sees
+is unproven. The link is the honest saving: 1.5 MB/s down to roughly 300 kB/s.
+
 The table below was measured at the old 10 fps default, with the service running
 and the rover otherwise doing its usual work. The rates and the link cost scale
 with `--fps`; the rest does not:
