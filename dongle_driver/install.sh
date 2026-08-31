@@ -2,8 +2,7 @@
 # Build and install the driver for the rover's USB radio, patched so that the
 # radio survives the USB errors it produces.
 #
-#     ssh orin 'sudo -S -p "" sh ~/ugv/wifi_roam/dongle-driver/install.sh' \
-#         < secrets/jetson-orin.key
+#     python deploy/deploy.py --only dongle_driver --system
 #
 # **Why this exists at all.** NVIDIA's L4T kernel is built with CONFIG_RTL8XXXU
 # unset and ships no drivers/net/wireless/realtek directory, so the dongle sits
