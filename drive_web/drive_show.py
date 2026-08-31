@@ -240,8 +240,9 @@ class SessionShow:
                 self.wifi_ok = False
                 self.wifi.update({"supported": False, "text": "-", "verdict": "",
                                   "where": "this rover's daemon does not offer the "
-                                           "network calls yet", "networks": [],
+                                           "network calls yet",
                                   "scanning": False})
+                self.set_networks([])
                 return
             self.wifi_ok = True         # it knows the call; it just could not answer
             self.wifi.update({"supported": True, "text": "-", "verdict": "",
@@ -288,8 +289,9 @@ class SessionShow:
                 "joinable": configured and not in_use,
                 "note": "on it" if in_use else ("" if configured
                                                 else "no passphrase")})
+        self.set_networks(networks)
         self.wifi.update({"supported": True, "text": text, "verdict": verdict,
-                          "where": ", ".join(where), "networks": networks,
+                          "where": ", ".join(where),
                           "radios": radios, "scanning": False,
                           # What a join is going to cost, which is the thing a
                           # person about to press one wants to know and which
@@ -311,6 +313,21 @@ class SessionShow:
                 self.wifi["joining"] = None
                 self.wifi["note"] = (f"the rover is on {asked} now, and nothing "
                                      f"dropped")
+
+    def set_networks(self, networks: list[dict[str, Any]]) -> None:
+        """The list of networks, kept off the state and behind a generation.
+
+        Three and a half kilobytes of it, and it changes when the radio next hears
+        something different -- a few times an hour on a rover sitting in a house. It
+        used to ride in a state pushed ten times a second, which is where more than
+        half of this console's traffic went. So it is served from `/wifi.json` the
+        way the map and the camera frame are served, and the state carries only the
+        count: the page fetches it when that moves and the browser caches it for
+        good, because a new list is a new URL.
+        """
+        if networks != self.wifi_networks:
+            self.wifi_networks = networks
+            self.wifi_networks_gen += 1
 
     def show_radios(self, dual: dict[str, Any]) -> list[dict[str, Any]]:
         """One row per radio: what it is on, how good it is, and what it is for.
@@ -382,7 +399,11 @@ class SessionShow:
         if not body.get("ok"):
             self.track_text = str(body.get("error", "-"))
             return
-        if not body.get("tracking"):
+        # Kept as a flag as well as a sentence, because it is the one thing that
+        # makes the camera panel worth a picture every half second on a rover that
+        # is otherwise standing still. See `moving`.
+        self.tracking_on = bool(body.get("tracking"))
+        if not self.tracking_on:
             self.track_text = "off"
             return
         # "Running" and "following somebody" are different states and the difference

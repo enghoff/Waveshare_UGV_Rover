@@ -425,7 +425,9 @@
 const $ = (id) => document.getElementById(id);
 let setup = null;          // the ladders and the colour key, fetched once
 let state = null;          // the last thing the server said
-let mapGen = -1, frameGen = -1, wifiPrint = "", radioPrint = "";
+let mapGen = -1, frameGen = -1, wifiGen = "", radioPrint = "";
+let networks = [];         // fetched from /wifi.json when wifiGen moves
+let mapArrivedAt = 0;      // when this browser received the map on screen
 let noticeSeq = -1, noticeTimer = 0;
 // How long a notice stays on screen. Timed here rather than counted down in the
 // state, because a number the rover publishes is a number that changes, and a state
@@ -447,6 +449,12 @@ function post(action) {
 // the server: they are the only things on this page that are genuinely local,
 // because a half-typed distance is not a fact about the rover.
 const number = (id) => $(id).value.trim();
+
+// The map's age is the one thing on this page that changes while nothing happens,
+// so it is the one thing drawn on a clock. A second is as fine as it is ever shown.
+function tick() {
+  if (state) render(state);
+}
 
 function listen() {
   const stream = new EventSource("/events");
@@ -471,7 +479,7 @@ function render(next) {
   // stopwatch -- but a click that has been taken and is waiting for the wheels
   // would otherwise look for a second like a click that went nowhere.
   $("busy").textContent = next.busy
-    ? `${next.busy.name}  ${next.busy.seconds.toFixed(1)} s`
+    ? `${next.busy.name}  ${next.busy.seconds} s`
       + (next.busy.superseded ? "  \u2014 new target waiting" : "") : "";
   $("watchers").textContent = next.watching > 1
     ? `${next.watching} browsers watching` : "";
@@ -485,19 +493,23 @@ function render(next) {
   $("lidarNote").textContent = next.lidar.note;
   $("plan").textContent = next.plan;
 
+  if (next.map.gen && next.map.gen !== mapGen) mapArrivedAt = Date.now();
   drawPicture($("mapImg"), $("mapEmpty"), "/map.png", next.map.gen,
               () => mapGen, (g) => mapGen = g, next.map.error);
   if (next.map.width) {
     $("mapShot").style.aspectRatio = `${next.map.width} / ${next.map.height}`;
   }
   $("caption").textContent = next.map.caption;
-  // How old the picture is, said out loud. The rover takes a couple of seconds to
-  // draw one and the next is asked for half a second after this one landed, so what
-  // is on screen is always a moment ago rather than now -- and without a number
-  // there is no telling a map that is two seconds behind from one that stopped
-  // arriving a minute ago.
-  const drawn = next.map.age_s === null ? ""
-    : next.map.age_s < 1 ? "just now" : `${next.map.age_s.toFixed(0)} s ago`;
+  // How old the picture is, said out loud, because without a number there is no
+  // telling a map that is two seconds behind from one that stopped arriving a
+  // minute ago. Two sources, and neither of them ticks in the state: normally this
+  // browser counts from when the picture arrived, and the rover speaks up only once
+  // the map is late enough that its own account is the honest one -- which is also
+  // the case a page that has just opened cannot work out for itself.
+  const counted = mapArrivedAt ? (Date.now() - mapArrivedAt) / 1000 : null;
+  const late = next.map.age_s;
+  const age = late !== null && (counted === null || late > counted) ? late : counted;
+  const drawn = age === null ? "" : age < 1.5 ? "just now" : `${age.toFixed(0)} s ago`;
   $("mapNote").textContent = next.map.drawing
     ? (drawn ? `drawing... (showing one from ${drawn})` : "drawing...")
     : [drawn && `drawn ${drawn}`, next.map.settings, next.map.note]
@@ -849,15 +861,31 @@ function drawWifi(wifi) {
   $("wifiScan").disabled = wifi.scanning || wifi.supported === false;
   $("wifiScan").textContent = wifi.scanning ? "scanning..." : "look for networks";
   drawRadios(wifi);
+  // A join in flight greys every join button, and that can change without the list
+  // changing, so it is applied on every state rather than only when the rows are
+  // rebuilt.
+  for (const button of $("wifiList").querySelectorAll("button")) {
+    button.disabled = !!wifi.joining;
+  }
 
-  // Rebuilt only when it has actually changed, so that a five-second poll does
-  // not tear the rows out from under a finger reaching for one of them.
-  const print = JSON.stringify(wifi.networks);
-  if (print === wifiPrint) return;
-  wifiPrint = print;
+  // The rows themselves are fetched rather than pushed -- three and a half kB that
+  // used to ride in a state going out many times a second -- and rebuilt only when
+  // the rover says the list has actually changed, so that a poll does not tear the
+  // rows out from under a finger reaching for one of them.
+  const gen = wifi.networks_gen;
+  if (!gen || gen === wifiGen) return;
+  wifiGen = gen;
+  fetch(`/wifi.json?gen=${gen}`)
+    .then((reply) => reply.ok ? reply.json() : null)
+    .then((heard) => { if (heard) { networks = heard; drawNetworks(); } })
+    .catch(() => {});   // the next state carrying a new count asks again
+}
+
+function drawNetworks() {
   const list = $("wifiList");
   list.replaceChildren();
-  for (const network of wifi.networks) {
+  const joining = state && state.wifi.joining;
+  for (const network of networks) {
     const row = document.createElement("tr");
     row.className = network.in_use ? "here" : (network.configured ? "" : "stranger");
     const name = document.createElement("td");
@@ -869,7 +897,7 @@ function drawWifi(wifi) {
       const join = document.createElement("button");
       join.textContent = "join";
       join.onclick = () => post({do: "wifi_join", ssid: network.ssid});
-      join.disabled = !!wifi.joining;
+      join.disabled = !!joining;
       action.append(join);
     } else {
       action.textContent = network.note;
@@ -1059,6 +1087,7 @@ async function start() {
   wire();
   keys();
   listen();
+  setInterval(tick, 1000);
 }
 
 start();

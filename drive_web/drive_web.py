@@ -40,12 +40,21 @@ pressed it is a button that lies when the rover refuses, and here there can be t
 browsers open on the same rover, so a page that believed its own clicks would
 disagree with the room.
 
-**The pictures do not travel in that stream.** A map is 40-200 kB of base64 and
-the stream carries a fresh state ten times a second, so the map and the camera
-frame are kept back as ordinary HTTP resources -- `/map.png`, `/frame.jpg` -- and
-the state carries a counter that goes up when a new one arrives. The page changes
-the `src` when the counter moves, the browser fetches it once, and everything in
-between is a few kilobytes of numbers.
+**The pictures do not travel in that stream.** A map is 40-200 kB of base64, so the
+map and the camera frame are kept back as ordinary HTTP resources -- `/map.png`,
+`/frame.jpg` -- and the state carries a counter that goes up when a new one arrives.
+The page changes the `src` when the counter moves, the browser fetches it once, and
+everything in between is a few kilobytes of numbers. The list of Wi-Fi networks is
+served the same way, at `/wifi.json`, for the same reason at a smaller scale: three
+and a half kilobytes that change a few times an hour had been riding in every state.
+
+**And the state goes out when something happens, not on a clock.** It is rebuilt
+every tick and pushed only when it differs from the last one, which means anything
+in it that counts -- an age, a stopwatch -- is a push ten times a second on its own
+account. There used to be two such fields and they were, between them, most of what
+this console put on the wi-fi: the map's age in tenths of a second, and the in-flight
+timer. The age is now published only once a map is late enough for that to be news,
+and the timer counts whole seconds.
 
 **Closing the tab stops the rover**, which a desktop window gets almost for free
 from its close handler and is harder to keep here: a browser tab that goes away
@@ -205,6 +214,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._missing("no frame yet")
                 return
             self._send(self.session.frame_jpeg, "image/jpeg",
+                       "public, max-age=31536000, immutable")
+        elif path == "/wifi.json":
+            # A list of networks, kept out of the state for the same reason the
+            # pictures are: it is kilobytes, it changes a few times an hour, and the
+            # state goes out many times a second. Immutable because the URL carries
+            # the generation, so each list is fetched once.
+            self._send(json.dumps(self.session.wifi_networks).encode(),
+                       "application/json; charset=utf-8",
                        "public, max-age=31536000, immutable")
         elif path == "/setup":
             self._send(json.dumps(setup()).encode(),

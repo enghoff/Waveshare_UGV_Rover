@@ -107,10 +107,18 @@ def test_pictures_wait_for_the_last_one() -> None:
     checked here is that ordering: nothing goes out while one is in flight,
     nothing goes out in the moment one arrives, and something goes out once the
     gap has passed since it arrived.
+
+    And which gap, because there are two. Half a second of 28 kB camera frames and
+    7 kB map renders is most of a megabit a second of somebody's wi-fi, and a rover
+    standing still spends all of it redrawing the same picture: the map is drawn
+    around a pose that has not moved. So the fast gap belongs to a move in flight
+    and a parked rover is asked more slowly -- the camera more slowly, since a room
+    can change while a rover does not, and the map slowest of all.
     """
     try:
         import drive_web
-        from console_model import PICTURE_GAP_S, Reply
+        from console_model import (PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S,
+                                   PICTURE_GAP_S, Reply)
     except ImportError as exc:
         SKIP.append(f"pictures wait for the last one ({type(exc).__name__})")
         return
@@ -155,14 +163,37 @@ def test_pictures_wait_for_the_last_one() -> None:
     check("...and neither goes out half way through the gap",
           (len(session.picture.sent), len(session.camera.sent)), (1, 1))
 
-    # And past it, which is the only thing that releases them.
+    # Past the fast gap, and still nothing: this rover is parked, and the fast gap
+    # is for a rover that is doing something.
     session.map_done_at -= PICTURE_GAP_S
     session.frame_done_at -= PICTURE_GAP_S
     session.pump()
-    check("once the gap has passed since the map landed, the next one is asked for",
-          session.picture.sent, ["map_png", "map_png"])
-    check("...and the next frame with it",
+    check("a parked rover is not asked for a picture every half second",
+          (len(session.picture.sent), len(session.camera.sent)), (1, 1))
+
+    # Past the camera's own parked gap. The room can change while the rover does
+    # not, so this one is slowed rather than stopped.
+    session.frame_done_at -= PARKED_FRAME_GAP_S
+    session.pump()
+    check("...but its camera still comes, a couple of seconds at a time",
           session.camera.sent, ["camera_jpeg", "camera_jpeg"])
+    check("...while the map, which cannot have changed, waits longer",
+          session.picture.sent, ["map_png"])
+    session.map_done_at -= PARKED_MAP_GAP_S
+    session.pump()
+    check("...until its own gap has passed", session.picture.sent,
+          ["map_png", "map_png"])
+
+    # A move in flight puts both back on the fast gap, which is the whole point:
+    # now the pose is changing, so the next picture is a different picture.
+    session.handle(Reply("map_png", {}, {"ok": True, "png_base64": ""}, 0.1))
+    session.handle(Reply("camera_jpeg", {}, {"ok": True, "jpeg_base64": ""}, 0.1))
+    session.busy_since, session.busy_name = time.monotonic(), "drive"
+    session.map_done_at -= PICTURE_GAP_S * 1.5
+    session.frame_done_at -= PICTURE_GAP_S * 1.5
+    session.pump()
+    check("a move in flight is worth a picture every half second again",
+          (len(session.picture.sent), len(session.camera.sent)), (3, 3))
 
 
 def test_web_console() -> None:
@@ -222,10 +253,18 @@ def test_web_console() -> None:
     check("a battery reading is shown", "12.28 V" in session.battery["text"], True)
     check("...and an old one is dated rather than crashing the pump",
           "ago" in session.battery["note"], True)
-    offered = [n["ssid"] for n in session.wifi["networks"] if n["joinable"]]
+    offered = [n["ssid"] for n in session.wifi_networks if n["joinable"]]
     check("only a network it has a passphrase for is offered", offered, ["Sonic5"])
     check("the one it is on is named as such",
-          session.wifi["networks"][0]["note"], "on it")
+          session.wifi_networks[0]["note"], "on it")
+    # The list is fetched rather than pushed, so the state carries a count and the
+    # page asks again when it moves. Answering the same list twice must not move it,
+    # or every poll would have the browser fetch three and a half kB again.
+    gen = session.wifi_networks_gen
+    session.set_networks(list(session.wifi_networks))
+    check("an unchanged list is not a new list", session.wifi_networks_gen, gen)
+    session.set_networks([])
+    check("...and a changed one is", session.wifi_networks_gen, gen + 1)
     check("and the strong link is coloured as one", session.wifi["verdict"], "good")
 
     # An older daemon has none of these calls. Say so once and stop asking, rather

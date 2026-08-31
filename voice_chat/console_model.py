@@ -38,7 +38,14 @@ import rover_tools
 # so none of them is a taste in refresh rates. They are what the rover can
 # answer without the driving loop noticing.
 
-POLL_S = 0.3               # how often to ask for nav_status while connected
+POLL_S = 0.3               # how often to ask for nav_status while a move is running
+# ...and while none is. The fast poll exists so that a move in flight is reported
+# promptly: every sentence the navigator publishes about it, in order, before it is
+# overtaken. Parked, the same call returns a set of readings nobody is watching
+# change -- and two of them, the scan counter and the turn rate, change every time
+# it is asked, so polling three times a second was three states a second about a
+# rover standing still.
+PARKED_POLL_S = 1.5
 # How long the rover is left alone between pictures -- the map and the camera
 # frame alike -- measured from the moment one arrived rather than from the moment
 # it was asked for. That is the difference that matters on this host: a map takes
@@ -48,6 +55,20 @@ POLL_S = 0.3               # how often to ask for nav_status while connected
 # from the arrival makes the gap a gap, and half a second of a core that is also
 # running SLAM is enough for the rest of the console to be answered.
 PICTURE_GAP_S = 0.5
+# ...and the gaps for a rover that is doing nothing, which is most of the time.
+# A parked rover's map cannot have changed: it is drawn around a pose that is not
+# moving, out of a grid the lidar only extends as the rover drives. Its camera can
+# still change -- somebody walks past -- so that one is slowed rather than stopped,
+# and goes back to the fast gap while face tracking is running, which is the one
+# thing on this page that is watching the picture rather than the room.
+PARKED_MAP_GAP_S = 5.0
+PARKED_FRAME_GAP_S = 2.0
+# How old a map has to be before its age is worth publishing at all. Under this it
+# is "the current map" and the state says nothing about when it was drawn -- which
+# is the difference between a state that changes ten times a second and one that
+# changes when something happens. Over it, something has gone wrong with the
+# renderer and the number is the only thing that says so.
+MAP_STALE_S = 3.0
 # drive_to can take minutes of segments and turns -- the navigator allows a route
 # 15 m and 200 s -- while the default client timeout is 12 s, which is right for a
 # single hop and wrong for a route. Comfortably past the navigator's own budget, so

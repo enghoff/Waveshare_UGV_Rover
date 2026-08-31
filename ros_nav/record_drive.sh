@@ -78,33 +78,32 @@ fi
 echo "--- recording ${SECONDS_TO_RECORD}s to $OUT"
 echo "--- drive the rover now"
 
-# --max-bag-duration rather than a `timeout` around it: bag writes its metadata
-# when it closes the bag itself, and a bag killed mid-write is a bag that cannot
-# be replayed. This is the difference between a recording and a directory of
-# fragments.
-ros2 bag record \
-    --output "$OUT" \
-    --max-bag-duration "$SECONDS_TO_RECORD" \
-    --storage mcap \
-    /scan /tf /tf_static /odom /imu/data_raw &
-child=$!
-
-# Stop when this script is signalled, and stop the recorder the way it wants to
-# be stopped -- SIGINT, which is what bag treats as "close the bag properly".
-# A Ctrl-C in an ssh session lands here, and what it must not do is leave an
-# unreadable bag behind.
-stop() {
-    echo
-    echo "--- stopping the recording"
-    kill -INT "$child" 2>/dev/null || true
-    wait "$child" 2>/dev/null || true
-    exit 0
-}
-trap stop INT TERM
-
-sleep "$SECONDS_TO_RECORD"
-kill -INT "$child" 2>/dev/null || true
-wait "$child" 2>/dev/null || true
+# **In the foreground under `timeout`, and both halves of that are bought
+# experience.**
+#
+# The recorder has to be stopped by SIGINT, because that is what rosbag2 treats
+# as "close this bag properly" -- it then writes the metadata that makes the
+# directory a bag rather than a heap of fragments. The obvious way to arrange
+# that is to start it with `&`, sleep, and signal it. It does not work, and it
+# fails silently: **a background process started by a non-interactive shell has
+# SIGINT set to ignore**, inherited from the shell, so the signal lands on a
+# process that has been told to discard it. What that looked like here was a
+# 25-second recording that was still writing six minutes later while the script
+# that started it sat in `wait` for a child that would never exit.
+#
+# In the foreground the recorder keeps the default disposition and stops when it
+# is told to, and `timeout` is what tells it. --kill-after is the backstop for a
+# recorder wedged inside its own shutdown; it costs the metadata, and a bag that
+# cannot be replayed is better than a recorder nobody can stop.
+#
+# `--max-bag-duration` is deliberately not used. It splits the recording every N
+# seconds and carries on recording for ever, which is what it says and not what
+# anybody wants from a flag that looks like a length.
+timeout --signal=INT --kill-after=30 "$SECONDS_TO_RECORD" \
+    ros2 bag record \
+        --output "$OUT" \
+        --storage mcap \
+        /scan /tf /tf_static /odom /imu/data_raw || true
 
 echo "--- recorded:"
 du -sh "$OUT" 2>/dev/null || true

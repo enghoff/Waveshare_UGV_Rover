@@ -12,7 +12,8 @@ import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
     BATTERY_POLL_S, BATTERY_STALE_S, CLEAR_ARM_S,
-    Channel, LIGHT_MAX, MAP_EXTENTS_M, MOVE_TIMEOUT_S, PICTURE_GAP_S,
+    Channel, LIGHT_MAX, MAP_EXTENTS_M, MAP_STALE_S, MOVE_TIMEOUT_S,
+    PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
     WIFI_SCAN_TIMEOUT_S, rung, tap_to_point,
 )
@@ -202,15 +203,21 @@ class Session(SessionShow):
         self.wifi_joining: str | None = None
         self.rejoin_at = 0.0
         self.wifi: dict[str, Any] = {"supported": None, "text": "-", "verdict": "",
-                                     "where": "", "note": "", "networks": [],
+                                     "where": "", "note": "",
                                      "scanning": False, "joining": None,
                                      # Empty until the rover answers, and empty
                                      # for good on a rover with one radio -- the
                                      # panel simply does not draw the section.
                                      "radios": [], "service": "",
                                      "safe_join": False}
+        # Served from /wifi.json rather than pushed -- see `set_networks`.
+        self.wifi_networks: list[dict[str, Any]] = []
+        self.wifi_networks_gen = 0
 
         self.clear_armed_until = 0.0
+        # Whether the rover's own face-tracking loop is running, which is the only
+        # reason a parked rover's camera is still worth two frames a second.
+        self.tracking_on = False
 
         # The one line the console says for itself, and the count that makes a new
         # one a new one. See `say`: there is no transcript behind this, so a notice
@@ -252,7 +259,10 @@ class Session(SessionShow):
         busy = None
         if self.busy_since is not None:
             busy = {"name": self.busy_name,
-                    "seconds": round(time.monotonic() - self.busy_since, 1),
+                    # Whole seconds. A tenth was a stopwatch nobody could read at
+                    # that speed, and it made the state a new state ten times a
+                    # second for as long as the move ran.
+                    "seconds": round(time.monotonic() - self.busy_since),
                     # A move that has been superseded is still the move in flight,
                     # so the panel goes on naming it -- but a second of apparently
                     # nothing happening after a click is what makes a console look
@@ -276,8 +286,11 @@ class Session(SessionShow):
                     "drawing": self.map_outstanding,
                     "half_extent_m": self.half_extent, "size_px": self.map_size,
                     "rover_up": self.rover_up,
-                    "age_s": (None if not self.map_gen
-                              else round(time.monotonic() - self.map_drawn_at, 1)),
+                    # Only once it is old enough to be news -- see MAP_STALE_S. A
+                    # map that is arriving normally is always a second or two behind
+                    # and saying so in tenths was, on its own, most of what this
+                    # console put on the wi-fi.
+                    "age_s": self.map_age(),
                     "settings": f"{2 * self.half_extent:.0f} m across, {facing}"},
             "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
                       "error": self.frame_error, "taking": self.frame_outstanding},
@@ -287,13 +300,34 @@ class Session(SessionShow):
                                f"{'on' if self.light_level else 'off'} "
                                f"({self.light_level})"},
             "battery": self.battery,
-            "wifi": self.wifi,
+            # The list of networks is fetched rather than pushed, like the pictures
+            # and for the same reason: it is three and a half kilobytes, it changes
+            # a few times an hour, and it was riding in every state.
+            "wifi": dict(self.wifi, networks_gen=self.tag(self.wifi_networks_gen)),
             "notice": self.notice,
             "clear_armed": self.clear_armed_until > time.monotonic(),
             "watching": self.listeners,
             "omni": self.omni() if self.omni else {"available": False,
                                                    "state": "off", "why": ""},
         }
+
+    def map_age(self) -> float | None:
+        """How long ago the map on screen was drawn, when that is worth saying."""
+        if not self.map_gen:
+            return None
+        age = time.monotonic() - self.map_drawn_at
+        return round(age) if age > MAP_STALE_S else None
+
+    def moving(self) -> bool:
+        """Whether the rover is doing something this console asked it to do.
+
+        Everything paced by this answers faster while it is true: the status poll,
+        because a move publishes a sentence at a time and they are wanted in order,
+        and the two pictures, because a map drawn around a pose that is changing is
+        a different picture each time. A click waiting for the wheels counts -- it is
+        about to be a move, and the panel should not go quiet in between.
+        """
+        return self.busy_since is not None or self.pending_target is not None
 
     # --- the pump -------------------------------------------------------------
     def run(self) -> None:
@@ -331,7 +365,8 @@ class Session(SessionShow):
             self.publish()
             return
         if (self.watch is not None and not self.poll_outstanding
-                and now - self.poll_at > POLL_S):
+                and now - self.poll_at > (POLL_S if self.moving()
+                                          else PARKED_POLL_S)):
             self.poll_outstanding = True
             self.poll_at = now
             # Saying which sentence about the move we already have is what makes a
@@ -344,11 +379,19 @@ class Session(SessionShow):
         # to leave a host that is also running SLAM any room at all: a two-second
         # timer measured from the request left none whenever the map took longer
         # than two seconds to draw, and it usually does.
+        #
+        # Which gap depends on whether anything is happening. Half a second of
+        # 28 kB camera frames and 7 kB map renders is about 370 kbit/s of somebody
+        # else's wi-fi, and a rover standing still spends all of it redrawing the
+        # same picture.
+        map_gap = PICTURE_GAP_S if self.moving() else PARKED_MAP_GAP_S
+        frame_gap = (PICTURE_GAP_S if self.moving() or self.tracking_on
+                     else PARKED_FRAME_GAP_S)
         if (self.picture is not None and not self.map_outstanding
-                and now - self.map_done_at > PICTURE_GAP_S):
+                and now - self.map_done_at > map_gap):
             self.refresh_map()
         if (self.camera is not None and not self.frame_outstanding
-                and now - self.frame_done_at > PICTURE_GAP_S):
+                and now - self.frame_done_at > frame_gap):
             self.take_picture()
         # Asked, not remembered: the voice session and any other console can start
         # or stop tracking, so the only honest source for this panel is the daemon.
@@ -535,6 +578,9 @@ class Session(SessionShow):
         # Forgotten across a reconnect, so that a rover found mid-move says once
         # what it is doing instead of staying silent until the next phase.
         self.move_seq = None
+        # Asked again on the next tick, and until it is answered a rover this console
+        # is no longer talking to does not get the fast camera gap.
+        self.tracking_on = False
         self.tools = []
         self.can_drive = False
         self.busy_since = None
