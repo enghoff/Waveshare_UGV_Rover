@@ -192,34 +192,27 @@ radio would have come up unconfigured. Since the profiles were unpinned on
 2026-08-31 no profile names an interface at all, so the `.link` file is now a
 question of taste rather than a trap.
 
-Two things had to be fixed to make it work at all, and both are traps for any
-other device on this board that needs a driver or firmware:
+Its driver is built on this host rather than shipped with the kernel, and is a
+deploy component of its own -- see [`dongle_driver/README.md`](../dongle_driver/README.md),
+which has the whole story. Two facts from it are general to this board rather
+than to this radio, and will catch the next device that needs either:
 
-**NVIDIA's L4T kernel is built with `CONFIG_RTL8XXXU` unset**, and with no
-`drivers/net/wireless/realtek` directory in `/lib/modules` at all, so the dongle
-sat on the USB bus with no driver bound and no interface. The driver it needs is
-in-tree and has supported this exact device (`0bda:f179`, RTL8188FU) for
-several releases; it simply was not compiled. It is now built out of tree from
-unmodified `linux-6.8.12` sources from kernel.org -- the same version this kernel
-is based on, and the Makefile in the kernel's own headers tree is byte-identical
-to it -- and registered with **DKMS as `rtl8xxxu/6.8.12`**, so a JetPack kernel
-update rebuilds it instead of silently dropping it. The kernel does not enforce
-module signatures (`CONFIG_MODULE_SIG_FORCE` unset, lockdown off), which is why
-an unsigned out-of-tree module loads at all.
+**NVIDIA's L4T kernel leaves out drivers you would expect to be there.**
+`CONFIG_RTL8XXXU` is unset and there is no `drivers/net/wireless/realtek`
+directory in `/lib/modules` at all, so the dongle sat on the USB bus with no
+driver bound and no interface. Nothing was broken; the module simply was not
+compiled. It is built out of tree and registered with DKMS so a JetPack update
+rebuilds it. The kernel does not enforce module signatures
+(`CONFIG_MODULE_SIG_FORCE` unset, lockdown off), which is why an unsigned
+out-of-tree module loads at all.
 
 **This kernel cannot read Ubuntu's compressed firmware.** `CONFIG_FW_LOADER_COMPRESS`
 is unset, while `linux-firmware` on Ubuntu 24.04 ships every blob as `.zst`. The
 driver therefore found the device, identified it correctly, and then failed with
 `Direct firmware load for rtlwifi/rtl8188fufw.bin failed with error -2` beside a
-`/lib/firmware/rtlwifi/rtl8188fufw.bin.zst` that plainly exists. The fix is an
-uncompressed copy alongside it:
-
-```bash
-sudo zstd -d /lib/firmware/rtlwifi/rtl8188fufw.bin.zst            -o /lib/firmware/rtlwifi/rtl8188fufw.bin
-```
-
-Expect the same failure from any other firmware-loading device added to this
-board, and read "no such file" as "the file is there, compressed".
+`.zst` that plainly exists. Read "no such file" as "the file is there,
+compressed"; `dongle_driver/install.sh` unpacks this one, and the next device
+will need the same done for its own blob.
 
 `l4tbr0`/`usb0`/`usb1` are the USB-device-mode bridge and stay down; `can0` is
 down.
