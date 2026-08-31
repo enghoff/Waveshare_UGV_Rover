@@ -60,7 +60,19 @@ void EscapeSpin::onFootprint(geometry_msgs::msg::PolygonStamped::SharedPtr msg)
     shortest = std::min(shortest, radius);
     longest = std::max(longest, radius);
   }
-  footprint_roundness_ = (longest > 1e-6) ? (shortest / longest) : -1.0;
+  const double roundness = (longest > 1e-6) ? (shortest / longest) : -1.0;
+  // Said once, and again only if it changes: the whole justification for
+  // turning a refused spin rests on this number, so it should be findable in
+  // the log rather than inferred from behaviour.
+  if (std::fabs(roundness - footprint_roundness_) > 0.01) {
+    RCLCPP_INFO(
+      this->logger_,
+      "footprint: %zu vertices, shortest %.2f of the longest -- %s",
+      msg->polygon.points.size(), roundness,
+      roundness >= 0.9 ? "a circle, so a refused turn is always overruled"
+                       : "not a circle, so Nav2's spin check is kept");
+  }
+  footprint_roundness_ = roundness;
 }
 
 bool EscapeSpin::footprintIsCircular() const
@@ -109,8 +121,37 @@ ResultStatus EscapeSpin::onCycleUpdate()
 
   // Nav2 refused. Whether that refusal means anything depends on the shape of
   // the body, which is why it is measured rather than assumed.
+  //
+  // `inContactNow` asks the collision checker about a pose, and that throws
+  // rather than returning false when it cannot answer -- an unknown costmap, a
+  // pose off the edge of it. Uncaught, the exception leaves onCycleUpdate, the
+  // server aborts the behaviour, and what reaches the console is the collision
+  // refusal we were trying to overturn with no sign of why. So it is caught, and
+  // a checker that cannot answer is treated as not-in-contact, which is the
+  // conservative reading: it means the escape only proceeds on the footprint
+  // being circular, which is a fact about the rover rather than about the map.
   const bool circular = footprintIsCircular();
-  if (!circular && !inContactNow()) {
+  bool in_contact = false;
+  if (!circular) {
+    try {
+      in_contact = inContactNow();
+    } catch (const std::exception & error) {
+      RCLCPP_WARN(
+        this->logger_, "Could not test the rover's own pose (%s); "
+        "treating it as clear.", error.what());
+      in_contact = false;
+    }
+  }
+  // A warning rather than a debug line, and deliberately: it only fires when a
+  // spin has been refused, which should be rare, and when one is refused this is
+  // the state that explains what happened next. A silent decision here is what
+  // made the first version of this take three attempts to understand.
+  RCLCPP_WARN(
+    this->logger_,
+    "spin refused: roundness %.2f circular %d in_contact %d escaping %d "
+    "relative_yaw %.3f", footprint_roundness_, circular ? 1 : 0,
+    in_contact ? 1 : 0, escaping_ ? 1 : 0, relative_yaw_);
+  if (!circular && !in_contact) {
     // A non-circular body standing somewhere legal really can sweep a corner
     // into something, so Nav2 is entitled to this one. (It is also the only
     // branch that ever refuses a turn on this rover, and only if somebody
@@ -255,13 +296,21 @@ ResultStatus EscapeDriveOnHeading<ActionT>::onCycleUpdate()
 
   // Standing somewhere legal means the obstruction really is on the way, and
   // this is the one direction the rover drives into things. Leave it refused.
-  if (!inContactNow()) {
-    escaping_ = false;
-    return result;
-  }
-
-  // In contact, so the only question is whether this motion leads out.
-  if (!projectionEndsClear()) {
+  //
+  // Both of these ask the collision checker about a pose, which throws rather
+  // than returning false when it cannot answer. Uncaught, that would leave the
+  // behaviour server aborting on an exception instead of on a decision. A
+  // checker that cannot answer leaves the refusal standing, which is the safe
+  // way round for a motion that translates.
+  try {
+    if (!inContactNow() || !projectionEndsClear()) {
+      escaping_ = false;
+      return result;
+    }
+  } catch (const std::exception & error) {
+    RCLCPP_WARN(
+      this->logger_, "Could not test the poses for this heading (%s); leaving "
+      "Nav2's refusal alone.", error.what());
     escaping_ = false;
     return result;
   }
