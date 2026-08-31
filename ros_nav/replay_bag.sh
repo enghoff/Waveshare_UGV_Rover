@@ -167,6 +167,14 @@ else
         # a frame of their own; here it starts each match from where the last one
         # ended, which is the harder version of the job and therefore the honest
         # one to measure.
+        # `qos`, not `qos_scan`: this node names it differently from the mapper,
+        # and getting it wrong is the same silent nothing this rover has now met
+        # three times. lidar_node publishes /scan best-effort on purpose and the
+        # bag replays it as it was recorded, so a reliable subscriber -- which is
+        # the default -- is *incompatible* rather than merely mismatched: it
+        # discovers the topic, logs that it is subscribed to it, and is never
+        # delivered a single scan. Read off `ros2 param list` on the running
+        # node, which has `qos` and nothing called `qos_scan` at all.
         PLAY_TOPICS=(--topics /scan /tf_static)
         "$DIR/native.sh" ros2 run rtabmap_odom icp_odometry \
             --ros-args \
@@ -177,6 +185,7 @@ else
                 -p odom_frame_id:=odom \
                 -p publish_tf:=true \
                 -p subscribe_scan:=true \
+                -p qos:=2 \
                 -p "Odom/Strategy:='0'" \
                 -p "Odom/ScanKeyFrameThr:='0.8'" \
                 -p "OdomF2M/ScanSubtractRadius:='0.05'" \
