@@ -1535,12 +1535,7 @@ def test_discovery_stays_on_this_board():
     check("sweep SIGKILLs what ignored SIGTERM, or the leftover keeps the port",
           "pkill -9 -f" in sweep, True)
 
-    # --- the second mapper ----------------------------------------------------
-    # RTAB-Map runs beside slam_toolbox so the two can be measured against each
-    # other, and every check below is a fault that was met on the rover while
-    # getting it there. They are static reads of the files because that is what
-    # catches them: each one fails silently at runtime and looks like something
-    # else.
+    # --- replaying a recorded drive -------------------------------------------
     # The replay harness runs a second mapper on the same board while the rover
     # is driving, so the one thing it must never do is tidy up by pattern: every
     # pattern that matches a replay's mapper matches the one the rover is
@@ -1551,152 +1546,46 @@ def test_discovery_stays_on_this_board():
             replay = fh.read()
         # Read the code, not the comments. The header of that file says the word
         # "pkill" in order to warn about it, and a check that cannot tell a
-        # warning from a use is worse than no check -- the lesson the ICP
-        # parameter check below already paid for.
-        replay_code = "\n".join(line for line in replay.splitlines()
-                                if line.strip() and not line.lstrip().startswith("#"))
+        # warning from a use is worse than no check.
+        replay_code = "\n".join(
+            line for line in replay.splitlines()
+            if line.strip() and not line.lstrip().startswith("#"))
         check("the bag replay kills only what it started, never by pattern",
               "pkill" not in replay_code and "sweep.sh" not in replay_code, True)
         # And it must not share a DDS domain with the rover, or the replayed
         # scans arrive on the live /scan and the replayed map on the live /map.
         check("...and it replays on its own DDS domain, off the rover's",
               "ROS_DOMAIN_ID=43" in replay, True)
-    check("sweep.sh takes RTAB-Map down too, or the next launch runs two",
-          "run_rtabmap[.]sh" in sweep and "/lib/rtabmap_slam/rtabmap" in sweep, True)
-    check("...and it names it by path, so the pattern cannot match an ssh session",
-          "pkill -f 'rtabmap'" not in sweep and 'pkill -f "rtabmap"' not in sweep, True)
-    with open(os.path.join(HERE, "run_rtabmap.sh"), encoding="utf-8",
-              errors="replace") as fh:
-        runrtab = fh.read()
-    # The one that matters. A frame has a single parent, so a second publisher of
-    # `map -> odom` does not give the controller a second opinion -- it gives it
-    # one transform flickering between two, and the rover steers on whichever
-    # landed last.
-    check("compare mode forbids RTAB-Map the map -> odom transform",
-          "PUBLISH_TF=false" in runrtab and "MODE=compare" in runrtab, True)
-    check("...and only --primary turns it on",
-          runrtab.find("MODE = primary") < 0
-          and 'if [ "$MODE" = primary ]' in runrtab, True)
-    check("in compare mode RTAB-Map keeps its grid out of /map, or Nav2 reads two",
-          "__ns:=/rtabmap" in runrtab and "MAP_REMAP=()" in runrtab, True)
-    # ...and the other half of the same rule, which is the one that bites at a
-    # cutover. Everything downstream reads the grid off `/map`: Nav2's global
-    # costmap has a static layer subscribed to it and nav_bridge answers map_png
-    # from it. A primary RTAB-Map still in its namespace publishes `/rtabmap/map`
-    # to nobody, and nothing reports an error -- the costmap is simply all
-    # unknown, the global planner will not cross unknown space, and every goal
-    # comes back as a planner failure on a stack that looks perfectly healthy.
-    check("...and primary mode puts it back on /map, or Nav2 has no map at all",
-          "MAP_REMAP=(-r map:=/map)" in runrtab, True)
-    with open(os.path.join(HERE, "slam.launch.py"), encoding="utf-8",
-              errors="replace") as fh:
-        slam_launch_text = fh.read()
-    check("the launch never starts both mappers, whatever rtabmap:= is set to",
-          "!= 'primary'" in slam_launch_text
-          and "== 'compare'" in slam_launch_text, True)
-    check("RTAB-Map is launched through its wrapper, not as a conda Node()",
-          "run_rtabmap.sh" in slam_launch_text
-          and 'package="rtabmap' not in slam_launch_text, True)
-    # restart.sh checks the running stack against the mapper it should have, and
-    # a launch started by hand names no mapper at all -- so it reads the default
-    # out of slam.launch.py with a sed pattern. A pattern that stopped matching
-    # would not fail: it would fall back to a guess and then report a missing
-    # mapper on a rover that is mapping perfectly well.
-    with open(os.path.join(HERE, "restart.sh"), encoding="utf-8",
-              errors="replace") as fh:
-        restart_text = fh.read()
-    declared = re.findall(r'^ *"rtabmap", default_value="([a-z]*)"',
-                          slam_launch_text, re.M)
-    check("the launch still declares a default mapper in the form restart.sh reads",
-          declared[:1] in (["off"], ["compare"], ["primary"]), True)
-    check("...and restart.sh is still the thing reading it, rather than a copy",
-          'default_value="\\([a-z]*\\)"' in restart_text
-          and "slam.launch.py" in restart_text, True)
-    rtab_cfg_path = os.path.join(HERE, "config", "rtabmap.yaml")
-    if os.path.isfile(rtab_cfg_path):
-        with open(rtab_cfg_path, encoding="utf-8", errors="replace") as fh:
-            rtab_cfg = fh.read()
-        # lidar_node publishes /scan best-effort on purpose. A reliable
-        # subscriber against a best-effort publisher is *incompatible* in DDS,
-        # not merely mismatched: both sides list the topic and not one message is
-        # ever delivered, which reads as RTAB-Map being broken.
-        check("RTAB-Map subscribes to /scan best-effort, or it receives nothing",
-              "qos_scan: 2" in rtab_cfg, True)
-        # Every 2D-lidar recipe written before RTAB-Map 0.21 says `Icp/PM`. This
-        # build has `Icp/Strategy`, does not map a parameter it does not know,
-        # and logs nothing -- so the file says libpointmatcher and the node
-        # quietly runs PCL's ICP with stock settings.
-        #
-        # Read off the settings rather than the whole file: the comment above
-        # that line names the old parameter in order to warn about it, and a
-        # check that cannot tell a warning from a setting is worse than none.
-        rtab_settings = "\n".join(
-            line for line in rtab_cfg.splitlines()
+        # The recorder is stopped by a signal, and a backgrounded child of a
+        # non-interactive shell inherits SIGINT set to ignore -- which is a
+        # recording nobody can stop, splitting a new file every N seconds.
+        with open(os.path.join(HERE, "record_drive.sh"), encoding="utf-8",
+                  errors="replace") as fh:
+            recorder = fh.read()
+        # Comments stripped first, for the third time in this file: that header
+        # names --max-bag-duration in order to warn that it splits rather than
+        # stops, and a check that cannot tell a warning from a use is worse than
+        # no check.
+        recorder_code = "\n".join(
+            line for line in recorder.splitlines()
             if line.strip() and not line.lstrip().startswith("#"))
-        check("...and uses 0.22's ICP parameter names, which are not the old ones",
-              "Icp/Strategy" in rtab_settings and "Icp/PM" not in rtab_settings, True)
-        check("...and RTAB-Map's own loop closure is switched on",
-              "RGBD/ProximityBySpace" in rtab_cfg, True)
+        check("the drive recorder can be stopped, so its bag gets its metadata",
+              "timeout --signal=INT" in recorder_code
+              and "--max-bag-duration" not in recorder_code, True)
 
-        # The three settings that stopped this rover mapping on 2026-08-31, each
-        # of which failed by quietly doing nothing. They are checked as numbers
-        # rather than as text because what matters is the relationship between
-        # them, and because the next person to tune this file will move them.
-        def setting(name, default=None):
-            hit = re.search(r"^\s*%s:\s*\"?([0-9.]+)" % re.escape(name),
-                            rtab_settings, re.M)
-            return float(hit.group(1)) if hit else default
-
-        # A rover that searches for closures out to LocalRadius and then refuses
-        # any candidate whose nearest node is past ProximityPathFilteringRadius
-        # spends the drive proposing closures and discarding them, at debug level
-        # where nothing is watching. The default filter is 1 m and the search
-        # here is 3 m, so leaving the filter unset is the same bug.
-        check("the closure filter is not tighter than the closure search",
-              setting("RGBD/ProximityPathFilteringRadius", 1.0)
-              >= setting("RGBD/LocalRadius", 10.0), True)
-        # Two views of a room from half a metre apart share far less than 40% of
-        # their returns. At 0.4 this threshold rejected 37 of 104 links between
-        # consecutive keyframes -- each of those left at raw odometry -- and
-        # every loop closure the drive offered.
-        check("...and the correspondence ratio is one 2D scans can reach",
-              setting("Icp/CorrespondenceRatio", 0.1) <= 0.2, True)
-        # ICP can only pull in an error it can see from where it starts, and
-        # where it starts is the wheels between keyframes and the drifted graph
-        # at a closure. At 0.1 m no loop closed on the recorded drive whatever
-        # else was changed.
-        check("...and ICP looks far enough to fix the drift it exists to fix",
-              setting("Icp/MaxCorrespondenceDistance", 0.1) >= 0.3, True)
-    # Clearing the map has to reach whichever mapper is running. The two share
-    # nothing -- slam_toolbox has a Reset service of its own, RTAB-Map answers a
-    # bare std_srvs Empty at its node name inside its own namespace -- so a
-    # bridge that knows only one of them is a `clear_map` that reports "there is
-    # no map to clear" on a rover that is mapping perfectly well.
-    with open(os.path.join(HERE, "nav_bridge.py"), encoding="utf-8",
-              errors="replace") as fh:
-        bridge_text = fh.read()
-    check("clear_map can reach either mapper, not just slam_toolbox",
-          "/slam_toolbox/reset" in bridge_text
-          and "/rtabmap/rtabmap/reset" in bridge_text, True)
-    # The boot entry is the only place the mapper choice lives -- the supervisor
-    # reads its arguments from the crontab and restart.sh reads them back out of
-    # it -- so the installer has to be able to write it.
-    with open(os.path.join(HERE, "install-boot.sh"), encoding="utf-8",
-              errors="replace") as fh:
-        boot = fh.read()
-    check("the boot entry can name the mapper, or a cutover cannot survive a reboot",
-          "rtabmap:=primary" in boot and "rtabmap:=off" in boot, True)
-    check("...and an install that does not name one keeps the mapper in place",
-          "keeping the mapper the entry already had" in boot, True)
-    with open(os.path.join(HERE, "native.sh"), encoding="utf-8",
-              errors="replace") as fh:
-        native = fh.read()
-    # ROS's setup.bash reads $AMENT_TRACE_SETUP_FILES with no default, so under
-    # `set -u` it dies naming ROS's file rather than ours.
-    check("native.sh survives set -u across ROS's own setup.bash",
-          "set +u" in native and "AMENT_TRACE_SETUP_FILES" in native, True)
-    check("...and leaves the conda environment rather than layering on it",
-          "env -i" in native, True)
+    # RTAB-Map ran here for a day and was removed on 2026-08-31 -- the README
+    # says why. This is the check that it went cleanly: a launch, a sweep or a
+    # boot entry still reaching for a mapper that is not installed fails at a
+    # distance from anything that names it.
+    for name in ("slam.launch.py", "sweep.sh", "restart.sh", "install-boot.sh",
+                 "nav_bridge.py", "replay_bag.sh"):
+        path = os.path.join(HERE, name)
+        if not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            body = fh.read().lower()
+        check("%s does not reach for RTAB-Map, which this rover no longer has" % name,
+              "rtabmap" not in body, True)
 
     # --- getting off something the rover is touching --------------------------
     # Nav2's Spin, DriveOnHeading and BackUp start their look-ahead projection at

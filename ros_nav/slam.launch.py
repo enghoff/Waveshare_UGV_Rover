@@ -2,33 +2,20 @@
 """Bring up mapping: the lidar, the wheels, and a mapper on top of both.
 
     ros2 launch ~/ugv/ros_nav/slam.launch.py
-    ros2 launch ~/ugv/ros_nav/slam.launch.py rtabmap:=compare
-    ros2 launch ~/ugv/ros_nav/slam.launch.py rtabmap:=primary
 
-Which mapper owns the map is the `rtabmap` argument, and it has three settings
-because replacing a mapper on a rover that has to keep working is three steps
-rather than one:
+slam_toolbox is the mapper and there is no argument to change it. There was one
+for a day: RTAB-Map ran here as an alternative and as a passenger to be measured
+against, and it was removed on 2026-08-31 after it mapped this rover measurably
+worse. The README's "Why RTAB-Map was tried and removed" is the record, and it
+matters more than a deleted launch argument does, because the next person to
+reach for a second mapper should read what happened to the first one.
 
-  primary   RTAB-Map, publishing `map -> odom` and `/map`, with slam_toolbox not
-            started at all. Measured worse than slam_toolbox on this rover
-            (see the README) and kept for the day a camera changes that.
-  compare   both of them, from the same scan and the same wheels, with RTAB-Map
-            forbidden to publish a transform. slam_toolbox steers the rover;
-            RTAB-Map is a passenger keeping its own opinion, and
-            slam_compare.py reads the two opinions and prints the difference.
-  off       slam_toolbox alone. The default, and what boots.
-
-**No setting ever has two things publishing `map -> odom`.** A frame in TF has
-exactly one parent, so two publishers do not give a controller two opinions to
-choose between -- they give it one transform that flickers between them, and
-whichever landed last is where the rover thinks it is. That is why `compare`
-turns RTAB-Map's transform off rather than pointing it at a second frame name.
-
-The default here and the crontab's boot entry are two different places the same
-choice is written, and they are kept saying the same thing on purpose: a bare
-`ros2 launch` by hand should bring up the mapper the rover actually boots with,
-or debugging a fault means debugging a stack that is not the one that failed.
-restart.sh reads this default back out of this file for the same reason.
+**A frame in TF has exactly one parent**, which is why there was never a setting
+with two mappers publishing `map -> odom`. Two publishers do not give a
+controller two opinions to choose between -- they give it one transform that
+flickers between them, and whichever landed last is where the rover thinks it is.
+That rule outlives the experiment: anything added here that publishes a transform
+has to take one away.
 
 Launched by path rather than by package name, and there is no package: the nodes
 here are plain scripts and there is nothing to `colcon build`. That is a
@@ -64,9 +51,8 @@ import os
 import sys
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -77,31 +63,11 @@ def generate_launch_description():
     lidar_port = LaunchConfiguration("lidar_port")
     bridge_port = LaunchConfiguration("bridge_port")
     nav_port = LaunchConfiguration("nav_port")
-    rtabmap = LaunchConfiguration("rtabmap")
-
-    # `off` and `compare` both leave slam_toolbox in charge of `map -> odom`;
-    # only `primary` takes it away, and then slam_toolbox is not started at all.
-    # There is never a moment when two things publish that transform.
-    slam_toolbox_wanted = IfCondition(
-        PythonExpression(["'", rtabmap, "' != 'primary'"]))
-    rtabmap_compare = IfCondition(
-        PythonExpression(["'", rtabmap, "' == 'compare'"]))
-    rtabmap_primary = IfCondition(
-        PythonExpression(["'", rtabmap, "' == 'primary'"]))
 
     return LaunchDescription([
         DeclareLaunchArgument(
             "params", default_value=os.path.join(HERE, "config", "slam_toolbox.yaml"),
             description="slam_toolbox parameters"),
-        # restart.sh reads this default_value out of this file with sed, so that
-        # a launch started without the argument -- which is what a hand relaunch
-        # is -- is checked against the mapper it will actually have started.
-        DeclareLaunchArgument(
-            "rtabmap", default_value="off",
-            choices=["off", "compare", "primary"],
-            description="off: slam_toolbox alone. compare: RTAB-Map alongside "
-                        "it, publishing no transform, for slam_compare.py to "
-                        "measure. primary: RTAB-Map instead of it."),
         DeclareLaunchArgument(
             "lidar_port", default_value="auto",
             description="lidar device, or 'auto' for the stable by-id name"),
@@ -127,29 +93,7 @@ def generate_launch_description():
              arguments=[os.path.join(HERE, "base_node.py"), "--bridge-port", bridge_port]),
 
         Node(package="slam_toolbox", executable="async_slam_toolbox_node",
-             name="slam_toolbox", output="screen", parameters=[params],
-             condition=slam_toolbox_wanted),
-
-        # RTAB-Map, when it is wanted, and started through a wrapper rather than
-        # as a Node() -- which is not a style choice.
-        #
-        # It is the one package here that does not come from RoboStack, because
-        # RoboStack has none: it is installed from Ubuntu's ROS 2 packages into
-        # /opt/ros/jazzy instead. A Node() would inherit this launch's
-        # environment, which is the conda one, and Ubuntu's binary would then
-        # come up with RoboStack's libstdc++ and rclcpp ahead of the system's on
-        # its library path. run_rtabmap.sh goes out to a clean environment first;
-        # native.sh explains it at length.
-        #
-        # Two entries rather than one with a substituted flag, because the flag
-        # is the difference between a passenger and the thing steering the rover
-        # and that is worth being able to read off the page.
-        ExecuteProcess(cmd=[os.path.join(HERE, "run_rtabmap.sh")],
-                       name="rtabmap", output="screen",
-                       condition=rtabmap_compare),
-        ExecuteProcess(cmd=[os.path.join(HERE, "run_rtabmap.sh"), "--primary"],
-                       name="rtabmap", output="screen",
-                       condition=rtabmap_primary),
+             name="slam_toolbox", output="screen", parameters=[params]),
 
         # Not a lifecycle node and deliberately started before slam_toolbox has
         # finished coming up: everything it serves it serves by subscription, so
@@ -175,7 +119,6 @@ def generate_launch_description():
         # services to exist before transitioning, which turns a race into a wait.
         Node(package="nav2_lifecycle_manager", executable="lifecycle_manager",
              name="lifecycle_manager_slam", output="screen",
-             condition=slam_toolbox_wanted,
              parameters=[{"autostart": True},
                          {"node_names": ["slam_toolbox"]},
                          # Bond checking off, and this one is not a shortcut.

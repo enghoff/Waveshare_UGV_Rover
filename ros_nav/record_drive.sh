@@ -10,23 +10,18 @@
 # subscribes to topics the running stack is already publishing. The rover
 # behaves exactly as it would if this were not running.
 #
-# ## Why a bag, when the map database is already a recording
+# ## Why a bag
 #
-# It is, and for most questions it is the better one: `rtabmap-reprocess` replays
-# it in twenty seconds and that is how the smeared-map fault was found. But a
-# database holds the keyframes RTAB-Map *chose* -- about one every 13 cm -- and
-# not the ten scans a second the lidar produced. So it cannot answer any question
-# about what happens between keyframes, and three of the open questions are
-# exactly that:
+# Because a mapper's own map is not a recording of what it was given -- it is
+# what it made of it, and a question about a *setting* cannot be asked of it. A
+# bag holds the ten scans a second the lidar produced and the transform tree that
+# went with them, so any mapper and any configuration can be run against the same
+# drive afterwards, as many times as the question takes.
 #
-#   - how often a keyframe should be taken (RGBD/LinearUpdate, RGBD/AngularUpdate)
-#   - whether lidar odometry beats the wheels, which needs consecutive scans 3 cm
-#     apart rather than 13 -- replayed from a database it collapses, not because
-#     the idea is wrong but because the data is not there
-#   - slam_toolbox against RTAB-Map on identical input, which is the only fair
-#     version of that comparison. compare_run.sh runs them side by side on one
-#     drive, which is fair but costs a drive every time; a bag costs one drive
-#     ever.
+# This was written to settle whether a second mapper was better than slam_toolbox
+# (it was not -- see the README) and it outlived that argument, which is the
+# usual fate of a good harness. Keyframe spacing, loop closure thresholds, a new
+# lidar: all of them are now questions a drive already recorded can answer.
 #
 # ## What is recorded, and why each of them
 #
@@ -110,5 +105,4 @@ du -sh "$OUT" 2>/dev/null || true
 ros2 bag info "$OUT" 2>&1 | grep -E "Duration|Messages|Topic information" || true
 echo
 echo "Replay it into a mapper with:"
-echo "  ~/ugv/ros_nav/replay_bag.sh $OUT --mapper rtabmap"
-echo "  ~/ugv/ros_nav/replay_bag.sh $OUT --mapper slam_toolbox"
+echo "  ~/ugv/ros_nav/replay_bag.sh $OUT"

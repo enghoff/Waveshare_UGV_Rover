@@ -322,37 +322,32 @@ A practical progression is:
 
 Do not allow SLAM Toolbox, AMCL, and RTAB-Map to publish competing `map -> odom` transforms simultaneously.
 
-### Status: steps 1-3 are built (2026-08-31)
+### Status: tried, measured, and removed (2026-08-31)
 
-RTAB-Map 0.22.1 is installed on the Orin and runs beside SLAM Toolbox on demand.
-It is **not** in the boot path, and it does not publish `map -> odom` unless
-explicitly asked to. See the RTAB-Map section of
-[`../ros_nav/README.md`](../ros_nav/README.md).
+All five steps above were built and the answer came back negative, so RTAB-Map is
+no longer on the rover or in the repository. The full account is
+[`../ros_nav/README.md`](../ros_nav/README.md) under "Why RTAB-Map was tried and
+removed"; the short version is three findings.
 
-```bash
-ros2 launch ~/ugv/ros_nav/slam.launch.py rtabmap:=compare
-~/ugv/ros_nav/native.sh python3 ~/ugv/ros_nav/slam_compare.py --seconds 300 --closed-loop
-```
+**It was measured rather than argued about.** One five-minute drive was recorded
+as a rosbag and replayed into both mappers and into every RTAB-Map arrangement
+worth trying. slam_toolbox produced the best map by a clear margin — 45.3 wall
+cells per square metre of floor against RTAB-Map's 64.9, or 51.0 at the best
+settings found for it — and the pictures agreed with the numbers.
 
-Three things this document assumed turned out to need correcting:
+**The reason is the sensor, not the algorithm.** This plan's own step 2 assumed
+the OAK-D would be in it. It was not, deliberately: comparing a camera-and-lidar
+RTAB-Map against a lidar-only SLAM Toolbox compares two sensor suites and calls
+the result an algorithm result. But lidar-only is exactly the configuration in
+which RTAB-Map cannot use the thing it is good at, so what was actually compared
+was its proximity detection against slam_toolbox's correlative scan matching, and
+the latter won.
 
-- **It is lidar-only, not OAK-D.** The comparison that decides whether RTAB-Map
-  should own `map -> odom` has to be against the same sensor SLAM Toolbox uses.
-  Adding the camera at the same time would compare two sensor suites and call the
-  result an algorithm result. The OAK-D remains step 7's job.
-- **RTAB-Map does not come from RoboStack,** which packages no rtabmap at all. It
-  is installed from Ubuntu's ROS 2 packages into `/opt/ros/jazzy`, and the two
-  installations talk over DDS rather than sharing a process.
-- **There is no GPU acceleration available in it, and none that would help.**
-  Every GPU path RTAB-Map has accelerates image features; a lidar-only
-  configuration has no images. The packaged build is also compiled against an
-  OpenCV without CUDA and no libtorch, and the board has no CUDA toolkit. Making
-  the GPU relevant means the OAK-D on ROS topics, a CUDA toolkit, OpenCV rebuilt
-  with CUDA, and RTAB-Map rebuilt against it — a separate project, not a
-  configuration switch.
-
-The comparison itself has not been run over a real route yet. Until it has, the
-question this section exists to answer is still open.
+**What survives is the harness.** `record_drive.sh` and `replay_bag.sh` came out
+of this and outlive it: any future mapping question — including this one, if the
+OAK-D's colour ever reaches a ROS topic — is now answerable against a drive that
+has already happened, in an afternoon rather than a week of pushing a rover round
+a room.
 
 ## Automatic exploration
 

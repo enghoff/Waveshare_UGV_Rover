@@ -141,21 +141,13 @@
         "~/ugv/ros_nav/behaviors/build.sh",
         "~/ugv/ros_nav/restart.sh"
       ],
-      "system_install": {
-        "sudo_password_file": "secrets/jetson-orin.key",
-        "command": "sh ~/ugv/ros_nav/install-rtabmap.sh",
-        "verify": [
-          "dpkg-query -W -f='${Version}\\n' ros-jazzy-rtabmap-slam",
-          "test -x /opt/ros/jazzy/lib/rtabmap_slam/rtabmap && echo 'rtabmap node present'"
-        ]
-      },
       "special_commands": [
         {
           "when": [
             "ros_nav/run_ros_nav.sh",
             "ros_nav/sweep.sh",
             "ros_nav/dds.sh",
-          "ros_nav/cyclonedds-loopback.xml"
+            "ros_nav/cyclonedds-loopback.xml"
           ],
           "replaces": [
             "~/ugv/ros_nav/restart.sh"

@@ -2,7 +2,7 @@
 """Take whatever is on /map and write it down, with the numbers that make two maps
 comparable.
 
-    python3 map_score.py --out /path/to/name --label "kitchen-loop rtabmap"
+    python3 map_score.py --out /path/to/name --label kitchen-loop
 
 Used by replay_bag.sh after a replayed drive, and usable on the live rover to
 capture what the mapper currently believes:
@@ -33,8 +33,8 @@ recording*; they say nothing across different drives.
 second one -- it draws the arrow, the trail, the camera's cone and the caption a
 model reads, and a rival renderer would drift away from it. This is not that: it
 is a diagnostic dump of one grid at one moment, in the same PGM convention the
-ROS map_server uses, so that RTAB-Map's grid and slam_toolbox's can be laid side
-by side. The console keeps its picture; this is a contact sheet.
+ROS map_server uses, so that two runs over one recording can be laid side by
+side. The console keeps its picture; this is a contact sheet.
 """
 
 import argparse
@@ -75,7 +75,7 @@ class MapGrab(Node):
     def __init__(self):
         super().__init__("map_score")
         self.grid = None
-        # Both mappers publish the grid reliable and transient-local, so a
+        # slam_toolbox publishes the grid reliable and transient-local, so a
         # subscriber that arrives long after the last update still gets it. That
         # is the whole reason this can be a one-shot script: without matching
         # durability it would wait for the next update, which on a finished
@@ -108,13 +108,12 @@ def main(argv=None):
     # simulated time, which stops dead when the bag ends -- and a deadline on a
     # clock that has stopped is a wait that never finishes.
     #
-    # **--hold is what makes this work at all against RTAB-Map**, and the reason
-    # is a property of the node rather than of this script: rtabmap assembles and
-    # publishes its occupancy grid only while something is subscribed to it. Run
-    # after a replay has finished, this finds nothing latched to collect, because
-    # nothing was ever published for want of a listener -- a mapper that ran
-    # perfectly and produced no map. Held open across the whole replay, the
-    # subscription is itself what asks for the grid.
+    # **--hold is why this is started before the replay rather than after it.**
+    # A mapper publishes its grid on a timer, and some of them build it only
+    # while something is subscribed -- so a collector that arrives after the bag
+    # has finished can find a stale map, or none at all, from a mapper that ran
+    # perfectly. Held open across the whole replay, the subscription is itself
+    # what asks for the grid.
     stop_at = time.monotonic() + max(args.wait, args.hold)
     while time.monotonic() < stop_at:
         rclpy.spin_once(node, timeout_sec=0.5)

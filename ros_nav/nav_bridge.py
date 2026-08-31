@@ -74,7 +74,6 @@ from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
 from sensor_msgs.msg import LaserScan
 from slam_toolbox.srv import Reset
 from std_msgs.msg import String
-from std_srvs.srv import Empty
 from tf2_ros import Buffer, TransformListener
 
 # Beside this file, and with no ROS in it, so that the selftest on a
@@ -258,37 +257,13 @@ class NavBridge(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        # Throwing the map away is one call, but which service it goes to depends
-        # on which mapper the stack came up with, and the two have nothing in
-        # common: slam_toolbox answers `/slam_toolbox/reset` with a request type
-        # of its own, RTAB-Map answers `/rtabmap/rtabmap/reset` -- its node name
-        # inside its own namespace -- with a bare std_srvs Empty.
-        #
-        # Both clients are made here and neither costs anything until it is
-        # called; a client for a service nobody advertises is a name and a queue,
-        # not a connection. `clear_map` then asks whichever one is actually
-        # answering. That cannot pick the wrong one, because the launch never has
-        # two mappers running: `rtabmap:=compare` is the only setting with both
-        # processes up, and in it RTAB-Map is a passenger publishing no
-        # transform, so it is also the only setting where the order below
-        # decides -- and slam_toolbox, the one steering, is asked first.
-        #
-        # The alternative was to tell this node which mapper it is talking to.
-        # Asking the running stack is better for the reason the footprint below
-        # is asked for rather than copied: a flag would be a second opinion about
-        # something the graph already knows, and the way it would fail is a
-        # `clear_map` that reports success while the map it cleared is not the
-        # map the rover is steering on.
-        self.reset_clients = (
-            ("slam_toolbox",
-             self.create_client(Reset, "/slam_toolbox/reset",
-                                callback_group=self.group),
-             Reset.Request),
-            ("RTAB-Map",
-             self.create_client(Empty, "/rtabmap/rtabmap/reset",
-                                callback_group=self.group),
-             Empty.Request),
-        )
+        # Throwing the map away is one call to the mapper's own reset service.
+        # This briefly held a client for each of two mappers and asked whichever
+        # answered, which was the right shape while there were two; there is one
+        # again, and a client for a service nothing advertises is a way for
+        # `clear_map` to fail slowly instead of at once.
+        self.reset_client = self.create_client(
+            Reset, "/slam_toolbox/reset", callback_group=self.group)
         # The costmap the planner is about to use, and the body the controller is
         # about to check it against. Asking the running stack for both is what
         # keeps this file from carrying a second opinion about either: the
@@ -662,27 +637,22 @@ class NavBridge(Node):
                               "is in the frame this would throw away -- stop it "
                               "first"}
         try:
-            mapper = client = make_request = None
-            for name, candidate, request_type in self.reset_clients:
-                if candidate.wait_for_service(timeout_sec=2.0):
-                    mapper, client, make_request = name, candidate, request_type
-                    break
-            if client is None:
+            if not self.reset_client.wait_for_service(timeout_sec=2.0):
                 return {"cleared": False,
-                        "reason": "no mapper is answering, so there is no map to "
-                                  "clear"}
-            future = client.call_async(make_request())
+                        "reason": "slam_toolbox is not answering, so there is no "
+                                  "map to clear"}
+            future = self.reset_client.call_async(Reset.Request())
             if not self.wait(future, 10.0):
                 return {"cleared": False,
-                        "reason": "%s did not answer the reset in ten seconds"
-                                  % mapper}
+                        "reason": "slam_toolbox did not answer the reset in ten "
+                                  "seconds"}
             with self._lock:
                 self.trail = []
                 self.map_msg = None
                 self.map_at = None
             return {"cleared": True,
-                    "reason": "%s's pose graph is empty and the rover is at its "
-                              "origin" % mapper}
+                    "reason": "the pose graph is empty and the rover is at its "
+                              "origin"}
         finally:
             self.move_mutex.release()
 

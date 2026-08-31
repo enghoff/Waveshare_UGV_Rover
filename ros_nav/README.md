@@ -39,9 +39,7 @@ recoveries, and a standard set of topics that any ROS tool can look at.
   lidar_node.py --> /scan                       (the D500, on its own USB port)
         |
         v
-  slam_toolbox  --> /map, map -> odom   (the mapper; the launch's rtabmap:=
-        |                                argument can put RTAB-Map there
-        |                                instead, and measured worse)
+  slam_toolbox  --> /map, map -> odom
         v
   Nav2          --> /cmd_vel  (back to base_node, and out to the wheels)
         |
@@ -109,7 +107,7 @@ both are now somebody else's problem:
 | `turn_in_place` | `Spin` | rotates on the spot, collision-checked through the sweep |
 | `drive_to` | `NavigateToPose` | a planned route, a follower, and the recovery behaviours |
 | `stop_driving` | goal cancel, plus a zero `Twist` | the cancel is the correct act, the Twist is the quick one |
-| `clear_map` | `/rtabmap/rtabmap/reset`, or `/slam_toolbox/reset` | throws the pose graph away — whichever mapper is answering |
+| `clear_map` | `/slam_toolbox/reset` | throws the pose graph away |
 
 `drive` is a narrower promise than it used to be, and the tool description says so:
 it goes straight and stops, where the old one wove around obstacles. Weaving now
@@ -487,333 +485,98 @@ The whole story, the measurements and the one assumption it rests on are in
 build step, and the manifest rebuilds it before every restart for the reason
 `lidar_slam/` already learned.
 
-## slam_toolbox is the mapper, and RTAB-Map is the one that was measured against it
-
-**slam_toolbox owns `map -> odom` and publishes `/map`.** RTAB-Map was the mapper
-for part of 2026-08-31 and is not any more: replayed into both on one recorded
-drive it mapped this rover measurably worse, and "The drive of 2026-08-31,
-replayed into everything" below is the evidence. It stays installed, configured
-and launchable, because the answer would change the day a camera reaches it.
-
-```bash
-ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav --rtabmap'    # RTAB-Map instead
-ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav --slam-toolbox'
-ssh orin '~/ugv/ros_nav/restart.sh --supervisor'
-```
-
-Which mapper runs is the launch's `rtabmap` argument, and **the boot entry is the
-only place that choice lives** — the supervisor takes its arguments from the
-crontab and `restart.sh` reads them back out of it, so a hand relaunch cannot
-quietly install a different mapper than the one that boots. `primary` is
-RTAB-Map with slam_toolbox not started, `off` is slam_toolbox alone, and
-`compare` is both at once with RTAB-Map forbidden a transform, which is how the
-two get measured against each other on one drive:
-
-```bash
-~/ugv/ros_nav/compare_run.sh --seconds 300      # puts the boot stack back after
-```
-
-**No setting ever has two things publishing `map -> odom`,** and that is the
-whole design rather than a detail. A frame in TF has exactly one parent, so two
-publishers do not give the controller two opinions to choose between — they give
-it one transform flickering between them at whatever rate the two happen to
-publish, and the rover steers on whichever landed last. So compare mode turns
-RTAB-Map's transform off entirely; it keeps its opinion on `/rtabmap/mapGraph`
-instead, where `slam_compare.py` reads it and nothing else does.
-
-### It is a lidar-only configuration, and therefore has no GPU in it
-
-RTAB-Map's reputation comes from visual loop closure over a camera, and
-`config/rtabmap.yaml` deliberately gives it none: no RGB, no depth, ICP
-registration, and the D500's scan as the only sensor. Comparing a camera-and-lidar
-RTAB-Map against a lidar-only slam_toolbox would be comparing two sensor suites
-and calling the result an algorithm result.
-
-That also settles the GPU question, which is worth stating plainly because the
-Orin has a perfectly good one sitting idle. **Every GPU switch RTAB-Map has —
-`ORB/Gpu`, `FAST/Gpu`, `SURF/GpuVersion`, the SuperPoint detector — accelerates
-image feature extraction, and no image reaches this node.** They are also not in
-the binary: the packaged RTAB-Map is built against an OpenCV without CUDA and no
-libtorch at all, which `install-rtabmap.sh` checks with `ldd` rather than
-asserting. The board could not compile them anyway — it has the driver's
-`libcuda.so` and no CUDA toolkit.
-
-Making the GPU relevant here is a different project, in this order: the OAK-D's
-colour and depth published as ROS topics (which today means reworking
-`oak_depth/depth_server.py`, because only one process can hold that camera), a
-CUDA toolkit on the board, OpenCV rebuilt with CUDA for aarch64, and RTAB-Map
-rebuilt against that OpenCV. None of it makes the lidar half any faster.
-
-### Where it comes from, and why it is not in the conda environment
-
-Everything else here is RoboStack, unpacked into `~/miniforge3/envs/ros` with no
-sudo. RTAB-Map cannot be: **RoboStack publishes no rtabmap package**, for any
-platform, under any name. So it comes from Ubuntu's own ROS 2 Jazzy packages in
-`/opt/ros/jazzy`, which `install-rtabmap.sh` puts there and the manifest's system
-install for `ros_nav` runs.
-
-Two ROS installations on one board is fine as long as no process uses both.
-`native.sh` is what steps between them: it leaves the conda environment with
-`env -i` rather than sourcing the native setup on top of it, because layering
-would put RoboStack's `libstdc++` and `rclcpp` ahead of the system's on Ubuntu's
-binary. The two halves meet only on the wire, both on CycloneDDS on loopback,
-both on domain 42. Proved on the rover: a native `ros2 topic echo /scan` returns
-frames published by the conda `lidar_node`.
-
-Three traps were paid for getting there, all of which fail silently and are now
-locked into `selftest.py`:
-
-- **`/scan` QoS.** `lidar_node` publishes best-effort on purpose; RTAB-Map
-  subscribes reliably by default. DDS calls that pair *incompatible* rather than
-  mismatched — both sides list the topic and not one message is delivered — so
-  the node comes up looking healthy and deaf. `qos_scan: 2` is the fix.
-- **Renamed ICP parameters.** Every 2D-lidar recipe older than RTAB-Map 0.21 says
-  `Icp/PM` and `Icp/PMOutlierRatio`. This build has `Icp/Strategy` and
-  `Icp/OutlierRatio`, ignores a parameter it does not know, and logs nothing —
-  so the file reads as libpointmatcher while the node runs PCL's ICP on
-  defaults. Checked against `ros2 param list` on the running node, not against a
-  recipe.
-- **`set -u` and ROS's own `setup.bash`,** which reads `$AMENT_TRACE_SETUP_FILES`
-  without a default and dies naming ROS's file rather than ours. The same dance
-  `env.sh` already does around conda's activation hooks.
-
-### What the comparison measures
-
-`slam_compare.py` reports both mappers side by side: graph nodes, how often each
-changed its mind about where the rover is and by how much, RTAB-Map's own count
-of accepted closures, update latency, the worst `map -> odom` staleness, how much
-of the two occupancy grids agree about the cells both have seen, and what each
-process costs in CPU and memory. With `--closed-loop`, after driving the rover
-physically back to its starting point, it also reports how far each mapper thinks
-it is from where it began — the same measurement
-[Proving the loop actually closes](#proving-the-loop-actually-closes) makes for
-slam_toolbox alone, run against both at once.
-
-One honest asymmetry: RTAB-Map reports its closures and slam_toolbox has no topic
-that does. So closures are counted for both the only symmetric way there is — a
-step in `map -> odom` — with RTAB-Map's own count printed beside it. If those two
-disagree, the step threshold is wrong rather than one mapper lying.
-
-The comparison is only valid if both mappers started together, because each calls
-its frame `map` and those are two different frames with the same name. The tool
-refuses to report the frame-dependent numbers if the two graphs did not begin
-within twenty seconds of each other.
-
-### What the numbers said, and what they did not
-
-Three minutes with both mappers running off one lidar, rover parked:
-
-| | slam_toolbox | RTAB-Map |
-|---|---|---|
-| corrections to where it thinks it is | 31 | 21 |
-| largest one | 2.17 m, 21° | 0.235 m, 2.7° |
-| CPU, % of one core | 3.0 | 9.9 |
-| memory | 240 MB | 197 MB |
-
-and the two grids agreed about 87% of the 20493 cells both had seen. **The
-decisive column is the second row.** A parked rover has not moved, so every one
-of those corrections is a mapper changing its mind about a rover that is standing
-still, and slam_toolbox moved it two metres and twenty degrees while RTAB-Map's
-worst was a quarter of a metre. Nav2's controller reads that transform every tick,
-so a two-metre step is a rover that believes it is somewhere else for as long as
-it takes the next correction to arrive.
-
-**What this does not measure is loop closure,** which is the thing either mapper
-is really for and which a stationary rover cannot exercise: neither reported a
-single closure, because neither had anywhere to return to. `compare_run.sh
---closed-loop`, driven round a circuit and back to the start, is the run that
-would, and it has not been done. The cutover rests on the steadier pose, the
-lower memory, and a tenth of a core.
-
-### What the cutover had to change
-
-Two things, and both of them fail silently, which is why `primary` was a testing
-setting until they were done.
-
-**The grid has to come out of the namespace.** RTAB-Map runs under `/rtabmap` so
-that in compare mode its occupancy grid cannot be mistaken for the one the rover
-is steering on. Everything downstream reads `/map` — Nav2's global costmap has a
-static layer subscribed to it, and `nav_bridge` answers `map_png` from it — so a
-primary RTAB-Map still in its namespace publishes to nobody. Nothing errors: the
-global costmap comes up entirely unknown, the planner will not cross unknown
-space, and every goal is refused as a planning failure on a stack whose every
-node is listed and healthy. `run_rtabmap.sh --primary` remaps the grid back to
-`/map`, and only `--primary` does.
-
-**Clearing the map has to reach whichever mapper is running.** The daemon's
-`clear_map` went through `nav_bridge` to slam_toolbox's own reset service, and
-RTAB-Map does not have it — it answers a bare `std_srvs/Empty` at
-`/rtabmap/rtabmap/reset`, its node name inside its own namespace. The bridge now
-holds a client for each and asks whichever one is answering, which is a question
-about the running stack rather than a flag someone has to keep in step with the
-crontab. There is never more than one mapper up to answer it, except in compare
-mode, where slam_toolbox is asked first because it is the one steering.
-
-### The first drive smeared, and how the recording found out why
-
-The first real drive under RTAB-Map produced a map of a room with its walls
-doubled and a sunburst of free space raked out through them. **The cause was
-this rover's own configuration, in three places, and each of them failed by
-quietly doing nothing.** In fourteen minutes and 13.7 metres of driving the
-graph closed not one loop, and a third of the links between consecutive
-keyframes had no scan matching in them at all — they were raw odometry with a
-gyro's heading on a skidding pair of tracks.
-
-Two settings were tuned to be slow to believe a match, which is the right bias
-for a mapper that can weld two rooms together, and both were tuned past the
-point where this rover's scans can satisfy them: ICP was allowed to look 10 cm
-for a point's partner, which is less than the error it exists to correct, and a
-match had to pair up 40% of the scan, which two views of a room from half a
-metre apart never do. The third was a disagreement rather than a threshold —
-closures were searched for out to three metres and then discarded unless the
-nearest node was within one, which is RTAB-Map's default and undoes the search
-completely. Every one of those discards was logged, at a debug level nothing was
-reading.
-
-`config/rtabmap.yaml` now says what each of those is and what it was measured
-at. The numbers came from replaying the drive rather than from another drive:
-
-```bash
-# the map database is the recording -- every scan and pose of that drive
-ssh orin 'ls ~/ugv/ros_nav/maps/'          # rtabmap.db, and fault-*.db kept aside
-ssh orin 'bash ~/ugv/ros_nav/native.sh rtabmap-reprocess -g2 --uwarn \
-              --Icp/CorrespondenceRatio 0.2 maps/fault-2026-08-31-smeared.db /tmp/out.db'
-```
-
-**`rtabmap-reprocess` replays a database through RTAB-Map with any parameters
-you name**, in about twenty seconds, and `-g2` writes the assembled occupancy
-grid beside the output so the maps can be compared as pictures rather than as
-opinions. `--uwarn` prints the rejections and `--udebug` prints why a closure was
-never proposed, which is where the discarded candidates were found.
-`rtabmap-detectMoreLoopClosures` on the same database is the second half of the
-argument: it found 27 closures in data the live rover had found none in, which
-is what proved the scans were fine and the settings were not.
-
-What the replay measured, on the drive that smeared:
-
-| | as it drove | after the fix |
-|---|---|---|
-| loop closures | 0 | 26 |
-| keyframe links with scan matching in them | 67 of 104 | 99 of 104 |
-| assembled map | 16.0 × 15.3 m | 12.0 × 10.4 m |
-| occupied cells | 62716 | 33712 |
-
-The map being *smaller* is the point: a room does not grow, so the extra four
-metres in each direction were the same walls drawn twice.
-
-**One thing the recording cannot answer.** A database holds the keyframes RTAB-Map
-chose, not the ten scans a second the lidar produced, so nothing about what
-happens *between* keyframes can be replayed from it — how often a keyframe should
-be taken, or whether lidar odometry would beat the wheels. Replayed from the
-database, lidar odometry collapses to 0.8 m of travel where the rover drove 13.7,
-and that is the recording being wrong rather than the idea: real ICP odometry
-matches scans 3 cm apart at 10 Hz, and the database's are 13 cm and a keyframe
-apart. Which is what `record_drive.sh` is for.
-
-### Recording a drive, and replaying it into either mapper
+## Recording a drive, and replaying it
 
 ```bash
 ssh orin '~/ugv/ros_nav/record_drive.sh --seconds 300 --name kitchen-loop'   # then drive
-ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --mapper rtabmap'
-ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --mapper slam_toolbox'
-ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --mapper rtabmap \
-              -- --RGBD/LinearUpdate 0.05'
+ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop'
+ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --out tighter               -- -p minimum_travel_distance:=0.1'
 ```
 
 `record_drive.sh` starts nothing and stops nothing — it subscribes to `/scan`,
 `/tf` and `/odom` while somebody drives the rover normally, and writes a bag under
-`recordings/`, which the deploy manifest preserves. **One drive then answers every
-later question**, which is the difference between this and `compare_run.sh`: that
-one is fair and costs a drive each time it is asked.
+`recordings/`, which the deploy manifest preserves. `replay_bag.sh` then plays it
+into slam_toolbox with whatever settings are named and keeps the map that comes
+out, as a picture and as the numbers `map_score.py` prints: how large the grid is,
+how many cells are walls, and walls per square metre of floor.
 
-`replay_bag.sh` plays a bag into whichever mapper is named and keeps the map that
-comes out, as a picture and as the numbers `map_score.py` prints — how large the
-grid is, how many cells are walls, and walls per square metre of floor. That last
-one is the number worth quoting, because a mapper that has lost track does not
-produce an empty map, it produces a *bigger* one with every wall drawn twice.
+**That last number is the one worth quoting, and it can still lie.** A mapper that
+has lost track does not produce an empty map, it produces a *bigger* one with every
+wall drawn twice — but one run below spread a room over four times its area and
+scored *best*, because the exploded floor is what the walls were divided by. The
+picture is the arbiter; the number is the summary.
 
-**Record a drive, not a rover standing still.** A 25-second parked recording is
-what proved the harness works — replayed into RTAB-Map it reproduces the live
-rover's map to within a few cells, 6.2 × 10.9 m against 6.3 × 10.6 — but it is
-worthless for comparing the two mappers, because slam_toolbox adds a scan to its
-graph only once odometry says the rover has moved. Parked, it keeps 43 wall cells
-where RTAB-Map keeps 165, and neither number means anything. The numbers compare
-two maps of one *driving* recording and nothing else.
+Two things about the replay are deliberate. It runs on **DDS domain 43** while the
+rover is on 42, because a replay publishes `/scan`, `/tf` and `/map`, and on one
+domain that is a second lidar feed and a second `map -> odom` reaching a rover that
+is driving. And it kills only the processes it started, **by PID and never by
+pattern**: every pattern that matches a replay's mapper matches the rover's own.
+The reverse also holds — a deploy or `restart.sh` during a replay kills the replay,
+because those call `sweep.sh`, which kills by pattern for good reasons of its own.
 
-Two things about it are deliberate and neither is tidiness. It runs on **DDS
-domain 43** while the rover is on 42, because a replay publishes `/scan`, `/tf`
-and `/map` and on one domain that is a second lidar feed and a second
-`map -> odom` reaching a rover that is driving. And it kills only the processes it
-started, **by PID and never by pattern**: every pattern that matches a replay's
-mapper also matches the one the rover is steering on, and `sweep.sh` — which is
-right for the live stack — would take the replay down with it.
+Record a drive, not a rover standing still. slam_toolbox adds a scan to its graph
+only once odometry says the rover has moved, so a parked recording tells you
+nothing about anything.
 
-### What the local map is matched against, which is where slam_toolbox wins
+## Why RTAB-Map was tried and removed
 
-slam_toolbox matches every scan against a rolling buffer of the last ten, by an
-exhaustive correlative search over ±25 cm and ±20°. RTAB-Map, as this rover had
-it, matched one 2D scan against one other 2D scan by ICP from the wheels' guess.
-Two hundred points, most of the room out of sight, and one corridor looking like
-another is a weak thing to ask a solver to agree about, and the settings that
-follow from that are `RGBD/ProximityPathMaxNeighbors` — how many nodes get merged
-into a local map for the current scan to be matched against — which was 1 here
-and is now 10. On the recorded drive that took closures from 26 to 62 with the
-map staying exactly the same size, which is what says they agree with each other:
-a false closure folds the map and would have shown up as a smaller, wronger one.
+For part of 2026-08-31 there were two mappers here. RTAB-Map ran first beside
+slam_toolbox as a passenger, then instead of it, and was removed the same day. It
+is gone from this repository and from the rover — the packages, the second ROS
+installation under `/opt/ros/jazzy` they needed, the launch argument that chose
+between mappers, and the boot entry that carried it. **This section is what
+remains, because the next person to reach for a second mapper should know how the
+last attempt ended.**
 
-The one that remains is odometry. RTAB-Map is given the wheels and a gyro and
-corrects them only at keyframes; slam_toolbox corrects continuously against its
-buffer. `icp_odometry` from `rtabmap_odom` is RTAB-Map's own answer to that and is
-what its 2D lidar setups all use — the package is installed and nothing launches
-it yet, because putting it in front means it, and not `base_node`, publishes
-`odom -> base_link`, and that is not a change to make on a guess.
+The question was worth asking: slam_toolbox is a 2D lidar mapper and RTAB-Map is
+the better-known system, so **would RTAB-Map be a better owner of `map -> odom` on
+this rover?** The answer, measured on one recorded drive replayed into every
+arrangement, was no, and not narrowly:
 
-### The drive of 2026-08-31, replayed into everything
+| | walls per m² of floor |
+|---|---|
+| **slam_toolbox** | **45.3** |
+| RTAB-Map, after three configuration faults were fixed | 64.9 |
+| RTAB-Map, keyframes every 10 cm instead of 20 | 55.1 |
+| RTAB-Map, keyframes every 5 cm | 51.0 |
+| RTAB-Map with lidar odometry in front, no motion guess | 27 × 26 m of blur for a 13 × 17 m room |
 
-One 5-minute drive, 2969 scans, replayed into each arrangement. Walls per square
-metre of floor is the column to read: a mapper that has lost track draws the same
-wall twice, and the count of wall cells rises against the floor it found.
+**The reason is that this rover gives a mapper no camera.** RTAB-Map's reputation
+rests on recognising a place from images, and with a lidar alone that mechanism
+cannot fire at all — every closure it makes here comes from proximity detection,
+which is the same idea slam_toolbox's loop search already uses. So the comparison
+was always RTAB-Map's second-best mechanism against slam_toolbox's only one. What
+slam_toolbox does that RTAB-Map as configured did not is match *every* scan against
+a rolling buffer of the last ten, by an exhaustive correlative search over ±25 cm
+and ±20°; RTAB-Map took the wheels as a starting guess and refined once per
+keyframe with ICP, which is a local search from wherever dead reckoning had got to.
 
-| | walls per m² | what happened |
-|---|---|---|
-| **slam_toolbox** | **45.3** | the best map of the six, and the cleanest picture |
-| RTAB-Map, as deployed | 64.9 | 184 closures, and walls visibly doubled |
-| RTAB-Map, keyframes every 10 cm | 55.1 | 2.6× the nodes |
-| RTAB-Map, keyframes every 5 cm | 51.0 | 2× the nodes, closest RTAB-Map got |
-| RTAB-Map + lidar odometry, no guess | *broken* | 27 × 26 m of blur for a 13 × 17 m room |
-| RTAB-Map + lidar odometry, wheels as guess | *did not run* | see below |
+Three of its faults here were ours and were fixed before the verdict, which is why
+the verdict is worth trusting. ICP was allowed to look 10 cm for a point's partner,
+less than the error it existed to correct; a match had to pair up 40% of the scan,
+which two views of a room from half a metre apart never do; and closures were
+searched for out to three metres and then discarded unless the nearest node was
+within one, which is RTAB-Map's default and silently undoes the search. Together
+those meant **not one loop closed in fourteen minutes of driving**. Fixing them
+took RTAB-Map from a map with doubled walls to a plausible one — and still not to
+slam_toolbox's.
 
-**So slam_toolbox is better on this rover's data, and the gap is not a
-misconfiguration any more.** Keyframe density is the one lever that moved
-RTAB-Map, and it closes about half the distance for two to two and a half times
-the nodes — 1001 against 511 over five minutes, and a database that grows with
-them.
+What survives the removal is worth more than the experiment. `record_drive.sh` and
+`replay_bag.sh` came out of needing to ask the question honestly, and they now
+answer any mapping question against a drive that has already happened. Four traps
+were paid for and are pinned by the selftest: a background child of a
+non-interactive shell inherits SIGINT set to ignore, so a recorder started that way
+cannot be stopped; a collector must subscribe before a replay rather than after it;
+a replay must have its own DDS domain; and a best-effort publisher with a reliable
+subscriber is *incompatible* in DDS rather than merely mismatched, which is a
+silence, not an error. That last one caught this rover three times, twice under
+names that differed between two nodes of the same package.
 
-Two things about that table are worth keeping. The first is that **walls per m²
-scored the broken run best**: pure scan-to-scan lidar odometry lost track,
-smeared the room over four times the area, and its wall cells divided by that
-enormous floor came out lowest of anything tried. The picture is the arbiter and
-the number is the summary, never the other way round. The second is why the
-guided version never ran: `guess_frame_id` hands icp_odometry the wheels'
-*absolute* pose, and a recording that starts ten metres into a drive hands it a
-ten-metre jump as its first motion guess. ICP cannot converge from that, and
-having failed it keeps the same stale guess and fails identically for ever. Fixing
-that means starting the odometry at the recording's own origin, and it is the one
-route not yet closed off.
-
-RTAB-Map's real advantage is appearance-based loop closure over a camera, and
-this rover gives it no images — `config/rtabmap.yaml` explains why that was the
-right way to compare the two, and it also means the comparison was always between
-RTAB-Map's second-best mechanism and slam_toolbox's only one. The question
-becomes worth reopening when the OAK-D's colour is on a ROS topic, and by then
-`record_drive.sh` and a bag will answer it in an afternoon rather than a week.
-
-One thing did not have to change, and it is the one most likely to have: the two
-mappers publish their grids with the same QoS. RTAB-Map's `/map` is reliable and
-transient-local, which is what `nav_bridge` and Nav2's `map_subscribe_transient_local`
-already expected of slam_toolbox — checked on the rover with `ros2 topic info -v`
-rather than assumed, because a durability mismatch is the same silent nothing the
-`/scan` QoS trap was.
+**What would change the answer** is the OAK-D's colour and depth on a ROS topic,
+which is what RTAB-Map is actually for. That is a real project — one process can
+hold that camera, so `oak_depth/depth_server.py` would have to give it up — and if
+it ever happens, the question gets reopened with a recorded drive and an afternoon
+rather than a week.
 
 ## Why the rover zig-zagged, and how to see it without a rover
 

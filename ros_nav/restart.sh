@@ -58,34 +58,7 @@ tail -6 "$DIR/ros_nav.log"
 # each getting half the packets, nothing anywhere reporting an error. sweep.sh
 # runs before every launch to prevent it; this is how you find out that it did.
 #
-# Which mapper is expected depends on how the launch was started, so it is read
-# off the running launch's own command line rather than assumed.
-# `rtabmap:=off` -- the default, and what boots -- wants slam_toolbox and no
-# RTAB-Map; `rtabmap:=primary` wants RTAB-Map and no slam_toolbox;
-# `rtabmap:=compare` wants both. Getting this wrong in either direction is worth
-# catching: two mappers publishing `map -> odom` is a rover whose pose flickers
-# between two answers, and none at all is a rover with no map.
-#
-# A launch started with no `rtabmap:=` at all -- which is what a hand relaunch
-# is -- gets the launch file's own default, so that is read out of the launch
-# file rather than repeated here. A copy of it that had drifted would report a
-# missing slam_toolbox on a rover that is mapping perfectly well.
-mode=$(sed -n 's/^ *"rtabmap", default_value="\([a-z]*\)".*/\1/p' \
-       "$DIR/slam.launch.py" | head -1)
-mode=${mode:-off}
-launch_cmd=$(pgrep -af 'ros2 launch.*ros_nav' 2>/dev/null || true)
-case "$launch_cmd" in
-    *rtabmap:=compare*) mode=compare ;;
-    *rtabmap:=primary*) mode=primary ;;
-    *rtabmap:=off*)     mode=off ;;
-esac
-case "$mode" in
-    off)      want_slam=1; want_rtab=0 ;;
-    compare)  want_slam=1; want_rtab=1 ;;
-    primary)  want_slam=0; want_rtab=1 ;;
-esac
-
-echo "--- the right number of each?  (mapper mode: $mode)"
+echo "--- the right number of each?"
 check_count() {
     n=$(pgrep -fc "$1" 2>/dev/null || true)
     n=${n:-0}
@@ -98,8 +71,7 @@ check_count() {
 for name in lidar_node.py base_node.py nav_bridge.py; do
     check_count "$name" 1
 done
-check_count async_slam_toolbox_node "$want_slam"
-check_count /lib/rtabmap_slam/rtabmap "$want_rtab"
+check_count async_slam_toolbox_node 1
 
 # Counting processes is not enough on its own, and this is the check that would
 # have caught the worst reload this stack has had. A node that was not swept
@@ -134,28 +106,7 @@ else
     echo "  !! ros2 node list did not finish in 15s -- DDS is wedged;" \
          "process counts above are the check that still works"
 fi
-if [ "$want_slam" -eq 1 ]; then
-    timeout 10 ros2 lifecycle get /slam_toolbox 2>/dev/null || true
-fi
-
-# RTAB-Map is not a lifecycle node and has nothing to `lifecycle get`, so what is
-# checked instead is that it is producing a graph. A node that came up but never
-# received a scan looks identical from the process table -- and it has happened
-# here, because lidar_node publishes /scan best-effort while RTAB-Map subscribes
-# reliably by default, and DDS calls that pair incompatible and delivers nothing
-# at all. `qos_scan: 2` in config/rtabmap.yaml is the fix; this is how you find
-# out it stopped working.
-if [ "$want_rtab" -eq 1 ]; then
-    echo "--- is RTAB-Map actually seeing the lidar?"
-    if timeout 20 "$DIR/native.sh" ros2 topic echo /rtabmap/mapGraph --once \
-            --field poses_id > /dev/null 2>&1; then
-        echo "  ok   /rtabmap/mapGraph is publishing, so scans are reaching it"
-    else
-        echo "  !!   nothing on /rtabmap/mapGraph in 20 s. Either it is not"
-        echo "       running, or it is running deaf -- check ros_nav.log for"
-        echo "       'incompatible QoS' and 'Did not receive data since'."
-    fi
-fi
+timeout 10 ros2 lifecycle get /slam_toolbox 2>/dev/null || true
 
 # And that the daemon can actually reach the bridge, which is the whole point of
 # the stack being up. Checked from here because it is one line and because the

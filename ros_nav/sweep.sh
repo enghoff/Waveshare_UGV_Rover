@@ -36,13 +36,6 @@ pkill -f "$DIR/lidar_node.py" 2>/dev/null
 pkill -f "$DIR/base_node.py" 2>/dev/null
 pkill -f "$DIR/nav_bridge.py" 2>/dev/null
 pkill -f 'async_slam_toolbox_node' 2>/dev/null
-# RTAB-Map, by the path it is started from rather than by the bare name
-# `rtabmap`: that word appears in this stack's own config path, in the
-# wrapper's arguments and in anything an operator has typed, and a bare
-# pattern would take an ssh session down with it -- the trap the header of
-# restart.sh describes.
-pkill -f "$DIR/run_rtabmap[.]sh" 2>/dev/null
-pkill -f '/lib/rtabmap_slam/rtabmap' 2>/dev/null
 pkill -f 'nav2_lifecycle_manager/lifecycle_manager' 2>/dev/null
 pkill -f 'nav2_controller/controller_server' 2>/dev/null
 pkill -f 'nav2_planner/planner_server' 2>/dev/null
@@ -67,8 +60,6 @@ pkill -9 -f "$DIR/lidar_node.py" 2>/dev/null
 pkill -9 -f "$DIR/base_node.py" 2>/dev/null
 pkill -9 -f "$DIR/nav_bridge.py" 2>/dev/null
 pkill -9 -f 'async_slam_toolbox_node' 2>/dev/null
-pkill -9 -f "$DIR/run_rtabmap[.]sh" 2>/dev/null
-pkill -9 -f '/lib/rtabmap_slam/rtabmap' 2>/dev/null
 pkill -9 -f 'nav2_lifecycle_manager/lifecycle_manager' 2>/dev/null
 pkill -9 -f 'nav2_controller/controller_server' 2>/dev/null
 pkill -9 -f 'nav2_planner/planner_server' 2>/dev/null
@@ -83,7 +74,7 @@ sleep 1
 # than discovering it later as a rover running last week's code.
 left=0
 for pattern in "$DIR/lidar_node.py" "$DIR/base_node.py" "$DIR/nav_bridge.py" \
-               async_slam_toolbox_node '/lib/rtabmap_slam/rtabmap'; do
+               async_slam_toolbox_node; do
     # pgrep -c prints 0 and exits 1 when nothing matches. `|| echo 0` then
     # appends a second 0 and `[[ "$n" -gt 0 ]]` becomes "integer expression
     # expected" -- which is how a clean sweep used to look like a failure.
