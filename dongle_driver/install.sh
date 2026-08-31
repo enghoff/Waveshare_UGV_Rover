@@ -126,10 +126,14 @@ echo "dkms: $(dkms status "$NAME")"
 
 # --- load it --------------------------------------------------------------
 #
-# Reloading takes the radio down for a second or two. That is safe on this rover
-# and only on this rover, because this is the *spare* radio: the onboard one is
-# a different driver (rtl8822ce) and carries the traffic this command arrives
-# over.
+# Reloading takes this radio down for a second or two, and since `wifi_dual` was
+# armed here that is no longer certainly the spare: the manager gives the traffic
+# to whichever radio scores better, and the dongle wins whenever it is the one
+# sitting next to a router. So this can take down the link the command arrives
+# over, and what makes it survivable rather than safe is the manager -- it notices
+# the radio is gone and moves the traffic and the service address to the other
+# one, measured at about twenty seconds. Prefer to run it when the onboard radio
+# is active; check with `wifi_ctl.sh status` first if it matters.
 modprobe -r "$NAME" 2>/dev/null || true
 modprobe "$NAME"
 sleep 5
