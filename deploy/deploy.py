@@ -201,13 +201,51 @@ def write_remote_state(host_cfg: dict[str, Any], state: dict[str, Any]) -> None:
     ssh(host, "python3 -c " + shlex.quote(py) + " && sync")
 
 
+def blob_bytes(paths: list[str]) -> dict[str, bytes]:
+    """The bytes HEAD records for each path, not the bytes in the working tree.
+
+    Those are not always the same file, and `git status` will not say so. This
+    repository is checked out on Windows, where most files sit in the working
+    tree with CRLF line endings while the commit holds LF; reading the working
+    tree therefore ships a shell script whose shebang is `#!/bin/sh` with a
+    carriage return on the end, and the kernel goes looking for an interpreter
+    with a carriage return in its name. The supervisor dies before its first
+    line of log, which reads as a daemon that will not start rather than as a
+    bad copy. `.gitattributes` pins the checkout of the shell scripts to LF for
+    exactly that reason, but it only covers the files somebody remembered to
+    list, and an editor that rewrites a file whole undoes it without a word.
+
+    Taking the bytes from the commit makes the deployer's promise true rather
+    than hopeful: the SHA written into the deployment state describes what was
+    actually sent.
+    """
+    if not paths:
+        return {}
+    query = "".join("HEAD:%s\n" % path for path in paths)
+    proc = subprocess.run(["git", "cat-file", "--batch"], cwd=ROOT,
+                          input=query.encode("utf-8"), stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, check=True)
+    out, offset, result = proc.stdout, 0, {}
+    for path in paths:
+        end = out.index(b"\n", offset)
+        header = out[offset:end].decode("utf-8", "replace").split()
+        if len(header) != 3 or header[1] != "blob":
+            raise DeployError("%s: not a blob at HEAD (%s)" % (path, " ".join(header)))
+        size = int(header[2])
+        start = end + 1
+        result[path] = out[start:start + size]
+        offset = start + size + 1      # the newline git writes after each blob
+    return result
+
+
 def make_archive(component: dict[str, Any], files: list[tuple[str, str, int]]) -> Path:
     fd, name = tempfile.mkstemp(prefix=f"ugv-{component['name']}-", suffix=".tar")
     os.close(fd)
     archive = Path(name)
+    blobs = blob_bytes([repo_path for repo_path, _, _ in files])
     with tarfile.open(archive, "w") as tf:
         for repo_path, archive_path, mode in files:
-            data = (ROOT / repo_path).read_bytes()
+            data = blobs[repo_path]
             info = tarfile.TarInfo(archive_path)
             info.size = len(data)
             info.mode = mode
