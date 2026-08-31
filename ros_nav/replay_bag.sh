@@ -3,6 +3,7 @@
 #
 #     ~/ugv/ros_nav/replay_bag.sh recordings/bags/DRIVE --mapper rtabmap
 #     ~/ugv/ros_nav/replay_bag.sh recordings/bags/DRIVE --mapper slam_toolbox
+#     ~/ugv/ros_nav/replay_bag.sh recordings/bags/DRIVE --mapper rtabmap+icp
 #     ~/ugv/ros_nav/replay_bag.sh recordings/bags/DRIVE --mapper rtabmap \
 #         -- --RGBD/LinearUpdate 0.05 --Icp/CorrespondenceRatio 0.15
 #
@@ -31,6 +32,12 @@
 # rover is steering on, and a replay that tidies up after itself by pattern is a
 # replay that stops the rover mapping. Every process started here is remembered
 # by PID and killed by PID; sweep.sh is for the live stack and is not called.
+#
+# The reverse is true and worth knowing before it wastes ten minutes: **a deploy
+# or a restart.sh while a replay is running kills the replay.** Those do call
+# sweep.sh, which kills mappers by pattern because that is the right thing for
+# the live stack, and the pattern does not know that one of them is a replay on
+# another domain. Wait for the replay, or expect a half-finished map.
 
 set -eu
 
@@ -39,10 +46,12 @@ MAPPER=rtabmap
 RATE=1.0
 OUT=""
 EXTRA=()
+# Every topic, unless a mapper mode needs some of them held back.
+PLAY_TOPICS=()
 
 BAG="${1:-}"
 if [ -z "$BAG" ]; then
-    echo "usage: $0 BAG [--mapper rtabmap|slam_toolbox] [--out NAME] [--rate R] [-- params...]" >&2
+    echo "usage: $0 BAG [--mapper rtabmap|rtabmap+icp|slam_toolbox] [--out NAME] [--rate R] [-- params...]" >&2
     exit 2
 fi
 shift
@@ -58,8 +67,9 @@ while [ $# -gt 0 ]; do
 done
 
 case "$MAPPER" in
-    rtabmap|slam_toolbox) ;;
-    *) echo "replay_bag.sh: --mapper must be rtabmap or slam_toolbox" >&2; exit 2 ;;
+    rtabmap|slam_toolbox|rtabmap+icp) ;;
+    *) echo "replay_bag.sh: --mapper must be rtabmap, rtabmap+icp or slam_toolbox" >&2
+       exit 2 ;;
 esac
 [ -d "$BAG" ] || { echo "replay_bag.sh: no such bag: $BAG" >&2; exit 2; }
 [ -n "$OUT" ] || OUT="$(basename "$BAG")-$MAPPER"
@@ -101,6 +111,43 @@ if [ "$MAPPER" = slam_toolbox ]; then
     ros2 lifecycle set /slam_toolbox activate > /dev/null 2>&1 || true
 else
     rm -f "$RESULT.db"
+    if [ "$MAPPER" = "rtabmap+icp" ]; then
+        # Lidar odometry in front of the mapper, which is what RTAB-Map's own 2D
+        # lidar setups do and what this rover has never had: instead of taking
+        # the wheels off TF and correcting them once per keyframe, it matches
+        # every scan against a running local map and produces `odom` itself.
+        #
+        # **The wheels are not played in this mode**, and that is not squeamish-
+        # ness about spending CPU on them. A frame in TF has exactly one parent,
+        # so base_node's `odom -> base_link` from the recording and this node's
+        # cannot both exist: tf2 would take whichever arrived last and the
+        # comparison would be of neither. PLAY_TOPICS below drops /tf and /odom
+        # and keeps /tf_static, which carries base_link -> laser and belongs to
+        # the rover rather than to whatever is producing odometry.
+        #
+        # What that costs is the guess. In production icp_odometry would be given
+        # the wheels through guess_frame_id, with base_node publishing them under
+        # a frame of their own; here it starts each match from where the last one
+        # ended, which is the harder version of the job and therefore the honest
+        # one to measure.
+        PLAY_TOPICS=(--topics /scan /tf_static)
+        "$DIR/native.sh" ros2 run rtabmap_odom icp_odometry \
+            --ros-args \
+                -r __node:=icp_odometry \
+                --params-file "$DIR/config/rtabmap.yaml" \
+                -p use_sim_time:=true \
+                -p frame_id:=base_link \
+                -p odom_frame_id:=odom \
+                -p publish_tf:=true \
+                -p subscribe_scan:=true \
+                -p Odom/Strategy:=0 \
+                -p Odom/ScanKeyFrameThr:=0.8 \
+                -p OdomF2M/ScanSubtractRadius:=0.05 \
+                -p OdomF2M/ScanMaxSize:=15000 \
+                -r scan:=/scan > "$RESULT-odom.log" 2>&1 &
+        pids+=($!)
+        sleep 5
+    fi
     # Started here rather than through run_rtabmap.sh because this is a different
     # job: its own database, its own domain, simulated time, and parameters from
     # the command line. What it shares with the live one is config/rtabmap.yaml,
@@ -138,7 +185,7 @@ collector=$!
 pids+=("$collector")
 
 echo "--- playing the bag at ${RATE}x"
-ros2 bag play "$BAG" --clock --rate "$RATE"
+ros2 bag play "$BAG" --clock --rate "$RATE" "${PLAY_TOPICS[@]+"${PLAY_TOPICS[@]}"}"
 
 echo "--- letting the mapper finish"
 # Waited for rather than killed: it writes the map when its hold expires, and a
