@@ -4,14 +4,13 @@
 #
 #     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install.sh EverGreen'   # first time
 #     ssh bpi-m4zero 'sudo ~/ugv/wifi_roam/install.sh'             # script/timer only
-#     ssh orin 'sudo ~/ugv/wifi_roam/install.sh --helper-only'     # console helper alone
+#     ssh orin 'sudo ~/ugv/wifi_roam/install.sh --no-roamer'       # everything but the keeper
 #
-# `--helper-only` puts down the privileged helper and the sudo rule the console
-# needs to list and switch networks, and nothing else -- no roamer, no timer, no
-# profile edits. That is what a host wants when the console's network panel is
-# blank but the keeper itself has not been ported to it: the Jetson runs
-# NetworkManager and holds two radios on deliberately different routers, and the
-# roamer is a one-radio script that would start moving them. See docs/hosts.md.
+# `--no-roamer` puts down the house networks and the privileged helper the
+# console needs to list and switch between them, and stops there -- no roamer,
+# no timer, no units. That is what the Jetson wants: it runs NetworkManager,
+# where the keeper does not, and the keeper is a one-radio script that would
+# fight the two radios this rover runs at once. See docs/hosts.md.
 #
 # The passphrase is only needed for profiles that do not exist yet; an existing
 # profile is left holding the key it already has, because a working link is not
@@ -25,9 +24,9 @@
 
 set -eu
 
-HELPER_ONLY=0
-if [ "${1:-}" = "--helper-only" ]; then
-    HELPER_ONLY=1
+NO_ROAMER=0
+if [ "${1:-}" = "--no-roamer" ]; then
+    NO_ROAMER=1
     shift
 fi
 PSK=${1:-}
@@ -36,38 +35,15 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 [ "$(id -u)" = 0 ] || { echo "run this with sudo"; exit 1; }
 
-# The Pi still runs NetworkManager. The Banana Pi runs netplan and
-# wpa_supplicant, and has no nmcli: its house networks live in /etc/netplan, so
-# there are no profiles to add here. Everything below is installed on both, and
-# the roamer works on both -- it reaches the radio through wifi_ctl.sh, which
-# speaks whichever stack it finds.
-if [ "$HELPER_ONLY" = 1 ]; then
-    HAS_NM=0
-    echo "helper only: leaving the network profiles exactly as they are"
-elif command -v nmcli >/dev/null 2>&1; then
-    HAS_NM=1
-    for s in $NETS; do
-        if nmcli -t -f NAME con show | grep -qx "$s"; then
-            echo "$s: already known"
-        elif [ -z "$PSK" ]; then
-            echo "$s: missing, and no passphrase given -- skipped"
-            continue
-        else
-            nmcli con add type wifi ifname wlan0 con-name "$s" ssid "$s" \
-                wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" > /dev/null
-            echo "$s: added"
-        fi
-        # Autoconnect is what reconnects the rover at all; the retry limit is what
-        # decides whether it still tries an hour later. NM's default of four attempts
-        # blocks a profile after a handful of failures, which is exactly what a rover
-        # parked out of range does before it is carried back inside.
-        nmcli con mod "$s" \
-            connection.autoconnect yes \
-            connection.autoconnect-priority 0 \
-            connection.autoconnect-retries 0
-    done
+# The house networks themselves. Installed on every host that has
+# NetworkManager, whether or not the roamer is going on with them, because a
+# rover that cannot see a network it holds the key for is the fault this
+# whole directory exists to prevent. The Banana Pi runs netplan and
+# wpa_supplicant and has no nmcli: its networks live in /etc/netplan, so
+# there is nothing to add there.
+if command -v nmcli >/dev/null 2>&1; then
+    sh "$HERE/install-profiles.sh"
 else
-    HAS_NM=0
     echo "no NetworkManager: the networks live in /etc/netplan on this board"
 fi
 
@@ -118,15 +94,15 @@ rm -f "$tmp"
 # The helper goes down on every host, because it is the half the console
 # needs, and it needs no timer, no unit and no decision about roaming.
 install -m 755 "$HERE/wifi_ctl.sh" /usr/local/sbin/wifi_ctl.sh
-if [ "$HELPER_ONLY" = 0 ]; then
+if [ "$NO_ROAMER" = 0 ]; then
     install -m 755 "$HERE/wifi_roam.sh" /usr/local/sbin/wifi_roam.sh
     install -m 644 "$HERE/wifi-roam.service" "$HERE/wifi-roam.timer" \
         "$HERE/wifi-radio-on.service" /etc/systemd/system/
 fi
 
-if [ "$HELPER_ONLY" = 1 ]; then
-    echo "helper only: no roamer, no timer and no units on this host"
-    echo "  the console can list and switch networks now; nothing roams"
+if [ "$NO_ROAMER" = 1 ]; then
+    echo "no roamer: the networks and the helper are in place; no timer, no units"
+    echo "  the console can list and switch networks; nothing moves them by itself"
     exit 0
 fi
 

@@ -551,6 +551,103 @@ check "a scan names the neighbour as well" \
 check "at the 0-100 figure the panel already ranks by" \
     "TheGreatViking:64:" "$scanned"
 
+
+echo
+echo "the house networks, and the pinning that stopped them being redundant"
+# Two radios are only two paths if either of them can take any network. Pinning
+# a profile to one radio meant the spare could not use it, which is the whole of
+# what the spare is for -- and the rover was left with one network per radio and
+# no profile at all for the third. This drives the fixer against a fake
+# NetworkManager that remembers what it was told, so the assertions are about
+# the state it ends in rather than the commands it was sent.
+mkdir -p "$WORK/nmbin" "$WORK/nm"
+cat > "$WORK/nmbin/nmcli" <<'FAKE'
+#!/bin/sh
+# name|ssid|pinned-interface, one line per profile.
+echo "nmcli $*" >> "$NMCLI_LOG"
+rewrite() { mv "$PROFILES.new" "$PROFILES"; }
+case "$1 $2" in
+    "-t -f")
+        awk -F'|' '{ print "802-11-wireless:" $1 }' "$PROFILES"
+        echo "802-3-ethernet:Wired connection 1"
+        exit 0 ;;
+esac
+case "$*" in
+    "-g 802-11-wireless.ssid con show "*)
+        awk -F'|' -v n="$5" '$1 == n { print $2 }' "$PROFILES" ;;
+    "con delete "*)
+        awk -F'|' -v n="$3" '$1 != n' "$PROFILES" > "$PROFILES.new"; rewrite ;;
+    "con reload")
+        # What NetworkManager does with a keyfile somebody wrote by hand.
+        for f in "$NM_DIR"/*.nmconnection; do
+            [ -e "$f" ] || continue
+            id=$(sed -n 's/^id=//p' "$f")
+            grep -q "^$id|" "$PROFILES" && continue
+            printf '%s|%s|\n' "$id" "$(sed -n 's/^ssid=//p' "$f")" >> "$PROFILES"
+        done ;;
+    "con mod "*" connection.id "*)
+        awk -F'|' -v o="$3" -v n="$5" 'BEGIN { OFS = "|" }
+            $1 == o { $1 = n } { print }' "$PROFILES" > "$PROFILES.new"; rewrite ;;
+    "con mod "*"connection.interface-name"*)
+        awk -F'|' -v n="$3" 'BEGIN { OFS = "|" }
+            $1 == n { $3 = "" } { print }' "$PROFILES" > "$PROFILES.new"; rewrite ;;
+esac
+exit 0
+FAKE
+chmod +x "$WORK/nmbin/nmcli"
+
+# The rover as it was found: the onboard radio's network pinned to it, the
+# dongle's network pinned to the dongle and named after it, a stray second
+# profile for that same network, and nothing at all for the third.
+printf 'TheGreatLord|TheGreatLord|wlP1p1s0\n' > "$WORK/profiles"
+printf 'TheGreatViking-dongle|TheGreatViking|wlx002e2d3074d0\n' >> "$WORK/profiles"
+printf 'TheGreatViking spare|TheGreatViking|\n' >> "$WORK/profiles"
+echo not-the-real-key > "$WORK/wifi.key"
+
+: > "$WORK/nmcli.log"
+said=$(env PATH="$WORK/nmbin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
+    PROFILES="$WORK/profiles" NM_DIR="$WORK/nm" PSK_FILE="$WORK/wifi.key" \
+    sh "$HERE/install-profiles.sh" 2>&1)
+
+check "the network with no profile at all is given one" \
+    "TheMaharaja: added" "$said"
+check "and the passphrase is in the profile that was written" \
+    "psk=not-the-real-key" "$(cat "$WORK/nm/TheMaharaja.nmconnection")"
+# `nmcli con add` takes the passphrase as an argument, and an argument is
+# readable in `ps` by every account on the machine for as long as it runs.
+check_silent "and never appears on a command line" \
+    "$(grep not-the-real-key "$WORK/nmcli.log" || true)"
+
+check "the duplicate profile for one network is deleted" \
+    "deleted a duplicate profile" "$said"
+check "and the one named after a radio is renamed to its network" \
+    "renamed from TheGreatViking-dongle" "$said"
+check "every network ends up with exactly one profile" \
+    "TheGreatLord TheGreatViking TheMaharaja" \
+    "$(cut -d'|' -f2 "$WORK/profiles" | sort | tr '\n' ' ' | sed 's/ $//')"
+check "...filed under its own name" \
+    "TheGreatLord TheGreatViking TheMaharaja" \
+    "$(cut -d'|' -f1 "$WORK/profiles" | sort | tr '\n' ' ' | sed 's/ $//')"
+
+# The point of the exercise. A profile tied to one radio is a profile the spare
+# radio cannot use, so there is no second path to fail over to.
+check_silent "and not one of them is left tied to a radio" \
+    "$(awk -F'|' '$3 != ""' "$WORK/profiles")"
+# NM gives up on a profile after four failed attempts. That is what left this
+# rover's dongle off the air for six hours after a single link timeout.
+check "every profile is told to keep trying for ever" \
+    "connection.autoconnect-retries 0" "$(cat "$WORK/nmcli.log")"
+
+# Run twice: an install that is not idempotent is one nobody dares repeat, and
+# this one is expected to be re-run by every system deploy.
+: > "$WORK/nmcli.log"
+again=$(env PATH="$WORK/nmbin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \
+    PROFILES="$WORK/profiles" NM_DIR="$WORK/nm" PSK_FILE="$WORK/wifi.key" \
+    sh "$HERE/install-profiles.sh" 2>&1)
+check "a second run finds all three and changes nothing" \
+    "TheGreatLord: already known" "$again"
+check_silent "and adds no profile the second time" \
+    "$(echo "$again" | grep -- ': added' || true)"
 echo
 echo "which radio a command is about when nobody names one"
 # The Jetson's onboard Realtek is wlP1p1s0 and its dongle is wlx002e2d3074d0, so

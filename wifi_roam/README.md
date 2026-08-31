@@ -178,12 +178,19 @@ files. After reviewing a network change and ensuring there is a recovery path:
 python deploy/deploy.py --system --only wifi_roam
 ```
 
-On the current rover that system install is `install.sh --helper-only`, which
-puts down `wifi_ctl.sh` and its `NOPASSWD` rule and nothing else. The console
-needs that helper to list or switch networks; the roamer and the dual-radio
-manager both drive `wpa_supplicant` against netplan and this host runs
-NetworkManager, so they are staged and not installed. Running the roamer here
-would move two radios that are deliberately held on different routers.
+On the current rover that system install is `install.sh --no-roamer`: the three
+house networks, the `wifi_ctl.sh` helper and its `NOPASSWD` rule, and nothing
+that roams. The console needs that helper to list or switch networks; the roamer
+and the dual-radio manager both drive `wpa_supplicant` against netplan and this
+host runs NetworkManager, so they are staged and not installed.
+
+The profiles are handled by `install-profiles.sh`, which is where the rule that
+matters lives: **one profile per network and not one of them pinned to a radio.**
+A pinned profile is one the spare radio cannot use, which is the whole point of
+having a spare. It also matches profiles by the network each is for rather than
+by its name, deletes duplicates, and sets `autoconnect-retries 0` so a profile
+is never given up on. The passphrase for a network that has no profile yet is
+read from `~/.ugv/wifi.key` on the rover, never from an argument.
 
 Manual equivalent:
 
