@@ -8,6 +8,14 @@ oak_camera/crash_dumps/
 *.mp4
 *.npy
 *.onnx
+# ...except the face detector's own model, which is not a downloaded
+# experiment but the thing yunet.py loads on every rover. deploy/manifest.json
+# has always listed face_tracking/*.onnx among the daemon's sources, and with
+# this rule in the way that pattern could never match anything: the model only
+# reached the Banana Pi because somebody copied it by hand, and the Jetson got
+# a deployed face detector that answered every count_faces with a missing file.
+# 230 KB, and the alternative is a host that is one forgotten scp from blind.
+!face_tracking/face_detection_yunet.onnx
 calibration_backup_*.json
 omni_bench/runs/
 
