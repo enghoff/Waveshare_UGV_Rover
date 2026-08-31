@@ -356,19 +356,20 @@ never be copied into Git.
 
 ## What is still missing
 
-Two things, in the order they matter. Failover between the two radios used to be
-the third and is done: `wifi_dual` is ported to NetworkManager and running -- see
-[the Network section](#network).
+One thing. Failover between the two radios used to be on this list and is done:
+`wifi_dual` is ported to NetworkManager and running -- see
+[the Network section](#network). So is the chassis calibration, below.
 
-**The chassis calibration.** `~/ugv/odometry.json` holds the gyro's scale and the
-wheels' counts per metre, is deliberately gitignored as belonging to the machine
-rather than to the repository, and did not come across from the Banana Pi.
-Without it `base_node.py` refuses to start rather than guess, so ROS has no
-odometry at all: `slam_toolbox` drops every scan for want of a transform and Nav2
-cannot drive. Sensing is unaffected -- the lidar, the map and
-`describe_surroundings` all work. The cure is `ros_nav/calibrate_chassis.py`,
-which measures it by driving the rover, or recovering the old file from the
-Banana Pi's disk, which describes the same chassis and is therefore still true.
+**The chassis calibration is done.** `~/ugv/odometry.json` holds the gyro's scale
+and the wheels' counts per metre, and is deliberately gitignored as belonging to
+the machine rather than to the repository. It did not come across from the Banana
+Pi and was measured here on 2026-08-31 by `ros_nav/calibrate_chassis.py` driving
+the rover: 15.310723 gyro LSB per degree per second and 107.206 ticks per metre,
+over 28 measured turns and 10 measured drives. Until it existed `base_node.py`
+refused to start rather than guess, so ROS had no odometry, `slam_toolbox`
+dropped every scan for want of a transform, and Nav2 could not drive; all of that
+now works. Losing the file puts the rover straight back there, which is why it is
+worth knowing it is the one piece of rover state no deploy can restore.
 
 **The dongle used to go deaf, and the rover now repairs it by itself.**
 Measured on 2026-08-31: it would associate and get a lease, then lose the link
