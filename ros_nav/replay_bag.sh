@@ -182,7 +182,11 @@ else
         # discovers the topic, logs that it is subscribed to it, and is never
         # delivered a single scan. Read off `ros2 param list` on the running
         # node, which has `qos` and nothing called `qos_scan` at all.
-        ODOM_REMAP=(-p "odom_frame_id:=" -r odom:=/odom_icp)
+        # `''` and not nothing: rcl refuses `-p name:=` outright ("Couldn't parse
+        # parameter override rule"), so the empty string has to be spelled as an
+        # empty string. Naming no odom frame is what tells the mapper to take its
+        # odometry from a topic instead of from the transform tree.
+        ODOM_REMAP=(-p "odom_frame_id:=''" -r odom:=/odom_icp)
         "$DIR/native.sh" ros2 run rtabmap_odom icp_odometry \
             --ros-args \
                 -r __node:=icp_odometry \
