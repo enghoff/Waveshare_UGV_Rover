@@ -1,0 +1,15 @@
+[Unit]
+Description=Check the rover's spare radio every minute
+
+[Timer]
+# Three minutes after boot, because the radio needs to appear, associate and get
+# an address before "not associated" means anything, and a keeper that judged it
+# at ten seconds would reload the driver out from under a working start.
+OnBootSec=3min
+OnUnitActiveSec=1min
+# A check costs one file read and one `iw` call, so it does not need to be
+# punctual; letting systemd group it with other timers keeps the board asleep.
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

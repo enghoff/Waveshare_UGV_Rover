@@ -136,3 +136,38 @@ modprobe "$NAME"
 sleep 5
 echo "loaded: $(modinfo -F filename "$NAME")"
 echo "recovery: rx_urb_recover=$(cat /sys/module/$NAME/parameters/rx_urb_recover)"
+
+# --- the keeper -----------------------------------------------------------
+#
+# The backstop for whatever the patch does not cover. Proved on this machine
+# first, because it needs no radio and takes a second: a copy that arrived with
+# CRLF line endings, or half written, fails here rather than at three in the
+# morning on a rover whose spare radio it was supposed to be watching.
+if [ -r "$HERE/selftest.sh" ]; then
+    if out=$(sh "$HERE/selftest.sh" 2>&1); then
+        echo "keeper selftest: $(echo "$out" | tail -1)"
+    else
+        echo "$out" | grep -E 'FAIL|failed'
+        echo "not installing the keeper"
+        exit 1
+    fi
+fi
+
+install -m 755 "$HERE/keeper.sh" /usr/local/sbin/dongle-keeper.sh
+install -m 644 "$HERE/dongle-keeper.service" "$HERE/dongle-keeper.timer" \
+    /etc/systemd/system/
+systemctl daemon-reload
+
+# `KEEPER=off` is for one situation and it is worth naming: a rover being worked
+# on, where a driver reload arriving in the middle of a measurement would make
+# the measurement a lie.
+if [ "${KEEPER:-on}" = off ]; then
+    echo "keeper: left disabled (KEEPER=off)"
+    echo "  arm it with: systemctl enable --now dongle-keeper.timer"
+else
+    systemctl enable --now dongle-keeper.timer > /dev/null 2>&1
+    echo "keeper: $(systemctl is-active dongle-keeper.timer), next $(systemctl show -p NextElapseUSecRealtime --value dongle-keeper.timer)"
+fi
+
+echo "--- one dry run"
+/usr/local/sbin/dongle-keeper.sh -n || echo "(dry run exited $?)"

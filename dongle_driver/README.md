@@ -77,8 +77,35 @@ ssh orin 'sudo -S -p "" sh -c "echo N > /sys/module/rtl8xxxu/parameters/rx_urb_r
 `rx_urb_retired` reaching thirty-two is the radio dying. With recovery on it
 should stay at zero while `rx_urb_errors` climbs.
 
-## What this does not fix
+## The keeper
 
-Nothing here watches the radio. If it wedges for some other reason, no part of
-the rover notices — the dongle can be off the air for hours and only a person
-asking will find out. See `wifi_roam/README.md`.
+`keeper.sh`, run every minute by `dongle-keeper.timer`. If the spare radio has
+not been associated to anything for three checks running, it reloads the driver
+and lets NetworkManager reconnect.
+
+This is a backstop, not the fix, and it is here because the original fault was
+silent and total for six hours on a rover with nothing watching. A radio nobody
+watches is not a spare, whatever its driver does.
+
+Two things keep it safe. **It only ever touches the spare**: it finds its
+interface by asking which one the `rtl8xxxu` driver has bound, never by name,
+and the rover's primary radio is a different driver on a different bus
+(`rtl88x2ce`, PCIe), so the worst this can do is disturb a radio that is already
+not working — never the link a console or an SSH session is arriving over. And
+it is slow to act: three consecutive misses, then a five-minute cooldown, so a
+legitimate two-second roam is never mistaken for a fault and a reload is never
+piled on top of the last one.
+
+`selftest.sh` drives it through all of that with no radio present — working,
+roaming, dead, dead again too soon, and the module not loaded at all. The states
+that matter most are the ones where it must do nothing.
+
+```bash
+sh dongle_driver/selftest.sh                     # anywhere
+ssh orin 'systemctl status dongle-keeper.timer'  # is it armed
+ssh orin 'journalctl -u dongle-keeper -n 20'     # what it has been deciding
+ssh orin '/usr/local/sbin/dongle-keeper.sh -n'   # what it would do right now
+```
+
+Install it switched off with `KEEPER=off`, for a rover being worked on where a
+driver reload arriving mid-measurement would make the measurement a lie.
