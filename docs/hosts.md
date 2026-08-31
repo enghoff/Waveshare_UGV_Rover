@@ -35,7 +35,7 @@ speech path is unchanged.
 | GPU driver | 595.78, reporting CUDA 13.2; no CUDA toolkit and no `nvcc` |
 | Python | system CPython 3.12, and unlike the Banana Pi it **has pip** |
 | power mode | `nvpmodel` **1 = 25W**; mode 2 `MAXN_SUPER` is available and unused |
-| rover address | `192.168.1.88` (onboard radio) and `192.168.1.77` (dongle), both by DHCP |
+| rover address | `192.168.1.88` (onboard radio) by DHCP; the dongle's lease moves |
 | mDNS | `jetson-orin.local`, which Windows does resolve here |
 | GPIO driver-board UART | `/dev/ttyTHS1` at 115200 |
 | lidar serial | `/dev/ttyACM0` at 230400 |
@@ -127,8 +127,10 @@ helper and the sudo rule -- and it is what the manifest's system install for
 `wifi_roam` runs on this host. Nothing roams by itself here.
 
 - `wlP1p1s0` -- onboard Realtek RTL8822CE, `192.168.1.88`, dual band;
-- `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, `192.168.1.77`,
-  2.4 GHz only, working since 2026-08-31 -- see [The second radio](#the-second-radio);
+- `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, 2.4 GHz only. Its
+  address is whatever DHCP last gave it and does move -- `.77` and `.90` on the
+  same afternoon -- because it no longer sticks to one network. Do not rely on
+  it; see [The second radio](#the-second-radio), which it is not reliably doing;
 - `enP8p1s0` -- wired, **down with no carrier**: a cable or switch-port problem
   rather than configuration, unchanged since 2026-08-30.
 
