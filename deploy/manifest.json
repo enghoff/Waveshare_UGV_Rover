@@ -138,6 +138,7 @@
         }
       ],
       "commands": [
+        "~/ugv/ros_nav/behaviors/build.sh",
         "~/ugv/ros_nav/restart.sh"
       ],
       "system_install": {

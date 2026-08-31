@@ -1602,6 +1602,90 @@ def test_discovery_stays_on_this_board():
           "set +u" in native and "AMENT_TRACE_SETUP_FILES" in native, True)
     check("...and leaves the conda environment rather than layering on it",
           "env -i" in native, True)
+
+    # --- getting off something the rover is touching --------------------------
+    # Nav2's Spin, DriveOnHeading and BackUp start their look-ahead projection at
+    # the pose the rover is standing in, so a rover in contact is refused every
+    # motion in every direction -- it will not drive off the obstacle and it will
+    # not turn. `behaviors/` replaces all three with subclasses that differ only
+    # in that state. These checks are the fix and its two guard rails: a motion
+    # into an obstacle must still be refused, and the reasoning behind the spin
+    # only holds while the footprint is a circle.
+    import corridor_sim
+    import goal_fit as _goal_fit
+
+    def _wall(behind=None, ahead=None, span=4.0):
+        """Open ground with a wall that far in front of or behind the rover.
+
+        The rover stands at the origin facing +x. 0.12 m behind is inside the
+        chassis, which reaches 0.16 m back from `base_link` -- so the rover is
+        genuinely touching, which is the case that matters. The narrow band
+        where the costmap says collision and the body is actually clear is only
+        about a centimetre wide and is not what this is about.
+        """
+        res = corridor_sim.RESOLUTION
+        cells = int(round(span / res))
+        origin = -span / 2.0
+        lethal = []
+        for col in range(cells):
+            x = origin + (col + 0.5) * res
+            if (behind is not None and x <= -behind) or \
+               (ahead is not None and x >= ahead):
+                lethal.extend((col, row) for row in range(cells))
+        return _goal_fit.CostGrid(cells, cells, res, origin, origin,
+                                  corridor_sim.inflate(cells, cells, lethal))
+
+    wall = _wall(behind=0.12)
+    stock_spin = corridor_sim.spin_recovery(wall, 0.0, 0.0, 0.0,
+                                            target=math.radians(90))
+    escape_spin = corridor_sim.escape_spin(wall, 0.0, 0.0, 0.0,
+                                           target=math.radians(90))
+    check("a rover touching something behind cannot turn under stock Nav2",
+          round(math.degrees(stock_spin[0]), 1), 0.0)
+    check("...and can under the escape behaviours, which is the whole point",
+          round(math.degrees(escape_spin[0])), 90)
+    stock_fwd = corridor_sim.drive_on_heading(wall, 0.0, 0.0, 0.0,
+                                              target=0.5, sign=1.0)
+    escape_fwd = corridor_sim.escape_drive_on_heading(wall, 0.0, 0.0, 0.0,
+                                                      target=0.5, sign=1.0)
+    check("...nor drive away from it under stock Nav2", round(stock_fwd[0], 2), 0.0)
+    check("...and can drive away from it under the escape behaviours",
+          round(escape_fwd[0], 2), 0.5)
+    escape_back = corridor_sim.escape_drive_on_heading(wall, 0.0, 0.0, 0.0,
+                                                       target=0.3, sign=-1.0)
+    check("but reversing *into* the thing it is touching is still refused",
+          round(escape_back[0], 2), 0.0)
+    ahead = _wall(ahead=0.12)
+    escape_into = corridor_sim.escape_drive_on_heading(ahead, 0.0, 0.0, 0.0,
+                                                       target=0.5, sign=1.0)
+    check("...and so is driving forward into a wall, which is the safety that "
+          "must survive all of this", round(escape_into[0], 2), 0.0)
+    nav2_path = os.path.join(HERE, "config", "nav2.yaml")
+    with open(nav2_path, encoding="utf-8", errors="replace") as fh:
+        nav2_cfg = fh.read()
+    check("the behaviour server actually loads the escape behaviours",
+          "ugv_behaviors::EscapeSpin" in nav2_cfg
+          and "ugv_behaviors::EscapeDriveOnHeadingAction" in nav2_cfg
+          and "ugv_behaviors::EscapeBackUpAction" in nav2_cfg, True)
+    # EscapeSpin is only sound because rotating a circle about its own centre
+    # sweeps no new ground. A footprint polygon would break that silently.
+    nav2_settings = "\n".join(
+        line for line in nav2_cfg.splitlines()
+        if line.strip() and not line.lstrip().startswith("#"))
+    check("...and the circular footprint EscapeSpin's soundness rests on is "
+          "still a circle", "robot_radius:" in nav2_settings
+          and "footprint:" not in nav2_settings, True)
+    with open(os.path.join(os.path.dirname(HERE), "deploy", "manifest.json"),
+              encoding="utf-8") as fh:
+        deploy_cfg = json.load(fh)
+    ros_nav_cmds = next((c.get("commands") or [] for c in deploy_cfg["components"]
+                         if c.get("name") == "ros_nav"), [])
+    check("a deploy rebuilds the plugin, or the rover runs last week's .so",
+          any("behaviors/build.sh" in cmd for cmd in ros_nav_cmds), True)
+    check("...and it builds before it restarts, not after",
+          ([i for i, c in enumerate(ros_nav_cmds) if "behaviors/build.sh" in c] or [99])[0]
+          < ([i for i, c in enumerate(ros_nav_cmds) if "restart.sh" in c] or [-1])[0],
+          True)
     with open(os.path.join(HERE, "restart.sh"), encoding="utf-8", errors="replace") as fh:
         restart = fh.read()
     check("restart.sh will not hang SSH on a wedged ros2 node list",

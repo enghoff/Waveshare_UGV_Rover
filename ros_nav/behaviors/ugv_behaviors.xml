@@ -1,0 +1,24 @@
+<class_libraries>
+  <library path="ugv_behaviors">
+    <class type="ugv_behaviors::EscapeSpin" base_class_type="nav2_core::Behavior">
+      <description>
+        Spin, except that a rover already in contact is allowed to turn. With a
+        circular footprint a rotation about its own centre sweeps no new ground,
+        so Nav2's collision check there is either vacuous or an unconditional
+        veto -- and the veto leaves a rover touching a wall with no way out.
+      </description>
+    </class>
+    <class type="ugv_behaviors::EscapeDriveOnHeadingAction" base_class_type="nav2_core::Behavior">
+      <description>
+        DriveOnHeading, except that a rover already in contact may drive a
+        heading that leads out of the contact. Driving deeper is still refused.
+      </description>
+    </class>
+    <class type="ugv_behaviors::EscapeBackUpAction" base_class_type="nav2_core::Behavior">
+      <description>
+        BackUp, on the same terms as EscapeDriveOnHeadingAction: reversing off
+        something is allowed, reversing into it is not.
+      </description>
+    </class>
+  </library>
+</class_libraries>

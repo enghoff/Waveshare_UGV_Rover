@@ -40,6 +40,31 @@ LATTICE_FILE = os.path.join(HERE, "config", "lattices", "diff_5cm_0.5m.json")
 # The order is the order they are brought up in, and it matters: a costmap that
 # activates before the map it subscribes to sits empty, and a controller that
 # activates before its costmap has no idea what it is avoiding.
+#: Where behaviors/build.sh puts the escape behaviours.
+BEHAVIOR_PREFIX = os.path.join(HERE, "behaviors", "install")
+
+
+def behavior_env():
+    """The behaviour server's environment, with this repository's plugin prefix on it.
+
+    Appended to what is already there rather than replacing it: launch hands a
+    child exactly what `additional_env` says for the names it mentions, so a bare
+    prefix here would take the conda environment's own AMENT_PREFIX_PATH away and
+    the server would fail to find every stock Nav2 behaviour as well as ours.
+
+    Ours goes on the end. The conda environment wins any name it also defines,
+    which is what should happen -- this prefix exists to add three classes, not
+    to shadow anything.
+    """
+    return {
+        "AMENT_PREFIX_PATH": os.pathsep.join(
+            p for p in (os.environ.get("AMENT_PREFIX_PATH", ""), BEHAVIOR_PREFIX) if p),
+        "LD_LIBRARY_PATH": os.pathsep.join(
+            p for p in (os.environ.get("LD_LIBRARY_PATH", ""),
+                        os.path.join(BEHAVIOR_PREFIX, "lib")) if p),
+    }
+
+
 NAV2_NODES = [
     "controller_server",
     "smoother_server",
@@ -76,7 +101,18 @@ def generate_launch_description():
              parameters=[params,
                          {"GridBased.lattice_filepath": LATTICE_FILE}]),
         Node(package="nav2_behaviors", executable="behavior_server",
-             name="behavior_server", output="screen", parameters=[params]),
+             name="behavior_server", output="screen", parameters=[params],
+             # The one node that is given a second install prefix, because it is
+             # the only one that loads a plugin this repository compiled.
+             # `behaviors/` builds the escape behaviours -- config/nav2.yaml says
+             # what they change and why -- into behaviors/install rather than
+             # into the conda environment, which is an installed dependency a
+             # deploy has no business editing. pluginlib finds the class through
+             # AMENT_PREFIX_PATH and then dlopens the library off
+             # LD_LIBRARY_PATH, so both are needed and a missing one shows up as
+             # "Failed to create behavior", which reads like a typo in the class
+             # name rather than a path.
+             additional_env=behavior_env()),
         Node(package="nav2_bt_navigator", executable="bt_navigator",
              name="bt_navigator", output="screen", parameters=[params]),
         Node(package="nav2_waypoint_follower", executable="waypoint_follower",

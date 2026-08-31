@@ -1478,6 +1478,91 @@ def backup_recovery(grid, x, y, yaw, target=BACKUP_DIST,
     return moved, "out of time"
 
 
+def drive_on_heading(grid, x, y, yaw, target=0.5, sign=1.0, speed=BACKUP_SPEED,
+                     simulate_ahead_s=SIMULATE_AHEAD_S):
+    """`nav2_behaviors::DriveOnHeading`, forward when `sign` is +1.
+
+    `backup_recovery` above is this with the sign flipped -- that is literally
+    how Nav2 builds it, one template instantiated for each action -- and it is
+    written out separately here because the fault worth studying is what happens
+    when the rover is asked to drive *away* from what is blocking it.
+    """
+    max_cycles = int(CYCLE_FREQUENCY * simulate_ahead_s)
+    moved = 0.0
+    for _ in range(int(CYCLE_FREQUENCY * 60)):
+        remaining = target - moved
+        if remaining < 1e-6:
+            return moved, "completed"
+        for cycle in range(max_cycles):
+            ahead = speed * (cycle / CYCLE_FREQUENCY)
+            if remaining - abs(ahead) <= 0.0:
+                break
+            gone = moved + ahead
+            if not collision_free(grid, x + sign * gone * math.cos(yaw),
+                                  y + sign * gone * math.sin(yaw), yaw):
+                return moved, "collision ahead"
+        moved += speed / CYCLE_FREQUENCY
+    return moved, "out of time"
+
+
+# --- the escape behaviours ----------------------------------------------------
+#
+# `behaviors/` replaces Nav2's Spin, DriveOnHeading and BackUp with subclasses
+# that differ in exactly one state, and these model that difference so it can be
+# checked without a rover. The state is: Nav2 has refused with COLLISION_AHEAD
+# *and* the rover's own pose is already in collision.
+#
+# Everywhere else the models above still apply, and that is the point -- the
+# plugins call Nav2's implementation and return its answer untouched unless both
+# of those hold.
+
+
+def escape_spin(grid, x, y, yaw, target=SPIN_DIST,
+                simulate_ahead_s=SIMULATE_AHEAD_S):
+    """`ugv_behaviors::EscapeSpin`: a rover in contact may still turn.
+
+    Sound because the footprint is a circle centred on `base_link`, so a
+    rotation about its own centre maps the body onto itself and cannot sweep
+    ground the rover is not already standing on. It is the same fact that makes
+    Nav2's check useless here: with a circular body it is either vacuous or an
+    unconditional veto, which is why `spin_recovery` returns the whole rotation
+    or none of it and never anything between.
+    """
+    turned, why = spin_recovery(grid, x, y, yaw, target, simulate_ahead_s)
+    if why != "collision ahead":
+        return turned, why
+    if collision_free(grid, x, y, yaw):
+        # Standing somewhere legal, so the obstruction really is in the arc.
+        return turned, why
+    return target, "escaped"
+
+
+def escape_drive_on_heading(grid, x, y, yaw, target=0.5, sign=1.0,
+                            speed=BACKUP_SPEED,
+                            simulate_ahead_s=SIMULATE_AHEAD_S):
+    """`ugv_behaviors::EscapeDriveOnHeadingAction`, and `...BackUpAction`.
+
+    A rover in contact may drive a heading whose projection *ends* clear, which
+    is the arithmetic for "this motion leads out of the contact rather than
+    deeper into it". Driving forward off something behind passes; reversing into
+    that same thing does not, and neither does driving forward into a wall while
+    something is behind -- the wedged case, where no is still the honest answer.
+    """
+    moved, why = drive_on_heading(grid, x, y, yaw, target, sign, speed,
+                                  simulate_ahead_s)
+    if why != "collision ahead":
+        return moved, why
+    if collision_free(grid, x, y, yaw):
+        return moved, why
+    max_cycles = int(CYCLE_FREQUENCY * simulate_ahead_s)
+    for cycle in range(max_cycles - 1, 0, -1):
+        gone = speed * (cycle / CYCLE_FREQUENCY)
+        if collision_free(grid, x + sign * gone * math.cos(yaw),
+                          y + sign * gone * math.sin(yaw), yaw):
+            return target, "escaped"
+    return moved, why
+
+
 def recovery_sweep(width_m, horizons):
     """What the recoveries get out of a rover pressed up against a wall.
 

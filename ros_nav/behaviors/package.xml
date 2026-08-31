@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ugv_behaviors</name>
+  <version>1.0.0</version>
+  <description>
+    Nav2 behaviours that let a rover already touching something drive away from
+    it. See include/ugv_behaviors/escape_behaviors.hpp.
+  </description>
+  <maintainer email="enghoff@scientific-concepts.com">Sigurd Enghoff</maintainer>
+  <license>MIT</license>
+
+  <depend>nav2_behaviors</depend>
+  <depend>nav2_core</depend>
+  <depend>nav2_msgs</depend>
+  <depend>nav2_util</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+
+  <export>
+    <nav2_core plugin="${prefix}/ugv_behaviors.xml" />
+  </export>
+</package>
