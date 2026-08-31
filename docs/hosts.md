@@ -338,6 +338,15 @@ Ubuntu 24.04 does have native Jazzy packages, and they are deliberately not used
 one install path that works on both boards is worth more than a second one that
 works only here.
 
+That rule was broken once, on 2026-08-31, and then repaired. RTAB-Map was tried
+as a second mapper and RoboStack packages none, so it came from Ubuntu's ROS
+packages into `/opt/ros/jazzy` — 302 MB and 232 packages beside the conda
+environment, with a wrapper script to keep the two off one process's library
+path. RTAB-Map turned out to map this rover worse than slam_toolbox
+([`../ros_nav/README.md`](../ros_nav/README.md) has the measurements), so all of
+it was purged and `/opt/ros` no longer exists. **Nothing on this board runs ROS
+from anywhere but the conda environment.**
+
 ## Voice/cloud credentials
 
 Unchanged in shape, and still outside `~/ugv`:
