@@ -35,14 +35,14 @@ directory:
   process lives. That is `depth_server.py`, and `run_oak_depth.sh` is what starts
   it at boot and starts it again when it dies.
 
-[docs/oak-on-the-pi.md](../docs/oak-on-the-pi.md) worked this out while ruling the
-OAK *off* the old rover, and every word of it still holds; what changed is the
-host it was measured against.
+This was worked out while ruling the OAK *off* the Pi 1, in a document removed on
+2026-08-25 along with the board it was about; the reasoning still holds and what
+changed is the host it was measured against.
 
 ## Which firmware version is the best match: 2.32.0.0
 
-Measured on the rover's own board — Banana Pi M4 Zero, aarch64, CPython 3.13 —
-on 2026-08-23, each case in its own process because the failure has taken hosts
+Measured on the board the rover ran then — Banana Pi M4 Zero, aarch64, CPython
+3.13 — on 2026-08-23, each case in its own process because the failure has taken hosts
 down with it before:
 
 | | depthai 2.32.0.0 | depthai 3.9.0 |
@@ -113,9 +113,9 @@ looking at, and a near, textureless wall returns no disparity at all.
 The link cost is the number the pipeline was designed around rather than a
 by-product — 1.5 MB/s at the 10 fps this was measured at, and about 300 kB/s at
 today's default of 2. Everything on this rover shares one 480 Mbps root port — the
-wifi dongle, the tracking camera, the lidar's serial adapter and this — and
-[docs/oak-usb-link.md](../docs/oak-usb-link.md) has the OAK alone saturating near
-40 MB/s when colour and aligned depth are paired. Losing the wifi adapter to USB
+wifi dongle, the tracking camera, the lidar's serial adapter and this — and the
+OAK alone has been measured saturating near 40 MB/s when colour and aligned depth
+are paired. Losing the wifi adapter to USB
 contention means losing the way to say "stop". `--fps` and `--decimation` are the
 two knobs; raising either raises that number.
 
@@ -237,4 +237,4 @@ USB3-enabled firmware, and on this camera's link that firmware usually fails to
 come back on the bus — 5 successful opens in 13 against 13 in 13, measured. The
 host then waits ~9 s in `Searching for booted device`, the device watchdogs itself,
 and what is left is a crash dump with `errorId=9001` that reads as a hardware
-fault. It is not one. See [docs/oak-usb-link.md](../docs/oak-usb-link.md).
+fault. It is not one.

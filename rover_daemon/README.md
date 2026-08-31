@@ -1,8 +1,8 @@
 # Rover daemon
 
 `rover_daemon` is the single owner of the rover's driver-board UART and gimbal
-camera. It runs on the Banana Pi and exposes the rover as a small JSON-lines tool
-protocol on TCP 8769.
+camera. It runs on the rover's Jetson Orin Nano and exposes the rover as a small
+JSON-lines tool protocol on TCP 8769.
 
 One owner is a correctness requirement, not a style choice. The ESP32 has one
 UART and the gimbal camera is one device; separate processes independently
@@ -24,7 +24,7 @@ browser / Alibaba Qwen session / diagnostics
 
 ## Current startup
 
-The daemon is supervised from the `admin` crontab through `run_daemon.sh` with:
+The daemon is supervised from the `jetson` crontab through `run_daemon.sh` with:
 
 ```text
 --vision --board-bridge --ros-nav

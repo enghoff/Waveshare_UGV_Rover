@@ -1,18 +1,26 @@
 # Waveshare UGV Rover
 
 This repository is the source of truth for the software running on a Waveshare
-UGV Rover built around the General Driver for Robots board and a Banana Pi M4
-Zero. It also contains small bench tools used to bring up and diagnose the
+UGV Rover built around the General Driver for Robots board and an NVIDIA Jetson
+Orin Nano. It also contains small bench tools used to bring up and diagnose the
 individual sensors and actuators.
 
 The current system is deliberately simple about where work happens:
 
-- the **Banana Pi M4 Zero** owns the rover hardware and runs the daemon, local
+- the **Jetson Orin Nano** owns the rover hardware and runs the daemon, local
   YuNet face detection, ROS 2 mapping/navigation, the OAK depth service, the web
-  console and the network watchdogs;
+  console and the network scripts;
 - a **browser** supplies the microphone and speaker for voice interaction;
 - **Alibaba DashScope** supplies the realtime Qwen Omni model;
-- no separate GPU/MEDIA host is part of the running system.
+- no separate GPU/MEDIA host is part of the running system, and nothing that is
+  deployed uses the Orin's own GPU either.
+
+The Orin replaced a Banana Pi M4 Zero on 2026-08-31. The chassis, driver board,
+lidar and gimbal camera all came across unchanged; what moved is the computer
+they are wired to, and with it every device name. Constants in this repository
+that were "measured on the rover" were measured through one of the earlier
+boards, and the mechanics are the same rover, so they stand.
+[`docs/hosts.md`](docs/hosts.md) records the current host.
 
 Superseded implementations are not kept beside the live ones merely as history.
 Git already holds that history. A file in the current tree should either run,
@@ -23,24 +31,25 @@ help diagnose what runs, or document a current hardware fact or failure mode.
 | Directory | Current role |
 |---|---|
 | [`rover_daemon/`](rover_daemon) | owns the driver-board UART and gimbal camera; exposes hardware and navigation as tools on TCP 8769 |
-| [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the Banana Pi; the rover daemon imports this code |
+| [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the rover; the rover daemon imports this code |
 | [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it |
 | [`lidar_slam/`](lidar_slam) | the fast LD19 parser, room description, map renderer and USB recovery code still used by the ROS stack and daemon |
 | [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |
 | [`drive_web/`](drive_web) | HTTPS browser console, map, camera view and microphone/speaker bridge |
 | [`voice_chat/`](voice_chat) | Alibaba realtime Qwen Omni session protocol, rover client helpers, prompts and console model shared with `drive_web` |
-| [`wifi_roam/`](wifi_roam) | the rover's network profiles -- one it joins at boot, two it joins only when asked -- and the privileged helper the console scans and switches through |
-| [`netwatch/`](netwatch) | persistent evidence for network/board failures |
+| [`wifi_roam/`](wifi_roam) | the rover's three NetworkManager profiles -- one it joins at boot, two it joins only when asked -- and the privileged helper the console scans and switches through |
+| [`dongle_driver/`](dongle_driver) | builds and DKMS-registers the USB Wi-Fi dongle's kernel driver, which NVIDIA's L4T kernel does not ship |
+| [`netwatch/`](netwatch) | persistent evidence for network/board failures; **staged but not installed** on the Orin, because it reads `wpa_supplicant`'s control socket and this host runs NetworkManager |
 
 The driver board is the physical owner of the motors, lights, gimbal, encoders,
 IMU and battery telemetry. The daemon keeps that UART open and lends the ROS stack
 the odometry and motor path over loopback rather than letting two processes race
 for the serial port.
 
-Face tracking uses `face_tracking/yunet.py` on the Banana Pi. There is no remote
-face-detection service in the current system. The detector and the aiming loop are
-separate concerns: `yunet.py` finds faces; `aiming.py` decides where the gimbal
-should move.
+Face tracking uses `face_tracking/yunet.py` on the rover itself. There is no
+remote face-detection service in the current system. The detector and the aiming
+loop are separate concerns: `yunet.py` finds faces; `aiming.py` decides where the
+gimbal should move.
 
 Voice interaction is also one current path. `drive_web/omni_bridge.py` runs the
 session on the rover and `voice_chat/session.py` speaks Alibaba's realtime API.
@@ -89,9 +98,12 @@ python driver_board\drive_gamepad.py
 python face_tracking\track_face.py
 ```
 
-The Banana Pi does not use this venv. Its OpenCV and DepthAI dependencies are
-pinned wheels unpacked beside the code by the component installers because the
-board does not have `pip`/`python3-venv`. See
+The rover does not use this venv. Its OpenCV and DepthAI dependencies are pinned
+wheels unpacked beside the code by the component installers. The Orin does have
+`pip` and could install them properly -- the Banana Pi before it had neither
+`pip` nor `python3-venv` -- but the version is the thing being pinned, DepthAI's
+wheel *is* the OAK's firmware, and one install path that worked on both boards is
+worth more than a second that works only here. See
 [`docs/deploy.md`](docs/deploy.md).
 
 ## Deploying the rover
@@ -140,7 +152,7 @@ renderer and USB reset path.
 gimbal UVC camera -> MJPEG -> local YuNet -> aiming.py -> gimbal command -> driver board
 ```
 
-The camera is kept as MJPEG because the Banana Pi can decode a frame cheaply and
+The camera is kept as MJPEG because the host can decode a frame cheaply and
 uncompressed capture needlessly consumes the shared USB path. Tracking runs while
 the rover drives; with nobody in view it stops sweeping and watches the way it is
 going until the wheels stop. The measured detector details and calibration
@@ -176,11 +188,15 @@ Useful starting points:
 | Document | Covers |
 |---|---|
 | [`docs/deploy.md`](docs/deploy.md) | deployment, restart and verification paths |
-| [`docs/hosts.md`](docs/hosts.md) | current Banana Pi/network facts and ports |
+| [`docs/hosts.md`](docs/hosts.md) | current Jetson Orin, network facts, services and ports |
 | [`docs/face-tracking.md`](docs/face-tracking.md) | local YuNet, aiming geometry and calibration |
+| [`docs/driver-board.md`](docs/driver-board.md) | what the ESP32 board owns, and driving it from a game pad |
 | [`docs/d500-lidar.md`](docs/d500-lidar.md) | lidar power/data/protocol facts |
 | [`docs/oak-d-lite.md`](docs/oak-d-lite.md) | OAK-D-Lite hardware and depth semantics |
 | [`docs/depthai-version-pin.md`](docs/depthai-version-pin.md) | why the rover pins DepthAI 2.x |
+| [`docs/usb-cameras.md`](docs/usb-cameras.md) | UVC cameras from a workstation, and measuring a lens's field of view |
+| [`docs/i2c.md`](docs/i2c.md) | why the 40-pin header's I2C is the ESP32's bus and not a free one |
+| [`docs/jetson-orin-navigation.md`](docs/jetson-orin-navigation.md) | why Waveshare's Orin navigation stack was not adopted wholesale |
 | [`docs/doorway-pivot.md`](docs/doorway-pivot.md) | a focused navigation-fault investigation; current config in `ros_nav/config/` remains authoritative |
 | [`docs/rover-unresponsive.md`](docs/rover-unresponsive.md) | why the rover disappears from the network, and how to get in without the power switch |
 | [`docs/scripting.md`](docs/scripting.md) | rover-side scripts exposed through the daemon |

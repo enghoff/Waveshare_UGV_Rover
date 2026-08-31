@@ -43,9 +43,12 @@ carries a recovery for exactly this — `BackUp` — and the stock behaviour tre
 puts it fourth in a round robin that resets to its first child every time the
 recovery subtree finishes. So the recovery the rover actually got, over and
 over, was "clear the costmap and try again", which changes nothing about where
-its body is. [`navigate_to_pose.xml`](../ros_nav/config/navigate_to_pose.xml)
-moves a 30 cm `BackUp` into `FollowPath`'s own context recovery, gated on the
-three failures where being somewhere else is the answer. Checked against the
+its body is. The fix moved a 30 cm `BackUp` into `FollowPath`'s own context
+recovery, gated on the three failures where being somewhere else is the answer.
+It was written as a behaviour-tree override at the time; what carries the idea on
+the rover today is the `EscapeBackUpAction` plugin in
+[`ros_nav/behaviors/`](../ros_nav/behaviors), configured in
+[`ros_nav/config/nav2.yaml`](../ros_nav/config/nav2.yaml). Checked against the
 true footprint on the recorded costmaps, the reverse was clear with room to
 spare at every locked-up moment in two separate recordings, and afterwards the
 controller had a legal forward candidate again every time. Sent to the rover

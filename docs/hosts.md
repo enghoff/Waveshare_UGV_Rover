@@ -292,10 +292,17 @@ here has:
 
 ```text
 @reboot /home/jetson/ugv/run_daemon.sh --vision --board-bridge --ros-nav
-@reboot /home/jetson/ugv/ros_nav/run_ros_nav.sh --nav
 @reboot /home/jetson/ugv/drive_web/run_drive_web.sh
 @reboot /home/jetson/ugv/oak_depth/run_oak_depth.sh
+@reboot /home/jetson/ugv/ros_nav/run_ros_nav.sh --nav rtabmap:=off
 ```
+
+**That `rtabmap:=off` is leftover and should go.** It was added while RTAB-Map was
+being tried as a mapper on 2026-08-31 and was not taken out when RTAB-Map was
+removed a few hours later. `nav.launch.py` no longer declares that argument, so it
+is inert rather than harmful, and the stack is running normally with it. Re-running
+`ros_nav/install-boot.sh --nav` rewrites the entry without it; the crontab is
+machine state that no deploy touches.
 
 The console is at:
 
@@ -337,7 +344,7 @@ ROS 2 Jazzy from RoboStack, installed by `ros_nav/install.sh` with no sudo,
 exactly as on the Banana Pi:
 
 ```text
-~/miniforge3/envs/ros    6.9 GB, 316 packages
+~/miniforge3/envs/ros    6.9 GB, 882 packages
 ```
 
 Ubuntu 24.04 does have native Jazzy packages, and they are deliberately not used:

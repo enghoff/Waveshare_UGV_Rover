@@ -11,8 +11,8 @@ runs. See [oak_depth/README.md](../oak_depth/README.md).
 
 ## Retested on the rover, on 3.9.0, and it is not fixed
 
-Measured 2026-08-23 on the rover's own board — Banana Pi M4 Zero, aarch64, CPython
-3.13 — against depthai **3.9.0**, the current release, each case in its own
+Measured 2026-08-23 on the board the rover ran then — Banana Pi M4 Zero, aarch64,
+CPython 3.13 — against depthai **3.9.0**, the current release, each case in its own
 process:
 
 | Case | Result |
@@ -43,8 +43,8 @@ so that is not the cause either. Under 2.32.0.0 the same CAM_B streams cleanly
 along with stereo depth. The hardware is healthy; this is a 3.x regression.
 
 Retested on 3.8.0 in a throwaway venv with `dai.Device(dai.UsbSpeed.HIGH)` on
-every run, which rules out [USB speed](oak-usb-link.md) as a confound — three runs
-per case, 60 frames each:
+every run, which rules out USB speed as a confound — three runs per case, 60
+frames each:
 
 | Case | Result |
 |---|---|

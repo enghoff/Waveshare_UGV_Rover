@@ -1,6 +1,31 @@
 # Jetson Orin SLAM and navigation strategy
 
-_Last reviewed: 2026-08-31_
+_Written before the move, and last reviewed on 2026-08-31, the day it happened._
+
+## Where this stands now
+
+**The move has been made.** The rover has been a Jetson Orin Nano since
+2026-08-31, running the same SLAM Toolbox + Nav2 stack and the same rover-specific
+tuning this document argued for keeping. Read what follows as the reasoning that
+produced that outcome, not as work still to do. Four of its open questions have
+since been answered on the hardware:
+
+- **RTAB-Map was tried, and removed the same day.** Recommendation 6 below
+  suggested evaluating it as an added perception layer. It was evaluated as a
+  mapper instead, mapped this rover worse than `slam_toolbox`, and was purged
+  along with the `/opt/ros` installation it needed — see
+  [`ros_nav/README.md`](../ros_nav/README.md). That is the "visually richer is not
+  automatically more robust" warning below being confirmed rather than avoided.
+- **The compute constraint is gone, and by more than expected.** The whole stack
+  measures 20.9% of six cores on the Orin against 41.4% of four on the Banana Pi.
+- **MPPI has still not been benchmarked** (recommendation 4). The headroom for it
+  now exists; the work has not been done.
+- **Saved-map localization** (recommendation 5) has not been done either.
+
+The Banana Pi baseline the migration sequence below depends on no longer exists as
+a running system: that board is powered off and off the network. Its
+configuration is in this repository's history, and `ros_nav/nav_record.py` replays
+recorded drives, which is what regression testing looks like now.
 
 ## Decision
 
@@ -155,11 +180,11 @@ A generic controller does not inherently know that reverse driving is sensor-bli
 
 ## Why moving Nav2 to the Orin is still attractive
 
-The current stack uses DWB at a deliberately conservative update rate because the Banana Pi has a limited CPU budget while also running SLAM Toolbox and the ROS support nodes.
+The stack used DWB at a deliberately conservative update rate because the Banana Pi had a limited CPU budget while also running SLAM Toolbox and the ROS support nodes.
 
-The current Nav2 configuration explicitly notes that MPPI would be a stronger controller but is too expensive for the available Banana Pi CPU budget.
+The Nav2 configuration still explicitly notes that MPPI would be a stronger controller but was too expensive for the available Banana Pi CPU budget.
 
-That constraint largely disappears on a Jetson Orin Nano.
+That constraint has now disappeared: the rover is the Orin, and the measured headroom is 4.7 idle cores with everything running. DWB is still the configured controller, because nobody has benchmarked MPPI against it here yet.
 
 The Orin therefore changes the preferred architecture even though it does not change the preferred high-level software stack.
 
@@ -407,13 +432,13 @@ Likely useful pieces are:
 
 Before changing compute hosts:
 
-- retain the current Banana Pi navigation image/configuration;
+- retain the current Banana Pi navigation image/configuration;   *(done; that board is now powered off and the configuration lives in git)*
 - record a standard indoor navigation route set;
 - capture current success rate and timing;
 - retain the current `odometry.json` calibration;
 - retain the current Nav2 YAML and SLAM Toolbox parameters.
 
-The Banana Pi configuration becomes the regression baseline.
+The Banana Pi configuration became the regression baseline. It is a recorded and replayable one rather than a running board — see `ros_nav/nav_record.py`.
 
 ### Phase 2 - Orin hardware bridge
 
@@ -483,7 +508,7 @@ Avoid these migration shortcuts:
 - allowing a controller to plan long reverse motion without rear obstacle sensing;
 - switching host, SLAM implementation, controller, and sensor fusion at the same time;
 - treating a visually richer RTAB-Map model as automatically more robust for simple 2D navigation;
-- removing the Banana Pi baseline until the Orin stack has passed repeatable route tests.
+- removing the Banana Pi baseline until the Orin stack has passed repeatable route tests. *(The board is off; the baseline that remains is the recorded drives and the configuration in git.)*
 
 ## Bottom line
 

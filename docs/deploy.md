@@ -31,7 +31,8 @@ Omni model is Alibaba-hosted and has no repository deployment target.
 | `drive_web/` | Jetson | `~/ugv/drive_web/` |
 | selected `voice_chat/` modules | Jetson | copied beside `drive_web` for the console/Alibaba realtime session |
 | `wifi_roam/` | Jetson | staged at `~/ugv/wifi_roam/`, then privileged copies via its installer |
-| `netwatch/` | Jetson | staged at `~/ugv/netwatch/`, then privileged copies via its installer |
+| `dongle_driver/` | Jetson | staged at `~/ugv/dongle_driver/`; its installer builds and DKMS-registers the USB radio's kernel module |
+| `netwatch/` | Jetson | staged at `~/ugv/netwatch/` and **deliberately not installed** — it needs `wpa_supplicant`, which this host does not run |
 | `oak_camera/`, `lidar/`, `usb_cameras/`, `face_tracking/track_face.py`, workstation `driver_board/` tools, `voice_chat/mock_rover.py` | desk/workstation | bench/diagnostic tools; no deploy |
 
 The current `drive_web` deployment copies these shared voice modules beside the
@@ -80,27 +81,33 @@ The deployer refuses to invent a baseline. If the rover is already known to
 match the checkout:
 
 ```bash
-python deploy/deploy.py --adopt --host bpi
+python deploy/deploy.py --adopt --host orin
 ```
 
 If not, reconcile from source:
 
 ```bash
-python deploy/deploy.py --full --host bpi
+python deploy/deploy.py --full --host orin
 ```
 
 Deployment state is per component in `~/.ugv/deploy-state.json`.
 
 ## Privileged network/system deployment
 
-`wifi_roam` and `netwatch` are deliberately two-stage. A normal deploy may copy
-and test their source but does not replace `/usr/local` or systemd files. After
-reviewing a privileged/network change:
+`wifi_roam`, `dongle_driver` and `netwatch` are deliberately two-stage. A normal
+deploy may copy and test their source but does not replace `/usr/local`, systemd
+files or kernel modules. After reviewing a privileged/network change:
 
 ```bash
 python deploy/deploy.py --system --only wifi_roam
+python deploy/deploy.py --system --only dongle_driver
 python deploy/deploy.py --system --only netwatch
 ```
+
+`dongle_driver` is idempotent and wants re-running after a kernel update, because
+it builds an out-of-tree module. `netwatch` is staged and not installed here: it
+is ordered after `wpa_supplicant` and reads that daemon's control socket, and
+this host runs NetworkManager.
 
 The deployer reads `secrets/jetson-orin.key` locally and feeds it to `sudo -S`. The
 password is not put in the command line or copied to the rover. That file is the
@@ -180,15 +187,23 @@ ROS has no odometry/motor path. The old direct-lidar daemon mode is gone.
 changes to `run_ros_nav.sh`, `sweep.sh` or `dds.sh` are handled by
 `restart.sh --supervisor` via the deploy manifest.
 
-**Follow a crontab write with `sync`.** The card uses `commit=120`; recent writes
-have previously disappeared across an abrupt restart.
+**Follow a crontab write with `sync`.** This was the Banana Pi's rule — its root
+was mounted `commit=120` and recent writes had disappeared across an abrupt
+restart. The Orin's NVMe root is `rw,relatime`, so the `sync` calls still in these
+scripts are now cheap insurance rather than a requirement. Leave them.
 
 **Shell scripts must remain LF.** `.gitattributes` pins scripts that carry a
 shebang. The deployer also preserves Git's executable bit in the tar archive.
 
-**Vendor wheels, not pip, on the rover.** This Debian installation has no `pip`
-or `python3-venv`. OpenCV for local YuNet and DepthAI for the OAK are pinned
-wheels unpacked into component `vendor/` directories by their installers.
+**Vendor wheels, not pip, on the rover.** OpenCV for local YuNet and DepthAI for
+the OAK are pinned wheels unpacked into component `vendor/` directories by their
+installers. The Orin has `pip` and could install both properly; the Banana Pi
+before it had neither `pip` nor `python3-venv`. Unpacking is kept because the
+version is the thing being pinned — DepthAI's wheel *is* the OAK's firmware — and
+one install path that worked on both boards beats a second that works only here.
+
+**Not everything the rover needs is a wheel.** Camera capture needs `v4l2-ctl`,
+which the Ubuntu base image does not carry: `apt install v4l-utils`.
 
 **ROS 2 lives outside the source deploy tree.** RoboStack is under
 `~/miniforge3`; its environment scripts must be sourced from bash.
@@ -217,6 +232,7 @@ ssh orin 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2'
 scp -r oak_depth orin:~/ugv/
 scp -r ros_nav orin:~/ugv/
 scp -r wifi_roam orin:~/ugv/
+scp -r dongle_driver orin:~/ugv/
 scp -r netwatch orin:~/ugv/
 
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md \
@@ -245,7 +261,7 @@ ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
 ssh orin 'sh ~/ugv/ros_nav/install.sh'
 ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav'
 ssh orin 'sudo -S -p "" sh ~/ugv/wifi_roam/install.sh' < secrets/jetson-orin.key
-ssh orin 'sudo -S -p "" sh ~/ugv/netwatch/install.sh' < secrets/jetson-orin.key
+ssh orin 'sudo -S -p "" sh ~/ugv/dongle_driver/install.sh' < secrets/jetson-orin.key
 ```
 
 `install_opencv.sh` also proves that `LocalDetector` can load after unpacking the

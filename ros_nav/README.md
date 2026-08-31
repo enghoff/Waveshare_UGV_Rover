@@ -3,7 +3,7 @@
 A map that closes its loops, and a navigation stack that plans on it. This
 replaced the rover's own SLAM and planner — which used to live in
 [`lidar_slam/`](../lidar_slam) and have since been deleted — with `slam_toolbox`
-and Nav2, running on the Banana Pi itself under ROS 2 Jazzy.
+and Nav2, running on the rover's own computer under ROS 2 Jazzy.
 
 ## Why this exists
 
@@ -15,8 +15,9 @@ was arithmetic — one closure attempt over `slam_toolbox`'s default search wind
 worked out at about nineteen seconds on the 700 MHz single-core Pi that code was
 written for.
 
-The rover is not that board any more. It is a quad-core Cortex-A53 with NEON, and
-`slam_toolbox` does that search multi-resolution, threaded, in optimised C++. So
+The rover is not that board any more. It is a six-core Cortex-A78AE — and was a
+quad-core Cortex-A53 when this was written — and `slam_toolbox` does that search
+multi-resolution, threaded, in optimised C++. So
 the thing that could not be afforded is now affordable, and the way to get it is
 not to write it again — it is to run the implementation that thousands of robots
 already run.
@@ -152,9 +153,9 @@ of which way the rover is trying to go.
 Three steps, and the first is the only slow one.
 
 ```bash
-scp -r ros_nav bpi-m4zero:~/ugv/
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'          # ~20 min, ~4.7 GB
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --nav'  # mapping and Nav2
+scp -r ros_nav orin:~/ugv/
+ssh orin 'sh ~/ugv/ros_nav/install.sh'          # ~20 min, 6.9 GB
+ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav'  # mapping and Nav2
 ```
 
 Note the `sh` in front of both. A checkout that arrived by `scp` is mode 644, so
@@ -162,10 +163,19 @@ the shebang is never consulted and running the path directly fails with
 "Permission denied" — which reads as a sudo problem and is not one.
 
 `install.sh` needs no root at all, which is the whole reason it is conda and not
-apt: this board runs Debian trixie and ROS 2 Jazzy's own packages are built for
-Ubuntu noble, so there is nothing to `apt install`, and building from source on
-four A53 cores is most of a day. [RoboStack](https://robostack.github.io/)
-publishes the same releases as conda packages with `linux-aarch64` builds.
+apt. That started as a necessity: the Banana Pi ran Debian trixie, ROS 2 Jazzy's
+own packages are built for Ubuntu noble, so there was nothing to `apt install` and
+building from source on four A53 cores was most of a day.
+[RoboStack](https://robostack.github.io/) publishes the same releases as conda
+packages with `linux-aarch64` builds.
+
+On the Jetson it is a choice rather than a necessity. This board runs Ubuntu
+24.04 and native Jazzy packages do exist; they are deliberately not used, because
+one install path that works on both boards is worth more than a second that works
+only here. The one time that rule was broken — RTAB-Map, which RoboStack does not
+package, pulled in from Ubuntu's ROS repository — is described under
+[why RTAB-Map was tried and removed](#why-rtab-map-was-tried-and-removed);
+`/opt/ros` no longer exists on the rover.
 
 `install-boot.sh` also checks the daemon's crontab entry, because the two are a
 pair: the daemon must have `--board-bridge` and `--ros-nav`. If that is wrong it
@@ -174,8 +184,8 @@ prints the `sed` line that fixes it.
 ## Running it
 
 ```bash
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'        # ~30 s; prints the node list
-ssh bpi-m4zero 'tail -f ~/ugv/ros_nav/ros_nav.log'
+ssh orin '~/ugv/ros_nav/restart.sh'        # ~30 s; prints the node list
+ssh orin 'tail -f ~/ugv/ros_nav/ros_nav.log'
 ```
 
 An empty map with the lidar reporting at 10 Hz is usually the driver board,
@@ -185,7 +195,7 @@ see [rover_daemon/README.md](../rover_daemon/README.md#when-the-board-does-not-a
 And by hand, which is what to do when something is wrong:
 
 ```bash
-ssh bpi-m4zero
+ssh orin
 . ~/ugv/ros_nav/env.sh                # bash only -- see below
 . ~/ugv/ros_nav/dds.sh                # pin discovery to this board
 ros2 topic list
@@ -208,7 +218,7 @@ laptop that wants rviz on the LAN should source only `env.sh`.
 ## Saving a map
 
 ```bash
-ssh bpi-m4zero
+ssh orin
 . ~/ugv/ros_nav/env.sh
 ros2 run nav2_map_server map_saver_cli -f ~/ugv/maps/house
 ```
@@ -219,14 +229,14 @@ rather than just used:
 
 ```bash
 ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
-    "{filename: /home/admin/ugv/maps/house}"
+    "{filename: /home/jetson/ugv/maps/house}"
 ```
 
 ## Sending it somewhere
 
 The ordinary way is the drive console at `http://<rover>:8771/` — tap the map — or
 a conversation with the voice chat. Both reach the same tools, and both need the
-daemon started with `--ros-nav`; without it the rover offers 11 tools instead of 17
+daemon started with `--ros-nav`; without it the rover offers 11 tools instead of 18
 and the console shows a map it cannot drive on.
 
 Underneath, from the rover itself, either through the daemon — which is what the
@@ -264,7 +274,7 @@ EOF
 node reads all of it from there and invents none of it.
 
 ```bash
-ssh bpi-m4zero
+ssh orin
 . ~/ugv/ros_nav/env.sh
 python ~/ugv/ros_nav/calibrate_chassis.py --dry-run   # checks everything, moves nothing
 python ~/ugv/ros_nav/calibrate_chassis.py --turns     # turn curve; needs room to rotate
@@ -370,32 +380,44 @@ to 10%, which is itself a reason to take them again.
 
 ## What this costs on the board
 
-Measured with the mapping stack up and the daemon running beside it:
+Measured on the Jetson on 2026-08-31 over ten seconds, with the whole stack up —
+mapping, Nav2, the daemon, the depth service and the drive console — and the rover
+parked:
 
 | process | CPU | RSS |
 |---|---|---|
-| `lidar_node.py` | ~32% of one core | 57 MB |
-| `base_node.py` | ~27% of one core | 61 MB |
-| `async_slam_toolbox_node` | ~4%, bursty — see below | 38 MB |
-| `rover_daemon.py` | ~5% | 21 MB |
+| `nav_bridge.py` | ~25% of one core | 89 MB |
+| `lidar_node.py` | ~14% of one core | 65 MB |
+| `base_node.py` | ~12% of one core | 70 MB |
+| `rover_daemon.py` | ~9% of one core | 98 MB |
+| each of Nav2's seven servers | 4–6% of one core | 24–56 MB |
+| `async_slam_toolbox_node` | under 1% parked, bursty when mapping | 38 MB |
 
-About 70% of one core out of four for mapping alone. With Nav2's seven servers on
-top as well, and the depth service and drive console beside them, the whole board
-measures:
+The whole board:
 
 ```
-over 10 s, 4 cores:  user 33.7%  system 6.0%  idle 58.6%
-BUSY 41.4% of all four cores together -- 2.3 cores spare
+over 10 s, 6 cores:  user 16.4%  system 3.1%  idle 79.1%
+BUSY 20.9% of all six cores together -- 4.7 cores spare
 ```
 
-**Ignore the load average here.** It sits between 4 and 6 on a four-core board,
-which reads as fully saturated, while 58% of the machine is idle. Load counts
+**The Banana Pi ran the same stack at 41.4% of four cores, with 2.3 spare**, and
+its two Python nodes each cost about twice what they cost here. The stack was
+never close to the edge on that board and is further from it now; what the extra
+headroom actually buys is argued in [hosts.md](../docs/hosts.md), not here.
+
+Note that `nav_bridge.py` is the dearest process on the rover. It was not on the
+old board's list at all, which measured mapping alone; it earns its keep by being
+the only thing that turns ROS into something the console and the voice model can
+use, but it is the first place to look if this ever needs to get cheaper.
+
+**Ignore the load average here.** It sits between 4 and 6, which on a six-core
+board reads as most of the machine, while 79% of it is idle. Load counts
 threads that are runnable, and a dozen ROS nodes each running several Cyclone DDS
 threads produce a lot of those without any of them wanting much CPU. The number
 that means something is `/proc/stat`:
 
 ```bash
-ssh bpi-m4zero 'grep "^cpu " /proc/stat'   # twice, and difference the idle column
+ssh orin 'grep "^cpu " /proc/stat'   # twice, and difference the idle column
 ```
 
 Both Python nodes are dearer than they look, and for the same reason: they turn a
@@ -779,7 +801,7 @@ was not — the *plan* was that shape before the wheels turned. Asking
 tenth of a second and moves nothing, which is the way to tell the two apart:
 
 ```bash
-ssh bpi-m4zero 'bash -c "source ~/ugv/ros_nav/env.sh; python3 - <<EOF
+ssh orin 'bash -c "source ~/ugv/ros_nav/env.sh; python3 - <<EOF
 ... ComputePathToPose to a point 2 m ahead, and measure length against 2 m
 EOF"'
 ```
@@ -1067,7 +1089,7 @@ between them. That is why the console says "gave up without saying why" and not
 which of the two TF failures happened, and they mean opposite things:
 
 ```bash
-ssh bpi-m4zero "grep -a -A2 'Transform data too old' ~/ugv/ros_nav/ros_nav.log | tail -30"
+ssh orin "grep -a -A2 'Transform data too old' ~/ugv/ros_nav/ros_nav.log | tail -30"
 ```
 
 `Transform data too old when converting from odom to map`, followed by `Unable to
@@ -1461,8 +1483,9 @@ again:
 The right-hand column was taken with the bench reading `config/nav2.yaml` off
 the rover after the first deploy, when the budget there was 3.0.
 
-So it is a coin toss, and the coin is a wall-clock deadline on four cores that
-are also running slam_toolbox, DWB and the daemon. Re-running the identical
+So it is a coin toss, and the coin is a wall-clock deadline on a board that is
+also running slam_toolbox, DWB and the daemon — four cores when this was measured,
+six now, which widens the margin without changing the shape of the problem. Re-running the identical
 sixteen-heading sweep moved *which* headings failed. The start heading is real
 but small: it shifts the cost of a query that already costs about the budget,
 which is why turning the rover round appeared to fix it and why thirteen goals
@@ -1485,8 +1508,8 @@ recovery ladder and has to fit the bridge's allowance in
 than tight.
 
 Two things every measurement here shares, and both understate it. They were
-taken with the rover standing still, so DWB was not also running at 10 Hz on
-the same four cores. And the deadline is soft: `terminal_checking_interval` is
+taken with the rover standing still, so DWB was not also running at 10 Hz
+beside them. And the deadline is soft: `terminal_checking_interval` is
 5000 iterations, so the search notices the clock late and overshoots rather
 than stopping on it -- which is how a 3.12 s plan returned a route at all.
 
@@ -1566,7 +1589,7 @@ so that planner, its scan matcher, its route finder and its drive controller hav
 been deleted — about 5,400 lines — along with the flag that reached them.
 
 What that buys is one arrangement to reason about instead of two that offered the
-same 17 tools and the same replies and could not be told apart from a console. The
+same tools and the same replies and could not be told apart from a console. The
 daemon's startup line no longer has to be checked to know which planner answered a
 move; if it says anything but `driving ros2 on 127.0.0.1:8773` then nothing is
 driving at all.
@@ -1596,8 +1619,8 @@ lidar_node on the same serial port.
 ## Reloading it after a deploy
 
 ```bash
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'                # new nodes or config
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh --supervisor'    # new run_ros_nav.sh
+ssh orin '~/ugv/ros_nav/restart.sh'                # new nodes or config
+ssh orin '~/ugv/ros_nav/restart.sh --supervisor'    # new run_ros_nav.sh
 ```
 
 **The second form is not optional when `run_ros_nav.sh` itself has changed**, and

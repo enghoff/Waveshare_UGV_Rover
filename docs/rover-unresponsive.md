@@ -260,13 +260,22 @@ The Jetson has one advantage the Banana Pi did not: **a keyboard and a monitor o
 the board is a genuine way back in**, because `sudo` there authenticates the
 `jetson` account's own password and `secrets/jetson-orin.key` is that password.
 
-Multicast DNS is the other way in, and it is more robust than any single address
-because it is answered per interface: a query arriving on a radio is answered on
-that radio, carrying that radio's own lease. `ssh bpi-m4zero` therefore follows
-whichever radio is alive without anyone having to know which one that is. It
-resolved to `.139` and to `.47` on the same afternoon.
+Multicast DNS is the other way in. `ssh orin` resolves `jetson-orin.local`,
+which `avahi-daemon` answers on every interface the rover has, so it finds the
+rover without anyone having to know which address it currently holds. On the
+Banana Pi, with two radios carrying traffic, that was the strongest property this
+document had — a query arriving on a radio was answered on that radio, carrying
+that radio's own lease, and `bpi-m4zero` resolved to `.139` and to `.47` on the
+same afternoon. With one radio there is only one answer, and the mDNS reply is
+cached for a couple of minutes, so it can lag a change the service address does
+not.
 
 ## Resetting the Broadcom radio without rebooting
+
+**This section is about the Banana Pi and does not apply to the current rover.**
+There is no `brcmfmac`, no `wlan0`/`wlan1` and no netplan on the Jetson, and the
+`admin` account and `.47` lease below belong to a board that is powered off. It is
+kept as the record of what was built and what it was for.
 
 `brcmfmac` is a loadable module and the chip sits on a bus that can be unbound,
 so the radio can be reloaded in place. Reloading makes the driver download

@@ -1,13 +1,13 @@
 # Automated deployment
 
 `deploy.py` is the preferred way to move committed source from this checkout to
-the Banana Pi on the rover. It replaces the repeated `scp`/`rsync`/restart
-sequence in [`docs/deploy.md`](../docs/deploy.md); the manual commands there remain
-the recovery path and the detailed map of what lands where.
+the rover. It replaces the repeated `scp`/`rsync`/restart sequence in
+[`docs/deploy.md`](../docs/deploy.md); the manual commands there remain the
+recovery path and the detailed map of what lands where.
 
-There is one deployment host in the current system: `bpi-m4zero`. The realtime
-Qwen Omni model is an Alibaba cloud service and is not deployed from this
-repository.
+There is one deployment host in the current system: `orin`, the Jetson Orin Nano
+on the rover, which replaced the Banana Pi on 2026-08-31. The realtime Qwen Omni
+model is an Alibaba cloud service and is not deployed from this repository.
 
 ## Requirements
 
@@ -15,10 +15,9 @@ On the workstation:
 
 - Python 3.10+
 - `git`, `ssh` and `scp` on `PATH`
-- the `bpi-m4zero` SSH entry described in [`docs/hosts.md`](../docs/hosts.md)
+- the `orin` SSH entry described in [`docs/hosts.md`](../docs/hosts.md)
 
-On the Banana Pi, `python3`, `tar` and `rsync` are part of the working
-installation. `rsync` runs on the remote side, so a Windows workstation does not
+On the rover, `python3`, `tar` and `rsync` are part of the working installation. `rsync` runs on the remote side, so a Windows workstation does not
 need a local rsync installation. The deployer itself has no third-party Python
 dependencies.
 
@@ -42,7 +41,7 @@ Useful limits:
 python deploy/deploy.py --only rover_daemon
 python deploy/deploy.py --only ros_nav
 python deploy/deploy.py --only drive_web
-python deploy/deploy.py --host bpi
+python deploy/deploy.py --host orin
 ```
 
 ## First run
@@ -52,10 +51,10 @@ state, choose one explicitly:
 
 ```bash
 # The running rover is already known to contain exactly this commit.
-python deploy/deploy.py --adopt --host bpi
+python deploy/deploy.py --adopt --host orin
 
 # Reconcile selected components from the checkout instead.
-python deploy/deploy.py --full --host bpi
+python deploy/deploy.py --full --host orin
 ```
 
 `--adopt` copies nothing; it establishes the per-component baseline. `--full`
@@ -63,22 +62,29 @@ packages every selected component from `HEAD`, then restarts and verifies it.
 
 ## Privileged system copies
 
-`wifi_roam` and `netwatch` have a second deployment boundary: source is staged
-under `~/ugv`, while running copies also live under `/usr/local` and
-`/etc/systemd/system`. An ordinary deploy stops after staging/testing and does
-not touch those privileged locations. The component remains outstanding until
-its system install succeeds.
+`wifi_roam`, `dongle_driver` and `netwatch` have a second deployment boundary:
+source is staged under `~/ugv`, while what actually runs also lives under
+`/usr/local`, `/etc` and — for the dongle's driver — the kernel's module tree.
+An ordinary deploy stops after staging/testing and does not touch those
+privileged locations. The component remains outstanding until its system install
+succeeds.
 
 After reviewing the change and with a recovery path available for a network
 mistake:
 
 ```bash
 python deploy/deploy.py --system --only wifi_roam
+python deploy/deploy.py --system --only dongle_driver
 python deploy/deploy.py --system --only netwatch
 ```
 
-The deployer reads `secrets/bpi-sudo.key` locally and feeds it to `sudo -S`; the
-password is never placed in the command line or copied to the rover.
+`dongle_driver` also needs re-running after a kernel update, since it builds an
+out-of-tree module. `netwatch` is staged but deliberately not installed on this
+host: it is ordered after `wpa_supplicant` and reads that daemon's control
+socket, and the Orin runs NetworkManager instead.
+
+The deployer reads `secrets/jetson-orin.key` locally and feeds it to `sudo -S`;
+the password is never placed in the command line or copied to the rover.
 
 ## What is deployed
 
@@ -86,7 +92,7 @@ password is never placed in the command line or copied to the rover.
 
 - which repository paths form each component;
 - whether those paths are flattened or retain their directory shape;
-- their destination on the Banana Pi;
+- their destination on the rover;
 - runtime files that must survive a mirror;
 - restart/self-test/readiness commands;
 - supervisor changes that need a supervisor replacement;
@@ -118,9 +124,10 @@ Remote state lives at:
 It records a SHA per component rather than one SHA for the whole machine. A
 partial deploy therefore cannot make unrelated source look deployed.
 
-The state file is written atomically and followed by `sync`, because the Banana
-Pi filesystem uses `commit=120` and recent metadata has previously been lost on
-an abrupt reset.
+The state file is written atomically and followed by `sync`. That was for the
+Banana Pi, whose root filesystem was mounted `commit=120` and had lost recent
+metadata on an abrupt reset; the Orin's NVMe root is mounted `rw,relatime`, so
+the `sync` is now cheap insurance rather than a requirement.
 
 If copying, restart, self-test, health check or privileged installation fails,
 that component's SHA is not advanced. The next invocation still sees it as

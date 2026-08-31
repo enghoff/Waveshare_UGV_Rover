@@ -4,15 +4,21 @@
 board and kernel state while things are still working so a later outage can be
 diagnosed from evidence instead of from whatever survived the recovery reboot.
 
-It runs on the Banana Pi as a lightweight system service. A companion
-`netprobe.py` runs on any desk/workstation that can observe the rover from the
-outside.
+**It is not installed on the current rover.** The recorder is ordered after
+`wpa_supplicant` and reads that daemon's control socket, and the Jetson runs
+NetworkManager instead, so it would start and record much less than it appears
+to. Its source is staged at `~/ugv/netwatch/` and the privileged install is
+deliberately not run. Everything below describes it as it ran on the Banana Pi,
+and is kept because the recorder is still the right answer to "what was the rover
+doing before it disappeared" — it needs porting to NetworkManager first. The
+companion `netprobe.py`, which observes the rover from a desk rather than from
+the board, is unaffected and works against any host.
 
 ```bash
 python deploy/deploy.py --only netwatch
 python deploy/deploy.py --system --only netwatch
 
-ssh bpi-m4zero 'netwatch-report'
+ssh orin 'netwatch-report'
 python3 netwatch/netprobe.py --log probe.log
 ```
 
@@ -177,14 +183,14 @@ python deploy/deploy.py --system --only netwatch
 Manual fallback:
 
 ```bash
-scp -r netwatch bpi-m4zero:~/ugv/
-cat secrets/bpi-sudo.key | ssh bpi-m4zero \
+scp -r netwatch orin:~/ugv/
+cat secrets/jetson-orin.key | ssh orin \
   'sudo -S -p "" sh ~/ugv/netwatch/install.sh'
 ```
 
 Verify the service itself, not merely the copied files:
 
 ```bash
-ssh bpi-m4zero 'systemctl is-active netwatch.service'
-ssh bpi-m4zero 'netwatch-report | tail -3'
+ssh orin 'systemctl is-active netwatch.service'
+ssh orin 'netwatch-report | tail -3'
 ```

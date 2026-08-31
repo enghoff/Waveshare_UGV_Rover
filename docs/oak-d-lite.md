@@ -1,8 +1,11 @@
 # The OAK-D-Lite
 
-Exercised by [`oak_camera/`](../oak_camera). Two companion documents cover the
-findings that constrain how these scripts are written: the
-[USB link](oak-usb-link.md) and the [depthai version pin](depthai-version-pin.md).
+Exercised by [`oak_camera/`](../oak_camera). The finding that most constrains how
+these scripts are written is the [depthai version pin](depthai-version-pin.md).
+The USB-link measurements they also rest on had their own document, removed on
+2026-08-25 once the OAK stopped being a candidate for the old rover; the numbers
+that still matter are repeated where they are used, and the rest is in git
+history.
 
 ## What the board is
 
@@ -102,8 +105,9 @@ different nodes, so they are paired by `getSequenceNum()` rather than assumed to
 arrive in lockstep, and the render loop only re-blends when something changed
 instead of recolouring the same pair at `waitKey` rate.
 
-Sizing is set by the link, not by the request — see
-[the throughput ceiling](oak-usb-link.md#what-fits-on-the-link).
+Sizing is set by the link, not by the request: paired colour and aligned depth
+have been measured saturating near 40 MB/s on their own, and everything on this
+rover shares one 480 Mbps root port.
 
 ## Depth semantics
 

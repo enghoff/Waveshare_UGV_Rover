@@ -1,6 +1,6 @@
 # Drive console, on the rover
 
-`drive_web` serves the browser console from the Banana Pi. A phone or desk opens
+`drive_web` serves the browser console from the rover. A phone or desk opens
 it directly; there is no desktop companion process.
 
 ```text
@@ -20,10 +20,10 @@ audio bridge.
 
 ## Running it
 
-The console is started from the `admin` crontab, beside the other rover services:
+The console is started from the `jetson` crontab, beside the other rover services:
 
 ```text
-@reboot /home/admin/ugv/drive_web/run_drive_web.sh
+@reboot /home/jetson/ugv/drive_web/run_drive_web.sh
 ```
 
 Normal deployment is:
@@ -36,13 +36,13 @@ Manual fallback:
 
 ```bash
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md \
-    bpi-m4zero:~/ugv/drive_web/
+    orin:~/ugv/drive_web/
 scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts}.py \
-    bpi-m4zero:~/ugv/drive_web/
+    orin:~/ugv/drive_web/
 
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install.sh'
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'
-ssh bpi-m4zero '~/ugv/drive_web/restart.sh'
+ssh orin 'sh ~/ugv/drive_web/install.sh'
+ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
+ssh orin '~/ugv/drive_web/restart.sh'
 ```
 
 The shared `voice_chat` modules stay in their current repository directory for
@@ -75,8 +75,8 @@ whichever network the rover is on and whatever DHCP does with its lease.
 The certificate can be regenerated manually:
 
 ```bash
-ssh bpi-m4zero '~/ugv/drive_web/make_cert.sh'
-ssh bpi-m4zero '~/ugv/drive_web/make_cert.sh --force'
+ssh orin '~/ugv/drive_web/make_cert.sh'
+ssh orin '~/ugv/drive_web/make_cert.sh --force'
 ```
 
 The CA certificate can be installed on a phone/computer to avoid the browser

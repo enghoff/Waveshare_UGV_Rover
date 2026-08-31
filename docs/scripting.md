@@ -53,8 +53,8 @@ survives this one; the margins are what changed:
 | age of the frame that loop steers by | median 1.33 s | ~190 ms |
 | the OAK, now a depth camera | — | 13% of one core |
 
-The numbers are from [moving-to-new-hardware.md](moving-to-new-hardware.md),
-which also explains why the frame age is arithmetic rather than a bug: a
+The numbers come from a hardware-comparison document removed on 2026-08-25, which
+also explained why the frame age is arithmetic rather than a bug: a
 five-frame queue drained four times a second is 1.3 seconds of delay, and no
 software on this host changes it.
 
@@ -482,7 +482,8 @@ stranger and that is the console's own token — `~/.ugv/console.token`, which
 gates the microphone button and nothing else — plus the fact that the driving
 controls beside it were never gated at all. Somebody who can reach the console
 page can already drive the rover into a wall. What they can now also do is spend
-fifteen seconds of its CPU and read a file as `admin`, which is a real widening,
+fifteen seconds of its CPU and read a file as the rover's own account, which is a
+real widening,
 and it is the reason the four remaining calls stay where they are: a fifteen-
 second blocking run that reports what it printed is a much smaller thing to hand
 out than a behaviour that outlives the conversation.
@@ -654,12 +655,13 @@ per-frame inside the script, which is exactly what the orchestration rule
 protects, and the four-second interpreter start is the price of the process
 boundary that makes a runaway killable.
 
-The move to the Banana Pi Zero changes the options rather than the design. There
-is nothing architecture-specific to port, unlike the two `.so` files that have to
-be rebuilt per host, so the layer itself is a file copy. What the new board adds
-is headroom: faster ticks, cheaper frames, and eventually the choice of an
-in-process VM and per-frame scripting — a choice this host does not have and
-would not benefit from being given.
+Two changes of board since — to the Banana Pi M4 Zero and then to the Jetson Orin
+Nano — have changed the options rather than the design. There is nothing
+architecture-specific to port, unlike the two `.so` files that have to be rebuilt
+per host, so the layer itself is a file copy. What each new board added is
+headroom: faster ticks, cheaper frames, and eventually the choice of an in-process
+VM and per-frame scripting — a choice the Pi 1 this was written for did not have
+and would not have benefited from being given.
 
 ## What is measured and what is assumed
 
@@ -667,8 +669,8 @@ The figures in [what is built](#what-is-built-and-what-waits) and in [starting a
 interpreter](#starting-an-interpreter-costs-more-than-most-scripts-do) were taken
 on the rover on 2026-08-20, against the running daemon, the real driver board and
 the OAK as it was then — a face detector rather than the depth camera it is now. The CPU and timing figures for the tracking loop are quoted from
-[hosts.md](hosts.md) and [moving-to-new-hardware.md](moving-to-new-hardware.md),
-and the tool-selection and token figures from the realtime client -- then
+[hosts.md](hosts.md) and from the hardware-comparison document removed on
+2026-08-25, and the tool-selection and token figures from the realtime client -- then
 `talk.py`, now [session.py](../voice_chat/session.py) -- and the voice service's
 README; those were measured when those documents say, not
 for this one.

@@ -25,8 +25,9 @@ keeps its own name for the same reason. Neither name describes its contents.
 ## Why the C is still C
 
 The first host was a 700 MHz single-core ARM1176 with scalar VFP and **no NEON**.
-The board is a Banana Pi M4 Zero now — aarch64, four cores — but the row that
-justified this file was never about the core count:
+The board is a Jetson Orin Nano now — aarch64, six cores — and was a quad-core
+Banana Pi M4 Zero in between, but the row that justified this file was never about
+the core count:
 
 | stage | Python + numpy 2.2.4 | C, `gcc -O2` |
 |---|---|---|
@@ -53,8 +54,8 @@ per-host library:
 
 ```bash
 rsync -a --delete --exclude 'libslam2d.so' --exclude selftest \
-    lidar_slam/ bpi-m4zero:~/ugv/lidar_slam/
-ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
+    lidar_slam/ orin:~/ugv/lidar_slam/
+ssh orin 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
 ```
 
 Nothing here opens a serial port by itself any more.
@@ -76,7 +77,7 @@ Two separate serial ports, and they are easy to confuse:
 | | port | baud | what |
 |---|---|---|---|
 | lidar | `/dev/ttyACM0` | 230400 | D500 point stream, one-way, unprompted |
-| driver board | `/dev/ttyS4` | 115200 | `T:1001` telemetry and motor commands |
+| driver board | `/dev/ttyTHS1` | 115200 | `T:1001` telemetry and motor commands |
 
 The lidar is a **`ttyACM`**, not a `ttyUSB`: it is a CH343 (`1a86:55d3`) behind an
 FE1.1S hub (`1a40:0101`), and `cdc_acm` claims it. Neither port is opened from this
@@ -322,7 +323,7 @@ could not open. `install-udev.sh` puts the rule in place and reapplies it to wha
 already plugged in:
 
 ```bash
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/lidar_slam/install-udev.sh'
+cat secrets/jetson-orin.key | ssh orin 'sudo -S -p "" sh ~/ugv/lidar_slam/install-udev.sh'
 ```
 
 The action there has to be `udevadm trigger --action=add` and not `change`: udev sets

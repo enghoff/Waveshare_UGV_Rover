@@ -174,7 +174,7 @@ The current voice helpers are deployed beside `drive_web`:
 
 ```bash
 scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts}.py \
-    bpi-m4zero:~/ugv/drive_web/
+    orin:~/ugv/drive_web/
 ```
 
 Normally use the automated deployer instead:
@@ -183,11 +183,11 @@ Normally use the automated deployer instead:
 python deploy/deploy.py --only drive_web
 ```
 
-The Banana Pi needs the `websockets` wheel used by the Alibaba client; the
-component installer handles that separately:
+The rover needs the `websockets` wheel used by the Alibaba client; the component
+installer handles that separately:
 
 ```bash
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'
+ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
 ```
 
 ## Tests

@@ -1,7 +1,7 @@
 # Face tracking: local YuNet + gimbal aiming
 
 Face tracking is a local rover capability. The gimbal's UVC camera supplies MJPEG
-frames, `face_tracking/yunet.py` detects faces on the Banana Pi, `aiming.py`
+frames, `face_tracking/yunet.py` detects faces on the rover itself, `aiming.py`
 turns a detected face into pan/tilt targets, and the daemon sends those targets
 to the driver board.
 
@@ -42,10 +42,13 @@ Current defaults in code:
   documentation;
 - model file: `face_detection_yunet.onnx` beside the deployed tracking code.
 
-The thread count is deliberately three rather than four. The detector can use all
-four cores, but a rover whose mapping/navigation and hardware services share the
-same board benefits more from leaving one core available than from the last few
-milliseconds of detector throughput.
+The thread count is deliberately three. It was chosen against the Banana Pi's
+four cores, where the detector could have taken all of them and a rover whose
+mapping/navigation and hardware services share the same board benefits more from
+leaving one core free than from the last few milliseconds of detector throughput.
+The Jetson has six cores and the reasoning is weaker there, but three threads
+already cost 24 ms a frame on it, so raising the number buys little and has not
+been done.
 
 Measured on the Banana Pi M4 Zero on 2026-08-23, 640×480:
 
@@ -95,7 +98,7 @@ uses that installation, while the rover uses its unpacked wheel.
 ## Why MJPEG stays in the camera path
 
 The gimbal camera can produce uncompressed frames, but the running rover keeps the
-feed as MJPEG. On the Banana Pi JPEG decode is cheap, while uncompressed 640×480
+feed as MJPEG. JPEG decode is cheap on the rover, while uncompressed 640×480
 at camera rate consumes much more of the shared USB path and can build a stale
 FIFO when a reader cannot drain at camera speed.
 
