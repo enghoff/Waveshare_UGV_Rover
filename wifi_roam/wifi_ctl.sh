@@ -398,9 +398,10 @@ join_wpa() {
 # Which radio a command is about. Every verb below takes it as a trailing
 # argument, and without one it is the radio carrying the rover's traffic --
 # see default_iface above -- so every existing caller keeps working unchanged.
+NAMED=0
 case ${1:-} in
-    list|scan|profiles) [ -n "${2:-}" ] && IFACE=$2 ;;
-    join)               [ -n "${3:-}" ] && IFACE=$3 ;;
+    list|scan|profiles) [ -n "${2:-}" ] && { IFACE=$2; NAMED=1; } ;;
+    join)               [ -n "${3:-}" ] && { IFACE=$3; NAMED=1; } ;;
 esac
 
 case ${1:-} in
@@ -420,7 +421,17 @@ case ${1:-} in
             nmcli)
                 rescan=no
                 [ "$1" = scan ] && rescan=yes
-                nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list --rescan "$rescan"
+                # Only one radio's hearing, and only when a caller asked for one
+                # radio. Without an interface nmcli merges what both of them
+                # heard, which is what the console wants -- the two radios are on
+                # different bands, so a list from either alone hides half the
+                # neighbourhood. Naming one is the other question, and it is the
+                # question failover asks: what can the *spare* reach from here.
+                if [ "$NAMED" = 1 ]; then
+                    nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list                         ifname "$IFACE" --rescan "$rescan"
+                else
+                    nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list                         --rescan "$rescan"
+                fi
                 ;;
             *)
                 if [ "$1" = scan ]; then

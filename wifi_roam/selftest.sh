@@ -696,6 +696,22 @@ env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
 check "and a caller that names a radio is still obeyed" \
     "iw dev wlx002e2d3074d0 link" "$(cat "$WORK/nmcli.log")"
 
+# The same question asked of NetworkManager, where naming a radio used to be
+# accepted and then ignored. It is the question failover asks -- what can the
+# *spare* reach from where the rover is standing -- and a merged list of what
+# both radios heard is the wrong answer to it, because the spare cannot use half
+# of it. Asked with no radio it must still merge, which is what the console wants.
+: > "$WORK/nmcli.log"
+env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" SCAN="$SCAN" \
+    sh "$HERE/wifi_ctl.sh" list wlx002e2d3074d0 > /dev/null 2>&1
+check "one radio's hearing is asked of that radio" \
+    "dev wifi list ifname wlx002e2d3074d0" "$(cat "$WORK/nmcli.log")"
+: > "$WORK/nmcli.log"
+env NMCLI_LOG="$WORK/nmcli.log" NMCLI_ALL="$WORK/nmcli.all" SCAN="$SCAN" \
+    sh "$HERE/wifi_ctl.sh" list > /dev/null 2>&1
+check_silent "and with no radio named the list still merges both" \
+    "$(grep 'dev wifi list ifname' "$WORK/nmcli.log" || true)"
+
 named=$(env WIFI_BACKEND=wpa NMCLI_LOG="$WORK/nmcli.log" \
     sh "$HERE/wifi_ctl.sh" profiles 2>&1)
 check "profiles are the ones wpa_supplicant already holds" \
