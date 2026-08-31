@@ -700,10 +700,64 @@ The map being *smaller* is the point: a room does not grow, so the extra four
 metres in each direction were the same walls drawn twice.
 
 **One thing the recording cannot answer.** A database holds the keyframes RTAB-Map
-chose, not the ten scans a second the lidar produced, so how often a keyframe
-should be taken — `RGBD/LinearUpdate` and `RGBD/AngularUpdate`, both 0.2 here —
-cannot be replayed from it. Testing that needs a rosbag of `/scan` and `/tf`,
-which nothing here records yet.
+chose, not the ten scans a second the lidar produced, so nothing about what
+happens *between* keyframes can be replayed from it — how often a keyframe should
+be taken, or whether lidar odometry would beat the wheels. Replayed from the
+database, lidar odometry collapses to 0.8 m of travel where the rover drove 13.7,
+and that is the recording being wrong rather than the idea: real ICP odometry
+matches scans 3 cm apart at 10 Hz, and the database's are 13 cm and a keyframe
+apart. Which is what `record_drive.sh` is for.
+
+### Recording a drive, and replaying it into either mapper
+
+```bash
+ssh orin '~/ugv/ros_nav/record_drive.sh --seconds 300 --name kitchen-loop'   # then drive
+ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --mapper rtabmap'
+ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --mapper slam_toolbox'
+ssh orin '~/ugv/ros_nav/replay_bag.sh recordings/bags/kitchen-loop --mapper rtabmap \
+              -- --RGBD/LinearUpdate 0.05'
+```
+
+`record_drive.sh` starts nothing and stops nothing — it subscribes to `/scan`,
+`/tf` and `/odom` while somebody drives the rover normally, and writes a bag under
+`recordings/`, which the deploy manifest preserves. **One drive then answers every
+later question**, which is the difference between this and `compare_run.sh`: that
+one is fair and costs a drive each time it is asked.
+
+`replay_bag.sh` plays a bag into whichever mapper is named and keeps the map that
+comes out, as a picture and as the numbers `map_score.py` prints — how large the
+grid is, how many cells are walls, and walls per square metre of floor. That last
+one is the number worth quoting, because a mapper that has lost track does not
+produce an empty map, it produces a *bigger* one with every wall drawn twice.
+
+Two things about it are deliberate and neither is tidiness. It runs on **DDS
+domain 43** while the rover is on 42, because a replay publishes `/scan`, `/tf`
+and `/map` and on one domain that is a second lidar feed and a second
+`map -> odom` reaching a rover that is driving. And it kills only the processes it
+started, **by PID and never by pattern**: every pattern that matches a replay's
+mapper also matches the one the rover is steering on, and `sweep.sh` — which is
+right for the live stack — would take the replay down with it.
+
+### What the local map is matched against, which is where slam_toolbox wins
+
+slam_toolbox matches every scan against a rolling buffer of the last ten, by an
+exhaustive correlative search over ±25 cm and ±20°. RTAB-Map, as this rover had
+it, matched one 2D scan against one other 2D scan by ICP from the wheels' guess.
+Two hundred points, most of the room out of sight, and one corridor looking like
+another is a weak thing to ask a solver to agree about, and the settings that
+follow from that are `RGBD/ProximityPathMaxNeighbors` — how many nodes get merged
+into a local map for the current scan to be matched against — which was 1 here
+and is now 10. On the recorded drive that took closures from 26 to 62 with the
+map staying exactly the same size, which is what says they agree with each other:
+a false closure folds the map and would have shown up as a smaller, wronger one.
+
+The one that remains is odometry. RTAB-Map is given the wheels and a gyro and
+corrects them only at keyframes; slam_toolbox corrects continuously against its
+buffer. `icp_odometry` from `rtabmap_odom` is RTAB-Map's own answer to that and is
+what its 2D lidar setups all use — the package is installed and nothing launches
+it yet, because putting it in front means it, and not `base_node`, publishes
+`odom -> base_link`, and that is not a change to make on a guess. It wants a
+recorded drive first.
 
 One thing did not have to change, and it is the one most likely to have: the two
 mappers publish their grids with the same QoS. RTAB-Map's `/map` is reliable and

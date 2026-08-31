@@ -247,9 +247,28 @@
     # A limit here would forbid the only closures that matter: the ones that
     # reach back to the beginning of a circuit.
     RGBD/ProximityMaxGraphDepth: "0"
-    # One neighbour per candidate path. More is for 3D lidars with many scans to
-    # merge into a local map; on a single 2D scan line it mostly adds cost.
-    RGBD/ProximityPathMaxNeighbors: "1"
+    # How many nodes either side of a candidate get merged into a local map for
+    # the current scan to be matched against. **This is the closest thing
+    # RTAB-Map has to what slam_toolbox does, and it was set to 1, which is
+    # nearly off.**
+    #
+    # The comment here used to say more neighbours were for 3D lidars with many
+    # scans to merge, and that had it backwards. One 2D scan against one other 2D
+    # scan is a weak thing to ask a solver to agree about: a couple of hundred
+    # points, most of a room out of sight, and every corridor looking like every
+    # other. slam_toolbox never does that -- it matches each scan against a
+    # rolling buffer of the last ten -- and merging ten neighbours here is the
+    # same idea, a local map with enough of the room in it to be unambiguous.
+    #
+    # Measured on the drive of 2026-08-31, with the registration settings above
+    # already corrected: 1 neighbour closed 26 loops, 5 closed 64, 10 closed 62,
+    # 20 closed 60. The assembled map stayed the same size throughout, which is
+    # the part that says the extra closures were agreeing with each other rather
+    # than inventing a second room -- a false closure folds the map and would
+    # have shown up as a smaller, wronger one. 10 is taken rather than 5 because
+    # the difference between them is noise and a larger local map is the more
+    # conservative thing to match against.
+    RGBD/ProximityPathMaxNeighbors: "10"
     # **The radius above proposes a closure and this one throws it away, and
     # having them disagree is what stopped this rover closing loops at all.**
     #

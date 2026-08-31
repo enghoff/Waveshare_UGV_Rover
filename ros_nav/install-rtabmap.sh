@@ -54,7 +54,14 @@ KEYRING=/usr/share/keyrings/ros-archive-keyring.gpg
 LIST=/etc/apt/sources.list.d/ros2.list
 KEYURL=https://raw.githubusercontent.com/ros/rosdistro/master/ros.key
 
-PKGS="ros-jazzy-ros-base ros-jazzy-rtabmap-slam ros-jazzy-rtabmap-util ros-jazzy-rmw-cyclonedds-cpp"
+# rtabmap-odom is here for `icp_odometry`, which is not yet started by anything:
+# it is the node RTAB-Map's own 2D lidar setups put in front of the mapper, so
+# that the motion guess comes from matching consecutive scans rather than from
+# the wheels. Whether this rover is better off with it is an open question and
+# needs a recorded drive to answer -- record_drive.sh and replay_bag.sh exist for
+# that -- but the package has to be on the board before the question can be
+# asked, and installing it changes nothing until something launches it.
+PKGS="ros-jazzy-ros-base ros-jazzy-rtabmap-slam ros-jazzy-rtabmap-util ros-jazzy-rtabmap-odom ros-jazzy-rmw-cyclonedds-cpp"
 
 say() { echo "== $*"; }
 

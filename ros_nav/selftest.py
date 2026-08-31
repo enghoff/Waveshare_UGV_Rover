@@ -1541,6 +1541,26 @@ def test_discovery_stays_on_this_board():
     # getting it there. They are static reads of the files because that is what
     # catches them: each one fails silently at runtime and looks like something
     # else.
+    # The replay harness runs a second mapper on the same board while the rover
+    # is driving, so the one thing it must never do is tidy up by pattern: every
+    # pattern that matches a replay's mapper matches the one the rover is
+    # steering on. It kills what it started, by PID.
+    replay_path = os.path.join(HERE, "replay_bag.sh")
+    if os.path.isfile(replay_path):
+        with open(replay_path, encoding="utf-8", errors="replace") as fh:
+            replay = fh.read()
+        # Read the code, not the comments. The header of that file says the word
+        # "pkill" in order to warn about it, and a check that cannot tell a
+        # warning from a use is worse than no check -- the lesson the ICP
+        # parameter check below already paid for.
+        replay_code = "\n".join(line for line in replay.splitlines()
+                                if line.strip() and not line.lstrip().startswith("#"))
+        check("the bag replay kills only what it started, never by pattern",
+              "pkill" not in replay_code and "sweep.sh" not in replay_code, True)
+        # And it must not share a DDS domain with the rover, or the replayed
+        # scans arrive on the live /scan and the replayed map on the live /map.
+        check("...and it replays on its own DDS domain, off the rover's",
+              "ROS_DOMAIN_ID=43" in replay, True)
     check("sweep.sh takes RTAB-Map down too, or the next launch runs two",
           "run_rtabmap[.]sh" in sweep and "/lib/rtabmap_slam/rtabmap" in sweep, True)
     check("...and it names it by path, so the pattern cannot match an ssh session",
