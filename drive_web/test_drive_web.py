@@ -934,6 +934,64 @@ def test_the_audio_socket() -> None:
           len(payload) <= 125, True)
 
 
+def test_tracking_while_the_rover_drives() -> None:
+    """The camera can be started and stopped mid-move, and the panel says which
+    of the two things it is doing with nobody in view.
+
+    Both halves used to be wrong in the same direction. The rover took face
+    tracking away from itself the moment the wheels turned, so the console greyed
+    the two buttons out beside the driving ones and the panel only ever had a
+    sweep to report. Neither is true now: tracking runs through a move, and it
+    stops sweeping and watches where the rover is going instead.
+
+    The buttons themselves are enabled by the page's own script, which is not
+    reachable from here -- what this pins down is that the console sends the call
+    on the connection that is free during a move rather than the one the move is
+    occupying.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"tracking while driving ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append((name, arguments or {}))
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.moves, session.watch = Fake(), Fake()
+    session.tools = ["drive", "turn_in_place", "start_tracking", "stop_tracking"]
+    session.can_drive = True
+    session.busy_since, session.busy_name = time.monotonic(), "drive"
+
+    session.act({"do": "track", "name": "start_tracking"})
+    check("tracking starts while a move is running",
+          [name for name, _ in session.watch.sent], ["start_tracking"])
+    check("...on the status connection, not the one the move holds",
+          session.moves.sent, [])
+
+    session.show_tracking({"ok": True, "tracking": True, "following_someone": False,
+                           "searching": "sweeping", "faces_in_view": 0})
+    check("a parked rover with nobody in view is sweeping", session.track_text,
+          "on, sweeping, nobody yet, 0 in view")
+    session.show_tracking({"ok": True, "tracking": True, "following_someone": False,
+                           "searching": "watching ahead", "faces_in_view": 0})
+    check("...and a driving one is watching where it is going",
+          session.track_text, "on, watching ahead, nobody yet, 0 in view")
+    session.show_tracking({"ok": True, "tracking": True, "following_someone": True,
+                           "faces_in_view": 1})
+    check("somebody in view outranks both", session.track_text,
+          "on, following someone, 1 in view")
+    session.show_tracking({"ok": True, "tracking": True, "following_someone": False,
+                           "faces_in_view": 0})
+    check("a rover too old to say is taken as sweeping", session.track_text,
+          "on, sweeping, nobody yet, 0 in view")
+
+
 def test_what_the_browser_heard() -> None:
     """The playback accounting an interruption depends on.
 

@@ -414,8 +414,13 @@ class SessionShow:
         # "Running" and "following somebody" are different states and the difference
         # is the whole question: a loop that is running and has locked onto nobody is
         # sweeping, which looks identical from here and quite different on the rover.
+        #
+        # With nobody in view the rover says which of the two things it is doing --
+        # sweeping the room, or holding still and watching where it is driving --
+        # and those look identical from here as well. A daemon too old to say is
+        # taken as sweeping, which is all it could have been doing.
         who = ("following someone" if body.get("following_someone")
-               else "sweeping, nobody yet")
+               else f"{body.get('searching') or 'sweeping'}, nobody yet")
         faces = body.get("faces_in_view")
         self.track_text = (f"on, {who}"
                            + ("" if faces is None else f", {faces} in view"))

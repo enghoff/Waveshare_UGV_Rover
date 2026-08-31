@@ -389,6 +389,8 @@
       <button data-track="stop_tracking">stop</button>
       <span id="tracking" class="mono">-</span>
     </div>
+    <p class="hint">Runs while the rover drives. With nobody in view it stops
+      sweeping and watches where it is going until the wheels stop.</p>
     <h2 style="margin-top:14px">headlights</h2>
     <div class="row">
       <button data-light="on">on</button>
@@ -542,8 +544,15 @@ function render(next) {
 
   // Only the moves go out while one is running; stop, the map and the camera
   // stay live, which is the whole reason they have their own connections.
-  for (const button of document.querySelectorAll("[data-move],[data-track]")) {
+  for (const button of document.querySelectorAll("[data-move]")) {
     button.disabled = !next.link.can_drive || next.busy !== null;
+  }
+  // Face tracking is not driving and is not held up by it. It goes out on the
+  // status connection rather than the move one, the rover runs the camera while
+  // the wheels turn, and a daemon offering no driving tools still has a camera --
+  // so what these two buttons wait for is the rover admitting it has them.
+  for (const button of document.querySelectorAll("[data-track]")) {
+    button.disabled = !next.link.tools.includes("start_tracking");
   }
   $("clearMap").disabled = !next.link.connected || next.busy !== null;
 }
