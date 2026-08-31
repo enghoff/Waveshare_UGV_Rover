@@ -34,6 +34,26 @@ ExecStartPre=/bin/sleep 60
 # which is what a slow but working network needs -- shorter than that and a
 # placement gets cut off mid-DHCP, which costs it the lease it was about to get.
 Environment=STRANDED_S=25
+# How much better the dongle has to be, after its latency and loss penalties,
+# before it takes the traffic off the onboard radio. The built-in default is
+# 3 dB, a tie-breaker, and on this rover that is far too small to say what is
+# true about these two adapters.
+#
+# Measured 2026-08-31, minutes after the manager was first armed here: the dongle
+# sat 26 dB louder than the onboard radio because it happened to be next to a
+# router, so it took the traffic and the service address -- while losing 10% of
+# its packets to the gateway, steadily, which is its unfixed driver dropping
+# received frames. An SSH session over the service address was reset inside a
+# minute. The scoring was working exactly as written; 10% loss costs 5 dB and
+# 26 dB of signal buys it.
+#
+# So on this rover the dongle is a spare and not a peer. Twenty decibels is
+# enough that it keeps the traffic only when the onboard radio is genuinely bad
+# rather than merely quieter, and it changes nothing about the failover that
+# matters: losing the gateway is not a score, so a radio that stops delivering
+# still hands over in seconds. Revisit this once the dongle's driver is proved --
+# see dongle_driver/README.md.
+Environment=PRIMARY_BONUS_DB=20
 ExecStart=/usr/local/sbin/wifi_dual.py
 # The line that keeps a wifi-only supplicant board recoverable, and harmless
 # everywhere else. Under wpa_supplicant a radio is held by disabling every other
