@@ -165,7 +165,8 @@ if [ "${KEEPER:-on}" = off ]; then
     echo "  arm it with: systemctl enable --now dongle-keeper.timer"
 else
     systemctl enable --now dongle-keeper.timer > /dev/null 2>&1
-    echo "keeper: $(systemctl is-active dongle-keeper.timer), next $(systemctl show -p NextElapseUSecRealtime --value dongle-keeper.timer)"
+    echo "keeper: $(systemctl is-active dongle-keeper.timer) and $(systemctl is-enabled dongle-keeper.timer)"
+    systemctl list-timers --no-pager dongle-keeper.timer | sed -n 2p
 fi
 
 echo "--- one dry run"
