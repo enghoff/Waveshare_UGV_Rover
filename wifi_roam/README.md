@@ -109,10 +109,17 @@ The house networks are multiple SSIDs bridged onto the same LAN. Names on the
 same physical router are grouped so `wlan0` on a router's 5 GHz SSID and `wlan1`
 on that same router's 2.4 GHz SSID are not mistaken for redundancy.
 
-The manager holds each radio on one selected configured network by controlling
-that interface's `wpa_supplicant` network selection. It does not use
-NetworkManager; this Banana Pi runs netplan, `systemd-networkd` and
-`wpa_supplicant`.
+The manager holds each radio on one chosen network, and how it does that depends
+on the board. On the Banana Pi -- netplan, `systemd-networkd`, one
+`wpa_supplicant` per interface -- it enables exactly one of that supplicant's
+networks and disables the rest. On the Jetson it brings a NetworkManager profile
+up on the interface, and disables nothing at all: an active connection is left
+alone and the same profile is never put on two devices at once, so the two radios
+cannot collapse onto one network without anything being taken away from them.
+
+The second is much the safer, because it removes the only way this design could
+strand a wifi-only rover. A manager that dies under NetworkManager leaves nothing
+to undo and every network still autoconnectable.
 
 The service address is safe only with the accompanying ARP settings in
 [`99-dual-wifi.conf`](99-dual-wifi.conf):
@@ -140,8 +147,8 @@ Requests go through `/run/wifi-dual.request`; status is published to:
 /run/wifi-dual.json
 ```
 
-The normal console/network helpers use the same mechanism rather than changing
-`wpa_supplicant` behind the manager's back.
+The normal console/network helpers use the same mechanism rather than moving a
+radio behind the manager's back, which the manager would undo within the second.
 
 A manually chosen network is held long enough to make the user's choice meaningful
 instead of immediately being undone by a small score difference.
@@ -178,11 +185,12 @@ files. After reviewing a network change and ensuring there is a recovery path:
 python deploy/deploy.py --system --only wifi_roam
 ```
 
-On the current rover that system install is `install.sh --no-roamer`: the three
-house networks, the `wifi_ctl.sh` helper and its `NOPASSWD` rule, and nothing
-that roams. The console needs that helper to list or switch networks; the roamer
-and the dual-radio manager both drive `wpa_supplicant` against netplan and this
-host runs NetworkManager, so they are staged and not installed.
+On the current rover that system install is `install.sh --dual`: the three house
+networks, the `wifi_ctl.sh` helper the console needs to list and switch between
+them, and the dual-radio manager armed. The one-radio roamer is deliberately not
+installed and must never run alongside the manager -- they are alternative owners
+of the same radios, one moving a radio when it thinks the link has failed and the
+other holding both where it put them, and arming either disables the other.
 
 The profiles are handled by `install-profiles.sh`, which is where the rule that
 matters lives: **one profile per network and not one of them pinned to a radio.**

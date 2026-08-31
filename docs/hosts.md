@@ -35,18 +35,22 @@ speech path is unchanged.
 | GPU driver | 595.78, reporting CUDA 13.2; no CUDA toolkit and no `nvcc` |
 | Python | system CPython 3.12, and unlike the Banana Pi it **has pip** |
 | power mode | `nvpmodel` **1 = 25W**; mode 2 `MAXN_SUPER` is available and unused |
-| rover address | `192.168.1.88` (onboard radio) by DHCP; the dongle's lease moves |
+| rover address | **`192.168.1.80`**, the service address, held by whichever radio is healthy |
 | mDNS | `jetson-orin.local`, which Windows does resolve here |
 | GPIO driver-board UART | `/dev/ttyTHS1` at 115200 |
 | lidar serial | `/dev/ttyACM0` at 230400 |
 
-**There is no floating service address.** The Banana Pi kept `192.168.1.80` on
-whichever radio was healthy and `wifi_dual` moved it. The Orin has two working
-radios since 2026-08-31, but nothing moves an address between them, so each
-answers on its own DHCP lease and either will do. Those leases can move -- this
-LAN has a second DHCP server on it -- so `jetson-orin.local` is the name to
-prefer, and the addresses are the thing to re-check when it stops answering. See
-[What is still missing](#what-is-still-missing).
+**Use `192.168.1.80`.** It is the address that stays true: `wifi_dual` holds it
+on whichever radio is healthy and moves it, with a gratuitous ARP, when the
+traffic moves. Each radio also has its own DHCP lease -- `192.168.1.88` for the
+onboard one at the time of writing -- and those are useful for getting at one
+particular radio, but they move, because this LAN has a second DHCP server
+answering alongside the router. `jetson-orin.local` resolves to whichever radio
+answers first and is the name to use when the service address is not available.
+
+The manager ARP-probes `.80` before claiming it, every time. If anything answers
+for it the rover runs without a service address rather than starting an address
+war, and says so in its status.
 
 ## Hardware links
 
@@ -143,11 +147,17 @@ As of 2026-08-31 the onboard radio is on `TheGreatLord` and the dongle takes the
 strongest network that one is not using -- `TheMaharaja` when it is up, which at
 the moment is not for long: see [The second radio](#the-second-radio).
 
-Each radio has its own DHCP lease and either answers SSH and the daemon on 8769.
-That is two ways in, not failover: nothing watches the two paths, nothing moves
-a service address between them, and nothing moves the spare when the
-neighbourhood changes. `wifi_dual` did all three on the Banana Pi and still
-needs porting.
+Each radio has its own DHCP lease and either answers SSH and the daemon on 8769,
+and since 2026-08-31 **this is failover rather than merely two ways in**:
+`wifi_dual` runs here, pings the gateway out of both radios every second, holds
+`192.168.1.80` on the healthier one and moves it when that changes. What it
+decided last is in `/run/wifi-dual.json`, and the console's network panel reads
+it -- see [`wifi_roam/README.md`](../wifi_roam/README.md).
+
+```bash
+ssh orin 'sudo -n /usr/local/sbin/wifi_ctl.sh status'   # both radios, one line each
+ssh orin 'journalctl -u wifi-dual -n 20'                # and why it did it
+```
 
 ### Which networks this rover can join
 
@@ -244,37 +254,37 @@ here has:
 The console is at:
 
 ```text
-https://jetson-orin.local:8771/
+https://192.168.1.80:8771/
 ```
 
-**Use the name, not an address.** It is the only URL this rover's certificate is
-valid for, and it is the only one that keeps working when a radio changes: the
-console listens on `0.0.0.0`, `avahi-daemon` publishes the name on every
-interface, so whichever radio is up answers to it. An address URL gets a
-certificate warning every time and stops working when that lease moves.
+**That address is the one that survives a failover**, and the certificate happens
+to be valid for it. `wifi_dual` holds `192.168.1.80` on whichever radio is
+healthy and moves it across with a gratuitous ARP when the traffic moves, so a
+browser pointed at it keeps working when a radio dies -- the TCP connections open
+at that moment are what a failover costs, and nothing else. Verified 2026-08-31.
+
+`https://jetson-orin.local:8771/` is the fallback and also validates. It follows
+whichever radio is up, because `avahi-daemon` publishes the name on every
+interface and the console listens on `0.0.0.0`, but not instantly: mDNS answers
+are cached for a couple of minutes, so a browser can sit on a dead address until
+that expires. The service address has no such lag.
+
+A raw per-radio address -- `192.168.1.88` and the like -- works but gets a
+certificate warning every time, and stops working when that lease moves.
 
 The certificate is signed by a CA generated on this host and named `UGV rover
 console CA (jetson-orin)`, and the workstation does trust it -- it is in both
 `Cert:\CurrentUser\Root` and `Cert:\LocalMachine\Root`, alongside the Banana
-Pi's older one. So the name gives a clean padlock. (`curl` on Windows still
+Pi's older one. So both URLs above give a clean padlock. (`curl` on Windows still
 calls it broken with "the revocation status is unknown", which is schannel's
 complaint about a private CA rather than anything wrong with the certificate.)
 
-Two things about it are wrong and neither is urgent. Its subject-alternative
-names are `jetson-orin`, `jetson-orin.local`, `localhost`, `127.0.0.1`,
-`192.168.55.1` and **`192.168.1.80`** -- the Banana Pi's old floating address,
-which belongs to a machine that is off the network, while neither of this
-rover's own addresses is listed. Verified 2026-08-31: connecting by name
-validates against either radio, and connecting to `192.168.1.88` or
-`192.168.1.90` fails with an IP address mismatch. Regenerating it with
-`drive_web/make_cert.sh` would fix the fallback URLs; the name works either way.
-
-And the name follows a radio, but not instantly. mDNS answers are cached for a
-couple of minutes, and it currently resolves to the dongle's address -- the less
-reliable radio of the two. If a radio drops, a browser can sit on the dead
-address until that cache expires; reloading after a minute or two picks up the
-other one. There is no floating service address to make this seamless, which is
-the `wifi_dual` port again.
+Its subject-alternative names are `jetson-orin`, `jetson-orin.local`,
+`localhost`, `127.0.0.1`, `192.168.55.1` and `192.168.1.80`. That last one was
+put there for the Banana Pi and looked like a leftover for a day; now that this
+rover holds the same service address it is the most useful name in the
+certificate. Measured 2026-08-31: connecting by name or to `.80` validates,
+connecting to a per-radio lease fails with an IP address mismatch.
 
 ## ROS 2
 
@@ -307,7 +317,9 @@ never be copied into Git.
 
 ## What is still missing
 
-Three things, in the order they matter.
+Two things, in the order they matter. Failover between the two radios used to be
+the third and is done: `wifi_dual` is ported to NetworkManager and running -- see
+[the Network section](#network).
 
 **The chassis calibration.** `~/ugv/odometry.json` holds the gyro's scale and the
 wheels' counts per metre, is deliberately gitignored as belonging to the machine
@@ -318,20 +330,6 @@ cannot drive. Sensing is unaffected -- the lidar, the map and
 `describe_surroundings` all work. The cure is `ros_nav/calibrate_chassis.py`,
 which measures it by driving the rover, or recovering the old file from the
 Banana Pi's disk, which describes the same chassis and is therefore still true.
-
-**Failover between the two radios.** Both radios now work and are associated to
-different routers, but that is redundancy a person can use, not redundancy the
-rover uses: nothing watches the two paths and nothing moves a service address to
-the healthier one. `wifi_dual.py` does exactly that on the Banana Pi by driving
-`wpa_cli` against netplan and `systemd-networkd`, and this host runs
-NetworkManager, so it needs porting rather than installing. Two interfaces on one
-subnet also want a policy rule each, or replies leave by whichever radio the main
-routing table prefers -- the fault that once left the rover unreachable at its own
-address for eleven minutes. The roamer is staged and its replay test passes; only
-the console helper has been installed, and the timer, the units and the
-dual-radio manager have deliberately **not** been. The roamer is a one-radio
-script that would start moving the two radios this rover deliberately keeps
-apart.
 
 **The dongle used to go deaf, and the rover now repairs it by itself.**
 Measured on 2026-08-31: it would associate and get a lease, then lose the link
@@ -375,10 +373,10 @@ to say behaving exactly like the stock driver. So the patch is a real fix for a
 real bug that matches the symptom, and it is not yet known to be the fix for
 this one.
 
-What is still missing is that a reload is a repair, not a diagnosis. Nothing
-reports how often the spare needed rescuing, and nothing moves the rover's
-service address to the healthy radio when one of them is out. That is the
-argument for porting `wifi_dual`.
+What is still missing is that a reload is a repair, not a diagnosis: nothing
+reports how often the spare needed rescuing. The other half of that gap is
+closed -- `wifi_dual` now moves the service address to the healthy radio when one
+of them is out, so a deaf dongle costs the rover a spare rather than its address.
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.
