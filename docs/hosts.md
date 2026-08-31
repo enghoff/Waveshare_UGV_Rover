@@ -159,6 +159,22 @@ ssh orin 'sudo -n /usr/local/sbin/wifi_ctl.sh status'   # both radios, one line 
 ssh orin 'journalctl -u wifi-dual -n 20'                # and why it did it
 ```
 
+Measured on 2026-08-31, by taking the radio that was carrying the traffic off its
+network while watching over an SSH session to `192.168.1.80`. The session did not
+drop. The manager held for fifteen seconds first, because the only radio left was
+33 dB worse and a blip is not worth a handover, then moved the traffic and the
+address together: **about twenty seconds from the fault to the rover answering
+out of the other radio.** The one it had just left came back by itself half a
+minute later as the new standby, on a different router.
+
+Two NetworkManager-specific things showed up in that log and are worth knowing.
+NetworkManager removed the service address the moment it reconfigured the
+interface -- `192.168.1.80 is no longer on wlP1p1s0; putting it back` -- which is
+why the manager re-asserts it every tick rather than only when the traffic moves.
+And the radio that was released found its own way back onto a network, because
+nothing had been disabled to hold it: under `wpa_supplicant` that recovery is
+four separate mechanisms and here it is NetworkManager's ordinary autoconnect.
+
 ### Which networks this rover can join
 
 All three house networks, on either radio. NetworkManager holds one profile per
