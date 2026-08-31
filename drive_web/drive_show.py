@@ -7,9 +7,9 @@ from typing import Any
 
 import _paths  # noqa: F401 — console_model
 from console_model import (
-    ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_STALE_S, LOG_LINES,
-    LOUD_PHASES, MAP_LEGEND, Reply, STATUS_FIELDS, TURN_ROWS, WIFI_POLL_S,
-    move_sentence, or_dash, rung, wifi_verdict, worth_logging,
+    ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_STALE_S,
+    MAP_LEGEND, Reply, STATUS_FIELDS, WIFI_POLL_S,
+    move_sentence, or_dash, rung, wifi_verdict,
 )
 
 
@@ -40,13 +40,12 @@ class SessionShow:
     def show_tools(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):
             self.link_text = "connected, but it would not say what it can do"
-            self.say(f"list_tools failed: {body.get('error')}\n", "bad")
+            self.say(f"list_tools failed: {body.get('error')}", "bad")
             return
         self.tools = [t.get("function", {}).get("name", "?") for t in body["tools"]]
         self.can_drive = {"drive", "turn_in_place"} <= set(self.tools)
         self.link_text = (f"{self.address}: {len(self.tools)} tools"
                           + ("" if self.can_drive else ", none of them driving"))
-        self.say("tools: " + ", ".join(self.tools) + "\n", "quiet")
         if not self.can_drive:
             # Said plainly, because the failure here is a page of live buttons on a
             # rover with no navigator behind them, and the cause is nearly always a
@@ -54,7 +53,8 @@ class SessionShow:
             self.say("this daemon is offering no driving tools. It was probably "
                      "started without --ros-nav; or the ROS 2 stack is still "
                      "coming up, which takes the best part of a minute after a "
-                     "reboot, in which case connecting again will pick them up.\n", "bad")
+                     "reboot, in which case connecting again will pick them up.",
+                     "bad")
 
     def show_status(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):
@@ -112,45 +112,19 @@ class SessionShow:
                                                       if note else "")
 
     def show_move(self, move: dict[str, Any]) -> None:
-        """The line under the map always; the transcript only when the rover has
-        said something it has not said before.
+        """The line under the map: what the rover says it is doing, now.
 
-        `seq` is the navigator's own counter of the sentences it has published, and
-        it is the whole reason this can be polled: without it there is no way to
-        tell a phase that has just started from the same phase read again a tenth
-        of a second later, and the log would fill with the same line.
-
-        `missed` holds anything the rover said between the last poll and this one,
-        oldest first, because a phase can be shorter than the gap between two polls
-        -- and the phase that usually is happens to be the replan, which is the one
-        worth reading. Those go to the transcript in order; only the newest reaches
-        the panel, which is a statement about now.
-
-        A move quicker than the poll is answered before any of this arrives, and its
-        commentary would then read as news about something already reported -- the
-        planning line printed underneath the outcome it led to. So once a move's
-        reply has gone into the log, what the rover said during that move is dropped
-        rather than printed late, up to and including the record that ends it.
-        Commentary about a move this console did not start is never in that state and
-        is always printed, which is how a rover being driven by something else -- or
-        from the other browser -- can still be watched here.
+        `seq` is the navigator's own counter of the sentences it has published about
+        the move it is running, and the poll asks against it -- `since_seq` -- so a
+        phase that has just started can be told from the same phase read again a
+        tenth of a second later. Only the newest sentence is drawn, because the panel
+        is a statement about now: whatever the rover said between two polls has
+        already been overtaken by the time it arrives here.
         """
         sentence = move_sentence(move)
         self.plan_text = sentence or "-"
-        seq = move.get("seq")
-        if seq is None or seq == self.move_seq:
-            return
-        self.move_seq = seq
-        for record in (move.get("missed") or []) + [move]:
-            if self.move_answered:
-                # Still working through what the reply overtook. The ending is the
-                # last of it, and anything after belongs to a move not yet answered.
-                self.move_answered = record.get("phase") != "ended"
-                continue
-            line = move_sentence(record)
-            if line and worth_logging(record):
-                self.say(f"{'':10}   <~ {line}\n",
-                         "note" if record.get("phase") in LOUD_PHASES else "quiet")
+        if move.get("seq") is not None:
+            self.move_seq = move["seq"]
 
     def show_map(self, body: dict[str, Any]) -> None:
         if not body.get("ok"):
@@ -425,55 +399,45 @@ class SessionShow:
         self.track_text = (f"on, {who}"
                            + ("" if faces is None else f", {faces} in view"))
 
-    def tally_turn(self, reply: Reply) -> None:
-        asked = float(reply.arguments.get("angle_deg", 0.0))
-        turned = reply.body.get("turned_deg")
-        ratio = (turned / asked) if (turned is not None and asked) else None
-        self.turns.insert(0, {
-            "asked": f"{asked:+.0f}",
-            "turned": "-" if turned is None else f"{turned:+.1f}",
-            "ratio": "-" if ratio is None else f"{ratio:.2f}",
-            "secs": f"{reply.seconds:.1f}",
-            "reason": str(reply.body.get("reason")
-                          or reply.body.get("error") or "-")})
-        del self.turns[TURN_ROWS:]
+    # --- the notice -----------------------------------------------------------
+    def show_outcome(self, reply: Reply) -> None:
+        """What became of a call somebody asked for, when there is anything to say.
 
-    # --- the transcript -------------------------------------------------------
-    def log_sent(self, name: str, arguments: dict[str, Any]) -> None:
-        shown = ", ".join(f"{k}={v}" for k, v in arguments.items())
-        self.say(f"{time.strftime('%H:%M:%S')}  -> {name}({shown})\n", "sent")
-
-    def log_reply(self, reply: Reply) -> None:
+        This is what is left of a transcript that used to carry every call and every
+        reply. A call that worked has already changed the panel it belongs to -- the
+        map redrew, the light came on, the pose is new -- so saying so again in words
+        was most of what that transcript held and all of what it cost. What no panel
+        shows is a call that failed, and a move's own verdict on itself: "arrived"
+        and "there was something in the way" leave the same picture behind.
+        """
         body = reply.body
-        ok = bool(body.get("ok"))
-        head = f"{'':10}   <- {reply.seconds:5.2f}s  "
-        if not ok and "error" in body:
-            self.say(head + f"failed: {body['error']}\n", "bad")
+        if not body.get("ok"):
+            why = (body.get("error") or body.get("reason")
+                   or "the rover did not say why")
+            self.say(f"{reply.name} failed: {why}", "bad")
             return
-        summary = str(body.get("reason", "ok" if ok else "failed"))
+        if reply.name not in ("drive", "turn_in_place", "drive_to"):
+            return
+        summary = str(body.get("reason") or "done")
         for key, unit in (("travelled_m", " m"), ("turned_deg", " deg"),
-                          ("remaining_m", " m to go"),
-                          ("clear_ahead_m", " m clear ahead")):
+                          ("remaining_m", " m to go")):
             if body.get(key) is not None:
                 summary += f", {body[key]}{unit}"
-        self.say(head + summary + "\n", "good" if ok else "bad")
-        for key in ("detail", "note", "surroundings", "text"):
-            if body.get(key):
-                self.say(f"{'':17}{body[key]}\n", "quiet")
+        self.say(f"{reply.name}: {summary}", "good")
 
     def say(self, text: str, tag: str = "") -> None:
-        """One line into the transcript, numbered.
+        """The one line the console gets to say for itself, replacing whatever it
+        said last.
 
-        The number is what lets a browser that has been open for an hour and one
-        that just arrived be served from the same list: each stream remembers how
-        far it has read and is sent the rest. Trimmed from the front for the reason
-        any log window is -- this is meant to be left open for an afternoon of test
-        moves.
+        A notice is for the thing with no panel of its own: a click that was dropped,
+        a button that was refused, a move that ended badly. It carries a count rather
+        than a time, so that a console with nothing new to say builds a state
+        identical to the last one and therefore publishes nothing at all -- the page
+        fades the line out on a timer of its own. Called on the pump thread, like
+        everything else that builds the state, so the next tick carries it.
         """
-        with self.lock:
-            self.log_seq += 1
-            self.log.append({"seq": self.log_seq, "text": text, "tag": tag})
-            del self.log[:-LOG_LINES]
+        self.notice_seq += 1
+        self.notice = {"seq": self.notice_seq, "text": text.strip(), "tag": tag}
 
     # --- shutting down --------------------------------------------------------
     def close(self) -> None:

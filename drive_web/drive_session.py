@@ -117,17 +117,13 @@ class Session(SessionShow):
         # it is running. Kept so that polling three times a second writes one line
         # per thing the rover said rather than thirty. See move_sentence.
         self.move_seq: int | None = None
-        # Set when a move's reply has been printed, and cleared again by the record
-        # that says that move ended. Everything in between is commentary the reply
-        # has already overtaken -- see _show_move.
-        self.move_answered = False
         self.poll_outstanding = False
         self.poll_at = 0.0
         # The search for the rover, which runs on its own thread and is tried again
         # for as long as it keeps failing -- see mind_the_link. `find_at` is when the
         # last one started, `find_tries` how many have failed in a row, and
-        # `said_lost` whether the log has been told, so that a rover switched off for
-        # an hour costs one line rather than one line every fifteen seconds.
+        # `said_lost` whether the notice line has been told, so that a rover switched
+        # off for an hour is said once rather than every fifteen seconds.
         self.find_outstanding = False
         self.find_at = 0.0
         self.find_tries = 0
@@ -214,11 +210,13 @@ class Session(SessionShow):
                                      "radios": [], "service": "",
                                      "safe_join": False}
 
-        self.turns: list[dict[str, str]] = []
         self.clear_armed_until = 0.0
 
-        self.log: list[dict[str, Any]] = []
-        self.log_seq = 0
+        # The one line the console says for itself, and the count that makes a new
+        # one a new one. See `say`: there is no transcript behind this, so a notice
+        # stands until something else is worth saying.
+        self.notice: dict[str, Any] = {"seq": 0, "text": "", "tag": ""}
+        self.notice_seq = 0
         # Filled in by drive_web when there is a microphone: a callable returning
         # what the page should draw for it. A callable rather than a value because
         # the session it reports on lives in another thread and is replaced every
@@ -290,7 +288,7 @@ class Session(SessionShow):
                                f"({self.light_level})"},
             "battery": self.battery,
             "wifi": self.wifi,
-            "turns": self.turns,
+            "notice": self.notice,
             "clear_armed": self.clear_armed_until > time.monotonic(),
             "watching": self.listeners,
             "omni": self.omni() if self.omni else {"available": False,
@@ -414,7 +412,7 @@ class Session(SessionShow):
             if (self.busy_since is None
                     and now - self.answered_at > LINK_LOST_S):
                 self.say(f"no answer from the rover for "
-                         f"{now - self.answered_at:.0f} s, so reconnecting\n", "bad")
+                         f"{now - self.answered_at:.0f} s, so reconnecting", "bad")
                 self.said_lost = True
                 self.find_tries = 0
                 self.connect()
@@ -431,7 +429,7 @@ class Session(SessionShow):
         stop that never landed at all -- and then the move channel says nothing for
         as long as its own patience, which is four minutes. Driving off to a place
         somebody clicked four minutes ago is a rover acting on an intention that has
-        expired, so the click is forgotten and the transcript says so.
+        expired, so the click is forgotten and the notice line says so.
         """
         if self.pending_target is not None and now > self.pending_until:
             self.forget_target("the move it interrupted did not let go of the "
@@ -461,7 +459,7 @@ class Session(SessionShow):
                 and now - self.alone_since > ORPHAN_GRACE_S):
             self.stopped_orphan = True
             self.say("nobody is watching and a move is running, so it is being "
-                     "stopped\n", "bad")
+                     "stopped", "bad")
             self.stop()
 
     def publish_soon(self) -> None:
@@ -641,30 +639,26 @@ class Session(SessionShow):
 
     def watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.watch is None:
-            self.say(f"not connected, so {name} was not sent\n", "bad")
+            self.say(f"not connected, so {name} was not sent", "bad")
             return
-        self.log_sent(name, arguments or {})
         self.watch.submit(name, arguments)
 
     def move(self, name: str, arguments: dict[str, Any]) -> None:
         """A bounded move, one at a time.
 
         Refused here rather than sent and refused by the daemon. The daemon's answer
-        would be `busy`, which is correct and tells you nothing, and it would land in
-        the log between the move and its result, where it reads like the move having
-        failed.
+        would be `busy`, which is correct and tells you nothing, and it would arrive
+        as the notice on a move that is running perfectly well, where it reads like
+        that move having failed.
         """
         if self.moves is None or not self.can_drive:
-            self.say(f"no driving tools on this rover, so {name} was not sent\n",
-                     "bad")
+            self.say(f"no driving tools on this rover, so {name} was not sent", "bad")
             return
         if self.busy_since is not None:
-            self.say(f"{self.busy_name} is still running; stop it or wait\n", "quiet")
+            self.say(f"{self.busy_name} is still running; stop it or wait", "quiet")
             return
         self.busy_since = time.monotonic()
         self.busy_name = name
-        self.move_answered = False      # a new move's commentary is wanted again
-        self.log_sent(name, arguments)
         self.moves.submit(name, arguments)
 
     def tap(self, action: dict[str, Any]) -> None:
@@ -694,13 +688,12 @@ class Session(SessionShow):
         if self.map_view is None:
             return
         if "drive_to" not in self.tools:
-            self.say("this rover has no drive_to tool, so the tap was not sent\n",
-                     "quiet")
+            self.say("this rover has no drive_to tool, so the tap was not sent", "quiet")
             return
         where = tap_to_point(_number(action.get("col"), 0.0),
                              _number(action.get("row"), 0.0), self.map_view)
         if where is None:
-            self.say("cannot convert a tap without mapimg\n", "bad")
+            self.say("cannot convert a tap without mapimg", "bad")
             return
         x_m, y_m = where
         arguments: dict[str, Any] = {"x_m": round(x_m, 2), "y_m": round(y_m, 2)}
@@ -721,15 +714,15 @@ class Session(SessionShow):
         self.pending_until = time.monotonic() + TARGET_HANDOVER_S
         if replacing:
             # The stop from the first click is already in flight, so a second one
-            # would only put another line in the transcript.
-            self.say(f"{self.new_target()} instead\n", "note")
+            # would only say the same thing again.
+            self.say(f"{self.new_target()} instead", "note")
             return
         self.say(f"{self.new_target()}, so the {self.busy_name} in flight is being "
-                 f"stopped first\n", "note")
+                 f"stopped first", "note")
         self.stop(keep_target=True)
 
     def new_target(self) -> str:
-        """The waiting click as a phrase, for the transcript."""
+        """The waiting click as a phrase, for the notice line."""
         target = self.pending_target or {}
         return ("a new target at x {:+.2f}, y {:+.2f}".format(
             float(target.get("x_m") or 0.0), float(target.get("y_m") or 0.0)))
@@ -747,7 +740,7 @@ class Session(SessionShow):
         clicks."""
         if self.pending_target is None:
             return
-        self.say(f"{self.new_target()} was dropped: {why}\n", "quiet")
+        self.say(f"{self.new_target()} was dropped: {why}", "quiet")
         self.pending_target = None
         self.pending_until = 0.0
 
@@ -763,9 +756,8 @@ class Session(SessionShow):
         if not keep_target:
             self.forget_target("the rover was stopped")
         if self.halt is None:
-            self.say("not connected, so there was nothing to stop\n", "quiet")
+            self.say("not connected, so there was nothing to stop", "quiet")
             return
-        self.log_sent("stop_driving", {})
         self.halt.submit("stop_driving")
 
     def take_picture(self) -> None:
@@ -789,7 +781,7 @@ class Session(SessionShow):
         if self.watch is None:
             return
         self.say("asking the rover to reset the lidar's USB device; the camera and "
-                 "the face detector go with it for a few seconds\n", "note")
+                 "the face detector go with it for a few seconds", "note")
         self.watch_call("reset_lidar")
 
     def clear_map(self) -> None:
@@ -807,13 +799,12 @@ class Session(SessionShow):
             return
         self.clear_armed_until = 0.0
         if self.picture is None:
-            self.say("not connected, so the map was not cleared\n", "bad")
+            self.say("not connected, so the map was not cleared", "bad")
             return
         # On the map's connection, so that a picture already being drawn comes back
         # before the clear rather than after it. The other way round shows an empty
         # map and then replaces it with the old one, which reads as the clear having
         # failed.
-        self.log_sent("clear_map", {})
         self.picture.submit("clear_map")
 
     def map_settings(self, action: dict[str, Any]) -> None:
@@ -867,13 +858,12 @@ class Session(SessionShow):
         buys two scans and half a minute off channel, not a quicker one.
         """
         if self.scanner is None:
-            self.say("not connected, so no scan was sent\n", "bad")
+            self.say("not connected, so no scan was sent", "bad")
             return
         self.wifi["note"] = "scanning -- the rover is off channel for a few seconds"
         self.wifi["scanning"] = True
         self.wifi_outstanding = True
         self.wifi_at = time.monotonic()
-        self.log_sent("wifi_status", {"scan": True})
         self.scanner.submit("wifi_status", {"scan": True})
 
     def wifi_join(self, ssid: str) -> None:
@@ -931,8 +921,7 @@ class Session(SessionShow):
             self.find_outstanding = False
             if body.get("ok"):
                 if self.said_lost:
-                    self.say(f"the rover answered again on {body['address']}\n",
-                             "good")
+                    self.say(f"the rover answered again on {body['address']}", "good")
                 self.said_lost = False
                 self.find_tries = 0
                 self.connected(body["address"])
@@ -941,11 +930,11 @@ class Session(SessionShow):
             self.link_text = (f"no daemon answered; looking again every "
                               f"{self.retry_in():.0f} s")
             # Once, however long the outage lasts. The link line is what says this
-            # is still trying, and a line per try would bury everything else.
+            # is still trying, and saying it per try would bury everything else.
             if not self.said_lost:
                 self.said_lost = True
                 self.say("no rover daemon answered. Is it running, and is the "
-                         "address right? This will keep looking.\n", "bad")
+                         "address right? This will keep looking.", "bad")
             return
         if name == "nav_status":
             self.poll_outstanding = False
@@ -974,14 +963,10 @@ class Session(SessionShow):
         if name == "wifi_status":
             self.wifi_outstanding = False
             self.show_wifi(body)
-            # A scan is somebody pressing a button and waiting several seconds for
-            # an answer, so it goes in the transcript; the five-second poll behind
-            # it does not, or the log would be nothing else. The note has been
-            # saying a scan is in flight all that time, so it is also what says how
-            # it went -- until it did, a panel went on claiming to be scanning for
-            # the rest of the session.
+            # The note has been saying a scan is in flight for several seconds, so
+            # it is also what says how it went -- until it did, a panel went on
+            # claiming to be scanning for the rest of the session.
             if reply.arguments.get("scan"):
-                self.log_reply(reply)
                 self.wifi["scanning"] = False
                 if body.get("ok"):
                     heard = len(body.get("networks") or [])
@@ -1000,7 +985,7 @@ class Session(SessionShow):
             return
         if name == "tracking_status":
             # Polled by the console rather than asked for by a person, so it updates
-            # the panel and stays out of the transcript.
+            # the panel and says nothing.
             self.track_outstanding = False
             self.show_tracking(body)
             return
@@ -1010,26 +995,21 @@ class Session(SessionShow):
             if name == "get_lights":
                 return          # asked for on connect, not by a person
 
-        # What is left is something a person asked for, so it is logged.
+        # What is left is something a person asked for, so it gets the notice line
+        # if there is anything about it a panel does not already show.
         moved = name in ("drive", "turn_in_place", "drive_to")
         if moved:
             self.busy_since = None
             self.busy_name = ""
-            # The outcome is about to be printed, so anything the poll has not yet
-            # caught up with is commentary on a move the log has already finished
-            # telling. See show_move.
-            self.move_answered = True
-        self.log_reply(reply)
-        if name == "turn_in_place":
-            self.tally_turn(reply)
+        self.show_outcome(reply)
         if name in ("start_tracking", "stop_tracking") and body.get("ok"):
             self.show_tracking(body)
         if moved or name == "clear_map":
             self.refresh_map()
         # The move that was in flight has answered, so the wheels are free and a
-        # click that was waiting for them goes now. After the reply is logged, so
-        # the transcript reads as one thing ending and the next beginning rather
-        # than the new move appearing to have caused the old one's outcome.
+        # click that was waiting for them goes now. After that move's own outcome
+        # has been said, so the notice line reads as one thing ending and the next
+        # beginning rather than the new move claiming the old one's result.
         if moved and self.pending_target is not None:
             self.hand_over()
 

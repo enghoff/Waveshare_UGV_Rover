@@ -565,24 +565,23 @@ def test_finding_the_rover_again() -> None:
     check("...and it never grows past the ceiling",
           waits[2].retry_in(), drive_web.RECONNECT_MAX_S)
 
-    # --- what the log and the link line say ----------------------------------
+    # --- what the notice and the link line say -------------------------------
     talking = drive_web.Session("bpi-m4zero.local:8769", 3.0, 480)
     talking.connected = lambda address: None          # no sockets in a selftest
     for _ in range(3):
         talking.handle(drive_web.Reply(
             "__found__", {}, {"ok": False, "address": None}, 0.0))
-    said = [line["text"] for line in talking.log]
     check("a rover that is not there is reported once, not once a try",
-          sum("no rover daemon answered" in text for text in said), 1)
-    check("...and the line says it is still looking",
-          "keep looking" in " ".join(said), True)
+          talking.notice_seq, 1)
+    check("...and what it says is that it is still looking",
+          "keep looking" in talking.notice["text"], True)
     check("...as does the link", "looking again" in talking.link_text, True)
     check("...and the tries were counted", talking.find_tries, 3)
 
     talking.handle(drive_web.Reply(
         "__found__", {}, {"ok": True, "address": "bpi-m4zero.local:8769"}, 0.0))
-    check("coming back is worth a line", any("answered again" in line["text"]
-                                             for line in talking.log), True)
+    check("coming back is worth saying",
+          "answered again" in talking.notice["text"], True)
     check("...and the count starts over", talking.find_tries, 0)
 
 
@@ -795,7 +794,7 @@ def test_a_second_click_takes_over() -> None:
     check("...and does not try to overtake it on the move connection",
           len(session.moves.sent), 1)
     check("...and says so, naming where it will go instead",
-          "new target" in session.log[-2]["text"], True)
+          "new target" in session.notice["text"], True)
 
     # The rover answers the move it was told to stop. That is the wheels coming
     # free, and the click that was waiting goes then.
@@ -852,7 +851,7 @@ def test_a_second_click_takes_over() -> None:
     session.mind_the_target(held + 0.1)
     check("...and dropped once there is not", session.pending_target, None)
     check("...out loud, because a click that evaporates looks like a bug",
-          "dropped" in session.log[-1]["text"], True)
+          "dropped" in session.notice["text"], True)
 
     # A reconnect throws the move connection away, so the reply that would have
     # handed the wheels over is never coming.

@@ -1617,6 +1617,36 @@ def test_discovery_stays_on_this_board():
               "Icp/Strategy" in rtab_settings and "Icp/PM" not in rtab_settings, True)
         check("...and RTAB-Map's own loop closure is switched on",
               "RGBD/ProximityBySpace" in rtab_cfg, True)
+
+        # The three settings that stopped this rover mapping on 2026-08-31, each
+        # of which failed by quietly doing nothing. They are checked as numbers
+        # rather than as text because what matters is the relationship between
+        # them, and because the next person to tune this file will move them.
+        def setting(name, default=None):
+            hit = re.search(r"^\s*%s:\s*\"?([0-9.]+)" % re.escape(name),
+                            rtab_settings, re.M)
+            return float(hit.group(1)) if hit else default
+
+        # A rover that searches for closures out to LocalRadius and then refuses
+        # any candidate whose nearest node is past ProximityPathFilteringRadius
+        # spends the drive proposing closures and discarding them, at debug level
+        # where nothing is watching. The default filter is 1 m and the search
+        # here is 3 m, so leaving the filter unset is the same bug.
+        check("the closure filter is not tighter than the closure search",
+              setting("RGBD/ProximityPathFilteringRadius", 1.0)
+              >= setting("RGBD/LocalRadius", 10.0), True)
+        # Two views of a room from half a metre apart share far less than 40% of
+        # their returns. At 0.4 this threshold rejected 37 of 104 links between
+        # consecutive keyframes -- each of those left at raw odometry -- and
+        # every loop closure the drive offered.
+        check("...and the correspondence ratio is one 2D scans can reach",
+              setting("Icp/CorrespondenceRatio", 0.1) <= 0.2, True)
+        # ICP can only pull in an error it can see from where it starts, and
+        # where it starts is the wheels between keyframes and the drifted graph
+        # at a closure. At 0.1 m no loop closed on the recorded drive whatever
+        # else was changed.
+        check("...and ICP looks far enough to fix the drift it exists to fix",
+              setting("Icp/MaxCorrespondenceDistance", 0.1) >= 0.3, True)
     # Clearing the map has to reach whichever mapper is running. The two share
     # nothing -- slam_toolbox has a Reset service of its own, RTAB-Map answers a
     # bare std_srvs Empty at its node name inside its own namespace -- so a

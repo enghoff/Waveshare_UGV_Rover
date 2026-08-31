@@ -647,6 +647,64 @@ about the running stack rather than a flag someone has to keep in step with the
 crontab. There is never more than one mapper up to answer it, except in compare
 mode, where slam_toolbox is asked first because it is the one steering.
 
+### The first drive smeared, and how the recording found out why
+
+The first real drive under RTAB-Map produced a map of a room with its walls
+doubled and a sunburst of free space raked out through them. **The cause was
+this rover's own configuration, in three places, and each of them failed by
+quietly doing nothing.** In fourteen minutes and 13.7 metres of driving the
+graph closed not one loop, and a third of the links between consecutive
+keyframes had no scan matching in them at all — they were raw odometry with a
+gyro's heading on a skidding pair of tracks.
+
+Two settings were tuned to be slow to believe a match, which is the right bias
+for a mapper that can weld two rooms together, and both were tuned past the
+point where this rover's scans can satisfy them: ICP was allowed to look 10 cm
+for a point's partner, which is less than the error it exists to correct, and a
+match had to pair up 40% of the scan, which two views of a room from half a
+metre apart never do. The third was a disagreement rather than a threshold —
+closures were searched for out to three metres and then discarded unless the
+nearest node was within one, which is RTAB-Map's default and undoes the search
+completely. Every one of those discards was logged, at a debug level nothing was
+reading.
+
+`config/rtabmap.yaml` now says what each of those is and what it was measured
+at. The numbers came from replaying the drive rather than from another drive:
+
+```bash
+# the map database is the recording -- every scan and pose of that drive
+ssh orin 'ls ~/ugv/ros_nav/maps/'          # rtabmap.db, and fault-*.db kept aside
+ssh orin 'bash ~/ugv/ros_nav/native.sh rtabmap-reprocess -g2 --uwarn \
+              --Icp/CorrespondenceRatio 0.2 maps/fault-2026-08-31-smeared.db /tmp/out.db'
+```
+
+**`rtabmap-reprocess` replays a database through RTAB-Map with any parameters
+you name**, in about twenty seconds, and `-g2` writes the assembled occupancy
+grid beside the output so the maps can be compared as pictures rather than as
+opinions. `--uwarn` prints the rejections and `--udebug` prints why a closure was
+never proposed, which is where the discarded candidates were found.
+`rtabmap-detectMoreLoopClosures` on the same database is the second half of the
+argument: it found 27 closures in data the live rover had found none in, which
+is what proved the scans were fine and the settings were not.
+
+What the replay measured, on the drive that smeared:
+
+| | as it drove | after the fix |
+|---|---|---|
+| loop closures | 0 | 26 |
+| keyframe links with scan matching in them | 67 of 104 | 99 of 104 |
+| assembled map | 16.0 × 15.3 m | 12.0 × 10.4 m |
+| occupied cells | 62716 | 33712 |
+
+The map being *smaller* is the point: a room does not grow, so the extra four
+metres in each direction were the same walls drawn twice.
+
+**One thing the recording cannot answer.** A database holds the keyframes RTAB-Map
+chose, not the ten scans a second the lidar produced, so how often a keyframe
+should be taken — `RGBD/LinearUpdate` and `RGBD/AngularUpdate`, both 0.2 here —
+cannot be replayed from it. Testing that needs a rosbag of `/scan` and `/tf`,
+which nothing here records yet.
+
 One thing did not have to change, and it is the one most likely to have: the two
 mappers publish their grids with the same QoS. RTAB-Map's `/map` is reliable and
 transient-local, which is what `nav_bridge` and Nav2's `map_subscribe_transient_local`

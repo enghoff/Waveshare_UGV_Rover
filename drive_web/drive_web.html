@@ -4,15 +4,13 @@
   rover; nothing here knows a socket from a hole in the ground.
 
   The layout is the reason this file exists. The tkinter console it replaced put
-  every panel at a fixed size and a fixed place, so the transcript and the turns
-  table -- much of the point of the thing -- sat below the bottom edge of a 1080p
-  screen with no way to scroll to them, and a wider window only added empty space
-  beside the camera. Here the panels are cards in three stacks that pack to their
-  own contents and wrap when the window can no longer hold them side by side: three
-  columns on a monitor, two on a laptop, one on a phone, in that order down the
-  page, with the transcript and the turns table on a line of their own at the
-  bottom because they are read across rather than down. The page scrolls like a
-  page.
+  every panel at a fixed size and a fixed place, so the panels along the bottom --
+  much of the point of the thing -- sat below the edge of a 1080p screen with no way
+  to scroll to them, and a wider window only added empty space beside the camera.
+  Here the panels are cards in three stacks that pack to their own contents and wrap
+  when the window can no longer hold them side by side: three columns on a monitor,
+  two on a laptop, one on a phone, in that order down the page. The page scrolls
+  like a page.
 
   Stacks rather than one grid of cards, and that is not a preference. In a grid
   every card in a row is as tall as the tallest one in it, so a map eight hundred
@@ -105,11 +103,6 @@
   /* Past three comfortable columns there is nothing more to show, only wider
      columns to show it in, so the slack goes to the picture. */
   @media (min-width: 1400px) { .side { max-width: 460px; } }
-  /* The transcript and the turns table are read across rather than down, and a
-     basis of the whole width is what puts them on a line of their own however many
-     columns the rest came out as. */
-  .full { flex: 1 1 100%; }
-
   section {
     background: var(--card); border: 1px solid var(--line); border-radius: 8px;
     padding: 10px 12px 12px; box-shadow: var(--shadow); min-width: 0;
@@ -234,18 +227,20 @@
   #wifiRadios tr.stranger td { color: var(--dim); }
   #wifiService { margin-top: 4px; }
 
-  /* --- the transcript ---------------------------------------------------- */
-  #log {
-    max-height: 44vh; overflow: auto; background: var(--sunken);
-    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
-    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
-    white-space: pre-wrap; word-break: break-word;
+  /* --- the notice line ----------------------------------------------------
+     One line, under the header and above everything else, for the things that
+     have no panel of their own: a click that was dropped, a button that was
+     refused, a move that ended badly. It replaces a scrolling transcript of every
+     call and every reply, which cost about a third of what this console put on
+     the wire and was read by nobody once the panels below it were right. */
+  #notice {
+    margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px;
+    background: var(--sunken); border: 1px solid var(--line); font-size: 13px;
   }
-  #log div.sent { color: var(--accent); }
-  #log div.good { color: var(--good); }
-  #log div.bad { color: var(--bad); }
-  #log div.quiet { color: var(--dim); }
-  #log div.note { color: var(--note); }
+  #notice.good { color: var(--good); }
+  #notice.bad { color: var(--bad); }
+  #notice.quiet { color: var(--dim); }
+  #notice.note { color: var(--note); }
 
   kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px;
         border: 1px solid var(--line); border-bottom-width: 2px;
@@ -273,6 +268,8 @@
   <span id="busy"></span>
   <button id="stop" title="space or escape">STOP</button>
 </header>
+
+<div id="notice" hidden></div>
 
 <main>
 <div class="stack side">
@@ -420,27 +417,6 @@
       bus it shares with the camera and the lidar.</p>
   </section>
 </div>
-
-<div class="stack full">
-  <section id="turnsCard">
-    <h2>turns: asked against achieved</h2>
-    <div class="scroller">
-      <table>
-        <thead><tr><th>asked</th><th>turned</th><th>ratio</th><th>seconds</th>
-          <th>reason</th></tr></thead>
-        <tbody id="turnsList"></tbody>
-      </table>
-    </div>
-    <p class="hint">A turn is the one move whose result you cannot judge by watching
-      the rover. A column of ratios makes a systematic shortfall obvious in three
-      attempts instead of ten.</p>
-  </section>
-
-  <section id="logCard">
-    <h2>calls and replies</h2>
-    <div id="log"></div>
-  </section>
-</div>
 </main>
 
 <script>
@@ -449,7 +425,12 @@
 const $ = (id) => document.getElementById(id);
 let setup = null;          // the ladders and the colour key, fetched once
 let state = null;          // the last thing the server said
-let mapGen = -1, frameGen = -1, wifiPrint = "", radioPrint = "", turnsPrint = "";
+let mapGen = -1, frameGen = -1, wifiPrint = "", radioPrint = "";
+let noticeSeq = -1, noticeTimer = 0;
+// How long a notice stays on screen. Timed here rather than counted down in the
+// state, because a number the rover publishes is a number that changes, and a state
+// that changes is a state that goes down the wire.
+const NOTICE_S = 25;
 
 // --- talking to the server --------------------------------------------------
 
@@ -470,7 +451,6 @@ const number = (id) => $(id).value.trim();
 function listen() {
   const stream = new EventSource("/events");
   stream.addEventListener("state", (event) => render(JSON.parse(event.data)));
-  stream.addEventListener("log", (event) => append(JSON.parse(event.data)));
   stream.onerror = () => {
     // EventSource reconnects by itself; say so rather than looking frozen.
     $("link").textContent = "lost the console server -- reconnecting";
@@ -540,7 +520,7 @@ function render(next) {
   $("batteryNote").textContent = next.battery.note;
 
   drawWifi(next.wifi);
-  drawTurns(next.turns);
+  drawNotice(next.notice);
 
   // Only the moves go out while one is running; stop, the map and the camera
   // stay live, which is the whole reason they have their own connections.
@@ -945,36 +925,21 @@ function drawRadios(wifi) {
   }
 }
 
-function drawTurns(turns) {
-  const print = JSON.stringify(turns);
-  if (print === turnsPrint) return;
-  turnsPrint = print;
-  const list = $("turnsList");
-  list.replaceChildren();
-  for (const turn of turns) {
-    const row = document.createElement("tr");
-    for (const [key, cls] of [["asked", "num"], ["turned", "num"], ["ratio", "num"],
-                              ["secs", "num"], ["reason", "wrap"]]) {
-      const cell = document.createElement("td");
-      cell.className = cls; cell.textContent = turn[key];
-      row.append(cell);
-    }
-    list.append(row);
+// The console's own line, which the rover replaces rather than appends to. The
+// count is what makes a new notice new: the same sentence said twice is two
+// notices, and re-reading an unchanged one on every state would restart the fade
+// of a line that has been sitting there for twenty seconds.
+function drawNotice(notice) {
+  if (notice.seq === noticeSeq) return;
+  noticeSeq = notice.seq;
+  const box = $("notice");
+  box.textContent = notice.text;
+  box.className = notice.tag;
+  box.hidden = !notice.text;
+  clearTimeout(noticeTimer);
+  if (notice.text) {
+    noticeTimer = setTimeout(() => { box.hidden = true; }, NOTICE_S * 1000);
   }
-}
-
-function append(lines) {
-  const log = $("log");
-  // Only follow the tail if the tail is where you were: somebody scrolled back to
-  // read a reply should not be yanked to the bottom by the next status line.
-  const following = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-  for (const line of lines) {
-    const div = document.createElement("div");
-    div.className = line.tag; div.textContent = line.text.replace(/\n$/, "");
-    log.append(div);
-  }
-  while (log.childElementCount > 500) log.firstElementChild.remove();
-  if (following) log.scrollTop = log.scrollHeight;
 }
 
 // --- the controls -----------------------------------------------------------

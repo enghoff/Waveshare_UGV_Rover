@@ -48,8 +48,6 @@ POLL_S = 0.3               # how often to ask for nav_status while connected
 # from the arrival makes the gap a gap, and half a second of a core that is also
 # running SLAM is enough for the rest of the console to be answered.
 PICTURE_GAP_S = 0.5
-LOG_LINES = 500            # trimmed, so an afternoon of testing does not grow forever
-TURN_ROWS = 40
 # drive_to can take minutes of segments and turns -- the navigator allows a route
 # 15 m and 200 s -- while the default client timeout is 12 s, which is right for a
 # single hop and wrong for a route. Comfortably past the navigator's own budget, so
@@ -246,34 +244,6 @@ STATUS_FIELDS = (
 # "False" among a dozen other rows.
 ALARM_WHEN_FALSE = ("lidar_live", "position_trusted")
 ALARM_WHEN_TRUE = ("estop",)
-
-# The phases worth noticing when they do reach the transcript. A replan is not a
-# failure, so it is not red -- but it is the moment the rover changed its mind, and
-# it should not read like ordinary progress either.
-LOUD_PHASES = ("replanning", "stopping")
-
-
-def worth_logging(move):
-    """Whether this sentence belongs in the transcript as well as on the panel.
-
-    The test is whether it says anything the `-> drive(distance_m=0.5)` line just
-    above it did not. A plain drive or turn announcing itself as driving or turning
-    says nothing -- the request is already on screen a line higher, and echoing it
-    back is how a log becomes a thing people stop reading. What earns a line is the
-    planner's verdict on a request, and anything the rover decides for itself once
-    it is under way.
-
-    The ending earns none, for a different reason: the move's own reply is already
-    on its way carrying the distances, and two accounts of one ending a tenth of a
-    second apart read like two things having happened.
-    """
-    phase = (move or {}).get("phase")
-    if phase in ("planning", "replanning", "stopping"):
-        return True
-    # `driving` covers both "the wheels are turning" and "the planner came back
-    # with this route". Only the second is news.
-    return phase == "driving" and move.get("route_m") is not None
-
 
 def asked_for(move):
     """The request, in the units it was made in: what to put after "planning a

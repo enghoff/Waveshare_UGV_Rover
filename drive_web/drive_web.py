@@ -4,9 +4,9 @@
 This began as a tkinter window, and that window is where everything here was
 measured -- five connections, the pacing, the sentences the navigator publishes
 mid-move. What it could never do is fit on a screen. Its panels were laid out at
-fixed sizes because tk has no notion of reflowing them, so the log and the turns
-table sat below the bottom edge of a 1080p display with no scrollbar to reach
-them, and widening the window only added empty space to the right of the camera. A
+fixed sizes because tk has no notion of reflowing them, so the panels along the
+bottom sat below the edge of a 1080p display with no scrollbar to reach them, and
+widening the window only added empty space to the right of the camera. A
 browser solves that in about ten lines of CSS, and solves it properly: the page
 scrolls, the columns rewrap as the window narrows, and on a phone it comes out as
 one column in the right order.
@@ -345,13 +345,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- the stream -----------------------------------------------------------
     def _events(self) -> None:
-        """One `text/event-stream` per browser: the state when it changes, and the
-        transcript lines this browser has not had.
+        """One `text/event-stream` per browser: the state, whenever it changes.
 
         Chunked rather than length-delimited, because it never ends. Each browser
-        holds its own cursor into the log and its own idea of which version of the
-        state it has, so a page opened an hour in gets the whole transcript that has
-        survived trimming and a page that has been open all along gets one line.
+        holds its own idea of which version of the state it has, so a page that has
+        just opened is sent the current one and a page that has been open all along
+        is sent nothing until something moves. There is no second kind of message:
+        the console's own notice line rides in the state like every other panel,
+        which is what lets a browser that missed a few states still be correct
+        rather than missing a line of history for good.
         """
         session = self.session
         self._bound_the_backlog()
@@ -364,24 +366,20 @@ class Handler(BaseHTTPRequestHandler):
 
         with session.lock:
             session.listeners += 1
-        seen_version, cursor = -1, 0
+        seen_version = -1
         try:
             while session.running:
                 with session.lock:
                     if session.version == seen_version:
                         session.lock.wait(KEEPALIVE_S)
                     state, version = session.published, session.version
-                    lines = [line for line in session.log if line["seq"] > cursor]
                 out = ""
                 if not state:
                     # Nothing published yet, or a publish invalidated and being
                     # rebuilt. There is no picture here to be late with.
                     seen_version = version
                 elif version != seen_version:
-                    if self._room_for_one_more():
-                        out += f"event: state\ndata: {state}\n\n"
-                        seen_version = version
-                    elif not lines:
+                    if not self._room_for_one_more():
                         # The link is behind, so this state is already history.
                         # Dropping it costs the page one update. Writing it would
                         # cost the page every update after it, because the newest
@@ -390,13 +388,8 @@ class Handler(BaseHTTPRequestHandler):
                         # is what goes out in its place.
                         time.sleep(DROPPED_PAUSE_S)
                         continue
-                if lines:
-                    # The transcript is not a picture and is never dropped: a few
-                    # hundred bytes, each line said once, and a browser that missed
-                    # one would have a hole in it rather than an old view.
-                    cursor = lines[-1]["seq"]
-                    out += ("event: log\ndata: "
-                            + json.dumps(lines, separators=(",", ":")) + "\n\n")
+                    out = f"event: state\ndata: {state}\n\n"
+                    seen_version = version
                 self._chunk(out or ": keepalive\n\n")
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass                       # the tab went away, which is not an error

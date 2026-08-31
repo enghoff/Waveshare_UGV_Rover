@@ -424,20 +424,6 @@ def test_move_commentary() -> None:
                "asked": {"distance_m": 0.5}}),
           "driving 0.50 m")
 
-    # Which of those the transcript gets, as opposed to the panel, which gets all
-    # of them. The rule is whether it says anything the request line above it did
-    # not -- so the planner's verdict does and a turn restating the angle it was
-    # given does not.
-    logged = console_model.worth_logging
-    check("the transcript takes the planning", logged(click), True)
-    check("...and the route that came of it", logged(accepted), True)
-    check("...and the replan", logged(again), True)
-    check("...but not a turn saying it is turning",
-          logged({"phase": "turning", "kind": "turn_in_place"}), False)
-    check("...nor a drive saying it is driving",
-          logged({"phase": "driving", "kind": "drive"}), False)
-    check("...nor the ending, which the move's own reply is bringing",
-          logged(refused), False)
 
 def test_talk_session() -> None:
     """The protocol, against a service that only writes down what it was told."""

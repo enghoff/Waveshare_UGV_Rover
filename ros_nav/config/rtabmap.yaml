@@ -8,6 +8,14 @@
 # anything: if the two disagree about a corridor, it should be because the
 # algorithms disagree and not because one of them was allowed a longer look.
 #
+# The exceptions are the registration settings, and they are exceptions because
+# translating slam_toolbox's caution literally is what stopped this rover
+# mapping on its first drive: matched thresholds turned out to mean two very
+# different things to a correlative scan matcher running ten times a second and
+# to an ICP run once per keyframe. Those numbers now come from replaying that
+# drive -- the README's "The first drive smeared" has the method and the
+# measurements, and each comment below says what its number was measured at.
+#
 # ## No image reaches this node, and therefore no GPU
 #
 # RTAB-Map is usually run with a camera, and that is where its reputation comes
@@ -144,12 +152,40 @@
     # normal against -- and feeding guessed normals to a point-to-plane solver is
     # how a 2D lidar map acquires a confident lean.
     Icp/PointToPlane: "false"
-    Icp/MaxCorrespondenceDistance: "0.1"
+    # How far ICP may look for a point's partner in the other scan, and therefore
+    # the largest error it can pull in. **0.1 was too tight to fix anything and
+    # it is what stopped this rover mapping**, measured by replaying the drive of
+    # 2026-08-31 through rtabmap-reprocess: at 0.1 not one loop closed no matter
+    # what else was changed, at 0.3 seventeen did, at 0.5 nineteen and the
+    # tightest map, at 0.7 fifteen.
+    #
+    # The reason it has to be this loose is the guess ICP starts from. Between
+    # keyframes that is the wheels, and this is a skid-steer rover on tracks
+    # whose heading comes from a gyro; at a returning loop closure it is the
+    # graph, which by then has drifted by however much the trip accumulated. A
+    # window smaller than that error is a solver that cannot see the answer from
+    # where it starts, and it does not fail loudly -- it converges on the
+    # nearest wrong thing or reports no match, and the link quietly stays at the
+    # odometry value.
+    Icp/MaxCorrespondenceDistance: "0.5"
     Icp/Iterations: "10"
     Icp/Epsilon: "0.001"
-    # 1 = libpointmatcher, rather than 0 = PCL's own ICP. It is the
-    # implementation RTAB-Map's own 2D lidar configurations use, and it carries
-    # the outlier trimming on the next line.
+    # 0 = PCL's own ICP, rather than 1 = libpointmatcher.
+    #
+    # This was libpointmatcher, because that is what RTAB-Map's own 2D lidar
+    # configurations use. On this rover's scans it does not work: replaying the
+    # same drive through both, libpointmatcher failed outright eight times with
+    # "No matches available for computing distance quantiles" and "limit out of
+    # bounds", and closed 1 to 17 loops where PCL closed 19 to 47 on the
+    # identical data with identical thresholds -- and PCL's assembled map came
+    # out smaller and less smeared. A 2D scan here is about 250 points; the
+    # trimmed-distance filtering libpointmatcher is good at wants more than that
+    # to estimate its quantiles from.
+    #
+    # Icp/OutlierRatio goes with libpointmatcher's trimming and does nothing
+    # under PCL, where the correspondence distance above does that job. It is
+    # left in place because switching back is one line and it should still say
+    # 0.65 when it happens.
     #
     # **The names here are 0.22's, and the older ones fail silently.** Every
     # RTAB-Map 2D lidar recipe written before 0.21 says `Icp/PM: true` and
@@ -158,17 +194,28 @@
     # up with PCL's ICP and its own defaults while the file plainly says
     # otherwise. Checked against `ros2 param list` on the running node rather
     # than against a recipe.
-    Icp/Strategy: "1"
+    Icp/Strategy: "0"
     Icp/OutlierRatio: "0.65"
     # How much of one scan has to find a partner in the other before the match is
-    # believed. **This is the direct counterpart of slam_toolbox's
-    # loop_match_minimum_response_fine, which this rover deliberately raised from
-    # a stock 0.45 to 0.50**, and it is raised here for the same reason: a false
-    # closure is unrecoverable in a way a missed one is not, because it welds two
-    # different rooms together and every later scan is optimised against the lie.
-    # In a house, on a 2D lidar, one corridor looks much like another and being
-    # slow to believe is the right bias.
-    Icp/CorrespondenceRatio: "0.4"
+    # believed. This is the direct counterpart of slam_toolbox's
+    # loop_match_minimum_response_fine, and it was set to 0.4 -- four times
+    # RTAB-Map's default -- on the same reasoning that raised that one: a false
+    # closure is unrecoverable in a way a missed one is not.
+    #
+    # **On this rover 0.4 rejected a third of the map.** In the drive of
+    # 2026-08-31 it threw out 37 of 104 links between consecutive keyframes,
+    # each logged as "Cannot compute transform (cor=37..91 corrRatio=...)", and
+    # every one of those left the link at raw odometry with no scan matching in
+    # it at all. It also refused every loop closure the drive offered. The
+    # reason is geometry rather than caution: two views of a room from half a
+    # metre apart share far less than 40% of their returns, because a 2D lidar
+    # sees what is in line of sight and moving changes that.
+    #
+    # 0.2 is where this rover's scans actually land, and it is still twice the
+    # stock threshold. Measured on the same replay: 0.1 closed 47 loops, 0.2
+    # closed 26 with the tightest map of any setting tried, 0.3 closed 6, 0.4
+    # closed none.
+    Icp/CorrespondenceRatio: "0.2"
     # A closure may move a pose by up to three metres, matching RGBD/LocalRadius
     # below. Left at RTAB-Map's default of 0 this is unlimited, which would let
     # one bad match teleport the graph.
@@ -203,6 +250,21 @@
     # One neighbour per candidate path. More is for 3D lidars with many scans to
     # merge into a local map; on a single 2D scan line it mostly adds cost.
     RGBD/ProximityPathMaxNeighbors: "1"
+    # **The radius above proposes a closure and this one throws it away, and
+    # having them disagree is what stopped this rover closing loops at all.**
+    #
+    # RGBD/LocalRadius decides which earlier places are near enough to be
+    # candidates; this decides how near the closest node on a candidate path has
+    # to be before RTAB-Map will try to match against it. It defaults to 1 m, so
+    # a rover that searches out to 3 m and then refuses anything past 1 m spends
+    # the whole drive proposing closures and discarding them. In the drive of
+    # 2026-08-31 twenty-four candidate paths were dropped that way, each logged
+    # -- at debug level, where nobody was looking -- as "Skipping path N as most
+    # likely ID N is too far 1.41 > 1.00 (RGBD/ProximityPathFilteringRadius)".
+    #
+    # So it is set to the search radius rather than left at a default that
+    # silently undoes it.
+    RGBD/ProximityPathFilteringRadius: "3.0"
     # Optimise from the *first* node of the graph rather than the last. From the
     # end, a closure moves the whole map underneath a stationary rover -- correct
     # arithmetic and a terrible thing to hand a costmap, because every obstacle
@@ -233,11 +295,26 @@
     # 7.3 GB and a house-sized map, and a comparison against slam_toolbox -- which
     # forgets nothing -- has to be against a graph that also forgets nothing.
     Mem/NotLinkedNodesKept: "false"
-    Mem/STMSize: "30"
-    # Do not merge a new scan into the previous node when the two look alike.
-    # Rehearsal is an appearance-based idea and there are no images; on lidar it
-    # would silently drop nodes in a corridor where every scan looks the same.
-    Mem/RehearsalSimilarity: "0.0"
+    # Short-term memory, back at RTAB-Map's default of ten nodes after being set
+    # to thirty here. Nodes in short-term memory are the rover's recent past and
+    # are not offered as loop closure candidates, so a longer one is a longer
+    # blind spot behind the rover: at the 13 cm spacing this drive produced,
+    # thirty nodes is four metres of path that cannot be closed against while
+    # the search radius only reaches three. Replaying the drive with everything
+    # else fixed, ten closed 26 loops where thirty closed 19, and the assembled
+    # map was the same size -- so the extra closures were agreeing with the
+    # others rather than inventing a second room.
+    Mem/STMSize: "10"
+    # Rehearsal -- merging a new node into the previous one when the two look
+    # alike -- left at RTAB-Map's default.
+    #
+    # This said 0.0, with a comment claiming that turned merging off. It does
+    # the opposite: the number is the similarity a pair has to reach before they
+    # are merged, so zero is "merge anything". It made no measurable difference
+    # on the replayed drive, because rehearsal compares visual words and this
+    # node is given no images, but a setting whose comment says the reverse of
+    # what it does is worse than no setting at all.
+    Mem/RehearsalSimilarity: "0.6"
 
     # --- the occupancy grid ---------------------------------------------------
     # 0 = build the grid from the laser scan. The default takes it from a depth
