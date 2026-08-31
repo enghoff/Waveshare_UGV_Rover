@@ -244,13 +244,37 @@ here has:
 The console is at:
 
 ```text
-https://192.168.1.88:8771/
+https://jetson-orin.local:8771/
 ```
 
-Its certificate is a **new** one, from a CA generated on this host and named
-`UGV rover console CA (jetson-orin)`. The workstation trusts the Banana Pi's old
-CA and not this one, so a browser will warn until the new
-`~/.ugv/tls/console-ca.crt` is trusted there.
+**Use the name, not an address.** It is the only URL this rover's certificate is
+valid for, and it is the only one that keeps working when a radio changes: the
+console listens on `0.0.0.0`, `avahi-daemon` publishes the name on every
+interface, so whichever radio is up answers to it. An address URL gets a
+certificate warning every time and stops working when that lease moves.
+
+The certificate is signed by a CA generated on this host and named `UGV rover
+console CA (jetson-orin)`, and the workstation does trust it -- it is in both
+`Cert:\CurrentUser\Root` and `Cert:\LocalMachine\Root`, alongside the Banana
+Pi's older one. So the name gives a clean padlock. (`curl` on Windows still
+calls it broken with "the revocation status is unknown", which is schannel's
+complaint about a private CA rather than anything wrong with the certificate.)
+
+Two things about it are wrong and neither is urgent. Its subject-alternative
+names are `jetson-orin`, `jetson-orin.local`, `localhost`, `127.0.0.1`,
+`192.168.55.1` and **`192.168.1.80`** -- the Banana Pi's old floating address,
+which belongs to a machine that is off the network, while neither of this
+rover's own addresses is listed. Verified 2026-08-31: connecting by name
+validates against either radio, and connecting to `192.168.1.88` or
+`192.168.1.90` fails with an IP address mismatch. Regenerating it with
+`drive_web/make_cert.sh` would fix the fallback URLs; the name works either way.
+
+And the name follows a radio, but not instantly. mDNS answers are cached for a
+couple of minutes, and it currently resolves to the dongle's address -- the less
+reliable radio of the two. If a radio drops, a browser can sit on the dead
+address until that cache expires; reloading after a minute or two picks up the
+other one. There is no floating service address to make this seamless, which is
+the `wifi_dual` port again.
 
 ## ROS 2
 
