@@ -658,12 +658,10 @@ def test_calibration_store():
             with open(cfg) as fh:
                 nav_text = fh.read()
             check("Nav2's top speed clears the chassis's %.2f m/s floor" % floor,
-                  "max_vel_x: 0.40" in nav_text and floor < 0.40, True)
-            check("...and it samples only the two speeds the chassis has",
-                  "vx_samples: 2" in nav_text, True)
-            check("...and its acceleration window spans the whole range, or the "
-                  "samples collapse to a creep",
-                  "acc_lim_x: 4.0" in nav_text, True)
+                  "vx_max: 0.40" in nav_text and floor < 0.40, True)
+            check("...and its acceleration limit crosses the whole range in one "
+                  "tick, because this base steps rather than ramps",
+                  "ax_max: 4.0" in nav_text, True)
     else:
         print("  ....  no drive_pwm_points yet -- run calibrate_chassis.py")
 
@@ -728,9 +726,9 @@ def test_configs_agree():
     # limit lies inside the speeds actually measured, which is checked against
     # the store below where the store exists.
     check("Nav2's top speed is not the stale MAX_SPEED_MS",
-          ("max_vel_x: %.2f" % MAX_SPEED_MS) in text, False)
+          ("vx_max: %.2f" % MAX_SPEED_MS) in text, False)
     check("...and is a speed this chassis can actually reach",
-          "max_vel_x: 0.40" in text, True)
+          "vx_max: 0.40" in text, True)
     # A heading change tighter than an arc can absorb has to be a turn on the
     # spot, and a bare velocity controller will only ever approximate one.
     # The shim was tried and taken out again -- it cannot transform on a rover
@@ -762,17 +760,31 @@ def test_configs_agree():
     check("...and the rectangle that could not turn where it stood is gone",
           'footprint: "[[0.20' in settings, False)
     # The point test is a collision test again, and only because of the above.
+    # MPPI's obstacle term is `CostCritic`, and `consider_footprint: false` is
+    # the point test -- correct here because the inflation layer's inscribed ring
+    # is the whole robot, and thousands of SE2 polygon traces a tick would buy an
+    # answer that cannot differ from it.
     check("the obstacle critic is the point test a circular body takes",
-          "BaseObstacle" in settings and "ObstacleFootprint" not in settings, True)
-    # The arrival circle has to be bigger than the smallest move the rover has.
-    # One forward sample at 0.40 m/s over a 0.8 s rollout is 32 cm, so a 15 cm
-    # circle was a target DWB could not aim at: it sat 23 cm from a goal for
-    # 25 s and timed out, because everything that closed the gap overshot it.
-    # The two copies are the goal checker's and the controller's, and they have
-    # to be the same number or RotateToGoal switches at a different radius from
-    # the one that ends the goal.
+          "CostCritic" in settings and "consider_footprint: false" in settings,
+          True)
+    # **The arrival circle, and there is only one copy of it now.** It has to
+    # be bigger than the smallest move the rover has: one DWB forward sample at
+    # 0.40 m/s over a 0.8 s rollout was 32 cm, so a 15 cm circle was a target the
+    # controller could not aim at -- it sat 23 cm from a goal for 25 s and timed
+    # out, because everything that closed the gap overshot it. MPPI has no
+    # 32 cm quantum, but the pose it is steering to still comes off a 5 cm grid
+    # and a scan matcher, so the number stands.
+    #
+    # DWB carried a second copy, because that copy was what switched
+    # `RotateToGoal` on and the two had to agree. MPPI has no such critic: what
+    # decides when it starts caring about final heading is
+    # `GoalAngleCritic.threshold_to_consider`, and that has to sit *above* the
+    # arrival circle or the rover reaches the circle having never been asked to
+    # point the right way.
     check("the arrival circle clears the chassis's 32 cm minimum move",
-          settings.count("xy_goal_tolerance: 0.22") == 2, True)
+          settings.count("xy_goal_tolerance: 0.22") == 1, True)
+    check("...and the controller starts settling its heading outside that circle",
+          "threshold_to_consider: 0.30" in settings, True)
     # The planner has to know the turning radius DWB can follow while driving.
     # NavFn does not, and that is the doorway lock-up: a 45 deg kink in one
     # rollout, every forward sample leaves the line, the rover pivots. The
@@ -785,32 +797,29 @@ def test_configs_agree():
           "nav2_navfn_planner::NavfnPlanner" in settings, False)
     check("Hybrid-A* is not the configured planner either",
           "nav2_smac_planner::SmacPlannerHybrid" in settings, False)
-    # **The align look-ahead, which is a controller setting but belongs next to
-    # the planner ones because it decides whether the plan gets followed.**
-    # 0.325 is nav2's own default and these two checks only hold it there.
+    # **Something in the critic set has to price turning, or the rover spins.**
+    # Recorded 2026-08-25 it turned 3038 degrees and finished 28 cm from where it
+    # started, and under DWB the term that argued against that was
+    # `PreferForwardCritic`, which returns `fabs(theta) * scale`.
     #
-    # **The reason recorded for it has since been withdrawn**, so read them as
-    # "this is the default and nothing has argued it away" rather than as a
-    # measured choice. The argument was that an align critic charges
-    # `unreachable_score_` -- 2881 points once scaled -- for a nose point the
-    # flood could not reach, and that at 0.8 m this landed on a median 26% of
-    # the candidates in a tick. The flood in the installed `libdwb_critics.so`
-    # is not stopped by walls at all, so no candidate is ever charged it: 0 of
-    # 8687 driving candidates and 0 of 6132 pivots over
-    # recordings/trap-2026-08-25-spin.json. See corridor_sim.flood and
-    # trap_sim.py --bias, and make a fresh case from a drive before moving it.
+    # **Under MPPI it is `TwirlingCritic`, and not the critic whose name says
+    # forward.** MPPI's `PreferForwardCritic` is a different function of the same
+    # name: it scores `-min(vx, 0)`, which prices reverse motion, and with
+    # `vx_min` at zero there is no reverse motion for it to price. `TwirlingCritic`
+    # scores mean `|wz|`, which is the one that does what DWB's did.
     #
-    # `PreferForward` is the only critic in the set that prices turning as
-    # such, and it was added on the same withdrawn measurement. It is left in
-    # because the rover does still choose to turn far more often than to drive
-    # -- on the recorded trap, on 481 of 496 ticks the model could score.
+    # The weight is deliberately below nav2's default. How much of that 3038
+    # degrees was the chassis and how much was DWB scoring held arcs against a
+    # grid path is not known and will not be until this drives, so the term is
+    # set to say turning is not free rather than to stop a rover that has to
+    # pivot to escape.
     check("something in the critic set prices turning, or the rover will spin",
-          "PreferForward" in settings, True)
-    check("the align look-ahead is back at nav2's default, not the 0.8 that trapped it",
-          "PathAlign.forward_point_distance: 0.325" in settings
-          and "GoalAlign.forward_point_distance: 0.325" in settings, True)
-    check("...and neither align critic is left at 0.8",
-          "forward_point_distance: 0.8" in settings, False)
+          "TwirlingCritic" in settings, True)
+    twirl = re.search(r"TwirlingCritic:.*?cost_weight:\s*([\d.]+)", settings,
+                      re.DOTALL)
+    check("...and it is gentler than nav2's default 10.0, on a rover that has "
+          "to pivot to escape",
+          twirl is not None and 0.0 < float(twirl.group(1)) < 10.0, True)
     check("in-place turns are expensive, so a doorway that takes an arc gets one",
           "rotation_penalty: 5.0" in settings, True)
     # **The budget, and it is the one that was failing long goals.** A route
@@ -850,25 +859,37 @@ def test_configs_agree():
     # with no reverse sample at all; backing out of a corner is the behaviour
     # server's `backup`, which the behaviour tree bounds to 30 cm.
     check("the controller has no reverse, since the rover cannot see behind it",
-          "min_vel_x: 0.0" in settings and "min_vel_x: -0.40" not in settings,
+          "vx_min: 0.0" in settings and "vx_min: -0.35" not in settings,
           True)
     check("...but the smoother still passes one, or the recovery cannot back up",
           "min_velocity: [-0.40, 0.0, -0.78]" in settings, True)
     turn = math.radians(MAX_TURN_DPS)
     check("Nav2's turn limit matches MAX_TURN_DPS (%.2f rad/s)" % turn,
           abs(turn - 0.78) < 0.01, True)
-    check("...and that is what the file says", "max_vel_theta: 0.78" in text, True)
-    # Both floors have to move. Nav2's isValidSpeed is an AND: a theta floor
-    # with min_speed_xy left at 0 never drops a sample. 0.21 rad/s is the
-    # mixer's 12 deg/s; 0.1 m/s is below the only forward sample, so driving
-    # is untouched.
-    check("DWB will not sample a standing turn slower than the mixer can hold",
-          "min_speed_theta: 0.21" in settings, True)
-    check("...and min_speed_xy is not zero, or that theta floor is a no-op",
-          "min_speed_xy: 0.1" in settings, True)
-    check("...and the old zero floors are gone",
-          "min_speed_xy: 0.0" in settings or "min_speed_theta: 0.0" in settings,
-          False)
+    check("...and that is what the file says", "wz_max: 0.78" in text, True)
+    # **The standing-turn floor has no home in the controller any more.** DWB
+    # was given `min_speed_xy` and `min_speed_theta` so that its sample set could
+    # not contain a pivot slower than the 12 deg/s the mixer will hold -- the
+    # 2026-08-25 doorway recording had 192 of 256 pivot commands at 3 deg/s, each
+    # one lifted to 12 by the mixer and overshot. MPPI has no sample set and no
+    # equivalent pair, so `drive_mixer.MIN_TURN_DPS` is now the only thing
+    # enforcing it, and this checks that the mixer still does.
+    #
+    # That is a real difference from the controller this replaced and it is the
+    # first thing to look at in a drive that weaves.
+    check("the mixer still refuses a standing turn it cannot hold",
+          MIN_TURN_DPS >= 12.0, True)
+    check("...and the controller no longer claims to, since MPPI has no samples",
+          "min_speed_theta" in settings or "min_speed_xy" in settings, False)
+    # **`VelocityDeadbandCritic` is the knob that looks like the answer to the
+    # forward floor and is not.** It charges `max(deadband - |v|, 0)` summed
+    # over the horizon, so a 0.33 m/s deadband on vx charges the full 0.33 to
+    # every trajectory that stands still -- and standing still is how this
+    # chassis turns and how it stops on a goal. Set it and the rover would
+    # neither pivot nor arrive.
+    check("...and the deadband critic is not reached for, since it would charge "
+          "a pivot for pivoting",
+          "VelocityDeadbandCritic" in settings, False)
 
     # The two costmap rules that a rover running SLAM cannot break. Both were
     # broken at once, and between them they closed 61% of the mapped floor to the

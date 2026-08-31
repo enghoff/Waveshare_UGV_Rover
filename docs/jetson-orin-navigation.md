@@ -25,7 +25,7 @@ The preferred direction is therefore:
 1. Keep the current SLAM Toolbox + Nav2 architecture and rover-specific tuning.
 2. Move the navigation workload to the Jetson Orin when practical.
 3. Reuse Waveshare's Orin-specific hardware and sensor integration where it is useful.
-4. Benchmark Nav2 MPPI on the Orin instead of assuming DWB remains the best controller.
+4. Benchmark Nav2 MPPI on the Orin instead of assuming DWB remains the best controller. (MPPI is configured as of 2026-08-31; the benchmark is still outstanding - see Phase 5.)
 5. Add saved-map localization for routine navigation.
 6. Evaluate RTAB-Map + OAK-D as an additional localization/perception layer, not as an immediate replacement for the 2D navigation stack.
 7. Evaluate frontier exploration on top of Nav2.
@@ -194,7 +194,7 @@ OAK-D -----------------------> RGB / depth
                    Nav2
           planner + costmaps + BT
                     |
-           DWB initially / MPPI test
+               MPPI (was DWB)
                     |
                     v
                  /cmd_vel
@@ -214,6 +214,11 @@ The key migration principle is:
 > Move the tuned stack to the faster computer; do not discard the tuning just because the computer changed.
 
 ## DWB versus MPPI on Orin
+
+**This section is the plan that was followed; see Phase 5 for where it got to.**
+Nav2 moved to the Orin on DWB, and the controller was swapped afterwards, which is
+the separation this section asks for. What has not happened is the comparison
+below.
 
 DWB should remain the known-good baseline during the migration.
 
@@ -430,6 +435,27 @@ Create an MPPI parameter set that respects the measured rover motion envelope an
 
 Promote MPPI only if it materially improves navigation without reducing safety or reliability.
 
+**Status, 2026-08-31: the parameter set exists and the benchmark does not.** The
+`nav/mppi-controller` branch replaces the `FollowPath` plugin in
+`ros_nav/config/nav2.yaml` with `nav2_mppi_controller::MPPIController` and carries
+the measured envelope across unchanged - 0.40 m/s forward, no reverse, 0.78 rad/s,
+4.0 m/s^2, a 0.3 s transform tolerance for the driver board's transform rate, and a
+point obstacle test because the body is a circle. Everything else is a nav2
+default. `nav2_mppi_controller` was already installed with the rest of the
+`ros-jazzy-nav2-*` set, so no install was needed.
+
+Two things the acceptance test above has to settle, both written up at greater
+length in `ros_nav/README.md`:
+
+- **The velocity floor no longer has a home in the controller.** DWB respected the
+  chassis's 0.33 m/s floor because its sample set was cut down to `{0.0, 0.40}`.
+  MPPI samples continuously, so sub-floor commands come back and `drive_mixer`
+  answers them with the floor. `VelocityDeadbandCritic` is not the fix: it charges
+  every trajectory that stands still, and standing still is how this chassis turns.
+- **The anti-spin term is `TwirlingCritic`, not `PreferForwardCritic`.** MPPI's
+  critic of that second name prices reverse motion, which this rover does not do.
+  The weight is set below nav2's default and is a judgement, not a measurement.
+
 ### Phase 6 - saved-map mode
 
 Add a routine-navigation launch mode using a frozen map and a single dedicated localization source.
@@ -474,8 +500,8 @@ Production navigation:
       + SLAM Toolbox
       + Nav2
       + existing rover-specific tuning
-      + DWB initially
-      + MPPI if benchmarking justifies it
+      + MPPI, with the DWB envelope carried across
+        (benchmark still outstanding)
 
 Routine localization:
     saved 2D map

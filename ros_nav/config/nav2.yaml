@@ -1,6 +1,6 @@
-# Nav2 on the Banana Pi. Skid-steer differential drive, measured at 0.33 m/s at
-# the slowest PWM its motors will turn at and 0.68 m/s at PWM 140, a 2D lidar, and
-# four Cortex-A53 cores that are already running slam_toolbox.
+# Nav2 on the Jetson Orin Nano. Skid-steer differential drive, measured at
+# 0.33 m/s at the slowest PWM its motors will turn at and 0.68 m/s at PWM 140, a
+# 2D lidar, and six Cortex-A78AE cores that are also running slam_toolbox.
 #
 # Two decisions shape everything here.
 #
@@ -11,14 +11,20 @@
 # put two things in charge of one transform, which is the classic way to get a
 # robot that teleports.
 #
-# **The controller is DWB at 10 Hz, not MPPI at 20.** MPPI is the better
-# controller and it rolls out thousands of trajectories per tick; on this board
-# that is the whole CPU budget for a rover that also has to map. DWB with modest
-# sampling costs a fraction of it and still avoids things the planner did not know
-# about, which pure pursuit does not. 10 Hz rather than 20 because 0.5 m/s is 5 cm
-# per tick, and a rover that replans every 5 cm is not the one that hits anything.
-# If the rover feels sluggish to react, raise the frequency before reaching for a
-# bigger controller.
+# **The controller is MPPI at 10 Hz, and it used to be DWB.** The case for DWB
+# was never about this chassis; it was that MPPI rolls out thousands of
+# trajectories a tick and the Banana Pi's four Cortex-A53 cores were already
+# spent on mapping. That constraint left the rover with the board. What DWB cost
+# in exchange is written out at length beside the controller block below -- a
+# controller that scores one held arc against a grid path, on a chassis whose
+# planner corners are tighter than any arc it can drive.
+#
+# **10 Hz, and it stays 10 Hz for now.** 0.4 m/s is 4 cm per tick, and a rover
+# that replans every 4 cm is not the one that hits anything; the velocity
+# smoother, the behaviour server and `model_dt` are all set to the same period,
+# so raising it is four numbers rather than one. There is headroom on this board
+# to raise it, and that is a thing to try after the swap has been driven, not
+# during it.
 #
 # **The speeds here are not the constants in lidar_slam/nav_types.py.** Those were
 # measured on the rover as it was, on a different board and floor, and they are
@@ -138,353 +144,241 @@ controller_server:
     #
     # `calibrate_chassis.py` tried PWM 70 and PWM 80 and neither moved the rover
     # at all; the slowest speed it can hold is 0.33 m/s at PWM 85. There is no
-    # creep. A stock DWB does not know this: it samples a dozen forward speeds
-    # between zero and its maximum, rolls each one out, scores it and picks one --
-    # and every sample under 0.33 comes out of the wheels as 0.33. Recorded on the
-    # rover over one ordinary 1.8 m drive, 16 of the 37 velocity commands Nav2
-    # issued were in that band, the slowest of them 0.05 m/s against a rover
-    # already doing 0.34.
+    # creep. DWB was made to live with that by taking its velocity samples away
+    # until the only forward speed it could choose was one the wheels have --
+    # `vx_samples: 2` meant it sampled exactly {0.0, 0.40}, stop or go.
     #
-    # Two things follow, and both of them look like a controller that cannot
-    # steer:
+    # **MPPI cannot be constrained that way, and this is the one real thing
+    # given up in the swap.** It samples a continuous distribution and returns a
+    # weighted average of it, so there is no set of samples to prune: it will
+    # ask for 0.15 m/s, and `drive_mixer.pwm_for` will answer with the slowest
+    # PWM it measured, which is 0.33. Every such command is roughly a doubling.
+    # What is different from the DWB fault this replaced is that it is corrected
+    # rather than compounded -- MPPI re-seeds from the speed `/odom` reports,
+    # not from the speed it asked for, so an overspeed shows up in the next
+    # tick's state 100 ms later.
     #
-    # - **Every acceleration and deceleration was a fiction.** DWB ramped up over
-    #   0.9 s and down over 0.7 s; the rover stepped to 0.33 m/s on the first
-    #   command and held it until the command reached exactly zero. So it
-    #   overshot the end of every leg and had to come back for it.
-    # - **Tight curves were a fiction too.** DWB believed it could pair 0.05 m/s
-    #   with 0.78 rad/s, which is a 6 cm turning radius. The tightest arc this
-    #   chassis can actually drive is 0.33 m/s over 0.78 rad/s, which is 0.43 m
-    #   of radius -- about 0.9 m across, and close to the 0.7 m somebody measured
-    #   by driving it. Asked for the tight one it drove the wide one, ran wide of
-    #   the path, was corrected, and ran wide the other way.
-    #
-    # So the velocity space here is set to the two things the chassis can do and
-    # nothing else. `vx_samples: 2` with a floor of zero means DWB samples exactly
-    # {0.0, max_vel_x}: stop, or go. Anything the path asks for that a 0.5 m arc
-    # cannot absorb is then a turn on the spot, which is what this chassis does
-    # anyway.
+    # **`VelocityDeadbandCritic` looks like the answer to this and is not.** It
+    # scores `max(deadband - |v|, 0)` summed over the horizon, so a deadband of
+    # 0.33 on vx charges the full 0.33 to every trajectory that stands still --
+    # and standing still with vx at zero is how this chassis turns and how it
+    # stops on a goal. Set it and the rover would never pivot and never arrive.
+    # It is written for a robot that must not creep; this one must not creep
+    # *while driving*, which is not the same shape.
     FollowPath:
-      # **There was a `RotationShimController` in front of this, and it had to
-      # come out.** The idea was right -- a heading change tighter than a 0.5 m
-      # arc can absorb should be a turn on the spot, and that is a manoeuvre a
-      # velocity controller only approximates. It does not work on this rover.
+      # **MPPI rather than DWB, and the reason is the board rather than the
+      # rover.** The case for DWB was arithmetic: MPPI rolls out thousands of
+      # trajectories a tick, and on four Cortex-A53 cores that were already
+      # running slam_toolbox that was the whole budget. Six Cortex-A78AE cores
+      # are not that board. Nothing about the chassis argued for DWB, and a
+      # good deal of what is written above argued against it -- a controller
+      # that scores constant arcs against a grid path is why a rover with clear
+      # floor in front of it chose to stand still on 282 of 342 ticks.
       #
-      # It transforms a point off the path into the base frame with a fixed 10 ms
-      # transform tolerance that it does not expose as a parameter, and the
-      # transform tree here is driven by the driver board at about 17 Hz, so the
-      # newest `odom -> base_link` is 30 ms old on average and the lookup fails.
-      # What that costs is not just the shim: it throws, logs at ERROR, and
-      # delegates, ten times a second, and with it in the chain the control loop
-      # ran at 6-7 Hz against the 10 it is asked for, `compute_path_to_pose` began
-      # timing out on acknowledgement, and moves were aborted mid-drive.
+      # MPPI optimises a *sequence* of commands over the horizon rather than
+      # one arc held for the whole of it, so "turn to line up, then drive" is a
+      # single candidate it can score on where it ends up. That is the
+      # manoeuvre this chassis makes constantly and the one DWB could only
+      # approximate by choosing a pivot and asking again.
       #
-      # Nothing was lost by removing it, because the sample set below already
-      # contains the pivot: with vx running -0.40, 0.0, +0.40, "turn on the spot"
-      # is one of the three things DWB can choose, and recorded off `/evaluation`
-      # it chooses it about a third of the time and forward the rest.
-      plugin: "dwb_core::DWBLocalPlanner"
-      debug_trajectory_details: false
-      # The measured envelope. 0.50 m/s comes from calibrate_chassis.py, which
-      # found this chassis does 0.33 m/s at the slowest PWM its motors will turn
-      # at and 0.68 at PWM 140. It is *not* MAX_SPEED_MS from nav_types.py, which
-      # says 0.35 and is therefore almost exactly the rover's minimum -- setting
-      # that here pinned every command to the slowest PWM and left no speed
-      # control whatsoever. 0.50 rather than 0.68 is a comfort setting: a house
-      # has furniture in it.
+      # **Everything below that is not a Nav2 default is a measured fact about
+      # this rover, and everything that is a default is a default.** The
+      # weights have not been tuned on the rover yet; they are nav2's, and the
+      # envelope around them is this chassis's. See
+      # docs/jetson-orin-navigation.md for the acceptance test that has to run
+      # before this is called better than what it replaced.
+      plugin: "nav2_mppi_controller::MPPIController"
+      # Skid-steer differential drive. Not Ackermann: this chassis turns on the
+      # spot, and a minimum turning radius would write that manoeuvre out of
+      # every trajectory it can sample.
+      motion_model: "DiffDrive"
+
+      # **The horizon is 2.0 s, and `model_dt` has to be the controller's own
+      # period or the model integrates at a rate the rover is not driven at.**
+      # 20 steps of 0.1 s at 0.40 m/s is 0.8 m of look-ahead, which is about the
+      # 3 m local costmap's half-width less the body.
       #
-      # 45 deg/s is 0.785 rad/s, and that one *is* a real limit rather than a
-      # comfort setting -- past it a 100 ms lidar sweep smears across more heading
+      # DWB's rollout was 0.8 s and short on purpose: over anything longer a
+      # single held arc diverged from a grid path that had corners tighter than
+      # this chassis can drive, and standing still scored better than any of
+      # them. That argument does not carry over. A sequence can turn inside the
+      # horizon, so a longer one buys anticipation instead of buying a
+      # commitment the rover cannot keep.
+      model_dt: 0.1
+      time_steps: 20
+      batch_size: 2000
+      iteration_count: 1
+
+      # **The measured envelope, and the same numbers DWB was given.** 0.40 m/s
+      # comes from calibrate_chassis.py, which found this chassis does 0.33 m/s
+      # at the slowest PWM its motors will turn at and 0.68 at PWM 140. It is
+      # *not* MAX_SPEED_MS from nav_types.py, which says 0.35 and is therefore
+      # almost exactly the rover's minimum -- setting that here pins every
+      # command to the slowest PWM and leaves no speed control whatsoever.
+      #
+      # 0.78 rad/s is 45 deg/s and that one is a sensor limit rather than a
+      # comfort setting: past it a 100 ms lidar sweep smears across more heading
       # change than a scan match can absorb.
-      # **The controller may not reverse at all, and that is a sensor limit
-      # rather than a comfort one.** The lidar is the only thing on this rover
-      # that sees where it is going, and it is mounted looking forwards, so a
-      # reverse leg is driven blind. Given a reverse sample DWB will take one
-      # whenever the arithmetic happens to like it, and the arithmetic does not
-      # know the rover cannot see behind itself.
+      vx_max: 0.40
+      # **Zero, and that is what stops the rover reversing at all.** nav2's
+      # default here is -0.35. The lidar is the only thing on this rover that
+      # sees where it is going and it is mounted looking forwards, so a reverse
+      # leg is driven blind, and a controller given a reverse sample will take
+      # one whenever the arithmetic happens to like it.
       #
       # Nav2 can still back out of a corner, because that is the behaviour
       # server's `backup` recovery and the behaviour tree bounds it to 30 cm --
-      # which is about the length of blind reversing worth having. The bridge
-      # applies the same rule to an explicit `drive` backwards: see
-      # REVERSE_LIMIT_M in nav_bridge.py, which turns the rover round rather
-      # than reversing the length of a room.
-      min_vel_x: 0.0
-      # 0.40 rather than the 0.50 this was, and the change is not about comfort.
-      # With three samples the rover drives at exactly this whenever it is
-      # rolling, so it is now *the* speed rather than a ceiling -- and it has to
-      # sit far enough above the 0.33 m/s floor that the mixer has PWM left to
-      # steer with.
-      max_vel_x: 0.40
-      min_vel_y: 0.0
-      max_vel_y: 0.0
-      max_vel_theta: 0.78
-      # **0.1 and 0.21, and both have to move or neither does anything.**
-      # Nav2 drops a sample only when hypot(vx, vy) is under min_speed_xy *and*
-      # |vtheta| is under min_speed_theta. A theta floor with min_speed_xy left
-      # at zero is a no-op: hypot is never below zero, so the slow pivots stay.
-      # 0.1 m/s sits below the only forward sample (0.40), so driving is
-      # untouched; it just makes the standing-turn floor actually apply.
-      #
-      # 0.21 rad/s is 12 deg/s, `drive_mixer.MIN_TURN_DPS`. DWB's sixteen-way
-      # split of ±0.78 includes ±0.052 and ±0.156 -- about 3 deg/s and 9 deg/s --
-      # and the mixer lifts anything slower than 12 to 12, so those samples are
-      # a correction the rover will not execute. Recorded 2026-08-25 in a
-      # doorway Lattice had already drawn a followable path through: 192 of 256
-      # pivot commands were 0.052 rad/s, eight in ten commands that minute were
-      # pivots, a thousand degrees of turning for 2.6 m of travel.
-      min_speed_xy: 0.1
-      max_speed_xy: 0.40
-      # Turning on the spot is how a skid-steer chassis changes direction, so it
-      # has to be allowed rather than penalised into a wide arc it cannot drive.
-      # The floor above is which standing turns are *legal*, not whether they
-      # exist.
-      min_speed_theta: 0.21
-      # **These describe a chassis that steps, because this one does.** They are
-      # not comfort limits and they are not guesses: measured on the rover, the
-      # wheels were at 0.34 m/s within 0.15 s of the first command and at zero
-      # within one tick of the last.
-      #
-      # The number that matters is the limit times the controller's period, which
-      # is what DWB is allowed to change the command by in one tick -- and it
-      # samples *within* that window rather than within min_vel_x..max_vel_x. At
-      # the 0.5 m/s^2 that was here, the window from rest was 0 to 0.05 m/s, so
-      # the fastest thing DWB could ask for on the first tick was a seventh of the
-      # slowest speed the rover can hold. 4.0 m/s^2 over a 0.1 s tick is 0.40, so
-      # the window is the whole range and both samples are always reachable.
-      acc_lim_x: 4.0
-      acc_lim_theta: 8.0
-      decel_lim_x: -4.0
-      decel_lim_theta: -8.0
-      # **Two forward samples, and they are the two the chassis has.** With the
-      # range running 0.0..0.40 and the acceleration window covering it, DWB's
-      # iterator returns exactly {0.0, +0.40}: stop, or go. Twelve evenly spaced
-      # samples sounds better and is worse -- ten of them were speeds the wheels
-      # cannot produce, so DWB was scoring ten rollouts of a rover that does not
-      # exist and picking between them.
-      #
-      # There were three of these until reverse came out, and nothing was lost
-      # with it. Paired with the sixteen rotation samples, the "stop" sample is
-      # a turn on the spot, so the pivot this chassis uses to change direction
-      # is still one of the things DWB can choose -- recorded off `/evaluation`,
-      # about a third of its ticks.
-      #
-      # The rotation samples stay dense, because steering *is* continuous here:
-      # the differential between two wheels that are already turning has no
-      # stiction floor, which is what `steer_pwm` is about. So the CPU cost is
-      # 3 x 16 at 0.8 s -- 48 rollouts a tick where there were 240, and each of
-      # them shorter. That headroom is spent on `ObstacleFootprint`, which
-      # traces four edges where the critic it replaced read one cell.
-      vx_samples: 2
-      vy_samples: 1
-      vtheta_samples: 16
-      # **0.8 s, and the reason is the turning radius again.** A rollout is
-      # sim_time long -- 0.6 m at 1.5 s and this speed -- and the two critics
-      # that dominate the score measure how far it strays from the planned path.
-      # NavFn plans on a 5 cm grid with no curvature limit in it, so its corners
-      # are tighter than any arc this chassis can drive; over 0.6 m of arc the
-      # best forward option was 10 points off the path while standing still was
-      # 1.6, and standing still therefore won. Recorded off `/evaluation`: the
-      # rover chose to stay put on 282 of 342 ticks with clear floor ahead of it.
-      #
-      # A shorter rollout does not make the corner followable, it just stops
-      # asking the rover to commit to it: over 0.32 m the arc and the path have
-      # not had room to diverge, and the next tick asks again. Cheap in safety
-      # terms because this chassis stops within one tick -- about 4 cm at this
-      # speed -- so the horizon is still eight times the stopping distance.
-      sim_time: 0.8
-      linear_granularity: 0.05
-      angular_granularity: 0.025
+      # about the length of blind reversing worth having. The bridge applies
+      # the same rule to an explicit `drive` backwards: see REVERSE_LIMIT_M in
+      # nav_bridge.py, which turns the rover round rather than reversing the
+      # length of a room.
+      vx_min: 0.0
+      # Inert on a differential model, which forces vy to zero, and set to zero
+      # anyway so that nothing reading this file thinks the rover can strafe.
+      vy_max: 0.0
+      wz_max: 0.78
+      # **These describe a chassis that steps, because this one does.** Measured
+      # on the rover: the wheels were at 0.34 m/s within 0.15 s of the first
+      # command and at zero within one tick of the last. 4.0 m/s^2 over a 0.1 s
+      # tick is the whole speed range in one step, which is the truth about this
+      # base and was also what stopped DWB's sample window collapsing to a creep.
+      ax_max: 4.0
+      ax_min: -4.0
+      az_max: 8.0
+      # Differential model, so this is never applied. nav2's default.
+      ay_max: 3.0
+
+      # The sampling spread, and nav2's defaults. 0.2 m/s of vx noise against a
+      # 0.40 m/s range and 0.4 rad/s against 0.78 both cover about half the
+      # envelope, which is the proportion the defaults were chosen at.
+      vx_std: 0.2
+      vy_std: 0.2
+      wz_std: 0.4
+      temperature: 0.3
+      gamma: 0.015
+      regenerate_noises: false
+
+      # 1.5 m is the local costmap's half-width: pruning further ahead than the
+      # rover can see would hand the optimiser path it has no costs for.
+      prune_distance: 1.5
+      # **0.3 s, and it is the driver board that sets it.** The transform tree
+      # here is driven by the board at about 17-20 Hz, so the newest
+      # `odom -> base_link` is 30 ms old on average and nav2's stock 0.1 is
+      # tighter than this rover can hold. A RotationShimController was removed
+      # from in front of the controller for exactly this reason -- it has a
+      # fixed 10 ms tolerance it does not expose, threw ten times a second, and
+      # cost the control loop a third of its rate.
       transform_tolerance: 0.3
-      # The same 0.22 as the goal checker above, and it has to be the same
-      # number: this copy is what switches `RotateToGoal` on. Set lower, the
-      # rover would settle its heading in a ring the checker will not accept;
-      # set higher, it would start hunting the final heading while still driving.
-      xy_goal_tolerance: 0.22
-      trans_stopped_velocity: 0.05
-      short_circuit_trajectory_evaluation: true
-      stateful: true
-      # `ObstacleFootprint` rather than `BaseObstacle`, because the footprint is
-      # now a rectangle. `BaseObstacle` scores and vetoes on the cost of the one
-      # cell the robot's centre is in, which is a collision test only while the
-      # inflation layer's inscribed ring is as big as the whole robot. It was,
-      # and it no longer is: the ring is 0.14 m and the rear corners are 0.21 m
-      # out, so a point check would let the rover reverse its corner into a wall.
-      # This one traces the four edges.
-      # **`PreferForward` is here because nothing else in the set says anything
-      # about turning as such, and this rover would rather turn than drive.**
+      # The planner is forward-only (`allow_reverse_expansion: false`), so it
+      # never writes a cusp into a path, and there is nothing for the inversion
+      # machinery to find.
+      enforce_path_inversion: false
+      # Publishing candidate trajectories is a debugging aid that costs a
+      # marshalling pass over the whole batch every tick. dwb_bench.py used to
+      # read `/evaluation` for this and MPPI does not publish one; turn this on
+      # and look in rviz instead.
+      visualize: false
+
+      # **`TwirlingCritic` is in the set and `PreferForwardCritic` is not, which
+      # is the opposite way round from how the names read.** MPPI's
+      # `PreferForwardCritic` prices *reverse* motion -- it scores
+      # `-min(vx, 0)` -- and with `vx_min` at zero there is no reverse motion to
+      # price, so it would be a critic that always returns nothing. DWB's critic
+      # of the same name did something else entirely: it returned
+      # `fabs(theta) * scale`, which prices *turning*. The MPPI critic that does
+      # that is `TwirlingCritic`, which scores mean `|wz|`.
       #
-      # **The measurement that put it here has been withdrawn, and it is left
-      # in anyway.** The argument was that the four map-grid critics charge a
-      # candidate `unreachable_score_` -- 2881 points after scaling -- for a
-      # judged point the flood could not reach, that the charge falls on
-      # driving rather than on turning at this look-ahead, and that the rover
-      # was therefore being told ten times a second that going forward was
-      # ruinous. No candidate is ever charged it. The flood in the installed
-      # `libdwb_critics.so` is not stopped by walls
-      # (`MapGridQueue::validCellToQueue` is `mov w0,#1; ret`, and nothing
-      # calls `setAsObstacle`), so a critic with a seed reaches every cell of
-      # its window: 0 of 8687 driving candidates and 0 of 6132 pivots over
-      # recordings/trap-2026-08-25-spin.json. `corridor_sim.flood` has the
-      # disassembly and `trap_sim.py --bias` is the measurement.
+      # That distinction matters because this rover would rather turn than
+      # drive. Recorded 2026-08-25 it turned 3038 degrees and finished 28 cm
+      # from where it started. How much of that was the chassis and how much was
+      # DWB scoring held arcs against a grid path is not known and cannot be
+      # known until this drives, so the weight below is deliberately a fifth of
+      # nav2's default: enough to say turning is not free, not enough to stop a
+      # rover that has to pivot to escape.
       #
-      # What is still true is the behaviour this critic was reached for. On
-      # that recording the rover turned 3038 degrees and finished 28 cm from
-      # where it started, and the model -- which now agrees with its commands
-      # on 84% of ticks -- chooses a pivot on 481 of the 496 ticks it can
-      # score. Driving loses to turning by a median 4.6 points where both are
-      # legal, and on 41% of the ticks no forward candidate is legal at all.
-      # Taking this critic out would make that worse, so it stays until
-      # somebody has a drive that says otherwise.
-      #
-      # `PreferForwardCritic::scoreTrajectory` returns `fabs(theta) *
-      # theta_scale` for a forward rollout, read out of `libdwb_critics.so`, so
-      # it prices turning directly and is symmetric in left and right -- it
-      # cannot say *which* way to turn, only that turning is not free. That is
-      # the right shape for this fault and the wrong shape for a rover that has
-      # to pivot to escape, which is why the scale is small and why it was
-      # regression-tested against both doorway recordings before it shipped.
-      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
-                "PathAlign", "PathDist", "GoalDist", "PreferForward"]
-      # No `getScale` override on this critic, so the number here is the number
-      # that is used -- unlike ObstacleFootprint below. A full-speed pivot at
-      # 0.78 rad/s costs 0.78 * 10 * this, against a PathDist spread of about
-      # 1.6 points across a whole tick's candidates.
-      #
-      # Driven round the closed loop from eight starts in each of the three
-      # recordings, medians:
-      #
-      #     look   PreferForward   corridor        doorway     lock-up
-      #     0.325       0.0        1.31 m, 12 rev  1.00 m 8/8  0.91 m 8/8
-      #     0.325       0.5        1.39 m,  5 rev  0.95 m 8/8  0.93 m 8/8
-      #     0.450       0.0        0.66 m, 16 rev  0.92 m 8/8  0.91 m 8/8
-      #     0.450       0.5        1.23 m, 15 rev  0.83 m 8/8  0.91 m 8/8
-      #
-      # **0.45 was the obvious-looking move and it is wrong.** It is where the
-      # charge above falls about evenly on driving and turning, but evening
-      # that up is not the objective: only four of the eight corridor starts
-      # got anywhere at 0.45, against eight of eight at 0.325. Balancing a
-      # penalty is not the same as removing it.
-      PreferForward.scale: 0.5
-      # **0.005 rather than the stock 0.02, and this is the number that decides
-      # whether the rover moves at all.**
-      #
-      # This critic scores the costmap cost where a rollout *ends*, and a rover
-      # that stays where it is ends where it already was -- in open floor, at
-      # zero. Every rollout that goes anywhere ends 0.6 m further into a room,
-      # which in a furnished one means somewhere inside the inflation gradient,
-      # at a cost of 190 to 240. So the critic pays a standing bribe not to move,
-      # and the bribe is worth about 4 points at the stock scale.
-      #
-      # Recorded off `/evaluation` while the rover sat still with clear floor in
-      # front of it: standing scored 13.20 and the best forward trajectory 13.54,
-      # of which 3.74 was this critic (then named BaseObstacle). It stood there and dithered until the move
-      # timed out. Stock DWB gets away with the bribe because it has twenty
-      # forward samples and the slow ones barely enter the gradient; this chassis
-      # has no slow ones, so the bribe has to come down instead.
-      #
-      # Safety does not live in this number, and neither, it turns out, does
-      # anything else. Two corrections to the paragraph above, both measured:
-      #
-      # **This scale is not the weight.** `ObstacleFootprintCritic` overrides
-      # `getScale` as `resolution * scale_`, where the `BaseObstacleCritic` it
-      # replaced inherited the plain `scale_`. So swapping the plugin divided
-      # the weight on obstacle cost by twenty without changing a line of yaml,
-      # and 0.005 here is really 0.00025 per unit of cost. The 3.74 points
-      # recorded off `/evaluation` under the old critic was 187 x 0.02; the
-      # same cell today is worth 0.05.
-      #
-      # **And correcting it changes nothing.** Raising this to 0.1, 0.4 and 1.0
-      # -- the last being two hundred times what is here -- was run against the
-      # recorded drive and moved neither the clearance the winning rollout ends
-      # with (0.43 m at every value) nor how often it ends too close to pivot
-      # (8% at every value). The reason given at the time was that the align
-      # critics could charge a candidate 2881 points; they cannot, and the
-      # honest version is smaller and still holds. Measured on
-      # recordings/trap-2026-08-25-spin.json, within one tick the obstacle
-      # critic separates best from worst by 1.38 points, `PathDist` by 2.40 and
-      # `PathAlign` by 6.40, so this scale is arguing against critics worth
-      # several times more and a change of a few hundredths in it does not
-      # decide anything. `trap_sim.py --weights` is the measurement.
-      #
-      # A trajectory that actually reaches a lethal cell is still refused by
-      # this critic whatever the scale is; 253 is a cost here and not contact.
-      # **`BaseObstacle`, which is the critic a circular body takes.** It reads
-      # the one cell the robot's centre is in and refuses anything that is not
-      # free: `isValidCost` in `libdwb_critics.so` is a single comparison, `cmp
-      # w1, #0xfc; cset w0, ls`, so a cost is valid exactly when it is 252 or
-      # less and 253, 254 and 255 are all refusals.
-      #
-      # That is a *point* test, and a point test is a collision test only while
-      # the inflation layer's inscribed ring is as big as the whole robot. With
-      # the measured rectangle it was not -- the ring was 0.14 m and the corners
-      # 0.21 m -- which is why `ObstacleFootprint` was here. With a `robot_radius`
-      # the two are the same number by construction, so this is correct again,
-      # and it is the stronger of the two: `ObstacleFootprint` refused only on
-      # contact at 254, this refuses at 253, the ring itself. The controller can
-      # no longer put the rover's centre inside the band at all.
-      #
-      # 0.02 and not the 0.005 that was here, and the two numbers are not
-      # comparable. `ObstacleFootprintCritic` overrides `getScale` as `resolution
-      # * scale_` while `BaseObstacleCritic` inherits the plain `scale_`, so
-      # 0.005 there was really 0.00025 and 0.02 here is really 0.02. That is the
-      # value the standing-bribe note above was measured at -- 187 x 0.02 = 3.74
-      # points against moving -- and it is affordable only because `PreferForward`
-      # now charges up to 3.9 points against standing and turning. The two
-      # roughly cancel.
-      BaseObstacle.scale: 0.02
-      # **0.325, which is nav2's own default, and the 0.8 that was here is
-      # what was trapping the rover.** The reasoning that put 0.8 here was
-      # sound and the measurement under it was not, so this is worth setting
-      # out properly.
-      #
-      # These two critics are the only ones in the set that can tell one
-      # rotation from another. The other four read the costmap where a rollout
-      # *ends*, and a rover turning on the spot ends in the cell it started in,
-      # so they return the same number for every pivot. The align pair break
-      # that tie by reading the map a little way in front of the nose instead,
-      # and at 0.1 m they could not: the flood underneath is a whole number of
-      # cells and a point 10 cm from the centre of rotation sweeps about two of
-      # them across the entire turn range. Sixteen pivots scored 44.81 to 44.88
-      # out of about 45, the rover had nothing to tell it which way to turn,
-      # and it swung about one and a half times a second.
-      #
-      # All of that is still true, and the rest of what stood here is not.
-      # **Both of the tables this comment has carried were produced by a model
-      # whose flood stopped at the inflated ring, and the library's flood does
-      # not stop at anything.** The first said 0.8 was needed because a nose
-      # point that missed the flood was refused; the second said 0.325 was
-      # needed because such a point was charged 2881 points. Neither event
-      # exists: `MapGridQueue::validCellToQueue` is `mov w0,#1; ret` and
-      # nothing in the library calls `setAsObstacle`, so once a critic has a
-      # seed every cell of its window carries a real distance. See
-      # `corridor_sim.flood`.
-      #
-      # With the flood corrected the look-ahead stops mattering on the drive
-      # that is actually going wrong. Driven round the closed loop from twelve
-      # starts on recordings/trap-2026-08-25-spin.json, on the rover's own
-      # costmap and its own plan:
-      #
-      #     look-ahead   got somewhere   went (median)   turned (median)
-      #     0.325          0 of 12         0.00 m           422 deg
-      #     0.450          0 of 12         0.00 m           422 deg
-      #     0.800          0 of 12         0.00 m           498 deg
-      #
-      # So 0.325 is kept because it is nav2's default and nothing argues it
-      # away, not because it was measured to be better. What that trap is
-      # really made of is in `trap_sim.py --bias`: on 41% of its ticks no
-      # forward candidate is legal at all, and on the rest driving loses to
-      # pivoting by a median 4.6 points, charged almost entirely by `PathAlign`
-      # and `PathDist`.
-      PathAlign.scale: 32.0
-      PathAlign.forward_point_distance: 0.325
-      GoalAlign.scale: 24.0
-      GoalAlign.forward_point_distance: 0.325
-      PathDist.scale: 32.0
-      GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
-      RotateToGoal.lookahead_time: -1.0
+      # `VelocityDeadbandCritic` is absent on purpose -- see the note above the
+      # plugin line, it would charge a pivot for pivoting.
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic",
+                "TwirlingCritic"]
+
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+
+      # **A point test, and only because the body is a circle.** `robot_radius`
+      # is 0.200 in both costmaps, so the inflation layer's inscribed ring is
+      # the whole robot and the cost of the cell the centre is in already is the
+      # footprint test. `consider_footprint: true` would trace an SE2 polygon
+      # per trajectory point per sample, which for 2000 x 20 is real money for
+      # an answer that cannot differ. The rectangle that made this distinction
+      # matter -- a 0.14 m ring with corners 0.21 m out -- is gone; see the
+      # footprint note in local_costmap below.
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: false
+        collision_cost: 1000000.0
+        near_goal_distance: 0.5
+        trajectory_point_step: 2
+
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+
+      # 0.30 rather than nav2's 0.5. This is the distance inside which the
+      # controller starts caring about final heading, and it has to sit above
+      # the 0.22 m arrival circle the goal checker uses or the rover reaches the
+      # circle without ever having been asked to point the right way.
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.30
+
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        # The lattice planner writes orientations into its path and they are
+        # orientations this chassis can hold, unlike the grid planner that came
+        # before it. Still off, because it is a default and nothing has been
+        # driven to argue it either way.
+        use_path_orientations: false
+
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+
+      # `mode: 0` is forward-preference, which is the only honest setting on a
+      # rover whose only planar sensor looks forwards.
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        mode: 0
+
+      # The anti-spin term, at a fifth of nav2's default weight, and the number
+      # is a judgement rather than a measurement. See the note beside `critics`.
+      TwirlingCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
 
 local_costmap:
   local_costmap:

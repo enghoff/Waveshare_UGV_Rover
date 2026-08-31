@@ -1047,6 +1047,15 @@ way to say it.
 
 ### `dwb_bench.py`: reading `/evaluation` without driving the rover
 
+**This tool no longer works against the deployed controller.** `/evaluation` is a
+DWB topic and the rover runs MPPI; a bench started from today's
+`config/nav2.yaml` will load MPPI and publish nothing here. What is written below
+is how four of the faults in this stack were found, and it stays because the
+recordings and the reasoning are still evidence. MPPI's equivalent is
+`visualize: true` in the `FollowPath` block, which publishes candidate
+trajectories on `/controller_server/trajectories` for rviz � a picture rather than
+a per-critic score, so it is a weaker instrument.
+
 `/evaluation` is DWB publishing its own decision — every candidate twist, what each
 critic charged it, and which won — and it is the only place that says why a rover
 that could move is standing still. Four of the faults in this stack were found in
@@ -1260,13 +1269,25 @@ and at 2.0 it changes nothing.
 
 ### What is still open
 
+**Read the first two bullets as DWB's, because the controller is MPPI now.** Both
+describe a fault in how DWB picked an aim point � a plan cut to a straight-line
+radius, and a distance field flooded over a costmap that does not stop it at
+walls. MPPI has neither: it scores whole trajectories against the costmap
+directly, with no map-grid flood anywhere in it. So the mechanism is gone and the
+*behaviour* is unproven either way, because nothing has driven the trap under the
+new controller. `dwb_replay.py recordings/trap-2026-08-25-spin.json --drive` is
+still the reproduction, and it still reproduces DWB.
+
 - **The controller aims the rover round the corner at a wall, because the plan
   is cut to a straight-line radius and the distance field it steers by floods
   through walls.** Pulling `FollowPath.forward_prune_distance` in to 0.9 m gets
-  the model out from nine or ten of twelve starts (`trap_sim.py --aim`), and is
-  deployed. It is a mitigation: the escapes still clip the corner, so getting
-  the rover to approach an opening centred is still open. The older reading of
-  this bullet follows and still holds for what happens once it is aimed badly.
+  the model out from nine or ten of twelve starts (`trap_sim.py --aim`). **It was
+  never deployed** � this bullet used to say it was, and the running controller
+  was asked on 2026-08-31 and answered 2.0, which is DWB's own default. The
+  parameter appears in `trap_sim.py` and `dwb_replay.py` and has never appeared
+  in `config/nav2.yaml`. It is a mitigation in a model, and under MPPI there is
+  no such parameter to set. The older reading of this bullet follows and still
+  holds for what happens once the rover is aimed badly.
 
 - **The controller aims the rover at walls, because the distance field it
   steers by does not know they are there.** That is the trap above and it is
@@ -1404,6 +1425,89 @@ dimension, so the search has more states to get through, not fewer. The model wa
 counting expansions to the first solution and had no notion of the frontier it
 left behind. `rotation_penalty` stays at 5.0, and the note beside it in
 `config/nav2.yaml` says not to lower it again without running that sweep.
+
+## The controller is MPPI now, and DWB was only ever there because of the board
+
+Everything above this section was written against DWB, and most of it is a record
+of teaching a controller that scores one held arc per rollout about a chassis that
+does not drive arcs. The rover has two forward speeds and changes direction by
+stopping and pivoting, and DWB had to be told that by hand: two velocity samples
+instead of twelve, floors under the pivot rate, an acceleration limit that crossed
+the whole range in one tick, a rollout shortened to 0.8 s so that a candidate never
+had to commit to a corner the chassis cannot turn.
+
+None of that was a case *for* DWB. The case for DWB was arithmetic, and it is
+written at the top of `config/nav2.yaml`: MPPI rolls out thousands of trajectories
+a tick, and the Banana Pi's four Cortex-A53 cores were already spent on
+`slam_toolbox`. The rover is a Jetson Orin Nano now, with six Cortex-A78AE cores,
+and that constraint is gone.
+
+**What changed is one plugin line and the parameters under it.** The planner, both
+costmaps, the behaviour tree, the progress and goal checkers, the recoveries, the
+velocity smoother and the bridge are all untouched. `nav2_mppi_controller` was
+already installed — it comes with the same `ros-jazzy-nav2-*` set as everything
+else in the conda environment — so this is a configuration change and not an
+install.
+
+**What carried over unchanged is every measured fact about the rover.** The
+envelope is the same envelope: 0.40 m/s forward from `calibrate_chassis.py`,
+0.78 rad/s because past 45 deg/s a 100 ms lidar sweep smears more heading change
+than a scan match can absorb, 4.0 m/s² because this base steps rather than ramps,
+no reverse at all because the lidar looks forwards, and a 0.3 s transform tolerance
+because the driver board drives the transform tree at about 17–20 Hz. Those are
+facts about the chassis and the sensors, and they do not care which controller
+reads them.
+
+**What was given up is the velocity floor.** DWB was made to respect it by taking
+its samples away: with `vx_samples: 2` the only forward speed it could choose was
+0.40, which is a speed the wheels have. MPPI samples a continuous distribution and
+returns a weighted average of it, so there is nothing to prune — it will ask for
+0.15 m/s, and `drive_mixer.pwm_for` will answer with the slowest PWM it ever
+measured, which is 0.33. That is the same fiction the section above called
+"Every acceleration and deceleration was a fiction", and it is back.
+
+Two things make it a smaller fiction than it was. MPPI re-seeds each tick from the
+speed `/odom` reports rather than from the speed it asked for, so an overspeed
+appears in the next tick's state 100 ms later instead of compounding. And the
+manoeuvre that used to be approximated — turn to line up, then drive — is a single
+candidate MPPI can score, because it optimises a sequence over the horizon rather
+than one arc held for the whole of it.
+
+**`VelocityDeadbandCritic` looks like the fix for the floor and is not.** It scores
+`max(deadband − |v|, 0)` summed over the horizon, so a 0.33 m/s deadband on `vx`
+charges the full 0.33 to every trajectory that stands still — and standing still is
+how this chassis turns and how it stops on a goal. Set it and the rover would
+neither pivot nor arrive. It is written for a robot that must not creep; this one
+must not creep *while driving*, which is a different shape and there is no critic
+for it. The floor now lives only in `drive_mixer`, and it is the first thing to
+look at in a drive that weaves.
+
+**The critic that stops the rover spinning is `TwirlingCritic`, not the one whose
+name says forward.** MPPI ships a `PreferForwardCritic` and it is not DWB's critic
+of that name: it scores `−min(vx, 0)`, which prices reverse motion, and with
+`vx_min` at zero there is no reverse motion to price. The one that prices *turning*
+— which is what DWB's returned, `fabs(theta) * scale` — is `TwirlingCritic`, which
+scores mean `|wz|`. It is in the set at a fifth of nav2's default weight. How much
+of the 3038 degrees recorded on 2026-08-25 was the chassis and how much was DWB
+scoring held arcs against a grid path is not known and cannot be known until this
+drives, so the weight says turning is not free without stopping a rover that has to
+pivot to escape.
+
+**Everything else is a nav2 default, deliberately.** The weights have not been
+tuned against this rover. `docs/jetson-orin-navigation.md` has the acceptance test
+— the same routes under both controllers, scored on goals reached, route time,
+replans, recoveries, reversals, minimum clearance and final error — and until that
+has run, "MPPI is better here" is a reasonable expectation and not a measurement.
+
+**The DWB tooling in this directory still models DWB, and that is now the
+baseline rather than the rover.** `corridor_sim.py`, `trap_sim.py`, `jam_repro.py`
+and `dwb_replay.py` re-score recorded drives against DWB's critics, and the
+recordings they read are DWB recordings, so they are still exactly as true as they
+were. What they no longer are is a model of what the rover will do. `dwb_bench.py`
+is the one that actually breaks: it reads `/evaluation`, which is DWB publishing
+its own decision, and MPPI does not publish one. Its equivalent is
+`visualize: true` in the `FollowPath` block and the candidate trajectories on
+`/controller_server/trajectories` in rviz.
 
 ## What is deliberately not here
 
