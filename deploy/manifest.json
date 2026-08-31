@@ -235,6 +235,32 @@
       ]
     },
     {
+      "name": "dongle_driver",
+      "host": "orin",
+      "destination": "~/ugv/dongle_driver",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "dongle_driver/**"
+          ],
+          "strip": "dongle_driver"
+        }
+      ],
+      "commands": [],
+      "system_install": {
+        "sudo_password_file": "secrets/jetson-orin.key",
+        "command": "sh ~/ugv/dongle_driver/install.sh",
+        "verify": [
+          "dkms status rtl8xxxu",
+          "cat /sys/module/rtl8xxxu/parameters/rx_urb_recover"
+        ]
+      },
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
       "name": "netwatch",
       "host": "orin",
       "destination": "~/ugv/netwatch",

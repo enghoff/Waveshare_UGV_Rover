@@ -1,0 +1,85 @@
+--- a/rtl8xxxu_core.c
++++ b/rtl8xxxu_core.c
+@@ -37,6 +37,15 @@
+ int rtl8xxxu_debug;
+ static bool rtl8xxxu_ht40_2g;
+ static bool rtl8xxxu_dma_aggregation;
++/*
++ * Whether a receive buffer that completed with a recoverable USB error is put
++ * back to work. See rtl8xxxu_rx_complete. On by default; the old behaviour is
++ * one write to /sys/module/rtl8xxxu/parameters/rx_urb_recover away, which is
++ * how the difference was measured on the rover it was written for.
++ */
++static bool rtl8xxxu_rx_urb_recover = true;
++static int rtl8xxxu_rx_urb_errors;
++static int rtl8xxxu_rx_urb_retired;
+ static int rtl8xxxu_dma_agg_timeout = -1;
+ static int rtl8xxxu_dma_agg_pages = -1;
+ 
+@@ -68,6 +77,12 @@
+ MODULE_PARM_DESC(dma_agg_timeout, "Set DMA aggregation timeout (range 1-127)");
+ module_param_named(dma_agg_pages, rtl8xxxu_dma_agg_pages, int, 0600);
+ MODULE_PARM_DESC(dma_agg_pages, "Set DMA aggregation pages (range 1-127, 0 to disable)");
++module_param_named(rx_urb_recover, rtl8xxxu_rx_urb_recover, bool, 0644);
++MODULE_PARM_DESC(rx_urb_recover, "Put a receive buffer back to work after a recoverable USB error instead of retiring it");
++module_param_named(rx_urb_errors, rtl8xxxu_rx_urb_errors, int, 0444);
++MODULE_PARM_DESC(rx_urb_errors, "Receive buffers that completed with an error (read-only)");
++module_param_named(rx_urb_retired, rtl8xxxu_rx_urb_retired, int, 0444);
++MODULE_PARM_DESC(rx_urb_retired, "Receive buffers given up on and freed (read-only)");
+ 
+ #define USB_VENDOR_ID_REALTEK		0x0bda
+ #define RTL8XXXU_RX_URBS		32
+@@ -6472,13 +6487,48 @@
+ 		skb = NULL;
+ 		rx_urb->urb.context = NULL;
+ 		rtl8xxxu_queue_rx_urb(priv, rx_urb);
+-	} else {
+-		dev_dbg(dev, "%s: status %i\n",	__func__, urb->status);
+-		goto cleanup;
++		return;
++	}
++
++	rtl8xxxu_rx_urb_errors++;
++
++	/*
++	 * A buffer that came back with an error used to be freed here and never
++	 * replaced. There are RTL8XXXU_RX_URBS of them and nothing makes more,
++	 * so a device that produces the odd transient USB error -- which an
++	 * RTL8188FTV sharing a bus with a camera and a lidar does -- retires one
++	 * buffer at a time until it has none, and then receives nothing at all
++	 * while still reporting itself associated and up. Only reloading the
++	 * module brings it back. That is a silent, permanent failure built out
++	 * of errors that were each recoverable.
++	 *
++	 * So a recoverable error puts the buffer back to work. The data in it is
++	 * junk and is dropped; it is the buffer that is worth keeping.
++	 *
++	 * Teardown is the exception and must still free. The device is gone or
++	 * the driver is stopping, resubmitting would fail for ever, and the
++	 * caller is waiting for these to drain.
++	 */
++	switch (urb->status) {
++	case -ENOENT:
++	case -ECONNRESET:
++	case -ESHUTDOWN:
++	case -ENODEV:
++		break;
++	default:
++		if (!rtl8xxxu_rx_urb_recover)
++			break;
++		dev_err_ratelimited(dev, "%s: recovering a receive buffer from status %i (%d so far)\n",
++				    __func__, urb->status,
++				    rtl8xxxu_rx_urb_errors);
++		dev_kfree_skb_any(skb);
++		rx_urb->urb.context = NULL;
++		rtl8xxxu_queue_rx_urb(priv, rx_urb);
++		return;
+ 	}
+-	return;
+ 
+-cleanup:
++	rtl8xxxu_rx_urb_retired++;
++	dev_dbg(dev, "%s: status %i\n",	__func__, urb->status);
+ 	usb_free_urb(urb);
+ 	dev_kfree_skb(skb);
+ }
