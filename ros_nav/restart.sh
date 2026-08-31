@@ -60,8 +60,8 @@ tail -6 "$DIR/ros_nav.log"
 #
 # Which mapper is expected depends on how the launch was started, so it is read
 # off the running launch's own command line rather than assumed.
-# `rtabmap:=primary` -- what boots since 2026-08-31 -- wants RTAB-Map and no
-# slam_toolbox; `rtabmap:=off` wants slam_toolbox and no RTAB-Map;
+# `rtabmap:=off` -- the default, and what boots -- wants slam_toolbox and no
+# RTAB-Map; `rtabmap:=primary` wants RTAB-Map and no slam_toolbox;
 # `rtabmap:=compare` wants both. Getting this wrong in either direction is worth
 # catching: two mappers publishing `map -> odom` is a rover whose pose flickers
 # between two answers, and none at all is a rover with no map.
@@ -72,7 +72,7 @@ tail -6 "$DIR/ros_nav.log"
 # missing slam_toolbox on a rover that is mapping perfectly well.
 mode=$(sed -n 's/^ *"rtabmap", default_value="\([a-z]*\)".*/\1/p' \
        "$DIR/slam.launch.py" | head -1)
-mode=${mode:-primary}
+mode=${mode:-off}
 launch_cmd=$(pgrep -af 'ros2 launch.*ros_nav' 2>/dev/null || true)
 case "$launch_cmd" in
     *rtabmap:=compare*) mode=compare ;;

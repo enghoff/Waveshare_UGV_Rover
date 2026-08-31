@@ -10,13 +10,13 @@ because replacing a mapper on a rover that has to keep working is three steps
 rather than one:
 
   primary   RTAB-Map, publishing `map -> odom` and `/map`, with slam_toolbox not
-            started at all. The default, and what boots since 2026-08-31.
+            started at all. Measured worse than slam_toolbox on this rover
+            (see the README) and kept for the day a camera changes that.
   compare   both of them, from the same scan and the same wheels, with RTAB-Map
             forbidden to publish a transform. slam_toolbox steers the rover;
             RTAB-Map is a passenger keeping its own opinion, and
             slam_compare.py reads the two opinions and prints the difference.
-  off       slam_toolbox alone, which is what this rover ran before and what to
-            go back to if RTAB-Map disappoints.
+  off       slam_toolbox alone. The default, and what boots.
 
 **No setting ever has two things publishing `map -> odom`.** A frame in TF has
 exactly one parent, so two publishers do not give a controller two opinions to
@@ -97,7 +97,7 @@ def generate_launch_description():
         # a launch started without the argument -- which is what a hand relaunch
         # is -- is checked against the mapper it will actually have started.
         DeclareLaunchArgument(
-            "rtabmap", default_value="primary",
+            "rtabmap", default_value="off",
             choices=["off", "compare", "primary"],
             description="off: slam_toolbox alone. compare: RTAB-Map alongside "
                         "it, publishing no transform, for slam_compare.py to "

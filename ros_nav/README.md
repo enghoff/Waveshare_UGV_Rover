@@ -39,9 +39,9 @@ recoveries, and a standard set of topics that any ROS tool can look at.
   lidar_node.py --> /scan                       (the D500, on its own USB port)
         |
         v
-  RTAB-Map      --> /map, map -> odom   (the mapper, since 2026-08-31; the
-        |                                launch's rtabmap:= argument can put
-        |                                slam_toolbox back)
+  slam_toolbox  --> /map, map -> odom   (the mapper; the launch's rtabmap:=
+        |                                argument can put RTAB-Map there
+        |                                instead, and measured worse)
         v
   Nav2          --> /cmd_vel  (back to base_node, and out to the wheels)
         |
@@ -487,14 +487,16 @@ The whole story, the measurements and the one assumption it rests on are in
 build step, and the manifest rebuilds it before every restart for the reason
 `lidar_slam/` already learned.
 
-## RTAB-Map is the mapper, and slam_toolbox is what to go back to
+## slam_toolbox is the mapper, and RTAB-Map is the one that was measured against it
 
-**RTAB-Map owns `map -> odom` and publishes `/map` on this rover as of
-2026-08-31.** slam_toolbox is still installed, still configured, and still
-maintained by everything in this file that describes it; going back is one word
-in the boot entry and a restart.
+**slam_toolbox owns `map -> odom` and publishes `/map`.** RTAB-Map was the mapper
+for part of 2026-08-31 and is not any more: replayed into both on one recorded
+drive it mapped this rover measurably worse, and "The drive of 2026-08-31,
+replayed into everything" below is the evidence. It stays installed, configured
+and launchable, because the answer would change the day a camera reaches it.
 
 ```bash
+ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav --rtabmap'    # RTAB-Map instead
 ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav --slam-toolbox'
 ssh orin '~/ugv/ros_nav/restart.sh --supervisor'
 ```
