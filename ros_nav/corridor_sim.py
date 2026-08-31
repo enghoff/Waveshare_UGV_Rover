@@ -1518,21 +1518,30 @@ def drive_on_heading(grid, x, y, yaw, target=0.5, sign=1.0, speed=BACKUP_SPEED,
 
 
 def escape_spin(grid, x, y, yaw, target=SPIN_DIST,
-                simulate_ahead_s=SIMULATE_AHEAD_S):
-    """`ugv_behaviors::EscapeSpin`: a rover in contact may still turn.
+                simulate_ahead_s=SIMULATE_AHEAD_S, circular=None):
+    """`ugv_behaviors::EscapeSpin`: a circular-footprint rover always turns.
 
-    Sound because the footprint is a circle centred on `base_link`, so a
-    rotation about its own centre maps the body onto itself and cannot sweep
-    ground the rover is not already standing on. It is the same fact that makes
-    Nav2's check useless here: with a circular body it is either vacuous or an
-    unconditional veto, which is why `spin_recovery` returns the whole rotation
-    or none of it and never anything between.
+    The footprint is a circle centred on `base_link`, which is the point the
+    rover turns about, so a rotation maps the body exactly onto itself and every
+    heading covers the same ground. If the rover fits where it stands it fits at
+    every heading; if it does not, no heading helps. Nav2's check can therefore
+    only agree with the current pose or disagree with it wrongly -- and it does
+    disagree, because it does not test a circle. A radius becomes a sixteen-sided
+    polygon whose outline is walked across a 5 cm grid, so rotating it clips a
+    slightly different set of cells and one marginal cell refuses the turn.
+    Watched on the rover: a 180 degree turn refused while it stood in open floor.
+
+    `circular` defaults to the footprint this module is configured with, and the
+    plugin measures the same thing off the published footprint rather than
+    trusting a setting. A non-circular body keeps Nav2's check except when it is
+    already in contact, where refusing would trap it.
     """
     turned, why = spin_recovery(grid, x, y, yaw, target, simulate_ahead_s)
     if why != "collision ahead":
         return turned, why
-    if collision_free(grid, x, y, yaw):
-        # Standing somewhere legal, so the obstruction really is in the arc.
+    if circular is None:
+        circular = CIRCULAR
+    if not circular and collision_free(grid, x, y, yaw):
         return turned, why
     return target, "escaped"
 

@@ -26,36 +26,37 @@
 // unchanged unless it is specifically COLLISION_AHEAD. So every healthy motion
 // this rover makes is still Nav2's code, byte for byte.
 //
-// When Nav2 does refuse, the current pose decides what happens next:
+// Turning and driving are then treated quite differently, because the geometry
+// is quite different.
 //
-//   the current pose is clear   the obstruction is genuinely ahead of the
-//                               rover, which is what the check is for. The
-//                               refusal stands, untouched.
+// **Turning** is never refused, and that is not a relaxation of safety but a
+// correction of it. The footprint is a circle centred on `base_link`, which is
+// the point the rover rotates about, so a rotation maps the body exactly onto
+// itself: the ground covered is the same at every heading. If the rover fits
+// where it stands it fits at every heading, and if it does not, no heading
+// helps. Nav2's check cannot add information here -- it can only agree with the
+// pose the rover is already in, or disagree with it wrongly, which is what it
+// does. It does not test a circle: a radius becomes a sixteen-sided polygon and
+// the test walks that outline across a 5 cm grid, so rotating it crosses a
+// slightly different set of cells and one marginal cell becomes "turning that
+// way would sweep through something" on a rover standing in open floor. Watched
+// here on a 180 degree turn. `EscapeSpin` measures the footprint's roundness off
+// the same topic the collision checker reads and only claims this when the
+// footprint really is a circle.
 //
-//   the current pose is in      the rover is already in contact, and stock Nav2
-//   collision                   will now refuse every motion for ever. This is
-//                               the state these classes exist for, and each one
-//                               has its own rule for what may be allowed.
+// **Driving** genuinely changes the ground the body covers, so its check is
+// real and is kept. `EscapeDriveOnHeading` -- which is also `BackUp`, the same
+// template with the sign flipped -- changes Nav2's answer only when the rover is
+// already in contact *and* the far end of the projection is clear, meaning the
+// motion leads out of the contact rather than deeper into it. Driving forward
+// off a rear obstacle passes. Reversing into that same obstacle does not, and
+// neither does driving forward into a wall while something is behind: the wedged
+// case, where no is still the honest answer.
 //
-// `EscapeSpin` allows the rotation. That is sound because the footprint is a
-// circle centred on `base_link`: rotating it about its own centre maps it onto
-// itself, so a turn cannot sweep ground the rover is not already standing on.
-// It is also why Nav2's check can never help here -- with a circular footprint
-// it is either vacuous or an unconditional veto, and corridor_sim shows exactly
-// that, 90.1 degrees or 0.0 and never anything in between. **If the footprint
-// ever stops being a circle this reasoning stops holding**; ros_nav/selftest.py
-// fails if nav2.yaml grows a footprint polygon, which is the alarm for it.
-//
-// `EscapeDriveOnHeading` -- which is also `BackUp`, the same template with the
-// sign flipped -- allows the motion only when the far end of the projection is
-// clear, meaning the motion leads out of contact rather than deeper into it.
-// Driving forward off a rear obstacle passes. Reversing into that same obstacle
-// does not, and neither does driving forward into a wall while something is
-// behind, which is the wedged case where the honest answer is still no.
-//
-// Escaping is time limited. A rover that has been trying to escape for
-// `escape_time_limit` seconds and is still in contact stops and reports the
-// collision, because at that point it is grinding rather than escaping.
+// Escaping is limited by *lack of progress*, not by the clock -- a 180 degree
+// turn at the recovery speed takes over six seconds, so a stopwatch would cut
+// exactly the manoeuvre this exists to allow. A rover that has not moved for
+// `escape_time_limit` seconds is grinding rather than escaping, and stops.
 
 #ifndef UGV_BEHAVIORS__ESCAPE_BEHAVIORS_HPP_
 #define UGV_BEHAVIORS__ESCAPE_BEHAVIORS_HPP_
@@ -69,6 +70,7 @@
 #include "nav2_msgs/action/back_up.hpp"
 #include "nav2_msgs/action/drive_on_heading.hpp"
 #include "nav2_msgs/action/spin.hpp"
+#include "geometry_msgs/msg/polygon_stamped.hpp"
 
 namespace ugv_behaviors
 {
@@ -76,12 +78,46 @@ namespace ugv_behaviors
 using nav2_behaviors::ResultStatus;
 using nav2_behaviors::Status;
 
-/// How long a behaviour may go on escaping before it gives up and reports the
-/// collision. Long enough to drive clear of a body-length of obstacle at
-/// recovery speed; short enough that a rover which cannot escape says so.
+/// How long a behaviour may go on escaping **without making progress** before it
+/// gives up and reports the collision.
+///
+/// Against elapsed time this would be wrong: a 180 degree turn at the recovery
+/// speed of 0.5 rad/s takes over six seconds, so a limit on the clock would cut
+/// exactly the manoeuvre this exists to allow. Measured against progress
+/// instead, it means what it is for -- a rover that is grinding rather than
+/// escaping -- and a turn that is still turning is never cut off.
 constexpr double kDefaultEscapeTimeLimit = 3.0;
 
-/// Turning on the spot, which is never refused once the rover is in contact.
+/// Turning on the spot, which a circular-footprint rover is never refused.
+///
+/// **Nav2's collision check on a spin is unsound for this rover in both
+/// directions, and that is the whole reason this class exists.**
+///
+/// The footprint is a circle centred on `base_link`, which is the point the
+/// rover rotates about. Rotating a circle about its own centre maps it exactly
+/// onto itself, so the ground covered is identical at every heading: if the
+/// rover fits where it is standing, it fits at every heading, and if it does not
+/// fit, no heading helps. The check can therefore only ever agree with the pose
+/// the rover is already in -- it cannot add information.
+///
+/// It can still *disagree*, and does, because Nav2 does not check a circle. A
+/// radius becomes a polygon of sixteen vertices, and the collision test walks
+/// that polygon's outline across a 5 cm grid; rotate it and the outline crosses
+/// a slightly different set of cells. So a rover standing legally is told that
+/// turning "would sweep through something" on the strength of one marginal cell
+/// that the rasterised outline clips at one projected heading and not at the
+/// current one. Watched on the rover: a 180 degree turn refused outright with
+/// Spin's COLLISION_AHEAD while the rover sat in open floor.
+///
+/// So when the footprint is a circle this class lets the rotation proceed
+/// whichever pose Nav2 objected to. When it is not a circle the reasoning above
+/// does not hold -- a long body really can sweep a corner into a wall -- and it
+/// falls back to allowing the turn only when the rover is already in contact,
+/// which is the case where refusing traps it with no way out.
+///
+/// Whether the footprint is a circle is measured here rather than assumed:
+/// `onConfigure` subscribes to the same footprint topic the collision checker
+/// uses and compares the shortest vertex to the longest.
 class EscapeSpin : public nav2_behaviors::Spin
 {
 public:
@@ -90,12 +126,24 @@ public:
   ResultStatus onRun(const std::shared_ptr<const SpinActionGoal> command) override;
 
 protected:
-  /// True when the footprint at the rover's own pose is in collision, which is
-  /// the only state in which any of this changes Nav2's answer.
+  /// True when the footprint at the rover's own pose is in collision.
   bool inContactNow();
+
+  /// True when the published footprint is a circle about the rotation centre,
+  /// which is what makes a rotation provably safe. False until one has arrived.
+  bool footprintIsCircular() const;
+
+  void onFootprint(geometry_msgs::msg::PolygonStamped::SharedPtr msg);
+
+  rclcpp::Subscription<geometry_msgs::msg::PolygonStamped>::SharedPtr footprint_sub_;
+  /// -1 until a footprint has been seen; then the shortest vertex divided by the
+  /// longest, which is 1.0 for a true circle and 0.98 for Nav2's sixteen-sided
+  /// approximation of one.
+  double footprint_roundness_{-1.0};
 
   double escape_time_limit_{kDefaultEscapeTimeLimit};
   rclcpp::Time escaping_since_;
+  double escape_progress_mark_{0.0};
   bool escaping_{false};
 };
 
@@ -119,6 +167,7 @@ protected:
 
   double escape_time_limit_{kDefaultEscapeTimeLimit};
   rclcpp::Time escaping_since_;
+  double escape_progress_mark_{0.0};
   bool escaping_{false};
 };
 

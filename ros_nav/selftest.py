@@ -1644,6 +1644,49 @@ def test_discovery_stays_on_this_board():
           round(math.degrees(stock_spin[0]), 1), 0.0)
     check("...and can under the escape behaviours, which is the whole point",
           round(math.degrees(escape_spin[0])), 90)
+    # The case that was watched on the rover and that the first version of this
+    # got wrong: the rover is standing legally, and Nav2 still refuses the turn
+    # because the rasterised outline of its sixteen-sided stand-in for a circle
+    # clips a cell at one projected heading. A circular body must turn anyway --
+    # every heading covers the same ground -- and a non-circular one must not,
+    # because it really can sweep a corner into something.
+    def _one_cell(distance, bearing_deg, span=4.0):
+        """One lethal cell that far away on that bearing, and open floor otherwise.
+
+        A straight wall will not show this: a half-plane is symmetric enough that
+        a near-circular outline clips it at every heading or none. It takes a
+        single marginal cell right at the edge of the footprint -- which is what
+        a chair leg or a door frame is -- for the rasterised outline to catch it
+        at one angle and miss it at another.
+        """
+        res = corridor_sim.RESOLUTION
+        cells = int(round(span / res))
+        origin = -span / 2.0
+        col = int((distance * math.cos(math.radians(bearing_deg)) - origin) / res)
+        row = int((distance * math.sin(math.radians(bearing_deg)) - origin) / res)
+        return _goal_fit.CostGrid(cells, cells, res, origin, origin,
+                                  corridor_sim.inflate(cells, cells, [(col, row)]))
+
+    # Behind and to the left, at the distance where the footprint outline is
+    # marginal. 582 such placements exist in this model; the bearing barely
+    # matters, the distance is everything.
+    edge = _one_cell(0.16, 135.0)
+    check("the rover is standing somewhere perfectly legal",
+          corridor_sim.collision_free(edge, 0.0, 0.0, 0.0), True)
+    check("...and stock Nav2 still refuses to turn from it, which is the fault "
+          "watched on the rover",
+          corridor_sim.spin_recovery(edge, 0.0, 0.0, 0.0,
+                                     target=math.radians(180))[1],
+          "collision ahead")
+    check("...and a circular footprint turns anyway, which is the 180 the rover "
+          "was refused",
+          round(math.degrees(corridor_sim.escape_spin(
+              edge, 0.0, 0.0, 0.0, target=math.radians(180), circular=True)[0])),
+          180)
+    check("...while a non-circular one standing legally still may not",
+          round(math.degrees(corridor_sim.escape_spin(
+              edge, 0.0, 0.0, 0.0, target=math.radians(180), circular=False)[0]), 1),
+          0.0)
     stock_fwd = corridor_sim.drive_on_heading(wall, 0.0, 0.0, 0.0,
                                               target=0.5, sign=1.0)
     escape_fwd = corridor_sim.escape_drive_on_heading(wall, 0.0, 0.0, 0.0,

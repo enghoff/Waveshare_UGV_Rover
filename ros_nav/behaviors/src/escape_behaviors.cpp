@@ -2,7 +2,10 @@
 
 #include "ugv_behaviors/escape_behaviors.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -25,6 +28,48 @@ void EscapeSpin::onConfigure()
   nav2_util::declare_parameter_if_not_declared(
     node, "escape_time_limit", rclcpp::ParameterValue(kDefaultEscapeTimeLimit));
   node->get_parameter("escape_time_limit", escape_time_limit_);
+
+  // The same footprint the collision checker is reading, so that "the footprint
+  // is a circle" is something this class has measured rather than something the
+  // config file asserts and nobody rechecks. Transient-local because the costmap
+  // publishes it on a latched-style QoS and this subscription is made late.
+  std::string footprint_topic = "local_costmap/published_footprint";
+  nav2_util::declare_parameter_if_not_declared(
+    node, "local_footprint_topic", rclcpp::ParameterValue(footprint_topic));
+  node->get_parameter("local_footprint_topic", footprint_topic);
+  footprint_sub_ = node->create_subscription<geometry_msgs::msg::PolygonStamped>(
+    footprint_topic, rclcpp::SystemDefaultsQoS(),
+    std::bind(&EscapeSpin::onFootprint, this, std::placeholders::_1));
+}
+
+void EscapeSpin::onFootprint(geometry_msgs::msg::PolygonStamped::SharedPtr msg)
+{
+  // The footprint arrives in the robot frame, so a vertex's distance from the
+  // origin is its distance from the point the rover turns about. A circle has
+  // every vertex the same distance out; Nav2's sixteen-sided stand-in for one
+  // has the shortest at cos(pi/16) = 0.98 of the longest.
+  if (msg->polygon.points.size() < 3) {
+    footprint_roundness_ = -1.0;
+    return;
+  }
+  double shortest = std::numeric_limits<double>::max();
+  double longest = 0.0;
+  for (const auto & point : msg->polygon.points) {
+    const double radius = std::hypot(static_cast<double>(point.x),
+                                     static_cast<double>(point.y));
+    shortest = std::min(shortest, radius);
+    longest = std::max(longest, radius);
+  }
+  footprint_roundness_ = (longest > 1e-6) ? (shortest / longest) : -1.0;
+}
+
+bool EscapeSpin::footprintIsCircular() const
+{
+  // 0.9 admits Nav2's 0.98 polygon and any finer one, and excludes this rover's
+  // own measured rectangle, whose shortest vertex is 0.14 m against a longest of
+  // 0.21 -- a ratio of 0.66. A body that shape really can sweep a corner into a
+  // wall while turning, and must keep Nav2's check.
+  return footprint_roundness_ >= 0.9;
 }
 
 ResultStatus EscapeSpin::onRun(const std::shared_ptr<const SpinActionGoal> command)
@@ -62,9 +107,14 @@ ResultStatus EscapeSpin::onCycleUpdate()
     return result;
   }
 
-  // Nav2 refused. If the rover is standing somewhere legal then the obstruction
-  // is genuinely in the arc it was about to sweep, and the refusal is correct.
-  if (!inContactNow()) {
+  // Nav2 refused. Whether that refusal means anything depends on the shape of
+  // the body, which is why it is measured rather than assumed.
+  const bool circular = footprintIsCircular();
+  if (!circular && !inContactNow()) {
+    // A non-circular body standing somewhere legal really can sweep a corner
+    // into something, so Nav2 is entitled to this one. (It is also the only
+    // branch that ever refuses a turn on this rover, and only if somebody
+    // replaces the circular footprint with a polygon.)
     escaping_ = false;
     return result;
   }
@@ -73,17 +123,35 @@ ResultStatus EscapeSpin::onCycleUpdate()
   if (!escaping_) {
     escaping_ = true;
     escaping_since_ = now;
-    RCLCPP_WARN(
-      this->logger_,
-      "In contact and asked to turn: turning anyway. A circular footprint "
-      "rotated about its own centre sweeps no new ground, so this cannot make "
-      "the contact worse -- and refusing would leave the rover no way out.");
+    escape_progress_mark_ = std::fabs(relative_yaw_);
+    if (circular) {
+      RCLCPP_WARN(
+        this->logger_,
+        "Nav2 refused this turn; turning anyway. The footprint is a circle "
+        "about the point the rover rotates about (shortest vertex %.2f of the "
+        "longest), so every heading covers the same ground and the refusal can "
+        "only be the rasterised outline clipping a cell at one angle and not "
+        "another.", footprint_roundness_);
+    } else {
+      RCLCPP_WARN(
+        this->logger_,
+        "In contact and asked to turn: turning anyway, because refusing would "
+        "leave the rover no way out. The footprint is not a circle "
+        "(shortest vertex %.2f of the longest), so this is the weaker case.",
+        footprint_roundness_);
+    }
+  } else if (std::fabs(relative_yaw_) > escape_progress_mark_ + 1e-3) {
+    // Still turning, so the clock starts again. The limit is for a rover that
+    // has stopped moving, not for one that is taking a while -- a 180 degree
+    // turn at the recovery speed is over six seconds and must not be cut off.
+    escape_progress_mark_ = std::fabs(relative_yaw_);
+    escaping_since_ = now;
   } else if ((now - escaping_since_).seconds() > escape_time_limit_) {
     this->stopRobot();
     RCLCPP_WARN(
       this->logger_,
-      "Still in contact after %.1f s of turning: giving up rather than grinding.",
-      escape_time_limit_);
+      "Asked to turn but not turning for %.1f s: giving up rather than "
+      "grinding.", escape_time_limit_);
     return ResultStatus{Status::FAILED, SpinActionResult::COLLISION_AHEAD};
   }
 
@@ -199,18 +267,26 @@ ResultStatus EscapeDriveOnHeading<ActionT>::onCycleUpdate()
   }
 
   const rclcpp::Time now = this->clock_->now();
+  const double travelled = this->feedback_ ?
+    static_cast<double>(this->feedback_->distance_traveled) : 0.0;
   if (!escaping_) {
     escaping_ = true;
     escaping_since_ = now;
+    escape_progress_mark_ = travelled;
     RCLCPP_WARN(
       this->logger_,
       "In contact, but this heading leads out of it: driving anyway rather "
       "than leaving the rover with no way off the obstacle.");
+  } else if (travelled > escape_progress_mark_ + 1e-3) {
+    // Moving, so the clock starts again -- the limit is for a rover that has
+    // stopped, not for one that is taking a while.
+    escape_progress_mark_ = travelled;
+    escaping_since_ = now;
   } else if ((now - escaping_since_).seconds() > escape_time_limit_) {
     this->stopRobot();
     RCLCPP_WARN(
       this->logger_,
-      "Still in contact after %.1f s of driving clear: giving up.",
+      "In contact and not moving for %.1f s: giving up rather than grinding.",
       escape_time_limit_);
     return ResultStatus{Status::FAILED, ActionT::Result::COLLISION_AHEAD};
   }
