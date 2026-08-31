@@ -419,9 +419,11 @@ class SessionShow:
         if reply.name not in ("drive", "turn_in_place", "drive_to"):
             return
         summary = str(body.get("reason") or "done")
+        # A zero is left out rather than printed: every move reports every distance,
+        # so a turn would otherwise announce the nought metres it drove.
         for key, unit in (("travelled_m", " m"), ("turned_deg", " deg"),
                           ("remaining_m", " m to go")):
-            if body.get(key) is not None:
+            if body.get(key):
                 summary += f", {body[key]}{unit}"
         self.say(f"{reply.name}: {summary}", "good")
 

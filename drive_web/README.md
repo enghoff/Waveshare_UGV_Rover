@@ -101,6 +101,20 @@ arrived — half a second — rather than on a clock started when the request we
 out, so what the rover charged for the picture is spent before the gap begins.
 Neither is ever asked for twice at once.
 
+There is one line of words on the page and it sits under the header: the notice.
+It is for what no panel shows — a map click that was dropped, a button that was
+refused, a move that ended badly — and each one replaces the last, fading after
+twenty-five seconds. It carries a count rather than a time so that a console with
+nothing new to say publishes a state identical to the previous one, and therefore
+publishes nothing at all.
+
+Until 2026-08-31 the page instead carried a scrolling transcript of every call and
+every reply, and a table of turns asked against turns achieved. Both are gone. The
+transcript cost a 61 kB backlog on every page load, the turns table was a third of
+every state pushed down the stream ten times a second, and the panels underneath
+them had come to say the same things better. What is worth keeping out of the
+transcript — a failure, and a move's own verdict on itself — is now the notice.
+
 The network panel shows both rover radios and which one currently owns the stable
 service address. A join can be staged on the spare radio and handed over only
 when that path is usable, so the console need not disconnect merely because the
