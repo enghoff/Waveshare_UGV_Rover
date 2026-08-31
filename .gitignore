@@ -33,3 +33,11 @@ odometry.json
 # netprobe writes its record of what the rover looked like from a desk here.
 # It is evidence about one afternoon on one network, not source.
 netwatch/*.log
+
+# ros_nav/behaviors/ is the ROS stack's one compiled component. Its build tree
+# and install prefix are made on the rover by build.sh, which the manifest runs
+# on every deploy; the deployer only ever copies files git tracks, so keeping
+# these out is what stops a workstation build being shipped to the rover.
+ros_nav/behaviors/build/
+ros_nav/behaviors/build.log
+ros_nav/behaviors/install/

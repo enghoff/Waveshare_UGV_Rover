@@ -464,6 +464,28 @@ Both of those runs predate the gyro-offset fix above, so they are the *hard* cas
 dead reckoning was carrying 38 degrees of phantom rotation and the graph removed
 it anyway. Re-run on a charged pack to see what it does now.
 
+## An obstacle behind it stopped the rover moving at all
+
+Put something close behind this rover and it would not move: not backwards,
+which is right, but also not forwards away from the obstacle and not on the
+spot. One line of arithmetic in three Nav2 behaviours caused all of it — each
+projects the motion it is about to command and tests the footprint at every
+projected pose, and the projection starts at the pose the rover is standing in,
+so a rover in contact is refused everything regardless of which way it was
+going. With the 0.20 m circular footprint and a chassis reaching 0.16 m behind
+`base_link`, anything within about 0.17 m behind the sensor froze it.
+
+`behaviors/` replaces those three with subclasses that defer to Nav2 entirely
+except in that one state, where stock Nav2 does nothing at all for ever. Turning
+becomes unconditional — a circle rotated about its own centre sweeps no new
+ground — and driving is allowed along a heading that leads out of contact.
+Driving into something is still refused, which is the part that had to survive.
+
+The whole story, the measurements and the one assumption it rests on are in
+[`behaviors/README.md`](behaviors/README.md). It is also the ROS stack's only
+build step, and the manifest rebuilds it before every restart for the reason
+`lidar_slam/` already learned.
+
 ## RTAB-Map, running beside slam_toolbox rather than instead of it
 
 There is a second mapper on the rover now. It is not switched on at boot, it does
