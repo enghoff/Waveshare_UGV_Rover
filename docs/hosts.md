@@ -137,8 +137,9 @@ router going down does not take both. Which radio is on which network is not
 fixed and deliberately so -- **no profile is pinned to an interface**, because a
 profile tied to one radio is a profile the spare cannot use, and the spare
 existing to take an access point the active one is not on is the whole point.
-As of 2026-08-31 the onboard radio is on `TheGreatLord` and the dongle on
-`TheMaharaja`, which is the strongest network the onboard one is not using.
+As of 2026-08-31 the onboard radio is on `TheGreatLord` and the dongle takes the
+strongest network that one is not using -- `TheMaharaja` when it is up, which at
+the moment is not for long: see [The second radio](#the-second-radio).
 
 Each radio has its own DHCP lease and either answers SSH and the daemon on 8769.
 That is two ways in, not failover: nothing watches the two paths, nothing moves
@@ -313,22 +314,40 @@ dual-radio manager have deliberately **not** been. The roamer is a one-radio
 script that would start moving the two radios this rover deliberately keeps
 apart.
 
-**The dongle's radio can go deaf, and nothing notices.** On 2026-08-31 it lost
-its link at 03:31 and heard nothing at all for the next six hours: `iw scan`
-succeeded and returned zero access points while the onboard radio could hear
-twenty-seven. The device was on the bus, the driver was bound and the interface
-was up -- only the receiver was dead. Reloading the driver cured it instantly and
-it re-associated within a second:
+**The dongle does not hold a link, and that makes the second radio unreliable
+today.** Measured on 2026-08-31: it associates and gets a lease, then loses the
+link and goes completely deaf -- `iw scan` succeeds and returns zero access
+points while the onboard radio hears twenty-seven, with the device on the bus,
+the driver bound and the interface up. It managed six minutes on `TheGreatViking`
+in the morning and then heard nothing for six hours; after a driver reload it
+managed **29 seconds** on `TheMaharaja` before the same thing happened.
+
+The kernel says what is wrong:
+
+```text
+Rate marked as an HT rate but passed status->rate_idx is not an MCS index [0-76]: 85 (0x55)
+WARNING: ... at net/mac80211/rx.c:5382 ieee80211_rx_list ... [mac80211]
+usb 1-2.3: Unhandled C2H event 07 seq 00
+```
+
+The out-of-tree `rtl8xxxu` build is handing mac80211 a nonsense receive rate, so
+received frames are dropped and the link times out as `ssid-not-found`. Nothing
+in configuration fixes that: `ht40_2g` is already off and the module has no knob
+to disable HT. Reloading the driver revives the radio for another few seconds to
+minutes:
 
 ```bash
 ssh orin 'sudo -S -p "" sh -c "modprobe -r rtl8xxxu; sleep 2; modprobe rtl8xxxu"'     < secrets/jetson-orin.key
 ```
 
-Two things made it worse than it had to be. NetworkManager's default retry limit
-of four attempts meant it stopped trying long before anybody looked -- every
-profile now carries `autoconnect-retries 0`. And nothing on this rover watches
-the spare radio, so a dead second path is invisible until somebody asks. That is
-the strongest argument for porting `wifi_dual`.
+**Treat the second radio as unproven until this is dealt with** -- most likely by
+building the vendor `rtl8188fu` driver instead of the in-tree one. Two things
+that made it worse are fixed: every profile now carries `autoconnect-retries 0`,
+where NM's default of four attempts had it give up hours before anybody looked;
+and the profiles are unpinned, so the spare can retry on any network rather than
+only its own. What remains missing is that nothing watches the spare, so a dead
+second path stays invisible until somebody asks -- the strongest argument for
+porting `wifi_dual`.
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.
