@@ -1534,6 +1534,74 @@ def test_discovery_stays_on_this_board():
         sweep = fh.read()
     check("sweep SIGKILLs what ignored SIGTERM, or the leftover keeps the port",
           "pkill -9 -f" in sweep, True)
+
+    # --- the second mapper ----------------------------------------------------
+    # RTAB-Map runs beside slam_toolbox so the two can be measured against each
+    # other, and every check below is a fault that was met on the rover while
+    # getting it there. They are static reads of the files because that is what
+    # catches them: each one fails silently at runtime and looks like something
+    # else.
+    check("sweep.sh takes RTAB-Map down too, or the next launch runs two",
+          "run_rtabmap[.]sh" in sweep and "/lib/rtabmap_slam/rtabmap" in sweep, True)
+    check("...and it names it by path, so the pattern cannot match an ssh session",
+          "pkill -f 'rtabmap'" not in sweep and 'pkill -f "rtabmap"' not in sweep, True)
+    with open(os.path.join(HERE, "run_rtabmap.sh"), encoding="utf-8",
+              errors="replace") as fh:
+        runrtab = fh.read()
+    # The one that matters. A frame has a single parent, so a second publisher of
+    # `map -> odom` does not give the controller a second opinion -- it gives it
+    # one transform flickering between two, and the rover steers on whichever
+    # landed last.
+    check("compare mode forbids RTAB-Map the map -> odom transform",
+          "PUBLISH_TF=false" in runrtab and "MODE=compare" in runrtab, True)
+    check("...and only --primary turns it on",
+          runrtab.find("MODE = primary") < 0
+          and 'if [ "$MODE" = primary ]' in runrtab, True)
+    check("RTAB-Map keeps its grid out of /map, or Nav2 reads two maps",
+          "__ns:=/rtabmap" in runrtab, True)
+    with open(os.path.join(HERE, "slam.launch.py"), encoding="utf-8",
+              errors="replace") as fh:
+        slam_launch_text = fh.read()
+    check("the launch never starts both mappers, whatever rtabmap:= is set to",
+          "!= 'primary'" in slam_launch_text
+          and "== 'compare'" in slam_launch_text, True)
+    check("RTAB-Map is launched through its wrapper, not as a conda Node()",
+          "run_rtabmap.sh" in slam_launch_text
+          and 'package="rtabmap' not in slam_launch_text, True)
+    rtab_cfg_path = os.path.join(HERE, "config", "rtabmap.yaml")
+    if os.path.isfile(rtab_cfg_path):
+        with open(rtab_cfg_path, encoding="utf-8", errors="replace") as fh:
+            rtab_cfg = fh.read()
+        # lidar_node publishes /scan best-effort on purpose. A reliable
+        # subscriber against a best-effort publisher is *incompatible* in DDS,
+        # not merely mismatched: both sides list the topic and not one message is
+        # ever delivered, which reads as RTAB-Map being broken.
+        check("RTAB-Map subscribes to /scan best-effort, or it receives nothing",
+              "qos_scan: 2" in rtab_cfg, True)
+        # Every 2D-lidar recipe written before RTAB-Map 0.21 says `Icp/PM`. This
+        # build has `Icp/Strategy`, does not map a parameter it does not know,
+        # and logs nothing -- so the file says libpointmatcher and the node
+        # quietly runs PCL's ICP with stock settings.
+        #
+        # Read off the settings rather than the whole file: the comment above
+        # that line names the old parameter in order to warn about it, and a
+        # check that cannot tell a warning from a setting is worse than none.
+        rtab_settings = "\n".join(
+            line for line in rtab_cfg.splitlines()
+            if line.strip() and not line.lstrip().startswith("#"))
+        check("...and uses 0.22's ICP parameter names, which are not the old ones",
+              "Icp/Strategy" in rtab_settings and "Icp/PM" not in rtab_settings, True)
+        check("...and RTAB-Map's own loop closure is switched on",
+              "RGBD/ProximityBySpace" in rtab_cfg, True)
+    with open(os.path.join(HERE, "native.sh"), encoding="utf-8",
+              errors="replace") as fh:
+        native = fh.read()
+    # ROS's setup.bash reads $AMENT_TRACE_SETUP_FILES with no default, so under
+    # `set -u` it dies naming ROS's file rather than ours.
+    check("native.sh survives set -u across ROS's own setup.bash",
+          "set +u" in native and "AMENT_TRACE_SETUP_FILES" in native, True)
+    check("...and leaves the conda environment rather than layering on it",
+          "env -i" in native, True)
     with open(os.path.join(HERE, "restart.sh"), encoding="utf-8", errors="replace") as fh:
         restart = fh.read()
     check("restart.sh will not hang SSH on a wedged ros2 node list",

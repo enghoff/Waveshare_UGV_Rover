@@ -1,0 +1,255 @@
+# RTAB-Map on the Jetson Orin, as a lidar-only 2D mapper -- the same job
+# slam_toolbox does, from the same two inputs, so that the two can be compared on
+# one drive.
+#
+# Read this beside config/slam_toolbox.yaml. Almost every number here is that
+# file's number translated into RTAB-Map's vocabulary, and where it is not, the
+# comment says why. Keeping them equivalent is what makes the comparison mean
+# anything: if the two disagree about a corridor, it should be because the
+# algorithms disagree and not because one of them was allowed a longer look.
+#
+# ## No image reaches this node, and therefore no GPU
+#
+# RTAB-Map is usually run with a camera, and that is where its reputation comes
+# from -- visual loop closure over a bag of words. This configuration has none:
+# subscribe_rgb and subscribe_depth are false, Reg/Strategy is ICP, and the only
+# sensor is the D500's scan. That is deliberate for a first comparison against
+# slam_toolbox, which is also a 2D lidar mapper; putting the OAK-D in would be
+# comparing two different sensor suites and calling it an algorithm result.
+#
+# It also settles the GPU question for this file. RTAB-Map's GPU switches --
+# ORB/Gpu, FAST/Gpu, SURF/GpuVersion, and the SuperPoint detector -- every one of
+# them accelerates *image* feature extraction, so with no image there is nothing
+# for them to do. They are absent below rather than set to false, because setting
+# them false would suggest the choice was ours: the packaged RTAB-Map on this
+# rover is built against an OpenCV without CUDA and against no libtorch at all,
+# so those code paths are not in the binary. install-rtabmap.sh has the details
+# and the ldd check that proves it.
+#
+# What would have to change for a GPU to matter here: the OAK-D's colour and
+# depth published as ROS topics, a CUDA toolkit on the board, OpenCV rebuilt with
+# CUDA, and RTAB-Map rebuilt against that OpenCV. Then Kp/DetectorStrategy: 2
+# with ORB/Gpu: true becomes a real setting. None of it makes the lidar half
+# below any faster.
+#
+# The keys are `/**` rather than a node name on purpose: run_rtabmap.sh puts this
+# node in its own namespace so its /map does not collide with slam_toolbox's, and
+# a wildcard survives that being changed.
+
+/**:
+  ros__parameters:
+
+    # --- frames, and where odometry comes from --------------------------------
+    # base_link is at the lidar on this rover rather than at the centre of the
+    # chassis -- base_node.py explains why an unmeasured offset is worse than
+    # none -- so base_link -> laser is the identity and RTAB-Map can work in
+    # base_link directly.
+    frame_id: base_link
+    map_frame_id: map
+    # Naming odom_frame_id is what makes RTAB-Map read the wheels off the
+    # transform tree instead of subscribing to an odometry *topic*. That is the
+    # same door slam_toolbox uses, which matters more than it sounds: both
+    # mappers then see one set of numbers, published once by base_node, rather
+    # than one reading /odom and the other reading TF and the two disagreeing by
+    # a publication interval.
+    odom_frame_id: odom
+
+    # --- what it subscribes to ------------------------------------------------
+    subscribe_depth: false
+    subscribe_rgb: false
+    subscribe_rgbd: false
+    subscribe_stereo: false
+    subscribe_scan: true
+    subscribe_scan_cloud: false
+    subscribe_odom_info: false
+    # There is one subscription, so there is nothing to synchronise; approximate
+    # sync is still the safe setting because a scan's stamp and the transform's
+    # will never be the same instant.
+    approx_sync: true
+    # 0.2 s, matching slam_toolbox's transform_timeout. How long to wait for
+    # odom -> base_link to cover a scan's stamp before giving up on that scan.
+    wait_for_transform: 0.2
+    # 2 = best effort, and without it this node receives nothing at all.
+    #
+    # lidar_node.py publishes /scan with sensor-data QoS -- best effort, depth 1
+    # -- deliberately, because a scan that is late is a scan of where the rover
+    # used to be. RTAB-Map subscribes reliably by default, and a reliable
+    # subscriber and a best-effort publisher are *incompatible* in DDS rather
+    # than merely mismatched: the two discover each other, both report the topic,
+    # and not one message is ever delivered. What it looks like is
+    #
+    #     New publisher discovered on topic '/scan', offering incompatible QoS.
+    #     rtabmap: Did not receive data since 5 seconds!
+    #
+    # beside a `ros2 topic hz /scan` that says a healthy 9.9 Hz, which reads as
+    # RTAB-Map being broken rather than as it being deaf on purpose.
+    qos_scan: 2
+    # Publishing the transform is the whole safety question in a parallel run and
+    # is therefore decided by run_rtabmap.sh, which passes -p publish_tf on the
+    # command line and overrides what is here. False is the safe default for a
+    # file that might get loaded by something else.
+    publish_tf: false
+    # 20 Hz when publish_tf *is* on, matching slam_toolbox's
+    # transform_publish_period: Nav2's controller runs at 20 Hz and reads the
+    # correction every tick, so publishing slower shows up as a rover steering on
+    # a stale pose.
+    tf_delay: 0.05
+    # Do not rebuild the occupancy grid on every update, only when the graph
+    # actually changed. The grid is the most expensive periodic job either mapper
+    # does; slam_toolbox buys the same saving with map_update_interval: 2.0.
+    map_always_update: false
+
+    # --- how often it thinks --------------------------------------------------
+    # 5 Hz, and this is slam_toolbox's minimum_time_interval: 0.2 written the
+    # other way up. The D500 delivers ten scans a second; the rover does 0.35 m/s
+    # flat out, so five of them is 7 cm of travel between updates -- finer than
+    # the 5 cm grid can represent. Processing the other five would buy nothing.
+    Rtabmap/DetectionRate: "5.0"
+    # No time budget. RTAB-Map can be told to drop the oldest part of its working
+    # memory when an update takes longer than this, which is the right behaviour
+    # on a small board and the wrong one here: this Orin has six A78AE cores and
+    # the point of the exercise is to find out what the algorithm costs, not to
+    # watch it hide the cost by forgetting.
+    Rtabmap/TimeThr: "0"
+    # Publishing the graph as topics is how compare mode reports at all --
+    # slam_compare.py reads /rtabmap/mapGraph and /rtabmap/info, and with
+    # publish_tf off they are the only way to see what RTAB-Map decided.
+    Rtabmap/PublishStats: "true"
+
+    # --- when a scan becomes a node in the graph ------------------------------
+    # 0.2 m and 0.2 rad, which is slam_toolbox's minimum_travel_distance and
+    # minimum_travel_heading exactly. Every node is a permanent cost in the
+    # optimiser and in the proximity search, so nodes are spent on motion rather
+    # than on time and a rover parked for ten minutes adds none.
+    RGBD/LinearUpdate: "0.2"
+    RGBD/AngularUpdate: "0.2"
+
+    # --- registration: ICP, because there is no camera ------------------------
+    # 1 = ICP. The default is 0, visual registration, which needs the images this
+    # node is not given.
+    Reg/Strategy: "1"
+    # Flatten every correction to x, y and yaw. The rover drives on floors and
+    # the lidar is a single plane, so a solver allowed six degrees of freedom
+    # would be fitting roll and pitch to sensor noise.
+    Reg/Force3DoF: "true"
+    # Refine the link between consecutive nodes with ICP instead of trusting the
+    # wheels for it. This is the part that does the job slam_toolbox's scan
+    # matcher does between keyframes; without it the graph is dead reckoning with
+    # loop closure bolted on top.
+    RGBD/NeighborLinkRefining: "true"
+    # 5 cm, the map resolution. Denser than the grid cannot be represented.
+    Icp/VoxelSize: "0.05"
+    # Point-to-point, not point-to-plane. Surface normals estimated from a single
+    # 2D scan line are guesses -- there is no second row of points to take a
+    # normal against -- and feeding guessed normals to a point-to-plane solver is
+    # how a 2D lidar map acquires a confident lean.
+    Icp/PointToPlane: "false"
+    Icp/MaxCorrespondenceDistance: "0.1"
+    Icp/Iterations: "10"
+    Icp/Epsilon: "0.001"
+    # 1 = libpointmatcher, rather than 0 = PCL's own ICP. It is the
+    # implementation RTAB-Map's own 2D lidar configurations use, and it carries
+    # the outlier trimming on the next line.
+    #
+    # **The names here are 0.22's, and the older ones fail silently.** Every
+    # RTAB-Map 2D lidar recipe written before 0.21 says `Icp/PM: true` and
+    # `Icp/PMOutlierRatio`, which this build does not have; the ROS node simply
+    # does not map a parameter it does not know, logs nothing about it, and comes
+    # up with PCL's ICP and its own defaults while the file plainly says
+    # otherwise. Checked against `ros2 param list` on the running node rather
+    # than against a recipe.
+    Icp/Strategy: "1"
+    Icp/OutlierRatio: "0.65"
+    # How much of one scan has to find a partner in the other before the match is
+    # believed. **This is the direct counterpart of slam_toolbox's
+    # loop_match_minimum_response_fine, which this rover deliberately raised from
+    # a stock 0.45 to 0.50**, and it is raised here for the same reason: a false
+    # closure is unrecoverable in a way a missed one is not, because it welds two
+    # different rooms together and every later scan is optimised against the lie.
+    # In a house, on a 2D lidar, one corridor looks much like another and being
+    # slow to believe is the right bias.
+    Icp/CorrespondenceRatio: "0.4"
+    # A closure may move a pose by up to three metres, matching RGBD/LocalRadius
+    # below. Left at RTAB-Map's default of 0 this is unlimited, which would let
+    # one bad match teleport the graph.
+    Icp/MaxTranslation: "3.0"
+    # Ignore returns past the D500's honest reach, the same 8 m max_laser_range
+    # gives slam_toolbox. Past this its returns are sparse and noisy, and noise
+    # costs a matcher the same as walls do.
+    Icp/RangeMax: "8.0"
+
+    # --- loop closure: the point of the exercise ------------------------------
+    # With no camera there is no bag of words, so RTAB-Map's appearance-based
+    # loop closure -- the thing it is famous for -- cannot fire at all. Every
+    # closure here comes from *proximity detection*: the rover is somewhere its
+    # graph says it has been, so try to match the scans. That is the same
+    # mechanism slam_toolbox's loop search uses, which is what makes a
+    # like-for-like comparison fair.
+    RGBD/ProximityBySpace: "true"
+    # By time, off. It closes against nodes that are recent rather than nearby,
+    # which is a video-rate idea; here it would spend the budget re-matching the
+    # last few metres of corridor the rover has just driven.
+    RGBD/ProximityByTime: "false"
+    # Three metres: slam_toolbox's loop_search_maximum_distance, kept for the
+    # same reason it was kept there. It is the radius within which a returning
+    # rover counts as "somewhere it has been", and the odometry underneath is a
+    # gyro and some skidding tracks. Tightening it would make closures rarer
+    # exactly when drift has made them most necessary.
+    RGBD/LocalRadius: "3.0"
+    # 0 = no limit on how far back through the graph a proximity link may reach.
+    # A limit here would forbid the only closures that matter: the ones that
+    # reach back to the beginning of a circuit.
+    RGBD/ProximityMaxGraphDepth: "0"
+    # One neighbour per candidate path. More is for 3D lidars with many scans to
+    # merge into a local map; on a single 2D scan line it mostly adds cost.
+    RGBD/ProximityPathMaxNeighbors: "1"
+    # Optimise from the *first* node of the graph rather than the last. From the
+    # end, a closure moves the whole map underneath a stationary rover -- correct
+    # arithmetic and a terrible thing to hand a costmap, because every obstacle
+    # Nav2 knows about jumps at once.
+    RGBD/OptimizeFromGraphEnd: "false"
+
+    # --- the solver -----------------------------------------------------------
+    # 20 iterations of the graph optimiser per closure. Optimizer/Strategy is
+    # left at the build's default rather than pinned: which of g2o, GTSAM and
+    # Ceres is available depends on how the package was compiled, and naming one
+    # that is not there fails at the first closure rather than at startup.
+    Optimizer/Iterations: "20"
+    Optimizer/Epsilon: "0.00001"
+    # Robust kernel on, so a single bad link is down-weighted rather than allowed
+    # to bend the whole graph. slam_toolbox's Ceres is configured with
+    # ceres_loss_function: None and buys its safety by being slow to accept a
+    # closure at all; this is the same bias applied at the other end.
+    Optimizer/Robust: "true"
+    # No gravity constraint. It wants an IMU that publishes orientation, and the
+    # driver board's /imu/data_raw is exactly what its name says -- rates and
+    # accelerations, no fused attitude. Left at its default this quietly pulls
+    # the graph towards an orientation nothing measured.
+    Optimizer/GravitySigma: "0"
+
+    # --- memory ---------------------------------------------------------------
+    # Keep every node that is linked into the graph. RTAB-Map's memory management
+    # exists to hold a bounded working set on a small computer; this board has
+    # 7.3 GB and a house-sized map, and a comparison against slam_toolbox -- which
+    # forgets nothing -- has to be against a graph that also forgets nothing.
+    Mem/NotLinkedNodesKept: "false"
+    Mem/STMSize: "30"
+    # Do not merge a new scan into the previous node when the two look alike.
+    # Rehearsal is an appearance-based idea and there are no images; on lidar it
+    # would silently drop nodes in a corridor where every scan looks the same.
+    Mem/RehearsalSimilarity: "0.0"
+
+    # --- the occupancy grid ---------------------------------------------------
+    # 0 = build the grid from the laser scan. The default takes it from a depth
+    # camera, which this node does not have.
+    Grid/Sensor: "0"
+    # 5 cm cells and 8 m of range: slam_toolbox's resolution and max_laser_range,
+    # so the two grids can be compared cell for cell.
+    Grid/CellSize: "0.05"
+    Grid/RangeMax: "8.0"
+    # A 2D grid, not a voxel map. Nav2's costmaps read an OccupancyGrid.
+    Grid/3D: "false"
+    # Ray-trace the empty space between the rover and each return rather than
+    # only marking the returns. Without it the map is a set of walls floating in
+    # unknown space, and Nav2's global planner will not cross unknown space.
+    Grid/RayTracing: "true"

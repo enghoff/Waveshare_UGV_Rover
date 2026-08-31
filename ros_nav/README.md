@@ -464,6 +464,115 @@ Both of those runs predate the gyro-offset fix above, so they are the *hard* cas
 dead reckoning was carrying 38 degrees of phantom rotation and the graph removed
 it anyway. Re-run on a charged pack to see what it does now.
 
+## RTAB-Map, running beside slam_toolbox rather than instead of it
+
+There is a second mapper on the rover now. It is not switched on at boot, it does
+not steer anything, and the reason it is here is to answer one question with
+numbers instead of opinions: **would RTAB-Map be a better owner of `map -> odom`
+than slam_toolbox on this rover?**
+
+```bash
+ros2 launch ~/ugv/ros_nav/slam.launch.py rtabmap:=compare   # both, one steering
+~/ugv/ros_nav/native.sh python3 ~/ugv/ros_nav/slam_compare.py --seconds 300
+```
+
+`rtabmap:=off` is the default and is what boots. `compare` runs both mappers off
+the same `/scan` and the same wheels with RTAB-Map forbidden to publish a
+transform; `primary` runs RTAB-Map instead and does not start slam_toolbox at
+all.
+
+**No setting ever has two things publishing `map -> odom`,** and that is the
+whole design rather than a detail. A frame in TF has exactly one parent, so two
+publishers do not give the controller two opinions to choose between — they give
+it one transform flickering between them at whatever rate the two happen to
+publish, and the rover steers on whichever landed last. So compare mode turns
+RTAB-Map's transform off entirely; it keeps its opinion on `/rtabmap/mapGraph`
+instead, where `slam_compare.py` reads it and nothing else does.
+
+### It is a lidar-only configuration, and therefore has no GPU in it
+
+RTAB-Map's reputation comes from visual loop closure over a camera, and
+`config/rtabmap.yaml` deliberately gives it none: no RGB, no depth, ICP
+registration, and the D500's scan as the only sensor. Comparing a camera-and-lidar
+RTAB-Map against a lidar-only slam_toolbox would be comparing two sensor suites
+and calling the result an algorithm result.
+
+That also settles the GPU question, which is worth stating plainly because the
+Orin has a perfectly good one sitting idle. **Every GPU switch RTAB-Map has —
+`ORB/Gpu`, `FAST/Gpu`, `SURF/GpuVersion`, the SuperPoint detector — accelerates
+image feature extraction, and no image reaches this node.** They are also not in
+the binary: the packaged RTAB-Map is built against an OpenCV without CUDA and no
+libtorch at all, which `install-rtabmap.sh` checks with `ldd` rather than
+asserting. The board could not compile them anyway — it has the driver's
+`libcuda.so` and no CUDA toolkit.
+
+Making the GPU relevant here is a different project, in this order: the OAK-D's
+colour and depth published as ROS topics (which today means reworking
+`oak_depth/depth_server.py`, because only one process can hold that camera), a
+CUDA toolkit on the board, OpenCV rebuilt with CUDA for aarch64, and RTAB-Map
+rebuilt against that OpenCV. None of it makes the lidar half any faster.
+
+### Where it comes from, and why it is not in the conda environment
+
+Everything else here is RoboStack, unpacked into `~/miniforge3/envs/ros` with no
+sudo. RTAB-Map cannot be: **RoboStack publishes no rtabmap package**, for any
+platform, under any name. So it comes from Ubuntu's own ROS 2 Jazzy packages in
+`/opt/ros/jazzy`, which `install-rtabmap.sh` puts there and the manifest's system
+install for `ros_nav` runs.
+
+Two ROS installations on one board is fine as long as no process uses both.
+`native.sh` is what steps between them: it leaves the conda environment with
+`env -i` rather than sourcing the native setup on top of it, because layering
+would put RoboStack's `libstdc++` and `rclcpp` ahead of the system's on Ubuntu's
+binary. The two halves meet only on the wire, both on CycloneDDS on loopback,
+both on domain 42. Proved on the rover: a native `ros2 topic echo /scan` returns
+frames published by the conda `lidar_node`.
+
+Three traps were paid for getting there, all of which fail silently and are now
+locked into `selftest.py`:
+
+- **`/scan` QoS.** `lidar_node` publishes best-effort on purpose; RTAB-Map
+  subscribes reliably by default. DDS calls that pair *incompatible* rather than
+  mismatched — both sides list the topic and not one message is delivered — so
+  the node comes up looking healthy and deaf. `qos_scan: 2` is the fix.
+- **Renamed ICP parameters.** Every 2D-lidar recipe older than RTAB-Map 0.21 says
+  `Icp/PM` and `Icp/PMOutlierRatio`. This build has `Icp/Strategy` and
+  `Icp/OutlierRatio`, ignores a parameter it does not know, and logs nothing —
+  so the file reads as libpointmatcher while the node runs PCL's ICP on
+  defaults. Checked against `ros2 param list` on the running node, not against a
+  recipe.
+- **`set -u` and ROS's own `setup.bash`,** which reads `$AMENT_TRACE_SETUP_FILES`
+  without a default and dies naming ROS's file rather than ours. The same dance
+  `env.sh` already does around conda's activation hooks.
+
+### What the comparison measures
+
+`slam_compare.py` reports both mappers side by side: graph nodes, how often each
+changed its mind about where the rover is and by how much, RTAB-Map's own count
+of accepted closures, update latency, the worst `map -> odom` staleness, how much
+of the two occupancy grids agree about the cells both have seen, and what each
+process costs in CPU and memory. With `--closed-loop`, after driving the rover
+physically back to its starting point, it also reports how far each mapper thinks
+it is from where it began — the same measurement
+[Proving the loop actually closes](#proving-the-loop-actually-closes) makes for
+slam_toolbox alone, run against both at once.
+
+One honest asymmetry: RTAB-Map reports its closures and slam_toolbox has no topic
+that does. So closures are counted for both the only symmetric way there is — a
+step in `map -> odom` — with RTAB-Map's own count printed beside it. If those two
+disagree, the step threshold is wrong rather than one mapper lying.
+
+The comparison is only valid if both mappers started together, because each calls
+its frame `map` and those are two different frames with the same name. The tool
+refuses to report the frame-dependent numbers if the two graphs did not begin
+within twenty seconds of each other.
+
+### What does not work yet under `primary`
+
+The daemon's `reset_map` goes through `nav_bridge.py` to slam_toolbox's own reset
+service, and RTAB-Map does not have that service. `primary` is there for testing
+and is deliberately not what boots; this is the gap to close before it could be.
+
 ## Why the rover zig-zagged, and how to see it without a rover
 
 It wandered the length of every route it drove, turning constantly instead of

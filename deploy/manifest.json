@@ -140,6 +140,14 @@
       "commands": [
         "~/ugv/ros_nav/restart.sh"
       ],
+      "system_install": {
+        "sudo_password_file": "secrets/jetson-orin.key",
+        "command": "sh ~/ugv/ros_nav/install-rtabmap.sh",
+        "verify": [
+          "dpkg-query -W -f='${Version}\\n' ros-jazzy-rtabmap-slam",
+          "test -x /opt/ros/jazzy/lib/rtabmap_slam/rtabmap && echo 'rtabmap node present'"
+        ]
+      },
       "special_commands": [
         {
           "when": [
