@@ -191,9 +191,7 @@ def main() -> int | str:
         try:
             from ros_navigator import RosNavigator
 
-            rover.nav = RosNavigator(port=args.ros_nav,
-                                     on_drive_start=rover.park_tracking,
-                                     on_drive_end=rover.unpark_tracking)
+            rover.nav = RosNavigator(port=args.ros_nav)
             rover.nav.start()
             up = "answering" if rover.nav.reachable else "not up yet"
             print(f"[rover] driving through ROS 2 on 127.0.0.1:{args.ros_nav} "

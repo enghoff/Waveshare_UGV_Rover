@@ -231,8 +231,7 @@ daemon started with `--ros-nav`; without it the rover offers 11 tools instead of
 and the console shows a map it cannot drive on.
 
 Underneath, from the rover itself, either through the daemon — which is what the
-consoles do, and which also hands face tracking over for the duration — or straight
-at Nav2, which skips both:
+consoles do — or straight at Nav2, which skips both:
 
 ```bash
 python3 - <<'EOF'

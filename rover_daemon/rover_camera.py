@@ -621,43 +621,6 @@ class RoverCamera:
                 status["aim"] = list(self._aim)
         return status
 
-    # --- driving --------------------------------------------------------------
-
-    def park_tracking(self) -> None:
-        """Give the core to the scan matcher, because the wheels are about to turn.
-
-        Called by the navigator the instant before anything moves, and the one place
-        that decides what driving outranks. Face tracking and driving cannot both
-        run. Face tracking holds the camera, decodes every frame and then runs the
-        network on it -- three of this board's four cores for 146 ms of every 160,
-        measured -- and the scan matcher needs a core of its own; run both and it
-        starts dropping revolutions, which degrades exactly the thing that is
-        keeping the rover off the walls. Aiming the camera while driving is also a
-        good way to be looking at somebody's face when something appears in front
-        of the tracks.
-
-        The camera feed is released as well as the loop that was reading it, and not
-        only the loop, because those are two different things and the second used to
-        be missed. Tracking closes its own camera on the way out, so ordinarily this
-        finds nothing left to do -- but a feed nobody is reading costs the matcher
-        just as much as one somebody is, and it is exactly what a crash between
-        opening the camera and entering the loop leaves behind. Twenty seconds of
-        CAMERA_IDLE_S is a long time to be driving on a degraded map.
-        """
-        self._tracking_parked = self.stop_tracking()
-        with self._lock:
-            self._close_camera()
-
-    def unpark_tracking(self) -> None:
-        """Give it back, but only if driving is what took it."""
-        if not self._tracking_parked:
-            return
-        self._tracking_parked = False
-        result = self._tool_start_tracking({})
-        if not result.get("ok"):
-            print(f"[rover] could not resume face tracking after driving: "
-                  f"{result.get('error')}", file=sys.stderr, flush=True)
-
     # --- the loop -----------------------------------------------------------
 
     def stop_tracking(self) -> bool:

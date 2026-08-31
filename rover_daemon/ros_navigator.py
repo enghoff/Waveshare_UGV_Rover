@@ -209,12 +209,9 @@ class RosNavigator:
     lasts and reads the progress lines Nav2's feedback becomes.
     """
 
-    def __init__(self, host: str = HOST, port: int = PORT,
-                 on_drive_start=None, on_drive_end=None) -> None:
+    def __init__(self, host: str = HOST, port: int = PORT) -> None:
         self.host = host
         self.port = port
-        self.on_drive_start = on_drive_start
-        self.on_drive_end = on_drive_end
 
         #: The wheels have one owner at a time. Refused rather than queued, for
         #: the reason the old navigator refused: a move that waited its turn would
@@ -519,13 +516,7 @@ class RosNavigator:
             return Outcome("busy", 0.0, 0.0, "a move is already running")
         try:
             self.report.begin(kind, asked, phase)
-            if self.on_drive_start is not None:
-                self.on_drive_start()
-            try:
-                return self.stream(request, phase)
-            finally:
-                if self.on_drive_end is not None:
-                    self.on_drive_end()
+            return self.stream(request, phase)
         finally:
             self._move_mutex.release()
 

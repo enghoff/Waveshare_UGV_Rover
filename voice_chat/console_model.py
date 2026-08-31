@@ -95,8 +95,8 @@ MAP_SIZE_PX = 480
 
 # How often to ask what face tracking is doing. It reads state the daemon already
 # has -- no camera, no detector, no lock -- so it is cheap, and it has to be asked
-# rather than remembered because the daemon parks tracking by itself when the wheels
-# turn.
+# rather than remembered because the voice session and any other console can start
+# or stop it.
 TRACK_POLL_S = 2.0
 
 # How long "clear map" stays armed after the first press. Deliberately not a

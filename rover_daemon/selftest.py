@@ -480,39 +480,6 @@ def test_snapshot_splitting():
           [a, b])
 
 
-def test_driving_takes_the_core():
-    """Driving releases the camera, not just the loop that was reading it.
-
-    The navigator calls `park_tracking` the instant before the wheels move, and what
-    it has to accomplish is that nothing else is competing for this one core -- the
-    scan matcher is the rover's only odometer, so a camera left streaming is a drive
-    measuring itself wrong. Tracking closes its own camera on the way out, so the
-    case worth pinning is the other one: a feed open with no loop reading it, which
-    is what a crash between the two leaves behind, and what a photograph used to
-    leave behind for twenty seconds.
-    """
-    import rover_daemon
-
-    closed = []
-
-    class FakeFeed:
-        def close(self):
-            closed.append(True)
-
-    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
-    # No tracking loop running, but a camera open: park_tracking has to notice.
-    rover._camera = FakeFeed()
-    rover.park_tracking()
-    check("driving closes a camera nobody was reading", closed, [True])
-    check("...and leaves nothing behind to reopen", rover._camera, None)
-    # And it must not then hand tracking back, because tracking was never taken.
-    started = []
-    rover._tool_start_tracking = lambda _a: started.append(True) or {"ok": True}
-    rover.unpark_tracking()
-    check("a drive that never parked tracking does not start it", started, [])
-    rover.close()
-
-
 def test_counting_faces_does_not_hold_the_board():
     """A slow detector on another host must not lock the rover up.
 
@@ -2141,7 +2108,6 @@ def main():
     for test in (test_levels, test_battery, test_reading_the_board,
                  test_schemas, test_lights, test_gimbal,
                  test_no_camera, test_default_camera, test_look, test_snapshot_splitting,
-                 test_driving_takes_the_core,
                  test_counting_faces_does_not_hold_the_board,
                  test_the_local_detector_scales_its_boxes_back_up, test_camera_cone,
                  test_map_png_names_the_clock,

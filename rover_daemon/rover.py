@@ -62,10 +62,6 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
 
         self._tracking = threading.Event()
         self._thread: threading.Thread | None = None
-        # Set while driving has taken face tracking away from itself, so that the
-        # end of the move can hand it back. Only the navigator's callbacks touch it,
-        # and they run on whichever thread asked for the move.
-        self._tracking_parked = False
         self.nav = None
         # The map picture the model was last shown, and what it takes to read a
         # place on it back out as a place in the room. None until it has looked.

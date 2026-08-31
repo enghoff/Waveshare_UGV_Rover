@@ -66,10 +66,10 @@ DEFAULT_MODEL = HERE / "face_detection_yunet.onnx"
 # How many of the four cores the network may have. The whole board is 146 ms a
 # frame and three quarters of it is 160 -- 4% slower for a core left to the scan
 # matcher, which is the trade that matters on a rover whose only odometer is the
-# lidar. Tracking is parked whenever the wheels turn, so this competes with
-# mapping rather than with navigation, but a matcher that drops revolutions while
-# the rover watches somebody is still a matcher that has to be re-convinced where
-# it is afterwards.
+# lidar. Tracking runs while the wheels turn, so the core this leaves free is the
+# one the rover is navigating on and not merely mapping on: a matcher that drops
+# revolutions while the rover watches somebody is one that has to be re-convinced
+# where it is, in the middle of a move.
 #
 # It is a process-wide setting in OpenCV, not a per-detector one, which is why it
 # is set once here and named as a constant rather than passed about.

@@ -352,8 +352,8 @@ class Session(SessionShow):
         if (self.camera is not None and not self.frame_outstanding
                 and now - self.frame_done_at > PICTURE_GAP_S):
             self.take_picture()
-        # Asked, not remembered: the daemon parks tracking by itself when the wheels
-        # turn, so the only honest source for this panel is the daemon.
+        # Asked, not remembered: the voice session and any other console can start
+        # or stop tracking, so the only honest source for this panel is the daemon.
         if (self.watch is not None and not self.track_outstanding
                 and now - self.track_at > TRACK_POLL_S):
             self.track_outstanding = True
