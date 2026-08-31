@@ -71,6 +71,43 @@ case "$MAPPER" in
     *) echo "replay_bag.sh: --mapper must be rtabmap, rtabmap+icp or slam_toolbox" >&2
        exit 2 ;;
 esac
+
+# **RTAB-Map is two command line conventions wearing one name**, and getting them
+# mixed up costs a whole replay. `rtabmap-reprocess`, which is where most of this
+# rover's parameter sweeps have been run, takes `--Icp/CorrespondenceRatio 0.2`.
+# The ROS node takes `-p Icp/CorrespondenceRatio:=0.2` and throws
+# UnknownROSArgsError at anything else -- so the reprocess spelling reaches it as
+# an unknown argument, it aborts in the first second, and the replay then plays
+# five minutes of bag into a mapper that is not there.
+#
+# So the reprocess spelling is what this file accepts, and it is translated here.
+# `-p Name:=value` is passed through for anybody who already knows the other one.
+PARAMS=()
+i=0
+while [ "$i" -lt "${#EXTRA[@]}" ]; do
+    arg="${EXTRA[$i]}"
+    next="${EXTRA[$((i + 1))]:-}"
+    case "$arg" in
+        -p)  PARAMS+=(-p "$next"); i=$((i + 2)) ;;
+        --*) if [ -z "$next" ]; then
+                 echo "replay_bag.sh: $arg has no value" >&2; exit 2
+             fi
+             name="${arg#--}"
+             case "$name" in
+                 # Every RTAB-Map core parameter is declared as a *string* by
+                 # the ROS node, whatever it looks like, and the CLI parses a
+                 # bare 0.1 as a double -- refused with
+                 # InvalidParameterTypeException before the node starts. The
+                 # ones with a slash in the name are RTAB-Map's; the rest are
+                 # ROS's own and mean their own types.
+                 */*) PARAMS+=(-p "$name:='$next'") ;;
+                 *)   PARAMS+=(-p "$name:=$next") ;;
+             esac
+             i=$((i + 2)) ;;
+        *)   echo "replay_bag.sh: expected --Some/Parameter value, got '$arg'" >&2
+             exit 2 ;;
+    esac
+done
 [ -d "$BAG" ] || { echo "replay_bag.sh: no such bag: $BAG" >&2; exit 2; }
 [ -n "$OUT" ] || OUT="$(basename "$BAG")-$MAPPER"
 RESULT="$(dirname "$BAG")/$OUT"
@@ -140,10 +177,10 @@ else
                 -p odom_frame_id:=odom \
                 -p publish_tf:=true \
                 -p subscribe_scan:=true \
-                -p Odom/Strategy:=0 \
-                -p Odom/ScanKeyFrameThr:=0.8 \
-                -p OdomF2M/ScanSubtractRadius:=0.05 \
-                -p OdomF2M/ScanMaxSize:=15000 \
+                -p "Odom/Strategy:='0'" \
+                -p "Odom/ScanKeyFrameThr:='0.8'" \
+                -p "OdomF2M/ScanSubtractRadius:='0.05'" \
+                -p "OdomF2M/ScanMaxSize:='15000'" \
                 -r scan:=/scan > "$RESULT-odom.log" 2>&1 &
         pids+=($!)
         sleep 5
@@ -161,9 +198,22 @@ else
             -p publish_tf:=true \
             -p database_path:="$RESULT.db" \
             -r scan:=/scan -r map:=/map \
-            "${EXTRA[@]+"${EXTRA[@]}"}" > "$RESULT.log" 2>&1 &
+            "${PARAMS[@]+"${PARAMS[@]}"}" > "$RESULT.log" 2>&1 &
     pids+=($!)
 fi
+
+# Is it actually running? A mapper that rejected an argument is gone within a
+# second, and without this the next thing that happens is five minutes of bag
+# played into nothing, ending in "no map published" -- which reads as a mapper
+# that failed at the job rather than one that never started it.
+sleep 4
+for p in "${pids[@]+"${pids[@]}"}"; do
+    if ! kill -0 "$p" 2>/dev/null; then
+        echo "--- the mapper died on startup; its last words:" >&2
+        tail -5 "$RESULT.log" >&2
+        exit 1
+    fi
+done
 
 sleep 10
 
