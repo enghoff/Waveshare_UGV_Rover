@@ -142,13 +142,13 @@ BATTERY_POLL_S = 10.0
 # Past this the reading has stopped being refreshed. The daemon serves one for
 # five seconds, so anything much older than that means the board went quiet.
 BATTERY_STALE_S = 20.0
-# What each of the daemon's five words means on screen. "absent" is not a flat
-# battery and must not read like one: it is the board running from USB with the
-# pack out or the main switch off, which is something to go and look at rather
-# than something to charge.
-BATTERY_NOTES = {"full": "off the charger", "ok": "plenty left",
-                 "low": "getting low", "critical": "nearly flat -- charge it",
-                 "absent": "no pack fitted, or the main switch is off"}
+# Which of the daemon's five words is worth spelling out on screen. Four of them
+# only restate the number above them, which the colour already grades, so they say
+# nothing that a glance at "11.10 V   15%" does not. "absent" is the exception: the
+# board is running from USB with the pack out or the main switch off, and it reads
+# out a fraction of a volt, so left unexplained it looks like a flat battery and
+# sends somebody to the charger instead of to the switch.
+BATTERY_NOTES = {"absent": "no pack fitted, or the main switch is off"}
 
 # How often to ask which access point the rover is on. The signal strength in that
 # answer is live -- the daemon reads it out of /proc for nothing -- while the list

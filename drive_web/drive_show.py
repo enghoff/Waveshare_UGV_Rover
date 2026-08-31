@@ -200,13 +200,18 @@ class SessionShow:
                            f"{source}, {self.frame_cost:.1f} s")
 
     def show_battery(self, body: dict[str, Any]) -> None:
-        """Volts and percent, and how much trouble the pack is in.
+        """Volts and percent, coloured by how much trouble the pack is in.
 
-        The age of the reading is shown only once it is older than the daemon's own
-        cache. Inside that window every reading is a few seconds old by design, and
-        a number that always carries a caveat is a number nobody reads; past it, the
-        board has stopped answering, which is the one thing this panel has to be able
-        to say.
+        Nothing under the number restates it in words: the colour grades the state
+        already, and a line saying "getting low" beneath 15% is read once and never
+        again. What is left for the note is what the reading cannot show by itself --
+        a board that did not answer, a pack that is not fitted, and the age of a
+        reading that has gone stale.
+
+        That age is shown only once it is older than the daemon's own cache. Inside
+        that window every reading is a few seconds old by design, and a number that
+        always carries a caveat is a number nobody reads; past it, the board has
+        stopped answering, which is the one thing this panel has to be able to say.
         """
         if not body.get("ok"):
             self.battery = {"text": "-", "state": "",
@@ -217,10 +222,11 @@ class SessionShow:
         text = or_dash(body.get("volts"), "{:.2f} V")
         if percent is not None:
             text += f"   {percent}%"
-        note = BATTERY_NOTES.get(state, state)
+        note = BATTERY_NOTES.get(state, "")
         age = body.get("reading_age_s") or 0.0
         if age > BATTERY_STALE_S:
-            note += f", and read {age:.0f} s ago"
+            stale = f"read {age:.0f} s ago"
+            note = f"{note}, and {stale}" if note else stale
         self.battery = {"text": text, "state": state, "note": note}
 
     def show_wifi(self, body: dict[str, Any]) -> None:
