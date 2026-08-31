@@ -1,7 +1,7 @@
 # Deploying this repository
 
 A commit changes nothing on the rover by itself. The repository remains the
-source of truth: edit and commit here, deploy to the Banana Pi, restart the
+source of truth: edit and commit here, deploy to the rover, restart the
 affected service and prove the running system there. The working rules are in
 [`CLAUDE.md`](../CLAUDE.md).
 
@@ -16,22 +16,22 @@ The deployer compares each registered component with the commit last proved on
 the rover, copies only affected source and advances state only after the existing
 restart/readiness checks pass. The manual commands below remain the recovery path.
 
-The current installation has one deploy target: the Banana Pi M4 Zero on the
-rover (`bpi-m4zero`). The realtime Qwen Omni model is Alibaba-hosted and has no
-repository deployment target.
+The current installation has one deploy target: the Jetson Orin Nano on the
+rover (`orin`), which replaced the Banana Pi on 2026-08-31. The realtime Qwen
+Omni model is Alibaba-hosted and has no repository deployment target.
 
 ## Where each directory runs
 
 | Directory | Runs on | Lands at / role |
 |---|---|---|
-| `rover_daemon/`, `driver_board/`, `face_tracking/` | Banana Pi | flattened into `~/ugv/`; the daemon imports the board helpers and local YuNet/aiming code |
-| `lidar_slam/` | Banana Pi | `~/ugv/lidar_slam/`; parser, room description, map renderer and USB reset support |
-| `ros_nav/` | Banana Pi | `~/ugv/ros_nav/`; ROS 2 environment remains under `~/miniforge3` |
-| `oak_depth/` | Banana Pi | `~/ugv/oak_depth/`; its unpacked DepthAI wheel remains in `vendor/` |
-| `drive_web/` | Banana Pi | `~/ugv/drive_web/` |
-| selected `voice_chat/` modules | Banana Pi | copied beside `drive_web` for the console/Alibaba realtime session |
-| `wifi_roam/` | Banana Pi | staged at `~/ugv/wifi_roam/`, then privileged copies via its installer |
-| `netwatch/` | Banana Pi | staged at `~/ugv/netwatch/`, then privileged copies via its installer |
+| `rover_daemon/`, `driver_board/`, `face_tracking/` | Jetson | flattened into `~/ugv/`; the daemon imports the board helpers and local YuNet/aiming code |
+| `lidar_slam/` | Jetson | `~/ugv/lidar_slam/`; parser, room description, map renderer and USB reset support |
+| `ros_nav/` | Jetson | `~/ugv/ros_nav/`; ROS 2 environment remains under `~/miniforge3` |
+| `oak_depth/` | Jetson | `~/ugv/oak_depth/`; its unpacked DepthAI wheel remains in `vendor/` |
+| `drive_web/` | Jetson | `~/ugv/drive_web/` |
+| selected `voice_chat/` modules | Jetson | copied beside `drive_web` for the console/Alibaba realtime session |
+| `wifi_roam/` | Jetson | staged at `~/ugv/wifi_roam/`, then privileged copies via its installer |
+| `netwatch/` | Jetson | staged at `~/ugv/netwatch/`, then privileged copies via its installer |
 | `oak_camera/`, `lidar/`, `usb_cameras/`, `face_tracking/track_face.py`, workstation `driver_board/` tools, `voice_chat/mock_rover.py` | desk/workstation | bench/diagnostic tools; no deploy |
 
 The current `drive_web` deployment copies these shared voice modules beside the
@@ -50,8 +50,10 @@ or remote face-detection service in the current deployment.
 
 ## Addresses and ports
 
-The SSH host is `bpi-m4zero`. The stable rover service address is
-`192.168.1.80`, moved between its two radios by the dual-Wi-Fi manager. See
+The SSH host is `orin`. There is no floating service address on this host: it
+has one working radio and answers on its own DHCP lease, `192.168.1.88` at the
+time of writing, so prefer the name `jetson-orin.local`. The dual-radio manager
+and the `192.168.1.80` it moved belonged to the Banana Pi. See
 [`hosts.md`](hosts.md) and [`wifi_roam/README.md`](../wifi_roam/README.md).
 
 The browser console is:
@@ -99,9 +101,10 @@ python deploy/deploy.py --system --only wifi_roam
 python deploy/deploy.py --system --only netwatch
 ```
 
-The deployer reads `secrets/bpi-sudo.key` locally and feeds it to `sudo -S`. The
-password is not put in the command line or copied to the rover. `admin`'s password
-on the Banana Pi is not the old Raspberry Pi one. By hand, `-S` reads until EOF, so
+The deployer reads `secrets/jetson-orin.key` locally and feeds it to `sudo -S`. The
+password is not put in the command line or copied to the rover. That file is the
+`jetson` account's own login password, and is not either of the older boards'.
+By hand, `-S` reads until EOF, so
 one `cat` feeds exactly one `sudo`; two chained after a single `cat` leave the
 second waiting with no password.
 
@@ -161,51 +164,51 @@ additive copying would leave dead source on the rover. The deployer mirrors that
 directory while preserving the per-host `libslam2d.so` and `selftest` build
 products.
 
-## Manual Banana Pi deployment
+## Manual deployment
 
 Use this when recovering the deployment mechanism itself or deliberately working
 through a component by hand. For normal work prefer `deploy/deploy.py`.
 
 ```bash
-scp rover_daemon/*.py rover_daemon/*.sh driver_board/*.py bpi-m4zero:~/ugv/
-scp face_tracking/*.py face_tracking/*.sh face_tracking/*.onnx bpi-m4zero:~/ugv/
+scp rover_daemon/*.py rover_daemon/*.sh driver_board/*.py orin:~/ugv/
+scp face_tracking/*.py face_tracking/*.sh face_tracking/*.onnx orin:~/ugv/
 
 rsync -a --delete --exclude 'libslam2d.so' --exclude selftest \
-    lidar_slam/ bpi-m4zero:~/ugv/lidar_slam/
-ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2'
+    lidar_slam/ orin:~/ugv/lidar_slam/
+ssh orin 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2'
 
-scp -r oak_depth bpi-m4zero:~/ugv/
-scp -r ros_nav bpi-m4zero:~/ugv/
-scp -r wifi_roam bpi-m4zero:~/ugv/
-scp -r netwatch bpi-m4zero:~/ugv/
+scp -r oak_depth orin:~/ugv/
+scp -r ros_nav orin:~/ugv/
+scp -r wifi_roam orin:~/ugv/
+scp -r netwatch orin:~/ugv/
 
 scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md \
-    bpi-m4zero:~/ugv/drive_web/
+    orin:~/ugv/drive_web/
 scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts}.py \
-    bpi-m4zero:~/ugv/drive_web/
+    orin:~/ugv/drive_web/
 ```
 
 Then run the component's own verification/restart, for example:
 
 ```bash
-ssh bpi-m4zero 'cd ~/ugv && python3 selftest.py | tail -2'
-ssh bpi-m4zero '~/ugv/restart.sh'
-ssh bpi-m4zero '~/ugv/oak_depth/restart.sh'
-ssh bpi-m4zero '~/ugv/drive_web/restart.sh'
-ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'
+ssh orin 'cd ~/ugv && python3 selftest.py | tail -2'
+ssh orin '~/ugv/restart.sh'
+ssh orin '~/ugv/oak_depth/restart.sh'
+ssh orin '~/ugv/drive_web/restart.sh'
+ssh orin '~/ugv/ros_nav/restart.sh'
 ```
 
 One-time/repeatable installers:
 
 ```bash
-ssh bpi-m4zero '~/ugv/install_opencv.sh'
-ssh bpi-m4zero 'sh ~/ugv/oak_depth/install.sh'
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install.sh'
-ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'
-ssh bpi-m4zero 'sh ~/ugv/ros_nav/install-boot.sh --nav'
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on'
-cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" sh ~/ugv/netwatch/install.sh'
+ssh orin '~/ugv/install_opencv.sh'
+ssh orin 'sh ~/ugv/oak_depth/install.sh'
+ssh orin 'sh ~/ugv/drive_web/install.sh'
+ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
+ssh orin 'sh ~/ugv/ros_nav/install.sh'
+ssh orin 'sh ~/ugv/ros_nav/install-boot.sh --nav'
+ssh orin 'sudo -S -p "" sh ~/ugv/wifi_roam/install-dual.sh DUAL=on' < secrets/jetson-orin.key
+ssh orin 'sudo -S -p "" sh ~/ugv/netwatch/install.sh' < secrets/jetson-orin.key
 ```
 
 `install_opencv.sh` also proves that `LocalDetector` can load after unpacking the

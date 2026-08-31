@@ -72,15 +72,17 @@ An empty list means the image was processed and contained no accepted face.
 matters: "there is nobody here" and "nobody looked at this frame" require
 different control behaviour.
 
-## OpenCV on the Banana Pi
+## OpenCV on the rover
 
-The board does not have `pip` or `python3-venv`, and the rover does not rely on a
-system OpenCV package. `face_tracking/install_opencv.sh` downloads a pinned
+The Banana Pi had neither `pip` nor `python3-venv`; the Jetson has pip and this
+still does not use it, because one install path that works on both boards is
+worth more than a second that works on one. The rover does not rely on a system
+OpenCV package either. `face_tracking/install_opencv.sh` downloads a pinned
 aarch64 `opencv-python-headless` wheel, verifies its SHA-256 and unpacks it into
 `vendor/` beside the deployed tracking code.
 
 ```bash
-ssh bpi-m4zero '~/ugv/install_opencv.sh'
+ssh orin '~/ugv/install_opencv.sh'
 ```
 
 The installer finishes by importing OpenCV and constructing `LocalDetector`, so

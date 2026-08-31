@@ -49,12 +49,13 @@ three and a one-byte `WHO_AM_I` sometimes works. Reads taken just after a
 Quieting the ESP32 with `{"T":131,"cmd":0}` stops the UART stream and makes the
 IMU *harder* to see, not easier. The firmware is what keeps the ICM-20948
 awake. Put feedback back with `{"T":131,"cmd":1"}` — and do it over Wi‑Fi
-(`http://192.168.1.22/js?json=...`) if the daemon owns `/dev/ttyS4`.
+(`http://192.168.1.22/js?json=...`) if the daemon owns the UART.
 
 ## What the host already has, and what it uses
 
 Nothing in this repository opens `/dev/i2c-*`. The daemon's `SerialLink` drains
-the GPIO UART (`/dev/ttyS4` on the M4 Zero, `/dev/ttyAMA0` on the Pi).
+the GPIO UART (`/dev/ttyTHS1` on the Orin, `ttyS4` on the M4 Zero, `ttyAMA0`
+on the Pi).
 [`ros_nav/base_node.py`](../ros_nav/base_node.py) takes only `gz` from that
 stream: as a rotation witness once rest is known, and as a motion prior once
 confirmed turns have measured the scale. Accel, the other gyro axes and the

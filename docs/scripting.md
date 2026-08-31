@@ -36,10 +36,13 @@ This is the correction that shapes everything else, because the obvious version
 of this idea — hand the model the servos and let it write the control loop — is
 wrong on this rover for reasons that have nothing to do with the design.
 
-The host is a Banana Pi M4 Zero: four Cortex-A53 cores, 3.9 GB, NEON. See
+The host is a Jetson Orin Nano since 2026-08-31: six Cortex-A78AE cores and
+7.3 GB, where the Banana Pi M4 Zero before it had four Cortex-A53 and 3.9 GB. See
 [hosts.md](hosts.md). What is already on it, measured — the left column on the
-Pi 1 this was written for, the right on the Banana Pi the rover moved to on
-2026-08-23. The argument below survives the move; the margins are what changed:
+Pi 1 this was written for, the right on the Banana Pi. **Neither column has been
+re-measured on the Orin**, which is faster than both, so read the numbers as the
+worst case rather than as this rover. The argument below survived one move and
+survives this one; the margins are what changed:
 
 | | Pi 1, one core | M4 Zero, four cores |
 |---|---|---|

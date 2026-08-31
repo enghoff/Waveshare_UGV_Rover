@@ -28,9 +28,10 @@ with replay and controller simulations ([ros_nav/README.md](ros_nav/README.md));
 
 ## Where things run
 
-Rover services run on the Banana Pi (`bpi-m4zero`); the realtime voice model is
-Alibaba's hosted Qwen Omni, with no local GPU/MEDIA deployment. What gets deployed is
-decided by `deploy/manifest.json`, not by a list here — bench scripts under
+Rover services run on the Jetson Orin Nano (`orin`), which replaced the Banana Pi on
+2026-08-31; the realtime voice model is Alibaba's hosted Qwen Omni, and nothing that
+is deployed uses the Orin's GPU. What gets deployed is decided by
+`deploy/manifest.json`, not by a list here — bench scripts under
 `oak_camera/`, `lidar/` and `usb_cameras/` are not deployed, while files from
 `face_tracking/`, `voice_chat/` and `driver_board/` are.
 
@@ -55,8 +56,9 @@ correct the document, and never revive an old setting because a README remembers
 
 ## Credentials
 
-Deployment credentials are one-line gitignored files under `secrets/`; `bpi-sudo.key`
-is `admin`'s sudo password on the Banana Pi, and the old Raspberry Pi password is
+Deployment credentials are one-line gitignored files under `secrets/`; `jetson-orin.key`
+is the `jetson` account's login password on the rover and therefore also its sudo
+password. The old Banana Pi and Raspberry Pi keys are still there and all three are
 different. The secrets the rover itself holds live in `~/.ugv/`, outside the deploy
 tree: the DashScope key, the console token, the TLS material and deploy state. Never
 put a credential in a commit, transcript, command line, or a path deployment can copy
