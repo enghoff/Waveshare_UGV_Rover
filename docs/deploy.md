@@ -124,6 +124,46 @@ source lives elsewhere:
 
 Keep these out of Git and out of `~/ugv`.
 
+One piece of runtime state is *inside* `~/ugv` and survives because every
+component that lands there is additive rather than mirrored:
+
+- `~/ugv/odometry.json` — the chassis calibration.
+
+### When the rover gets a new computer
+
+No deploy carries any of the above, so a new host starts without them. The
+distinction that decides what to do with each is whether it describes the
+**chassis** or the **computer**.
+
+`odometry.json` is the only one that describes the chassis. The gyro's scale
+belongs to the IMU on the driver board, the ticks per metre to the wheel
+encoders, and the PWM curves to the motors and the battery — none of which
+changes when the computer does. **Copy it across rather than re-measuring it**,
+which is what was done moving from the Banana Pi to the Orin on 2026-08-31:
+
+```bash
+scp <old-host>:~/ugv/odometry.json /tmp/odometry.json
+scp /tmp/odometry.json orin:~/ugv/odometry.json
+ssh orin '~/ugv/ros_nav/restart.sh --supervisor'
+```
+
+Without it `base_node.py` refuses to start rather than guess, and the failure
+does not look like a missing file from the outside: Nav2 comes up, accepts
+goals and never drives, while `slam_toolbox` discards every scan for want of
+an `odom` -> `base_link` transform. The tell is in `ros_nav.log`, one line,
+*no calibration from ~/ugv/odometry.json*. If the old host is genuinely gone,
+`ros_nav/calibrate_chassis.py` measures it again by driving the rover.
+
+Everything else describes the computer and is redone on the new one. The key
+is copied from `secrets/`; the console token and the TLS material regenerate
+themselves on first run, **and the new CA then has to be trusted on the
+workstation**, because it is a different CA rather than the old one moved. The
+deployment state is written by `--full` or `--adopt`. The installed
+dependencies — the ROS environment, the unpacked wheels, `v4l-utils`, the
+host-built `libslam2d.so` — come from the installers listed under
+[Manual deployment](#manual-deployment), and the `@reboot` entries from
+`install-boot.sh` and `drive_web/install.sh`.
+
 ## Cross-cutting traps
 
 **Use each component's `restart.sh`.** An unguarded `pkill` pattern typed over
