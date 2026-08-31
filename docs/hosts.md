@@ -309,40 +309,52 @@ dual-radio manager have deliberately **not** been. The roamer is a one-radio
 script that would start moving the two radios this rover deliberately keeps
 apart.
 
-**The dongle does not hold a link, and that makes the second radio unreliable
-today.** Measured on 2026-08-31: it associates and gets a lease, then loses the
-link and goes completely deaf -- `iw scan` succeeds and returns zero access
-points while the onboard radio hears twenty-seven, with the device on the bus,
-the driver bound and the interface up. It managed six minutes on `TheGreatViking`
-in the morning and then heard nothing for six hours; after a driver reload it
-managed **29 seconds** on `TheMaharaja` before the same thing happened.
+**The dongle used to go deaf, and the rover now repairs it by itself.**
+Measured on 2026-08-31: it would associate and get a lease, then lose the link
+and hear nothing at all -- `iw scan` succeeding and returning zero access points
+while the onboard radio heard twenty-seven, with the device on the bus, the
+driver bound and the interface up. Six minutes on `TheGreatViking` in the
+morning and then silence for six hours; after a driver reload, 29 seconds on
+`TheMaharaja` before the same thing. Only reloading the module ever brought it
+back.
 
-The kernel says what is wrong:
+Three things were done about it, and it is worth being clear which is proved.
 
-```text
-Rate marked as an HT rate but passed status->rate_idx is not an MCS index [0-76]: 85 (0x55)
-WARNING: ... at net/mac80211/rx.c:5382 ieee80211_rx_list ... [mac80211]
-usb 1-2.3: Unhandled C2H event 07 seq 00
-```
+**A driver patch**, which is the suspected root cause but is not proved to be
+this one. The stock driver frees a receive buffer for good whenever one
+completes with a USB error and never makes another, so a device that produces
+the occasional transient error eventually has none left and receives nothing
+while still looking associated and up -- exactly the symptom. That code is
+unchanged in v6.19 today. See
+[`dongle_driver/README.md`](../dongle_driver/README.md). It ships with counters,
+so `rx_urb_retired` climbing towards thirty-two is the theory being confirmed on
+this rover in its own time.
 
-The out-of-tree `rtl8xxxu` build is handing mac80211 a nonsense receive rate, so
-received frames are dropped and the link times out as `ssid-not-found`. Nothing
-in configuration fixes that: `ht40_2g` is already off and the module has no knob
-to disable HT. Reloading the driver revives the radio for another few seconds to
-minutes:
+**A keeper**, which is proved. `dongle-keeper.timer` checks the spare every
+minute and reloads its driver after three consecutive checks with no
+association. Demonstrated here twice on the hardware: with the module removed it
+noticed and reloaded within 29 seconds, and with the radio present but not
+associating it counted to three and had the radio back on the air two and a half
+minutes after the fault. It only ever touches the spare -- it finds its interface
+by which driver has it bound, and the radio carrying the rover's traffic is a
+different driver on a different bus.
 
-```bash
-ssh orin 'sudo -S -p "" sh -c "modprobe -r rtl8xxxu; sleep 2; modprobe rtl8xxxu"'     < secrets/jetson-orin.key
-```
+**Two settings**, already described above: `autoconnect-retries 0`, where NM's
+default of four had it give up hours before anybody looked, and unpinned
+profiles, so the spare retries on whichever network is best rather than only its
+own.
 
-**Treat the second radio as unproven until this is dealt with** -- most likely by
-building the vendor `rtl8188fu` driver instead of the in-tree one. Two things
-that made it worse are fixed: every profile now carries `autoconnect-retries 0`,
-where NM's default of four attempts had it give up hours before anybody looked;
-and the profiles are unpinned, so the spare can retry on any network rather than
-only its own. What remains missing is that nothing watches the spare, so a dead
-second path stays invisible until somebody asks -- the strongest argument for
-porting `wifi_dual`.
+What could not be done is a reproduction on demand. After the profiles were
+unpinned the dongle held `TheGreatViking` -- the network it had died on twice --
+for **22 minutes with the patch's recovery deliberately switched off**, which is
+to say behaving exactly like the stock driver. So the patch is a real fix for a
+real bug that matches the symptom, and it is not yet known to be the fix for
+this one.
+
+What is still missing is that a reload is a repair, not a diagnosis. Nothing
+reports how often the spare needed rescuing, and nothing moves the rover's
+service address to the healthy radio when one of them is out. That is the
+argument for porting `wifi_dual`.
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.

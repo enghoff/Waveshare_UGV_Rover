@@ -77,6 +77,22 @@ ssh orin 'sudo -S -p "" sh -c "echo N > /sys/module/rtl8xxxu/parameters/rx_urb_r
 `rx_urb_retired` reaching thirty-two is the radio dying. With recovery on it
 should stay at zero while `rx_urb_errors` climbs.
 
+### What is and is not proved
+
+The bug is real and the code is unchanged in v6.19, but **it is not proved to be
+the fault seen on this rover**. After the network profiles were unpinned the
+dongle held `TheGreatViking` — the network it had died on twice that morning,
+once after six minutes and once after 29 seconds — for 22 minutes with
+`rx_urb_recover` deliberately switched off, which is to say behaving exactly
+like the stock driver, and with `rx_urb_errors` still at zero. The fault could
+not be made to happen on demand, so there was nothing to fix in front of.
+
+That is why the counters ship rather than being taken out once the patch was
+written. If `rx_urb_errors` climbs on this rover, the mechanism is confirmed and
+the patch is doing the work; if the radio goes deaf again while both counters
+sit at zero, the cause is somewhere else and the keeper below is what is keeping
+the rover on the air.
+
 ## The keeper
 
 `keeper.sh`, run every minute by `dongle-keeper.timer`. If the spare radio has
@@ -99,6 +115,13 @@ piled on top of the last one.
 `selftest.sh` drives it through all of that with no radio present — working,
 roaming, dead, dead again too soon, and the module not loaded at all. The states
 that matter most are the ones where it must do nothing.
+
+It was also watched doing the job on the rover, twice, on 2026-08-31. With the
+module removed it noticed and reloaded within 29 seconds. With the radio present
+but not associating it counted 1 of 3, 2 of 3, reloaded on the third, and the
+radio was back on the air with an address two and a half minutes after the
+fault — on `TheMaharaja`, the stronger of the two networks the primary was not
+using, which is the unpinned profiles doing their part.
 
 ```bash
 sh dongle_driver/selftest.sh                     # anywhere
