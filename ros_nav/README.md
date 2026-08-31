@@ -730,6 +730,14 @@ grid is, how many cells are walls, and walls per square metre of floor. That las
 one is the number worth quoting, because a mapper that has lost track does not
 produce an empty map, it produces a *bigger* one with every wall drawn twice.
 
+**Record a drive, not a rover standing still.** A 25-second parked recording is
+what proved the harness works — replayed into RTAB-Map it reproduces the live
+rover's map to within a few cells, 6.2 × 10.9 m against 6.3 × 10.6 — but it is
+worthless for comparing the two mappers, because slam_toolbox adds a scan to its
+graph only once odometry says the rover has moved. Parked, it keeps 43 wall cells
+where RTAB-Map keeps 165, and neither number means anything. The numbers compare
+two maps of one *driving* recording and nothing else.
+
 Two things about it are deliberate and neither is tidiness. It runs on **DDS
 domain 43** while the rover is on 42, because a replay publishes `/scan`, `/tf`
 and `/map` and on one domain that is a second lidar feed and a second
