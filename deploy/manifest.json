@@ -111,7 +111,7 @@
             "~/ugv/oak_depth/restart.sh"
           ],
           "commands": [
-            "pkill -f 'oak_depth/run_oak_depth[.]sh' || true; sleep 2; args=\"$(crontab -l 2>/dev/null | sed -n 's|^@reboot .*oak_depth/run_oak_depth\\.sh *||p' | head -1)\"; setsid nohup ~/ugv/oak_depth/run_oak_depth.sh $args >/dev/null 2>&1 </dev/null & sleep 2; ~/ugv/oak_depth/restart.sh"
+            "~/ugv/oak_depth/restart.sh --supervisor"
           ]
         }
       ],
