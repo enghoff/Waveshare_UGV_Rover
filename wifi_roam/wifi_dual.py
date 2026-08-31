@@ -30,16 +30,28 @@ live through it -- instead of a scan and a DHCP lease.
     wifi_dual.py                # run the manager (root; this is the service)
     wifi_dual.py --once         # one tick, then print the status and exit
     wifi_dual.py --dry-run      # decide everything, change nothing
-    wifi_dual.py --restore      # hand both radios back to wpa_supplicant and exit
+    wifi_dual.py --restore      # stop holding both radios anywhere, and exit
     wifi_dual.py --status       # print what the running manager last wrote
 
 The design this implements is docs/bpi_dual_wifi_redundancy.md, with four
 amendments that the hardware forced or offered:
 
-- **No NetworkManager.** That document pins connections to BSSIDs through
-  `nmcli`; this board has netplan, `systemd-networkd` and one `wpa_supplicant`
-  per interface, so a radio is pinned by enabling exactly one of the networks in
-  its supplicant and disabling the rest.
+- **Either network stack.** The document pins connections through `nmcli`; the
+  Banana Pi this was written for had netplan, `systemd-networkd` and one
+  `wpa_supplicant` per interface, and the Jetson that replaced it has
+  NetworkManager. Both are supported and the difference is three methods in
+  :class:`Platform` -- which networks a radio may use, putting it on one, and
+  letting it go -- chosen by what is installed. Everything else here is `iw`,
+  `/sys`, `/proc`, `ip` and raw sockets, which mean the same on both.
+
+  **NetworkManager is the safer of the two and by some distance.** On the
+  supplicant a radio is held by enabling exactly one of its networks and
+  disabling the rest, which is the one way this file could strand a wifi-only
+  rover, and four separate mechanisms exist to undo it. On NetworkManager
+  nothing is disabled at all: bringing a profile up on an interface is enough,
+  because an active connection is left alone and the same profile is never put
+  on two devices at once. A manager that dies there leaves nothing to clean up
+  and the rover reconnects by itself.
 - **BSSID pinning is not needed.** The six SSIDs are three routers times two
   bands, so "keep the two radios on different access points" is answered by
   choosing different names. What does need care is the opposite mistake:
@@ -74,6 +86,7 @@ import argparse
 import json
 import os
 import select
+import shutil
 import socket
 import struct
 import subprocess
@@ -108,6 +121,12 @@ TICK_S = float(os.environ.get("TICK_S", "1.0"))
 # network for an afternoon in August. So it stays a tunable, and raising it is
 # how to throttle the dongle without touching this file.
 SCAN_EVERY_S = float(os.environ.get("SCAN_EVERY_S", "30"))
+# How long to let NetworkManager spend bringing a profile up on a radio before
+# giving up on that call. Only the standby is ever moved, so this blocks nothing
+# that matters, but it must be shorter than the manager's patience for a radio
+# that will not join (STRANDED_S, 25 s in the unit) or the give-up would never
+# be reached: the call would still be running when the deadline passed.
+NM_JOIN_WAIT_S = float(os.environ.get("NM_JOIN_WAIT_S", "15"))
 
 # --- how a link is graded ---------------------------------------------------
 #
@@ -383,6 +402,11 @@ class Platform:
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
         self._ping_seq = 0
+        self._backend = None
+        # profile lists, per interface, with the moment each was read. They
+        # change when somebody installs a passphrase and not otherwise, and
+        # reading one costs two `nmcli` calls per profile.
+        self._profiles = {}
 
     # --- clocks and noises --------------------------------------------------
     def now(self):
@@ -530,6 +554,29 @@ class Platform:
         return parse_iw_scan(text)
 
     # --- moving -------------------------------------------------------------
+    # --- which network stack this board has ---------------------------------
+    #
+    # Three of the calls below are the only ones that differ between the two
+    # boards this has run on: which networks a radio may use, putting it on one,
+    # and letting it go again. Everything else is `iw`, `/sys`, `/proc`, `ip`
+    # and raw sockets, which mean the same thing whatever is managing the
+    # radios. The Banana Pi ran netplan with one `wpa_supplicant` per interface;
+    # the Jetson runs NetworkManager.
+    #
+    # Decided by what is installed rather than by a flag, so a board does not
+    # have to be told what it is. `WIFI_BACKEND` forces it, which is how the
+    # self-test drives either path on a machine that has neither.
+    def backend(self):
+        if self._backend is None:
+            forced = os.environ.get("WIFI_BACKEND", "").strip()
+            if forced:
+                self._backend = forced
+            elif shutil.which("nmcli"):
+                self._backend = "nm"
+            else:
+                self._backend = "wpa"
+        return self._backend
+
     def _wpa(self, iface, *args):
         for binary in ("wpa_cli", "/sbin/wpa_cli", "/usr/sbin/wpa_cli"):
             text = self._run([binary, "-i", iface, *args], timeout=8)
@@ -537,15 +584,71 @@ class Platform:
                 return text
         return None
 
-    def networks(self, iface):
-        """SSID -> wpa_supplicant network id, for the networks this radio holds.
+    def _nmcli(self, *args, timeout=10):
+        return self._run(["nmcli", *args], timeout=timeout)
 
-        The list comes from the supplicant rather than from a constant here, so
-        that a network somebody adds to netplan is one this manager can use
+    def networks(self, iface):
+        """SSID -> whatever this stack needs to be told to join it.
+
+        The value is opaque to everything above: the manager only ever asks
+        whether an SSID is in here, and :meth:`pin` is the one thing that uses
+        it. On the supplicant that is a network id and on NetworkManager it is a
+        profile name, which are not the same kind of thing and do not need to be.
+
+        The list comes from the stack rather than from a constant here, so that a
+        network somebody installs a passphrase for is one this manager can use
         without being edited -- and so that a radio whose supplicant never
-        started reports an empty list and is treated as a radio that cannot be
-        pinned anywhere, rather than one that should be.
+        started, or whose profiles were never created, reports an empty list and
+        is treated as a radio that cannot be pinned anywhere, rather than one
+        that should be.
         """
+        if self.backend() == "nm":
+            return self._nm_networks(iface)
+        return self._wpa_networks(iface)
+
+    def _nm_networks(self, iface, cache_s=60.0):
+        """The wifi profiles this radio may use, by the network each one is for.
+
+        Profiles are asked for the network they carry rather than trusted to be
+        named after it, because they are not always: this rover had one called
+        `TheGreatViking-dongle` from the days when each radio had its own.
+
+        A profile that pins itself to a different interface is left out. Nothing
+        on this rover does that any more -- pinning is what stopped the spare
+        radio being able to take the other one's network, which is the whole
+        point of having a spare -- but a profile that arrives pinned is a profile
+        this radio genuinely cannot use, and offering it would produce a
+        placement that fails every time it is tried.
+
+        Cached for a minute. It changes when somebody installs a passphrase and
+        not otherwise, while reading it costs two `nmcli` calls per profile on a
+        board that is also running SLAM.
+        """
+        cached = self._profiles.get(iface)
+        if cached and self.now() - cached[0] < cache_s:
+            return dict(cached[1])
+        text = self._nmcli("-t", "-f", "TYPE,NAME", "con", "show")
+        if not text:
+            return {}
+        found = {}
+        prefix = "802-11-wireless:"
+        for line in text.splitlines():
+            if not line.startswith(prefix):
+                continue
+            name = line[len(prefix):].strip()
+            if not name:
+                continue
+            pinned = (self._nmcli("-g", "connection.interface-name",
+                                  "con", "show", name) or "").strip()
+            if pinned and pinned != iface:
+                continue
+            ssid = (self._nmcli("-g", "802-11-wireless.ssid",
+                                "con", "show", name) or "").strip()
+            found.setdefault(ssid or name, name)
+        self._profiles[iface] = (self.now(), dict(found))
+        return found
+
+    def _wpa_networks(self, iface):
         text = self._wpa(iface, "list_networks")
         if not text:
             return {}
@@ -561,22 +664,52 @@ class Platform:
         return found
 
     def pin(self, iface, ssid):
-        """Make this radio associate with exactly this network and stay there.
+        """Make this radio associate with exactly this network.
 
-        `select_network` is what does it, and it works by disabling every other
-        configured network -- which is the one way this file could strand a
-        wifi-only rover, so it is worth being plain about. While the manager is
-        running that is exactly what is wanted: each radio is held on the router
-        the manager chose for it, and a radio free to wander would undo the only
-        guarantee this design makes, that the two are never on the same box.
+        How firmly depends on the stack, and the difference is worth knowing
+        because one of the two is much safer.
 
-        What makes it safe is that the disabling is never left behind.
-        :meth:`release` undoes it, the manager calls that on every exit path
-        including a signal, the dead-man calls it when nothing is working at
-        all, and `ExecStopPost=` in the unit calls it again in case the process
-        died without getting the chance.
+        On the supplicant it is `select_network`, which works by disabling every
+        other configured network. That is the one way this file could strand a
+        wifi-only rover, so :meth:`release` exists to undo it and is called on
+        every path out -- a signal, an exception, the dead-man, and
+        `ExecStopPost=` in the unit for the case where the process was killed
+        outright.
+
+        On NetworkManager nothing is disabled at all. Bringing a profile up on
+        an interface is enough, because NetworkManager leaves an active
+        connection alone and will not put the same profile on two devices at
+        once, so the two radios cannot collapse onto one network. That means the
+        manager dying leaves nothing to clean up: every profile is still
+        autoconnectable and the rover reconnects on its own. It is a strictly
+        better arrangement and it is the reason the port was worth doing rather
+        than translating `select_network` into something with the same teeth.
         """
-        ids = self.networks(iface)
+        if self.backend() == "nm":
+            return self._nm_pin(iface, ssid)
+        return self._wpa_pin(iface, ssid)
+
+    def _nm_pin(self, iface, ssid):
+        known = self._nm_networks(iface)
+        if ssid not in known:
+            return False
+        if self.link(iface).ssid == ssid:
+            # Already there, and this is the call that must not be made.
+            # `nmcli con up` on a connection that is already active reactivates
+            # it, which takes the association down for the ten seconds it spends
+            # coming back -- so the harmless-looking idempotent call is the one
+            # that would interrupt the link every time the manager restarted.
+            return True
+        if self.dry_run:
+            return True
+        # `-w` so a join that is never going to happen gives up inside the time
+        # the manager is prepared to wait, rather than blocking the tick.
+        return self._nmcli("-w", str(int(NM_JOIN_WAIT_S)), "con", "up",
+                           known[ssid], "ifname", iface,
+                           timeout=NM_JOIN_WAIT_S + 5) is not None
+
+    def _wpa_pin(self, iface, ssid):
+        ids = self._wpa_networks(iface)
         if ssid not in ids:
             return False
         if self.dry_run:
@@ -585,14 +718,24 @@ class Platform:
         return bool(text and "OK" in text)
 
     def release(self, iface):
-        """Hand this radio back to its supplicant: every network enabled again.
+        """Let this radio go wherever it can, and stop holding it anywhere.
 
-        Called on every way out of this program. A radio left with one network
-        enabled and the manager gone is a rover holding one access point it may
-        not be able to reach and forbidden from trying the two it can.
+        Called on every way out of this program, and by `free_stranded` when a
+        radio has spent too long held on a network it cannot actually join.
+
+        On the supplicant that means enabling every network again: a radio left
+        with one network enabled and the manager gone is a rover holding one
+        access point it may not be able to reach and forbidden from trying the
+        two it can. On NetworkManager there is nothing to enable, because
+        nothing was disabled -- what this has to guarantee there is that the
+        device is free to reconnect by itself, which is not automatic after
+        somebody has run `nmcli device disconnect` by hand.
         """
         if self.dry_run:
             return True
+        if self.backend() == "nm":
+            return self._nmcli("dev", "set", iface,
+                               "autoconnect", "yes") is not None
         return bool(self._wpa(iface, "enable_network", "all"))
 
     # --- addresses and routes ----------------------------------------------
@@ -1157,6 +1300,7 @@ class Manager:
         self.read_request()
         self.choose_active()
         self.refresh_routes()
+        self.hold_service_ip()
         self.free_stranded()
         self.place_radios()
         self.hold_intents()
@@ -1715,6 +1859,39 @@ class Manager:
                 self.route_through(self.active)
                 return
 
+    def hold_service_ip(self):
+        """Put the service address back if something took it off the interface.
+
+        This is a NetworkManager problem and it took the port to find it.
+        NetworkManager owns the addresses on the devices it manages and removes
+        the ones it did not put there whenever it reconfigures one, and a DHCP
+        renewal is enough to make it reconfigure -- which in this house happens
+        several times an hour, because a second DHCP server answers alongside the
+        router. The address is added with `ip` rather than written into a profile
+        deliberately: it belongs to whichever radio is *active*, and a profile
+        moves between radios independently of which one is carrying traffic, so
+        an address attached to a profile would follow the wrong thing.
+
+        So the manager keeps asserting it. On netplan it never went missing and
+        this costs one `ip` call a second; here it is the difference between a
+        stable address and one that quietly disappears mid-afternoon.
+
+        The gratuitous ARP goes out again with it, because as far as the rest of
+        the house is concerned that is what makes the address reachable.
+        """
+        if not self.service_ip or self.service_on is None:
+            return
+        radio = self.radio(self.service_on)
+        if radio is None or radio.gone:
+            return
+        if self.service_ip in self.platform.addresses(self.service_on):
+            return
+        self.say("%s is no longer on %s; putting it back"
+                 % (self.service_ip, self.service_on))
+        self.platform.add_service_ip(self.service_on, self.service_ip)
+        self.platform.garp(self.service_on, self.service_ip)
+        self.route_service_ip()
+
     def route_service_ip(self):
         """Make the address that moves leave by the radio it moved to.
 
@@ -1779,8 +1956,8 @@ class Manager:
         if now - self.last_usable_at < self.deadman_s:
             return False
         self.surrendered = True
-        self.note = ("neither radio has reached the gateway for %.0f s, so both "
-                     "have been handed back to wpa_supplicant"
+        self.note = ("neither radio has reached the gateway for %.0f s, so "
+                     "neither is being held anywhere any more"
                      % (now - self.last_usable_at))
         self.say(self.note)
         self.restore(keep_running=True)
@@ -1889,7 +2066,7 @@ def main(argv=None):
     parser.add_argument("--dry-run", "-n", action="store_true",
                         help="decide everything, change nothing")
     parser.add_argument("--restore", action="store_true",
-                        help="hand both radios back to wpa_supplicant and exit")
+                        help="stop holding both radios anywhere, and exit")
     parser.add_argument("--status", action="store_true",
                         help="print what the running manager last wrote")
     parser.add_argument("--service-ip", default=SERVICE_IP,
@@ -1922,7 +2099,7 @@ def main(argv=None):
         # the point of it is to be the thing somebody can reach for when a
         # radio has been left pinned, and it must not need a process to talk to.
         manager.restore()
-        manager.say("both radios handed back to wpa_supplicant")
+        manager.say("neither radio is being held anywhere any more")
         return 0
 
     if args.once:

@@ -224,10 +224,11 @@
       ],
       "system_install": {
         "sudo_password_file": "secrets/jetson-orin.key",
-        "command": "sh ~/ugv/wifi_roam/install.sh --no-roamer",
+        "command": "sh ~/ugv/wifi_roam/install.sh --dual",
         "verify": [
           "/usr/local/sbin/wifi_ctl.sh list | head -5",
-          "sudo -n /usr/local/sbin/wifi_ctl.sh profiles"
+          "sudo -n /usr/local/sbin/wifi_ctl.sh profiles",
+          "systemctl is-active wifi-dual"
         ]
       },
       "triggers": [

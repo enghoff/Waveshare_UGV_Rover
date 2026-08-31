@@ -25,10 +25,14 @@
 set -eu
 
 NO_ROAMER=0
-if [ "${1:-}" = "--no-roamer" ]; then
-    NO_ROAMER=1
-    shift
-fi
+DUAL=0
+case ${1:-} in
+    --no-roamer) NO_ROAMER=1; shift ;;
+    # Everything --no-roamer does, and then the dual-radio manager armed on top.
+    # The manager and the one-radio roamer are alternative owners of the same
+    # radios and must never both run, so this is the pair that goes together.
+    --dual)      NO_ROAMER=1; DUAL=1; shift ;;
+esac
 PSK=${1:-}
 NETS="TheGreatLord TheMaharaja TheGreatViking"
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -102,7 +106,12 @@ fi
 
 if [ "$NO_ROAMER" = 1 ]; then
     echo "no roamer: the networks and the helper are in place; no timer, no units"
-    echo "  the console can list and switch networks; nothing moves them by itself"
+    if [ "$DUAL" = 1 ]; then
+        echo "--- and the dual-radio manager"
+        sh "$HERE/install-dual.sh" DUAL=on
+    else
+        echo "  the console can list and switch networks; nothing moves them by itself"
+    fi
     exit 0
 fi
 

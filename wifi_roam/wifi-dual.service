@@ -1,24 +1,29 @@
 [Unit]
 Description=Keep both of the rover's radios associated, and choose which carries traffic
-Documentation=file:///home/admin/ugv/wifi_roam/README.md
+# The script itself, which carries the whole design in its docstring. Named
+# rather than the repository copy because the path to that differs by host --
+# /home/admin on the Banana Pi, /home/jetson here -- and a Documentation= line
+# pointing at a file that is not there is worse than none.
+Documentation=file:///usr/local/sbin/wifi_dual.py
 # After whichever of these exist and requiring none of them, for the reason the
 # other two units here name none: the manager refuses to act on a system it
 # cannot read and says so in the journal, which is better than a unit dependency
 # failing silently on a board that has a different network stack.
-After=systemd-networkd.service netplan-wpa-wlan0.service netplan-wpa-wlan1.service
+After=NetworkManager.service systemd-networkd.service netplan-wpa-wlan0.service netplan-wpa-wlan1.service
 Wants=network.target
 # A crash loop against the radios is worse than not running at all, so five
-# failures inside ten minutes stops it and leaves the supplicants to themselves.
+# failures inside ten minutes stops it and leaves whatever manages the radios to
+# get on with it by itself.
 StartLimitIntervalSec=600
 StartLimitBurst=5
 
 [Service]
 Type=simple
 # Sixty seconds of not interfering, for the same reason the roam timer waits
-# three minutes after boot: both supplicants and both DHCP clients are mid-flight
-# at this point, and nothing here improves on their first attempt. Pinning a
-# radio that is halfway through a DHCP round costs it the lease it was about to
-# get. It also damps a restart loop, since Restart= sends it through this again.
+# three minutes after boot: both radios and both DHCP clients are mid-flight at
+# this point, and nothing here improves on their first attempt. Moving a radio
+# that is halfway through a DHCP round costs it the lease it was about to get. It
+# also damps a restart loop, since Restart= sends it through this again.
 ExecStartPre=/bin/sleep 60
 # How long a radio may sit pinned to a network it has not actually joined before
 # the manager gives up and lets the supplicant take whatever it can. The built-in
@@ -30,17 +35,20 @@ ExecStartPre=/bin/sleep 60
 # placement gets cut off mid-DHCP, which costs it the lease it was about to get.
 Environment=STRANDED_S=25
 ExecStart=/usr/local/sbin/wifi_dual.py
-# The one line that keeps a wifi-only rover recoverable. `select_network`
-# disables every other configured network, so a manager that died without
-# undoing that would leave each radio holding one access point and forbidden
-# from trying the others. The manager frees them on every path out of itself --
-# a signal, an exception, the dead-man -- and this is the fourth net, for the
-# case where it was killed outright and got no chance to run any of them.
+# The line that keeps a wifi-only supplicant board recoverable, and harmless
+# everywhere else. Under wpa_supplicant a radio is held by disabling every other
+# configured network, so a manager that died without undoing that would leave
+# each radio holding one access point and forbidden from trying the others; the
+# manager frees them on every path out of itself -- a signal, an exception, the
+# dead-man -- and this is the fourth net, for the case where it was killed
+# outright and got no chance to run any of them. Under NetworkManager nothing is
+# ever disabled, so this call has nothing to undo and simply confirms that both
+# radios may reconnect on their own.
 ExecStopPost=/usr/local/sbin/wifi_dual.py --restore
 Restart=always
 RestartSec=10
-# One of four cores, shared with SLAM, the daemon and the depth camera. A tick
-# is two file reads and two pings and nothing here is urgent to the millisecond.
+# Shared with SLAM, the daemon and the camera on either board. A tick is a few
+# file reads and two pings, and nothing here is urgent to the millisecond.
 Nice=5
 
 [Install]

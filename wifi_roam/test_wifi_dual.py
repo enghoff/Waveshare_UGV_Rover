@@ -777,6 +777,169 @@ def nothing_ever_switches_a_radio_off():
     check(bool(WORLDS), "no scenario ran, so this assertion proves nothing")
 
 
+class FakeNmcli:
+    """A NetworkManager that answers `nmcli` and remembers what it was told.
+
+    Only the four questions the manager asks, and it is deliberately not a
+    generous fake: a profile that is not named after its network, and one pinned
+    to the other radio, because both of those exist on the rover and both would
+    be invisible to a fake that named everything tidily.
+    """
+
+    def __init__(self, profiles=None, on=None):
+        # profile name -> (ssid, pinned interface or "")
+        self.profiles = profiles if profiles is not None else {
+            "TheGreatLord": ("TheGreatLord", ""),
+            "TheMaharaja": ("TheMaharaja", ""),
+            "TheGreatViking-dongle": ("TheGreatViking", ""),
+        }
+        self.on = dict(on or {})        # iface -> ssid it is associated with
+        self.calls = []
+
+    def run(self, argv, timeout=10):
+        self.calls.append(list(argv))
+        if argv[0] != "nmcli":
+            return None
+        args = argv[1:]
+        if args[:4] == ["-t", "-f", "TYPE,NAME", "con"]:
+            rows = ["802-11-wireless:" + name for name in self.profiles]
+            rows.append("802-3-ethernet:Wired connection 1")
+            return "\n".join(rows) + "\n"
+        if args[:2] == ["-g", "802-11-wireless.ssid"]:
+            return self.profiles.get(args[-1], ("", ""))[0] + "\n"
+        if args[:2] == ["-g", "connection.interface-name"]:
+            return self.profiles.get(args[-1], ("", ""))[1] + "\n"
+        if "con" in args and "up" in args:
+            name = args[args.index("up") + 1]
+            iface = args[args.index("ifname") + 1]
+            ssid = self.profiles.get(name, ("", ""))[0]
+            if not ssid:
+                return None
+            # Whatever else held this profile loses it: NetworkManager will not
+            # have one connection active on two devices.
+            for other, was in list(self.on.items()):
+                if was == ssid and other != iface:
+                    del self.on[other]
+            self.on[iface] = ssid
+            return "Connection successfully activated\n"
+        if args[:3] == ["dev", "set"] or args[:2] == ["dev", "set"]:
+            return "\n"
+        return "\n"
+
+
+def _nm_platform(fake, on=None):
+    """A real Platform with its shell replaced and its stack forced."""
+    platform = wifi_dual.Platform()
+    platform._backend = "nm"
+    platform._run = fake.run
+    platform.link = lambda iface: wifi_dual.Link(
+        ssid=fake.on.get(iface)) if fake.on.get(iface) else wifi_dual.Link()
+    return platform
+
+
+def the_networkmanager_translation():
+    """The three calls that differ between the two boards this has run on.
+
+    Everything else in Platform is `iw`, `/sys`, `/proc`, `ip` and raw sockets,
+    which mean the same thing on netplan and on NetworkManager. These three do
+    not, and they are what the port is, so they are checked directly rather than
+    through the world model -- the model stands in for the whole of Platform and
+    would never exercise either translation.
+    """
+    fake = FakeNmcli()
+    platform = _nm_platform(fake)
+
+    known = platform.networks("wlP1p1s0")
+    check(set(known) == {"TheGreatLord", "TheMaharaja", "TheGreatViking"},
+          "the networks a radio may use came back as %s" % sorted(known))
+    check(known.get("TheGreatViking") == "TheGreatViking-dongle",
+          "a profile that is not named after its network was not found by the "
+          "network it is for")
+
+    # A profile pinned to the other radio is one this radio cannot use, and
+    # offering it would produce a placement that fails every time it is tried.
+    fake.profiles["TheMaharaja"] = ("TheMaharaja", "wlx002e2d3074d0")
+    platform._profiles.clear()
+    known = platform.networks("wlP1p1s0")
+    check("TheMaharaja" not in known,
+          "a profile pinned to another interface was offered to this one")
+    known = platform.networks("wlx002e2d3074d0")
+    check("TheMaharaja" in known,
+          "a profile pinned to this interface was hidden from it")
+
+    # Pinning is `con up` on the profile, naming the radio.
+    fake.profiles["TheMaharaja"] = ("TheMaharaja", "")
+    platform._profiles.clear()
+    fake.calls = []
+    check(platform.pin("wlP1p1s0", "TheGreatViking"),
+          "pinning a network the rover has a passphrase for failed")
+    ups = [c for c in fake.calls if "up" in c]
+    check(len(ups) == 1, "pinning made %d activations" % len(ups))
+    check("TheGreatViking-dongle" in ups[0] and "wlP1p1s0" in ups[0],
+          "the activation named %s" % ups[0])
+    check(fake.on.get("wlP1p1s0") == "TheGreatViking",
+          "the radio did not end up on the network it was pinned to")
+
+    # And the call that must not happen. `nmcli con up` on a connection that is
+    # already active reactivates it, taking the association down for the ten
+    # seconds it spends coming back -- so a manager restarting, which re-pins
+    # everything it finds, would interrupt both radios for no reason.
+    fake.calls = []
+    check(platform.pin("wlP1p1s0", "TheGreatViking"),
+          "re-pinning a radio that is already there reported failure")
+    check(not [c for c in fake.calls if "up" in c],
+          "a radio already on the right network was reactivated anyway")
+
+    # A network with no profile is refused rather than attempted.
+    fake.calls = []
+    check(not platform.pin("wlP1p1s0", "Alister"),
+          "pinning a network with no passphrase claimed to work")
+    check(not [c for c in fake.calls if "up" in c],
+          "an activation was attempted for a network with no profile")
+
+    # Releasing disables nothing, because pinning disabled nothing. What it has
+    # to do is make sure NetworkManager may reconnect the radio itself, which is
+    # the safety net that replaces `enable_network all`.
+    fake.calls = []
+    check(platform.release("wlP1p1s0"), "releasing a radio reported failure")
+    said = " ".join(fake.calls[-1]) if fake.calls else ""
+    check("autoconnect" in said and "yes" in said,
+          "releasing a radio did not hand it back to NetworkManager: %s" % said)
+
+
+def the_service_address_survives_a_dhcp_renewal_stripping_it():
+    """NetworkManager removes addresses it did not put there. This puts it back.
+
+    The port found this rather than predicting it: NetworkManager owns the
+    addresses on the devices it manages, and reconfiguring one -- which a DHCP
+    renewal does, several times an hour in this house -- takes off anything it
+    does not know about. The service address is added with `ip` on purpose,
+    because it belongs to whichever radio is *active* while a profile moves
+    between radios independently, so it cannot be written into a profile and
+    left there.
+
+    Under netplan this never happened and the check would have looked like
+    paranoia. Here it is the difference between a stable address and one that
+    quietly disappears mid-afternoon.
+    """
+    world, platform, manager = build()
+    settle(manager, world, 90)
+    on = manager.active.iface
+    check(world.claimed.get(wifi_dual.SERVICE_IP) == on,
+          "the service address did not start on the radio carrying traffic")
+
+    # Something else takes it off, without telling anybody.
+    del world.claimed[wifi_dual.SERVICE_IP]
+    garps = len(platform.garps)
+    settle(manager, world, 3)
+    check(world.claimed.get(wifi_dual.SERVICE_IP) == on,
+          "the service address was taken off %s and never came back" % on)
+    check(len(platform.garps) > garps,
+          "the address came back without telling the rest of the house, so "
+          "nothing would send traffic to it")
+    check(world.egress(wifi_dual.SERVICE_IP) == on,
+          "the address came back but replies to it leave by the wrong radio")
+
 def main():
     print("wifi_dual: driving the manager round a model of the house\n")
     trace, calibrated = calibration()
@@ -824,6 +987,9 @@ def main():
          nothing_ever_switches_a_radio_off),
         ("the service address is answered out of its own radio",
          the_service_address_is_answered_out_of_the_radio_it_sits_on),
+        ("the NetworkManager translation", the_networkmanager_translation),
+        ("a DHCP renewal strips the service address",
+         the_service_address_survives_a_dhcp_renewal_stripping_it),
     ]
     for name, scenario in scenarios:
         before = len(FAILED)
