@@ -118,7 +118,12 @@ camera is plugged back in.
 
 Wi-Fi only in practice, and **managed by NetworkManager** -- `nmcli` works here,
 which it did not on the Banana Pi. That is the largest single difference from the
-old host, and the reason `wifi_roam` is staged but not installed.
+old host, and the reason the roaming half of `wifi_roam` is staged but not
+installed. Its privileged helper `/usr/local/sbin/wifi_ctl.sh` **is** installed,
+along with a `NOPASSWD` rule letting `jetson` run that one path, because the
+console's network panel cannot list or switch networks without it. That is what
+`wifi_roam/install.sh --helper-only` puts down, and it is what the manifest's
+system install for `wifi_roam` runs on this host; nothing roams by itself here.
 
 - `wlP1p1s0` -- onboard Realtek RTL8822CE, `192.168.1.88`, dual band;
 - `wlx002e2d3074d0` -- the USB Realtek RTL8188FTV dongle, `192.168.1.77`,
@@ -132,6 +137,32 @@ router going down does not take both. Each has its own DHCP lease and either
 answers SSH and the daemon on 8769. That is two ways in, not failover: nothing
 moves a service address between them, which is what `wifi_dual` did on the Banana
 Pi and what still needs porting.
+
+### Which networks this rover can join
+
+Two of the three house networks, not three. NetworkManager holds one profile per
+radio, and each is pinned to its radio by `connection.interface-name`, which is
+how the two stay on different routers:
+
+| Profile | Network | Pinned to |
+|---|---|---|
+| `TheGreatLord` | `TheGreatLord` | `wlP1p1s0` |
+| `TheGreatViking-dongle` | `TheGreatViking` | `wlx002e2d3074d0` |
+
+**There is no profile for `TheMaharaja`**, so the console lists it as a network
+with no passphrase and will not join it. Adding one needs the key in
+`secrets/wifi.key` and a decision about which radio it is for.
+
+Note that a profile's name is not its network. `wifi_ctl.sh` reports and joins by
+network and looks the profile up, and a join does not name an interface for a
+profile that already pins one, because NetworkManager refuses that rather than
+resolving it.
+
+The onboard radio also fills its scan list in **over several scans** rather than
+all at once: measured on 2026-08-31, three consecutive scans returned 2, then 8,
+then 27 access points. One press of the console's "look for networks" can
+therefore show almost nothing on a radio that has been quiet for a while; the
+list is cumulative and the next press fills it in.
 
 ### The second radio
 
@@ -259,8 +290,22 @@ the healthier one. `wifi_dual.py` does exactly that on the Banana Pi by driving
 NetworkManager, so it needs porting rather than installing. Two interfaces on one
 subnet also want a policy rule each, or replies leave by whichever radio the main
 routing table prefers -- the fault that once left the rover unreachable at its own
-address for eleven minutes. `wifi_roam` is staged and its replay test passes; its
-system install has deliberately **not** been run.
+address for eleven minutes. The roamer is staged and its replay test passes; only
+the console helper has been installed, and the timer, the units and the
+dual-radio manager have deliberately **not** been. The roamer is a one-radio
+script that would start moving the two radios this rover deliberately keeps
+apart.
+
+The dongle's profile also still carries NetworkManager's default retry limit,
+which the roamer's full install is what normally clears. It went off the air at
+03:31 on 2026-08-31 after a link timeout and had not been retried six hours
+later, so a transient outage currently costs the second radio until somebody
+brings it back:
+
+```bash
+ssh orin 'nmcli con mod TheGreatViking-dongle connection.autoconnect-retries 0'
+ssh orin 'nmcli con up TheGreatViking-dongle'
+```
 
 **netwatch.** Staged, not installed, for the same reason: it is ordered after
 `wpa_supplicant` and reads that daemon's control socket, and neither exists here.

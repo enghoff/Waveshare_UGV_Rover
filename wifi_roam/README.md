@@ -178,6 +178,13 @@ files. After reviewing a network change and ensuring there is a recovery path:
 python deploy/deploy.py --system --only wifi_roam
 ```
 
+On the current rover that system install is `install.sh --helper-only`, which
+puts down `wifi_ctl.sh` and its `NOPASSWD` rule and nothing else. The console
+needs that helper to list or switch networks; the roamer and the dual-radio
+manager both drive `wpa_supplicant` against netplan and this host runs
+NetworkManager, so they are staged and not installed. Running the roamer here
+would move two radios that are deliberately held on different routers.
+
 Manual equivalent:
 
 ```bash

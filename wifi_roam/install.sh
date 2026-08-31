@@ -85,19 +85,17 @@ if [ -r "$HERE/selftest.sh" ]; then
     fi
 fi
 
-# The helper goes down on every host, because it is the half the console
-# needs, and it needs no timer, no unit and no decision about roaming.
-install -m 755 "$HERE/wifi_ctl.sh" /usr/local/sbin/wifi_ctl.sh
-if [ "$HELPER_ONLY" = 0 ]; then
-    install -m 755 "$HERE/wifi_roam.sh" /usr/local/sbin/wifi_roam.sh
-    install -m 644 "$HERE/wifi-roam.service" "$HERE/wifi-roam.timer" \
-        "$HERE/wifi-radio-on.service" /etc/systemd/system/
-fi
-
-# The daemon runs as `admin` and needs two privileged things -- a scan and a
-# switch -- for the console's network panel. This is the narrow way to give it
-# them: one path, no arguments constrained here because wifi_ctl.sh constrains
-# them itself, and no password, since a daemon has nowhere to type one.
+# The daemon needs two privileged things -- a scan and a switch -- for the
+# console's network panel. This is the narrow way to give it them: one path, no
+# arguments constrained here because wifi_ctl.sh constrains them itself, and no
+# password, since a daemon has nowhere to type one.
+#
+# The rule goes down before the script it names, and not after. The other way
+# round leaves a few seconds in which the helper exists and may not be run, and
+# a console that asks for a scan in that window is told a password is required
+# -- which is true, and says nothing about what is actually wrong. A rule naming
+# a script that is not there yet fails instead as "not installed", which is the
+# message that sends somebody to the right place.
 #
 # Written through a temporary file and checked before it is put in place. A
 # malformed file in /etc/sudoers.d makes *every* sudo on the box fail, including
@@ -116,6 +114,16 @@ else
     exit 1
 fi
 rm -f "$tmp"
+
+# The helper goes down on every host, because it is the half the console
+# needs, and it needs no timer, no unit and no decision about roaming.
+install -m 755 "$HERE/wifi_ctl.sh" /usr/local/sbin/wifi_ctl.sh
+if [ "$HELPER_ONLY" = 0 ]; then
+    install -m 755 "$HERE/wifi_roam.sh" /usr/local/sbin/wifi_roam.sh
+    install -m 644 "$HERE/wifi-roam.service" "$HERE/wifi-roam.timer" \
+        "$HERE/wifi-radio-on.service" /etc/systemd/system/
+fi
+
 if [ "$HELPER_ONLY" = 1 ]; then
     echo "helper only: no roamer, no timer and no units on this host"
     echo "  the console can list and switch networks now; nothing roams"
