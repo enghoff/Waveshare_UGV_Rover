@@ -33,13 +33,38 @@ unset _had_nounset
 
 echo "== building against $ROS_ENV_PREFIX"
 
-# A clean configure whenever the environment moved, because a CMake cache
-# remembers absolute paths into a conda prefix that a reinstall can replace.
-if [ -f "$BUILD/CMakeCache.txt" ] &&
-   ! grep -q "$ROS_ENV_PREFIX" "$BUILD/CMakeCache.txt" 2>/dev/null; then
-    echo "== the ROS environment moved; starting the build tree again"
-    rm -rf "$BUILD"
+# **The build is keyed on what the sources say, never on when they were written,
+# and that is not a refinement -- without it this never rebuilds at all.**
+#
+# `deploy.py` packs every file with `mtime = 0` on purpose, so that an unchanged
+# file has an unchanged tar and rsync's quick check can skip it. The consequence
+# here is that every source on the rover is dated 1970 and is therefore older
+# than any object file `make` has already produced. Incremental builds see
+# nothing to do, for ever. This was not theoretical: the escape behaviours were
+# rebuilt by three deploys running and the running behaviour server kept the
+# library from the first one, while the source beside it plainly said otherwise
+# -- exactly the fault lidar_slam/build.sh avoids by having no build cache at
+# all, and the one CLAUDE.md warns about.
+#
+# So the stamp is a hash of the sources. Same hash, nothing to do; different
+# hash, the build tree goes and is made again from scratch. A CMake cache also
+# remembers absolute paths into a conda prefix that a reinstall can replace, so
+# the environment goes into the hash too.
+STAMP="$PREFIX/.built-from"
+current=$(cat "$DIR/CMakeLists.txt" "$DIR/ugv_behaviors.xml" \
+              "$DIR/src/"*.cpp "$DIR/include/ugv_behaviors/"*.hpp 2>/dev/null |
+          sha256sum | cut -d" " -f1)
+current="$current $ROS_ENV_PREFIX"
+
+if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$current" ] &&
+   [ -f "$PREFIX/lib/libugv_behaviors.so" ]; then
+    echo "== sources unchanged since the last build; nothing to do"
+    echo "== built:   $PREFIX/lib/libugv_behaviors.so"
+    exit 0
 fi
+
+echo "== sources differ from the last build; building from scratch"
+rm -rf "$BUILD"
 
 cmake -S "$DIR" -B "$BUILD" \
       -DCMAKE_BUILD_TYPE=Release \
@@ -71,3 +96,7 @@ if [ "${missing:-0}" != 0 ]; then
     exit 1
 fi
 echo "== plugins: $(grep -c 'class type' "$DIR/ugv_behaviors.xml") declared"
+
+# Written last, so that a build which failed anywhere above is not recorded as
+# done and the next deploy tries again rather than skipping.
+printf '%s' "$current" > "$STAMP"
