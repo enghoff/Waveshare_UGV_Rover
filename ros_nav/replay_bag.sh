@@ -119,16 +119,31 @@ else
 fi
 
 sleep 10
+
+# The map collector starts *before* the bag and stays subscribed to the end, and
+# that ordering is load-bearing rather than tidy. RTAB-Map assembles and
+# publishes its occupancy grid only while something is subscribed to it, so a
+# collector run after the replay finds nothing to collect -- a mapper that ran
+# perfectly, processed every scan, and published no map because nobody had asked
+# for one. The subscription is the asking.
+#
+# It is given the bag's own length plus a margin, because the mapper is behind
+# the bag by whatever it has queued and both mappers rebuild the grid on a timer
+# rather than per scan.
+duration=$(ros2 bag info "$BAG" 2>/dev/null |
+           sed -n 's/^Duration: *\([0-9]*\).*/\1/p' | head -1)
+hold=$(( ${duration:-300} + 30 ))
+python3 "$DIR/map_score.py" --out "$RESULT" --label "$OUT" --hold "$hold" &
+collector=$!
+pids+=("$collector")
+
 echo "--- playing the bag at ${RATE}x"
 ros2 bag play "$BAG" --clock --rate "$RATE"
 
-# The mapper is behind the bag by however much it queued, and the occupancy grid
-# is rebuilt on a timer rather than per scan in both of them. Asking for the map
-# the instant the bag ends is asking for the map as it was some seconds ago.
 echo "--- letting the mapper finish"
-sleep 15
-
-python3 "$DIR/map_score.py" --out "$RESULT" --label "$OUT"
+# Waited for rather than killed: it writes the map when its hold expires, and a
+# collector killed first writes nothing at all.
+wait "$collector" || true
 
 if [ "$MAPPER" = rtabmap ]; then
     # Loop closures are RTAB-Map's own count and there is no equivalent from

@@ -14,6 +14,7 @@ from console_model import (
     BATTERY_POLL_S, BATTERY_STALE_S, CLEAR_ARM_S,
     Channel, LIGHT_MAX, MAP_EXTENTS_M, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
+    SLOW_PICTURE_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
     WIFI_SCAN_TIMEOUT_S, rung, tap_to_point,
 )
@@ -182,6 +183,10 @@ class Session(SessionShow):
         self.frame_jpeg: bytes = b""
         self.frame_gen = 0
         self.frame_note = ""
+        # When each picture was asked for, so that "drawing" and "taking" mean
+        # "slower than usual" rather than "in flight". See `slow`.
+        self.map_asked_at = 0.0
+        self.frame_asked_at = 0.0
         self.frame_error = ""
 
         self.track_outstanding = False
@@ -283,7 +288,10 @@ class Session(SessionShow):
             "map": {"gen": self.tag(self.map_gen), "width": self.map_shape[0],
                     "height": self.map_shape[1], "note": self.map_note,
                     "caption": self.map_caption, "error": self.map_error,
-                    "drawing": self.map_outstanding,
+                    # Only once it is taking longer than a render always takes --
+                    # see SLOW_PICTURE_S. Otherwise this flag alone was two states
+                    # per map, saying the console was drawing a map.
+                    "drawing": self.slow(self.map_outstanding, self.map_asked_at),
                     "half_extent_m": self.half_extent, "size_px": self.map_size,
                     "rover_up": self.rover_up,
                     # Only once it is old enough to be news -- see MAP_STALE_S. A
@@ -293,7 +301,9 @@ class Session(SessionShow):
                     "age_s": self.map_age(),
                     "settings": f"{2 * self.half_extent:.0f} m across, {facing}"},
             "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
-                      "error": self.frame_error, "taking": self.frame_outstanding},
+                      "error": self.frame_error,
+                      "taking": self.slow(self.frame_outstanding,
+                                          self.frame_asked_at)},
             "tracking": self.track_text,
             "lights": {"level": self.light_level,
                        "text": "-" if self.light_level is None else
@@ -310,6 +320,10 @@ class Session(SessionShow):
             "omni": self.omni() if self.omni else {"available": False,
                                                    "state": "off", "why": ""},
         }
+
+    def slow(self, outstanding: bool, asked_at: float) -> bool:
+        """Whether a picture in flight has been in flight long enough to say so."""
+        return outstanding and time.monotonic() - asked_at > SLOW_PICTURE_S
 
     def map_age(self) -> float | None:
         """How long ago the map on screen was drawn, when that is worth saying."""
@@ -813,7 +827,10 @@ class Session(SessionShow):
         if self.camera is None or self.frame_outstanding:
             return
         self.frame_outstanding = True
-        self.frame_note = "taking one..."
+        self.frame_asked_at = time.monotonic()
+        # The note is left saying what the last picture was. Replacing it with
+        # "taking one..." for the second each capture takes was a change of state
+        # twice a picture, and the panel it wrote to already has the picture on it.
         self.camera.submit("camera_jpeg")
 
     def reset_lidar(self) -> None:
@@ -890,6 +907,7 @@ class Session(SessionShow):
             return
         self.map_wanted = False
         self.map_outstanding = True
+        self.map_asked_at = time.monotonic()
         self.picture.submit("map_png", {"half_extent_m": self.half_extent,
                                         "pixels": self.map_size,
                                         "rover_up": self.rover_up})

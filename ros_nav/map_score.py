@@ -97,6 +97,9 @@ def main(argv=None):
     ap.add_argument("--label", default="map", help="name for the report line")
     ap.add_argument("--wait", type=float, default=20.0,
                     help="seconds to wait for a map before giving up")
+    ap.add_argument("--hold", type=float, default=0.0,
+                    help="keep subscribing for this many seconds and write the "
+                         "last map seen, rather than the first")
     args = ap.parse_args(argv)
 
     rclpy.init()
@@ -104,9 +107,19 @@ def main(argv=None):
     # Wall time rather than the node's clock: under a replay this may be on
     # simulated time, which stops dead when the bag ends -- and a deadline on a
     # clock that has stopped is a wait that never finishes.
-    stop_at = time.monotonic() + args.wait
-    while node.grid is None and time.monotonic() < stop_at:
+    #
+    # **--hold is what makes this work at all against RTAB-Map**, and the reason
+    # is a property of the node rather than of this script: rtabmap assembles and
+    # publishes its occupancy grid only while something is subscribed to it. Run
+    # after a replay has finished, this finds nothing latched to collect, because
+    # nothing was ever published for want of a listener -- a mapper that ran
+    # perfectly and produced no map. Held open across the whole replay, the
+    # subscription is itself what asks for the grid.
+    stop_at = time.monotonic() + max(args.wait, args.hold)
+    while time.monotonic() < stop_at:
         rclpy.spin_once(node, timeout_sec=0.5)
+        if node.grid is not None and args.hold <= 0:
+            break
     grid = node.grid
     rclpy.shutdown()
 

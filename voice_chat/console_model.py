@@ -67,8 +67,17 @@ PARKED_FRAME_GAP_S = 2.0
 # is "the current map" and the state says nothing about when it was drawn -- which
 # is the difference between a state that changes ten times a second and one that
 # changes when something happens. Over it, something has gone wrong with the
-# renderer and the number is the only thing that says so.
-MAP_STALE_S = 3.0
+# renderer and the number is the only thing that says so. Comfortably past the
+# parked gap plus the couple of seconds a render takes, because a parked map is
+# five to seven seconds old at all times and perfectly healthy: set anywhere near
+# the gap, this reports an age forever and the age ticks.
+MAP_STALE_S = 12.0
+# ...and how long a picture has to be in flight before the panel says it is coming.
+# A render takes two or three seconds and a capture about one, every time, so
+# announcing both was two changes of state per picture saying only that the console
+# was doing what it always does. Past this, something is wrong -- a camera that
+# opens and delivers nothing is the failure this catches.
+SLOW_PICTURE_S = 4.0
 # drive_to can take minutes of segments and turns -- the navigator allows a route
 # 15 m and 200 s -- while the default client timeout is 12 s, which is right for a
 # single hop and wrong for a route. Comfortably past the navigator's own budget, so
