@@ -158,7 +158,8 @@ Only one direction is obvious.
 
 ```text
 ~/ugv/world_state/            this component, deployed
-~/ugv/world_state/vendor/     the model weights and llama.cpp, fetched by install.sh
+~/ugv/world_state/vendor/     weights, llama.cpp, the ONNX models and the two
+                              unpacked wheels, fetched by the two install scripts
 ~/.ugv/world/world.db         entities, observations, inferences
 ~/.ugv/world/frames/          one JPEG per inspection
 ```
@@ -176,32 +177,150 @@ that has no model yet, saying so. That is deliberate: the alternative is a compo
 that deploys clean and cannot answer.
 
 ```bash
-python deploy/deploy.py --only world_state       # copies; fails if no model
-ssh orin '~/ugv/world_state/install.sh'          # ~2 GB, several minutes
-python deploy/deploy.py --only world_state       # now passes
+python deploy/deploy.py --only world_state          # copies; fails if no models
+ssh orin '~/ugv/world_state/install.sh'             # ~2 GB, the language model
+ssh orin '~/ugv/world_state/install_perception.sh'  # ~0.5 GB, the three encoders
+python deploy/deploy.py --only world_state          # now passes
 ```
 
-`install.sh` fetches a pinned Q4 GGUF of Cosmos Reason 2 2B and its vision
-projector from Hugging Face, unpacks a pinned aarch64 `llama.cpp` release, checks
-both against their expected sizes, and adds the sidecar's `@reboot` crontab entry.
-It is idempotent and resumes a part-fetched file, which is most of why it is worth
-re-running rather than starting again.
+Two installers because there are two model sets and they have to break
+independently. `install.sh` fetches a pinned Q4 GGUF of Cosmos Reason 2 2B and its
+vision projector, and unpacks a pinned aarch64 `llama.cpp`.
+`install_perception.sh` fetches FastSAM, DINOv2 and SigLIP2 as ONNX graphs and
+unpacks ONNX Runtime and the SigLIP tokenizer as wheels. Both check what they
+fetch against its expected size, add their sidecar's `@reboot` crontab entry, and
+resume a part-fetched file — which is most of why they are worth re-running rather
+than starting again.
 
-**The runtime is the CPU.** This Jetson has no CUDA toolkit installed and nothing
-else deployed on the rover uses its GPU, so the released CPU build is what actually
-runs — four threads, which is this board's whole processor.
+**The GPU runs the language model and nothing else, and that is a limitation
+rather than a choice.** This JetPack ships the GPU driver but no CUDA toolkit and
+no cuDNN, so onnxruntime has no GPU provider to offer and NVIDIA's Jetson wheel
+index stops at JetPack 6 — a GPU provider here would mean building ONNX Runtime
+from source against CUDA 13. Vulkan is a different matter: the driver works,
+llama.cpp speaks it, and the released Vulkan build is 27 MB with no toolchain.
 
 ## Running it
 
 ```bash
-ssh orin '~/ugv/world_state/restart.sh'              # reload the sidecar
-ssh orin '~/ugv/world_state/restart.sh --supervisor' # after changing run_cosmos.sh
+ssh orin '~/ugv/world_state/restart.sh'                  # reload the language model
+ssh orin '~/ugv/world_state/restart_perception.sh'       # reload the encoders
+ssh orin '~/ugv/world_state/restart.sh --supervisor'     # after changing run_*.sh
 ssh orin 'tail ~/ugv/world_state/cosmos.log'
+ssh orin 'tail ~/ugv/world_state/perception.log'
 ```
 
-Use `restart.sh` rather than relaunching `run_cosmos.sh` by hand: the supervisor is
-where the flags live, and the `pkill` patterns live in a file where an ssh command
-cannot match itself.
+Use the restart scripts rather than relaunching the `run_*.sh` by hand: the
+supervisors are where the flags live, and the `pkill` patterns live in files where
+an ssh command cannot match itself. That last point is not theoretical — writing
+`pkill -f llama-vulkan/llama-server` into an ssh command while writing this killed
+the session mid-sentence, for the fourth time in this repository's history.
+
+## The perception half
+
+Three ONNX models in a sidecar of their own on loopback 8776, and between them
+they know no categories at all.
+
+```text
+FastSAM-s      what regions are in this frame       47 MB   330 ms
+DINOv2-small   is this the same instance as that    24 MB   940 ms for 12 crops
+SigLIP2        what is it called, and text search   379 MB  700 ms for 12 crops
+```
+
+One look is **2.0 to 2.3 seconds** on the rover for twelve regions, against a plan
+that asked for under a second. The gap is the CPU and there is no lever left worth
+pulling: threads are saturated above four, FastSAM is already one step above the
+size where it starts losing objects, and the only configuration that gets to 1.14 s
+does it by embedding eight regions instead of twelve and shrinking DINOv2's input.
+What the target was really protecting is intact — **the lidar reported zero dropped
+scans through every measurement here**, and a look is thirty times cheaper than the
+language model it replaced.
+
+The vocabulary is [`vocabulary.txt`](vocabulary.txt) and nothing in the models
+knows it. A region's name is the nearest phrase to its stored SigLIP2 vector, so
+editing that file re-labels every object the rover has ever seen without
+reprocessing a frame.
+
+```bash
+ssh orin 'cd ~/ugv/world_state && python3 bench_perceive.py'   # what a look costs
+curl -s 127.0.0.1:8776/health
+```
+
+### Three things that were measured rather than assumed
+
+**Turning off onnxruntime's spin-waiting is worth 3.3x.** Three sessions run one
+after another on every look, and by default each one's thread pool keeps spinning
+after its own work is done — so FastSAM's threads burn cores through DINOv2's turn,
+and DINOv2's through SigLIP2's. A look is 2.64 s with spinning on and 0.80 s with
+it off, on the same models. Each model alone is exactly as fast either way, which
+is precisely why it is easy to miss.
+
+**SigLIP2 patch32-256 beats patch16-224 at both jobs.** The patch16 model is the
+obvious choice and the worse one here: 66 ms a crop against 24, and on the rover's
+own living-room frame it called the spray bottle a cardboard box and the armchair a
+sofa, where patch32 named the spray bottle, the armchair and the framed picture
+correctly. Sixty-four patch tokens rather than a hundred and ninety-six, and the
+crops are small.
+
+**A vocabulary of mixed phrase lengths has one entry that always wins.** An early
+list had "a power cable on the floor" among two-word phrases and it beat everything
+on every region in every frame, including an armchair and a framed picture. A
+longer, more circumstantial caption matches a whole scene better than a short one
+does. Keep them two or three words, an article, no clauses.
+
+### Appearance is weaker than the plan assumed, and that matters
+
+The plan records DINOv2 scoring the same chair at 0.995 and the twin chair across
+the room at 0.653, and treats appearance as a usable tiebreaker on that basis. On
+this rover's own frames, at the model's native input size:
+
+| | DINOv2 |
+|---|---:|
+| the same chair, two crops of the same view | 0.981 |
+| **the same chair, across a real change of viewpoint** | **0.696** |
+| **the twin chair across the room, seen from a similar angle** | **0.735** |
+| the chair against the spray bottle | 0.122 |
+
+**The twin scores higher than the object itself.** The plan's 0.995 is the first
+row — same object, same viewpoint — which is a measure of the crop, not of the
+object. Once the viewpoint genuinely changes, appearance answers "does this look
+like that picture" rather than "is this the same thing", and the two come apart
+exactly where the rover needs them not to.
+
+This does not change the design; it strengthens the reason for it. Geometry was
+always going to be the arbiter, and this says appearance cannot even be trusted as
+a strong tiebreaker: the resolver must never let a high appearance score overrule
+an incompatible placement, which is the redundant-furniture test the whole thing
+exists to pass. Appearance is kept because it is nearly free beside a bearing, it
+separates a chair from a bottle without effort, and it is safe once placement has
+already narrowed the field to one candidate.
+
+### The language sidecar was eating the board, and had been all along
+
+`llama-server` defaults to **8192 MiB of prompt cache**. This board has 7485 MiB
+and no swap. So the sidecar grew by about a hundred megabytes an inspection and
+never gave any back: sixteen inspections took the rover from 1.5 GB free to 48 MB,
+which is where the out-of-memory killer starts choosing between the language model
+and the process that owns STOP.
+
+`--cache-ram 0` in `run_cosmos.sh` settles it at 3.2 GB after six inspections and
+holds there, with no inspection any slower — every request here is a new picture
+with a new prompt, so there was never anything in that cache worth reusing.
+
+**This was not new and was not caused by the switch to Vulkan**: the CPU build
+leaks at the same rate, measured directly. The note further down that "the sidecar
+holds about 4 GB resident" was this leak caught halfway up, and it went unnoticed
+because nobody had run more than six inspections in a row.
+
+### What the GPU is worth
+
+Switching llama.cpp to its Vulkan build took an inspection from **38 s to 9.5 s**,
+and to 10–12 s with the perception sidecar loaded alongside. Twenty-seven megabytes,
+no toolchain, one flag. The same binary carries the CPU backends, so
+`--n-gpu-layers 0` is the way back if the driver ever misbehaves.
+
+Ten alternating rounds of a look and an inspection, with everything loaded: llama
+flat at 3228 MB, perception flat at 1216 MB, about 1.65 GB free throughout, and
+**zero dropped lidar scans**.
 
 ## The calls
 

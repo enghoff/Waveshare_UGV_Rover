@@ -288,7 +288,48 @@ They are inert -- nothing matches to them and nothing updates them -- and a
 world-state selftest passes, and the change is deployed and verified on the Orin.
 All three met.
 
-### Phase 1 — the perception sidecar
+### Phase 1 — the perception sidecar — **done, deployed 2026-09-01**
+
+Running on the rover at `f1a00d`. The three models are installed and answer on
+loopback 8776 in a process of their own; `install_perception.sh` fetches them and
+`bench_perceive.py` measures them. Four things came out of it that change what
+the later phases can assume.
+
+**The sub-second target was missed and cannot be met here. One look is 2.0 to
+2.3 seconds** for twelve regions. There is no GPU lever: this JetPack has the
+driver but no CUDA toolkit and no cuDNN, and NVIDIA's Jetson wheel index stops at
+JetPack 6, so an ONNX Runtime GPU provider would mean building it from source
+against CUDA 13 — far outside the "few hundred megabytes" this phase allowed.
+The CPU is saturated above four threads, FastSAM is already one size above where
+it starts losing objects, and the only configuration that reaches 1.14 s does it
+by embedding eight regions instead of twelve. **What the target was protecting is
+intact**: zero dropped lidar scans throughout, and a look is thirty times cheaper
+than the language model it replaces. Take the miss or drop to eight regions; that
+is a call for the owner rather than for this document.
+
+**The GPU was worth 4x to the language model.** llama.cpp's Vulkan build took an
+inspection from 38 s to 9.5 s for a 27 MB download and no toolchain, which is the
+top of the range this phase predicted.
+
+**`llama-server` had been leaking the whole board, since before this work.** Its
+prompt cache defaults to 8192 MiB on a machine with 7485 MiB and no swap, so it
+grew about a hundred megabytes an inspection: sixteen inspections took the rover
+from 1.5 GB free to 48 MB. `--cache-ram 0` fixes it at no cost. The CPU build
+leaks identically, so this is not Vulkan's doing and the POC's "about 4 GB
+resident" was this caught halfway up.
+
+**Appearance is weaker than this document assumed, and phase 3 must be told.**
+The 0.995-against-0.653 figure quoted below compares the same chair from the
+*same viewpoint* against a different chair from a different one. Measured across
+a real change of viewpoint, the same chair scores 0.696 and the twin chair across
+the room scores **0.735** — higher. So DINOv2 answers "does this look like that
+picture", not "is this the same object". The design already makes geometry the
+arbiter; what changes is that appearance cannot be a strong tiebreaker either,
+and the resolver must never let it overrule a placement.
+
+The original plan for this phase follows.
+
+### Phase 1 as planned
 
 - Put ONNX Runtime with a GPU provider on the Orin. Prefer it over PyTorch: a few
   hundred megabytes against two to three gigabytes. The rover's packages are
@@ -303,7 +344,8 @@ All three met.
   binary: 27 MB, no toolchain, 2.4x to 4x.
 
 **Done when** one frame yields regions, embeddings and derived labels on the
-rover in under a second, with the lidar still reporting no dropped scans.
+rover in under a second, with the lidar still reporting no dropped scans. The
+lidar half passed; the second did not, and why is above.
 
 ### Phase 2 — placement
 
