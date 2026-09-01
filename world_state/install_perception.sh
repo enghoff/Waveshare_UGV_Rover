@@ -138,6 +138,21 @@ fetch "$DINO_URL"      "$VENDOR/$DINO_FILE"      "$DINO_BYTES"
 fetch "$SIGLIP_URL"    "$VENDOR/$SIGLIP_FILE"    "$SIGLIP_BYTES"
 fetch "$TOKENIZER_URL" "$VENDOR/$TOKENIZER_FILE" "$TOKENIZER_BYTES"
 
+# The sidecar comes back after a reboot the way every other service on this rover
+# does: a crontab entry for the rover user. Its own line, separate from the
+# language model's, so that stopping one does not stop the other.
+LINE="@reboot $HERE/run_perception.sh"
+current=$(crontab -l 2>/dev/null || true)
+if printf '%s\n' "$current" | grep -q 'world_state/run_perception.sh'; then
+    echo "crontab already starts the perception sidecar"
+else
+    if [ -n "$current" ]; then
+        printf '%s\n%s\n' "$current" "$LINE" | crontab -
+    else
+        printf '%s\n' "$LINE" | crontab -
+    fi
+    echo "added: $LINE"
+fi
 sync
 
 echo "--- what is installed"

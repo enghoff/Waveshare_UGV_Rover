@@ -47,12 +47,14 @@ SIGLIP = "siglip2-base-patch32-256-int8.onnx"
 TOKENIZER = "siglip2-tokenizer.json"
 VOCABULARY = os.path.join(HERE, "vocabulary.txt")
 
-#: What FastSAM is shown. 640 rather than its own default of 1024: measured on
-#: the rover's frames, 640 finds the same things -- the spray bottle, the air
-#: purifier, the framed picture, the doorway -- for a third of the cost, and the
-#: camera is 640x480 to begin with so 1024 is upsampling before it is anything
-#: else.
-FASTSAM_SIZE = 640
+#: What FastSAM is shown, and the number was walked down until something broke.
+#: Its own default is 1024, which on a 640x480 camera is upsampling before it is
+#: anything else. Measured against objects read off the frames by hand: 640 and
+#: 512 both find the spray bottle, the armchair, the framed picture and the air
+#: purifier, and 512 costs 330 ms on the rover against 510. **448 is where it
+#: breaks** -- the air purifier disappears entirely -- so this is one step above
+#: the cliff rather than at the bottom of it.
+FASTSAM_SIZE = 512
 #: Below this the box is a texture rather than a thing. Measured: at the library's
 #: own default of 0.25 the same living-room frame came back with 49 boxes of which
 #: half were reflections on a tiled floor; at 0.4 it is 29, which is what the plan
@@ -352,16 +354,22 @@ class Perception:
     def _appearance(self, patches):
         """DINOv2's class token per crop: is this the same *instance*.
 
-        Measured on the rover's frames: the same chair across two views scored
-        0.995 and its twin across the room 0.653, where SigLIP2 on the same pair
-        gave 0.990 and 0.87. DINOv2 sees an instance where SigLIP sees
-        chair-ness, which is why both are here and why this is the one used for
-        sameness.
+        **Weaker at that than the plan assumed, measured on this rover's own
+        frames.** Two crops of the same chair from the same viewpoint score
+        0.981, which is the number the plan recorded as evidence. Across a
+        genuine change of viewpoint the same chair scores 0.696 -- and the *twin*
+        chair across the room, seen from an angle more like the original, scores
+        0.735. Higher. On this evidence appearance answers "does this look like
+        that picture" and not "is this the same object", and the two come apart
+        exactly where the rover needs them not to.
 
-        It is still only ever a tiebreaker. Some of that 0.653 is viewpoint
-        rather than identity, and two identical chairs seen from similar
-        distances would score high on both -- which is the whole reason geometry
-        is the arbiter.
+        That is not a reason to drop it; it is the reason geometry is the
+        arbiter rather than the tiebreaker. Kept because it is nearly free beside
+        a bearing, because it separates a chair from a bottle without effort
+        (0.12), and because a resolver that has already narrowed to one place can
+        use a weak signal safely. It must never be allowed to overrule a
+        placement, which is what the plan's redundant-furniture test exists to
+        check.
         """
         np = self._np
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)

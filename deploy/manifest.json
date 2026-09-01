@@ -27,7 +27,9 @@
       "commands": [
         "cd ~/ugv/world_state && python3 selftest.py | tail -2",
         "test -f ~/ugv/world_state/vendor/Cosmos-Reason2-2B-Q4_K_M.gguf && test -f ~/ugv/world_state/vendor/mmproj-Cosmos-Reason2-2B-F16.gguf && test -x ~/ugv/world_state/vendor/llama/llama-server || { echo 'no model installed -- run ~/ugv/world_state/install.sh' >&2; exit 1; }",
-        "~/ugv/world_state/restart.sh"
+        "test -f ~/ugv/world_state/vendor/FastSAM-s.onnx && test -f ~/ugv/world_state/vendor/siglip2-base-patch32-256-int8.onnx || { echo 'no perception models -- run ~/ugv/world_state/install_perception.sh' >&2; exit 1; }",
+        "~/ugv/world_state/restart.sh",
+        "~/ugv/world_state/restart_perception.sh"
       ],
       "special_commands": [
         {
@@ -39,6 +41,17 @@
           ],
           "commands": [
             "~/ugv/world_state/restart.sh --supervisor"
+          ]
+        },
+        {
+          "when": [
+            "world_state/run_perception.sh"
+          ],
+          "replaces": [
+            "~/ugv/world_state/restart_perception.sh"
+          ],
+          "commands": [
+            "~/ugv/world_state/restart_perception.sh --supervisor"
           ]
         }
       ],
