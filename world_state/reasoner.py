@@ -43,9 +43,14 @@ ENV_MODEL = "UGV_COSMOS_MODEL"
 #: image encoder warming up; hard because the console is holding a connection open
 #: behind it and a call that never returns is worse than one that fails.
 TIMEOUT_S = 180.0
-#: The output cap. The answer is a page of JSON at most, and a model that has
-#: started repeating itself should cost one failed inspection rather than an hour.
-MAX_TOKENS = 700
+#: The output cap, and it has to be big enough for the biggest answer the schema
+#: allows -- otherwise a model doing exactly what it was asked runs out mid-object
+#: and its work is thrown away as truncated, which is what happened here twice
+#: before these two numbers were made to agree. Measured on the rover: about
+#: sixty-five tokens per observation, six of them, plus the scene sentence, is
+#: around five hundred. This is that with room to spare, and still well inside the
+#: wall clock below at the seven or so tokens a second this board manages.
+MAX_TOKENS = 900
 #: How long to wait on the sidecar's health endpoint. It either answers at once or
 #: it is loading a model, and neither case is worth blocking an inspection on.
 PROBE_S = 3.0

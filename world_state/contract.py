@@ -23,7 +23,7 @@ from typing import Any
 #: in a way that could change what it reports. Stamped on every observation,
 #: because an experiment that ran across a prompt change and cannot tell which half
 #: is which has measured nothing.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 #: The semantic vocabulary, kept loose and practical on purpose. `room_hint`,
 #: `text` and `hazard` are deliberately absent: nothing consumes them, and a
@@ -35,7 +35,15 @@ KINDS = ("object", "furniture", "opening", "person", "unknown")
 #: At most this many observations from one picture. A model that decides to
 #: inventory every book on a shelf is answering a different question than the one
 #: it was asked, and the store should not grow an entity per book while it does.
-MAX_OBSERVATIONS = 10
+#:
+#: Six rather than ten, and the reason is arithmetic rather than taste. Measured on
+#: the rover, one observation costs this model about sixty-five tokens; ten of them
+#: plus the scene sentence is past the output cap, so the answer ran out mid-object
+#: and a good look at the room was thrown away as truncated. **The cap on the
+#: number of observations and the cap on tokens have to agree**, and of the two
+#: ways to make them agree this is the one that keeps an inspection at a minute
+#: rather than pushing it to three. See `reasoner.MAX_TOKENS`.
+MAX_OBSERVATIONS = 6
 
 #: Labels that name nothing in particular. An observation carrying one of these is
 #: kept as history -- it is what the model said -- but no entity is created for it,
@@ -62,7 +70,7 @@ GRID = 1000.0
 FRACTION_CEILING = 2.0
 
 MAX_LABEL = 60
-MAX_DESCRIPTION = 240
+MAX_DESCRIPTION = 200
 MAX_HINT = 40
 MAX_SCENE = 400
 
@@ -157,7 +165,7 @@ RESPONSE_SCHEMA = {
                     "existing_entity": {"type": ["string", "null"]},
                     "kind": {"type": "string", "enum": list(KINDS)},
                     "label": {"type": "string", "maxLength": 40},
-                    "description": {"type": "string", "maxLength": 160},
+                    "description": {"type": "string", "maxLength": 120},
                     "location_hint": {"type": "string", "maxLength": 24},
                     "bbox_norm": {
                         "type": "array",

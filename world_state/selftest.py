@@ -486,9 +486,11 @@ def test_the_answer_has_to_be_the_right_shape() -> None:
     check("nothing salient is a finding rather than a failure", empty.ok, True)
     check("...with nothing to store", empty.seen, [])
 
+    from world_state.contract import MAX_OBSERVATIONS
+
     result = validate(answer(*[sofa(label=f"box {n}") for n in range(20)]), set())
     check("a model inventorying the room is cut off at the cap",
-          len(result.seen), 10)
+          len(result.seen), MAX_OBSERVATIONS)
     check("...and told on", "returned 20 observations" in result.detail(), True)
 
 
