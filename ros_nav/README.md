@@ -351,6 +351,55 @@ drive the same 30 cm until its budget ran out. What it costs is the occasional
 pocket left behind a corner the rover stood next to, and a second `explore` picks
 that up, because the blacklist lives exactly as long as one call.
 
+### It gives up on a goal that is going nowhere, and only exploring does
+
+**The first unattended run met the repository's oldest open fault, and it cost
+fifty seconds.** Recorded on 2026-09-01: the sixth frontier of a run, a goal
+2.4 m away across open floor with nothing solid within 40 cm of it, and the
+rover moved **six centimetres in fifty seconds**. The log is forty-three
+identical lines — `controller_server: Passing new path to controller.`, once a
+second — and nothing else. No progress-checker failure, no costmap clear, no
+spin. Nav2 never noticed anything was wrong.
+
+That is "The controller is aimed round the corner" below, which is still open:
+`MapGridCritic`'s flood runs through walls in the build installed here, so where
+the route bends the critics steer at a point behind the wall, every forward
+sample is refused, and pivoting is free. What hides it is the progress checker.
+This rover runs `PoseProgressChecker` on purpose, so that a legitimate pivot is
+not called stuck — and the price is that a rover pivoting for ever is not called
+stuck either.
+
+Exploring cannot fix that. What it can do is stop paying for it, because it has
+something `drive_to` does not: **sixteen other frontiers and no opinion about
+which.** So an exploring goal is given up when the rover has not got half a metre
+further on in twenty-five seconds *and Nav2 has attempted no recovery* — the
+second half being what separates the aiming trap from a rover that is genuinely
+stuck against something, where the recovery ladder is better at this than any
+watcher. A commanded `drive_to` is untouched and still gets every recovery Nav2
+has, which is what somebody who asked for one particular place is owed.
+
+The numbers come off the recordings rather than out of the air. `frontier.Stall`
+is replayed over all four in the selftest, across the window where a goal was
+actually being driven:
+
+| recording | commanded | forward commands | net moved | watcher |
+|---|---|---|---|---|
+| `trap-2026-08-25-spin` | 51 s | 5 of 511 | 0.25 m | gives up at 25 s |
+| `corridor-2026-08-25-spin` | 43 s | 20 of 430 | 0.30 m | gives up at 25 s |
+| `doorway-2026-08-25` | 56 s | 53 of 315 | 1.76 m | gives up at 25 s |
+| `doorway-2026-08-25-after-floor` | 9.6 s | 85 of 99 | 3.52 m | **leaves it alone** |
+
+The first three never reached their goals; the fourth is the rover driving
+properly and is the false positive that would matter, because a watcher that
+cancels that is a rover that cannot cross a room.
+
+**One trap in reading those recordings is worth passing on.** `nav_record.py`
+records a fixed sixty seconds whether or not anything is happening, so every one
+of these files ends with the rover sitting idle after the drive finished. Replay
+a watcher across the whole file and all four look like stalls — which is how
+this test first read, and it is not a fact about the rover. The watcher only ever
+runs while a goal is in flight, so the replay is bounded to the commanded window.
+
 ### 0.50 m of boundary, and how that number was arrived at
 
 The one setting worth arguing about is how much unmapped edge makes a frontier
@@ -1526,7 +1575,12 @@ and at 2.0 it changes nothing.
 
 - **The controller aims the rover at walls, because the distance field it
   steers by does not know they are there.** That is the trap above and it is
-  the open fault. Three candidate fixes have been tried against the
+  the open fault. It was met again on 2026-09-01, this time unattended, by the
+  first `explore` run: fifty seconds, six centimetres, forty-three replans and
+  no recovery attempted, because `PoseProgressChecker` counts a pivot as
+  progress. Exploring now gives such a goal up after twenty-five seconds and
+  drives to a different frontier — a mitigation that stops it costing the
+  budget, and no kind of fix. See "It gives up on a goal that is going nowhere". Three candidate fixes have been tried against the
   reproduction and all three are dead: a smaller body, removing
   `PreferForward`'s rate charge, and turning the rover to the plan's heading
   before handing over. What is left is to stop the local goal being a point

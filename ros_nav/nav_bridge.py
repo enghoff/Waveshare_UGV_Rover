@@ -735,7 +735,7 @@ class NavBridge(Node):
         return True
 
     def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving",
-                 budget=None):
+                 budget=None, give_up=None):
         """Send one Nav2 goal and narrate it until it ends.
 
         `say` publishes a progress line and `measure` turns the action's own
@@ -753,6 +753,14 @@ class NavBridge(Node):
         accepted, and it is a parameter because the consoles read it: both turn
         the phase into a sentence, and a spin narrating itself as "driving +45
         deg" is a rover describing something it is not doing.
+
+        `give_up` is asked, every pass, whether this goal is worth continuing,
+        and a sentence back from it cancels the goal and becomes the reason. It
+        is the opposite of `budget`, which can only ever push the deadline out,
+        and only `explore` passes one: a caller who asked for one particular
+        place is owed every recovery Nav2 has before being told no, and a caller
+        with sixteen other frontiers to try is not. See `frontier.Stall` for what
+        it watches and why Nav2 cannot see it.
         """
         client = self.actions[kind]
         if not client.wait_for_server(timeout_sec=2.0):
@@ -795,6 +803,7 @@ class NavBridge(Node):
         with self._lock:
             self.active_goal = handle
             self.driving = True
+        abandoned = None
         try:
             result_future = handle.get_result_async()
             began = time.monotonic()
@@ -802,6 +811,12 @@ class NavBridge(Node):
             said_at = 0.0
             while not result_future.done():
                 now = time.monotonic()
+                if give_up is not None:
+                    abandoned = give_up(now, dict(feedback))
+                    if abandoned:
+                        handle.cancel_goal_async()
+                        self.wait(result_future, 5.0)
+                        break
                 if budget is not None:
                     # Re-asked every pass rather than once at the start, because
                     # the route does not exist yet when the goal is sent and it
@@ -818,6 +833,13 @@ class NavBridge(Node):
                     say(motion, "", **dict(feedback))
                 time.sleep(0.05)
             outcome = self.finish(result_future, started, feedback)
+            # A goal this file gave up on is not one that ran out of time, and
+            # `finish` cannot tell them apart -- it sees a cancelled goal either
+            # way, and would report the time allowance running out on a move that
+            # had most of it left. Said in its own words instead.
+            if abandoned:
+                outcome["reason"] = "blocked"
+                outcome["detail"] = abandoned
             # What it tried before giving up. A bare "blocked" sends somebody to
             # look at the rover; "blocked after 10 recoveries, and the planner
             # could not find a route" sends them to look at the map, which is
@@ -1064,7 +1086,7 @@ class NavBridge(Node):
                 "stand in, so the goal was moved %d cm to the nearest one it "
                 "fits" % round(placed["moved_m"] * 100))
 
-    def goto(self, where, yaw_deg, say):
+    def goto(self, where, yaw_deg, say, give_up=None):
         """Somewhere on the map, with a planner and a costmap between.
 
         `where` is already in map coordinates -- the daemon converts an offset into
@@ -1142,7 +1164,8 @@ class NavBridge(Node):
                     "route_m": round(longest[0], 2) or None,
                     "recoveries": int(fb.number_of_recoveries)}
 
-        outcome = self.run_goal("goto", goal, limit, say, measure, budget=budget)
+        outcome = self.run_goal("goto", goal, limit, say, measure, budget=budget,
+                                give_up=give_up)
         # **How far the route was, said out loud.** A move that ran out of time on
         # a route three times the length of the straight line is a different event
         # from one that ran out of time going nowhere, and the console could not
@@ -1413,8 +1436,17 @@ class NavBridge(Node):
                     say(phase, why, frontier_goal=_n, frontiers_left=_left,
                         **fields)
 
+                # The one thing an exploring goal has that a commanded one does
+                # not: somewhere else to be. See `frontier.Stall`.
+                watch = frontier.Stall()
+
+                def going_nowhere(now, feedback):
+                    return watch.update(now, self.pose(),
+                                        int(feedback.get("recoveries") or 0))
+
                 outcome = self.goto(
-                    (placed[0], placed[1]), math.degrees(placed[2]), narrate)
+                    (placed[0], placed[1]), math.degrees(placed[2]), narrate,
+                    give_up=going_nowhere)
                 travelled += float(outcome.get("travelled_m") or 0.0)
                 # Summed as magnitudes, unlike every other move here. A single
                 # move's turn has a direction worth keeping; a run of nine goals
@@ -1424,6 +1456,13 @@ class NavBridge(Node):
                 reason = outcome.get("reason")
                 if reason == "arrived":
                     arrived += 1
+                elif outcome.get("detail", "").startswith("it has not got"):
+                    # Abandoned by the watcher above rather than by Nav2. Worth
+                    # saying out loud on the way past: it is the one outcome here
+                    # that means the controller, not the room.
+                    say("choosing", "gave that one up -- %s"
+                                    % outcome["detail"], frontiers_left=
+                                    explorer.summary["frontiers"])
                 elif reason == "stopped":
                     return totals("stopped", "a stop was asked for")
                 elif reason in ("refused", "lost"):

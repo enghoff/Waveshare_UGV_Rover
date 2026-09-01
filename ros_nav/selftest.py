@@ -1105,6 +1105,128 @@ def test_frontiers_are_found_on_a_real_map():
     del near
 
 
+def test_a_goal_that_goes_nowhere_is_given_up():
+    """The stall watcher, against the drives where this rover really was stuck.
+
+    Not a synthetic spin. `recordings/trap-2026-08-25-spin.json` and
+    `corridor-2026-08-25-spin.json` are a minute each of the rover pivoting on
+    the spot going nowhere -- the controller aiming it at a point behind a wall,
+    which is the README's open fault -- and the two doorway recordings are the
+    same rover on the same day driving properly. A watcher that cannot tell those
+    apart is worse than none, because it would cancel good drives.
+
+    The rover met this again on 2026-09-01 while exploring: fifty seconds, six
+    centimetres, forty-three replans, and not one recovery attempted, because
+    `PoseProgressChecker` counts a pivot as progress and so never fired.
+    """
+    section("a goal that is going nowhere is given up, and a slow one is not")
+    sys.path.insert(0, HERE)
+    try:
+        import frontier
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import frontier: %s" % exc)
+        return
+
+    def replay(name, recoveries=0):
+        """Drive the watcher down a recorded drive, and say when it gave up.
+
+        **Only over the part of the recording where a goal was actually being
+        driven**, which is between the first and last `/cmd_vel_nav` command.
+        `nav_record.py` records a fixed sixty seconds whether or not anything is
+        happening, so every one of these files ends with the rover sitting idle
+        -- and replaying across that tail asks the watcher a question it is never
+        asked on the rover, where it only runs while a goal is in flight. Getting
+        this wrong makes every recording look like a stall, which is how this
+        test first read.
+
+        The map frame rather than odom, because that is the frame `pose()`
+        answers in, and because odom drifts while the rover stands still --
+        exactly the situation here, and it would read as movement that never
+        happened.
+        """
+        path = os.path.join(HERE, "recordings", name)
+        if not os.path.exists(path):
+            return "missing"
+        with open(path) as fh:
+            episode = json.load(fh)
+        commands = episode.get("commands") or []
+        if not commands:
+            return "missing"
+        first, last = commands[0]["t"], commands[-1]["t"]
+        track = [(p["t"], (p["map"][0], p["map"][1])) for p in episode["poses"]
+                 if "map" in p and first <= p["t"] <= last]
+        if len(track) < 20:
+            return "missing"
+        watch = frontier.Stall()
+        for when, where in track:
+            if watch.update(when, where, recoveries):
+                return when - first
+        return None
+
+    # The three recordings of the rover failing to get anywhere. Between 1% and
+    # 17% of the commands in each have any forward speed at all -- the rest are
+    # pivots -- and none of the three ever reached its goal.
+    trap = replay("trap-2026-08-25-spin.json")
+    check("the 3038-degree spin is given up on", isinstance(trap, float), True)
+    check("...and within about half a minute, not after the full allowance",
+          isinstance(trap, float) and trap <= 40.0, True)
+    check("the other recorded spin is given up on too",
+          isinstance(replay("corridor-2026-08-25-spin.json"), float), True)
+    check("...and so is the doorway drive that pivoted for a minute and ended "
+          "2.4 m short", isinstance(replay("doorway-2026-08-25.json"), float),
+          True)
+
+    # And the one recording of the rover driving properly: 86% of its commands
+    # have forward speed and it covers 3.5 m in the 9.6 s it is commanded. This
+    # is the false positive that would matter, because a watcher that cancels
+    # this is a rover that cannot cross a room.
+    driving = replay("doorway-2026-08-25-after-floor.json")
+    check("the drive that was actually getting somewhere is left alone",
+          driving in (None, "missing"), True)
+
+    # Nav2 working its recovery ladder is Nav2 knowing it is stuck, and it is
+    # left to get on with it -- the ladder beats this at the thing the ladder is
+    # for. What this catches is the case where nothing is being attempted.
+    watch = frontier.Stall()
+    fired = None
+    for tick in range(200):
+        # Standing perfectly still, but with a recovery starting every 10 s.
+        fired = watch.update(tick * 0.5, (1.0, 1.0), recoveries=tick // 20)
+        if fired:
+            break
+    check("a rover Nav2 is actively recovering is not cancelled underneath it",
+          fired, None)
+
+    watch = frontier.Stall()
+    fired = None
+    for tick in range(200):
+        fired = watch.update(tick * 0.5, (1.0, 1.0), recoveries=0)
+        if fired:
+            break
+    check("...but standing still with nothing being attempted is given up on",
+          bool(fired), True)
+    check("...after the patience, not before",
+          frontier.STALL_PATIENCE_S >= 25.0, True)
+
+    # A pose the transform tree could not supply must not read as a rover that
+    # has not moved: that is a stall invented out of a dropped lookup.
+    watch = frontier.Stall()
+    watch.update(0.0, (0.0, 0.0), 0)
+    check("a pose nobody could vouch for is not read as standing still",
+          watch.update(100.0, None, 0), None)
+
+    bridge = os.path.join(HERE, "nav_bridge.py")
+    if os.path.exists(bridge):
+        with open(bridge) as fh:
+            source = fh.read()
+        check("exploring passes the watcher to the goal it sends",
+              "give_up=going_nowhere" in source, True)
+        check("...and only exploring does, so drive_to keeps every recovery",
+              source.count("give_up=going_nowhere"), 1)
+        check("...and a goal given up on is not reported as having timed out",
+              'outcome["reason"] = "blocked"' in source, True)
+
+
 def test_exploring_finishes_and_covers_the_house():
     """The explore loop, run round the room the recorded drive mapped.
 
@@ -1998,6 +2120,7 @@ def main():
     test_configs_agree()
     test_goal_fits_before_it_is_sent()
     test_frontiers_are_found_on_a_real_map()
+    test_a_goal_that_goes_nowhere_is_given_up()
     test_exploring_finishes_and_covers_the_house()
     test_a_route_is_budgeted_on_the_route()
     test_progress_is_not_only_translation()

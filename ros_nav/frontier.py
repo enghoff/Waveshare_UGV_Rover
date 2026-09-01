@@ -431,6 +431,84 @@ def survey(grid, where, min_frontier_m=MIN_FRONTIER_M, blacklist=(),
     return out, summary
 
 
+#: How long a goal may go nowhere before an explore abandons it, and how far
+#: "somewhere" is.
+#:
+#: **Measured against the two recorded drives where this rover was stuck.** Over
+#: the whole minute of `recordings/trap-2026-08-25-spin.json` -- 1.22 m of path,
+#: 3038 degrees of turning, 28 cm between the ends -- the furthest the rover got
+#: from where it had been 20 seconds earlier is 0.20 m, and on
+#: `corridor-2026-08-25-spin.json` it is 0.26 m. The two doorway recordings, which
+#: are the same rover driving properly, reach 1.58 m and 3.63 m over the same
+#: window. Half a metre sits in the gap with room on both sides; at the 0.33 m/s
+#: this chassis cannot go below, 25 seconds of real driving is eight metres of
+#: path, and no route round furniture nets less than half a metre of it.
+#:
+#: 25 seconds rather than 15 so that Nav2's own progress checker, which is given
+#: 15, always gets to go first.
+STALL_PATIENCE_S = 25.0
+STALL_MOVED_M = 0.5
+
+
+class Stall(object):
+    """Is this goal going anywhere, or is the rover turning on the spot for ever?
+
+    **The fault this watches for is the repository's oldest open one, and Nav2
+    cannot see it.** `MapGridCritic`'s flood runs through walls in the build
+    installed here, so where a route bends round a corner the controller is aimed
+    at a point behind the wall, every forward sample is refused by the obstacle
+    critic, and pivoting is free -- see "The controller is aimed round the corner"
+    in the README. What makes it invisible from inside Nav2 is the progress
+    checker: this rover runs `PoseProgressChecker` precisely so that a legitimate
+    pivot is not called stuck, and the cost of that is that a rover pivoting back
+    and forth for ever is not called stuck either. Recorded on the rover on
+    2026-09-01: fifty seconds, six centimetres, forty-three replans, and not one
+    recovery attempted.
+
+    **Why exploring gets to give up where `drive_to` does not.** A person who
+    asked for one particular place wants every recovery Nav2 has before being
+    told no. An explore has sixteen other frontiers and no opinion about which,
+    so a goal that has gone nowhere for half a minute is worth abandoning: it
+    costs one frontier and saves the budget.
+
+    **A rover that Nav2 is actively recovering is left alone.** The ladder --
+    clear the costmaps, spin, wait -- works against the thing it is for, which is
+    a rover stuck against something. Any change in the recovery count moves the
+    anchor, so this only fires where nothing is being attempted at all, which is
+    exactly the aiming trap.
+    """
+
+    def __init__(self, patience_s=STALL_PATIENCE_S, moved_m=STALL_MOVED_M):
+        self.patience_s = patience_s
+        self.moved_m = moved_m
+        self.anchor = None
+        self.anchor_at = 0.0
+        self.recoveries = 0
+
+    def update(self, now, where, recoveries=0):
+        """Called as the goal runs. Returns a sentence when it should be given up.
+
+        `where` may be None -- the transform tree can go quiet for a moment -- and
+        a position nobody can vouch for must not be read as a rover that has not
+        moved. It holds the anchor where it is and waits for the next one.
+        """
+        if where is None:
+            return None
+        if self.anchor is None:
+            self.anchor, self.anchor_at = where, now
+            return None
+        moved = math.hypot(where[0] - self.anchor[0], where[1] - self.anchor[1])
+        if moved >= self.moved_m or recoveries != self.recoveries:
+            self.anchor, self.anchor_at = where, now
+            self.recoveries = recoveries
+            return None
+        if now - self.anchor_at < self.patience_s:
+            return None
+        return ("it has not got %.1f m further on in %.0f seconds and Nav2 is not "
+                "recovering, so it is turning on the spot rather than going "
+                "anywhere" % (self.moved_m, now - self.anchor_at))
+
+
 class Explorer(object):
     """One exploring run's memory: what has been tried, and where to go next.
 
