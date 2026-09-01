@@ -78,7 +78,7 @@
         "cd ~/ugv && python3 selftest.py | tail -2",
         "~/ugv/restart.sh",
         "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),3); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"list_tools\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('daemon:', len(r.get('tools',[])), 'tools')\"",
-        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),5); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"world_state_summary\\\"}\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('world:', r['summary']['entities'], 'entities,', r['summary']['observations'], 'observations,', r['backend'])\""
+        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),5); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"world_state_summary\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('world:', r['summary']['entities'], 'entities,', r['summary']['observations'], 'observations,', r['backend'])\""
       ],
       "special_commands": [
         {
