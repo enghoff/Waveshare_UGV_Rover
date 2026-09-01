@@ -28,6 +28,11 @@ MIN_SPAN_DEG = 6.0
 MAX_SPAN_DEG = 90.0
 
 
+def _wrap(degrees: float) -> float:
+    """To (-180, 180], the same convention `locate` compares bearings in."""
+    return (degrees + 180.0) % 360.0 - 180.0
+
+
 def ray(observation: dict[str, Any], fov_deg: float,
         length_m: float = RAY_M) -> dict[str, Any] | None:
     """One observation as a bearing from where the rover stood, or None.
@@ -65,8 +70,13 @@ def ray(observation: dict[str, Any], fov_deg: float,
         "x_m": round(x_m, 3),
         "y_m": round(y_m, 3),
         # Where the rover's nose was, plus where the gimbal was turned to, plus
-        # where in the picture the thing sat.
-        "bearing_deg": round(heading_deg - pan_deg + offset_deg, 1),
+        # where in the picture the thing sat -- brought back into (-180, 180].
+        # **The wrap is not cosmetic.** Three numbers added together run past
+        # half a turn easily, and the rover measured it doing so: a real
+        # inspection stored bearings of -205.9 and -208.6 degrees, which point
+        # exactly where +154.1 and +151.4 do but compare with nothing. Every
+        # bearing that is written down or compared has to be canonical.
+        "bearing_deg": round(_wrap(heading_deg - pan_deg + offset_deg), 1),
         "span_deg": round(span_deg, 1),
         "length_m": length_m,
     }

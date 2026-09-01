@@ -1038,6 +1038,70 @@ def test_a_vague_label_is_kept_and_marked_the_same_way_either_way() -> None:
         store.close()
 
 
+
+def test_a_bearing_never_runs_past_half_a_turn() -> None:
+    """Measured on the rover before it was fixed: -205.9 degrees, stored.
+
+    Three numbers are added to make a bearing -- the rover's heading, the
+    gimbal's pan and the box's offset -- and each can be large. A bearing outside
+    (-180, 180] points exactly where its wrapped twin does and compares with
+    nothing, so the resolver would see two directions where there is one.
+    """
+    facing = {"pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": -150.4},
+              "observer_pan_deg": 50.0, "bbox": [0.4, 0.3, 0.6, 0.9]}
+    check("the sum wraps rather than running past half a turn",
+          view.ray(facing, 100.0)["bearing_deg"], 159.6)
+    other_way = dict(facing, observer_pan_deg=-200.0)
+    check("...in the other direction too",
+          -180.0 < view.ray(other_way, 100.0)["bearing_deg"] <= 180.0, True)
+
+
+
+def test_the_pending_pool_holds_what_has_a_direction_but_no_home() -> None:
+    """Phase 2's waiting room, and what is deliberately not in it."""
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting(), a_sighting(label="a doorway")]])
+        inspector.inspect()
+        pending = store.unplaced()
+        check("both observations are waiting to be placed", len(pending), 2)
+        check("...each with a direction", all(row["bearing_deg"] is not None
+                                              for row in pending), True)
+        check("...and the vectors the resolver will need",
+              all(row["dino_blob"] and row["siglip_blob"] for row in pending), True)
+        check("...oldest first, so the pool cannot starve",
+              pending[0]["id"] < pending[1]["id"], True)
+
+        # An observation with no pose was never pending anything: no later look
+        # can supply a direction that was never measured.
+        store.record(validate(answer(sofa())).seen, capture={"frame_id": "f9"})
+        check("an observation with no bearing is not in the pool",
+              len(store.unplaced()), 2)
+        check("...but it is still in the history", store.summary()["observations"], 3)
+
+        check("a bearing from another map is not comparable and is left out",
+              len(store.unplaced(map_session=99)), 0)
+        store.close()
+
+
+def test_the_vectors_never_reach_the_wire_by_accident() -> None:
+    """Raw bytes in a row that is about to be JSON is a crash, not a nuisance."""
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(directory, [[a_sighting()]])
+        inspector.inspect()
+        shown = store.observations()[0]
+        check("the console's copy carries no raw vector",
+              ("dino_blob" in shown, "siglip_blob" in shown), (False, False))
+        check("...but says they are there and how big",
+              (shown["dino_bytes"], shown["siglip_bytes"]), (4, 4))
+        import json as _json
+        _json.dumps(shown)
+        check("...so the row can be sent as JSON at all", True, True)
+        check("the resolver's copy keeps them",
+              store.unplaced()[0]["dino_blob"], b"")
+        store.close()
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -1085,6 +1149,9 @@ TESTS = (
     test_without_a_pose_nothing_pretends_to_know_a_direction,
     test_a_sidecar_that_is_down_writes_one_row_and_no_observations,
     test_a_vague_label_is_kept_and_marked_the_same_way_either_way,
+    test_a_bearing_never_runs_past_half_a_turn,
+    test_the_pending_pool_holds_what_has_a_direction_but_no_home,
+    test_the_vectors_never_reach_the_wire_by_accident,
 )
 
 

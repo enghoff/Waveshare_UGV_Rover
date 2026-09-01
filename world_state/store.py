@@ -283,6 +283,39 @@ class WorldStore:
             rows = self.db.execute(query, args).fetchall()
         return [_readable(dict(row)) for row in rows]
 
+    def unplaced(self, map_session: int | None = None,
+                 limit: int = 500) -> list[dict[str, Any]]:
+        """The pending pool: observations with a direction and no home yet.
+
+        **One bearing is a direction, not a position.** An observation belongs
+        here from the moment it is taken until a second look from far enough away
+        crosses it, which may be seconds later or may be never -- a thing seen
+        once from one place is a thing the rover cannot honestly claim to have
+        located. Nothing is discarded for waiting.
+
+        Rows with no bearing are left out rather than kept waiting, because they
+        are not pending anything: without a pose or a gimbal angle there is no
+        direction to cross with a second one, and no later look can supply what
+        was never measured.
+
+        Oldest first, because the first two looks at a thing are the pair most
+        likely to have the longest baseline between them, and because a pool
+        worked front to back cannot starve.
+        """
+        query = ("SELECT * FROM observations"
+                 " WHERE entity_id IS NULL AND bearing_deg IS NOT NULL")
+        args: list[Any] = []
+        if map_session is not None:
+            # A bearing measured in one map means nothing in the next, because
+            # the coordinates it starts from moved.
+            query += " AND map_session = ?"
+            args.append(int(map_session))
+        query += " ORDER BY observed_at ASC, id ASC LIMIT ?"
+        args.append(int(limit))
+        with self._lock:
+            rows = self.db.execute(query, args).fetchall()
+        return [_readable(dict(row), vectors=True) for row in rows]
+
     def inferences(self, limit: int = INFERENCE_LIMIT) -> list[dict[str, Any]]:
         with self._lock:
             rows = self.db.execute(
@@ -620,13 +653,20 @@ def _plain_name(name: str) -> bool:
     return bool(name) and all(ch.isalnum() or ch == "-" for ch in name)
 
 
-def _readable(row: dict[str, Any]) -> dict[str, Any]:
+def _readable(row: dict[str, Any], vectors: bool = False) -> dict[str, Any]:
     """Turn the JSON columns back into objects for a caller that is about to send
     the row somewhere as JSON anyway.
 
     Malformed stored JSON comes back as a marked string rather than raising. A row
     written by an older version, or one corrupted on disk, must not be able to take
     down the viewer that exists to show what went wrong.
+
+    **The two vector columns come out by default**, replaced by their sizes.
+    Almost every caller here is about to serialise the row as JSON and raw bytes
+    cannot be serialised, so leaving them in would turn the console's entity list
+    into a crash the first time an observation carried one. `vectors=True` is for
+    the resolver, which is the one caller that wants the numbers rather than a
+    picture of them.
     """
     for column, name in (("bbox_json", "bbox"), ("observer_pose_json", "pose"),
                          ("raw_json", "raw")):
@@ -638,4 +678,9 @@ def _readable(row: dict[str, Any]) -> dict[str, Any]:
             row[name] = json.loads(text)
         except (ValueError, TypeError):
             row[name] = {"unreadable": str(text)[:400]}
+    for column, name in (("dino_blob", "dino_bytes"), ("siglip_blob", "siglip_bytes")):
+        blob = row.get(column)
+        row[name] = 0 if blob is None else len(blob)
+        if not vectors:
+            row.pop(column, None)
     return row
