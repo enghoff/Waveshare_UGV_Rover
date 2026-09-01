@@ -68,6 +68,19 @@ while true; do
     #   perception sidecar with 1.5 GB still free. **Set this to 0 to go back to
     #   the CPU** -- the same binary carries both backends, so there is nothing to
     #   reinstall if the driver ever misbehaves.
+    # --cache-ram 0: **this one stops the rover running out of memory.** The
+    #   default is 8192 MiB of prompt cache on a board with 7485 MiB in it and no
+    #   swap, so the server grows by about a hundred megabytes an inspection and
+    #   never gives any back. Measured: sixteen inspections took the board from
+    #   1.5 GB free to 48 MB, at which point the out-of-memory killer is choosing
+    #   between the language model and the process that owns STOP. With the cache
+    #   off it settles at 3.2 GB after six and stays there, and an inspection is
+    #   no slower -- every request here is a new picture with a new prompt, so
+    #   there was never anything in that cache worth reusing.
+    #
+    #   This was not introduced by the switch to Vulkan; the CPU build leaks at
+    #   the same rate and always did. The POC's note that "the sidecar holds
+    #   about 4 GB" was this, caught halfway up.
     "$SERVER" \
         --model "$MODEL" \
         --mmproj "$MMPROJ" \
@@ -75,6 +88,7 @@ while true; do
         --host 127.0.0.1 --port "$PORT" \
         --ctx-size 4096 --parallel 1 --threads 4 \
         --n-gpu-layers 99 \
+        --cache-ram 0 \
         --no-webui \
         >> "$LOG" 2>&1 &
     child=$!
