@@ -103,7 +103,10 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self):                     # noqa: N802
-        if self.path.split("?")[0] != "/look":
+        route = self.path.split("?")[0]
+        if route == "/embed":
+            return self._embed()
+        if route != "/look":
             return self._send(404, {"ok": False, "error": f"no {self.path} here"})
         jpeg, error = self._body()
         if error:
@@ -117,6 +120,35 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {"ok": False,
                                     "error": f"{type(failure).__name__}: {failure}"})
         return self._send(200, {"ok": True, **answer})
+
+    def _embed(self):
+        """Text vectors for arbitrary phrases, which is what a search is made of.
+
+        The same tower that embedded the vocabulary, so a query's vector lands in
+        the same space as the stored region vectors and the comparison is a dot
+        product. On the GPU this loads the text engine for the call and gives it
+        back afterwards, which costs a couple of seconds -- a search is something
+        a person types, not something a look does.
+        """
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        try:
+            asked = json.loads(raw.decode("utf-8", "replace"))
+            phrases = [str(one) for one in asked["phrases"]]
+        except (KeyError, TypeError, ValueError) as bad:
+            return self._send(400, {"ok": False,
+                                    "error": f"expected {{\"phrases\": [...]}}: {bad}"})
+        if not phrases or len(phrases) > 64:
+            return self._send(400, {"ok": False,
+                                    "error": "between one and sixty-four phrases"})
+        try:
+            vectors = self.server.embed(phrases)
+        except Unavailable as unavailable:
+            return self._send(503, {"ok": False, "error": str(unavailable)})
+        except Exception as failure:       # never past here
+            return self._send(500, {"ok": False,
+                                    "error": f"{type(failure).__name__}: {failure}"})
+        return self._send(200, {"ok": True, "phrases": phrases,
+                                "vectors": vectors})
 
     # --- the wire -------------------------------------------------------------
 
@@ -197,6 +229,17 @@ class Server(ThreadingHTTPServer):
                             "dino": base64.b64encode(region["dino"]).decode(),
                             "siglip": base64.b64encode(region["siglip"]).decode()})
         return {**answer, "regions": regions}
+
+    def embed(self, phrases: list) -> list:
+        """Text vectors, base64, in the order the phrases were given."""
+        with self._lock:
+            self.busy = True
+            try:
+                vectors = self.perception.embed_text(phrases)
+            finally:
+                self.busy = False
+        return [base64.b64encode(
+            vector.astype("float32").tobytes()).decode() for vector in vectors]
 
 
 def main() -> int:

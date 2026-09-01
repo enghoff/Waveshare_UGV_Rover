@@ -202,6 +202,44 @@ class RoverWorld:
                 "camera_fov_deg": self.camera_fov_deg,
                 "pose": self._world_pose()}
 
+    def _tool_world_state_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Find me the thing I described. A control call.
+
+        The phrase is embedded by the same text tower that named every region,
+        so it lands in the same space as the stored vectors and the comparison is
+        a dot product over a few hundred of them. Which is why the answer arrives
+        in milliseconds once the query itself has been embedded -- that part goes
+        to the sidecar and, on the GPU, loads the text engine for the call.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        query = str(arguments.get("query") or "").strip()
+        if not query:
+            return {"ok": False, "error": "nothing to look for"}
+        if len(query) > 200:
+            return {"ok": False, "error": "that is a paragraph, not a description"}
+        eyes = self._world_inspector().eyes
+        if eyes is None:
+            return {"ok": False,
+                    "error": "this host has no perception sidecar to embed a "
+                             "query with"}
+        vectors, error = eyes.embed([query.lower()])
+        if error or not vectors:
+            return {"ok": False, "error": error or "the sidecar sent no vector"}
+        store = self._world_store()
+        rows = store.searchable(map_session=arguments.get("map_session"))
+        answer = world_state.search.rank(
+            vectors[0], rows,
+            limit=max(1, min(int(arguments.get("limit") or 10), 50)),
+            backend=str(arguments.get("backend") or ""))
+        # Where a match is, when it belongs to something the rover has placed.
+        placements = {one["id"]: one.get("placement")
+                      for one in store.entities()}
+        for match in answer.get("matches", []):
+            match["placement"] = placements.get(match.get("entity_id"))
+        return {"ok": True, "query": query, **answer}
+
     def _tool_world_state_entities(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """Every entity, with the rays its recent observations support."""
         why = self._world_ready()

@@ -129,6 +129,9 @@ class Eyes:
     def look(self, jpeg: bytes) -> Look:
         raise NotImplementedError
 
+    def embed(self, phrases: list[str]) -> tuple[list[bytes], str]:
+        return [], "this perception backend cannot embed text"
+
     def available(self) -> tuple[bool, str]:
         return True, ""
 
@@ -165,6 +168,24 @@ class FakeEyes(Eyes):
                    for region in answer]
         return Look(ok=True, backend=self.name, regions=regions,
                     found=len(regions), kept=len(regions), took_s=0.01)
+
+    def embed(self, phrases: list[str]) -> tuple[list[bytes], str]:
+        """A deterministic stand-in: each phrase becomes a vector of its own.
+
+        Enough to prove that a search ranks, that an empty result is reported and
+        that the wiring is right, and nothing at all about whether SigLIP2 finds
+        a spray bottle.
+        """
+        import hashlib
+        import struct
+
+        if self.fail:
+            return [], self.fail
+        vectors = []
+        for phrase in phrases:
+            digest = hashlib.sha256(phrase.encode("utf-8")).digest()[:32]
+            vectors.append(struct.pack("<8f", *[b / 255.0 for b in digest[:8]]))
+        return vectors, ""
 
     def available(self) -> tuple[bool, str]:
         return (False, self.fail) if self.fail else (True, "")
@@ -233,16 +254,36 @@ class SidecarEyes(Eyes):
                     took_s=float(payload.get("took_s") or 0.0),
                     duration_s=took)
 
+    def embed(self, phrases: list[str]) -> tuple[list[bytes], str]:
+        """Text vectors for phrases, in the same space as the stored ones.
+
+        (vectors, error) rather than an exception, for the reason everything else
+        here answers that way: the caller is a console request handler inside the
+        daemon, and a sidecar that is restarting is an ordinary Tuesday.
+        """
+        body = json.dumps({"phrases": list(phrases)}).encode()
+        payload, error = self._request("POST", "/embed", body, self.timeout_s,
+                                       content_type="application/json")
+        if error:
+            return [], error
+        if not payload.get("ok"):
+            return [], str(payload.get("error") or "the sidecar refused")
+        try:
+            return [base64.b64decode(one) for one in payload["vectors"]], ""
+        except (KeyError, TypeError, ValueError) as bad:
+            return [], f"the sidecar sent vectors that could not be read: {bad}"
+
     # --- the wire -------------------------------------------------------------
 
     def _request(self, method: str, path: str, body: bytes | None,
-                 timeout: float) -> tuple[dict[str, Any], str]:
+                 timeout: float,
+                 content_type: str = "image/jpeg") -> tuple[dict[str, Any], str]:
         """(payload, error). Never raises."""
         connection = None
         try:
             connection = http.client.HTTPConnection(self.host, self.port,
                                                     timeout=timeout)
-            headers = {"Content-Type": "image/jpeg"} if body else {}
+            headers = {"Content-Type": content_type} if body else {}
             connection.request(method, path, body=body, headers=headers)
             reply = connection.getresponse()
             raw = reply.read()

@@ -461,6 +461,32 @@ class WorldStore:
                             (blob, entity_id))
         return len(blob) // width
 
+    def searchable(self, map_session: int | None = None,
+                   limit: int = 2000) -> list[dict[str, Any]]:
+        """Every observation that carries a semantic vector, newest first.
+
+        What a text search ranks. Brute force over a few hundred vectors is a
+        dot product apiece, which is why the design refuses a vector database:
+        the whole store fits in memory several times over and an index would be
+        another thing to keep true.
+
+        The backend that produced each vector comes along, because a query
+        embedded on the GPU cannot be compared with a vector produced on the CPU
+        and the caller has to be able to say so.
+        """
+        query = ("SELECT id, entity_id, label, frame_id, observed_at,"
+                 " map_session, bearing_deg, siglip_blob, vectors_from"
+                 "  FROM observations WHERE siglip_blob IS NOT NULL")
+        args: list[Any] = []
+        if map_session is not None:
+            query += " AND map_session = ?"
+            args.append(int(map_session))
+        query += " ORDER BY observed_at DESC, id DESC LIMIT ?"
+        args.append(int(limit))
+        with self._lock:
+            rows = self.db.execute(query, args).fetchall()
+        return [dict(row) for row in rows]
+
     def inferences(self, limit: int = INFERENCE_LIMIT) -> list[dict[str, Any]]:
         with self._lock:
             rows = self.db.execute(

@@ -33,6 +33,7 @@ from test_harness import FAIL, PASS, SKIP, check  # noqa: E402
 
 from world_state import locate                     # noqa: E402
 from world_state import resolve                    # noqa: E402
+from world_state import search                     # noqa: E402
 from world_state import view                       # noqa: E402
 from world_state.contract import (                 # noqa: E402
     KINDS, extract_json, validate,
@@ -1396,6 +1397,67 @@ def test_an_inspection_settles_identity_as_well_as_measuring() -> None:
         store.close()
 
 
+
+# --- finding a thing by describing it ----------------------------------------
+
+
+def _packed(*values):
+    import struct
+    return struct.pack(f"<{len(values)}f", *values)
+
+
+def test_a_query_that_matches_nothing_says_so() -> None:
+    """The part that matters, and the part a ranking alone cannot do.
+
+    SigLIP's raw cosines sit in a narrow band whatever is in the picture, so a
+    list of scores always has a top. What separates a real answer from an
+    imaginary one is whether that top stands clear of the field.
+    """
+    query = _packed(1.0, 0.0, 0.0)
+    flat = [{"id": n, "siglip_blob": _packed(0.30 + n * 0.001, 0.95, 0.1),
+             "label": "a thing"} for n in range(40)]
+    answer = search.rank(query, flat)
+    check("a flat field is ranked", len(answer["matches"]), 10)
+    check("...but not believed", answer["confident"], False)
+    check("...and the reason is in words a person can read",
+          "nothing here matches that description" in answer["detail"], True)
+
+    standing = flat + [{"id": 99, "siglip_blob": _packed(1.0, 0.02, 0.0),
+                        "label": "a spray bottle"}]
+    answer = search.rank(query, standing)
+    check("a match that stands clear is believed", answer["confident"], True)
+    check("...and it is the right one", answer["matches"][0]["id"]
+          if "id" in answer["matches"][0] else
+          answer["matches"][0]["observation_id"], 99)
+    check("...with the numbers behind the verdict shown",
+          answer["stands_clear"] > search.STANDS_CLEAR, True)
+
+
+def test_too_little_seen_is_not_a_match_either() -> None:
+    query = _packed(1.0, 0.0, 0.0)
+    few = [{"id": n, "siglip_blob": _packed(1.0, 0.0, 0.0), "label": "a chair"}
+           for n in range(3)]
+    answer = search.rank(query, few)
+    check("three things is not a field to stand out from",
+          answer["confident"], False)
+    check("...and it says that rather than blaming the query",
+          "too few" in answer["detail"], True)
+
+
+def test_vectors_from_the_other_backend_are_not_ranked() -> None:
+    """Comparing across backends would rank noise, so it is refused."""
+    query = _packed(1.0, 0.0, 0.0)
+    rows = [{"id": 1, "siglip_blob": _packed(1.0, 0.0, 0.0),
+             "vectors_from": "onnxruntime", "label": "a chair"},
+            {"id": 2, "siglip_blob": _packed(0.2, 1.0, 0.0),
+             "vectors_from": "tensorrt", "label": "a chair"}]
+    answer = search.rank(query, rows, backend="tensorrt")
+    check("the row from the other backend is counted out",
+          (answer["considered"], answer["skipped"]), (1, 1))
+    check("...and the one that can be compared is ranked",
+          answer["matches"][0]["observation_id"], 2)
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -1457,6 +1519,9 @@ TESTS = (
     test_the_evidence_survives_the_decision,
     test_a_placement_belongs_to_the_map_it_was_measured_in,
     test_an_inspection_settles_identity_as_well_as_measuring,
+    test_a_query_that_matches_nothing_says_so,
+    test_too_little_seen_is_not_a_match_either,
+    test_vectors_from_the_other_backend_are_not_ranked,
 )
 
 

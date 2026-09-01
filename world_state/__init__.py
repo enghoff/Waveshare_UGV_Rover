@@ -30,6 +30,7 @@ from __future__ import annotations
 from .contract import KINDS, PROMPT_VERSION, Result, Seen, build_prompt, validate
 from .inspector import Inspector
 from . import resolve
+from . import search
 from .locate import agrees, best_fix, fix
 from .perception_client import (
     Eyes, FakeEyes, Look, SidecarEyes, Sighting, describe_eyes,
@@ -42,7 +43,7 @@ from .view import ray, rays
 
 __all__ = [
     "Answer", "CosmosReasoner", "Eyes", "FakeEyes", "FakeReasoner",
-    "Inspector", "resolve",
+    "Inspector", "resolve", "search",
     "KINDS", "Look", "PROMPT_VERSION", "PhysicalReasoner", "Result", "Seen",
     "SidecarEyes", "Sighting", "WorldStore", "agrees", "best_fix",
     "build_prompt", "describe_backend", "describe_eyes", "fix", "ray",

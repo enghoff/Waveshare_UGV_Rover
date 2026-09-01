@@ -216,7 +216,8 @@ def test_schemas():
                # docs/task-semantic-world-state.md, "Authority boundaries".
                "world_inspect", "world_map_session", "world_state_clear",
                "world_state_entities", "world_state_entity", "world_state_frame",
-               "world_state_observations", "world_state_summary"]
+               "world_state_observations", "world_state_search",
+               "world_state_summary"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
