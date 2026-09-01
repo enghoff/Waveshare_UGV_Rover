@@ -206,9 +206,18 @@ class _CpuModels:
             return ort.InferenceSession(path, options,
                                         providers=["CPUExecutionProvider"])
 
-        self._fastsam = session(FASTSAM)
-        self._dino = session(DINO)
+        self._session = session
+        # Only the graph the vocabulary needs is opened here. The other two wait
+        # for `open`, so that both backends load in the same order and the GPU's
+        # memory peak stays where it can be reasoned about.
         self._siglip = session(SIGLIP)
+        self._fastsam = self._dino = None
+
+    def open(self) -> None:
+        """The two graphs a look needs, as opposed to the one a vocabulary does."""
+        if self._fastsam is None:
+            self._fastsam = self._session(FASTSAM)
+            self._dino = self._session(DINO)
         # This SigLIP2 export carries both towers in one graph, so the image
         # path has to be handed an `input_ids` whether it wants one or not. A
         # row of pad tokens is the cheapest thing the graph accepts and its text
@@ -259,10 +268,30 @@ class _GpuModels:
         from .engines import SIGLIP_TEXT, SIGLIP_VISION, Engine
 
         self._directory = directory
-        self._fastsam = Engine(os.path.join(directory, FASTSAM_ENGINE), directory)
-        self._dino = Engine(os.path.join(directory, DINO_ENGINE), directory)
-        self._vision = Engine(os.path.join(directory, SIGLIP_VISION), directory)
+        self._paths = {
+            "fastsam": os.path.join(directory, FASTSAM_ENGINE),
+            "dino": os.path.join(directory, DINO_ENGINE),
+            "vision": os.path.join(directory, SIGLIP_VISION),
+        }
         self._text = os.path.join(directory, SIGLIP_TEXT)
+        self._fastsam = self._dino = self._vision = None
+        # Nothing is loaded here. **The order the engines are opened in decides
+        # whether this board survives opening them at all**: the text tower is
+        # 1.1 GB, the other three come to about 0.5 GB, and with the language
+        # model holding 3.2 GB of 7.4 the two together were enough for the
+        # out-of-memory killer to take the sidecar -- exit 137, measured. So the
+        # vocabulary is embedded first and its engine given back before a look's
+        # engines are opened, and the answer is cached so that the usual start-up
+        # never loads the big one at all.
+
+    def open(self) -> None:
+        """The three engines a look needs, once the vocabulary is out of the way."""
+        from .engines import Engine
+
+        if self._fastsam is None:
+            self._fastsam = Engine(self._paths["fastsam"], self._directory)
+            self._dino = Engine(self._paths["dino"], self._directory)
+            self._vision = Engine(self._paths["vision"], self._directory)
 
     def regions(self, blob):
         return self._fastsam.run({"images": blob})["output0"]
@@ -318,6 +347,9 @@ class Perception:
         #: Why the GPU was not used, when it was not. Empty when nothing was
         #: given up; a sentence when the rover is seeing less well than it could.
         self.fallback = ""
+        #: Whether the vocabulary's vectors were read from a previous start
+        #: rather than computed. False means the largest engine was loaded once.
+        self.words_cached = False
 
     # --- loading --------------------------------------------------------------
 
@@ -386,7 +418,10 @@ class Perception:
                 self._models = _CpuModels(self.dir, self.threads)
 
             self.backend = self._models.name
+            # The vocabulary first, then a look's own models. On the GPU that
+            # ordering is what keeps the board alive: see `_GpuModels`.
             self._load_words()
+            self._models.open()
             self.load_s = round(time.monotonic() - began, 2)
             self._loaded = True
 
@@ -412,7 +447,70 @@ class Perception:
         ids = np.array([e.ids for e in tokenizer.encode_batch(
             [word.lower() for word in self.words])], dtype=np.int64)
         self._word_ids = ids
+        cached = self._remembered_words()
+        if cached is not None:
+            self._word_vectors = cached
+            self.words_cached = True
+            return
         self._word_vectors = _unit(np, self._models.text_vectors(ids))
+        self._remember_words()
+
+    def _words_key(self) -> str:
+        """What the cached vectors were computed from.
+
+        The word list and the backend, because both change the answer and neither
+        changes the file name. A vocabulary edit or a fall back to the CPU has to
+        invalidate the cache, and getting that wrong would leave the rover naming
+        regions from a word list it no longer has.
+        """
+        import hashlib
+
+        digest = hashlib.sha256()
+        digest.update("\n".join(self.words).encode("utf-8"))
+        digest.update(self.backend.encode("utf-8"))
+        return digest.hexdigest()[:16]
+
+    def _words_path(self) -> str:
+        return os.path.join(self.dir, f"vocabulary-{self._words_key()}.f32")
+
+    def _remembered_words(self):
+        """The vocabulary's vectors from a previous start, or None.
+
+        **This is what keeps the big engine out of the ordinary start-up.** The
+        text tower is the largest of the four by a factor of three, it runs once,
+        and its answer cannot change while the word list does not -- so it is
+        computed on the first start after an edit and read from a file every time
+        after that.
+        """
+        np = self._np
+        path = self._words_path()
+        try:
+            raw = np.fromfile(path, dtype=np.float32)
+        except OSError:
+            return None
+        if raw.size == 0 or raw.size % max(len(self.words), 1):
+            return None
+        return raw.reshape(len(self.words), -1)
+
+    def _remember_words(self) -> None:
+        """Keep them, and throw away the ones from an older word list.
+
+        Failure here is not an error. A read-only vendor directory or a full disk
+        costs a slower start-up, which is not worth refusing to see over.
+        """
+        import glob
+
+        path = self._words_path()
+        try:
+            self._word_vectors.astype(self._np.float32).tofile(path)
+        except OSError:
+            return
+        for stale in glob.glob(os.path.join(self.dir, "vocabulary-*.f32")):
+            if stale != path:
+                try:
+                    os.remove(stale)
+                except OSError:
+                    pass
 
     # --- looking --------------------------------------------------------------
 

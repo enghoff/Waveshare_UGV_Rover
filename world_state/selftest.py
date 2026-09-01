@@ -925,6 +925,119 @@ def test_a_region_that_is_an_edge_is_not_a_thing() -> None:
           _worth_keeping([0.5, 0.5, 0.5, 0.7]), False)
 
 
+
+# --- an inspection through the encoders --------------------------------------
+#
+# The path the rover actually uses now. What is worth proving offline is that
+# what was *measured* survives into the database unchanged and that what was not
+# measured stays empty: a bearing invented from a missing pose would be the one
+# failure this whole design exists to avoid.
+
+
+def a_sighting(label="a wooden chair", bbox=None, dino=None, siglip=None):
+    from world_state.perception_client import Sighting
+
+    return Sighting(bbox=bbox or [0.1, 0.3, 0.5, 0.9], label=label,
+                    label_score=0.11, region_score=0.83, area=0.24,
+                    dino=dino if dino is not None else b"\x01\x02\x03\x04",
+                    siglip=siglip if siglip is not None else b"\x05\x06\x07\x08")
+
+
+def a_seeing_inspector(directory, looks=None, fail="", capture=None, pose=None,
+                       fov_deg=100.0):
+    from world_state.perception_client import FakeEyes
+
+    store = a_store(directory)
+    eyes = FakeEyes(looks or [], fail=fail)
+    return store, eyes, Inspector(
+        store, FakeReasoner([]), capture or a_capture(pan=20.0, tilt=-5.0),
+        pose or a_pose(), eyes=eyes, fov_deg=fov_deg)
+
+
+def test_an_inspection_through_the_encoders_keeps_what_it_measured() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store, eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting(), a_sighting(label="a doorway")]])
+        result = inspector.inspect()
+        check("the inspection succeeded", result["ok"], True)
+        check("...storing one observation per region", result["stored"], 2)
+        check("...with a bearing for each", result["placed"], 2)
+        check("...and claiming no identity for either", result["created"], 0)
+        check("the language model was never asked", inspector.reasoner.calls, [])
+
+        rows = store.db.execute(
+            "SELECT * FROM observations ORDER BY id").fetchall()
+        first = dict(rows[0])
+        check("the appearance vector is stored as the bytes it arrived as",
+              first["dino_blob"], b"\x01\x02\x03\x04")
+        check("...and so is the semantic one", first["siglip_blob"],
+              b"\x05\x06\x07\x08")
+        check("the backend that produced them travels with them",
+              first["vectors_from"], "fake")
+        check("what drew the box is recorded apart from what named it",
+              first["region_source"], "fastsam")
+        check("no identity was written", first["entity_id"], None)
+        check("nothing was prompted, so no prompt version is claimed",
+              first["prompt_version"], None)
+
+        store.close()
+
+def test_a_bearing_is_the_pose_the_gimbal_and_the_box_together() -> None:
+    """The arithmetic `view.ray` already proves, checked where it is stored."""
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting(bbox=[0.4, 0.3, 0.6, 0.9])]],
+            capture=a_capture(pan=20.0), pose=a_pose(heading=90.0), fov_deg=100.0)
+        inspector.inspect()
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        # Heading 90 to the left, gimbal 20 to the right, and a box centred in
+        # the picture: 90 - 20 + 0.
+        check("the stored bearing is heading minus pan plus the box offset",
+              row["bearing_deg"], 70.0)
+        check("...and the box's width became a cone", row["span_deg"], 20.0)
+
+        store.close()
+
+def test_without_a_pose_nothing_pretends_to_know_a_direction() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]], pose=lambda: None)
+        result = inspector.inspect()
+        check("the observation is still kept", result["stored"], 1)
+        check("...but nothing was placed", result["placed"], 0)
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        check("the bearing is empty rather than guessed", row["bearing_deg"], None)
+        check("and the popup is told why in words",
+              "without a bearing" in result["detail"], True)
+
+        store.close()
+
+def test_a_sidecar_that_is_down_writes_one_row_and_no_observations() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, fail="the perception sidecar is not answering")
+        result = inspector.inspect()
+        check("the inspection failed rather than raising", result["ok"], False)
+        check("...saying which sidecar", "perception" in result["error"], True)
+        check("nothing was stored", store.summary()["observations"], 0)
+        check("...and exactly one diagnostics row was written",
+              len(store.inferences()), 1)
+        store.close()
+
+
+def test_a_vague_label_is_kept_and_marked_the_same_way_either_way() -> None:
+    """A vocabulary can produce an unrecognisable name as easily as a model can."""
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting(label="a thing")]])
+        inspector.inspect()
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        check("the row is kept", row["label"], "a thing")
+        check("...and says it can never be matched",
+              "never be matched" in (row["note"] or ""), True)
+        store.close()
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -967,6 +1080,11 @@ TESTS = (
     test_the_installer_builds_exactly_the_engines_the_runtime_opens,
     test_the_vocabulary_is_phrases_and_not_comments,
     test_a_region_that_is_an_edge_is_not_a_thing,
+    test_an_inspection_through_the_encoders_keeps_what_it_measured,
+    test_a_bearing_is_the_pose_the_gimbal_and_the_box_together,
+    test_without_a_pose_nothing_pretends_to_know_a_direction,
+    test_a_sidecar_that_is_down_writes_one_row_and_no_observations,
+    test_a_vague_label_is_kept_and_marked_the_same_way_either_way,
 )
 
 

@@ -23,6 +23,7 @@ import time
 from typing import Any, Callable
 
 from .contract import PROMPT_VERSION, extract_json, validate
+from .perception_client import describe_eyes
 from .reasoner import describe_backend
 
 #: A picture older than this is not what the camera is looking at now. Only ever
@@ -42,12 +43,26 @@ class Inspector:
 
     def __init__(self, store, reasoner, capture: Callable[[], dict[str, Any]],
                  pose: Callable[[], dict[str, Any] | None] | None = None,
-                 source: str = "cosmos_visual") -> None:
+                 source: str = "cosmos_visual", eyes=None,
+                 fov_deg: float | None = None,
+                 measured_source: str = "perception") -> None:
         self.store = store
         self.reasoner = reasoner
         self.capture = capture
         self.pose = pose
         self.source = source
+        #: The perception sidecar, when there is one. **When it is set it is what
+        #: an inspection uses**, and the language model is not called at all: a
+        #: look through the encoders costs a fifth of a second against ten
+        #: seconds, and the thing that was measured -- a box, and two vectors --
+        #: is what identity is going to be decided from. The language model stays
+        #: for the conversational `look`, where a person is waiting for prose.
+        self.eyes = eyes
+        #: The camera's horizontal field of view, which the daemon owns. Without
+        #: it a box cannot become an angle, so the bearing columns stay null and
+        #: say so rather than being filled in from a guess.
+        self.fov_deg = fov_deg
+        self.measured_source = measured_source
         self._lock = threading.Lock()
         self.started_at = 0.0
 
@@ -79,6 +94,11 @@ class Inspector:
     # --- the steps ------------------------------------------------------------
 
     def _inspect(self) -> dict[str, Any]:
+        if self.eyes is not None:
+            return self._measure()
+        return self._ask_the_model()
+
+    def _ask_the_model(self) -> dict[str, Any]:
         began = time.time()
         backend = describe_backend(self.reasoner)
 
@@ -173,6 +193,95 @@ class Inspector:
                 "rejected": stored["rejected"] + result.refused,
                 "entities": stored["entities"], "detail": detail,
                 "map_session": stored["map_session"], "model_id": answer.model_id}
+
+    def _measure(self) -> dict[str, Any]:
+        """One inspection through the encoders rather than through the model.
+
+        The same skeleton as `_ask_the_model` and the same failure discipline --
+        the sidecar is asked before the camera is touched, nothing is written
+        until an answer arrives, and every path writes exactly one diagnostics
+        row. What is different is what comes back and what is kept: a box per
+        region, two vectors per box, and a bearing worked out from the pose and
+        the gimbal angle behind them.
+
+        There is no scene sentence and no prompt version, because nothing here
+        was prompted. Those columns stay empty rather than being filled with a
+        plausible-looking substitute.
+        """
+        began = time.time()
+        backend = describe_eyes(self.eyes)
+
+        ready, why = self.eyes.available()
+        if not ready:
+            return self._failed("unavailable", why, began=began, backend=backend)
+
+        frame = self._frame()
+        if not frame.get("ok"):
+            return self._failed("no_frame", str(frame.get("error", "no picture")),
+                                began=began, backend=backend)
+
+        jpeg = frame["jpeg"]
+        frame_id = self.store.save_frame(jpeg, frame.get("width"),
+                                         frame.get("height"))
+        capture = {"frame_id": frame_id,
+                   "frame_path": self.store.frame_path(frame_id),
+                   "pan": frame.get("pan"), "tilt": frame.get("tilt"),
+                   "pose": self._pose()}
+        inference_id = self.store.record_inference(
+            started_at=began, status="running", backend=backend,
+            frame_id=frame_id, frame_live=1 if frame.get("live") else 0,
+            map_session=self.store.map_session())
+
+        look = self.eyes.look(jpeg)
+        if not look.ok:
+            return self._failed("model_error", look.error, began=began,
+                                backend=backend, inference_id=inference_id,
+                                frame_id=frame_id, duration_s=look.duration_s,
+                                model_id=look.backend)
+
+        try:
+            stored = self.store.record(
+                look.regions, capture=capture, source=self.measured_source,
+                model_id=look.backend, inference_id=inference_id,
+                fov_deg=self.fov_deg, region_source="fastsam",
+                vectors_from=look.backend)
+        except sqlite3.Error as error:
+            return self._failed("store_error", f"{type(error).__name__}: {error}",
+                                began=began, backend=backend,
+                                inference_id=inference_id, frame_id=frame_id,
+                                duration_s=look.duration_s, model_id=look.backend)
+
+        detail = self._measured_detail(look, stored)
+        self.store.update_inference(
+            inference_id, duration_s=round(time.time() - began, 2), status="ok",
+            detail=detail or None, model_id=look.backend,
+            returned=look.kept, stored=stored["stored"],
+            matched=0, created=0, rejected=max(0, look.kept - stored["stored"]),
+            raw_json=None)
+        return {"ok": True, "status": "ok", "inference_id": inference_id,
+                "frame_id": frame_id, "scene": "",
+                "duration_s": round(time.time() - began, 2),
+                "returned": look.kept, "stored": stored["stored"],
+                "placed": stored["placed"], "matched": 0, "created": 0,
+                "rejected": max(0, look.kept - stored["stored"]),
+                "entities": [], "detail": detail,
+                "map_session": stored["map_session"], "model_id": look.backend,
+                "found": look.found, "timings": look.timings,
+                "look_s": look.took_s}
+
+    def _measured_detail(self, look, stored) -> str:
+        """One sentence a person can act on, in the popup's own column.
+
+        The two numbers that matter are how many regions were kept and how many
+        of them got a bearing, because an observation with no bearing can never
+        become part of a lasting thing however good its vectors are.
+        """
+        parts = [f"{stored['stored']} of {look.found} regions kept"]
+        if stored["placed"] < stored["stored"]:
+            missing = stored["stored"] - stored["placed"]
+            parts.append(f"{missing} without a bearing "
+                         f"(no pose, no gimbal angle, or no field of view)")
+        return ", ".join(parts)
 
     def _frame(self) -> dict[str, Any]:
         try:

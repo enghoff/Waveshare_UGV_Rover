@@ -32,6 +32,8 @@ import time
 import uuid
 from typing import Any
 
+from . import view
+
 #: Where the database and the frames go. Overridable so the tests can run against
 #: a temporary directory, which is the only thing that ever overrides it.
 ENV_DIR = "UGV_WORLD_DIR"
@@ -336,7 +338,10 @@ class WorldStore:
     def record(self, seen: list, *, capture: dict[str, Any], scene: str = "",
                source: str = "cosmos_visual", model_id: str = "",
                prompt_version: str = "",
-               inference_id: int | None = None) -> dict[str, Any]:
+               inference_id: int | None = None,
+               fov_deg: float | None = None,
+               region_source: str = "",
+               vectors_from: str = "") -> dict[str, Any]:
         """Store one inspection's observations. No identity is decided here.
 
         Every row goes in with a null `entity_id`, and that is the honest state of
@@ -359,8 +364,26 @@ class WorldStore:
         session = self.map_session()
         pose = capture.get("pose")
         stored = 0
+        placed = 0
         with self._lock, self.db:
             for item in seen:
+                bbox = getattr(item, "bbox", None)
+                # The bearing is worked out here, once, from what the rover
+                # measured at the moment of the look: where it was standing,
+                # where the gimbal was turned to, and where in the picture the
+                # thing sat. Storing it rather than recomputing it later is the
+                # point -- the camera's field of view is a property of the rover
+                # at that moment, and a lens change should not silently rewrite
+                # every bearing the rover ever measured.
+                bearing = span = None
+                if fov_deg:
+                    drawn = view.ray({"pose": pose, "bbox": bbox,
+                                      "observer_pan_deg": capture.get("pan")},
+                                     float(fov_deg))
+                    if drawn is not None:
+                        bearing = drawn["bearing_deg"]
+                        span = drawn["span_deg"]
+                        placed += 1
                 # The one thing worth saying about a row beyond what it holds:
                 # whether its label could ever be recognised again. "a thing" is
                 # kept as history, because it is what the model said, but it will
@@ -374,21 +397,30 @@ class WorldStore:
                     " source, frame_id, frame_path, scene_summary, label,"
                     " bbox_json, observer_pan_deg,"
                     " observer_tilt_deg, observer_pose_json, map_session, model_id,"
-                    " prompt_version, raw_json, note)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " prompt_version, raw_json, note,"
+                    " bearing_deg, span_deg, region_source, region_score,"
+                    " label_score, dino_blob, siglip_blob, vectors_from)"
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"), scene, item.label,
-                     None if item.bbox is None else json.dumps(item.bbox),
+                     None if bbox is None else json.dumps(bbox),
                      capture.get("pan"), capture.get("tilt"),
                      None if pose is None else json.dumps(pose), session, model_id,
-                     prompt_version, json.dumps(item.raw, sort_keys=True), note))
+                     prompt_version or None,
+                     json.dumps(item.raw, sort_keys=True), note,
+                     bearing, span, region_source or None,
+                     getattr(item, "region_score", None) or None,
+                     getattr(item, "label_score", None) or None,
+                     getattr(item, "dino", b"") or None,
+                     getattr(item, "siglip", b"") or None,
+                     vectors_from or None))
                 stored += 1
         # `matched` and `created` are reported as zero rather than dropped, because
         # the console's diagnostics table and the deployed database's older rows
         # both still speak in them, and "nothing was matched and nothing created"
         # is the true answer for every inspection this build performs.
         return {"stored": stored, "matched": 0, "created": 0, "rejected": 0,
-                "entities": [], "map_session": session}
+                "placed": placed, "entities": [], "map_session": session}
 
     def clear(self) -> dict[str, Any]:
         """Throw the semantic world away, and nothing else.
@@ -451,6 +483,41 @@ INFERENCE_COLUMNS = (
 #: record of that experiment.
 ADDED_COLUMNS = {
     "inferences": {"stored": "INTEGER"},
+    "observations": {
+        # Where the thing was, from where the rover stood. This is the
+        # measurement identity will be decided from, and it is stored per
+        # observation rather than recomputed, because the camera's field of view
+        # is a property of the rover at the moment of the look.
+        "bearing_deg": "REAL",
+        "span_deg": "REAL",
+        # What drew the box, which is not the same question as what named it.
+        "region_source": "TEXT",
+        "region_score": "REAL",
+        "label_score": "REAL",
+        # The two vectors, as raw float32. A BLOB and a numpy dot product is the
+        # whole of the design's answer to "where is the vector database".
+        "dino_blob": "BLOB",
+        "siglip_blob": "BLOB",
+        # **Which backend produced those two vectors, and it is load-bearing.**
+        # The GPU engines and the CPU int8 graphs agree with full precision to
+        # 1.000 and 0.86 respectively, which is far too wide a gap to compare
+        # across. A resolver must never match a vector from one against a vector
+        # from the other.
+        "vectors_from": "TEXT",
+    },
+    "entities": {
+        # Where this thing is, once two bearings from far enough apart have
+        # crossed. Null until then, and null is the honest state: one bearing is
+        # a direction and not a position.
+        "placement_json": "TEXT",
+        "placement_uncertainty_m": "REAL",
+        # A placement means nothing outside the map it was measured in.
+        "placement_map_session": "INTEGER",
+        "placement_updated_at": "REAL",
+        # Several appearance vectors rather than one averaged one, because an
+        # average of two viewpoints of a chair is a picture of neither.
+        "exemplars": "BLOB",
+    },
 }
 
 # Three columns here are written by nothing in this build and are kept anyway,
