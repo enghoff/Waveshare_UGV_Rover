@@ -104,6 +104,26 @@ PHRASES = {
 }
 
 
+#: The planner refusals that are about where the rover is *standing*, not about
+#: where it was asked to go.
+#:
+#: The distinction is invisible until something asks the planner about several
+#: destinations in a row, which `explore` in `nav_bridge.py` does before it
+#: commits the rover to one. A rover whose own cell is in the inscribed band gets
+#: the same refusal for every destination on the map, and reading those as
+#: verdicts on the destinations turns one rover parked too close to a wall into
+#: "everything still unmapped is behind something the rover cannot get through".
+#: Recorded on the rover on 2026-09-01: five goals refused from (-2.30, 1.46),
+#: which is 0.156 m from a mapped wall against a footprint of 0.200 m, and three
+#: of those five planned in 0.01 s from a spot 27 cm away.
+ABOUT_THE_ROVER = frozenset((203, 205))     # START_OUTSIDE_MAP, START_OCCUPIED
+
+#: The one of those a short shuffle actually cures. Off the map entirely is not
+#: something moving 30 cm fixes, and pretending otherwise would have the rover
+#: nudging itself around while the real fault is that nothing knows where it is.
+START_OCCUPIED = 205
+
+
 def reason_for(code, default="failed"):
     """One of `Outcome`'s reasons, for a Nav2 result code.
 

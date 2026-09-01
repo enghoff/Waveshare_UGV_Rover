@@ -1227,6 +1227,93 @@ def test_a_goal_that_goes_nowhere_is_given_up():
               'outcome["reason"] = "blocked"' in source, True)
 
 
+def test_a_rover_it_cannot_plan_from_is_not_a_finished_house():
+    """The refusal that had exploring announce the house was mapped.
+
+    **This is a recording, not a story.** `fixtures/start-occupied.json.gz` is
+    the rover's own global costmap, taken off the running planner on
+    2026-09-01, and the pose below is the one every refusal in that run named.
+    The rover stood 0.156 m from a mapped wall with a 0.200 m footprint, so the
+    planner declined to plan from there -- correctly -- and did so for every
+    destination it was offered. Exploring read four of those as four
+    unreachable frontiers and ended with "everything still unmapped is behind
+    something the rover cannot get through", in the same sentence as "73% of the
+    map is still unknown".
+
+    Two things have to hold for the fix to mean anything, and both are checked
+    against that costmap rather than against a description of it: the pose
+    really is one the body does not fit in, and there really is somewhere close
+    by that it does. Whether the planner then plans is `plan_bench.py`'s
+    question and was answered on the rover -- 0 of 1 start headings from the
+    recorded pose, 1 of 1 from the spot found below, same map, same goal.
+    """
+    section("the rover standing where nothing can plan from")
+    sys.path.insert(0, HERE)
+    saved = os.path.join(HERE, "fixtures", "start-occupied.json.gz")
+    if not os.path.exists(saved):                       # pragma: no cover
+        print("  .... skipped, %s is not here" % saved)
+        return
+    try:
+        import base64
+        import gzip
+        import goal_fit
+        import nav_codes
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import: %s" % exc)
+        return
+
+    with gzip.open(saved, "rt") as fh:
+        snap = json.load(fh)["global_costmap"]
+    grid = goal_fit.CostGrid(snap["width"], snap["height"], snap["resolution"],
+                             snap["origin"][0], snap["origin"][1],
+                             base64.b64decode(snap["data"]))
+    # The footprint the costmap node is configured with: `footprint: []` and
+    # `robot_radius: 0.200`, read off the running node when this was taken.
+    body = goal_fit.polygon_from("[]", 0.200)
+    stuck = (-2.30, 1.46)
+
+    check("the recorded pose is one the planner is right to refuse",
+          goal_fit.fits(grid, body, stuck[0], stuck[1], 0.0), False)
+    check("...because the costmap calls that cell inscribed, not merely near",
+          grid.cost(*grid.cell_of(*stuck)) >= goal_fit.INSCRIBED, True)
+
+    out = goal_fit.fit(grid, body, stuck[0], stuck[1], 0.0)
+    check("there is somewhere close by the body does fit", out is not None, True)
+    check("...and it is a shuffle rather than a journey",
+          bool(out) and out["moved_m"] <= 0.5, True)
+    check("...which is where the run that gave up would have carried on from",
+          bool(out) and goal_fit.fits(grid, body, out["x"], out["y"],
+                                      out["yaw"]), True)
+
+    # The distinction the loop now turns on. 208 is NO_VALID_PATH, which really
+    # is a verdict on the destination, and putting it in here would put the rover
+    # back to shuffling itself over a frontier that is genuinely walled off.
+    check("a refusal about the start is told apart from one about the goal",
+          205 in nav_codes.ABOUT_THE_ROVER and 208 not in
+          nav_codes.ABOUT_THE_ROVER, True)
+    check("...and only the occupied one is something moving 30 cm can cure",
+          nav_codes.START_OCCUPIED, 205)
+
+    bridge = os.path.join(HERE, "nav_bridge.py")
+    if os.path.exists(bridge):
+        with open(bridge) as fh:
+            source = fh.read()
+        # Comments stripped for the absence check, so that the account of the
+        # fault written above the fix does not read as the fault still being
+        # there. What matters is which sentences the code can still produce.
+        can_say = " ".join(line.split("#")[0] for line in source.splitlines())
+        check("exploring asks the planner why, not just whether",
+              "if code in nav_codes.ABOUT_THE_ROVER:" in source, True)
+        check("...and it can no longer call four refusals a mapped house",
+              "everything still unmapped is behind something" in can_say, False)
+        check("...it says what actually happened to the frontiers instead",
+              "the rover could not get a route to any of the %d " in can_say,
+              True)
+        check("...and the back-off goes to where goal_fit says the body fits",
+              "goal_fit.fit(grid, body, where[0], where[1], where[2])" in source,
+              True)
+
+
 def test_exploring_finishes_and_covers_the_house():
     """The explore loop, run round the room the recorded drive mapped.
 
@@ -2121,6 +2208,7 @@ def main():
     test_goal_fits_before_it_is_sent()
     test_frontiers_are_found_on_a_real_map()
     test_a_goal_that_goes_nowhere_is_given_up()
+    test_a_rover_it_cannot_plan_from_is_not_a_finished_house()
     test_exploring_finishes_and_covers_the_house()
     test_a_route_is_budgeted_on_the_route()
     test_progress_is_not_only_translation()

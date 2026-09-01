@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import json
 import math
 import os
@@ -113,7 +114,12 @@ class Grid:
 
     @classmethod
     def load(cls, path):
-        with open(path) as handle:
+        # Gzipped as well as plain, so a snapshot small enough to keep in the
+        # repository can be replayed here without being unpacked first:
+        # `fixtures/start-occupied.json.gz` is the costmap the rover refused to
+        # plan from on 2026-09-01 and is meant to be handed straight to `--map`.
+        opener = gzip.open if str(path).endswith(".gz") else open
+        with opener(path, "rt") as handle:
             whole = json.load(handle)
         snap = whole.get("global_costmap", whole)
         cells = base64.b64decode(snap["data"])

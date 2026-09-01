@@ -48,7 +48,8 @@ netwatch/** text eol=lf
 ros_nav/** text eol=lf
 
 # ros_nav/fixtures/ is binary test material: the occupancy grid a recorded drive
-# produced, gzipped, which frontier.py and explore_sim.py are argued against. The
+# produced and a global costmap taken off the running planner, both gzipped,
+# which frontier.py, explore_sim.py and plan_bench.py are argued against. The
 # `ros_nav/** text eol=lf` rule above would rewrite bytes inside a gzip stream and
 # leave a fixture that fails to decompress -- as a checkout problem, on one
 # machine, which reads as a corrupt file in the repository.

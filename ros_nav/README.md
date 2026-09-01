@@ -361,6 +361,60 @@ drive the same 30 cm until its budget ran out. What it costs is the occasional
 pocket left behind a corner the rover stood next to, and a second `explore` picks
 that up, because the blacklist lives exactly as long as one call.
 
+### It said the house was fully explored with 73% of the map unknown
+
+**The rover parked 15.6 cm from a wall and then declared the world finished.**
+Recorded on 2026-09-01: one frontier tried, none reached, 0.1 m driven, and an
+outcome reading `everything still unmapped is behind something the rover cannot
+get through -- 10 more still on the map -- 73% of the map is still unknown`. The
+map on the console showed a green reachable floor with obvious unexplored space
+all round it, so the sentence was not a near miss; it was wrong on its face.
+
+The cause is one word in the planner's refusal that nothing was reading. The
+rover's own log:
+
+```text
+planner_server: GridBased plugin failed to plan from (-2.30, 1.46) to
+                (0.91, -3.23): "Start occupied"
+```
+
+— five times, five different destinations, one pose. The global costmap is the
+SLAM map plus a 0.45 m inflation, and the footprint is a 0.20 m circle, so any
+cell within 0.20 m of a mapped wall is a cell the planner will not plan *from*.
+Measured against the live map, the pose in every one of those lines is **0.156 m
+from the nearest occupied cell** — the planner was right — and **30% of the known
+floor of this house is inside that band**. This is not a freak position; it is
+where a rover ends up whenever it drives to the edge of the map, which is the one
+thing exploring does.
+
+So all four candidates came back refused, and the loop read four refusals about
+the rover as four verdicts on four frontiers. Replayed at the bench against the
+costmap taken off the running planner — `fixtures/start-occupied.json.gz`, which
+`plan_bench.py --map` reads directly — with nothing moving:
+
+```text
+start (-2.30, 1.46) cost 253 -> goal (1.59, 1.34):  0 of 1 start headings planned
+start (-2.40, 1.21) cost 135 -> goal (1.59, 1.34):  1 of 1, 4.60 m, 0.01 s
+```
+
+Twenty-seven centimetres. Three of the four frontiers it had just called
+unreachable plan from there in a hundredth of a second.
+
+Three things changed. **The planner is asked why, not just whether** —
+`ComputePathToPose` fills in an `error_code` even on the goals it aborts, and
+`ABOUT_THE_ROVER` in `nav_codes.py` is the two codes that are about the start.
+**A refusal about the start moves the rover instead of blaming the map**:
+`back_off` asks `goal_fit.fit` for the nearest place the body fits — the same
+check on the same costmap the planner just refused with — then turns towards it
+and drives forwards, because the lidar looks one way and the ground being driven
+onto is worth having a sensor pointed at. Three of those per run, then it says it
+is stuck. **And a round that finds nothing writes those candidates off and looks
+again**, so the run ends when the map has nothing left on it rather than when a
+sample of four was refused. When frontiers really are unreachable the outcome now
+says so — `the rover could not get a route to any of the 6 places left on the
+map` — which is a different sentence from the house being mapped, and reads
+correctly beside the "still unknown" figure that follows it.
+
 ### It gives up on a goal that is going nowhere, and only exploring does
 
 **The first unattended run met the repository's oldest open fault, and it cost
@@ -446,6 +500,16 @@ python3 explore_sim.py fixtures/kitchen-loop.pgm.gz --picture /tmp/run
 
 `fixtures/kitchen-loop.pgm.gz` is the grid `map_score.py` wrote from that
 replay, kept because it is the only real half-explored house this repository has.
+
+`fixtures/start-occupied.json.gz` is the other one: the global costmap as the
+planner held it on 2026-09-01, with the rover standing 15.6 cm from a wall and
+refusing to plan anywhere. `plan_bench.py --map` takes it as it is, which is how
+the refusal above is replayed without a rover:
+
+```bash
+python3 plan_bench.py --map fixtures/start-occupied.json.gz         --start=-2.30,1.46 --goal=1.59,1.34 --step 360     # 0 of 1
+python3 plan_bench.py --map fixtures/start-occupied.json.gz         --start=-2.40,1.21 --goal=1.59,1.34 --step 360     # 1 of 1
+```
 
 ## The calibrations, and why they were not optional
 

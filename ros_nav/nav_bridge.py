@@ -85,6 +85,7 @@ from tf2_ros import Buffer, TransformListener
 
 # Beside this file, and with no ROS in it, so that the selftest on a
 # workstation reads the same table this does rather than a copy of it.
+import nav_codes
 from nav_codes import phrase_for, reason_for
 # Likewise, and for the stronger version of the same reason: this one is a
 # geometry test rather than a table, and a drifted copy of it would be a rover
@@ -206,11 +207,31 @@ COSTMAP_TIMEOUT_S = 2.0
 # wheels until the battery goes.
 EXPLORE_BUDGET_S = 600.0
 
-# How many frontiers to offer the planner in one round before giving up and
-# looking at the map again. Each rejection costs a planner call and puts that
-# frontier on the blacklist, so four is four chances to find something reachable
-# without spending a quarter of a minute proving the room is finished.
+# How many frontiers to price in one round before looking at the map again.
+# Each rejection costs a planner call and puts that frontier on the blacklist, so
+# four is four chances to find something reachable for a couple of seconds, and
+# then a fresh survey rather than a longer queue of stale candidates.
+#
+# **It is not how many chances the run gets.** It used to be: four refusals ended
+# the whole explore with "everything still unmapped is behind something the rover
+# cannot get through", which is a claim about ten frontiers made from four
+# planner calls, and on 2026-09-01 the rover made it with 73% of the map unknown
+# and three of those four frontiers demonstrably reachable. A round that finds
+# nothing now writes those four off and looks again; the run ends when the map
+# has nothing left on it, not when a sample of it was refused.
 EXPLORE_TRIES = 4
+
+# How many times one run will stop and shuffle the rover before accepting that it
+# is stuck. Each one is a turn and a short drive -- ten seconds or so -- and the
+# situation it answers is real but not usually repeated: if three back-offs have
+# not given the planner a start it will accept, a fourth is the rover pacing.
+EXPLORE_SHUFFLES = 3
+
+# The back-off itself: a slow half-speed nudge, because it is a few tens of
+# centimetres onto ground the rover is already touching, and a quarter turn when
+# there is nothing better to go on.
+ESCAPE_SPEED_MS = 0.2
+ESCAPE_TURN_DEG = 90.0
 
 # How long to give `ComputePathToPose` to answer. This is the planner doing
 # exactly the work it would do for a real goal, on a map-sized grid, so it is the
@@ -1186,10 +1207,19 @@ class NavBridge(Node):
     def route_to(self, gx, gy, yaw):
         """Is there actually a route from here to there? The planner's answer.
 
-        Returns `(metres, degrees)` for the route it would drive, or None when
-        there is none. Nothing moves: `ComputePathToPose` is the planner server
-        answering the same question `NavigateToPose` would start by asking, and
-        asking it directly costs about a second.
+        Returns `(route, code)`. `route` is `(metres, degrees)` for the drive it
+        would take, or None when there is none; `code` is the planner's own
+        `error_code`, or None when it never answered. Nothing moves:
+        `ComputePathToPose` is the planner server answering the same question
+        `NavigateToPose` would start by asking, and asking it directly costs
+        about a second.
+
+        **The code is not decoration, and the caller must read it.** A refusal
+        naming the *start* is a statement about the rover, and it will be the
+        same refusal for every destination on the map -- see `ABOUT_THE_ROVER` in
+        `nav_codes.py` for the run where reading four of those as verdicts on
+        four frontiers had the rover announce that the house was fully explored
+        with 73% of the map still unknown.
 
         **Why this is worth a second before every frontier.** `frontier.py` ranks
         frontiers by walking the occupancy grid cell to cell, which is fast, gives
@@ -1208,7 +1238,7 @@ class NavBridge(Node):
         into a stack that cannot plan them.
         """
         if not self.plan_client.wait_for_server(timeout_sec=2.0):
-            return None
+            return None, None
         goal = ComputePathToPose.Goal()
         goal.goal = PoseStamped()
         goal.goal.header.frame_id = self.args.map_frame
@@ -1229,25 +1259,123 @@ class NavBridge(Node):
 
         send = self.plan_client.send_goal_async(goal)
         if not self.wait(send, PLAN_TIMEOUT_S):
-            return None
+            return None, None
         handle = send.result()
         if handle is None or not handle.accepted:
-            return None
+            return None, None
         result_future = handle.get_result_async()
         if not self.wait(result_future, PLAN_TIMEOUT_S):
             handle.cancel_goal_async()
-            return None
+            return None, None
         wrapped = result_future.result()
+        answer = getattr(wrapped, "result", None)
+        # Read off the aborted result as well as the successful one, which is the
+        # whole point of asking: `planner_server` fills `error_code` in and then
+        # aborts the handle, so the reason is only ever on a result nobody would
+        # look at if they were checking the status first.
+        code = getattr(answer, "error_code", None)
         if getattr(wrapped, "status", None) != GoalStatus.STATUS_SUCCEEDED:
-            return None
-        path = getattr(getattr(wrapped, "result", None), "path", None)
+            return None, code
+        path = getattr(answer, "path", None)
         # Two poses, not one. The planner answers a goal it is already standing on
         # with a single-pose path, which is a true answer to a question worth
         # nothing -- and `route_cost` prices it at zero, which would make it the
         # cheapest frontier on the map for ever.
         if path is None or len(path.poses) < 2:
-            return None
-        return route_cost.from_path(path)
+            return None, code
+        return route_cost.from_path(path), code
+
+    def back_off(self, say):
+        """Shuffle the rover to somewhere the planner is willing to plan from.
+
+        Returns an outcome in the same shape every other move here does, so the
+        run that called it can add the metres and degrees to its own account
+        rather than losing them: a back-off is real driving and belongs in the
+        "0.1 m driven" the caller reports.
+
+        Nothing here is about a destination. This runs when the planner has
+        refused a route because of where the rover is *standing*, which it will
+        go on doing for every destination on the map until the rover is
+        somewhere else.
+
+        **Where to go is not guessed.** `goal_fit.fit` is already the answer to
+        "the nearest place this body fits", it reads the same global costmap the
+        planner refused with, and it is the check every goal goes through
+        anyway -- so the spot it names is one the planner has in effect already
+        agreed to. On the rover on 2026-09-01 the pose in every refusal was
+        0.156 m from a mapped wall against a 0.200 m footprint, `fit` named a
+        place 27 cm away, and three of the four frontiers that had just been
+        called unreachable planned from there in 0.01 s.
+
+        **It turns and drives forwards rather than reversing**, for
+        `reverse_by_turning`'s reason: the lidar looks one way, and ground the
+        rover is about to occupy is worth having a sensor pointed at. The turn
+        costs a few seconds of a ten-minute budget, and turning on the spot is
+        the one move this rover's own behaviour plugins guarantee while it is
+        touching something.
+        """
+        where = self.pose()
+        if where is None:
+            return {"reason": "lost", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": "nothing is publishing the rover's position, so "
+                              "there is no telling which way is out"}
+        body = self.footprint()
+        grid = self.costmap() if body else None
+        if grid is None:
+            # No costmap to ask, so no opinion about which way is out. A turn is
+            # the blind version of the same move and is what Nav2's own recovery
+            # would try, so it is worth an attempt before giving up.
+            return self.shuffle_by_turning(
+                say, "the costmap did not answer, so this is a turn on the spot "
+                     "and a hope")
+        placed = goal_fit.fit(grid, body, where[0], where[1], where[2])
+        if placed is None:
+            return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
+                    "detail": "the rover is up against something and there is "
+                              "nowhere within half a metre of it where its body "
+                              "fits, so it cannot get itself out of this"}
+        away = math.hypot(placed["x"] - where[0], placed["y"] - where[1])
+        if away < grid.resolution:
+            # The body fits where it is standing, so the planner refused over
+            # something this cannot see. Turning re-registers the scan match and
+            # moves the rover a few centimetres whether it means to or not, which
+            # is what freed it the one time this was watched happening.
+            return self.shuffle_by_turning(
+                say, "the costmap says the rover fits where it is, so this is a "
+                     "turn to shake the disagreement loose")
+
+        bearing = math.atan2(placed["y"] - where[1], placed["x"] - where[0])
+        say("choosing", "backing off %d cm to somewhere it can plan from"
+                        % round(away * 100))
+        about = self.turn(math.degrees(wrap(bearing - where[2])), say)
+        if about.get("reason") != "arrived":
+            about["detail"] = (
+                "it could not even turn towards the one spot nearby where its "
+                "body fits -- %s" % (about.get("detail") or "the turn did not "
+                                                            "finish"))
+            return about
+        onward = self.drive(away, ESCAPE_SPEED_MS, say)
+        onward["turned_deg"] = round(
+            (about.get("turned_deg") or 0.0) + (onward.get("turned_deg") or 0.0),
+            1)
+        if onward.get("reason") != "arrived":
+            onward["detail"] = (
+                "it turned towards the nearest spot its body fits and then could "
+                "not get there -- %s" % (onward.get("detail")
+                                         or "the drive did not finish"))
+            return onward
+        onward["detail"] = ("backed off %d cm to somewhere the planner will plan "
+                            "from" % round(away * 100))
+        return onward
+
+    def shuffle_by_turning(self, say, why):
+        """A quarter turn, for when there is nothing better to go on."""
+        say("choosing", why)
+        about = self.turn(ESCAPE_TURN_DEG, say)
+        if about.get("reason") == "arrived":
+            about["detail"] = ("turned on the spot to see whether that frees the "
+                               "planner -- %s" % why)
+        return about
 
     def explore(self, say, budget_s=EXPLORE_BUDGET_S, min_frontier_m=None):
         """Drive to the edge of the map until there is no edge left to drive to.
@@ -1266,6 +1394,16 @@ class NavBridge(Node):
             check the best one     the planner, about a second
             drive to it           Nav2, a minute if it is in the next room
             write it off          so the next round chooses something else
+
+        **A refusal is read for what it is about before anything is written
+        off.** The planner declines a route for two quite different reasons and
+        they need opposite responses: the destination is walled off, so try
+        another one -- or the rover's own cell is inside the inscribed band, in
+        which case it will decline every destination on the map and the thing to
+        deal with is the rover. `back_off` is that, and `ABOUT_THE_ROVER` in
+        `nav_codes.py` is how the two are told apart. Conflating them is what
+        had this loop announce a fully explored house from four planner calls
+        with 73% of the map unknown; the account is in that constant.
 
         **Every frontier is written off once it has been driven to, whether or
         not the rover got there.** For a failure that is obvious. For an arrival
@@ -1288,7 +1426,7 @@ class NavBridge(Node):
         # against a room the rover has already been round, rather than a second
         # copy of it that agrees today.
         explorer = frontier.Explorer(min_frontier_m=min_frontier_m)
-        goals = arrived = 0
+        goals = arrived = refused = shuffles = 0
         travelled = turned = 0.0
 
         def totals(reason, detail):
@@ -1319,6 +1457,7 @@ class NavBridge(Node):
                     # them today; a console that wants to draw the run rather
                     # than read about it will not have to change this file.
                     "goals": goals, "arrived": arrived, "frontiers_left": left,
+                    "unroutable": refused, "shuffles": shuffles,
                     "unknown_share": None if share is None else round(share, 3)}
 
         with self._lock:
@@ -1369,6 +1508,19 @@ class NavBridge(Node):
                     grid_msg.data)
                 found = explorer.choose(grid, (where[0], where[1]))
                 if not found:
+                    # The one honest way to say the map is finished, and it is
+                    # reached by having looked at every frontier on it rather
+                    # than by having a sample refused. `refused` separates the
+                    # two endings a person cares about: a house that has been
+                    # mapped, and a house whose remaining edges the planner would
+                    # not route to -- which reads very differently beside the
+                    # "still unknown" figure this sentence ends with.
+                    if refused and not arrived:
+                        return totals(
+                            "blocked",
+                            "the rover could not get a route to any of the %d "
+                            "place%s left on the map"
+                            % (refused, "" if refused == 1 else "s"))
                     return totals(
                         "arrived",
                         "there is nothing left on the map worth driving to"
@@ -1379,6 +1531,7 @@ class NavBridge(Node):
 
                 # --- which of them the planner will actually take
                 chosen = route = None
+                wedged = None
                 for candidate in found[:EXPLORE_TRIES]:
                     say("choosing", "%.1f m away, %.1f m of new edge, "
                                     "%d frontier%s on the map"
@@ -1390,23 +1543,62 @@ class NavBridge(Node):
                     placed, note = self.fit_goal(
                         candidate["x"], candidate["y"], candidate["yaw"])
                     if placed is None:
+                        # A real frontier with nowhere beside it the body fits.
+                        # Counted with the planner's refusals rather than
+                        # separately, because both mean the same thing to the
+                        # person reading the outcome: that edge of the map is
+                        # still there and the rover cannot get to it.
+                        refused += 1
                         explorer.wrote_off(candidate["x"], candidate["y"])
                         continue
-                    priced = self.route_to(*placed)
+                    priced, code = self.route_to(*placed)
+                    if code in nav_codes.ABOUT_THE_ROVER:
+                        # Not this frontier's fault and not the next one's
+                        # either: the planner has refused the *start*, so it will
+                        # refuse every destination on the map until the rover is
+                        # somewhere else. Stop pricing frontiers and go and deal
+                        # with the rover.
+                        wedged = code
+                        break
                     if priced is None:
                         # The walk got there and the planner will not, which is
                         # the case this check exists for. Written off without
                         # driving a centimetre.
+                        refused += 1
                         explorer.wrote_off(candidate["x"], candidate["y"])
                         continue
                     chosen, route = (candidate, placed, note), priced
                     break
 
+                if wedged is not None:
+                    if shuffles >= EXPLORE_SHUFFLES:
+                        return totals("blocked",
+                                      "the rover is somewhere the planner will "
+                                      "not plan from and %d attempts to shuffle "
+                                      "it clear did not help"
+                                      % EXPLORE_SHUFFLES)
+                    if wedged != nav_codes.START_OCCUPIED:
+                        return totals("lost",
+                                      "the rover is off the edge of the costmap, "
+                                      "so nothing can plan a route from where it "
+                                      "is standing")
+                    shuffles += 1
+                    escape = self.back_off(say)
+                    travelled += float(escape.get("travelled_m") or 0.0)
+                    turned += abs(float(escape.get("turned_deg") or 0.0))
+                    say("choosing", escape.get("detail") or "",
+                        frontiers_left=explorer.summary["frontiers"])
+                    if escape.get("reason") != "arrived":
+                        return totals("blocked", escape.get("detail")
+                                      or "the rover could not shuffle clear")
+                    continue
+
                 if chosen is None:
-                    return totals(
-                        "arrived",
-                        "everything still unmapped is behind something the rover "
-                        "cannot get through")
+                    # Every candidate this round was refused a route or had
+                    # nowhere the body fits. They are all written off now, so the
+                    # next round looks at what is left rather than concluding
+                    # anything about it from this sample.
+                    continue
 
                 candidate, placed, note = chosen
                 metres, _degrees = route
