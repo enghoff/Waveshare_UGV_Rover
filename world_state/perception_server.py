@@ -34,7 +34,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-from world_state.perceive import Perception, Unavailable   # noqa: E402
+from world_state.perceive import (                       # noqa: E402
+    Perception, Unavailable, read_vocabulary,
+)
 
 #: 8769 is the daemon, 8770 the depth camera, 8771 the console, 8772 and 8773 the
 #: ROS bridges, 8774 the frame service the voice session uses and 8775 the
@@ -83,7 +85,10 @@ class Handler(BaseHTTPRequestHandler):
             "detail": why,
             "loaded": self.server.perception._loaded,
             "load_s": self.server.perception.load_s,
-            "vocabulary": len(self.server.perception.words),
+            # Counted from the file rather than from the loaded state, because
+            # health is answered before anything is loaded and "0 phrases" reads
+            # as a broken vocabulary rather than as an unopened one.
+            "vocabulary": self.server.vocabulary,
             "looks": self.server.looks,
             "busy": self.server.busy,
             "uptime_s": round(time.monotonic() - self.server.started, 1),
@@ -161,6 +166,10 @@ class Server(ThreadingHTTPServer):
         self.busy = False
         self.started = time.monotonic()
         self._lock = threading.Lock()
+        try:
+            self.vocabulary = len(read_vocabulary(perception.vocabulary_path))
+        except OSError:
+            self.vocabulary = 0
 
     def look(self, jpeg: bytes) -> dict:
         with self._lock:
