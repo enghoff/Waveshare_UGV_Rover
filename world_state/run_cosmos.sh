@@ -17,10 +17,14 @@
 # client is the daemon in the next process along.
 #
 # The flags are here rather than in the crontab because they are a property of the
-# board rather than of a run. `-t 4` is the whole of this Jetson's CPU: nothing
-# deployed on this rover uses its GPU, and the two things that would compete for
-# these cores -- SLAM and the face tracker -- are the reason the context is small
-# and one request is served at a time.
+# board rather than of a run.
+#
+# **This is the one thing on the rover that uses the GPU.** There is no CUDA
+# toolkit on this JetPack, so nothing here can reach the GPU that way -- but the
+# Vulkan driver works, llama.cpp speaks Vulkan, and the released Vulkan build is
+# 27 MB with no toolchain to install. Measured on the rover: an inspection went
+# from 38 s to 9.5 s. `-t 4` still matters because the vision projector and the
+# sampler stay on the CPU.
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 VENDOR="$DIR/vendor"
@@ -56,12 +60,21 @@ while true; do
     # --parallel 1: one inspection at a time, which is also what the Inspector's
     #   own lock enforces at the other end.
     # --no-webui: nothing here is meant to be opened in a browser.
+    # --n-gpu-layers 99: all of them. llama.cpp would rather size this itself and
+    #   says so -- "failed to fit params to free device memory" -- because the
+    #   GPU's memory here *is* the system's and it cannot tell what the rest of
+    #   the rover is about to want. Setting it explicitly is the answer: 99 is
+    #   "every layer", the model is 1.3 GB, and it was measured alongside the
+    #   perception sidecar with 1.5 GB still free. **Set this to 0 to go back to
+    #   the CPU** -- the same binary carries both backends, so there is nothing to
+    #   reinstall if the driver ever misbehaves.
     "$SERVER" \
         --model "$MODEL" \
         --mmproj "$MMPROJ" \
         --alias cosmos-reason2-2b-q4_k_m \
         --host 127.0.0.1 --port "$PORT" \
         --ctx-size 4096 --parallel 1 --threads 4 \
+        --n-gpu-layers 99 \
         --no-webui \
         >> "$LOG" 2>&1 &
     child=$!
