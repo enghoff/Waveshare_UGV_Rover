@@ -109,6 +109,10 @@ class Session(SessionShow):
         self.can_drive = False
         self.busy_since: float | None = None
         self.busy_name = ""
+        #: Whether the rover says it is off exploring. Not a thing this console
+        #: does -- it is a thing the rover is doing, possibly at somebody else's
+        #: asking -- so it is read off `nav_status` and never set from a click.
+        self.exploring = False
         # A click on the map that is waiting for the move it interrupted to let go
         # of the wheels: the `drive_to` arguments, and when to give up on them. The
         # place is held in map coordinates rather than as an offset, so waiting does
@@ -276,6 +280,7 @@ class Session(SessionShow):
                      "can_drive": self.can_drive,
                      "tools": self.tools},
             "busy": busy,
+            "exploring": self.exploring,
             "status": {"rows": self.status_rows, "pose": self.pose_text,
                        "error": self.status_error},
             "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
@@ -670,11 +675,17 @@ class Session(SessionShow):
             self.move("turn_in_place",
                       {"angle_deg": _number(action.get("angle_deg"), 90.0)})
         elif what == "explore":
+            # Not `move`, which is for calls that hold the wheels until they
+            # answer. This one answers in a moment and leaves the rover driving,
+            # so it goes out on the status connection like any other button --
+            # and what the header toggle then shows is the rover's own
+            # `exploring`, not a call this console is waiting for.
+            #
             # No arguments: the budget is the rover's default, because the one
             # thing a console is for is watching, and somebody watching can stop
             # it whenever they like. A box to type minutes into would be a
             # setting nobody has a reason to change with the STOP button in view.
-            self.move("explore", {})
+            self.watch_call("explore")
         elif what == "tap":
             self.tap(action)
         elif what == "describe":

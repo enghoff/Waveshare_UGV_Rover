@@ -71,16 +71,33 @@ With `--ros-nav`, the daemon also exposes the navigation/driving tools backed by
 Nav2. Their schemas and bounds are in `tool_schemas.py`; navigation behavior and
 configuration are in [`../ros_nav/`](../ros_nav/).
 
-`explore` is the one of those that is unlike the rest, and worth knowing about
-before it is called: it is not a move to a place, it is the rover driving itself
-to the edge of the mapped area over and over until there are no edges left. It
-blocks for minutes rather than seconds — the model is told so in its schema and
-told to say it is setting off before calling — and `stop_driving` ends it from
-anywhere. `minutes` is capped here rather than in the schema, between one and
-fifteen (`EXPLORE_MIN_S`/`EXPLORE_MAX_S` in `rover_nav.py`), because a schema
-describes and this is a rule: a model that has talked itself into an hour of
-unsupervised driving gets fifteen minutes. Which gap in the map it drives to is
-`../ros_nav/frontier.py`, and its README has the account. `show_map` takes how many metres
+`explore` is the one of those that is unlike the rest: it is not a move to a
+place, it is the rover driving itself to the edge of the mapped area over and
+over until there are no edges left. Two things about it are worth knowing before
+it is called.
+
+**It answers at once and the rover keeps going.** Every client here holds one
+connection with one lock on it (`RoverClient` in
+[`../voice_chat/rover_tools.py`](../voice_chat/rover_tools.py)), so a tool call
+that waits for a ten-minute run holds that lock for ten minutes and
+`stop_driving` queues behind it — a voice model would set the rover off and then
+be unable to stop it, with somebody in the room asking it to. So the run goes on
+a thread and the call comes back; `stop_driving` ends it. It still holds the
+navigator's move mutex throughout, so `driving` is true and a `drive_to` is
+refused as busy exactly as before.
+
+**Calling it again while it runs reports rather than stops.** A model unsure
+whether its call landed calls again, and a toggle would answer that by stopping
+the rover — the opposite of what was asked, at the moment nobody would notice.
+The reply also carries how the *previous* run ended, since nothing waits for one.
+
+`minutes` is capped here rather than in the schema, between one and fifteen
+(`EXPLORE_MIN_S`/`EXPLORE_MAX_S` in `rover_nav.py`), because a schema describes
+and this is a rule: a model that has talked itself into an hour of unsupervised
+driving gets fifteen minutes. Which gap in the map it drives to is
+`../ros_nav/frontier.py`, and its README has the account.
+
+`show_map` takes how many metres
 of room to show (`across_m`) and how big a picture (`pixels`), the same two knobs
 the console uses, and leaves them optional so "show me the map" is still a room.
 It is not shown `half_extent_m`: that is how `map_png` talks, and a model handed

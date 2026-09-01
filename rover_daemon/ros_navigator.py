@@ -35,6 +35,7 @@ import os
 import socket
 import sys
 import threading
+import time
 import zlib
 from typing import Any
 
@@ -232,6 +233,13 @@ class RosNavigator:
         self._resets = 0
         self._reset_note = ""
         self._reachable = False
+        #: The exploring run in flight, if there is one, and what the last one
+        #: came to. Exploring is the only move here that is started and left to
+        #: get on with it rather than waited for -- see `explore_in_background`.
+        self._explore_thread: threading.Thread | None = None
+        self._explore_since: float | None = None
+        self._explore_last: Outcome | None = None
+        self._explore_lock = threading.Lock()
 
     # --- lifecycle ------------------------------------------------------------
     def start(self) -> None:
@@ -271,6 +279,28 @@ class RosNavigator:
         stale answer from a move that ended while it was busy.
         """
         return self._move_mutex.locked()
+
+    @property
+    def exploring(self) -> bool:
+        """True while a run started by `explore_in_background` is still going.
+
+        Narrower than `driving`, which is true for any move including this one.
+        Anything that has to tell "the rover is going somewhere somebody chose"
+        from "the rover is off mapping the place by itself" wants this one.
+        """
+        thread = self._explore_thread
+        return thread is not None and thread.is_alive()
+
+    @property
+    def explored(self) -> Outcome | None:
+        """How the last exploring run ended, or None if none has finished."""
+        return self._explore_last
+
+    @property
+    def exploring_for(self) -> float:
+        """Seconds the run in flight has been going, or 0.0."""
+        since = self._explore_since
+        return 0.0 if since is None else time.monotonic() - since
 
     @property
     def reachable(self) -> bool:
@@ -528,6 +558,63 @@ class RosNavigator:
             asked["min_frontier_m"] = float(min_frontier_m)
         return self.move("explore", asked, {"op": "explore", **asked},
                          phase="choosing")
+
+    def explore_in_background(self, budget_s: float | None = None,
+                              min_frontier_m: float | None = None) -> dict[str, Any]:
+        """Start exploring, and answer before the first goal rather than after the last.
+
+        **The only move here that is not waited for, and the reason is the voice
+        model.** Every client of this daemon shares one connection with one lock
+        on it -- see `RoverClient` in voice_chat/rover_tools.py -- so a tool call
+        that blocks for ten minutes blocks *every other tool call* for ten
+        minutes, `stop_driving` included. A model that started an explore that
+        way could not stop it, and neither could the person in the room asking it
+        to. So this hands the run to a thread and comes straight back, and
+        stopping is the ordinary stop it always was.
+
+        Nothing else changes: the thread goes through `move` like any other move,
+        so it holds the same mutex, `driving` is true throughout, a `drive_to`
+        arriving meanwhile is refused as busy, and the running commentary reaches
+        both consoles exactly as before.
+
+        Starting one while one is running does **not** stop it, and that is
+        deliberate rather than a missing feature. A model that has just been
+        asked to explore and is unsure whether its call landed will call again,
+        and a toggle would answer that by stopping the rover -- the opposite of
+        what was asked, at the moment it is hardest to notice. Asking twice
+        reports; stopping is `stop`.
+        """
+        with self._explore_lock:
+            if self.exploring:
+                return {"started": False, "exploring": True,
+                        "running_s": round(self.exploring_for, 1)}
+            if self.driving:
+                return {"started": False, "exploring": False, "busy": True}
+            # The previous run's outcome is deliberately *not* cleared here.
+            # Nothing waits for one of these, so the only way anybody learns how
+            # a run ended is by asking afterwards -- and the natural moment to
+            # ask is when setting the next one off.
+            self._explore_since = time.monotonic()
+            self._explore_thread = threading.Thread(
+                target=self._explore_run, args=(budget_s, min_frontier_m),
+                name="rover-explore", daemon=True)
+            self._explore_thread.start()
+        return {"started": True, "exploring": True, "running_s": 0.0}
+
+    def _explore_run(self, budget_s: float | None,
+                     min_frontier_m: float | None) -> None:
+        """The run itself, on its own thread. Never raises: a thread that dies
+        with an exception leaves `exploring` false and no reason anywhere."""
+        try:
+            outcome = self.explore(budget_s=budget_s,
+                                   min_frontier_m=min_frontier_m)
+        except Exception as error:                  # pragma: no cover
+            outcome = Outcome("failed", 0.0, 0.0,
+                              "the exploring run stopped with an error: "
+                              "%s: %s" % (type(error).__name__, error))
+        with self._explore_lock:
+            self._explore_last = outcome
+            self._explore_since = None
 
     def pose_now(self) -> tuple[float, float, float] | None:
         """Where the rover is, in the map frame, for converting an offset."""

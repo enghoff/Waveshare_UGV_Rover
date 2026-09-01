@@ -360,17 +360,19 @@ NAV_TOOLS: list[dict[str, Any]] = [
                 # model offered "frontier-based exploration" does not call it
                 # when somebody says "go and have a look round the house", and
                 # that sentence is the whole reason the tool exists.
-                "Go and map the parts of the room or house the rover has not seen "
-                "yet, choosing where to go by itself. It repeatedly finds the "
+                "Set the rover off mapping the parts of the room or house it "
+                "has not seen yet, choosing where to go by itself. It finds the "
                 "nearest edge of the mapped area, drives there going around "
-                "obstacles, and stops when there is nowhere unmapped left it can "
-                "reach. Use this when asked to explore, to look around, to map "
-                "the place, or to find out what else is there. It drives the "
-                "rover for minutes at a time and will not answer until it has "
-                "finished, so say out loud that it is setting off before calling "
-                "it. Anyone can end it with stop_driving. It cannot see steps, "
-                "drops, or table tops, so do not start it if the rover is "
-                "somewhere it could fall."
+                "obstacles, and repeats until there is nowhere unmapped left it "
+                "can reach. Use this when asked to explore, to look around, to "
+                "map the place, or to find out what else is there. "
+                "This answers straight away and the rover keeps going in the "
+                "background for several minutes, so say out loud that it has set "
+                "off. Use stop_driving to stop it. Calling explore again while "
+                "it is still going is safe and simply reports how long it has "
+                "been at it -- it does not stop it. It cannot see steps, drops, "
+                "or table tops, so do not start it if the rover is somewhere it "
+                "could fall."
             ),
             "parameters": {
                 "type": "object",
@@ -379,9 +381,9 @@ NAV_TOOLS: list[dict[str, Any]] = [
                         "type": "number",
                         "description": (
                             "How long to keep exploring before stopping, at most "
-                            "15. Leave it out for the usual 10 minutes. It "
-                            "usually finishes early, when there is nothing "
-                            "unmapped left to drive to."
+                            "15. Leave it out for the usual 10 minutes. It often "
+                            "finishes early, when there is nothing unmapped left "
+                            "to drive to."
                         ),
                     },
                 },
@@ -394,7 +396,8 @@ NAV_TOOLS: list[dict[str, Any]] = [
             "name": "stop_driving",
             "description": (
                 "Stop the rover moving immediately. Use this the moment anyone asks "
-                "it to stop, or if something sounds wrong."
+                "it to stop, or if something sounds wrong. It also ends exploring, "
+                "which is the way to turn that off."
             ),
             "parameters": {"type": "object", "properties": {}},
         },

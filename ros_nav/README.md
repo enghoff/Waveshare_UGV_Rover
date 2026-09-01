@@ -272,9 +272,10 @@ EOF
 ## Letting it map the place on its own
 
 `explore` sends the rover to the edge of what it has mapped, over and over, until
-there are no edges left it can reach. From a console it is the **explore** button
-on the drive card; from the daemon it is a tool with an optional `minutes`; from
-the bridge it is one more move:
+there are no edges left it can reach. From a console it is the **explore** toggle
+beside the STOP button, which turns blue while a run is going and stops it when
+pressed again; from the daemon it is a tool with an optional `minutes`, which
+answers at once and leaves the rover going; from the bridge it is one more move:
 
 ```bash
 python3 - <<'EOF'
@@ -291,6 +292,15 @@ It takes the same mutex `drive` and `drive_to` take, so a tap on the map while i
 is running is refused as busy rather than fighting it for the same action server;
 STOP ends it as it ends anything else; and it narrates itself the whole way, so a
 console watching one shows what it is doing rather than a stopwatch.
+
+**On the bridge it blocks; above the bridge it does not.** The op holds its
+connection for the whole run, because that connection is how it narrates. The
+daemon's tool, one layer up, hands that to a thread and answers immediately —
+every client of the daemon shares one socket behind one lock, so a tool call that
+waited would have blocked `stop_driving` along with everything else. See
+[`rover_daemon/README.md`](../rover_daemon/README.md). What asks "is it
+exploring" is therefore the rover, not a caller's own call in flight, and
+`status` grew an `exploring` flag beside `driving` to answer it.
 
 **None of the driving is new.** Choosing where to go is `frontier.py`, and every
 metre of getting there is `NavigateToPose` through `goto` — the same goal check,

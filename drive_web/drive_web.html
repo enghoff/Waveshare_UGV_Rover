@@ -81,6 +81,19 @@
     cursor: pointer;
   }
   #stop:active { transform: translateY(1px); }
+  /* Left of STOP, and never right of it. STOP is the control you reach for
+     without looking, so it keeps the corner it has always had -- a button that
+     pushed it along would be a stop button in a different place every time the
+     header's contents changed. */
+  #explore {
+    padding: 9px 14px; font-size: 14px; font-weight: 600; border-radius: 6px;
+  }
+  /* On, rather than merely pressed: while this is running the rover is driving
+     itself somewhere nobody chose, and the header should say so from across the
+     room. */
+  #explore.on {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
 
   /* --- the layout, which is the whole point ------------------------------ */
   /* Columns of cards rather than a grid of them, and the difference is not
@@ -256,6 +269,7 @@
   <span class="grow"></span>
   <span id="watchers"></span>
   <span id="busy"></span>
+  <button id="explore" title="map the rest of the place, or stop doing so">explore</button>
   <button id="stop" title="space or escape">STOP</button>
 </header>
 
@@ -285,14 +299,11 @@
     </div>
     <p class="hint">Positive is left. Every move is bounded and watched by the
       lidar the whole way; there is no continuous teleop here.</p>
-    <div class="row" style="margin-top:8px">
-      <button data-move="explore">explore</button>
-      <span class="hint" style="margin:0">until the map has no edges left</span>
-    </div>
-    <p class="hint">Exploring drives the rover to the edge of the mapped area over
-      and over, for up to ten minutes, choosing where to go itself. It is a move
-      like any other here, so STOP ends it and nothing else drives while it runs.
-      It cannot see steps or drops.</p>
+    <p class="hint">The <b>explore</b> button at the top drives the rover to the
+      edge of the mapped area over and over, for up to ten minutes, choosing
+      where to go itself. Press it again to stop, or use STOP. It is a move like
+      any other here, so nothing else drives while it runs. It cannot see steps
+      or drops.</p>
     <div class="keys" style="margin-top:8px">
       <div><kbd>space</kbd>stop, even while typing a distance</div>
       <div><kbd>&uarr;</kbd>drive the distance above</div>
@@ -530,8 +541,14 @@ function render(next) {
 
   // Only the moves go out while one is running; stop, the map and the camera
   // stay live, which is the whole reason they have their own connections.
+  //
+  // Exploring counts as the wheels being taken even though this console is not
+  // waiting on a call for it -- the rover holds the same mutex either way, so a
+  // drive sent now comes back "busy". Greying them is the console saying that
+  // before the rover has to.
+  const wheelsTaken = next.busy !== null || next.exploring;
   for (const button of document.querySelectorAll("[data-move]")) {
-    button.disabled = !next.link.can_drive || next.busy !== null;
+    button.disabled = !next.link.can_drive || wheelsTaken;
   }
   // Face tracking is not driving and is not held up by it. It goes out on the
   // status connection rather than the move one, the rover runs the camera while
@@ -540,14 +557,24 @@ function render(next) {
   for (const button of document.querySelectorAll("[data-track]")) {
     button.disabled = !next.link.tools.includes("start_tracking");
   }
-  $("clearMap").disabled = !next.link.connected || next.busy !== null;
-  // Both rules at once, because exploring is both. It is a move, so it waits for
-  // whatever is driving; and it is newer than the rest of this console, so a
-  // rover running an older daemon has to grey it out rather than offer a button
-  // that comes back "no such tool".
-  document.querySelector('[data-move="explore"]').disabled =
-      !next.link.can_drive || next.busy !== null
-      || !next.link.tools.includes("explore");
+  $("clearMap").disabled = !next.link.connected || wheelsTaken;
+
+  // The explore toggle. Its rules are not the driving buttons' rules, which is
+  // why it is not one of them: those go out while anything is running, and this
+  // one has to stay live *while exploring*, because pressing it again is how you
+  // stop. So it is greyed only when some **other** move has the wheels, or when
+  // the rover is too old to offer the tool at all.
+  //
+  // `next.exploring` is the rover's own answer, not "this console has a call in
+  // flight" -- starting one returns in a moment and leaves the rover driving for
+  // ten minutes, and the voice model or a second browser can start one too. A
+  // toggle drawn from anything else would be a button disagreeing with the room.
+  const explore = $("explore");
+  explore.classList.toggle("on", next.exploring);
+  explore.textContent = next.exploring ? "stop exploring" : "explore";
+  explore.disabled = !next.link.can_drive
+      || !next.link.tools.includes("explore")
+      || (next.busy !== null && !next.exploring);
 }
 
 const verdictOf = (state) =>
@@ -940,8 +967,13 @@ function wire() {
   // No arguments and no keyboard shortcut, both deliberately. This is the one
   // control that hands the rover ten minutes of its own work, and it should take
   // a deliberate click rather than a key pressed next to the arrows.
-  $("driveCard").querySelector('[data-move="explore"]').onclick =
-      () => post({do: "explore"});
+  //
+  // Turning it off is an ordinary stop rather than an explore-specific one. It
+  // is the same act -- cancel whatever has the wheels -- and the rover already
+  // reports the run as "stopped" when it lands, so a second way of saying stop
+  // would be a second thing that could be wrong about the first.
+  $("explore").onclick = () => post(
+      {do: $("explore").classList.contains("on") ? "stop" : "explore"});
   for (const button of document.querySelectorAll("[data-zoom]")) {
     button.onclick = () => post({do: "map", zoom: +button.dataset.zoom});
   }

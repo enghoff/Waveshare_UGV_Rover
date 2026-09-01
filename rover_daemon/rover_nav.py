@@ -96,6 +96,14 @@ MAP_POINT_HINT = (
 # starting.
 EXPLORE_MIN_S = 60.0
 EXPLORE_MAX_S = 900.0
+# And what a model that names no time gets. **Not a copy of the bridge's
+# `EXPLORE_BUDGET_S`**, which would be the kind of copy this repository keeps
+# being bitten by; it is a different number with a different owner that happens
+# to agree today. The bridge's is the fallback for somebody poking TCP 8773 by
+# hand, and this is the policy about how long a *model* may set the rover off
+# for unattended. Sent explicitly on every call, so which one applied is never a
+# question about who defaulted.
+EXPLORE_DEFAULT_S = 600.0
 
 def _fraction(value: Any, what: str) -> float:
     """A place on the map picture, as a fraction of its width or height.
@@ -234,16 +242,24 @@ class RoverNav:
                 **self._nav_context()}
 
     def _tool_explore(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Go and map the rest of the room, without being told where.
+        """Set the rover off mapping the rest of the place, and answer at once.
 
-        The one tool that keeps giving the rover work, so it is the one tool with
-        a clock on it: `minutes` becomes the budget the ROS side stops at, and it
-        is capped here rather than trusted, because a model that has decided an
-        hour is reasonable should not be able to have the wheels for an hour.
+        **It does not wait for the run, and that is about the voice model rather
+        than about exploring.** Every client of this daemon holds one connection
+        with one lock on it, so a tool call that blocks for ten minutes blocks
+        every other tool call for ten minutes -- `stop_driving` included. A model
+        that started an explore that way could not stop it, and neither could the
+        person in the room asking it to. So this starts the run and comes back;
+        `stop_driving` ends it, exactly as it ends anything else.
 
-        It returns when the exploring is over, which is minutes rather than
-        seconds -- the same as a long `drive_to`, and for the same reason the
-        model is told so in the schema. `stop_driving` ends it from anywhere.
+        **Asking again while it is running reports rather than stops.** A model
+        unsure whether its call landed will call again, and a tool that toggled
+        would answer that by stopping the rover -- the opposite of what was
+        asked, at the moment nobody would notice. Stopping has its own verb.
+
+        `minutes` is capped here rather than in the schema, because a schema
+        describes and this is a rule: a model that has talked itself into an hour
+        of unsupervised driving gets fifteen minutes.
         """
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}
@@ -253,13 +269,35 @@ class RoverNav:
             budget_s = max(EXPLORE_MIN_S,
                            min(EXPLORE_MAX_S,
                                _number(minutes, "minutes") * 60.0))
-        outcome = self.nav.explore(budget_s=budget_s)
-        # "timed out" is a success here in a way it is not for a drive: the rover
-        # explored for as long as it was given and stopped, having mapped
-        # whatever it mapped. Only a rover that could not explore at all is a
-        # failure.
-        return {"ok": outcome.reason in ("arrived", "timed out", "stopped"),
-                **outcome.asdict(), **self._nav_context()}
+        if budget_s is None:
+            budget_s = EXPLORE_DEFAULT_S
+        started = self.nav.explore_in_background(budget_s=budget_s)
+
+        if started.get("busy"):
+            return {"ok": False, "exploring": False,
+                    "error": "the rover is already driving somewhere, so it "
+                             "cannot go exploring until that has finished or "
+                             "been stopped"}
+        if not started.get("started"):
+            return {"ok": True, "exploring": True,
+                    "note": "it is already exploring, and has been for %d "
+                            "seconds -- stop_driving ends it"
+                            % round(started.get("running_s") or 0)}
+
+        # How the previous run ended, said as the next one sets off. Nothing
+        # waits for one of these, so this is the only moment anybody is told --
+        # and a model that has just been asked to explore again is exactly who
+        # wants to know that last time it stopped after two minutes with half the
+        # place unmapped.
+        before = self.nav.explored
+        return {"ok": True, "exploring": True,
+                "last_run": None if before is None else before.detail,
+                "note": "the rover has set off to map what it has not seen yet, "
+                        "for up to %d minutes. It chooses where to go and stops "
+                        "when there is nothing unmapped left it can reach. Say "
+                        "so out loud; use stop_driving to end it, and explore "
+                        "again to hear how it is getting on."
+                        % round(budget_s / 60.0)}
 
     def _tool_stop_driving(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:

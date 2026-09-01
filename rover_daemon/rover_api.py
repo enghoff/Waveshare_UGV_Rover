@@ -526,16 +526,19 @@ class _Drive:
         return _call("turn_in_place", angle_deg=angle_deg)
 
     def explore(self, minutes=None):
-        """Map what has not been mapped, choosing where to go without being told.
+        """Set the rover off mapping what it has not mapped, and return at once.
 
-        Blocks for as long as it runs, which is minutes -- longer than anything
-        else here. A script that wants to do something while it happens wants
-        `alongside`; a script that wants it to end early wants `drive.stop()`
-        from the other thread.
+        The one call here that does **not** block until the rover has finished.
+        It cannot: a program gets fifteen seconds and an exploring run gets ten
+        minutes, so waiting for one would only ever end in the program being
+        killed with the rover still driving.
 
-        It stops on its own when there is nowhere unmapped left it can reach, so
-        the usual shape is to call it once and read the reply rather than to loop
-        on it.
+        So this starts it and comes back. `drive.status()` says whether it is
+        still going, `drive.stop()` ends it, and calling this again while it runs
+        reports rather than starting a second one.
+
+            drive.explore()
+            every(5, for_s=60)(lambda: print(drive.status()["exploring"]))
         """
         return _call("explore", minutes=minutes)
 

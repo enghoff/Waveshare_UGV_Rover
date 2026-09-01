@@ -27,6 +27,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -440,6 +441,63 @@ def test_a_bridge_that_dies_mid_move_stops_the_rover():
     check("...and a stop was sent on a new connection", "stop" in ops, True)
 
 
+def test_exploring_does_not_wedge_every_other_tool():
+    """Starting an explore has to answer at once, and it is not a convenience.
+
+    Every client of this daemon holds one connection with one lock on it -- see
+    `RoverClient` in voice_chat/rover_tools.py. So a tool call that waits for a
+    ten-minute run holds that lock for ten minutes, and `stop_driving` queues
+    behind it: the voice model would set the rover off and then be unable to stop
+    it, with somebody in the room asking it to. The run therefore goes on a
+    thread of its own and the call comes straight back.
+
+    The fake bridge here never answers the explore, which is exactly what the
+    real one does for ten minutes.
+    """
+    import ros_navigator
+
+    with FakeBridge({
+        # An explore that says it is planning and then says nothing more, which
+        # is a run in progress as far as this end can tell.
+        "explore": [{"kind": "progress", "phase": "choosing"}],
+        "stop": {"kind": "reply", "ok": True, "stopped": True, "latched": False},
+        "status": {"kind": "reply", "ok": True, "pose": None},
+    }) as bridge:
+        nav = ros_navigator.RosNavigator(port=bridge.port)
+
+        began = time.monotonic()
+        first = nav.explore_in_background(budget_s=600.0)
+        took = time.monotonic() - began
+
+        check("starting an explore answers at once rather than in ten minutes",
+              took < 2.0, True)
+        check("...and says it started one", first.get("started"), True)
+
+        # The run is now in flight on its thread. The thing that must still work
+        # is everything else, and stopping above all.
+        deadline = time.monotonic() + 3.0
+        while not nav.exploring and time.monotonic() < deadline:
+            time.sleep(0.02)
+        check("...and the navigator says it is exploring", nav.exploring, True)
+        check("...and counts that as driving, so a drive_to is refused as busy",
+              nav.driving, True)
+
+        again = nav.explore_in_background(budget_s=600.0)
+        check("asking again does not start a second run",
+              again.get("started"), False)
+        check("...and reports the one already going rather than stopping it",
+              again.get("exploring"), True)
+
+        began = time.monotonic()
+        stopped = nav.stop()
+        check("a stop gets through while the run is in flight",
+              stopped.get("stopped"), True)
+        check("...promptly, because it is not queued behind the run",
+              time.monotonic() - began < 2.0, True)
+        check("...and it reached the bridge",
+              "stop" in [r["op"] for r in bridge.seen], True)
+
+
 def test_the_map_is_refused_in_words_when_there_is_none():
     """`ValueError` on purpose: the daemon's dispatcher reports those as the
     sentence alone, and everything else with the exception class in front."""
@@ -491,6 +549,7 @@ TESTS = (
     test_a_bridge_that_is_not_there_is_a_sentence_not_a_traceback,
     test_a_stop_is_never_reported_as_a_failure,
     test_a_bridge_that_dies_mid_move_stops_the_rover,
+    test_exploring_does_not_wedge_every_other_tool,
     test_the_map_is_refused_in_words_when_there_is_none,
     test_resolution_is_readable_before_any_map_has_arrived,
 )

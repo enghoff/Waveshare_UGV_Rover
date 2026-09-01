@@ -67,6 +67,10 @@ class SessionShow:
             # be a button that cannot do anything.
             self.lidar_live = None
             self.lidar_note = ""
+            # Not "it has stopped exploring" -- a rover that is not answering is
+            # a rover nobody can say anything about, and a toggle that snapped
+            # itself off during a two-second outage would invite a second press
+            # that started a *new* run over the one still going.
             return
         # The rover is there. Only a reply that says something resets this, so a
         # refusal does not read as an answer -- see mind_the_link.
@@ -83,6 +87,13 @@ class SessionShow:
         self.heading_deg = float(pose.get("heading_deg", 0.0))
         self.pose_text = "x {:+.2f}  y {:+.2f}  {:+.1f} deg".format(
             pose.get("x_m", 0.0), pose.get("y_m", 0.0), pose.get("heading_deg", 0.0))
+        # Taken from the rover rather than from whether this console has a call
+        # in flight, and that distinction is the whole reason the header toggle
+        # is honest. Exploring is started with a call that returns at once and
+        # then runs for ten minutes, and it can be started by the voice model or
+        # by another browser -- so "is it exploring" is a fact about the rover,
+        # and the only place that knows it is the rover.
+        self.exploring = bool(body.get("exploring"))
         self.show_lidar(body)
         self.show_move(body.get("move") or {})
 
