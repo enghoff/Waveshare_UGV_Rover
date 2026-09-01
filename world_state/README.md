@@ -294,3 +294,116 @@ says nothing on stderr, and hands back no whole picture — while a standalone
 inspection worked every time. Reproduced three times out of three by taking a
 picture and then inspecting. The daemon now asks twice before losing an inspection
 over it, which is worth half a second when a minute of model is about to follow.
+
+## Would a bigger model fix it? Cosmos 3, measured on the same frames
+
+Measured on 2026-09-01, after the POC above. The short answer is **no, and it
+would make the world state worse rather than merely emptier.**
+
+### Cosmos 3 will not run on this rover, and not for want of tuning
+
+NVIDIA ships Cosmos 3 in three sizes — Super at 64B, Nano at 16B and Edge at 4B.
+Edge is the one aimed at Jetsons, but at the AGX Orin rather than this 8 GB Orin
+Nano, and it is a genuinely new architecture: `cosmos3_edge`, with ReLU²
+activations and a 131k vocabulary, so it is **not** the Qwen3-VL derivative that
+made Reason 2 a drop-in. No GGUF of it exists and llama.cpp cannot load it.
+Teaching llama.cpp the architecture is a project, not the afternoon that the
+`PhysicalReasoner` boundary was supposed to reduce a model swap to.
+
+What can be run is a community extraction of Nano's *understanding path* — the
+reasoning and vision half, which really is a Qwen3-VL-8B-class model, re-keyed
+and converted with mainline tooling. That is a fair stand-in for "a bigger, newer
+Cosmos", and it is what was tested.
+
+It needs **6.19 GB of weights** (5.03 GB of model, 1.16 GB of vision projector).
+The headroom was measured rather than guessed: the running 2B sidecar holds
+2.97 GB of *anonymous* memory on top of its mapped weights, so stopping it would
+leave about 5.85 GB free on a board with **no swap**. The weights alone do not
+fit, before the 8B's own KV cache. Nothing was deployed; the evaluation was run
+off the rover, against the rover's own recorded frames.
+
+### The experiment
+
+The rover was parked, and the gimbal frames and poses of three inspections were
+kept: a forward view of the armchair and the glass table, **the same view again
+without anything moving**, and — after turning 180° in two 90° steps, reversed
+afterwards to unwind the tether — **a second armchair of the same design** across
+the room, with a sheepskin throw over its back.
+
+`world_state`'s own prompt, JSON schema, validation and association rules were
+imported and pointed at a different server, so the only thing that changed
+between runs was the model. The harness reproduces the rover's live result
+exactly, which is what makes it trustworthy.
+
+### Cosmos 3 sees the room better
+
+No argument on perception. Cold, with nothing known, it described the twin-chair
+frame as "a black leather armchair with a sheepskin blanket ... a dining area to
+the left, and a floor lamp to the right", and picked out the sheepskin, the
+doorway, the dining table, the floor lamp and a wall-mounted shelf — every one
+real, every box roughly right. Reason 2 on the same frame offers "sofa, coffee
+table, doorway", one of which is not there.
+
+### But it cannot say "this is new", and that is worse than never matching
+
+| | Cosmos Reason 2 2B | Cosmos 3 (Nano understanding path, 8B) |
+|---|---|---|
+| the identical frame, replayed | 0 of 4 matched — four fresh duplicates | 6 of 6 matched, correctly |
+| decoys planted in the known list | — | ignored them, matched the six real ones |
+| a scene with **none** of the known entities in it | creates new entities, correctly | **matches them anyway, and writes them into the picture** |
+| told nothing has been named yet | leaves the field out | invents `object:1` … `object:6` |
+
+The third row is the finding. Shown a known list containing only a **grand piano**
+and a **fish tank**, neither of them in the room, Cosmos 3 matched the armchair to
+the piano, matched the glass table to the fish tank, and then **hallucinated a
+fish tank into the scene** — box, "a glass aquarium with gravel and green plants,
+lit from above" copied verbatim out of the list it had been handed, and a mention
+in the scene sentence. Byte-identical on a repeat run at temperature zero. The
+same thing happened unprompted in the twin-chair frame, where four observations
+came back sharing one meaningless box and descriptions copied from the previous
+view.
+
+So the known list does not merely fail to settle identity: **it contaminates
+perception.** The model reads it as a list of things it ought to be seeing.
+
+That also disposes of the good news in row one. Matching 6 of 6 on the identical
+frame is not evidence of recognition, because the same model emits the same list
+against a scene that shares nothing with it. It is agreement by repetition.
+
+Two things were ruled out before concluding any of this. The JSON schema permits
+`null` and does not require the field at all, and llama.cpp's grammar really does
+admit a bare `null` — checked directly against the running server — so refusing to
+say "new" is the model's choice and not the harness's cage. And the model card's
+warning that Qwen-VL needs at least 1024 image tokens for grounding was taken
+seriously: at that setting the fish tank stops being drawn into the scene, but
+both the armchair and the glass table are still forced onto the grand piano, the
+twin-chair frame still comes back as five carried-forward matches, and a single
+look costs **164 s on a fast desktop CPU** — a configuration this rover could not
+afford even if the weights fitted.
+
+### What it means
+
+Reason 2's failure is conservative: it never matches, so it over-creates, and the
+store stays truthful about what was actually seen. Cosmos 3's failure is
+corrupting: it over-matches, so the store fills with wrong identities and with
+objects that were never in the room. **For a rover, whose whole job is to keep
+meeting things it has not seen before, "cannot say new" is the more dangerous of
+the two.**
+
+This closes the "try Cosmos 3" fork. The remaining route is the one in
+[docs/task-cosmos-world-state-reidentification.md](../docs/task-cosmos-world-state-reidentification.md):
+take identity away from the model and give it to measured placement and
+appearance. One amendment to that document falls out of this: it allows Cosmos to
+keep receiving the known entities "for semantic context", with its identity answer
+treated as advisory. The evidence here says go further and **withhold the known
+list from the perception call altogether**, because what it corrupts is the
+detections themselves, not just the identity field.
+
+### A trap left behind for the next model
+
+Cosmos 3 writes the *string* `"null"` where Reason 2 leaves the field out, which
+the validator refused as an invented identifier — quietly throwing away every
+observation in three perfectly good answers. `contract.py` now reads the null-words
+as no entity, while still refusing anything that merely looks like an identifier.
+Any model swapped in behind `PhysicalReasoner` is worth checking for the same
+class of thing before its answers are believed.

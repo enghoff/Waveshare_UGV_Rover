@@ -11,6 +11,21 @@ measured; use this document for the next implementation step.
 Do **not** proceed to semantic frontier selection yet, and do **not** spend the
 next iteration trying to prompt Cosmos into performing entity identity better.
 
+> **Cosmos 3 was tried on 2026-09-01 and this fork is now closed.** It cannot run
+> on this rover — the 4B Edge variant is an architecture llama.cpp cannot load,
+> and the only runnable build needs 6.19 GB of weights against 5.85 GB of measured
+> headroom and no swap. Tested off the rover on the rover's own frames, its
+> perception is clearly better than Reason 2's and its identity behaviour is
+> clearly worse: shown a known list containing a grand piano and a fish tank, it
+> matched the armchair to the piano and drew the fish tank into the scene. It will
+> not say "new". Reason 2 over-creates and stays truthful; Cosmos 3 over-matches
+> and does not. The numbers are in
+> [`world_state/README.md`](../world_state/README.md).
+>
+> One change to this document follows from that result, marked below: the known
+> entity list should be **withheld from the perception call**, not merely demoted
+> to advisory, because it corrupts the detections and not just the identity field.
+
 The POC established a useful boundary:
 
 ```text
@@ -214,8 +229,17 @@ A full object-motion model is not required in this slice.
 ## Appearance embeddings
 
 Stop asking Cosmos to choose `existing_entity` as the primary association
-mechanism. Cosmos may still receive known entities for semantic context, but its
-identity answer is advisory/diagnostic only.
+mechanism.
+
+**Do not show Cosmos the known entities at all.** This is stronger than the
+earlier draft of this section, which allowed the list through "for semantic
+context" with the identity answer treated as advisory. Measured on 2026-09-01,
+the list does not merely fail to settle identity — it contaminates the
+detections. Cosmos 3 handed a list containing a fish tank reported a fish tank in
+the picture, with the description copied out of the list; Reason 2 shows a milder
+version of the same pull. Ask the model what it can see, and nothing else, so that
+its answer is evidence about the room rather than an echo of the world state the
+resolver is about to update.
 
 For each Cosmos bbox, crop the corresponding object image with a modest amount of
 context around the box and compute a reusable visual embedding.
