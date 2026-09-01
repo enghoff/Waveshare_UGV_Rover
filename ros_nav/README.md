@@ -50,7 +50,8 @@ recoveries, and a standard set of topics that any ROS tool can look at.
         |                              room out
         v
   rover_daemon --ros-nav               drive, drive_to, turn_in_place,
-                                       stop_driving, describe_surroundings,
+                                       explore, stop_driving,
+                                       describe_surroundings,
                                        show_map, drive_to_map_point,
                                        map_png, nav_status, clear_map
 ```
@@ -267,6 +268,125 @@ s.sendall(b'{"op": "status"}\n')
 print(json.dumps(json.loads(s.makefile("r").readline()), indent=1))
 EOF
 ```
+
+## Letting it map the place on its own
+
+`explore` sends the rover to the edge of what it has mapped, over and over, until
+there are no edges left it can reach. From a console it is the **explore** button
+on the drive card; from the daemon it is a tool with an optional `minutes`; from
+the bridge it is one more move:
+
+```bash
+python3 - <<'EOF'
+import json, socket
+s = socket.create_connection(("127.0.0.1", 8773))
+s.sendall(b'{"op": "explore", "budget_s": 120}\n')
+for line in s.makefile("r"):
+    print(line.strip())
+EOF
+```
+
+It is a move and not a mode, which is the decision the rest of this follows from.
+It takes the same mutex `drive` and `drive_to` take, so a tap on the map while it
+is running is refused as busy rather than fighting it for the same action server;
+STOP ends it as it ends anything else; and it narrates itself the whole way, so a
+console watching one shows what it is doing rather than a stopwatch.
+
+**None of the driving is new.** Choosing where to go is `frontier.py`, and every
+metre of getting there is `NavigateToPose` through `goto` — the same goal check,
+the same route-based time allowance, the same recovery ladder, the same escape
+behaviours. That was the point of doing it this way rather than the obvious way.
+
+### Why not `explore_lite`
+
+It is the obvious first answer, `docs/jetson-orin-navigation.md` proposed it, and
+it is not what is here. Two reasons, and the first is merely awkward while the
+second is the real one.
+
+RoboStack has no `ros-jazzy-explore-lite`, so having it means building
+`m-explore-ros2` from source into the conda environment — which is possible, since
+`behaviors/` already colcon-builds against it, but it is a build step and this
+directory has spent some effort not having those.
+
+The second reason is that `explore_lite` publishes straight to
+`/navigate_to_pose`. Everything this rover has learned about sending itself a goal
+lives between the goal and that action server, and a node that goes around it goes
+around all of it: the footprint check that stops a goal being set inside a wall
+(`goal_fit.py`, and the thirty seconds of shuffling that paid for it), the move
+mutex that keeps two callers from steering at once, the time allowance built from
+the route rather than the straight line, and the narration both consoles read. A
+second thing publishing goals is also a second thing the STOP button does not know
+about. What is here is about three hundred lines and it inherits all of that by
+construction, because it asks `goto` rather than Nav2.
+
+### What it costs to decide where to go
+
+`frontier.py` finds the cells the mapper calls free that have unknown ground next
+to them, clumps them into frontiers, and ranks them. Two decisions in it are worth
+knowing:
+
+**Reachability is decided by walking, not by measuring.** A breadth-first walk out
+from the rover over cells the mapper has seen to be free, four-connected. A house
+map is full of frontiers two metres away through a wall and eleven metres away
+round the corridor, and straight-line ranking cannot tell them apart. The walk
+costs one sweep — 18 ms on the 248 x 327 grid the kitchen-loop drive produced —
+and drops the unreachable ones instead of ranking them.
+
+**And then the planner is asked anyway, before the rover moves.** The walk goes
+through a 5 cm gap between a table leg and a wall; Nav2 plans with the inflated
+body and will not. Without the check that frontier is the best-ranked candidate
+every round until the goal fails, and each failure costs the full recovery ladder.
+`ComputePathToPose` answers the same question the goal would have started by
+asking, for about a second, and a frontier it will not route to is written off
+having driven nothing.
+
+### The rule that makes it stop
+
+**Every frontier is written off once it has been driven to, whether or not the
+rover got there.** For a failure that is obvious; for an arrival it is what makes
+the loop terminate. The controller stops within its 22 cm tolerance, and if the
+lidar did not happen to see round the corner from there, the frontier is still on
+the map and still the nearest one — so a loop that wrote off only failures would
+drive the same 30 cm until its budget ran out. What it costs is the occasional
+pocket left behind a corner the rover stood next to, and a second `explore` picks
+that up, because the blacklist lives exactly as long as one call.
+
+### 0.50 m of boundary, and how that number was arrived at
+
+The one setting worth arguing about is how much unmapped edge makes a frontier
+worth driving to. `explore_sim.py` runs the shipped policy round the floor plan
+the recorded `kitchen-loop` drive produced:
+
+| smallest frontier | goals | driven | floor found |
+|---|---|---|---|
+| 0.30 m | 23 | 99.8 m | 99.9% |
+| 0.50 m | 16 | 82.4 m | 99.6% |
+| 0.75 m | 10 | 65.8 m | 98.3% |
+| 1.00 m | 6 | 54.8 m | 94.7% |
+
+Four goals get 93% of that house. At 0.30 m, nineteen of the twenty-three goals
+and seventy of the hundred metres buy the last 0.3% — which at this rover's speed
+is more than the ten minutes an `explore` is given, so the run would end on its
+budget having left something real unmapped while it perfected a corner. 0.50 m is
+the default and keeps essentially all the coverage for four-fifths of the driving.
+
+The simulation is worth exactly what its room is worth, which is why the room is a
+recorded one. What it models below the choosing is crude and admits to it: the
+lidar never misses a chair leg, a revealed cell never changes its mind, and the
+driving never fails. **So the coverage figure is an optimistic bound and the
+termination is the result to trust** — every reason a real run would stop early is
+missing from it, so a policy that failed to stop here would certainly fail to stop
+in the house.
+
+Both run without a rover, on anything with Python:
+
+```bash
+python3 frontier.py fixtures/kitchen-loop.pgm.gz
+python3 explore_sim.py fixtures/kitchen-loop.pgm.gz --picture /tmp/run
+```
+
+`fixtures/kitchen-loop.pgm.gz` is the grid `map_score.py` wrote from that
+replay, kept because it is the only real half-explored house this repository has.
 
 ## The calibrations, and why they were not optional
 

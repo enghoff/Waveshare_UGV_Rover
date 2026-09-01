@@ -978,6 +978,206 @@ def test_goal_fits_before_it_is_sent():
               True)
 
 
+def test_frontiers_are_found_on_a_real_map():
+    """Which gap in the map is worth driving to, argued against a real map.
+
+    `frontier.py` has no ROS in it for `goal_fit.py`'s reason, so what runs here
+    is the code the rover runs. What it runs against is not a room invented for
+    the test: it is the occupancy grid slam_toolbox produced from the recorded
+    `kitchen-loop` drive, kept beside the recordings it came from. A chooser that
+    works on a rectangle with a doorway drawn in it has been proved against a
+    rectangle with a doorway drawn in it -- see "The simulation that could not
+    fail" in the README for what that is worth.
+    """
+    section("frontiers, on the map a real drive produced")
+    sys.path.insert(0, HERE)
+    try:
+        import frontier
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import frontier: %s" % exc)
+        return
+
+    # --- the arithmetic first, on geometry small enough to reason about.
+    # Two metres of floor with the right-hand third never seen, inside a wall.
+    # The boundary between floor and unknown is a frontier about 2 m tall, and
+    # nothing else in here is one.
+    #
+    # **The wall round the outside is not scenery.** Off the edge of a grid reads
+    # as unknown, because that is what it is -- the map is only as big as what
+    # has been seen -- so free floor running to the last column is a frontier,
+    # and correctly so. A test room without walls is a room with four extra
+    # frontiers round the outside, which is not what a mapped room looks like.
+    width = height = 40
+    data = [0] * (width * height)
+    for i in range(width):
+        data[i] = data[(height - 1) * width + i] = 100
+    for row in range(height):
+        data[row * width] = data[row * width + width - 1] = 100
+    for row in range(1, height - 1):
+        for col in range(30, width - 1):
+            data[row * width + col] = -1
+    room = frontier.Grid(width, height, 0.05, 0.0, 0.0, data)
+
+    found, summary = frontier.survey(room, (0.5, 1.0))
+    check("the edge of the known floor is found", len(found) >= 1, True)
+    check("...and it is where the unknown starts, not somewhere in the middle",
+          found and abs(found[0]["x"] - 1.475) < 0.06, True)
+    check("...and the rover is sent facing the unknown, not away from it",
+          found and abs(math.degrees(found[0]["yaw"])) < 45.0, True)
+    check("...and the whole 2 m of boundary counts as one frontier, not forty",
+          summary["frontiers"], 1)
+
+    # A wall right across the room with unknown behind it is not a frontier: the
+    # rover cannot walk to the far side, and offering it is how an explore spends
+    # its budget failing to reach the same place.
+    walled = list(data)
+    for row in range(1, height - 1):
+        walled[row * width + 20] = 100
+        for col in range(21, width - 1):
+            walled[row * width + col] = -1
+    check("unknown ground behind a wall is not offered, because the walk to it "
+          "does not exist",
+          frontier.survey(frontier.Grid(width, height, 0.05, 0.0, 0.0, walled),
+                          (0.5, 1.0))[0], [])
+
+    # The walk is four-connected, and that is not a detail. Two rooms touching
+    # at a single corner are not connected for a rover 36 cm wide.
+    pinched = [100] * (width * height)
+    for row in range(5, 15):
+        for col in range(5, 15):
+            pinched[row * width + col] = 0
+    for row in range(15, 25):
+        for col in range(15, 25):
+            pinched[row * width + col] = -1
+    check("a diagonal touch between two cells is not a way through",
+          frontier.survey(frontier.Grid(width, height, 0.05, 0.0, 0.0, pinched),
+                          (0.5, 0.5))[0], [])
+
+    # A blacklisted frontier is not offered again, which is what stops an
+    # explore driving to the same doorway until its budget runs out.
+    keep = frontier.survey(room, (0.5, 1.0))[0]
+    again, summary = frontier.survey(room, (0.5, 1.0),
+                                     blacklist=[(keep[0]["x"], keep[0]["y"])])
+    check("a frontier already tried is not offered again", again, [])
+    check("...and the reason is reported rather than silent",
+          summary["rejected_blacklisted"] >= 1, True)
+
+    # --- and then the real map.
+    saved = os.path.join(HERE, "fixtures", "kitchen-loop.pgm.gz")
+    if not os.path.exists(saved):                       # pragma: no cover
+        print("  .... skipped, %s is not here" % saved)
+        return
+    house = frontier.read_pgm(saved)
+    free, unknown = frontier.classify(house)
+    check("the saved map loads as the 12.4 x 16.4 m the drive covered",
+          (round(house.width * house.resolution, 1),
+           round(house.height * house.resolution, 1)), (12.4, 16.4))
+    check("...with the floor and the unmapped part map_score.py counted",
+          (sum(free), sum(unknown)), (22062, 56533))
+
+    seen = [i for i, f in enumerate(free) if f]
+    middle = house.point_of(int(sum(i % house.width for i in seen) / len(seen)),
+                            int(sum(i // house.width for i in seen) / len(seen)))
+    found, summary = frontier.survey(house, middle)
+    check("there is somewhere worth driving to in a half-explored house",
+          len(found) >= 3, True)
+    check("...and some of the floor is behind something, and known to be",
+          summary["reachable_cells"] < summary["free_cells"], True)
+    check("...and every goal offered is on floor the mapper calls free",
+          all(free[house.cell_of(c["x"], c["y"])[1] * house.width
+                   + house.cell_of(c["x"], c["y"])[0]] for c in found), True)
+    check("...and every one of them has unknown ground next to it",
+          all(any(unknown[(house.cell_of(c["x"], c["y"])[1] + dr) * house.width
+                          + house.cell_of(c["x"], c["y"])[0] + dc]
+                  for dc, dr in ((-1, 0), (1, 0), (0, -1), (0, 1)))
+              for c in found), True)
+    check("...and the best of them is a real opening rather than a ragged cell",
+          found[0]["size_m"] >= frontier.MIN_FRONTIER_M, True)
+
+    # Ranking. The nearest frontier is not automatically the best one, and the
+    # far one being preferred is the behaviour that gets a rover out of the room
+    # it is in -- but only when it is enough bigger to be worth the drive.
+    near = {"x": 0.0, "y": 0.0}
+    cheap = min(found, key=lambda c: c["cost"])
+    check("what wins is the trade between distance and size, not distance",
+          cheap is found[0] and any(c["distance_m"] < found[0]["distance_m"]
+                                    for c in found), True)
+    del near
+
+
+def test_exploring_finishes_and_covers_the_house():
+    """The explore loop, run round the room the recorded drive mapped.
+
+    The question this answers is the one that cannot be answered by reading the
+    code: a loop that hands itself new work stops. `explore_sim.py` drives the
+    *shipped* policy -- `frontier.Explorer`, the same object the bridge uses --
+    round the kitchen-loop floor plan, and the run has to end because it ran out
+    of frontiers rather than because it hit the backstop.
+
+    The coverage figure is checked loosely and on purpose. It is an optimistic
+    bound: the simulated lidar never misses a chair leg and the simulated
+    driving never fails. What would make it meaningless is not being a few
+    percent out, it is the run not finishing.
+    """
+    section("exploring the kitchen-loop house, start to finish")
+    sys.path.insert(0, HERE)
+    saved = os.path.join(HERE, "fixtures", "kitchen-loop.pgm.gz")
+    if not os.path.exists(saved):                       # pragma: no cover
+        print("  .... skipped, %s is not here" % saved)
+        return
+    try:
+        import frontier
+        import explore_sim
+    except ImportError as exc:                          # pragma: no cover
+        print("  .... skipped, cannot import explore_sim: %s" % exc)
+        return
+
+    room = explore_sim.Room(frontier.read_pgm(saved))
+    floor = explore_sim.reachable_floor(room)
+    start = room.origin_x + (floor[len(floor) // 2] % room.width + 0.5) \
+        * room.resolution, \
+        room.origin_y + (floor[len(floor) // 2] // room.width + 0.5) \
+        * room.resolution
+    result = explore_sim.run(room, start, verbose=False)
+    known, total = explore_sim.coverage(room, result["seen"])
+
+    check("the run ends because there is nothing left, not because it gave up",
+          result["reason"], "finished")
+    check("...and it took a sensible number of goals to do it, not two hundred",
+          2 <= result["goals"] <= 40, True)
+    check("...and it never offered a frontier its own walk could not reach",
+          result["blocked"], 0)
+    check("...and it found nearly all the floor there was to find",
+          known >= 0.95 * total, True)
+    check("...and it did not drive the length of a marathon to do it",
+          result["metres"] < 200.0, True)
+
+    # The rule that makes it terminate, checked directly rather than inferred
+    # from the run above: a frontier that has been driven to is not offered
+    # again, whatever happened when the rover got there.
+    explorer = frontier.Explorer()
+    explorer.committed(1.0, 1.0)
+    check("a frontier that has been driven to is written off, not just a failed "
+          "one", explorer.blacklist, [(1.0, 1.0)])
+    check("...and the one being driven to is what the next round prefers",
+          explorer.previous, (1.0, 1.0))
+
+    # And that the bridge is actually running this policy rather than a second
+    # copy of it, which this file cannot check by importing nav_bridge.
+    bridge = os.path.join(HERE, "nav_bridge.py")
+    if os.path.exists(bridge):
+        with open(bridge) as fh:
+            source = fh.read()
+        check("the bridge explores with the shared policy, not its own copy",
+              "frontier.Explorer(" in source and "explorer.committed(" in source,
+              True)
+        check("...and asks the planner for a route before it commits the rover",
+              "self.route_to(" in source, True)
+        check("...and stops when the stop is latched or a stop was asked for",
+              'return totals("stopped"' in source
+              and 'return totals("blocked"' in source, True)
+
+
 # --- the navigation bridge ----------------------------------------------------
 # Stand-ins for nav_bridge.py, which cannot be imported without rclpy. The same
 # arrangement as the drive model above, and for the same reason: a sign flip in a
@@ -1774,6 +1974,8 @@ def main():
     test_calibration_store()
     test_configs_agree()
     test_goal_fits_before_it_is_sent()
+    test_frontiers_are_found_on_a_real_map()
+    test_exploring_finishes_and_covers_the_house()
     test_a_route_is_budgeted_on_the_route()
     test_progress_is_not_only_translation()
     test_dwb_will_not_sample_a_turn_the_wheels_cannot_hold()

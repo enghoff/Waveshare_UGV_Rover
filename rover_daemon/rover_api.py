@@ -525,6 +525,20 @@ class _Drive:
         """Turn on the spot. Positive is left, the lidar's convention."""
         return _call("turn_in_place", angle_deg=angle_deg)
 
+    def explore(self, minutes=None):
+        """Map what has not been mapped, choosing where to go without being told.
+
+        Blocks for as long as it runs, which is minutes -- longer than anything
+        else here. A script that wants to do something while it happens wants
+        `alongside`; a script that wants it to end early wants `drive.stop()`
+        from the other thread.
+
+        It stops on its own when there is nowhere unmapped left it can reach, so
+        the usual shape is to call it once and read the reply rather than to loop
+        on it.
+        """
+        return _call("explore", minutes=minutes)
+
     def stop(self):
         return _call("stop_driving")
 

@@ -87,6 +87,15 @@ MAP_POINT_HINT = (
     "saying how far across it is from the left and how far down from the top, each "
     "as a fraction from 0 to 1. The rover is in the middle, at 0.5 and 0.5."
 )
+# What `explore` may be asked for, in seconds, whatever it is asked for. The
+# bounds are here rather than in the schema because a schema is a description and
+# this is a rule: a model that has talked itself into an hour of unsupervised
+# driving must be given ten minutes, not an hour, and told plainly that is what
+# it got. The floor exists for the same reason from the other end -- an explore
+# of thirty seconds is one goal and a cancellation, which is worse than not
+# starting.
+EXPLORE_MIN_S = 60.0
+EXPLORE_MAX_S = 900.0
 
 def _fraction(value: Any, what: str) -> float:
     """A place on the map picture, as a fraction of its width or height.
@@ -223,6 +232,34 @@ class RoverNav:
         outcome = self.nav.turn_in_place(angle)
         return {"ok": outcome.reason == "arrived", **outcome.asdict(),
                 **self._nav_context()}
+
+    def _tool_explore(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Go and map the rest of the room, without being told where.
+
+        The one tool that keeps giving the rover work, so it is the one tool with
+        a clock on it: `minutes` becomes the budget the ROS side stops at, and it
+        is capped here rather than trusted, because a model that has decided an
+        hour is reasonable should not be able to have the wheels for an hour.
+
+        It returns when the exploring is over, which is minutes rather than
+        seconds -- the same as a long `drive_to`, and for the same reason the
+        model is told so in the schema. `stop_driving` ends it from anywhere.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": NO_DRIVING}
+        minutes = arguments.get("minutes")
+        budget_s = None
+        if minutes is not None:
+            budget_s = max(EXPLORE_MIN_S,
+                           min(EXPLORE_MAX_S,
+                               _number(minutes, "minutes") * 60.0))
+        outcome = self.nav.explore(budget_s=budget_s)
+        # "timed out" is a success here in a way it is not for a drive: the rover
+        # explored for as long as it was given and stopped, having mapped
+        # whatever it mapped. Only a rover that could not explore at all is a
+        # failure.
+        return {"ok": outcome.reason in ("arrived", "timed out", "stopped"),
+                **outcome.asdict(), **self._nav_context()}
 
     def _tool_stop_driving(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:

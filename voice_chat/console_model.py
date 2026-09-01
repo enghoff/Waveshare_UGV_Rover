@@ -329,6 +329,15 @@ def move_sentence(move):
         line = f"driving {where}"
     elif phase == "turning":
         line = f"turning {where}"
+    elif phase == "choosing":
+        # An `explore` between goals: it has the map open and is picking the next
+        # gap in it. Named rather than left to fall through to the phase word,
+        # because "choosing" on its own reads as a rover that has stopped, and
+        # this is the one phase where a stopped rover is working.
+        line = "looking at the map for somewhere unmapped"
+        count = move.get("frontiers_left")
+        if count:
+            line += f" ({count} left)"
     elif phase == "replanning":
         line = f"replanning (#{move.get('replans') or 1})"
     elif phase == "stopping":

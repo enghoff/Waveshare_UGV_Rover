@@ -46,3 +46,16 @@ netwatch/** text eol=lf
 # /bin/sh. The same carriage-return-in-the-interpreter-name trap, on the stack
 # that drives the rover.
 ros_nav/** text eol=lf
+
+# ros_nav/fixtures/ is binary test material: the occupancy grid a recorded drive
+# produced, gzipped, which frontier.py and explore_sim.py are argued against. The
+# `ros_nav/** text eol=lf` rule above would rewrite bytes inside a gzip stream and
+# leave a fixture that fails to decompress -- as a checkout problem, on one
+# machine, which reads as a corrupt file in the repository.
+ros_nav/fixtures/** -text
+
+# It lives here rather than under ros_nav/recordings/ for a second reason worth
+# writing down: `recordings/` is on that component's `preserve` list in
+# deploy/manifest.json, so the deployer excludes it and nothing under it is ever
+# copied to the rover. That is right for drives the rover recorded and wrong for a
+# fixture the repository owns and the rover's own selftest needs.

@@ -354,6 +354,43 @@ NAV_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "explore",
+            "description": (
+                # Described by what it is for rather than by how it works. A
+                # model offered "frontier-based exploration" does not call it
+                # when somebody says "go and have a look round the house", and
+                # that sentence is the whole reason the tool exists.
+                "Go and map the parts of the room or house the rover has not seen "
+                "yet, choosing where to go by itself. It repeatedly finds the "
+                "nearest edge of the mapped area, drives there going around "
+                "obstacles, and stops when there is nowhere unmapped left it can "
+                "reach. Use this when asked to explore, to look around, to map "
+                "the place, or to find out what else is there. It drives the "
+                "rover for minutes at a time and will not answer until it has "
+                "finished, so say out loud that it is setting off before calling "
+                "it. Anyone can end it with stop_driving. It cannot see steps, "
+                "drops, or table tops, so do not start it if the rover is "
+                "somewhere it could fall."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "number",
+                        "description": (
+                            "How long to keep exploring before stopping, at most "
+                            "15. Leave it out for the usual 10 minutes. It "
+                            "usually finishes early, when there is nothing "
+                            "unmapped left to drive to."
+                        ),
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "stop_driving",
             "description": (
                 "Stop the rover moving immediately. Use this the moment anyone asks "

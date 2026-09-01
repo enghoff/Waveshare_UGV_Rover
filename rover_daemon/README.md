@@ -69,7 +69,18 @@ Core hardware/vision tools include:
 
 With `--ros-nav`, the daemon also exposes the navigation/driving tools backed by
 Nav2. Their schemas and bounds are in `tool_schemas.py`; navigation behavior and
-configuration are in [`../ros_nav/`](../ros_nav/). `show_map` takes how many metres
+configuration are in [`../ros_nav/`](../ros_nav/).
+
+`explore` is the one of those that is unlike the rest, and worth knowing about
+before it is called: it is not a move to a place, it is the rover driving itself
+to the edge of the mapped area over and over until there are no edges left. It
+blocks for minutes rather than seconds — the model is told so in its schema and
+told to say it is setting off before calling — and `stop_driving` ends it from
+anywhere. `minutes` is capped here rather than in the schema, between one and
+fifteen (`EXPLORE_MIN_S`/`EXPLORE_MAX_S` in `rover_nav.py`), because a schema
+describes and this is a rule: a model that has talked itself into an hour of
+unsupervised driving gets fifteen minutes. Which gap in the map it drives to is
+`../ros_nav/frontier.py`, and its README has the account. `show_map` takes how many metres
 of room to show (`across_m`) and how big a picture (`pixels`), the same two knobs
 the console uses, and leaves them optional so "show me the map" is still a room.
 It is not shown `half_extent_m`: that is how `map_png` talks, and a model handed

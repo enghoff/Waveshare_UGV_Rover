@@ -506,6 +506,29 @@ class RosNavigator:
                          {"op": "goto", "x_m": float(x_m),
                           "y_m": float(y_m or 0.0)})
 
+    def explore(self, budget_s: float | None = None,
+                min_frontier_m: float | None = None) -> Outcome:
+        """Map the rest of the room, by driving to the edges of what is mapped.
+
+        One call that lasts minutes rather than seconds, and it is a move like
+        any other here: it holds the same mutex, so anything else that would
+        drive is refused as busy while it runs, and `stop` ends it. The choosing
+        is on the ROS side because that is where the map is -- see `explore` in
+        `ros_nav/nav_bridge.py`.
+
+        The socket's quiet timeout is what makes this work at all without a
+        special case: the bridge narrates every third of a second throughout,
+        including while it is thinking about where to go next, so a run of ten
+        minutes never looks like a connection that has died.
+        """
+        asked: dict[str, Any] = {}
+        if budget_s is not None:
+            asked["budget_s"] = float(budget_s)
+        if min_frontier_m is not None:
+            asked["min_frontier_m"] = float(min_frontier_m)
+        return self.move("explore", asked, {"op": "explore", **asked},
+                         phase="choosing")
+
     def pose_now(self) -> tuple[float, float, float] | None:
         """Where the rover is, in the map frame, for converting an offset."""
         answer = self.ask({"op": "status"}, STATUS_TIMEOUT_S)
@@ -586,6 +609,12 @@ class RosNavigator:
                     self.report.say("replanning",
                                     "Nav2 is trying to recover", replans=replans)
                     continue
+                # A new frontier is a new route, so the announcement is armed
+                # again. Without this an `explore` announces the route to its
+                # first frontier and then drives eight more in silence, because
+                # `announced` was written for a move that has one route in it.
+                if line.get("phase") == "choosing":
+                    announced = False
                 fields: dict[str, Any] = {}
                 # The route, said once. `route_m` is what the console turns into
                 # "route accepted: 2.4 m through 48 waypoints", so it is the length
@@ -604,6 +633,12 @@ class RosNavigator:
                     announced = True
                     fields["route_m"] = float(line["remaining_m"])
                     fields["waypoints"] = int(line["waypoints"])
+                # How much unmapped edge is left, carried through unchanged so
+                # that a panel watching an explore can say "9 left" rather than
+                # only "driving". Absent from every other move, which is why it
+                # is forwarded when present rather than always.
+                if line.get("frontiers_left") is not None:
+                    fields["frontiers_left"] = int(line["frontiers_left"])
                 self.report.say(str(line.get("phase") or "driving"),
                                 str(line.get("why") or ""), **fields)
             elif kind == "outcome":

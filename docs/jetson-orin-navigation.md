@@ -21,6 +21,9 @@ since been answered on the hardware:
 - **MPPI has still not been benchmarked** (recommendation 4). The headroom for it
   now exists; the work has not been done.
 - **Saved-map localization** (recommendation 5) has not been done either.
+- **Frontier exploration is built** (recommendation 7), as an `explore` op on the
+  nav bridge rather than as `explore_lite`, which is not in RoboStack and would
+  have bypassed this rover's goal checks. See "Automatic exploration" below.
 
 The Banana Pi baseline the migration sequence below depends on no longer exists as
 a running system: that board is powered off and off the network. Its
@@ -406,6 +409,28 @@ This is a good addition because it leaves the existing navigation safety and rec
 
 `explore_lite` is an obvious first baseline. A custom exploration policy can be substituted later if semantic/VLM-driven exploration becomes useful.
 
+### Status: built, and not with `explore_lite` (2026-09-01)
+
+This is done. It is not `explore_lite`, and the reasoning is in
+[`../ros_nav/README.md`](../ros_nav/README.md) under "Letting it map the place on
+its own"; the short version is two findings.
+
+**RoboStack does not package it.** There is no `ros-jazzy-explore-lite` in the
+channel this rover's ROS comes from, so "reuse" would have meant building
+`m-explore-ros2` from source into the conda environment.
+
+**And it would have gone around everything this rover has learned about sending
+itself a goal.** `explore_lite` publishes straight to `/navigate_to_pose`, and
+between a goal and that action server sit the footprint check that keeps a goal
+out of a wall, the mutex that stops two callers steering at once, the route-based
+time allowance, and the narration both consoles read — none of which a node
+publishing goals directly can inherit, and all of which the exploring here gets by
+asking the bridge's own `goto` instead. It is about three hundred lines in
+`ros_nav/frontier.py` and one more op on the bridge.
+
+What that keeps from the plan below is the shape: a goal-generation layer above
+Nav2, with Nav2 still in charge of every metre of motion.
+
 ## Components worth reusing from Waveshare
 
 The Waveshare Orin stack should be treated as a component/reference source rather than as a complete replacement.
@@ -422,7 +447,7 @@ Likely useful pieces are:
 | AMCL / saved-map examples | Reuse/adapt |
 | Cartographer examples | Optional experiment |
 | RTAB-Map launch/config | Reuse/adapt for experimental mode |
-| `explore_lite` integration | Reuse/adapt |
+| `explore_lite` integration | **Not reused** — not in RoboStack, and it bypasses this rover's goal checks; see above |
 | Vizanti | Optional; current web tooling already covers primary UI needs |
 | Gazebo configuration | Useful for simulation/regression tests |
 
@@ -497,6 +522,10 @@ Do not make it part of the default boot path until repeatable tests show a concr
 ### Phase 8 - frontier exploration
 
 Add `explore_lite` or equivalent as a goal-generation layer above Nav2.
+
+*Done on 2026-09-01, as the "equivalent" rather than as `explore_lite` — see
+"Automatic exploration" above. Phases 5 (MPPI) and 6 (saved-map mode) are still
+open, and this did not depend on either.*
 
 ## What not to do
 

@@ -669,6 +669,12 @@ class Session(SessionShow):
         elif what == "turn":
             self.move("turn_in_place",
                       {"angle_deg": _number(action.get("angle_deg"), 90.0)})
+        elif what == "explore":
+            # No arguments: the budget is the rover's default, because the one
+            # thing a console is for is watching, and somebody watching can stop
+            # it whenever they like. A box to type minutes into would be a
+            # setting nobody has a reason to change with the STOP button in view.
+            self.move("explore", {})
         elif what == "tap":
             self.tap(action)
         elif what == "describe":

@@ -69,7 +69,22 @@ TIMEOUT_S = 12.0
 # right patience for a call that is one line down a UART, and a daemon that has
 # genuinely gone should be noticed in twelve seconds and not in thirty.
 RUN_SCRIPT_TIMEOUT_S = 30.0
-SLOW_TOOLS = {"run_script": RUN_SCRIPT_TIMEOUT_S}
+# And for `explore`, which is longer again and for a different reason: it is not a
+# job that takes a while, it is the rover driving itself round the house until it
+# has mapped it. The daemon caps what it will accept at fifteen minutes
+# (`EXPLORE_MAX_S` in rover_nav.py), and the cap is a backstop checked *between*
+# goals -- so a run that reaches it can still be part way through a last drive
+# worth a couple of minutes.
+#
+# This has to outlast that, and by more than looks necessary, for the reason the
+# whole table exists: a client that gives up first reports "no answer from the
+# rover daemon" about a rover that is exploring perfectly well, and whoever is
+# listening is told the rover has died while it is driving past them. Twenty
+# minutes is the daemon's ceiling plus the longest single goal it could still be
+# driving when it hits it.
+EXPLORE_TIMEOUT_S = 1200.0
+SLOW_TOOLS = {"run_script": RUN_SCRIPT_TIMEOUT_S,
+              "explore": EXPLORE_TIMEOUT_S}
 CONNECT_TIMEOUT_S = 3.0
 # Shorter, because this one is paid per candidate before anybody has spoken. An
 # address on this LAN either answers in milliseconds or is not there.

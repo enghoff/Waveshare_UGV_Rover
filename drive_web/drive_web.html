@@ -285,6 +285,14 @@
     </div>
     <p class="hint">Positive is left. Every move is bounded and watched by the
       lidar the whole way; there is no continuous teleop here.</p>
+    <div class="row" style="margin-top:8px">
+      <button data-move="explore">explore</button>
+      <span class="hint" style="margin:0">until the map has no edges left</span>
+    </div>
+    <p class="hint">Exploring drives the rover to the edge of the mapped area over
+      and over, for up to ten minutes, choosing where to go itself. It is a move
+      like any other here, so STOP ends it and nothing else drives while it runs.
+      It cannot see steps or drops.</p>
     <div class="keys" style="margin-top:8px">
       <div><kbd>space</kbd>stop, even while typing a distance</div>
       <div><kbd>&uarr;</kbd>drive the distance above</div>
@@ -533,6 +541,13 @@ function render(next) {
     button.disabled = !next.link.tools.includes("start_tracking");
   }
   $("clearMap").disabled = !next.link.connected || next.busy !== null;
+  // Both rules at once, because exploring is both. It is a move, so it waits for
+  // whatever is driving; and it is newer than the rest of this console, so a
+  // rover running an older daemon has to grey it out rather than offer a button
+  // that comes back "no such tool".
+  document.querySelector('[data-move="explore"]').disabled =
+      !next.link.can_drive || next.busy !== null
+      || !next.link.tools.includes("explore");
 }
 
 const verdictOf = (state) =>
@@ -922,6 +937,11 @@ function wire() {
   // The preset turns bind their own angle in start(); only these two read a box.
   $("driveCard").querySelector('[data-move="drive"]').onclick = () => drive();
   $("driveCard").querySelector('[data-move="turn"]').onclick = () => turn();
+  // No arguments and no keyboard shortcut, both deliberately. This is the one
+  // control that hands the rover ten minutes of its own work, and it should take
+  // a deliberate click rather than a key pressed next to the arrows.
+  $("driveCard").querySelector('[data-move="explore"]').onclick =
+      () => post({do: "explore"});
   for (const button of document.querySelectorAll("[data-zoom]")) {
     button.onclick = () => post({do: "map", zoom: +button.dataset.zoom});
   }
