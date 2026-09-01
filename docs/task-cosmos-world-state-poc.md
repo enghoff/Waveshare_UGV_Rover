@@ -28,6 +28,48 @@ deployed to the Orin and the running system is verified there.
 
 ---
 
+## Outcome, 2026-09-01
+
+**Built, deployed and run. The question it was set to answer came back no.**
+
+Cosmos Reason 2 2B runs locally on the Orin's own CPU and its per-frame perception
+is good: across six inspections of a living room it named the sofa, the glass
+table, the coiled cable on the floor, the spray bottle, the framed pictures and the
+doorway, every label a real thing in the frame, with boxes that land on the objects
+once they are read on the scale the model actually uses.
+
+**It will not re-identify anything it has already named.** Shown four entities it
+had itself created, it matched none and created four more; shown fifteen, on the
+identical camera view it had already inspected, it matched none and created six
+more. A bench probe put the known list first, told it explicitly to prefer a name
+from that list, and handed it the very frame those entities came from a minute
+earlier: `existing_entity` was null for all six things it had just named. So the
+failure is the model rather than the prompt, and the store fills with duplicates --
+two sofas, two tables, two doorways.
+
+Everything else the task asked for works and is deployed. The store, the console
+popup, the failure behaviour and the two clears each do what section by section
+they were asked to. An inspection costs 56-89 s, the sidecar holds about 4 GB
+resident, and nothing else on the rover noticed: zero dropped lidar scans
+throughout.
+
+The full account -- the numbers, the three defects that only running it exposed,
+and what the run did not test -- is in
+[`world_state/README.md`](../world_state/README.md). The work is on the
+`cosmos-world-state-poc` branch.
+
+### What this means for the next task
+
+**Do not proceed to semantic frontier selection.** Letting a model choose where to
+drive on the strength of a world state that grows a new identity for the same sofa
+every time it looks would be building on sand. The perception is worth keeping; the
+identity layer has to be fixed first, and the two obvious routes are to stop asking
+the model to do it -- match on appearance embeddings, or on the bearing geometry
+the store already records -- or to try Cosmos 3, which the `PhysicalReasoner`
+boundary exists to make a swap rather than a rewrite.
+
+---
+
 ## Existing system to preserve
 
 Do not disturb the existing authority boundaries:
@@ -797,45 +839,80 @@ architecture.
 
 ## Acceptance criteria
 
-This task is complete when all of the following are true:
+All met on 2026-09-01, with the two caveats noted underneath.
 
-- [ ] A replaceable `PhysicalReasoner` boundary exists.
-- [ ] Cosmos Reason 2 2B runs locally on the Orin and answers a real inspection of
+- [x] A replaceable `PhysicalReasoner` boundary exists.
+- [x] Cosmos Reason 2 2B runs locally on the Orin and answers a real inspection of
       a real frame. The deterministic fake covers development and offline tests
       only; if the local runtime cannot be made to work, the task is blocked rather
       than complete.
-- [ ] A fresh gimbal frame can be inspected without violating existing camera
+- [x] A fresh gimbal frame can be inspected without violating existing camera
       ownership.
-- [ ] Only schema-valid structured observations mutate semantic world state.
-- [ ] Application code, never Cosmos, owns entity IDs.
-- [ ] SQLite persists entities and complete observation history across restart.
-- [ ] Raw validated Cosmos observations and provenance are retained.
-- [ ] The frame behind each observation is stored and viewable, together with the
+- [x] Only schema-valid structured observations mutate semantic world state.
+- [x] Application code, never Cosmos, owns entity IDs.
+- [x] SQLite persists entities and complete observation history across restart.
+- [x] Raw validated Cosmos observations and provenance are retained.
+- [x] The frame behind each observation is stored and viewable, together with the
       gimbal angles and rover pose it was taken from.
-- [ ] No metric/map coordinates are accepted from the VLM as world facts.
-- [ ] A button in the main drive console opens a read-only World State popup
+- [x] No metric/map coordinates are accepted from the VLM as world facts.
+- [x] A button in the main drive console opens a read-only World State popup
       showing entities, observation history, stored frames and raw inference
       detail.
-- [ ] Semantic state can be explicitly cleared without touching the SLAM/Nav2 map.
-- [ ] Deterministic offline tests cover storage, association, validation and UI/API
+- [x] Semantic state can be explicitly cleared without touching the SLAM/Nav2 map.
+- [x] Deterministic offline tests cover storage, association, validation and UI/API
       behavior.
-- [ ] The world-state component is registered in `deploy/manifest.json` with its
+- [x] The world-state component is registered in `deploy/manifest.json` with its
       own verification, the model weights are installed on the Orin rather than
       committed or deployed, and the database and stored frames live under
       `~/.ugv/` where no deploy can overwrite them.
-- [ ] The changed components are deployed and restarted on the Orin.
-- [ ] A real multi-view inspection experiment is performed on the rover.
-- [ ] The final report says plainly whether object/entity continuity is good enough
-      to justify proceeding to semantic frontier selection.
+- [x] The changed components are deployed and restarted on the Orin.
+- [x] A real multi-view inspection experiment is performed on the rover.
+- [x] The final report says plainly whether object/entity continuity is good enough
+      to justify proceeding to semantic frontier selection. It is not.
+
+### The two caveats
+
+**The popup has not been looked at in a browser.** It was driven end to end through
+the console's own action path -- open, refresh, select an entity, close -- and every
+payload and URL behind it was read and checked, including a stored frame served as
+a 45 kB JPEG. What has not happened is a person seeing it drawn, because this
+repository has no browser in its test loop. The markup, the styles and the
+JavaScript are therefore unproven in the one way that matters for a viewer.
+
+**The rover was never driven during the experiment.** There was somebody sitting in
+the room and nobody watching the wheels, so the five views are gimbal pans from one
+parked pose, and no new object was carried in between inspections. Every observation
+therefore shares an origin, and the part of the map view that asks whether rays
+*from different places* converge on one corner has been exercised only in the
+offline tests. Neither gap weakens the negative finding -- a model that will not
+re-identify an object in the identical frame is not going to do better from a new
+angle -- but both would have to be closed before a *positive* result could be
+believed.
 
 ## Expected follow-up
 
-If this POC produces a coherent world state, the next task should be **semantic
-frontier selection**: expose generation-bound frontier IDs from the existing
-`ros_nav/frontier.py`, let Cosmos choose among those IDs using the observed world
-state and task objective, and send the selected target through the current
-deterministic body-fit/planner/action path.
+The POC produced unstable entity identity, so this is the second of the two forks
+the task set out: **fix or replace the perception/world-state layer before giving it
+any influence over rover movement.** Semantic frontier selection is not the next
+task.
 
-If this POC produces unstable entity identity, frequent hallucinations or an
-unusable memory representation, fix or replace the perception/world-state layer
-before giving it any influence over rover movement.
+What is worth keeping is everything below the model: the store, the provenance, the
+popup and the sidecar are all sound, and the identity step is one replaceable piece
+inside them. The candidates, cheapest first:
+
+1. **Stop asking the model to do it.** Match a new observation against existing
+   entities on appearance -- an embedding of the bounding box's contents -- or on
+   the bearing geometry the store already records, and leave the model to say what
+   things are rather than which thing this is. This is the fork the association
+   rules were deliberately written to leave room for.
+2. **Try Cosmos 3, or an 8B build.** The `PhysicalReasoner` boundary exists exactly
+   so this is a swap rather than a rewrite. Against it: an 8B model at this
+   quantization would not leave room on an 8 GB board beside SLAM, and 2B is already
+   a minute a look.
+3. **Give the model fewer, sharper choices.** Asking "is this one of these three
+   things, which are the ones you could plausibly be looking at from here" is a
+   different and much easier question than the twenty-one-entity list it was handed
+   here. The bearing geometry is what would narrow the list.
+
+Whichever is tried, the measurement to repeat is the one in this document: clear,
+inspect from several views, and count how many identifiers survive.

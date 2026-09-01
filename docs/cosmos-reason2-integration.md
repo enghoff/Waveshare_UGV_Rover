@@ -1081,7 +1081,21 @@ the actual rover.
 Acceptance criterion: Cosmos materially improves the physical/semantic tasks we
 care about without destabilizing navigation.
 
+**Done on 2026-09-01, and the criterion is not met.** Reason 2 2B runs locally
+on the Orin's CPU and its per-frame perception is accurate and hallucination-free,
+but it will not re-identify anything it has already named -- not from another
+angle and not from the identical frame, with the list of its own entities in
+front of it. The world state fills with duplicates instead. The account is in
+[`../world_state/README.md`](../world_state/README.md) and the slice that
+produced it is [`task-cosmos-world-state-poc.md`](task-cosmos-world-state-poc.md).
+
 ### Phase 2 — semantic frontier selection
+
+**Blocked on the result of Phase 1.** Letting a model choose where to drive on
+the strength of a world state that grows a new identity for the same sofa every
+time it looks would be building on sand. What has to come first is an identity
+step that works -- appearance matching, or the bearing geometry the store already
+records, or a model that can do it -- and only then the steps below.
 
 1. Refactor current frontier calculation so candidates can be listed.
 2. Add session/revision-bound frontier IDs.
