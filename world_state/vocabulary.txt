@@ -1,0 +1,91 @@
+# The words a region can be called.
+#
+# This file is the whole naming vocabulary. Nothing in the models knows any of
+# these: a region's name is the nearest of these phrases to its SigLIP2 vector,
+# so **changing this file re-labels every stored object without reprocessing a
+# single frame** -- the vectors are what is stored, and the name is worked out
+# again at display time.
+#
+# Two things about the phrasing, both measured on the rover's own frames rather
+# than guessed.
+#
+# **Keep them short and keep them uniform.** An early list had "a power cable on
+# the floor" among two-word phrases, and it won on almost every region in every
+# frame, including an armchair and a framed picture. A longer, more circumstantial
+# caption matches a whole scene better than a short one does, so a list with
+# mixed lengths is a list with one entry that always wins. Two or three words,
+# an article, no clauses.
+#
+# **The scores are not calibrated and only the ranking means anything.** They sit
+# between about 0.08 and 0.12 whatever is in the picture, so there is no threshold
+# here that says "none of these". Working one out against real crops is owed, and
+# is what the plan's phase 4 calls calibrating a "nothing matches" threshold.
+#
+# Blank lines and lines starting with # are ignored.
+
+# --- furniture
+an armchair
+a sofa
+a dining chair
+a wooden chair
+an office chair
+a glass table
+a wooden table
+a coffee table
+a desk
+a shelf
+a bookcase
+a cabinet
+a chest of drawers
+a bed
+a stool
+
+# --- the room itself
+a doorway
+a window
+a staircase
+a radiator
+a curtain
+a rug
+a wall
+a floor
+a ceiling light
+a mirror
+
+# --- things that stay where they are put
+a television
+a computer monitor
+a floor lamp
+a table lamp
+a framed picture
+a houseplant
+an air purifier
+a fan
+a loudspeaker
+a waste bin
+a laundry basket
+
+# --- things that move about
+a cardboard box
+a spray bottle
+a bottle
+a mug
+a glass
+a plate
+a book
+a laptop
+a handbag
+a backpack
+a shoe
+a cushion
+a blanket
+a towel
+a cable
+a toy
+a tool
+a remote control
+
+# --- living things
+a person
+a dog
+a cat
