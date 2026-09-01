@@ -49,6 +49,10 @@ else:
 DETAIL_LIMIT = 40
 #: How many of an entity's newest observations become rays on the map.
 RAY_LIMIT = 6
+#: How long to wait before asking the camera a second time. Long enough for the
+#: previous v4l2-ctl to be well out of the way, short enough to be nothing beside
+#: the minute of model that follows. See :meth:`RoverWorld._world_capture`.
+CAMERA_RETRY_S = 0.5
 #: Substitutes the deterministic fake for the real sidecar. For bringing the
 #: console up on the rover before the model is installed, and for nothing else --
 #: every row it writes is stamped with the backend that wrote it and the popup
@@ -111,10 +115,26 @@ class RoverWorld:
         the camera it is the loop's newest frame, and otherwise it is a bounded
         one-shot grab that closes the device again. Nothing here opens the camera
         a second time, which is the whole rule.
+
+        **The second attempt is worth its half second here and nowhere else.**
+        Measured on the rover: a grab that follows another one closely comes back
+        empty -- v4l2-ctl exits at once, says nothing on stderr, and hands back no
+        whole picture -- and the next attempt a moment later works. Three times out
+        of three, with a standalone inspection working every time. What makes it
+        worth handling rather than reporting is what is about to happen: this
+        picture is the front of a minute of model, and throwing that minute away
+        over a hiccup that a pause of half a second fixes is a poor trade. A tool
+        call that is over in a second, like `camera_jpeg`, is better off saying so
+        at once and letting whoever asked press the button again.
         """
         if self.device is None:
             return {"ok": False, "error": "this rover has no camera attached"}
         jpeg, why = self._whole_jpeg()
+        if jpeg is None and not self._tracking.is_set():
+            time.sleep(CAMERA_RETRY_S)
+            jpeg, again = self._whole_jpeg()
+            if jpeg is None:
+                why = f"{why} (and again {CAMERA_RETRY_S:.1f} s later: {again})"
         if jpeg is None:
             return {"ok": False, "error": why}
         with self._lock:

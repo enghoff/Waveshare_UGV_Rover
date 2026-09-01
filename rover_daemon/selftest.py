@@ -1309,7 +1309,7 @@ def test_the_world_state_calls_reach_the_store():
             # The camera path is the daemon's own; only the device under it is
             # replaced, so what is exercised here is `_world_capture` reading the
             # same frame `camera_jpeg` would.
-            jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 40 + b"\xff\xd9"
+            jpeg = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
             rover._whole_jpeg = lambda: (jpeg, "")
             rover.pan, rover.tilt = 25.0, -8.0
 
@@ -1378,6 +1378,69 @@ def test_the_world_state_calls_reach_the_store():
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+
+def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
+    """A grab that follows another one closely comes back empty on this rover.
+
+    Reproduced three times out of three: `camera_jpeg` and then an inspection in
+    the same breath, and the inspection got no whole picture while a standalone one
+    always worked. The retry is worth its half second here because the picture is
+    the front of a minute of model; it is not worth it on `camera_jpeg`, which is
+    over in a second and can simply say so.
+    """
+    import tempfile
+
+    import rover_daemon
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = os.environ.get("UGV_WORLD_DIR")
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_COSMOS_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            jpeg = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
+            tries = []
+
+            def flaky():
+                tries.append(1)
+                if len(tries) == 1:
+                    return None, "the camera gave no whole picture"
+                return jpeg, ""
+
+            rover._whole_jpeg = flaky
+            frame = rover._world_capture()
+            check("the second attempt gets the picture", frame["ok"], True)
+            check("...having asked exactly twice", len(tries), 2)
+
+            tries.clear()
+            def never():
+                tries.append(1)
+                return None, "the camera gave no whole picture"
+
+            rover._whole_jpeg = never
+            frame = rover._world_capture()
+            check("a camera that is really gone still fails", frame["ok"], False)
+            check("...saying that both attempts failed",
+                  "and again" in frame["error"], True)
+            check("...after two attempts and no more", len(tries), 2)
+
+            # While tracking runs there is no second attempt to make: the loop owns
+            # the camera and hands back whatever its newest frame is, so asking
+            # again half a second later asks the same question of the same frame.
+            tries.clear()
+            rover._tracking.set()
+            rover._world_capture()
+            check("a tracking rover is asked once, because it is one frame",
+                  len(tries), 1)
+            rover._tracking.clear()
+            rover.close_world()
+        finally:
+            os.environ.pop("UGV_COSMOS_FAKE", None)
+            if was is None:
+                os.environ.pop("UGV_WORLD_DIR", None)
+            else:
+                os.environ["UGV_WORLD_DIR"] = was
 
 
 def test_a_rover_without_a_camera_refuses_to_inspect():
@@ -2243,6 +2306,7 @@ def main():
                  test_control_calls_without_hardware,
                  test_the_world_state_calls_reach_the_store,
                  test_a_rover_without_a_camera_refuses_to_inspect,
+                 test_the_camera_is_asked_twice_before_an_inspection_is_lost,
                  test_the_probe_waits_to_be_answered,
                  test_a_board_that_goes_quiet_gets_its_port_reopened,
                  test_reading_the_network,
