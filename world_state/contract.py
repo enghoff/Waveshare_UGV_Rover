@@ -19,10 +19,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-#: Bumped whenever the wording below changes in a way that could change what the
-#: model reports. Stamped on every observation, because an experiment that ran
-#: across a prompt change and cannot tell which half is which has measured nothing.
-PROMPT_VERSION = "2"
+#: Bumped whenever the wording below, or the schema the model is held to, changes
+#: in a way that could change what it reports. Stamped on every observation,
+#: because an experiment that ran across a prompt change and cannot tell which half
+#: is which has measured nothing.
+PROMPT_VERSION = "3"
 
 #: The semantic vocabulary, kept loose and practical on purpose. `room_hint`,
 #: `text` and `hazard` are deliberately absent: nothing consumes them, and a
@@ -136,10 +137,17 @@ class Result:
 #: llama.cpp turns this into a grammar, which is what stops a 2B model from
 #: answering in prose and is the cheapest of the three defences against runaway
 #: generation (the others being a token cap and a wall clock).
+#:
+#: **The lengths are load-bearing, and that is a finding from the rover.** A
+#: grammar built without them constrains the shape and not the size, and this
+#: model used that freedom to write three and a half thousand characters of essay
+#: into `scene` -- running out of tokens before it closed the object, so a perfectly
+#: good look at a room was thrown away as truncated. llama.cpp turns `maxLength`
+#: into part of the grammar, so the string simply ends and the object closes.
 RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
-        "scene": {"type": "string"},
+        "scene": {"type": "string", "maxLength": 300},
         "observations": {
             "type": "array",
             "maxItems": MAX_OBSERVATIONS,
@@ -148,9 +156,9 @@ RESPONSE_SCHEMA = {
                 "properties": {
                     "existing_entity": {"type": ["string", "null"]},
                     "kind": {"type": "string", "enum": list(KINDS)},
-                    "label": {"type": "string"},
-                    "description": {"type": "string"},
-                    "location_hint": {"type": "string"},
+                    "label": {"type": "string", "maxLength": 40},
+                    "description": {"type": "string", "maxLength": 160},
+                    "location_hint": {"type": "string", "maxLength": 24},
                     "bbox_norm": {
                         "type": "array",
                         "items": {"type": "number"},

@@ -417,6 +417,31 @@ def test_a_good_answer_is_accepted_whole() -> None:
     check("...and nothing was thrown away", result.rejected, [])
 
 
+def test_the_schema_holds_the_model_to_a_length() -> None:
+    """Measured on the rover: without a cap this model wrote three and a half
+    thousand characters of essay into `scene` and ran out of tokens before it
+    closed the object, so a perfectly good look at a room was thrown away as
+    truncated. llama.cpp builds `maxLength` into the grammar, so the answer now
+    ends and the object closes -- and the validator's own limits sit above the
+    grammar's, so a backend that cannot constrain anything still cannot store an
+    essay."""
+    from world_state.contract import (
+        MAX_DESCRIPTION, MAX_LABEL, MAX_SCENE, RESPONSE_SCHEMA,
+    )
+
+    properties = RESPONSE_SCHEMA["properties"]
+    item = properties["observations"]["items"]["properties"]
+    check("the scene sentence is capped in the grammar",
+          properties["scene"]["maxLength"] <= MAX_SCENE, True)
+    check("...and so is every label", item["label"]["maxLength"] <= MAX_LABEL, True)
+    check("...and every description",
+          item["description"]["maxLength"] <= MAX_DESCRIPTION, True)
+
+    essay = validate(answer(dict(sofa(), description="x" * 5000)), set())
+    check("a backend that could not constrain it is still cut down here",
+          len(essay.seen[0].description), MAX_DESCRIPTION)
+
+
 def test_prose_and_fences_and_thinking_are_got_through() -> None:
     """Three things get in the way of json.loads in practice and all three are
     ordinary. The thinking is dropped here and never reaches the store."""
@@ -726,6 +751,7 @@ TESTS = (
     test_two_new_observations_never_merge_two_existing_things,
     test_a_label_that_names_nothing_gets_no_entity,
     test_a_good_answer_is_accepted_whole,
+    test_the_schema_holds_the_model_to_a_length,
     test_prose_and_fences_and_thinking_are_got_through,
     test_the_answer_has_to_be_the_right_shape,
     test_a_box_is_clamped_or_dropped_but_never_believed,
