@@ -149,16 +149,18 @@ class Inspector:
         self.store.update_inference(
             inference_id, duration_s=round(time.time() - began, 2), status="ok",
             detail=detail or None, model_id=answer.model_id,
-            returned=len(result.seen) + len(result.rejected),
+            # What the model offered and what was not kept, counted as
+            # observations. A complaint about a bounding box is neither.
+            returned=len(result.seen) + result.refused,
             matched=stored["matched"], created=stored["created"],
-            rejected=stored["rejected"] + len(result.rejected),
+            rejected=stored["rejected"] + result.refused,
             raw_json=answer.text[:8000])
         return {"ok": True, "status": "ok", "inference_id": inference_id,
                 "frame_id": frame_id, "scene": result.scene,
                 "known_count": len(known), "duration_s": round(time.time() - began, 2),
-                "returned": len(result.seen) + len(result.rejected),
+                "returned": len(result.seen) + result.refused,
                 "matched": stored["matched"], "created": stored["created"],
-                "rejected": stored["rejected"] + len(result.rejected),
+                "rejected": stored["rejected"] + result.refused,
                 "entities": stored["entities"], "detail": detail,
                 "map_session": stored["map_session"], "model_id": answer.model_id}
 

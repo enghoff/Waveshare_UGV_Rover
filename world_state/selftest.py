@@ -525,6 +525,19 @@ def test_a_box_is_clamped_or_dropped_but_never_believed() -> None:
         dropped = validate(answer(dict(sofa(), bbox_norm=bad)), set())
         check(f"a box given as {bad!r} is dropped", dropped.seen[0].bbox, None)
 
+    # A complaint about a box costs nothing, and the counts have to say so. On the
+    # rover this read as eight observations returned and two rejected where the
+    # model had offered six and lost none, which is the sort of number the whole
+    # experiment is later read off.
+    complained = validate(answer(dict(sofa(), bbox_norm=[0.8, 0.1, 0.2, 0.8]),
+                                 dict(sofa(existing="furniture:99"))), set())
+    check("a dropped box does not count as a refused observation",
+          complained.refused, 1)
+    check("...and the observation whose box went is still kept",
+          len(complained.seen), 1)
+    check("...while the invented identifier is the one that was refused",
+          "furniture:99" in complained.detail(), True)
+
 
 def test_the_model_is_not_allowed_to_measure_the_room() -> None:
     """Where the camera was is a reading the rover took; how far away the sofa is

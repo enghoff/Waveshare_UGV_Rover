@@ -118,6 +118,13 @@ class Result:
     #: rather than refused, and it is worth being able to see change if the model
     #: or the prompt does.
     rescaled: int = 0
+    #: How many whole observations were thrown away. Counted separately from
+    #: `rejected`, which is a list of sentences and includes complaints that cost
+    #: nothing -- a dropped bounding box leaves the observation perfectly storable.
+    #: Conflating the two made the popup report eight observations returned and two
+    #: rejected where the model had offered six and lost none, which is the sort of
+    #: number an experiment is later read off.
+    refused: int = 0
     raw: dict[str, Any] = field(default_factory=dict)
     error: str = ""
 
@@ -333,6 +340,7 @@ def validate(payload: Any, known_ids) -> Result:
     for index, item in enumerate(items):
         seen, why = _one(item, known, result)
         if seen is None:
+            result.refused += 1
             result.rejected.append(f"observation {index + 1}: {why}")
         else:
             result.seen.append(seen)
