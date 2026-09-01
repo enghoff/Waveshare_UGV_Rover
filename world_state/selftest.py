@@ -847,6 +847,84 @@ def test_the_best_pair_places_the_thing() -> None:
     check("one look alone places nothing", locate.best_fix(looks[:1]), None)
 
 
+
+# --- the two perception backends --------------------------------------------
+#
+# Nothing here loads a model. What is worth checking offline is the part that
+# decides *which* backend runs and whether the two are really interchangeable,
+# because the failure mode is silent: a rover that quietly drops to the CPU
+# keeps answering, and its vectors stop comparing with the ones already stored.
+
+
+def test_a_board_with_no_engines_falls_back_and_says_why() -> None:
+    """The ordinary state of a freshly deployed rover, and it must not be fatal."""
+    from world_state import engines
+    from world_state.perceive import Perception
+
+    with tempfile.TemporaryDirectory() as empty:
+        ready, why = engines.available(empty)
+        check("an empty directory offers no GPU path", ready, False)
+        check("...and the reason names the installer",
+              "install_perception.sh" in why or "TensorRT" in why, True)
+        backend, missing = Perception(empty).chosen()
+        check("...so the CPU backend is the one chosen", backend, "onnxruntime")
+        check("...with the reason kept rather than swallowed", bool(missing), True)
+
+
+def test_both_backends_answer_the_same_four_questions() -> None:
+    """They are swapped at run time, so a method on one and not the other is a
+    crash on whichever board has the wrong one."""
+    from world_state.perceive import _CpuModels, _GpuModels
+
+    wanted = {"regions", "appearance", "image_vectors", "text_vectors"}
+    for backend in (_CpuModels, _GpuModels):
+        have = {name for name in dir(backend) if not name.startswith("_")}
+        check(f"{backend.name} answers all four",
+              wanted - have, set())
+    check("the two name themselves differently",
+          _CpuModels.name != _GpuModels.name, True)
+
+
+def test_the_installer_builds_exactly_the_engines_the_runtime_opens() -> None:
+    """A renamed engine is a rover that silently runs on the CPU for ever."""
+    from world_state import engines
+
+    script = os.path.join(HERE, "install_perception.sh")
+    with open(script, encoding="utf-8") as handle:
+        built = {line.split()[1] for line in handle
+                 if line.strip().startswith("build ") and ".plan" in line}
+    check("every engine the runtime wants is built by the installer",
+          set(engines.REQUIRED) - built, set())
+    check("...and the installer builds nothing the runtime ignores",
+          built - set(engines.REQUIRED), set())
+
+
+def test_the_vocabulary_is_phrases_and_not_comments() -> None:
+    from world_state.perceive import read_vocabulary
+
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "words.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(["# a comment", "", "a chair",
+                                    "  a wooden table  ", "", "# another", ""]))
+        words = read_vocabulary(path)
+        check("comments and blank lines are dropped", words,
+              ["a chair", "a wooden table"])
+
+
+def test_a_region_that_is_an_edge_is_not_a_thing() -> None:
+    """The three-line filter, on the shapes it exists to reject."""
+    from world_state.perceive import _worth_keeping
+
+    check("a chair-sized box is kept", _worth_keeping([0.3, 0.3, 0.5, 0.6]), True)
+    check("half the frame is the floor", _worth_keeping([0.0, 0.0, 0.9, 0.9]), False)
+    check("a speck is a highlight", _worth_keeping([0.5, 0.5, 0.52, 0.52]), False)
+    check("a skirting board is an edge",
+          _worth_keeping([0.0, 0.5, 0.95, 0.56]), False)
+    check("a box with no width is nothing",
+          _worth_keeping([0.5, 0.5, 0.5, 0.7]), False)
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -884,6 +962,11 @@ TESTS = (
     test_uncertainty_grows_when_the_baseline_shrinks,
     test_two_identical_chairs_stay_two_things,
     test_the_best_pair_places_the_thing,
+    test_a_board_with_no_engines_falls_back_and_says_why,
+    test_both_backends_answer_the_same_four_questions,
+    test_the_installer_builds_exactly_the_engines_the_runtime_opens,
+    test_the_vocabulary_is_phrases_and_not_comments,
+    test_a_region_that_is_an_edge_is_not_a_thing,
 )
 
 

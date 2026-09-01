@@ -192,12 +192,17 @@ fetch against its expected size, add their sidecar's `@reboot` crontab entry, an
 resume a part-fetched file — which is most of why they are worth re-running rather
 than starting again.
 
-**The GPU runs the language model and nothing else, and that is a limitation
-rather than a choice.** This JetPack ships the GPU driver but no CUDA toolkit and
-no cuDNN, so onnxruntime has no GPU provider to offer and NVIDIA's Jetson wheel
-index stops at JetPack 6 — a GPU provider here would mean building ONNX Runtime
-from source against CUDA 13. Vulkan is a different matter: the driver works,
-llama.cpp speaks it, and the released Vulkan build is 27 MB with no toolchain.
+**Both halves now use the GPU, and they get there by different roads.** The
+language model goes through Vulkan, which needs nothing but a 27 MB llama.cpp
+build. Perception goes through TensorRT, which comes from JetPack. What it does
+*not* go through is ONNX Runtime, and that is worth stating because it is the
+thing most likely to be tried again: CUDA and cuDNN are perfectly available for
+this board from NVIDIA, but **no build of ONNX Runtime exists for JetPack 7**.
+The community Jetson wheel index stops at JetPack 6, and the official aarch64
+wheel on PyPI carries compiled kernels for every architecture except this Orin's
+own sm_87 — so it finds the GPU, opens a session on it, and dies at the first
+kernel launch with "no kernel image is available for execution on the device".
+Installing more CUDA does not help; the gap is inside the wheel.
 
 ## Running it
 
@@ -221,19 +226,32 @@ Three ONNX models in a sidecar of their own on loopback 8776, and between them
 they know no categories at all.
 
 ```text
-FastSAM-s      what regions are in this frame       47 MB   330 ms
-DINOv2-small   is this the same instance as that    24 MB   940 ms for 12 crops
-SigLIP2        what is it called, and text search   379 MB  700 ms for 12 crops
+                                                    GPU        CPU
+FastSAM-s      what regions are in this frame         5 ms     418 ms
+DINOv2-small   is this the same instance as that     70 ms   1 137 ms   12 crops
+SigLIP2        what is it called, and text search    42 ms     854 ms   12 crops
 ```
 
-One look is **2.0 to 2.3 seconds** on the rover for twelve regions, against a plan
-that asked for under a second. The gap is the CPU and there is no lever left worth
-pulling: threads are saturated above four, FastSAM is already one step above the
-size where it starts losing objects, and the only configuration that gets to 1.14 s
-does it by embedding eight regions instead of twelve and shrinking DINOv2's input.
-What the target was really protecting is intact — **the lidar reported zero dropped
-scans through every measurement here**, and a look is thirty times cheaper than the
-language model it replaced.
+**Which backend runs is decided by whether the board has engines built for it**,
+and every look and every health check says which one answered. The GPU is the one
+to want. It is about sixteen times faster, and it is also *more accurate*: against
+a full-precision reference on the rover's own frame the engines agree to 1.000
+where the int8 graphs the CPU path runs agree to 0.86, and the CPU's names are
+visibly worse — three regions called "a bookcase" where the reference says a
+window, a television and a chair. Dynamic quantisation is what costs that, since
+it recomputes its scales from each activation rather than from a calibration set.
+
+The CPU path is kept because an engine is not a model file: it is compiled for one
+GPU and one TensorRT version, so a fresh install or a JetPack upgrade leaves a
+rover that must still be able to see. **Vectors from the two backends must never
+be compared with each other**, which is why the backend that produced one travels
+with it.
+
+Building the engines is the slow part of installing — about ten minutes, once, and
+it needs the board largely to itself. The first attempt with the language model
+still resident ended with the kernel's out-of-memory killer taking the language
+model and the build together, so `install_perception.sh` now stops that sidecar
+for the duration and starts it again afterwards.
 
 The vocabulary is [`vocabulary.txt`](vocabulary.txt) and nothing in the models
 knows it. A region's name is the nearest phrase to its stored SigLIP2 vector, so
@@ -247,7 +265,18 @@ curl -s 127.0.0.1:8776/health
 
 ### Three things that were measured rather than assumed
 
-**Turning off onnxruntime's spin-waiting is worth 3.3x.** Three sessions run one
+**fp16 does not merely blunt SigLIP2, it destroys it.** Built as an fp16 engine,
+the text tower collapsed: all fifty-seven vocabulary vectors came back within 0.92
+of one another, so a single phrase won every region in the frame and every label
+was wrong. The image tower went with it, agreeing with full precision to only
+0.71. This is invisible until the work reaches a real GPU, because ONNX Runtime
+has no fp16 kernels on the CPU and quietly computes such graphs in fp32 — so a
+model that "works in fp16" on a desk can be worthless on a board. The engines are
+therefore built at full precision, except the region finder, whose boxes in fp16
+match the CPU's to a mean overlap of 0.998.
+
+**Turning off onnxruntime's spin-waiting is worth 3.3x.** This applies to the CPU
+fallback only, and it is still true there. Three sessions run one
 after another on every look, and by default each one's thread pool keeps spinning
 after its own work is done — so FastSAM's threads burn cores through DINOv2's turn,
 and DINOv2's through SigLIP2's. A look is 2.64 s with spinning on and 0.80 s with
@@ -317,6 +346,12 @@ Switching llama.cpp to its Vulkan build took an inspection from **38 s to 9.5 s*
 and to 10–12 s with the perception sidecar loaded alongside. Twenty-seven megabytes,
 no toolchain, one flag. The same binary carries the CPU backends, so
 `--n-gpu-layers 0` is the way back if the driver ever misbehaves.
+
+Moving perception to TensorRT took a look's model time from about 2.4 s to about
+120 ms, on the same frame with the same twelve regions. That one cost 9.4 GB of
+JetPack and an installer that takes ten minutes longer, and it bought accuracy as
+well as speed — see the perception section above for what the int8 CPU path was
+getting wrong.
 
 Ten alternating rounds of a look and an inspection, with everything loaded: llama
 flat at 3228 MB, perception flat at 1216 MB, about 1.65 GB free throughout, and

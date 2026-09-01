@@ -78,12 +78,20 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] != "/health":
             return self._send(404, {"ok": False, "error": f"no {self.path} here"})
         ready, why = self.server.perception.available()
+        backend, missing_gpu = self.server.perception.chosen()
         return self._send(200, {
             "ok": True,
             "status": "ok" if ready else "no models",
             "ready": ready,
             "detail": why,
             "loaded": self.server.perception._loaded,
+            # Which backend this host would use, and -- when it is the slower,
+            # blunter one -- why. Worth saying in health rather than only in a
+            # look, because a rover quietly running on the CPU is a rover whose
+            # vectors will not compare with the ones already stored.
+            "backend": backend,
+            "no_gpu_because": missing_gpu,
+            "fallback": self.server.perception.fallback,
             "load_s": self.server.perception.load_s,
             # Counted from the file rather than from the loaded state, because
             # health is answered before anything is loaded and "0 phrases" reads

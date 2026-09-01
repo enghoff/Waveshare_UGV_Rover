@@ -28,6 +28,15 @@ reprocessing a frame.
 The models are unpacked into `vendor/` by `install_perception.sh`, which is
 deliberately separate from the Cosmos installer -- the language model is still
 wanted for the conversational `look`, and the two have to break independently.
+
+**There are two backends and they are not equivalent.** Where the board has
+TensorRT engines built for it the work runs on the GPU, and where it has not it
+runs on the CPU under onnxruntime. The GPU is not merely faster: measured
+against a full-precision reference on the rover's own frame, the engines agree
+with it to 1.000 while the int8 graphs the CPU path uses agree to 0.86, and the
+two backends name the same twelve regions differently. So every look says which
+backend produced it, and a vector from one must never be compared with a vector
+from the other.
 """
 from __future__ import annotations
 
@@ -101,11 +110,15 @@ class Unavailable(RuntimeError):
 
 
 def _vendored():
-    """Import numpy, cv2 and onnxruntime, from vendor/ if that is where they are.
+    """Import numpy and cv2, from vendor/ if that is where they are.
 
     An installed copy wins, so that a desk with these on the path is unaffected;
     the rover has none of them installed and all of them unpacked, because its
     Python is externally managed and sudo wants a password no deploy script has.
+
+    Pictures only. Whichever backend runs the models imports its own runtime,
+    because a board with built engines has no need of onnxruntime and should not
+    be held back by its absence.
     """
     for path in (VENDOR, os.path.join(os.path.dirname(HERE), "vendor")):
         if os.path.isdir(path) and path not in sys.path:
@@ -113,12 +126,23 @@ def _vendored():
     try:
         import cv2
         import numpy
-        import onnxruntime
     except ImportError as error:
         raise Unavailable(
             f"the perception models are not installed on this host: {error}. "
             f"Run ~/ugv/world_state/install_perception.sh") from error
-    return numpy, cv2, onnxruntime
+    return numpy, cv2
+
+
+def _onnxruntime():
+    """The CPU backend's runtime, imported only when that backend is chosen."""
+    _vendored()
+    try:
+        import onnxruntime
+    except ImportError as error:
+        raise Unavailable(
+            f"onnxruntime is not installed on this host: {error}. "
+            f"Run ~/ugv/world_state/install_perception.sh") from error
+    return onnxruntime
 
 
 def read_vocabulary(path: str = VOCABULARY) -> list[str]:
@@ -136,6 +160,134 @@ def read_vocabulary(path: str = VOCABULARY) -> list[str]:
             if line and not line.startswith("#"):
                 words.append(line)
     return words
+
+
+class _CpuModels:
+    """The three graphs under onnxruntime, on the CPU, which is where this began.
+
+    Kept because an engine is not a model file: it is compiled for one GPU and
+    one TensorRT version, so a fresh install, a JetPack upgrade or a driver that
+    has stopped answering all leave a rover that must still be able to see.
+
+    It is slower and it is also less accurate, and the second matters more.
+    Measured on the rover's own frame against a full-precision reference, these
+    int8 graphs agree to 0.96 on DINOv2 but only 0.86 on SigLIP2, and the names
+    that come out are visibly worse -- three regions called "a bookcase" where
+    the reference says a window, a television and a chair. Dynamic quantisation
+    is what costs that: it recomputes its scales from each activation rather
+    than from a calibration set.
+    """
+
+    name = "onnxruntime"
+
+    def __init__(self, directory: str, threads: int) -> None:
+        numpy = _vendored()[0]
+        ort = _onnxruntime()
+        options = ort.SessionOptions()
+        if threads:
+            options.intra_op_num_threads = threads
+        options.graph_optimization_level = \
+            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        # **The single most expensive line in this file, and it is a one-word
+        # setting.** Three sessions run one after another on every look, and by
+        # default an onnxruntime thread pool keeps spinning for a while after
+        # its own work finishes -- so FastSAM's threads are still burning cores
+        # while DINOv2 runs, and DINOv2's while SigLIP2 does. Measured on the
+        # rover's own frames: a look costs 2.64 s with spinning left on and
+        # 0.80 s with it off, and the models themselves are identical. Each one
+        # alone is as fast either way, which is exactly why this is easy to miss.
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+
+        def session(name):
+            path = os.path.join(directory, name)
+            if not os.path.isfile(path):
+                raise Unavailable(f"no {name} at {directory}; run "
+                                  f"install_perception.sh")
+            return ort.InferenceSession(path, options,
+                                        providers=["CPUExecutionProvider"])
+
+        self._fastsam = session(FASTSAM)
+        self._dino = session(DINO)
+        self._siglip = session(SIGLIP)
+        # This SigLIP2 export carries both towers in one graph, so the image
+        # path has to be handed an `input_ids` whether it wants one or not. A
+        # row of pad tokens is the cheapest thing the graph accepts and its text
+        # output is thrown away; the blank picture is the same trick the other
+        # way round.
+        self._pad_ids = numpy.zeros((1, SIGLIP_TOKENS), dtype=numpy.int64)
+        self._blank = numpy.zeros((1, 3, SIGLIP_SIZE, SIGLIP_SIZE),
+                                  dtype=numpy.float32)
+
+    def regions(self, blob):
+        return self._fastsam.run(None, {"images": blob})[0]
+
+    def appearance(self, batch):
+        return self._dino.run(None, {"pixel_values": batch})[0][:, 0]
+
+    def image_vectors(self, batch):
+        return self._siglip.run(["image_embeds"],
+                                {"pixel_values": batch,
+                                 "input_ids": self._pad_ids})[0]
+
+    def text_vectors(self, ids):
+        return self._siglip.run(["text_embeds"],
+                                {"pixel_values": self._blank,
+                                 "input_ids": ids})[0]
+
+
+class _GpuModels:
+    """The same models as TensorRT engines, on the Orin's own GPU.
+
+    Measured on the rover, one frame with twelve regions: FastSAM 5 ms, DINOv2
+    70 ms for all twelve crops in a single call, SigLIP2 42 ms for the same
+    twelve. On the CPU those three are 418 ms, 1137 ms and 854 ms. Batching is
+    most of the difference and it is why the engines carry an optimisation
+    profile centred on twelve rather than on one.
+
+    Everything here runs in full precision except the region finder. fp16 was
+    measured to break SigLIP2 outright -- the whole vocabulary collapsed into a
+    0.92 cone and one phrase won every region -- while FastSAM's boxes in fp16
+    match the CPU's to a mean overlap of 0.998, which is the only thing a box is
+    asked for.
+    """
+
+    name = "tensorrt"
+
+    def __init__(self, directory: str) -> None:
+        from .engines import DINO as DINO_ENGINE
+        from .engines import FASTSAM as FASTSAM_ENGINE
+        from .engines import SIGLIP_TEXT, SIGLIP_VISION, Engine
+
+        self._directory = directory
+        self._fastsam = Engine(os.path.join(directory, FASTSAM_ENGINE), directory)
+        self._dino = Engine(os.path.join(directory, DINO_ENGINE), directory)
+        self._vision = Engine(os.path.join(directory, SIGLIP_VISION), directory)
+        self._text = os.path.join(directory, SIGLIP_TEXT)
+
+    def regions(self, blob):
+        return self._fastsam.run({"images": blob})["output0"]
+
+    def appearance(self, batch):
+        return self._dino.run({"pixel_values": batch})["last_hidden_state"][:, 0]
+
+    def image_vectors(self, batch):
+        return self._vision.run({"pixel_values": batch})["pooler_output"]
+
+    def text_vectors(self, ids):
+        """The text tower, loaded for this call and then given back.
+
+        It is the largest of the four engines at over half a gigabyte and it
+        runs once at start-up over the vocabulary, so holding it for the life of
+        the process to save a two-second load is the wrong trade on a board
+        whose GPU memory is the same memory everything else is using.
+        """
+        from .engines import Engine
+
+        engine = Engine(self._text, self._directory)
+        try:
+            return engine.run({"input_ids": ids})["pooler_output"]
+        finally:
+            engine.close()
 
 
 class Perception:
@@ -160,8 +312,27 @@ class Perception:
         self._loaded = False
         self.words: list[str] = []
         self.load_s = 0.0
+        #: Which backend actually ran, filled in by `load`. It travels with
+        #: every look because the two do not produce comparable vectors.
+        self.backend = ""
+        #: Why the GPU was not used, when it was not. Empty when nothing was
+        #: given up; a sentence when the rover is seeing less well than it could.
+        self.fallback = ""
 
     # --- loading --------------------------------------------------------------
+
+    def chosen(self) -> tuple[str, str]:
+        """Which backend this host would use, and why not the other one.
+
+        The GPU wins whenever its engines are there, because it is both faster
+        and closer to full precision. Nothing here loads a model.
+        """
+        from . import engines
+
+        ready, why_not = engines.available(self.dir)
+        if ready:
+            return "tensorrt", ""
+        return "onnxruntime", why_not
 
     def available(self) -> tuple[bool, str]:
         """(ready, why not), without loading anything.
@@ -174,7 +345,13 @@ class Perception:
             _vendored()
         except Unavailable as error:
             return False, str(error)
-        missing = [name for name in (FASTSAM, DINO, SIGLIP, TOKENIZER)
+        backend, _ = self.chosen()
+        # The tokenizer is wanted either way: it is what turns the vocabulary
+        # into the numbers the text tower reads, and neither backend has one of
+        # its own.
+        wanted = ((TOKENIZER,) if backend == "tensorrt"
+                  else (FASTSAM, DINO, SIGLIP, TOKENIZER))
+        missing = [name for name in wanted
                    if not os.path.isfile(os.path.join(self.dir, name))]
         if missing:
             return False, (f"the perception models are missing from {self.dir}: "
@@ -182,41 +359,33 @@ class Perception:
         return True, ""
 
     def load(self) -> None:
-        """Open the three sessions and embed the vocabulary. Idempotent."""
+        """Open the models and embed the vocabulary. Idempotent.
+
+        A GPU that has engines but cannot run them falls back rather than
+        failing: a rover that sees a little worse is worth having and a rover
+        that sees nothing is not. The fallback is reported, never silent.
+        """
         with self._lock:
             if self._loaded:
                 return
-            np, cv2, ort = _vendored()
+            np, cv2 = _vendored()
             self._np, self._cv2 = np, cv2
             began = time.monotonic()
 
-            options = ort.SessionOptions()
-            if self.threads:
-                options.intra_op_num_threads = self.threads
-            options.graph_optimization_level = \
-                ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            # **The single most expensive line in this file, and it is a
-            # one-word setting.** Three sessions run one after another on every
-            # look, and by default an onnxruntime thread pool keeps spinning for
-            # a while after its own work finishes -- so FastSAM's threads are
-            # still burning cores while DINOv2 runs, and DINOv2's while SigLIP2
-            # does. Measured on the rover's own frames: a look costs 2.64 s with
-            # spinning left on and 0.80 s with it off, and the models themselves
-            # are identical. Each one alone is as fast either way, which is
-            # exactly why this is easy to miss.
-            options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+            backend, why_not = self.chosen()
+            self.fallback = ""
+            if backend == "tensorrt":
+                from .engines import NoEngines
+                try:
+                    self._models = _GpuModels(self.dir)
+                except NoEngines as error:
+                    self.fallback = str(error)
+                    self._models = _CpuModels(self.dir, self.threads)
+            else:
+                self.fallback = why_not
+                self._models = _CpuModels(self.dir, self.threads)
 
-            def session(name):
-                path = os.path.join(self.dir, name)
-                if not os.path.isfile(path):
-                    raise Unavailable(f"no {name} at {self.dir}; run "
-                                      f"install_perception.sh")
-                return ort.InferenceSession(path, options,
-                                            providers=["CPUExecutionProvider"])
-
-            self._fastsam = session(FASTSAM)
-            self._dino = session(DINO)
-            self._siglip = session(SIGLIP)
+            self.backend = self._models.name
             self._load_words()
             self.load_s = round(time.monotonic() - began, 2)
             self._loaded = True
@@ -243,15 +412,7 @@ class Perception:
         ids = np.array([e.ids for e in tokenizer.encode_batch(
             [word.lower() for word in self.words])], dtype=np.int64)
         self._word_ids = ids
-        blank = np.zeros((1, 3, SIGLIP_SIZE, SIGLIP_SIZE), dtype=np.float32)
-        vectors = self._siglip.run(["text_embeds"],
-                                   {"pixel_values": blank, "input_ids": ids})[0]
-        self._word_vectors = _unit(np, vectors)
-        # One token's worth of text is the cheapest input the graph accepts, and
-        # the image path needs an `input_ids` whether it wants one or not: this
-        # model carries both towers in one graph, which is also what makes the
-        # text search in a later phase free of a second download.
-        self._one_word = ids[:1]
+        self._word_vectors = _unit(np, self._models.text_vectors(ids))
 
     # --- looking --------------------------------------------------------------
 
@@ -287,6 +448,7 @@ class Perception:
 
             if not cropped:
                 return {"regions": [], "found": len(boxes), "kept": len(kept),
+                        "backend": self.backend,
                         "timings": {"regions_ms": round(region_s * 1000),
                                     "dino_ms": 0, "siglip_ms": 0},
                         "took_s": round(time.monotonic() - began, 2)}
@@ -312,6 +474,7 @@ class Perception:
                 "regions": regions,
                 "found": len(boxes),
                 "kept": len(kept),
+                "backend": self.backend,
                 "timings": {"regions_ms": round(region_s * 1000),
                             "dino_ms": round(dino_s * 1000),
                             "siglip_ms": round(siglip_s * 1000)},
@@ -333,7 +496,7 @@ class Perception:
         blob = (canvas[:, :, ::-1].transpose(2, 0, 1)[None]
                 .astype(np.float32) / 255.0)
         began = time.monotonic()
-        raw = self._fastsam.run(None, {"images": blob})[0]
+        raw = self._models.regions(blob)
         took = time.monotonic() - began
 
         rows = raw[0].T
@@ -378,8 +541,8 @@ class Perception:
             ((self._square(patch, DINO_SIZE)[:, :, ::-1].astype(np.float32) / 255.0)
              - mean) / std for patch in patches]).transpose(0, 3, 1, 2)
         began = time.monotonic()
-        out = self._dino.run(None, {"pixel_values": batch})[0]
-        return _unit(np, out[:, 0]), time.monotonic() - began
+        out = self._models.appearance(batch)
+        return _unit(np, out), time.monotonic() - began
 
     def _semantic(self, patches):
         """SigLIP2's image embedding per crop: what this is, and what it matches.
@@ -393,9 +556,7 @@ class Perception:
             (self._square(patch, SIGLIP_SIZE)[:, :, ::-1].astype(np.float32) / 255.0
              - 0.5) / 0.5 for patch in patches]).transpose(0, 3, 1, 2)
         began = time.monotonic()
-        out = self._siglip.run(["image_embeds"],
-                               {"pixel_values": batch,
-                                "input_ids": self._one_word})[0]
+        out = self._models.image_vectors(batch)
         return _unit(np, out), time.monotonic() - began
 
     def _name(self, vectors):
@@ -461,10 +622,7 @@ class Perception:
         tokenizer.enable_truncation(max_length=SIGLIP_TOKENS)
         ids = np.array([e.ids for e in tokenizer.encode_batch(
             [phrase.lower() for phrase in phrases])], dtype=np.int64)
-        blank = np.zeros((1, 3, SIGLIP_SIZE, SIGLIP_SIZE), dtype=np.float32)
-        out = self._siglip.run(["text_embeds"],
-                               {"pixel_values": blank, "input_ids": ids})[0]
-        return _unit(np, out)
+        return _unit(np, self._models.text_vectors(ids))
 
 
 # --- arithmetic that needs no model -----------------------------------------
