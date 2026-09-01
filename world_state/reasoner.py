@@ -4,7 +4,7 @@ the local Cosmos sidecar.
 Cosmos Reason 2 is maintenance-only upstream and NVIDIA points new work at Cosmos
 3, so a replacement is a normal event rather than a rewrite. Everything that knows
 this particular model is in `CosmosReasoner`; everything else in this package
-knows only `inspect(jpeg, known) -> Answer`.
+knows only `inspect(jpeg) -> Answer`.
 
 The model runs in its own process for the reason that decides most of the shape of
 this rover: `rover_daemon` owns the driver-board UART, the gimbal camera and STOP,
@@ -46,10 +46,12 @@ TIMEOUT_S = 180.0
 #: The output cap, and it has to be big enough for the biggest answer the schema
 #: allows -- otherwise a model doing exactly what it was asked runs out mid-object
 #: and its work is thrown away as truncated, which is what happened here twice
-#: before these two numbers were made to agree. Measured on the rover: about
-#: sixty-five tokens per observation, six of them, plus the scene sentence, is
-#: around five hundred. This is that with room to spare, and still well inside the
-#: wall clock below at the seven or so tokens a second this board manages.
+#: before these two numbers were made to agree. Measured on the rover when an
+#: observation still carried a description and a location hint: about sixty-five
+#: tokens each, six of them plus the scene sentence coming to around five hundred.
+#: Dropping those two fields took most of that away, so the room to spare here is
+#: now considerable -- left as it is because this is a ceiling on a model that will
+#: not stop talking, not a budget anything is meant to spend.
 MAX_TOKENS = 900
 #: How long to wait on the sidecar's health endpoint. It either answers at once or
 #: it is loading a model, and neither case is worth blocking an inspection on.
@@ -78,14 +80,16 @@ class Answer:
 class PhysicalReasoner:
     """Look at one picture and say what is in it.
 
-    `known` is the bounded list of entities the caller is prepared to have the
-    answer refer to. It is passed in rather than fetched here because the store,
-    not the model client, decides how much of the world the model is shown.
+    One picture and nothing else. This used to take the entities the rover had
+    already named, so the model could say which of them it was looking at;
+    measured on the rover, that list corrupted the detections themselves, so it is
+    gone and so is the question. Identity now comes from `locate.py` and the
+    rover's own pose.
     """
 
     name = "physical-reasoner"
 
-    def inspect(self, jpeg: bytes, known: list[dict[str, Any]]) -> Answer:
+    def inspect(self, jpeg: bytes) -> Answer:
         raise NotImplementedError
 
     def available(self) -> tuple[bool, str]:
@@ -118,9 +122,8 @@ class FakeReasoner(PhysicalReasoner):
         self.model_id = model_id
         self.calls: list[dict[str, Any]] = []
 
-    def inspect(self, jpeg: bytes, known: list[dict[str, Any]]) -> Answer:
-        self.calls.append({"bytes": len(jpeg), "known": [e["id"] for e in known],
-                           "prompt": build_prompt(known)})
+    def inspect(self, jpeg: bytes) -> Answer:
+        self.calls.append({"bytes": len(jpeg), "prompt": build_prompt()})
         if self.fail:
             return Answer(ok=False, error=self.fail, backend=self.name,
                           model_id=self.model_id)
@@ -193,7 +196,7 @@ class CosmosReasoner(PhysicalReasoner):
                 self.model_id = str(data[0].get("id") or "")
         return self.model_id
 
-    def inspect(self, jpeg: bytes, known: list[dict[str, Any]]) -> Answer:
+    def inspect(self, jpeg: bytes) -> Answer:
         began = time.monotonic()
         model_id = self.model()
         request = {
@@ -205,7 +208,7 @@ class CosmosReasoner(PhysicalReasoner):
             "messages": [{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": build_prompt(known)},
+                    {"type": "text", "text": build_prompt()},
                     {"type": "image_url", "image_url": {
                         "url": "data:image/jpeg;base64,"
                                + base64.b64encode(jpeg).decode("ascii")}},

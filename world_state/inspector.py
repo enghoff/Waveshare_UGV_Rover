@@ -1,11 +1,16 @@
 """One inspection, end to end: take a picture, ask the model, believe some of it.
 
+What is believed is what was in the picture. Which lasting thing each of those
+things is does not come from here and no longer comes from the model at all; an
+inspection ends with observations that carry the gimbal angles and the rover pose
+behind them, and identity is settled afterwards from those measurements.
+
 The order of the steps here is most of the failure behaviour. Nothing touches the
 camera until the sidecar has said it is there, nothing touches the database until
 the answer has been validated, and every path -- including the ones that never
 reach the model -- writes exactly one line to the diagnostics log, so a popup
-showing no new entities can always say whether that was a model that failed or a
-model that found nothing.
+showing nothing new can always say whether that was a model that failed or a model
+that found nothing.
 
 No failure in here is allowed to reach the caller as an exception. The caller is
 the process that owns STOP.
@@ -96,14 +101,17 @@ class Inspector:
                    "frame_path": self.store.frame_path(frame_id),
                    "pan": frame.get("pan"), "tilt": frame.get("tilt"),
                    "pose": self._pose()}
-        known = self.store.known_entities()
         inference_id = self.store.record_inference(
             started_at=began, status="running", backend=backend,
             prompt_version=PROMPT_VERSION, frame_id=frame_id,
-            frame_live=1 if frame.get("live") else 0, known_count=len(known),
+            frame_live=1 if frame.get("live") else 0,
             map_session=self.store.map_session())
 
-        answer = self.reasoner.inspect(jpeg, known)
+        # Nothing about the world goes into the call. The model is asked what is in
+        # front of it and is told nothing about what the rover has seen before,
+        # because on this rover's own frames that context corrupted the detections
+        # themselves rather than merely failing to settle identity.
+        answer = self.reasoner.inspect(jpeg)
         if not answer.ok:
             return self._failed("model_error", answer.error, began=began,
                                 backend=backend, inference_id=inference_id,
@@ -121,7 +129,7 @@ class Inspector:
                                 model_id=answer.model_id,
                                 raw_json=answer.text[:4000])
 
-        result = validate(payload, {entity["id"] for entity in known})
+        result = validate(payload)
         if not result.ok:
             return self._failed("invalid", result.error, began=began,
                                 backend=backend, inference_id=inference_id,
@@ -152,13 +160,15 @@ class Inspector:
             # What the model offered and what was not kept, counted as
             # observations. A complaint about a bounding box is neither.
             returned=len(result.seen) + result.refused,
+            stored=stored["stored"],
             matched=stored["matched"], created=stored["created"],
             rejected=stored["rejected"] + result.refused,
             raw_json=answer.text[:8000])
         return {"ok": True, "status": "ok", "inference_id": inference_id,
                 "frame_id": frame_id, "scene": result.scene,
-                "known_count": len(known), "duration_s": round(time.time() - began, 2),
+                "duration_s": round(time.time() - began, 2),
                 "returned": len(result.seen) + result.refused,
+                "stored": stored["stored"],
                 "matched": stored["matched"], "created": stored["created"],
                 "rejected": stored["rejected"] + result.refused,
                 "entities": stored["entities"], "detail": detail,

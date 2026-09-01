@@ -8,10 +8,15 @@ lasting thing in the room, and it is derived from observations. Collapsing the t
 the evidence this experiment exists to collect, because "the sofa's description
 changed" and "the model saw a different sofa" would leave the same record behind.
 
-Nothing in here is allowed to trust the model with an identifier. `record` takes
-observations that have already been validated against a list of identifiers the
-model was shown, allocates its own for anything new, and refuses to merge two
-existing entities under any circumstances.
+**Nothing creates an entity at the moment, and that is deliberate.** Entities used
+to be allocated from whatever the model said it was looking at, which the rover
+measured as worthless in both directions: one model never recognises anything and
+the other recognises things that are not in the room. So `record` writes
+observations and stops there, every one of them carrying the gimbal angles and the
+rover pose behind it, and the `entities` table waits for the resolver that will
+key identity off a triangulated map position rather than off a picture. What comes
+back from an inspection now is an honest record of what was seen, from a measured
+place, at a known time.
 
 The database and the frames live outside the deploy tree, under ``~/.ugv/world``,
 for the same reason the TLS keys do: a source deploy replaces ``~/ugv`` and would
@@ -31,13 +36,7 @@ from typing import Any
 #: a temporary directory, which is the only thing that ever overrides it.
 ENV_DIR = "UGV_WORLD_DIR"
 
-SCHEMA_VERSION = 1
-#: How many entities are put in front of the model as "you have seen these
-#: before". Bounded on purpose: the experiment asks whether the model can
-#: recognise something it has seen, and a context holding every entity ever
-#: recorded would answer a different and easier question -- while growing the
-#: prompt without limit on a board with 8 GB in it.
-KNOWN_LIMIT = 24
+SCHEMA_VERSION = 2
 #: How many past inferences the diagnostics view keeps in front of the reader.
 INFERENCE_LIMIT = 12
 
@@ -85,8 +84,10 @@ class WorldStore:
         """
         with self._lock, self.db:
             self.db.executescript(SCHEMA)
+            for table, columns in ADDED_COLUMNS.items():
+                self._add_columns(table, columns)
             self.db.execute(
-                "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+                "REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),))
             # Session one exists from the moment the database does, so that the
             # very first observation is stamped with something rather than with
@@ -95,6 +96,27 @@ class WorldStore:
             # should not also be what a brand new database says.
             self.db.execute(
                 "INSERT OR IGNORE INTO meta(key, value) VALUES('map_session', '1')")
+
+    def _add_columns(self, table: str, columns: dict[str, str]) -> None:
+        """Add columns a later version wants to a table an earlier one created.
+
+        `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists,
+        so a database written by an older build would silently go on without the
+        new column and every insert naming it would fail. This is the migration,
+        and it is deliberately the only kind there is: **columns are added and
+        never removed or retyped**, so a rover's recorded history survives every
+        change to what is recorded next.
+
+        The rows already in the deployed database were written when the model was
+        still being asked which lasting thing it was looking at. They keep their
+        answers, in columns nothing writes any more, because throwing away the
+        evidence for a negative result would leave nothing to point at.
+        """
+        have = {row["name"] for row in self.db.execute(f"PRAGMA table_info({table})")}
+        for name, declaration in columns.items():
+            if name not in have:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} "
+                                f"{declaration}")
 
     # --- meta -----------------------------------------------------------------
 
@@ -266,19 +288,6 @@ class WorldStore:
                 (int(limit),)).fetchall()
         return [dict(row) for row in rows]
 
-    def known_entities(self, limit: int = KNOWN_LIMIT) -> list[dict[str, Any]]:
-        """The bounded current-state summary the model is shown before it answers.
-
-        Most recently seen first, because the rover is looking at the room it was
-        last looking at: the entities it might be seeing again are the ones it saw
-        a moment ago, and a list cut off at the far end of the house costs nothing.
-        """
-        with self._lock:
-            rows = self.db.execute(
-                "SELECT id, kind, label, canonical_description FROM entities "
-                "ORDER BY last_seen_at DESC, id LIMIT ?", (int(limit),)).fetchall()
-        return [dict(row) for row in rows]
-
     # --- writing --------------------------------------------------------------
 
     def record_inference(self, **fields: Any) -> int:
@@ -302,13 +311,19 @@ class WorldStore:
             self.db.execute(f"UPDATE inferences SET {assignments} WHERE id = ?",
                             [*fields.values(), inference_id])
 
-    def _allocate(self, kind: str) -> str:
-        """The next identifier of this kind. The application's, never the model's.
+    def allocate(self, kind: str) -> str:
+        """The next identifier of this kind. The application's, never a model's.
 
         Counted in a table rather than derived from the highest existing row, so
         that an entity deleted by hand cannot hand its name to a different thing
         later. `clear` resets the counters with everything else, which is what
         makes a fresh experiment start at one again.
+
+        Public, and with no caller inside this file at the moment: the resolver
+        that will create entities from triangulated positions lives outside the
+        store, and this is the door it comes in by. The rule it enforces -- that
+        names are allocated here and nowhere else -- is the one thing about
+        identity that survived both models failing at it.
         """
         with self._lock, self.db:
             row = self.db.execute("SELECT next FROM counters WHERE kind = ?",
@@ -322,80 +337,58 @@ class WorldStore:
                source: str = "cosmos_visual", model_id: str = "",
                prompt_version: str = "",
                inference_id: int | None = None) -> dict[str, Any]:
-        """Store one inspection's observations and associate them with entities.
+        """Store one inspection's observations. No identity is decided here.
 
-        The association is deliberately blunt, because the failure this experiment
-        wants to see is whether the same sofa keeps its identifier across three
-        views, and fuzzy matching on the label would hide that answer behind our
-        own cleverness. So: a reference to an identifier the model was actually
-        shown is accepted, anything else becomes a new entity, two existing
-        entities are never merged, and no observation is ever rewritten.
+        Every row goes in with a null `entity_id`, and that is the honest state of
+        the world rather than a gap waiting to be filled by something cheap. Which
+        lasting thing an observation belongs to is a question about *where the
+        thing is*, and one look from one place does not answer it: an object gets a
+        position only once a second look arrives from somewhere far enough away for
+        two bearings to cross. Until the resolver that does that arrives, an
+        inspection records what was seen, from a measured pose, at a known time,
+        and claims nothing further.
 
-        Over-creating is the expected failure and is left visible rather than
-        smoothed over -- two entities with the same label sit next to each other in
-        the popup, which is the whole point of having a popup.
+        What is deliberately **not** done meanwhile is a cheap stand-in -- matching
+        on the label, say. The rover has already measured what that would be worth:
+        one model called the same chair a black leather recliner and then a blue
+        leather one on a byte-identical frame, and the twin chair a couch. Keying
+        identity off a name that drifts like that would fill the store with
+        confident wrong answers, which is worse than an empty entity table.
         """
         now = time.time()
         session = self.map_session()
         pose = capture.get("pose")
-        matched = created = rejected = 0
-        touched: list[str] = []
+        stored = 0
         with self._lock, self.db:
             for item in seen:
-                entity_id = item.existing_entity
-                note = None
-                if entity_id is not None:
-                    # Belt and braces: `validate` has already refused an identifier
-                    # that was not on the list the model was shown, and this is the
-                    # row that actually goes in. An entity deleted since the list
-                    # was built is the same case as one that never existed.
-                    if self.db.execute("SELECT 1 FROM entities WHERE id = ?",
-                                       (entity_id,)).fetchone() is None:
-                        entity_id, rejected = None, rejected + 1
-                        note = "the model named an entity that is not in the store"
-                    else:
-                        matched += 1
-                elif item.concrete:
-                    entity_id = self._allocate(item.kind)
-                    self.db.execute(
-                        "INSERT INTO entities(id, kind, label, "
-                        "canonical_description, created_at, last_seen_at, "
-                        "observation_count) VALUES(?, ?, ?, ?, ?, ?, 0)",
-                        (entity_id, item.kind, item.label, item.description, now,
-                         now))
-                    created += 1
-                else:
-                    rejected += 1
-                    note = ("nothing concrete enough to be a lasting thing in the "
-                            "room, so no entity was created")
+                # The one thing worth saying about a row beyond what it holds:
+                # whether its label could ever be recognised again. "a thing" is
+                # kept as history, because it is what the model said, but it will
+                # never pass the resolver's first gate and the popup should say so
+                # rather than leave a reader wondering.
+                note = None if item.concrete else (
+                    "the label names nothing in particular, so this observation "
+                    "can never be matched to a lasting thing")
                 self.db.execute(
                     "INSERT INTO observations(entity_id, inference_id, observed_at,"
                     " source, frame_id, frame_path, scene_summary, label,"
-                    " description, location_hint, bbox_json, observer_pan_deg,"
+                    " bbox_json, observer_pan_deg,"
                     " observer_tilt_deg, observer_pose_json, map_session, model_id,"
                     " prompt_version, raw_json, note)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (entity_id, inference_id, now, source, capture.get("frame_id"),
-                     capture.get("frame_path"), scene, item.label, item.description,
-                     item.location_hint,
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (None, inference_id, now, source, capture.get("frame_id"),
+                     capture.get("frame_path"), scene, item.label,
                      None if item.bbox is None else json.dumps(item.bbox),
                      capture.get("pan"), capture.get("tilt"),
                      None if pose is None else json.dumps(pose), session, model_id,
                      prompt_version, json.dumps(item.raw, sort_keys=True), note))
-                if entity_id is not None:
-                    touched.append(entity_id)
-                    # The canonical value follows the newest observation while the
-                    # history keeps every earlier one, so a canonical description
-                    # that no longer matches its own past is visible in the popup
-                    # rather than being the only thing left of it.
-                    self.db.execute(
-                        "UPDATE entities SET last_seen_at = ?, "
-                        "observation_count = observation_count + 1, "
-                        "canonical_description = ?, label = ? WHERE id = ?",
-                        (now, item.description or item.label, item.label,
-                         entity_id))
-        return {"matched": matched, "created": created, "rejected": rejected,
-                "entities": touched, "map_session": session}
+                stored += 1
+        # `matched` and `created` are reported as zero rather than dropped, because
+        # the console's diagnostics table and the deployed database's older rows
+        # both still speak in them, and "nothing was matched and nothing created"
+        # is the true answer for every inspection this build performs.
+        return {"stored": stored, "matched": 0, "created": 0, "rejected": 0,
+                "entities": [], "map_session": session}
 
     def clear(self) -> dict[str, Any]:
         """Throw the semantic world away, and nothing else.
@@ -444,15 +437,40 @@ class WorldStore:
 INFERENCE_COLUMNS = (
     "started_at", "duration_s", "status", "detail", "backend", "model_id",
     "prompt_version", "frame_id", "frame_live", "known_count", "returned",
-    "matched", "created", "rejected", "map_session", "raw_json",
+    "stored", "matched", "created", "rejected", "map_session", "raw_json",
 )
 
+#: Columns added after the table they belong to was first created, applied by
+#: `_add_columns` every time a database is opened. Adding to this is how the
+#: schema grows; nothing is ever taken out of it, because a rover's recorded
+#: history has to survive changes to what gets recorded next.
+#:
+#: `known_count` is the counterpart, and it stays in the table above without
+#: appearing here: it was written when the model was still shown the entities it
+#: had already named, nothing writes it now, and the old rows that hold it are the
+#: record of that experiment.
+ADDED_COLUMNS = {
+    "inferences": {"stored": "INTEGER"},
+}
+
+# Three columns here are written by nothing in this build and are kept anyway,
+# which is worth saying out loud so a later reader does not take them for an
+# oversight. `observations.description` and `observations.location_hint` were the
+# model's prose about each thing; `inferences.known_count` was how many entities it
+# was shown before it answered. All three belonged to asking a model which lasting
+# thing it was looking at, which the rover measured and which failed, and the rows
+# holding them are the evidence for that. Columns are added and never dropped.
+#
+# The `entities` table is likewise empty on a fresh database and stays that way
+# until the resolver arrives. It is not dead: it is the shape identity will take
+# once it comes from a triangulated position rather than from a picture.
+#
 # No `state` column on entities, although the task's suggested shape lists one.
-# Nothing in this slice would write anything but 'present' into it and nothing
-# would read it, and "add fields only when they answer a real POC question" is the
-# rule that decides it. Whether an entity has gone quiet is `last_seen_at` and
-# whether it belongs to a map that no longer exists is `map_session`; both are
-# answered from rows that something actually writes.
+# Nothing would write anything but 'present' into it and nothing would read it, and
+# "add fields only when they answer a real question" is the rule that decides it.
+# Whether an entity has gone quiet is `last_seen_at` and whether it belongs to a
+# map that no longer exists is `map_session`; both are answered from rows that
+# something actually writes.
 SCHEMA = """
     CREATE TABLE IF NOT EXISTS meta (
         key   TEXT PRIMARY KEY,
@@ -508,6 +526,7 @@ SCHEMA = """
         frame_live     INTEGER,
         known_count    INTEGER,
         returned       INTEGER,
+        stored         INTEGER,
         matched        INTEGER,
         created        INTEGER,
         rejected       INTEGER,

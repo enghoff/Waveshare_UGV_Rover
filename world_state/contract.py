@@ -1,12 +1,22 @@
 """What the model is asked for, and what is done to its answer before any of it
 is believed.
 
-Two rules shape everything here. The model proposes and the application disposes:
-nothing that arrives in this file may allocate an identifier, name an entity that
-was not put in front of it, or state where anything is in metres. And a malformed
-answer is an ordinary outcome rather than an exception -- a 2B model asked for JSON
-will sometimes produce prose, and that has to end in a diagnostic line and no
-change to the world, not in a traceback in the process that owns the gimbal.
+**The model is no longer asked which persistent thing it is looking at.** That
+question was put to two of them on the rover's own frames and both failed it in
+opposite directions -- Cosmos Reason 2 never says "yes, that one" and Cosmos 3
+never says "new", and it drew a fish tank into a room because a fish tank was on
+the list it had been shown. Worse than useless: the known list contaminated the
+detections themselves. So the list is gone, the identity field is gone, and what
+comes back here is one honest sentence about a picture plus a box round each thing
+in it. Identity is settled later, from where the rover was standing and where the
+camera was pointing, in `locate.py` and the resolver that will sit on top of it.
+
+Two rules survive that. The model proposes and the application disposes: nothing
+that arrives in this file may allocate an identifier, claim which lasting thing it
+is looking at, or state where anything is in metres. And a malformed answer is an
+ordinary outcome rather than an exception -- a 2B model asked for JSON will
+sometimes produce prose, and that has to end in a diagnostic line and no change to
+the world, not in a traceback in the process that owns the gimbal.
 
 `validate` is therefore total: it returns a `Result` for every input, including
 "none of that was usable", and the reasons come back with it so the popup can say
@@ -23,7 +33,7 @@ from typing import Any
 #: in a way that could change what it reports. Stamped on every observation,
 #: because an experiment that ran across a prompt change and cannot tell which half
 #: is which has measured nothing.
-PROMPT_VERSION = "4"
+PROMPT_VERSION = "5"
 
 #: The semantic vocabulary, kept loose and practical on purpose. `room_hint`,
 #: `text` and `hazard` are deliberately absent: nothing consumes them, and a
@@ -37,12 +47,17 @@ KINDS = ("object", "furniture", "opening", "person", "unknown")
 #: it was asked, and the store should not grow an entity per book while it does.
 #:
 #: Six rather than ten, and the reason is arithmetic rather than taste. Measured on
-#: the rover, one observation costs this model about sixty-five tokens; ten of them
-#: plus the scene sentence is past the output cap, so the answer ran out mid-object
-#: and a good look at the room was thrown away as truncated. **The cap on the
-#: number of observations and the cap on tokens have to agree**, and of the two
-#: ways to make them agree this is the one that keeps an inspection at a minute
+#: the rover, one observation cost this model about sixty-five tokens; ten of them
+#: plus the scene sentence was past the output cap, so the answer ran out
+#: mid-object and a good look at the room was thrown away as truncated. **The cap
+#: on the number of observations and the cap on tokens have to agree**, and of the
+#: two ways to make them agree this is the one that keeps an inspection at a minute
 #: rather than pushing it to three. See `reasoner.MAX_TOKENS`.
+#:
+#: Losing `description` and `location_hint` took roughly sixty per cent of those
+#: tokens away, so six now sits well inside the budget rather than up against it.
+#: The cap stays where it is: what changed is the cost of an observation, not the
+#: number of things in a room worth remembering.
 MAX_OBSERVATIONS = 6
 
 #: Labels that name nothing in particular. An observation carrying one of these is
@@ -59,6 +74,16 @@ METRIC_KEYS = {"x", "y", "z", "x_m", "y_m", "z_m", "map_x", "map_y", "map_z",
                "distance", "distance_m", "range_m", "depth_m", "position",
                "coordinates", "world_x", "world_y", "pose", "heading_deg"}
 
+#: Keys that would be the model claiming which lasting thing it is looking at.
+#: The prompt no longer asks for any of them, and a grammar-constrained answer
+#: cannot contain one, but a backend that could not be constrained still can --
+#: and the failure this whole change exists to remove is a model's guess about
+#: identity being believed. Stripped and reported for the same reason the metric
+#: keys are: a model that keeps offering an identity is worth knowing about, and
+#: nothing downstream should ever grow a habit of reading one.
+IDENTITY_KEYS = {"existing_entity", "entity_id", "entity", "same_as", "matches",
+                 "known_entity", "object_id", "instance_id", "track_id"}
+
 #: The other scale a bounding box arrives on. Qwen3-VL, which this model is a
 #: fine-tune of, is trained to place things on a grid a thousand units across, and
 #: asking for fractions does not reliably talk it out of that.
@@ -69,15 +94,7 @@ GRID = 1000.0
 #: there is nothing between the two to get wrong.
 FRACTION_CEILING = 2.0
 
-#: What a model writes when it means "this is not one of the ones you listed" but
-#: has copied the string in the prompt's example rather than the JSON value. Only
-#: these exact words: a name that merely looks like an identifier is still refused,
-#: because inventing entity names is the thing the known list exists to prevent.
-NOT_AN_ENTITY = {"null", "none", "nil", "n/a", "na", "", "no", "false"}
-
 MAX_LABEL = 60
-MAX_DESCRIPTION = 200
-MAX_HINT = 40
 MAX_SCENE = 400
 
 
@@ -85,19 +102,20 @@ MAX_SCENE = 400
 class Seen:
     """One observation the model proposed, after validation.
 
-    `existing_entity` is either None or an identifier that was genuinely in the
-    list the model was shown -- there is no third case by the time anything holds
-    one of these. `concrete` is whether this is worth an entity of its own if it is
-    new, which is a question about the label rather than about the model's
-    confidence in it.
+    A kind, a name and a box, and deliberately nothing else. No claim about which
+    lasting thing this is: that is decided from the rover's own measurements once
+    the same thing has been looked at from two places far enough apart.
+
+    `concrete` is whether the label names something in particular. It is a
+    question about the label rather than about the model's confidence in it, and
+    what it will gate is the resolver's cheapest test -- "a thing" can never be
+    matched to anything, so it stays an observation and never becomes a lasting
+    entity.
     """
 
     kind: str
     label: str
-    description: str = ""
-    location_hint: str = ""
     bbox: list[float] | None = None
-    existing_entity: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -175,18 +193,15 @@ RESPONSE_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "existing_entity": {"type": ["string", "null"]},
                     "kind": {"type": "string", "enum": list(KINDS)},
                     "label": {"type": "string", "maxLength": 40},
-                    "description": {"type": "string", "maxLength": 120},
-                    "location_hint": {"type": "string", "maxLength": 24},
                     "bbox_norm": {
                         "type": "array",
                         "items": {"type": "number"},
                         "minItems": 4, "maxItems": 4,
                     },
                 },
-                "required": ["kind", "label", "description", "bbox_norm"],
+                "required": ["kind", "label", "bbox_norm"],
             },
         },
     },
@@ -194,14 +209,19 @@ RESPONSE_SCHEMA = {
 }
 
 
-def build_prompt(known: list[dict[str, Any]]) -> str:
-    """What the model is asked, with the entities it has already been given names
-    for.
+def build_prompt() -> str:
+    """What the model is asked, which is one question and no longer two.
 
-    The known list is the whole of the identity experiment. The model is not asked
-    "what is this?" but "is this one of these?", and it can only answer with a name
-    from the list or with nothing -- which is what makes a duplicate entity a
-    result rather than a bug in the prompt.
+    It takes no arguments, and that is the change. It used to be handed the
+    entities the rover had already named, and asked which of them it was looking
+    at; measured on the rover, that list did not merely fail to settle identity
+    but **corrupted the detections**, because the model read it as a list of
+    things it ought to be seeing. Cosmos 3 wrote a fish tank into a living room
+    that way, description copied verbatim out of the list.
+
+    So the model is asked what is in front of it and nothing else. The box is the
+    measurement, the label is a hint, and which lasting thing this is will be
+    worked out from where the rover was standing.
     """
     lines = [
         "You are the perception layer of a small indoor robot. You are looking at "
@@ -212,13 +232,14 @@ def build_prompt(known: list[dict[str, Any]]) -> str:
         "are put. Ignore floor texture, reflections, lighting and anything you "
         "cannot name.",
         "",
+        "Report only what you can see in this photograph. Do not carry anything "
+        "over from another picture and do not add anything you expect to be in a "
+        "room like this one.",
+        "",
         "Answer with JSON only, in this shape:",
         json.dumps({"scene": "one sentence about the room",
-                    "observations": [{"existing_entity": "object:12 or null",
-                                      "kind": "|".join(KINDS),
+                    "observations": [{"kind": "|".join(KINDS),
                                       "label": "short name",
-                                      "description": "one clause",
-                                      "location_hint": "ahead-left",
                                       "bbox_norm": ["left", "top", "right",
                                                     "bottom"]}]},
                    indent=2),
@@ -238,23 +259,14 @@ def build_prompt(known: list[dict[str, Any]]) -> str:
         "cannot measure those from one photograph and any you give will be "
         "discarded.",
         "",
+        # And nothing about identity, not even a prohibition. Naming the subject
+        # in order to forbid it is still naming it, and what the rover measured is
+        # that raising previously-seen objects at all changes what the model
+        # reports it can see. The schema has no field for an identity, the grammar
+        # cannot produce one, and `_one` throws one away if it arrives anyway;
+        # none of that needs the model to have been told about it.
+        f"At most {MAX_OBSERVATIONS} observations. JSON only, no other text.",
     ]
-    if known:
-        lines.append("The robot has already given names to these things. If "
-                     "something in this picture is one of them, put its exact "
-                     "name in existing_entity; otherwise use null. Never invent a "
-                     "name that is not on this list.")
-        lines.append("")
-        for entity in known:
-            described = entity.get("canonical_description") or entity.get("label")
-            lines.append(f"- {entity['id']} -- {entity.get('label', '')}"
-                         f"{': ' + described if described else ''}")
-    else:
-        lines.append("The robot has not named anything yet, so existing_entity is "
-                     "null for everything in this picture.")
-    lines.append("")
-    lines.append(f"At most {MAX_OBSERVATIONS} observations. JSON only, no other "
-                 f"text.")
     return "\n".join(lines)
 
 
@@ -315,15 +327,17 @@ def extract_json(text: str) -> tuple[dict[str, Any] | None, str]:
     return payload, ""
 
 
-def validate(payload: Any, known_ids) -> Result:
+def validate(payload: Any) -> Result:
     """One model answer, reduced to what may be stored.
 
     Total by design: every input produces a `Result`, and one whose `seen` list is
     empty is a perfectly good answer -- "nothing salient in this picture" is a
     finding. What separates it from a failure is `error`, which is set only when
     the answer itself could not be read.
+
+    It takes no list of known identifiers any more, because there is no longer an
+    answer here that could refer to one.
     """
-    known = set(known_ids or ())
     if not isinstance(payload, dict):
         return Result(error="the model's answer was not an object")
     result = Result(raw=payload)
@@ -344,7 +358,7 @@ def validate(payload: Any, known_ids) -> Result:
         items = items[:MAX_OBSERVATIONS]
 
     for index, item in enumerate(items):
-        seen, why = _one(item, known, result)
+        seen, why = _one(item, result)
         if seen is None:
             result.refused += 1
             result.rejected.append(f"observation {index + 1}: {why}")
@@ -353,11 +367,11 @@ def validate(payload: Any, known_ids) -> Result:
     return result
 
 
-def _one(item: Any, known: set, result: Result) -> tuple[Seen | None, str]:
+def _one(item: Any, result: Result) -> tuple[Seen | None, str]:
     if not isinstance(item, dict):
         return None, "not an object"
     for key in item:
-        if key.lower() in METRIC_KEYS:
+        if key.lower() in METRIC_KEYS or key.lower() in IDENTITY_KEYS:
             result.stripped.append(key)
 
     label = _text(item.get("label"), MAX_LABEL)
@@ -374,32 +388,8 @@ def _one(item: Any, known: set, result: Result) -> tuple[Seen | None, str]:
             result.stripped.append(f"kind={kind}")
         kind = "unknown"
 
-    reference = item.get("existing_entity")
-    if isinstance(reference, str) and reference.strip().lower() in NOT_AN_ENTITY:
-        # "null" the word, rather than null the value. The example in the prompt
-        # has to render the field as a string to show what one looks like, and a
-        # model that copies the shape it was shown writes the word back -- which
-        # is the same habit that put the example bounding box in every
-        # observation. Read as "no entity", because that is unambiguously what it
-        # means, and refusing it would throw away a whole observation over a pair
-        # of quotation marks. Cosmos 3 answers this way for every observation;
-        # Cosmos Reason 2 does not.
-        reference = None
-    if reference is not None:
-        if not isinstance(reference, str) or reference.strip() not in known:
-            # Refused, not created. An identifier the model was never shown is
-            # either invention or a stale memory of an earlier conversation, and
-            # auto-creating an entity for it would let the model choose its own
-            # names by the back door.
-            return None, (f"named {reference!r}, which was not in the list it was "
-                          f"shown")
-        reference = reference.strip()
-
     return Seen(kind=kind, label=label,
-                description=_text(item.get("description"), MAX_DESCRIPTION),
-                location_hint=_text(item.get("location_hint"), MAX_HINT),
                 bbox=_bbox(item.get("bbox_norm"), result),
-                existing_entity=reference,
                 raw=_clean(item)), ""
 
 
@@ -450,10 +440,11 @@ def _bbox(value: Any, result: Result) -> list[float] | None:
 
 def _clean(item: dict[str, Any]) -> dict[str, Any]:
     """The model's own words for this observation, minus anything it should not
-    have measured. Kept verbatim otherwise, because "what did Cosmos actually say"
-    is a question the popup has to be able to answer."""
+    have measured and anything claiming to be an identity. Kept verbatim
+    otherwise, because "what did the model actually say" is a question the popup
+    has to be able to answer."""
     return {key: value for key, value in item.items()
-            if key.lower() not in METRIC_KEYS}
+            if key.lower() not in METRIC_KEYS and key.lower() not in IDENTITY_KEYS}
 
 
 def _text(value: Any, limit: int) -> str:

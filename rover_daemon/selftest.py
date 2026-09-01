@@ -1299,6 +1299,7 @@ def test_the_world_state_calls_reach_the_store():
     import tempfile
 
     import rover_daemon
+    import world_state.view
 
     with tempfile.TemporaryDirectory() as directory:
         was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_COSMOS_FAKE"))
@@ -1324,25 +1325,24 @@ def test_the_world_state_calls_reach_the_store():
             # alone and still be written down.
             looked = rover.call("world_inspect", {})
             check("an inspection runs", looked["ok"], True)
-            check("...and an empty answer creates nothing", looked["created"], 0)
+            check("...and an empty answer stores nothing", looked["stored"], 0)
             check("...and is recorded where the popup shows it",
                   rover.call("world_state_summary", {})["summary"]["inspections"], 1)
 
             # And with something in the answer, so the provenance can be checked.
             rover._world_inspector_cache.reasoner.answers.append(
                 {"scene": "a room", "observations": [
-                    {"existing_entity": None, "kind": "furniture",
-                     "label": "grey sofa", "description": "a grey three-seat sofa",
-                     "location_hint": "ahead-left",
+                    {"kind": "furniture", "label": "grey sofa",
                      "bbox_norm": [100, 300, 500, 900]}]})
             saw = rover.call("world_inspect", {})
             check("a second inspection records what the model said",
-                  saw["created"], 1)
+                  saw["stored"], 1)
+            check("...and claims no identity for it, which is now the whole point",
+                  saw["created"], 0)
             entities = rover.call("world_state_entities", {})
-            check("...under an identifier this daemon allocated",
-                  [e["id"] for e in entities["entities"]], ["furniture:1"])
-            detail = rover.call("world_state_entity", {"id": "furniture:1"})
-            observation = detail["observations"][0]
+            check("...so the entity list is empty and the observation is not",
+                  (entities["entities"], len(entities["recent"])), ([], 1))
+            observation = entities["recent"][0]
             check("the gimbal angles it was taken at are on the observation",
                   (observation["observer_pan_deg"], observation["observer_tilt_deg"]),
                   (25.0, -8.0))
@@ -1352,7 +1352,8 @@ def test_the_world_state_calls_reach_the_store():
             # is the honest answer rather than a ray from the origin.
             check("no navigator means no rover pose is claimed",
                   observation["pose"], None)
-            check("...and therefore nothing to draw on the map", detail["rays"], [])
+            check("...and therefore nothing that could ever place it",
+                  world_state.view.ray(observation, rover.camera_fov_deg), None)
 
             frame = rover.call("world_state_frame",
                                {"frame_id": observation["frame_id"]})
@@ -1364,12 +1365,14 @@ def test_the_world_state_calls_reach_the_store():
             session = rover.call("world_map_session", {})
             check("clearing the map starts a new session", session["map_session"], 2)
             check("...and deletes nothing",
-                  rover.call("world_state_summary", {})["summary"]["entities"], 1)
+                  rover.call("world_state_summary", {})["summary"]["observations"],
+                  1)
 
             cleared = rover.call("world_state_clear", {})
             check("clearing the semantic world empties it", cleared["ok"], True)
-            check("...of entities",
-                  rover.call("world_state_summary", {})["summary"]["entities"], 0)
+            check("...of observations",
+                  rover.call("world_state_summary", {})["summary"]["observations"],
+                  0)
             check("...and of the pictures it kept", cleared["frames_removed"], 2)
             rover.close_world()
         finally:

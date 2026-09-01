@@ -4,16 +4,35 @@ What the rover has been told is in the room, kept apart from where things are.
 
 SLAM Toolbox and Nav2 own geometry: the occupancy grid, the pose, the routes. This
 component owns the other kind of memory — that there is a grey sofa, that it was
-seen three times from three places, and that the model was shown a picture of it
-each time and said so. Nothing in here drives, plans or refuses a move, and nothing
-in here is offered to a voice model. It exists to answer one question with real
-rover data:
+seen three times from three places, and where the rover was standing each time.
+Nothing in here drives, plans or refuses a move, and nothing in here is offered to
+a voice model.
 
-> Does Cosmos build and maintain a description of the environment that stays
+The plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md);
+the earlier design it was first built to, [`docs/cosmos-reason2-integration.md`](../docs/cosmos-reason2-integration.md),
+is now history rather than instruction, for the reason below.
+
+## Where this stands
+
+The question this component was built to answer has an answer, and it is no.
+
+> Does the model build and maintain a description of the environment that stays
 > coherent as the rover sees the same place from different views?
 
-The design it implements is [`docs/cosmos-reason2-integration.md`](../docs/cosmos-reason2-integration.md);
-the plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md).
+It does not, and no better model fixes it, because **the information is not in the
+picture**: two identical chairs at opposite ends of a room are identical in the
+image, and what separates them is where they are. The measurements behind that
+conclusion are further down; the short version is that Cosmos Reason 2 never
+recognises anything it has named, and Cosmos 3 recognises things that are not in
+the room and writes them into the scene.
+
+So the model has lost the job. **It is now shown one picture and told nothing
+about what the rover has already seen**, and what it returns is a kind, a name and
+a box — no description, no location hint, and no claim about which lasting thing
+it is looking at. Identity will come from a triangulated map position, and until
+the resolver that does that arrives, an inspection records observations and no
+entity is created at all. `entities` is an empty table waiting for a better
+answer, not a dead one.
 
 ```text
                 gimbal camera
@@ -27,9 +46,9 @@ the plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-sem
               structured JSON only
                       |
                       v
-        validate -> observation -> entity
-                      |
-                      v
+              validate -> observation
+                      |            with the gimbal angles and the rover pose
+                      v            that will one day place it
         SQLite + JPEGs under ~/.ugv/world
                       |
                       v
@@ -38,26 +57,32 @@ the plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-sem
 
 ## The one rule
 
-**The model proposes; the application disposes.** Cosmos never allocates an
-identifier, never names an entity it was not shown, never writes a row and never
-states a distance. What it returns is a proposal that [`contract.py`](contract.py)
-validates and [`store.py`](store.py) records, and every path through
-[`inspector.py`](inspector.py) that fails leaves the world exactly as it was, with
-one line in the diagnostics log saying which failure it was.
+**The model proposes; the application disposes.** It never allocates an
+identifier, never claims which lasting thing it is looking at, never writes a row
+and never states a distance. What it returns is a proposal that
+[`contract.py`](contract.py) validates and [`store.py`](store.py) records, and
+every path through [`inspector.py`](inspector.py) that fails leaves the world
+exactly as it was, with one line in the diagnostics log saying which failure it
+was.
 
-That matters more here than it usually would. The question this component exists to
-answer is whether *the model* keeps track of a sofa, and any fuzzy matching on our
-side — merging two entities because their labels look alike, creating an entity for
-an identifier the model invented — would answer a question about our code instead.
-So association is deliberately blunt:
+That rule has grown teeth. It used to mean the model could only refer to an
+identifier it had been shown; it now means there is no field it could use, no
+grammar that would let it produce one, and a validator that strips an identity
+claim out of the answer and reports having done so — the same treatment metres
+have always had. What is left is deliberately blunt:
 
-1. a reference to an identifier that was in the list the model was shown is accepted;
-2. anything else becomes a new entity, if its label names something in particular;
-3. two existing entities are never merged;
-4. no observation is ever rewritten.
+1. every observation is stored exactly as the model said it, with the frame, the
+   gimbal angles and the rover pose behind it;
+2. no observation is ever rewritten;
+3. nothing is matched to anything, because nothing yet knows where anything is;
+4. a label that names nothing in particular — "a thing" — is kept and marked as
+   unmatchable, because it is what the model said.
 
-Over-creating is the expected failure and is left visible: two entities with the
-same label sit next to each other in the popup and are marked as sharing it.
+There is deliberately no cheap stand-in in the meantime. Matching on the label
+would be the obvious one, and the rover has already measured what it would be
+worth: the same chair came back as a "black leather recliner" and then, on the
+byte-identical frame, a "blue leather recliner", with its twin becoming a "black
+leather couch". An empty entity table beats confident wrong answers.
 
 ## Observations and entities are different things
 
@@ -67,16 +92,26 @@ thing in the room, derived from observations.
 
 Collapsing the two — letting an answer update a row in place — would destroy the
 evidence, because "the sofa's description changed" and "the model saw a different
-sofa" would leave the same record behind. The canonical description follows the
-newest observation, and every earlier one is still there, so an entity whose wording
-has drifted from its own history says so in the popup rather than quietly becoming
-the new wording.
+sofa" would leave the same record behind.
+
+Keeping them apart is what makes the current state survivable. Nothing creates an
+entity at the moment, so every observation is an orphan; but each carries the
+frame, the gimbal angles and the rover pose behind it, which is exactly what the
+resolver will need to place it later. **Nothing has to be re-photographed when
+identity arrives.**
+
+Three columns are written by nothing and kept anyway: `description` and
+`location_hint` on observations, and `known_count` on inferences. All three
+belonged to asking a model which lasting thing it was looking at. The rows holding
+them are the evidence for that having failed, so columns are added and never
+dropped, and `store._add_columns` adds new ones to a database an older build
+created.
 
 There is no `state` column on entities, although the task's suggested schema lists
-one: nothing in this slice would write anything but `present` into it and nothing
-would read it. Whether an entity has gone quiet is `last_seen_at`; whether it
-belongs to a map that no longer exists is `map_session`. Both are answered from
-columns something actually writes.
+one: nothing would write anything but `present` into it and nothing would read it.
+Whether an entity has gone quiet is `last_seen_at`; whether it belongs to a map
+that no longer exists is `map_session`. Both are answered from columns something
+actually writes.
 
 ## Provenance, and the line it draws
 
@@ -97,12 +132,14 @@ from a single photograph, and none of that is stored: `contract.py` strips
 `distance_m`, `map_x` and their relatives out of the answer before anything sees it,
 and reports that it did.
 
-That provenance is also what lets the popup draw an entity on the map without giving
-it a position. [`view.py`](view.py) turns one observation into a **bearing from a
-measured pose** — a cone from where the rover stood, along where the camera pointed,
-narrowed by where in the picture the thing sat. Several observations of one entity
-are several cones from different places, and whether they converge is the question.
-No pose or no gimbal angle means no cone, rather than a cone from the origin.
+That provenance is now the whole basis of identity rather than a decoration on it.
+[`view.py`](view.py) turns one observation into a **bearing from a measured pose** —
+a cone from where the rover stood, along where the camera pointed, narrowed by
+where in the picture the thing sat — and [`locate.py`](locate.py) turns two such
+bearings, taken from places far enough apart, into a point on the map with an
+uncertainty attached. One bearing is a direction and not a position, so a thing
+gets located only once the rover has driven between two looks. No pose or no
+gimbal angle means no cone, rather than a cone from the origin.
 
 ## Clearing, in both directions
 
@@ -176,7 +213,7 @@ that has an answer would be the wrong order.
 | Call | What it does |
 |---|---|
 | `world_state_summary` | counts, the last inference, the last few outcomes |
-| `world_state_entities` | every entity, its rays, the observation stream, the unmatched |
+| `world_state_entities` | every entity, its rays, the observation stream, the unmatched — no entities exist yet, so this is the observation stream |
 | `world_state_entity(id)` | one entity and its whole recent history |
 | `world_state_observations(entity_id?)` | the history on its own |
 | `world_state_frame(frame_id)` | the stored JPEG, base64, for the console |
@@ -192,22 +229,30 @@ for the same reason, as the wi-fi scan.
 ## Tests
 
 ```bash
-python world_state/selftest.py        # the store, the rules, one inspection
+python world_state/selftest.py        # the store, the rules, the geometry
 python rover_daemon/selftest.py       # the daemon's control calls
 python drive_web/selftest.py          # the console's payload and its two URLs
 ```
 
 Everything there runs against `FakeReasoner` and a temporary directory. **That
-proves the store and the rules and nothing whatever about Cosmos** — which is why
-the fake is development scaffolding rather than a result, and why the task this
-implements treats a local runtime that cannot be made to work as a blocker rather
-than as a pass.
+proves the store, the rules and the arithmetic, and nothing whatever about any real
+model** — which is why the fake is development scaffolding rather than a result.
+
+Three checks are worth knowing about by name. One asserts that an identity the
+model volunteers is thrown away rather than obeyed, because a stale build or a
+model with an opinion of its own is exactly how a guess would creep back into
+being believed. One asserts that the prompt never mentions what the rover has seen
+before — not even to forbid it, since naming the subject in order to forbid it is
+still naming it. And one opens a database built to the older schema and checks that
+the missing column is added rather than the insert failing on the one machine that
+matters.
 
 Two things are deliberately not covered. The popup's rendering is JavaScript in a
 browser and this repository has no browser in its test loop; what is checked instead
-is the payload it draws from and the two URLs it fetches. And the quality of what
-Cosmos says can only be measured on the rover, against real rooms, which is what
-`docs/task-semantic-world-state.md` calls the real validation.
+is the payload it draws from and the two URLs it fetches. And whether placement
+actually separates two identical chairs can only be measured on the rover, driving,
+which is what `docs/task-semantic-world-state.md` calls the validation drive and
+which has not happened.
 
 ## What was measured on the rover
 
@@ -399,11 +444,16 @@ treated as advisory. The evidence here says go further and **withhold the known
 list from the perception call altogether**, because what it corrupts is the
 detections themselves, not just the identity field.
 
+That amendment has since been made and the code follows it: the known list, the
+identity field and the whole question are gone from the perception call, and the
+prompt does not mention any of it even to forbid it.
+
 ### A trap left behind for the next model
 
 Cosmos 3 writes the *string* `"null"` where Reason 2 leaves the field out, which
 the validator refused as an invented identifier — quietly throwing away every
-observation in three perfectly good answers. `contract.py` now reads the null-words
-as no entity, while still refusing anything that merely looks like an identifier.
-Any model swapped in behind `PhysicalReasoner` is worth checking for the same
-class of thing before its answers are believed.
+observation in three perfectly good answers. That particular trap has been
+disarmed by removing the field it was set in; the class of thing it belongs to has
+not. Any model swapped in behind `PhysicalReasoner` is worth reading raw output
+from before its answers are believed, because what makes this kind of bug
+expensive is that it looks like the model saying nothing.

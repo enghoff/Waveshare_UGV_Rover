@@ -1114,7 +1114,12 @@ function drawWorldList() {
   if (!entities.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = (summary.inspections
+    empty.textContent = (summary.observations
+        ? `${summary.observations} observations have been recorded and none of `
+          + "them has been placed yet. Which lasting thing something is comes "
+          + "from where it is, so a thing gets an identity only once it has been "
+          + "seen from two places far enough apart -- see the observations tab."
+        : summary.inspections
         ? "nothing has been recorded yet, although the model has been asked "
           + `${summary.inspections} time(s) -- see the diagnostics tab`
         : "nothing has been recorded yet. Press “inspect world”.");
@@ -1442,8 +1447,8 @@ function drawWorldObservations() {
   heading.textContent = `everything the model has said, newest first `
                       + `(${recent.length} shown)`
                       + (unmatched.length
-                         ? `, of which ${unmatched.length} were stored without an `
-                           + `entity` : "");
+                         ? `, of which ${unmatched.length} are not yet part of any `
+                           + `lasting thing` : "");
   pane.append(heading);
   if (!recent.length) {
     const empty = document.createElement("p");
@@ -1480,7 +1485,7 @@ function drawWorldDiagnostics() {
   const table = document.createElement("table");
   table.className = "wtable";
   const header = document.createElement("tr");
-  for (const name of ["when", "status", "took", "known", "back", "new", "not stored",
+  for (const name of ["when", "status", "took", "offered", "stored", "not stored",
                       "why"]) {
     const cell = document.createElement("th");
     cell.textContent = name;
@@ -1493,9 +1498,11 @@ function drawWorldDiagnostics() {
       wTime(row.started_at),
       row.status,
       row.duration_s == null ? "-" : `${(+row.duration_s).toFixed(0)} s`,
-      row.known_count ?? "-",
       row.returned ?? "-",
-      `${row.created ?? 0} new, ${row.matched ?? 0} known`,
+      // Older rows, from when the model was still asked which thing it was
+      // looking at, have no `stored` and say how many entities they made
+      // instead. Both are shown as what they are rather than added together.
+      row.stored ?? (row.created == null ? "-" : `${row.created} entities`),
       row.rejected ?? "-",
       row.detail || "",
     ];
