@@ -248,6 +248,16 @@ bottles. That is the behaviour the popup is built to make visible rather than to
 hide, and it is what a later slice has to fix — by giving the association step
 something better than the model's own word, or by using a model that can do this.
 
+**What this run did not test.** The rover was never driven: there was somebody
+sitting in the room and nobody watching the wheels, so the views are gimbal pans
+from one parked pose. Every observation therefore shares an origin, and the part of
+the map view that asks whether rays *from different places* converge on one corner
+has been exercised only in the offline tests. Nothing was carried into the room
+between inspections either. Neither gap weakens the finding above -- a model that
+will not re-identify an object in the identical frame is not going to do better
+from a new angle -- but both would have to be closed before a positive result could
+be believed.
+
 ### Numbers
 
 - **One inspection is 56–89 s** at 640×480, Q4, four CPU threads — about 480 prompt
