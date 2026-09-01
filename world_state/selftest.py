@@ -340,6 +340,19 @@ def test_the_model_may_only_name_what_it_was_shown() -> None:
               store.record(invented.seen, capture={"frame_id": "f2"})["created"], 0)
         check("...leaving the world exactly as it was",
               store.summary()["entities"], 1)
+
+        # Measured on Cosmos 3, which writes the word rather than the value for
+        # every observation it returns. Read as "no entity"; the observation is
+        # still worth keeping and the model is not naming anything it was not
+        # shown.
+        for word in ("null", "None", " none ", ""):
+            spelled = validate(answer(sofa(existing=word)), known)
+            check(f"the word {word!r} means no entity", len(spelled.seen), 1)
+            check("...and does not reference one",
+                  spelled.seen[0].existing_entity, None)
+        still_refused = validate(answer(sofa(existing="object:1")), known)
+        check("but an invented identifier is still refused",
+              still_refused.seen, [])
         store.close()
 
 

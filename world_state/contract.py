@@ -69,6 +69,12 @@ GRID = 1000.0
 #: there is nothing between the two to get wrong.
 FRACTION_CEILING = 2.0
 
+#: What a model writes when it means "this is not one of the ones you listed" but
+#: has copied the string in the prompt's example rather than the JSON value. Only
+#: these exact words: a name that merely looks like an identifier is still refused,
+#: because inventing entity names is the thing the known list exists to prevent.
+NOT_AN_ENTITY = {"null", "none", "nil", "n/a", "na", "", "no", "false"}
+
 MAX_LABEL = 60
 MAX_DESCRIPTION = 200
 MAX_HINT = 40
@@ -369,6 +375,16 @@ def _one(item: Any, known: set, result: Result) -> tuple[Seen | None, str]:
         kind = "unknown"
 
     reference = item.get("existing_entity")
+    if isinstance(reference, str) and reference.strip().lower() in NOT_AN_ENTITY:
+        # "null" the word, rather than null the value. The example in the prompt
+        # has to render the field as a string to show what one looks like, and a
+        # model that copies the shape it was shown writes the word back -- which
+        # is the same habit that put the example bounding box in every
+        # observation. Read as "no entity", because that is unambiguously what it
+        # means, and refusing it would throw away a whole observation over a pair
+        # of quotation marks. Cosmos 3 answers this way for every observation;
+        # Cosmos Reason 2 does not.
+        reference = None
     if reference is not None:
         if not isinstance(reference, str) or reference.strip() not in known:
             # Refused, not created. An identifier the model was never shown is
