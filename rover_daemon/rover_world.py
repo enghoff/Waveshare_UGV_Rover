@@ -98,11 +98,21 @@ class RoverWorld:
         if inspector is None:
             if os.environ.get(ENV_FAKE) == "1":
                 reasoner = world_state.FakeReasoner(model_id="fake (no model)")
+                eyes = world_state.FakeEyes()
             else:
                 reasoner = world_state.CosmosReasoner()
+                eyes = world_state.SidecarEyes()
+            # **The encoders are what an inspection uses, not the language
+            # model.** A look through them costs a fifth of a second against ten
+            # seconds, it comes back with the two vectors and the box that
+            # identity will actually be decided from, and the model's own names
+            # were measured drifting between "black leather recliner" and "blue
+            # leather recliner" on a byte-identical frame. The language model
+            # stays for the conversational `look`, where a person is waiting for
+            # prose and a slow answer is fine.
             inspector = world_state.Inspector(
                 self._world_store(), reasoner, self._world_capture,
-                self._world_pose)
+                self._world_pose, eyes=eyes, fov_deg=self.camera_fov_deg)
             self._world_inspector_cache = inspector
         return inspector
 
@@ -179,7 +189,15 @@ class RoverWorld:
         inspector = self._world_inspector()
         return {"ok": True, "summary": store.summary(),
                 "inferences": store.inferences(),
-                "backend": world_state.describe_backend(inspector.reasoner),
+                # What would answer an inspection, which is the encoders when
+                # there are any. The language model is named separately because
+                # it is still what the conversational `look` uses, and a popup
+                # that showed only one of the two would be describing the wrong
+                # thing half the time.
+                "backend": (world_state.describe_eyes(inspector.eyes)
+                            if inspector.eyes is not None
+                            else world_state.describe_backend(inspector.reasoner)),
+                "language_model": world_state.describe_backend(inspector.reasoner),
                 "busy": inspector.busy,
                 "camera_fov_deg": self.camera_fov_deg,
                 "pose": self._world_pose()}

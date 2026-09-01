@@ -1330,12 +1330,14 @@ def test_the_world_state_calls_reach_the_store():
                   rover.call("world_state_summary", {})["summary"]["inspections"], 1)
 
             # And with something in the answer, so the provenance can be checked.
-            rover._world_inspector_cache.reasoner.answers.append(
-                {"scene": "a room", "observations": [
-                    {"kind": "furniture", "label": "grey sofa",
-                     "bbox_norm": [100, 300, 500, 900]}]})
+            # The encoders are what an inspection asks now, so this is scripted
+            # into them rather than into the language model -- which the daemon
+            # still holds, for the conversational `look`.
+            rover._world_inspector_cache.eyes.looks.append(
+                [world_state.Sighting(bbox=[0.1, 0.3, 0.5, 0.9], label="a sofa",
+                                      dino=b"", siglip=b"")])
             saw = rover.call("world_inspect", {})
-            check("a second inspection records what the model said",
+            check("a second inspection records what was measured",
                   saw["stored"], 1)
             check("...and claims no identity for it, which is now the whole point",
                   saw["created"], 0)
@@ -1346,7 +1348,7 @@ def test_the_world_state_calls_reach_the_store():
             check("the gimbal angles it was taken at are on the observation",
                   (observation["observer_pan_deg"], observation["observer_tilt_deg"]),
                   (25.0, -8.0))
-            check("...and a box on the model's thousand grid became fractions",
+            check("...and the box it was measured in is on it too",
                   observation["bbox"], [0.1, 0.3, 0.5, 0.9])
             # No navigator on this rover, so there is no pose and no ray -- which
             # is the honest answer rather than a ray from the origin.

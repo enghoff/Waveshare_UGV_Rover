@@ -30,6 +30,9 @@ from __future__ import annotations
 from .contract import KINDS, PROMPT_VERSION, Result, Seen, build_prompt, validate
 from .inspector import Inspector
 from .locate import agrees, best_fix, fix
+from .perception_client import (
+    Eyes, FakeEyes, Look, SidecarEyes, Sighting, describe_eyes,
+)
 from .reasoner import (
     Answer, CosmosReasoner, FakeReasoner, PhysicalReasoner, describe_backend,
 )
@@ -37,8 +40,9 @@ from .store import WorldStore, world_dir
 from .view import ray, rays
 
 __all__ = [
-    "Answer", "CosmosReasoner", "FakeReasoner", "Inspector", "KINDS",
-    "PROMPT_VERSION", "PhysicalReasoner", "Result", "Seen", "WorldStore",
-    "agrees", "best_fix", "build_prompt", "describe_backend", "fix", "ray",
+    "Answer", "CosmosReasoner", "Eyes", "FakeEyes", "FakeReasoner", "Inspector",
+    "KINDS", "Look", "PROMPT_VERSION", "PhysicalReasoner", "Result", "Seen",
+    "SidecarEyes", "Sighting", "WorldStore", "agrees", "best_fix",
+    "build_prompt", "describe_backend", "describe_eyes", "fix", "ray",
     "rays", "validate", "world_dir",
 ]
