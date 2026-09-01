@@ -29,6 +29,7 @@ Omni model is Alibaba-hosted and has no repository deployment target.
 | `ros_nav/` | Jetson | `~/ugv/ros_nav/`; ROS 2 environment remains under `~/miniforge3` |
 | `oak_depth/` | Jetson | `~/ugv/oak_depth/`; its unpacked DepthAI wheel remains in `vendor/` |
 | `drive_web/` | Jetson | `~/ugv/drive_web/` |
+| `world_state/` | Jetson | `~/ugv/world_state/`; the semantic store and the Cosmos sidecar, with its model weights fetched into `vendor/` by its own installer |
 | selected `voice_chat/` modules | Jetson | copied beside `drive_web` for the console/Alibaba realtime session |
 | `wifi_roam/` | Jetson | staged at `~/ugv/wifi_roam/`, then privileged copies via its installer |
 | `dongle_driver/` | Jetson | staged at `~/ugv/dongle_driver/`; its installer builds and DKMS-registers the USB radio's kernel module |
@@ -124,7 +125,9 @@ source lives elsewhere:
 - `~/.ugv/alibaba.key` — Alibaba DashScope key for Qwen Omni;
 - `~/.ugv/console.token` — browser microphone token;
 - `~/.ugv/tls/` — console CA/leaf certificate material;
-- `~/.ugv/deploy-state.json` — per-component deployment state.
+- `~/.ugv/deploy-state.json` — per-component deployment state;
+- `~/.ugv/world/` — the semantic world state: `world.db` and one JPEG per
+  inspection under `frames/`. An experiment's results, not source.
 
 Keep these out of Git and out of `~/ugv`.
 

@@ -95,6 +95,74 @@
     background: var(--accent); color: #fff; border-color: var(--accent);
   }
 
+  /* --- the world-state popup --------------------------------------------- */
+  /* The console is cards in three stacks and has no modal of any kind, so this is
+     new furniture rather than an existing pattern to copy. It is a popup and not
+     a fourth card on purpose: what it shows is a page of history that is looked
+     at deliberately and then closed, and a card of it would push the map off the
+     screen for everybody who is only driving.
+
+     It does not take the keyboard and it does not block the page's script, which
+     is the same objection the clear-map button has to `confirm()`: that script is
+     holding the stop button, and space still stops the rover with this open. */
+  #worldBack {
+    position: fixed; inset: 0; z-index: 30; padding: 16px;
+    background: rgba(10, 12, 16, .55);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #worldBox {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    width: min(1180px, 100%); max-height: 100%;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 10px 40px rgba(10, 12, 16, .35);
+  }
+  #worldHead {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    padding: 10px 12px; background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+  #worldHead .grow { flex: 1 1 12px; }
+  #worldClear.armed { border-color: var(--stop); color: var(--stop); font-weight: 600; }
+  #worldTabs { display: flex; gap: 4px; padding: 8px 12px 0; }
+  #worldTabs button { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  #worldTabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  #worldBody { overflow: auto; padding: 10px 12px 14px; }
+  .wpane { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .wcol { flex: 1 1 320px; min-width: 0; }
+  .wwide { flex: 2 1 520px; min-width: 0; }
+  .wrow {
+    border: 1px solid var(--line); border-radius: 6px; background: var(--card);
+    padding: 6px 8px; margin-bottom: 6px; cursor: pointer;
+  }
+  .wrow.on { border-color: var(--accent); }
+  .wrow .wid { font-weight: 600; }
+  /* Two entities with the same label is the failure this whole experiment is
+     looking for, so it is marked rather than left to be noticed. */
+  .wrow .wdup, .wdrift { color: var(--warn); }
+  .wrow .wold { color: var(--dim); }
+  .wmeta { color: var(--dim); font-size: 12px; }
+  .wshot { position: relative; display: inline-block; max-width: 100%; }
+  .wshot img { display: block; width: 100%; border-radius: 6px; }
+  .wbox {
+    position: absolute; border: 2px solid var(--accent); border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .5) inset;
+  }
+  .wobs {
+    border-left: 3px solid var(--line); padding: 4px 0 6px 8px; margin: 6px 0;
+  }
+  .wobs.wfailed { border-left-color: var(--bad); }
+  .wraw {
+    white-space: pre-wrap; word-break: break-word; background: var(--sunken);
+    border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
+    font-size: 11px; max-height: 240px; overflow: auto;
+  }
+  #wMapWrap { position: relative; }
+  #wMapWrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #wMapWrap img { display: block; width: 100%; border-radius: 6px; }
+  .wtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .wtable td, .wtable th { padding: 3px 6px; border-bottom: 1px solid var(--line);
+    text-align: left; vertical-align: top; }
+
   /* --- the layout, which is the whole point ------------------------------ */
   /* Columns of cards rather than a grid of them, and the difference is not
      cosmetic. In a grid every card in a row is as tall as the tallest, so a map
@@ -268,6 +336,7 @@
   <span class="grow"></span>
   <span id="watchers"></span>
   <span id="busy"></span>
+  <button id="world" title="what the rover has been told is in the room">world</button>
   <button id="explore" title="map the rest of the place, or stop doing so">explore</button>
   <button id="stop" title="space or escape">STOP</button>
 </header>
@@ -409,6 +478,55 @@
 </div>
 </main>
 
+<!-- The world-state popup. Read-only apart from the two buttons that act on the
+     rover -- one inspection, and throwing the semantic world away -- because what
+     this is for is deciding whether to believe any of it, and an editable view of
+     an experiment's results is a view of the edits. -->
+<div id="worldBack" hidden>
+  <div id="worldBox" role="dialog" aria-modal="false" aria-label="world state">
+    <div id="worldHead">
+      <strong>world state</strong>
+      <span id="worldCounts" class="mono"></span>
+      <span class="grow"></span>
+      <button id="worldInspect" title="take a picture and ask the model about it">inspect world</button>
+      <button id="worldRefresh">refresh</button>
+      <button id="worldClear" title="throws away entities and observations; the map is not touched">clear</button>
+      <button id="worldClose">close</button>
+    </div>
+    <p id="worldNote" class="hint" style="margin:6px 12px 0"></p>
+    <p id="worldError" class="bad" style="margin:4px 12px 0"></p>
+    <div id="worldTabs">
+      <button data-wtab="entities" class="on">entities</button>
+      <button data-wtab="observations">observations</button>
+      <button data-wtab="diagnostics">diagnostics</button>
+    </div>
+    <div id="worldBody">
+      <div class="wpane" id="wPaneEntities">
+        <div class="wcol">
+          <!-- Entities have no position and must not be given one. What each
+               observation does have is where the rover stood and where the gimbal
+               pointed, both measured, so it is drawn as a bearing from that
+               place -- and whether three views of one sofa converge on one corner
+               of the room is the question this experiment is asking. -->
+          <div id="wMapWrap" hidden>
+            <img id="wMapImg" alt="the map, with what has been seen from where">
+            <svg id="wRays" preserveAspectRatio="none"></svg>
+          </div>
+          <p class="hint" id="wMapNote"></p>
+          <div id="wList"></div>
+        </div>
+        <div class="wwide" id="wDetail"></div>
+      </div>
+      <div class="wpane" id="wPaneObservations" hidden>
+        <div class="wwide" id="wObsAll"></div>
+      </div>
+      <div class="wpane" id="wPaneDiagnostics" hidden>
+        <div class="wwide" id="wDiag"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 "use strict";
 
@@ -522,6 +640,7 @@ function render(next) {
 
   drawWifi(next.wifi);
   drawNotice(next.notice);
+  drawWorld(next.world);
 
   // Only the moves go out while one is running; stop, the map and the camera
   // stay live, which is the whole reason they have their own connections.
@@ -923,6 +1042,499 @@ function drawNetworks() {
 // count is what makes a new notice new: the same sentence said twice is two
 // notices, and re-reading an unchanged one on every state would restart the fade
 // of a line that has been sitting there for twenty seconds.
+// --- the world-state popup --------------------------------------------------
+//
+// Read-only, apart from the two buttons that act on the rover. The point of it is
+// to decide whether any of this is worth believing, and everything in here is
+// arranged so that the ways it can be wrong show up rather than being smoothed
+// over: two entities with the same label sit next to each other and are marked,
+// an entity whose wording has drifted from its own history says so, an entity last
+// seen under a map that has since been cleared is greyed, and a failed inference
+// is a row in the diagnostics tab rather than a popup that quietly did nothing.
+
+let worldGen = "", world = {}, worldTab = "entities";
+
+const wTime = (t) => t ? new Date(t * 1000).toLocaleTimeString() : "-";
+const wAgo = (t) => {
+  if (!t) return "never";
+  const s = Math.max(0, Date.now() / 1000 - t);
+  if (s < 90) return `${s.toFixed(0)} s ago`;
+  if (s < 5400) return `${(s / 60).toFixed(0)} min ago`;
+  return `${(s / 3600).toFixed(1)} h ago`;
+};
+// A colour per entity, from its own name, so the same thing is the same colour on
+// the map and in the list without anything having to keep a palette in step.
+const wHue = (id) => {
+  let hash = 0;
+  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+  return hash;
+};
+
+function drawWorld(w) {
+  $("worldBack").hidden = !w.open;
+  $("world").classList.toggle("on", w.open);
+  $("worldCounts").textContent =
+      `${w.entities} entit${w.entities === 1 ? "y" : "ies"}, `
+      + `${w.observations} observation${w.observations === 1 ? "" : "s"}`
+      + (w.backend ? ` -- ${w.backend}` : "");
+  $("worldNote").textContent = w.note || "";
+  $("worldError").textContent = w.error || "";
+  $("worldError").hidden = !w.error;
+  // Drawn from the rover's own "an inspection is running", not from a call this
+  // console is waiting on: a second browser can start one, and a minute is long
+  // enough that two people will.
+  $("worldInspect").disabled = w.busy || !state.link.connected;
+  $("worldInspect").textContent = w.busy ? "looking..." : "inspect world";
+  $("worldClear").classList.toggle("armed", !!w.clear_armed);
+  $("worldClear").textContent = w.clear_armed ? "clear -- again to confirm" : "clear";
+  if (!w.open || !w.gen || w.gen === worldGen) return;
+  // Fetched rather than pushed, like the network list: tens of kilobytes that
+  // change when somebody presses a button, against a state that goes out ten
+  // times a second.
+  worldGen = w.gen;
+  fetch(`/world.json?gen=${w.gen}`)
+    .then((reply) => reply.ok ? reply.json() : null)
+    .then((body) => { if (body) { world = body; drawWorldBody(); } })
+    .catch(() => {});    // the next state carrying a new tag asks again
+}
+
+function drawWorldBody() {
+  drawWorldList();
+  drawWorldMap();
+  drawWorldDetail();
+  drawWorldObservations();
+  drawWorldDiagnostics();
+}
+
+function drawWorldList() {
+  const list = $("wList");
+  list.replaceChildren();
+  const entities = world.entities || [];
+  const summary = world.summary || {};
+  if (!entities.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = (summary.inspections
+        ? "nothing has been recorded yet, although the model has been asked "
+          + `${summary.inspections} time(s) -- see the diagnostics tab`
+        : "nothing has been recorded yet. Press “inspect world”.");
+    list.append(empty);
+    return;
+  }
+  // Two entities with the same label is the failure this experiment is looking
+  // for, so it is counted here and marked on both of them rather than left to be
+  // noticed by reading down the column.
+  const labels = {};
+  for (const entity of entities) labels[entity.label] = (labels[entity.label] || 0) + 1;
+  const newest = Math.max(...entities.map((e) => e.last_seen_at || 0));
+
+  for (const entity of entities) {
+    const row = document.createElement("div");
+    row.className = "wrow" + (entity.id === state.world.selected ? " on" : "");
+    row.style.borderLeft = `4px solid hsl(${wHue(entity.id)} 70% 45%)`;
+    row.onclick = () => post({do: "world", what: "select",
+                              id: entity.id === state.world.selected ? "" : entity.id});
+
+    const head = document.createElement("div");
+    const id = document.createElement("span");
+    id.className = "wid mono";
+    id.textContent = entity.id;
+    const label = document.createElement("span");
+    label.textContent = ` ${entity.label}`;
+    head.append(id, label);
+    if (labels[entity.label] > 1) {
+      const dup = document.createElement("span");
+      dup.className = "wdup";
+      dup.textContent = `  — ${labels[entity.label]} entities share this label`;
+      head.append(dup);
+    }
+    if (entity.distinct_labels > 1) {
+      const drift = document.createElement("span");
+      drift.className = "wdrift";
+      drift.textContent = `  — called ${entity.distinct_labels} different things`;
+      head.append(drift);
+    }
+    row.append(head);
+
+    const described = document.createElement("div");
+    described.className = "wmeta";
+    described.textContent = entity.canonical_description || "";
+    row.append(described);
+
+    const meta = document.createElement("div");
+    meta.className = "wmeta";
+    let text = `${entity.observation_count} observation`
+             + `${entity.observation_count === 1 ? "" : "s"}`
+             + ` · first ${wTime(entity.created_at)}`
+             + ` · last ${wAgo(entity.last_seen_at)}`;
+    if (entity.last_map_session && summary.map_session
+        && entity.last_map_session !== summary.map_session) {
+      // Not stale as such -- the sofa is still there -- but everything positional
+      // about it belongs to a map that no longer exists, and the popup is the only
+      // place that can say so.
+      text += ` · last seen under map ${entity.last_map_session}, now `
+            + `${summary.map_session}`;
+      meta.classList.add("wold");
+    }
+    if (newest - (entity.last_seen_at || 0) > 300) meta.classList.add("wold");
+    meta.append(document.createTextNode(text));
+    row.append(meta);
+    list.append(row);
+  }
+}
+
+// The exact inverse of the sampling `render` does in lidar_slam/mapimg.py, which
+// is where these five lines come from -- `to_px` there. A page that worked the
+// geometry out for itself would be a second copy of the map's arithmetic, wrong
+// the first time the resolution or the centring changed.
+function wPointToPx(x, y, view) {
+  const res = 0.05;
+  const halfCells = Math.max(8, Math.round(view.half_extent_m / res));
+  const pose = view.pose || {};
+  const th = view.rover_up ? (pose.heading_deg || 0) * Math.PI / 180 : 0;
+  const ac = Math.cos(th), as = Math.sin(th);
+  const dgx = x / res - Math.trunc((pose.x_m || 0) / res);
+  const dgy = y / res - Math.trunc((pose.y_m || 0) / res);
+  const forward = dgx * ac + dgy * as;
+  const sideways = -dgx * as + dgy * ac;
+  return [(halfCells - sideways) * view.scale, (halfCells - forward) * view.scale];
+}
+
+function drawWorldMap() {
+  const wrap = $("wMapWrap"), note = $("wMapNote"), svg = $("wRays");
+  const view = state.map.view;
+  const entities = world.entities || [];
+  const selected = state.world.selected;
+  const rays = [];
+  for (const entity of entities) {
+    const drawn = entity.rays || [];
+    // One ray each while nothing is chosen, so the picture stays readable; all of
+    // a chosen entity's, because whether its own views converge is the question.
+    const wanted = entity.id === selected ? drawn : drawn.slice(-1);
+    for (const ray of wanted) rays.push(Object.assign({}, ray, {id: entity.id}));
+  }
+  if (!view || !view.pose || !state.map.gen || !rays.length) {
+    wrap.hidden = true;
+    note.textContent = !state.map.gen ? "no map yet, so the list below is all there is"
+        : !rays.length ? "nothing observed from a known pose yet, so there is "
+                         + "nothing to draw on the map"
+        : "the map has not said where it was drawn from, so the list below is "
+          + "all there is";
+    return;
+  }
+  wrap.hidden = false;
+  note.textContent = "each ray is one observation, from where the rover stood "
+                   + "and where the camera pointed. No distance is claimed.";
+  $("wMapImg").src = `/map.png?gen=${state.map.gen}`;
+  const size = state.map.width || 1;
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.replaceChildren();
+
+  for (const ray of rays) {
+    const dim = selected && ray.id !== selected;
+    const hue = wHue(ray.id);
+    const half = (ray.span_deg || 12) / 2;
+    const at = (deg) => {
+      const t = deg * Math.PI / 180;
+      return wPointToPx(ray.x_m + ray.length_m * Math.cos(t),
+                        ray.y_m + ray.length_m * Math.sin(t), view);
+    };
+    const [x0, y0] = wPointToPx(ray.x_m, ray.y_m, view);
+    const [xa, ya] = at(ray.bearing_deg - half);
+    const [xb, yb] = at(ray.bearing_deg + half);
+    const [xt, yt] = at(ray.bearing_deg);
+
+    const wedge = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    wedge.setAttribute("d", `M ${x0} ${y0} L ${xa} ${ya} L ${xb} ${yb} Z`);
+    wedge.setAttribute("fill", `hsl(${hue} 70% 50%)`);
+    wedge.setAttribute("fill-opacity", dim ? "0.06" : "0.16");
+    svg.append(wedge);
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", x0); line.setAttribute("y1", y0);
+    line.setAttribute("x2", xt); line.setAttribute("y2", yt);
+    line.setAttribute("stroke", `hsl(${hue} 70% 40%)`);
+    line.setAttribute("stroke-width", dim ? 1 : 2);
+    line.setAttribute("stroke-opacity", dim ? "0.35" : "1");
+    svg.append(line);
+
+    if (!dim) {
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", xt); text.setAttribute("y", yt);
+      text.setAttribute("font-size", Math.max(9, size / 40));
+      text.setAttribute("fill", `hsl(${hue} 70% 30%)`);
+      text.setAttribute("stroke", "rgba(255,255,255,.7)");
+      text.setAttribute("stroke-width", "0.6");
+      text.setAttribute("paint-order", "stroke");
+      text.textContent = ray.id;
+      svg.append(text);
+    }
+  }
+}
+
+// The stored frame with the model's own box drawn on it. This is the check the
+// whole popup exists for: a label beside the picture it came from is how a
+// hallucinated entity and a real one somebody had forgotten get told apart.
+function wShot(observation) {
+  const held = (world.frames || []).includes(observation.frame_id);
+  if (!observation.frame_id) {
+    const none = document.createElement("div");
+    none.className = "wmeta";
+    none.textContent = "no frame was stored for this observation";
+    return none;
+  }
+  if (!held) {
+    // The console fetches the newest few frames of the entity being looked at, so
+    // an older one is on the rover and simply has not been asked for. Said plainly
+    // rather than shown as a broken image.
+    const missing = document.createElement("div");
+    missing.className = "wmeta mono";
+    missing.textContent = `frame ${observation.frame_id} -- not fetched`;
+    return missing;
+  }
+  const shot = document.createElement("div");
+  shot.className = "wshot";
+  const img = document.createElement("img");
+  img.src = `/world_frame.jpg?id=${encodeURIComponent(observation.frame_id)}`;
+  img.alt = "the picture this observation was read from";
+  // A frame the rover no longer has: the row outlives the file, and the popup
+  // that exists to show what went wrong must survive that.
+  img.onerror = () => {
+    img.hidden = true;
+    shot.textContent = `the stored frame ${observation.frame_id} is gone`;
+    shot.className = "wmeta mono";
+  };
+  shot.append(img);
+  const box = observation.bbox;
+  if (Array.isArray(box) && box.length === 4) {
+    const rect = document.createElement("div");
+    rect.className = "wbox";
+    rect.style.left = `${box[0] * 100}%`;
+    rect.style.top = `${box[1] * 100}%`;
+    rect.style.width = `${(box[2] - box[0]) * 100}%`;
+    rect.style.height = `${(box[3] - box[1]) * 100}%`;
+    shot.append(rect);
+  }
+  return shot;
+}
+
+function wObservation(observation, options) {
+  const block = document.createElement("div");
+  block.className = "wobs" + (observation.entity_id ? "" : " wfailed");
+  if (observation.entity_id) {
+    block.style.borderLeftColor = `hsl(${wHue(observation.entity_id)} 70% 45%)`;
+  }
+  const head = document.createElement("div");
+  head.innerHTML = "";
+  const when = document.createElement("span");
+  when.className = "mono";
+  when.textContent = wTime(observation.observed_at);
+  const what = document.createElement("strong");
+  what.textContent = ` ${observation.label || "(no label)"}`;
+  head.append(when, what);
+  if (options && options.showEntity) {
+    const owner = document.createElement("span");
+    owner.className = "mono";
+    owner.textContent = observation.entity_id
+        ? `  ${observation.entity_id}` : "  no entity";
+    if (!observation.entity_id) owner.classList.add("wdup");
+    head.append(owner);
+  }
+  block.append(head);
+
+  if (observation.description) {
+    const described = document.createElement("div");
+    described.textContent = observation.description;
+    block.append(described);
+  }
+  if (observation.note) {
+    // Why no entity was made for it, which is the difference between the model
+    // having invented an identifier and the model having said nothing useful.
+    const note = document.createElement("div");
+    note.className = "wdup";
+    note.textContent = observation.note;
+    block.append(note);
+  }
+
+  const pose = observation.pose;
+  const meta = document.createElement("div");
+  meta.className = "wmeta mono";
+  const bits = [`source ${observation.source || "?"}`];
+  if (observation.location_hint) bits.push(`hint ${observation.location_hint}`);
+  bits.push(`pan ${observation.observer_pan_deg ?? "-"}°`,
+            `tilt ${observation.observer_tilt_deg ?? "-"}°`);
+  bits.push(pose ? `at (${pose.x_m}, ${pose.y_m}) m facing ${pose.heading_deg}°`
+                 : "no rover pose recorded");
+  bits.push(`map ${observation.map_session ?? "?"}`);
+  if (observation.bbox) {
+    bits.push(`box ${observation.bbox.map((n) => (+n).toFixed(2)).join(", ")}`);
+  } else {
+    bits.push("no usable box");
+  }
+  bits.push(`${observation.model_id || "?"} / prompt ${observation.prompt_version || "?"}`);
+  meta.textContent = bits.join(" · ");
+  block.append(meta);
+
+  block.append(wShot(observation));
+
+  const raw = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.className = "wmeta";
+  summary.textContent = "what the model actually said";
+  const body = document.createElement("pre");
+  body.className = "wraw mono";
+  body.textContent = JSON.stringify(observation.raw, null, 2);
+  raw.append(summary, body);
+  block.append(raw);
+  return block;
+}
+
+function drawWorldDetail() {
+  const pane = $("wDetail");
+  pane.replaceChildren();
+  const entity = world.selected;
+  if (!entity || !entity.id || entity.id !== state.world.selected) {
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = "choose an entity on the left to see every observation "
+                     + "behind it, with the picture each was read from.";
+    pane.append(hint);
+    return;
+  }
+  const head = document.createElement("div");
+  const title = document.createElement("h2");
+  title.textContent = `${entity.id} — ${entity.label}`;
+  head.append(title);
+  const canonical = document.createElement("div");
+  canonical.textContent = entity.canonical_description || "(no description)";
+  head.append(canonical);
+  const meta = document.createElement("div");
+  meta.className = "wmeta mono";
+  meta.textContent = `kind ${entity.kind} · ${entity.observation_count} `
+                   + `observations · created ${wTime(entity.created_at)} · `
+                   + `last seen ${wTime(entity.last_seen_at)}`;
+  head.append(meta);
+  pane.append(head);
+
+  const observations = world.selected_observations || [];
+  // The canonical wording is the newest observation's, so a canonical value that
+  // does not match the history means the model changed its mind -- which is a
+  // finding, not a glitch, and is said here rather than hidden.
+  const labels = new Set(observations.map((o) => o.label));
+  if (labels.size > 1) {
+    const drift = document.createElement("p");
+    drift.className = "wdrift";
+    drift.textContent = `this entity has been called ${labels.size} different `
+                      + `things: ${[...labels].join(", ")}. The current wording is `
+                      + `the newest, and the rest are below.`;
+    pane.append(drift);
+  }
+  for (const observation of observations) pane.append(wObservation(observation));
+}
+
+function drawWorldObservations() {
+  const pane = $("wObsAll");
+  pane.replaceChildren();
+  const recent = world.recent || [];
+  const unmatched = world.unmatched || [];
+  const heading = document.createElement("p");
+  heading.className = "hint";
+  heading.textContent = `everything the model has said, newest first `
+                      + `(${recent.length} shown)`
+                      + (unmatched.length
+                         ? `, of which ${unmatched.length} were stored without an `
+                           + `entity` : "");
+  pane.append(heading);
+  if (!recent.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "nothing yet.";
+    pane.append(empty);
+    return;
+  }
+  for (const observation of recent) {
+    pane.append(wObservation(observation, {showEntity: true}));
+  }
+}
+
+function drawWorldDiagnostics() {
+  const pane = $("wDiag");
+  pane.replaceChildren();
+  const summary = world.summary || {};
+  const lines = document.createElement("p");
+  lines.className = "mono";
+  lines.textContent =
+      `${summary.entities ?? 0} entities · ${summary.observations ?? 0} observations`
+      + ` · ${summary.unmatched ?? 0} with no entity`
+      + ` · ${summary.inspections ?? 0} inspections`
+      + ` · map session ${summary.map_session ?? "?"}`
+      + ` · last success ${wAgo(summary.last_ok_at)}`;
+  pane.append(lines);
+  const where = document.createElement("p");
+  where.className = "hint";
+  where.textContent = `the model behind this is ${world.backend || "unknown"}. `
+      + `Every row below is one inspection, whether or not it changed anything -- `
+      + `which is what tells "the model failed" apart from "nothing was in view".`;
+  pane.append(where);
+
+  const table = document.createElement("table");
+  table.className = "wtable";
+  const header = document.createElement("tr");
+  for (const name of ["when", "status", "took", "known", "back", "new", "not stored",
+                      "why"]) {
+    const cell = document.createElement("th");
+    cell.textContent = name;
+    header.append(cell);
+  }
+  table.append(header);
+  for (const row of world.inferences || []) {
+    const line = document.createElement("tr");
+    const cells = [
+      wTime(row.started_at),
+      row.status,
+      row.duration_s == null ? "-" : `${(+row.duration_s).toFixed(0)} s`,
+      row.known_count ?? "-",
+      row.returned ?? "-",
+      `${row.created ?? 0} new, ${row.matched ?? 0} known`,
+      row.rejected ?? "-",
+      row.detail || "",
+    ];
+    cells.forEach((value, index) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (index === 1 && row.status !== "ok") cell.className = "wdup";
+      line.append(cell);
+    });
+    table.append(line);
+  }
+  pane.append(table);
+}
+
+function wireWorld() {
+  $("world").onclick = () => post({do: "world", what: state.world.open ? "close" : "open"});
+  $("worldClose").onclick = () => post({do: "world", what: "close"});
+  $("worldRefresh").onclick = () => post({do: "world", what: "refresh"});
+  $("worldInspect").onclick = () => post({do: "world", what: "inspect"});
+  $("worldClear").onclick = () => post({do: "world", what: "clear"});
+  // A click on the dimmed page behind the popup closes it, which is what a popup
+  // over a page is expected to do. A click inside must not, or every press of a
+  // button in it would also shut it.
+  $("worldBack").onclick = (event) => {
+    if (event.target === $("worldBack")) post({do: "world", what: "close"});
+  };
+  for (const button of $("worldTabs").querySelectorAll("[data-wtab]")) {
+    button.onclick = () => {
+      worldTab = button.dataset.wtab;
+      for (const other of $("worldTabs").querySelectorAll("[data-wtab]")) {
+        other.classList.toggle("on", other === button);
+      }
+      $("wPaneEntities").hidden = worldTab !== "entities";
+      $("wPaneObservations").hidden = worldTab !== "observations";
+      $("wPaneDiagnostics").hidden = worldTab !== "diagnostics";
+    };
+  }
+}
+
 function drawNotice(notice) {
   if (notice.seq === noticeSeq) return;
   noticeSeq = notice.seq;
@@ -1061,6 +1673,7 @@ async function start() {
   // holding a conversation with an empty room.
   addEventListener("pagehide", () => { if (voice.wanted()) voice.stop(true); });
   wire();
+  wireWorld();
   keys();
   listen();
   setInterval(tick, 1000);

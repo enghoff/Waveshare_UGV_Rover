@@ -165,6 +165,16 @@ WIFI_POLL_S = 5.0
 # daemon holds one lock across it, so the five-second polls queued behind a scan
 # would take the whole status column down with it.
 WIFI_SCAN_TIMEOUT_S = 45.0
+
+# And how long to wait for one world-state inspection, which outlasts even
+# that. Measured on the rover: Cosmos Reason 2 2B, quantized to Q4 and
+# running on this board's four CPU cores, takes about a minute to look at one
+# 640x480 frame and answer. The sidecar has its own wall clock at 180 s and
+# gives up first, so this is that plus room for the picture and the reply to
+# cross a socket -- a console that timed out while the rover was still working
+# would report a failure that had not happened, and then be handed the success
+# it had stopped waiting for.
+WORLD_TIMEOUT_S = 200.0
 # What the driver's dBm means for the link, and where the panel starts to say so.
 # Not a signal ladder out of a phone: these are this rover's own numbers, which
 # sits at -35 to -44 dBm in the lab, and the wifi keeper on the rover calls the link

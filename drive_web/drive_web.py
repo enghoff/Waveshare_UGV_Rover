@@ -85,6 +85,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import _paths  # noqa: F401 — console_model, rover_tools
 import wsframe
@@ -214,6 +215,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._missing("no frame yet")
                 return
             self._send(self.session.frame_jpeg, "image/jpeg",
+                       "public, max-age=31536000, immutable")
+        elif path == "/world.json":
+            # The semantic world, fetched rather than pushed, for the reason the
+            # network list is: it is tens of kilobytes, it changes when somebody
+            # presses a button, and the state it would otherwise ride in goes out
+            # ten times a second. Immutable because the URL carries the generation.
+            self._send(json.dumps(self.session.world_payload).encode(),
+                       "application/json; charset=utf-8",
+                       "public, max-age=31536000, immutable")
+        elif path == "/world_frame.jpg":
+            # The picture an observation was read from. Without it there is no way
+            # to tell a hallucinated entity from a real one somebody had forgotten
+            # was in the room, which is most of what the popup is for.
+            frame = parse_qs(urlparse(self.path).query).get("id", [""])[0]
+            jpeg = self.session.world_frames.get(frame)
+            if not jpeg:
+                self._missing("no such stored frame")
+                return
+            # A stored frame never changes under its identifier, which is what
+            # makes this the one picture here that is genuinely immutable.
+            self._send(jpeg, "image/jpeg",
                        "public, max-age=31536000, immutable")
         elif path == "/wifi.json":
             # A list of networks, kept out of the state for the same reason the

@@ -153,6 +153,31 @@ the rover onto one of the other house networks. That join costs the page -- the
 rover has one radio, so the link goes down and the console reconnects a few
 seconds later. See [`wifi_roam/README.md`](../wifi_roam/README.md).
 
+## The world-state popup
+
+**world** in the header opens a read-only view of what the rover has been told is
+in the room: the entities a local physical-reasoning model has named, every
+observation behind each one, and the picture each observation was read from with
+the model's own box drawn on it. It is the only popup on this page, because what it
+shows is a page of history looked at deliberately and then closed, and a card of it
+would push the map off the screen for everybody who is only driving.
+
+Two buttons in it act on the rover. **inspect world** takes a picture and asks the
+model about it, which is about a minute; **clear** throws the semantic world away
+and is armed by a first press, exactly as the map's clear is and separately from it.
+Clearing the map does not clear the semantic world -- it starts a new map session in
+the store instead, so observations recorded against a map that no longer exists stay
+recognisable as such.
+
+The inspection has a connection of its own, for the reason the wi-fi scan does: a
+minute of model on the status connection would stall the lights, the tracking panel
+and the map behind it, and nothing may ever sit in front of STOP. The popup's
+contents are fetched from `/world.json` when a generation tag in the state moves,
+and the stored frames from `/world_frame.jpg`, for the reason the network list and
+the pictures are fetched rather than pushed.
+
+See [`../world_state/README.md`](../world_state/README.md).
+
 ## Microphone: Alibaba Qwen Omni
 
 The microphone button starts the current hosted Qwen Omni conversation. The

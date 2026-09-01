@@ -208,7 +208,15 @@ def test_schemas():
                # a model that moved the rover onto another access point would be
                # cutting the wire its own conversation arrives on, and no wording
                # of a description makes that a good idea.
-               "wifi_status", "wifi_join"]
+               "wifi_status", "wifi_join",
+               # The semantic world state, all of it. This slice exists to find
+               # out whether that world is worth trusting, and handing a model the
+               # authority to write to it -- or to throw it away -- before that
+               # question has an answer would be the wrong order. See
+               # docs/task-cosmos-world-state-poc.md, section 9.
+               "world_inspect", "world_map_session", "world_state_clear",
+               "world_state_entities", "world_state_entity", "world_state_frame",
+               "world_state_observations", "world_state_summary"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)
@@ -1275,6 +1283,134 @@ def test_control_calls_without_hardware():
           True)
 
 
+def test_the_world_state_calls_reach_the_store():
+    """The daemon's semantic-world calls, end to end, with no camera and no model.
+
+    What is proved here is the wiring rather than the model: that an inspection
+    takes its picture through the path that already owns the camera, that the
+    gimbal angles and the rover's pose arrive on the observation, and that every
+    one of these calls answers a browser in a sentence rather than raising on a
+    rover where the component is not installed.
+
+    The deterministic fake stands in for Cosmos, which is exactly what it is for
+    and exactly what it does not settle: whether the world state is any good is a
+    question only the rover and the real model can answer.
+    """
+    import tempfile
+
+    import rover_daemon
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_COSMOS_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_COSMOS_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            # The camera path is the daemon's own; only the device under it is
+            # replaced, so what is exercised here is `_world_capture` reading the
+            # same frame `camera_jpeg` would.
+            jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 40 + b"\xff\xd9"
+            rover._whole_jpeg = lambda: (jpeg, "")
+            rover.pan, rover.tilt = 25.0, -8.0
+
+            empty = rover.call("world_state_summary", {})
+            check("an empty world answers", empty["ok"], True)
+            check("...with nothing in it", empty["summary"]["entities"], 0)
+            check("...and says which model would answer an inspection",
+                  "fake" in empty["backend"], True)
+
+            # The fake answers nothing, which is a finding rather than a failure:
+            # a picture with nothing worth remembering in it should leave the world
+            # alone and still be written down.
+            looked = rover.call("world_inspect", {})
+            check("an inspection runs", looked["ok"], True)
+            check("...and an empty answer creates nothing", looked["created"], 0)
+            check("...and is recorded where the popup shows it",
+                  rover.call("world_state_summary", {})["summary"]["inspections"], 1)
+
+            # And with something in the answer, so the provenance can be checked.
+            rover._world_inspector_cache.reasoner.answers.append(
+                {"scene": "a room", "observations": [
+                    {"existing_entity": None, "kind": "furniture",
+                     "label": "grey sofa", "description": "a grey three-seat sofa",
+                     "location_hint": "ahead-left",
+                     "bbox_norm": [100, 300, 500, 900]}]})
+            saw = rover.call("world_inspect", {})
+            check("a second inspection records what the model said",
+                  saw["created"], 1)
+            entities = rover.call("world_state_entities", {})
+            check("...under an identifier this daemon allocated",
+                  [e["id"] for e in entities["entities"]], ["furniture:1"])
+            detail = rover.call("world_state_entity", {"id": "furniture:1"})
+            observation = detail["observations"][0]
+            check("the gimbal angles it was taken at are on the observation",
+                  (observation["observer_pan_deg"], observation["observer_tilt_deg"]),
+                  (25.0, -8.0))
+            check("...and a box on the model's thousand grid became fractions",
+                  observation["bbox"], [0.1, 0.3, 0.5, 0.9])
+            # No navigator on this rover, so there is no pose and no ray -- which
+            # is the honest answer rather than a ray from the origin.
+            check("no navigator means no rover pose is claimed",
+                  observation["pose"], None)
+            check("...and therefore nothing to draw on the map", detail["rays"], [])
+
+            frame = rover.call("world_state_frame",
+                               {"frame_id": observation["frame_id"]})
+            check("the picture it was read from can be fetched back",
+                  frame["bytes"], len(jpeg))
+            check("a frame that does not exist is refused rather than raising",
+                  rover.call("world_state_frame", {"frame_id": "nope"})["ok"], False)
+
+            session = rover.call("world_map_session", {})
+            check("clearing the map starts a new session", session["map_session"], 2)
+            check("...and deletes nothing",
+                  rover.call("world_state_summary", {})["summary"]["entities"], 1)
+
+            cleared = rover.call("world_state_clear", {})
+            check("clearing the semantic world empties it", cleared["ok"], True)
+            check("...of entities",
+                  rover.call("world_state_summary", {})["summary"]["entities"], 0)
+            check("...and of the pictures it kept", cleared["frames_removed"], 2)
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_COSMOS_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
+def test_a_rover_without_a_camera_refuses_to_inspect():
+    """Every one of these is reached from a page of live buttons, so a rover that
+    cannot do it has to say so in a sentence."""
+    import tempfile
+
+    import rover_daemon
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = os.environ.get("UGV_WORLD_DIR")
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_COSMOS_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+            blind = rover.call("world_inspect", {})
+            check("an inspection with no camera is refused", blind["ok"], False)
+            check("...as a missing camera rather than as a missing model",
+                  "no camera" in blind["error"], True)
+            check("...and changes nothing",
+                  rover.call("world_state_summary", {})["summary"]["observations"], 0)
+            check("...but is written down",
+                  rover.call("world_state_summary", {})["summary"]["last_status"],
+                  "no_frame")
+            rover.close_world()
+        finally:
+            os.environ.pop("UGV_COSMOS_FAKE", None)
+            if was is None:
+                os.environ.pop("UGV_WORLD_DIR", None)
+            else:
+                os.environ["UGV_WORLD_DIR"] = was
+
+
 def test_the_api_only_calls_tools_that_exist():
     """Every daemon call `rover_api.py` makes has a handler behind it.
 
@@ -2105,6 +2241,8 @@ def main():
                  test_wifi_status_without_the_helper_still_reports_the_link,
                  test_an_unfilled_signal_column_is_a_moment_not_an_answer,
                  test_control_calls_without_hardware,
+                 test_the_world_state_calls_reach_the_store,
+                 test_a_rover_without_a_camera_refuses_to_inspect,
                  test_the_probe_waits_to_be_answered,
                  test_a_board_that_goes_quiet_gets_its_port_reopened,
                  test_reading_the_network,

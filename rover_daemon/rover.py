@@ -13,13 +13,14 @@ from rover_camera import RoverCamera, VisionLink
 from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_util import _flag, _level, _number  # noqa: F401
 from rover_wifi import RoverWifi
+from rover_world import RoverWorld
 from tool_schemas import (
     LIGHT_MAX, LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL,
     START_SCRIPT_TOOL, STOP_SCRIPT_TOOL, TOOLS,
 )
 
 
-class Rover(RoverCamera, RoverWifi, RoverNav):
+class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The
@@ -327,6 +328,7 @@ class Rover(RoverCamera, RoverWifi, RoverNav):
             self.nav.close()
             self.nav = None
         self.stop_tracking()
+        self.close_world()
         with self._lock:
             self._close_camera()
             if self._detector is not None:

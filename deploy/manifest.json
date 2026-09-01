@@ -8,6 +8,45 @@
   },
   "components": [
     {
+      "name": "world_state",
+      "host": "orin",
+      "destination": "~/ugv/world_state",
+      "prune": false,
+      "preserve": [
+        "vendor/",
+        "*.log"
+      ],
+      "sources": [
+        {
+          "patterns": [
+            "world_state/**"
+          ],
+          "strip": "world_state"
+        }
+      ],
+      "commands": [
+        "cd ~/ugv/world_state && python3 selftest.py | tail -2",
+        "test -f ~/ugv/world_state/vendor/Cosmos-Reason2-2B-Q4_K_M.gguf && test -f ~/ugv/world_state/vendor/mmproj-Cosmos-Reason2-2B-F16.gguf && test -x ~/ugv/world_state/vendor/llama/llama-server || { echo 'no model installed -- run ~/ugv/world_state/install.sh' >&2; exit 1; }",
+        "~/ugv/world_state/restart.sh"
+      ],
+      "special_commands": [
+        {
+          "when": [
+            "world_state/run_cosmos.sh"
+          ],
+          "replaces": [
+            "~/ugv/world_state/restart.sh"
+          ],
+          "commands": [
+            "~/ugv/world_state/restart.sh --supervisor"
+          ]
+        }
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
       "name": "rover_daemon",
       "host": "orin",
       "destination": "~/ugv",
@@ -38,7 +77,8 @@
       "commands": [
         "cd ~/ugv && python3 selftest.py | tail -2",
         "~/ugv/restart.sh",
-        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),3); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"list_tools\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('daemon:', len(r.get('tools',[])), 'tools')\""
+        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),3); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"list_tools\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('daemon:', len(r.get('tools',[])), 'tools')\"",
+        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),5); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"world_state_summary\\\"}\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('world:', r['summary']['entities'], 'entities,', r['summary']['observations'], 'observations,', r['backend'])\""
       ],
       "special_commands": [
         {
@@ -54,7 +94,8 @@
         }
       ],
       "triggers": [
-        "deploy/manifest.json"
+        "deploy/manifest.json",
+        "world_state/**"
       ]
     },
     {

@@ -60,3 +60,11 @@ ros_nav/fixtures/** -text
 # deploy/manifest.json, so the deployer excludes it and nothing under it is ever
 # copied to the rover. That is right for drives the rover recorded and wrong for a
 # fixture the repository owns and the rover's own selftest needs.
+
+# world_state/ is deployed to the rover and its three shell scripts have
+# shebangs: the supervisor that keeps the Cosmos sidecar alive, the restart
+# script and the installer that fetches two gigabytes of model weights. The
+# same carriage-return-in-the-interpreter-name trap as every other component
+# here, on the one that a CRLF checkout would leave looking like a model that
+# will not load.
+world_state/** text eol=lf

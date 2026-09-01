@@ -207,10 +207,20 @@ model choice, for example:
 - `map_png`;
 - `camera_jpeg`;
 - map/reset/diagnostic controls;
-- detector diagnostics such as running YuNet over a supplied known image.
+- detector diagnostics such as running YuNet over a supplied known image;
+- the semantic world state -- `world_inspect`, `world_state_summary` and the rest.
 
 Keeping them off the model schema avoids giving the model destructive or
 implementation-detail controls simply because the human console needs them.
+
+The world-state calls are off it for a further reason. They are a proof of concept
+asking whether a local physical-reasoning model builds a description of the room
+that stays coherent across views, and until that has an answer no model should have
+the authority to write to that description or to throw it away. The store, the
+model boundary and the sidecar are [`../world_state/`](../world_state/README.md);
+what lives in this daemon is [`rover_world.py`](rover_world.py), which takes the
+picture through the same `_whole_jpeg` that answers `camera_jpeg` -- the camera has
+one owner, and an inspection is not a reason for a second process to open it.
 
 ## Face tracking does not identify people
 

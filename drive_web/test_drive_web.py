@@ -1265,3 +1265,216 @@ def test_a_slow_browser_is_shown_the_newest_state() -> None:
             session.lock.notify_all()
         page.room = True
         watching.join(timeout=2.0)
+
+
+def test_the_world_state_popup() -> None:
+    """The console's side of the semantic world, with no rover and no browser.
+
+    What the page draws comes out of `Session` and out of two URLs, so those are
+    what is checked here: the counts and the tag that rides in every pushed state,
+    the payload the popup fetches when that tag moves, and the two failures the
+    viewer has to survive -- a rover with no world-state component at all, and an
+    observation whose stored frame is not there any more.
+
+    The drawing itself is JavaScript in a browser and is not covered by anything
+    here; the repository has no browser in its test loop. What that costs is
+    written down in world_state/README.md rather than left to be discovered.
+    """
+    try:
+        import json
+
+        import drive_web
+        from console_model import Reply
+    except ImportError as exc:
+        SKIP.append(f"the world-state popup ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+
+    # Nothing has been asked yet, so the button says nothing about a rover it has
+    # not spoken to. `available: None` is that third state, and it matters: a
+    # console that assumed either answer would either hide a working feature or
+    # offer a broken one.
+    world = session.world_state()
+    check("the world starts unknown rather than absent", world["available"], None)
+    check("...and shut", world["open"], False)
+    check("...with no picture to fetch yet", world["gen"], "")
+
+    # An empty world. The popup opens on a rover that has never inspected
+    # anything, and that has to read as "press the button", not as an error.
+    session.world_handle("world_state_entities", {
+        "ok": True, "entities": [], "recent": [], "unmatched": [],
+        "summary": {"entities": 0, "observations": 0, "inspections": 0,
+                    "map_session": 1}}, 0.1)
+    check("an empty world is available rather than broken",
+          session.world_state()["available"], True)
+    check("...and says so in the counts", session.world_state()["entities"], 0)
+    check("...and the popup has something to fetch",
+          bool(session.world_state()["gen"]), True)
+
+    # A populated one.
+    observation = {"id": 1, "entity_id": "furniture:1", "observed_at": 1.0,
+                   "source": "cosmos_visual", "frame_id": "20260901-120000-abc123",
+                   "label": "grey sofa", "description": "a grey three-seat sofa",
+                   "location_hint": "ahead-left", "bbox": [0.1, 0.3, 0.5, 0.9],
+                   "observer_pan_deg": 20.0, "observer_tilt_deg": -5.0,
+                   "pose": {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0},
+                   "map_session": 1, "model_id": "cosmos", "prompt_version": "2",
+                   "raw": {"label": "grey sofa"}, "note": None}
+    session.world_handle("world_state_entities", {
+        "ok": True,
+        "entities": [{"id": "furniture:1", "kind": "furniture", "label": "grey sofa",
+                      "canonical_description": "a grey three-seat sofa",
+                      "created_at": 1.0, "last_seen_at": 2.0,
+                      "observation_count": 2, "last_map_session": 1,
+                      "last_frame_id": "20260901-120000-abc123",
+                      "distinct_labels": 1,
+                      "rays": [{"x_m": 1.0, "y_m": 2.0, "bearing_deg": 70.0,
+                                "span_deg": 26.0, "length_m": 2.5}]}],
+        "recent": [observation], "unmatched": [],
+        "summary": {"entities": 1, "observations": 2, "inspections": 1,
+                    "map_session": 1}}, 0.2)
+    check("a populated world reaches the counts",
+          (session.world_state()["entities"], session.world_state()["observations"]),
+          (1, 2))
+    check("...and the payload carries the ray the map is drawn from",
+          session.world_payload["entities"][0]["rays"][0]["bearing_deg"], 70.0)
+    check("...and the whole observation stream, so duplicates are visible",
+          len(session.world_payload["recent"]), 1)
+
+    # The frame behind an observation. The console fetches the newest few and
+    # serves them at their own URL; one it has not fetched is a name, not a broken
+    # picture, and the page is told which by the list of frames it holds.
+    check("a frame that has not arrived is not offered to the page",
+          session.world_payload["frames"], [])
+    session.world_handle("world_state_frame", {
+        "ok": True, "frame_id": "20260901-120000-abc123",
+        "jpeg_base64": "/9j/4AAQSkZJRg=="}, 0.1)
+    check("one that has is", session.world_payload["frames"],
+          ["20260901-120000-abc123"])
+    check("...and is held where the URL can find it",
+          "20260901-120000-abc123" in session.world_frames, True)
+
+    # An inspection, and the one line the popup's header gets out of it.
+    session.world_handle("world_inspect", {
+        "ok": True, "created": 2, "matched": 1, "rejected": 0,
+        "detail": ""}, 61.0)
+    check("an inspection says what it did, in a line",
+          session.world_state()["note"], "2 new, 1 recognised -- 61 s")
+    check("...and is no longer running", session.world_state()["busy"], False)
+
+    session.world_handle("world_inspect", {
+        "ok": True, "created": 0, "matched": 0, "rejected": 0}, 58.0)
+    check("...and an inspection that found nothing says that rather than nothing",
+          session.world_state()["note"],
+          "nothing worth recording in view -- 58 s")
+
+    # A failure. The popup has to be able to say the model failed, because the
+    # alternative reading of an unchanged world -- nothing was in view -- is fixed
+    # somewhere else entirely.
+    session.world_handle("world_inspect", {
+        "ok": False, "error": "the Cosmos sidecar at http://127.0.0.1:8775 is not "
+                              "answering"}, 3.0)
+    check("a failed inspection is reported as one",
+          "not answering" in session.world_state()["error"], True)
+    check("...and the button comes back", session.world_state()["busy"], False)
+
+    # Clearing. Armed first, and separate from the map's clear in both directions.
+    session.world_link = _Recorder()
+    session.world_clear()
+    check("the first press arms rather than clears", session.world_link.calls, [])
+    check("...and says what the second one will do",
+          "map is not touched" in session.world_state()["note"], True)
+    session.world_clear()
+    check("the second press clears the semantic world",
+          [name for name, _ in session.world_link.calls], ["world_state_clear"])
+    check("...and nothing about it went near the navigator",
+          [name for name, _ in session.world_link.calls
+           if "map" in name or "nav" in name], [])
+
+    # And the other direction: clearing the SLAM map starts a new map session and
+    # deletes no semantic state.
+    session.world_link.calls.clear()
+    session.world_map_cleared()
+    check("clearing the map starts a new session in the store",
+          [name for name, _ in session.world_link.calls], ["world_map_session"])
+
+    # A rover with no world-state component says so once. Anything else is a
+    # popup that shows the same error every few seconds for the rest of the day.
+    session.world_handle("world_state_summary", {
+        "ok": False, "error": "this rover has no world_state component installed"},
+        0.1)
+    check("a rover without the component is remembered as such",
+          session.world_state()["available"], False)
+    check("...and the reason is kept for the popup to show",
+          "no world_state component" in session.world_state()["error"], True)
+
+
+class _Recorder:
+    """A channel that writes down what it was asked for instead of asking."""
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    def submit(self, name, arguments=None) -> None:
+        self.calls.append((name, arguments))
+
+
+def test_the_world_urls() -> None:
+    """`/world.json` and `/world_frame.jpg`, over a real socket.
+
+    Both exist for the same reason the network list and the map do: the payload is
+    tens of kilobytes and the frames are whole JPEGs, and the state they would
+    otherwise ride in goes out ten times a second.
+    """
+    try:
+        import http.client
+        import json
+        import threading
+
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the world URLs ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.world_payload = {"summary": {"entities": 1}, "frames": ["a-frame"]}
+    session.world_frames["a-frame"] = b"\xff\xd8\xff\xe0not really a jpeg\xff\xd9"
+
+    # The handler reaches its session through a class attribute rather than
+    # through the server, which is how the console itself wires it up.
+    was, drive_web.Handler.session = drive_web.Handler.session, session
+    server = drive_web.Console(("127.0.0.1", 0), drive_web.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request("GET", "/world.json?gen=x")
+        reply = connection.getresponse()
+        body = json.loads(reply.read())
+        check("the world payload is served", reply.status, 200)
+        check("...as the popup's own copy", body["summary"]["entities"], 1)
+
+        connection.request("GET", "/world_frame.jpg?id=a-frame")
+        reply = connection.getresponse()
+        frame = reply.read()
+        check("a stored frame is served as a picture", reply.status, 200)
+        check("...with the bytes the rover kept", frame.startswith(b"\xff\xd8"), True)
+
+        # The row outlives the file. A viewer that fell over here would be hiding
+        # exactly the observations it was opened to look at.
+        connection.request("GET", "/world_frame.jpg?id=gone")
+        reply = connection.getresponse()
+        reply.read()
+        check("a frame that is not held answers plainly rather than failing",
+              reply.status, 404)
+
+        connection.request("GET", "/world_frame.jpg")
+        reply = connection.getresponse()
+        reply.read()
+        check("...and so does asking for no frame at all", reply.status, 404)
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        drive_web.Handler.session = was

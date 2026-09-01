@@ -16,9 +16,10 @@ from console_model import (
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
     SLOW_PICTURE_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
-    WIFI_SCAN_TIMEOUT_S, rung, tap_to_point,
+    WIFI_SCAN_TIMEOUT_S, WORLD_TIMEOUT_S, rung, tap_to_point,
 )
 from drive_show import SessionShow, _number, _png_width  # noqa: F401
+from drive_world import SessionWorld
 
 # How often the pump wakes: drain what came back, decide what to ask for next, and
 # publish the state if it changed. The tkinter window this grew out of ran its loop
@@ -56,7 +57,7 @@ DEFAULT_HTTP_PORT = 8770
 ROVER_HTTP_PORT = 8771
 
 
-class Session(SessionShow):
+class Session(SessionShow, SessionWorld):
     """The rover, as one object a browser can render: the six connections, the
     pacing, and one dict that is everything on screen.
 
@@ -101,6 +102,10 @@ class Session(SessionShow):
         self.picture: Channel | None = None   # the map, which is slow enough to matter
         self.camera: Channel | None = None    # frames, which are slower still
         self.scanner: Channel | None = None   # one scan, slower than all of them
+        # Slower than all of them again: one world-state inspection is about a
+        # minute on this board, so it gets a connection nothing else can be stuck
+        # behind -- least of all the status poll or a stop.
+        self.world_link: Channel | None = None
         self.channels: list[Channel] = []
 
         self.address = ""
@@ -244,6 +249,7 @@ class Session(SessionShow):
         self.alone_since = 0.0
         self.stopped_orphan = False
         self.running = True
+        self.world_reset()
 
     def tag(self, count: int) -> str:
         """The name a picture is published under: this run, and which picture.
@@ -294,6 +300,11 @@ class Session(SessionShow):
                     "drawing": self.slow(self.map_outstanding, self.map_asked_at),
                     "half_extent_m": self.half_extent, "size_px": self.map_size,
                     "rover_up": self.rover_up,
+                    # What the picture was drawn at, which the world-state popup
+                    # needs to put a bearing on it. Free, because this block is
+                    # already a new block whenever there is a new map to say it
+                    # about -- the generation beside it has just changed.
+                    "view": self.map_view,
                     # Only once it is old enough to be news -- see MAP_STALE_S. A
                     # map that is arriving normally is always a second or two behind
                     # and saying so in tenths was, on its own, most of what this
@@ -314,6 +325,11 @@ class Session(SessionShow):
             # and for the same reason: it is three and a half kilobytes, it changes
             # a few times an hour, and it was riding in every state.
             "wifi": dict(self.wifi, networks_gen=self.tag(self.wifi_networks_gen)),
+            # Counts and a generation tag; the body of it is fetched from
+            # /world.json when that tag moves, like the network list and for the
+            # same reason -- it is tens of kilobytes and this goes out ten times a
+            # second.
+            "world": self.world_state(),
             "notice": self.notice,
             "clear_armed": self.clear_armed_until > time.monotonic(),
             "watching": self.listeners,
@@ -565,7 +581,7 @@ class Session(SessionShow):
         # already returned, so the map simply never comes back and the "one at a
         # time" flag stays set for good.
         self.moves = self.halt = self.watch = self.picture = self.camera = None
-        self.scanner = None
+        self.scanner = self.world_link = None
         self.frame_outstanding = False
         self.map_outstanding = False
         self.wifi_outstanding = False
@@ -597,6 +613,7 @@ class Session(SessionShow):
         self.tracking_on = False
         self.tools = []
         self.can_drive = False
+        self.world_outstanding = 0
         self.busy_since = None
         # The move connection has just been thrown away, so the reply that would
         # have handed the wheels over is never coming. Said out loud rather than
@@ -643,8 +660,14 @@ class Session(SessionShow):
         # factor of three, and its own patience because it outlasts the default.
         self.scanner = Channel("scan", address, self.replies,
                                timeout=WIFI_SCAN_TIMEOUT_S)
+        # The slowest thing this console can ask for, and the reason it has a
+        # connection at all: an inspection is tens of seconds of a model looking at
+        # a picture, and a status poll queued behind one would leave the lights,
+        # the tracking panel and the map stopped for that whole minute.
+        self.world_link = Channel("world", address, self.replies,
+                                  timeout=WORLD_TIMEOUT_S)
         self.channels = [self.moves, self.halt, self.watch, self.picture,
-                         self.camera, self.scanner]
+                         self.camera, self.scanner, self.world_link]
         self.link_text = f"{address}: asking what it can do"
         self.watch.submit("list_tools")
         # The board cannot be read back, so the daemon only knows the level it last
@@ -708,6 +731,8 @@ class Session(SessionShow):
             self.wifi_scan()
         elif what == "wifi_join":
             self.wifi_join(str(action.get("ssid") or ""))
+        elif what == "world":
+            self.world_act(action)
 
     def watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.watch is None:
@@ -1043,6 +1068,12 @@ class Session(SessionShow):
                     self.wifi["note"] = (f"the scan did not come back: "
                                          f"{body.get('error', 'no answer')}")
             return
+        if name.startswith("world_"):
+            # Its own connection, its own panel and its own errors, so none of
+            # this goes near the notice line: a popup that is open shows what
+            # happened, and one that is shut has nothing to say.
+            self.world_handle(name, body, reply.seconds)
+            return
         if name == "tracking_status":
             # Polled by the console rather than asked for by a person, so it updates
             # the panel and says nothing.
@@ -1066,6 +1097,12 @@ class Session(SessionShow):
             self.show_tracking(body)
         if moved or name == "clear_map":
             self.refresh_map()
+        if name == "clear_map" and body.get("ok"):
+            # The semantic world is deliberately not cleared with the map -- an
+            # entity outlives the map it was seen under -- but anything positional
+            # recorded against the old map has to stay recognisable as belonging to
+            # a map that no longer exists, so the store starts a new session.
+            self.world_map_cleared()
         # The move that was in flight has answered, so the wheels are free and a
         # click that was waiting for them goes now. After that move's own outcome
         # has been said, so the notice line reads as one thing ending and the next
