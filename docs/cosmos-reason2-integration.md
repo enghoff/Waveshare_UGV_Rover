@@ -1,14 +1,17 @@
-# Cosmos physical reasoning on the rover
+# Cosmos physical reasoning and semantic world state
 
-_Status: design recommendation, 2026-09-01._
+_Status: design recommendation, revised 2026-09-01._
 
 ## Decision
 
 Add a **local physical-reasoning sidecar** on the Jetson Orin Nano, initially
-using **NVIDIA Cosmos Reason 2 2B**, but do not make it another navigator and do
-not replace the current Alibaba Qwen Omni voice agent with it.
+using **NVIDIA Cosmos Reason 2 2B**, and use it to build and maintain a small
+semantic world model while the rover operates.
 
-The recommended split is:
+Do **not** make Cosmos another navigator and do **not** replace the current
+Alibaba Qwen Omni voice agent with it initially.
+
+The intended split is:
 
 ```text
 human
@@ -16,54 +19,48 @@ human
   | speech / conversation
   v
 Alibaba Qwen Omni
-  |                         current role stays here
+  |                         user-facing agent
   | high-level rover tools
   v
 rover agent / daemon boundary
   |
-  +-----------------------+--------------------------+
-  |                       |                          |
-  | scene question        | semantic target          | ordinary move
-  v                       v                          v
-Cosmos Reason 2 2B    world state / targets      existing nav bridge
-local on Orin             registry                    |
-  |                       |                           v
-  | observation +         |                     SLAM Toolbox + Nav2
-  | recommended action    |                           |
-  +-----------+-----------+                           v
-              |                                    wheels
-              v
-        action validator
-              |
-              +---- only validated semantic actions reach navigation
+  +---------------------+--------------------------+
+  |                     |                          |
+  | semantic query      | semantic target          | ordinary move
+  v                     v                          v
+Cosmos Reason 2B   semantic world state       existing nav bridge
+local on Orin       RAM + SQLite                    |
+  ^                     |                           v
+  |                     |                     SLAM Toolbox + Nav2
+  |                     |                           |
+  +--- event-driven ----+                           v
+       scene observer                             wheels
 ```
 
-In one sentence:
+The central rule is:
 
 > **Qwen talks to the user, Cosmos reasons about the physical scene, the world
-> state gives both models stable names for things, and Nav2 remains the only
-> component that decides how the rover physically gets somewhere.**
+> state stores stable semantic facts and map-bound observations, and Nav2 remains
+> the only component that decides how the rover physically gets somewhere.**
 
-This is an incremental extension of the system that exists today, not a second
-robot stack. In particular:
+This is an incremental extension of the system that exists today:
 
 - keep `slam_toolbox` as the authoritative mapper;
 - keep Nav2 as the planner/controller/recovery stack;
 - keep the measured rover-specific navigation checks in `ros_nav/`;
-- keep the current `explore` implementation as the default autonomous explorer;
-- keep `rover_daemon` as the single model-facing hardware/navigation tool
-  boundary;
+- keep the current `explore` implementation as the default geometric explorer;
+- keep `rover_daemon` as the model-facing hardware/navigation boundary;
 - keep Qwen Omni for microphone, conversation, speech and general tool use;
-- add Cosmos only where physical visual reasoning is useful;
-- add a small world-state/target registry rather than an LLM scratchpad or a
+- add Cosmos for physical visual reasoning and semantic observation;
+- add a small typed world-state layer rather than an LLM scratchpad or a
   heavyweight robotics knowledge framework.
 
 ## Why this shape fits the repository
 
-The rover already has most of the components a generic proposal would suggest
-adding.
+The rover already contains most of the infrastructure a generic semantic-robot
+architecture would otherwise add.
 
-Current navigation is:
+Current navigation is approximately:
 
 ```text
 driver-board odometry + IMU       D500 lidar
@@ -87,67 +84,212 @@ driver-board odometry + IMU       D500 lidar
                browser / Qwen Omni
 ```
 
-The current exploration implementation is also already rover-specific and
-measured. `ros_nav/frontier.py` deliberately separates frontier detection and
-ranking from body-fit and Nav2 path validation; `nav_bridge.py` verifies a chosen
-goal before it moves. This is preferable here to replacing it with
-`explore_lite`, which would publish directly to Nav2 and bypass checks the rover
-has acquired through real failures.
+The existing frontier explorer is also already rover-specific and measured.
+`ros_nav/frontier.py` deliberately separates frontier detection/ranking from
+body-fit and Nav2 path validation; the bridge verifies a chosen goal before the
+rover moves. Keep this rather than introducing `explore_lite` merely to obtain
+frontier IDs.
 
-RTAB-Map was also already evaluated and removed as the mapper. Nothing about a
-Cosmos integration requires reopening that decision. If RGB/depth becomes a
-proper ROS input later, visual localization can be evaluated separately; Cosmos
-does not depend on RTAB-Map.
+RTAB-Map was already evaluated and removed as the mapper. Cosmos does not require
+reopening that decision. If RGB/depth later justifies a visual-localization
+experiment, that remains a separate question from semantic reasoning.
 
-## What Cosmos should do
+## Cosmos should be engaged automatically, but event driven
 
-Cosmos Reason 2 is useful here as a **deliberative physical-world reasoner**. It
-can be asked questions such as:
+Cosmos is **not intended to run only when a human explicitly asks a visual
+question**.
 
-- what objects and traversable-looking regions are visible;
-- which doorway or frontier is most relevant to a task;
-- whether the current view appears to contain the requested object;
-- which of several *already generated and validated candidate targets* is the
-  most sensible next place to inspect;
-- what additional camera view would reduce ambiguity;
-- whether a short sequence of observations appears consistent with entering a
-  room, approaching an object, or failing to find it.
+The rover should use it automatically at meaningful semantic checkpoints while
+it moves through an environment and use those observations to populate/update
+world state.
 
-NVIDIA describes Reason 2 as a physical-AI VLM with spatial/temporal reasoning,
-2D/3D point localization and bounding-box output, and embodied reasoning about
-what action might come next:
+It should also **not** run continuously on every camera frame.
 
-- <https://docs.nvidia.com/cosmos/latest/reason2/index.html>
-- <https://docs.nvidia.com/cosmos/latest/reason2/reference.html>
+The normal autonomous loop should be:
 
-That makes it a good fit for **semantic selection and interpretation**, not for a
-100 Hz or even 10 Hz wheel-control loop.
+```text
+Nav2 drives
+   |
+   | no VLM needed during ordinary path following
+   v
+goal/frontier/observation point reached
+   |
+   v
+rover/camera settles
+   |
+   +-- capture current image
+   +-- current trusted pose
+   +-- map session/revision
+   +-- current task, if any
+   +-- candidate frontiers/targets, if relevant
+   |
+   v
+Cosmos inspection
+   |
+   +-- semantic observations
+   +-- useful object/place candidates
+   +-- optional next-action recommendation
+   |
+   v
+world-state association / validation
+   |
+   +-- transient observation
+   +-- update existing entity
+   +-- promote salient new entity
+   |
+   v
+next high-level decision
+```
 
-### Cosmos should not drive the rover directly
+Typical automatic triggers:
 
-Do not expose any of these to Cosmos:
+```text
+navigation goal reached
+frontier reached
+new room or materially changed view
+camera deliberately pointed somewhere new
+object-search decision
+frontier-selection decision
+navigation failure requiring semantic reconsideration
+explicit user visual question
+explicit inspect/look request
+```
+
+Do not invoke Cosmos in a Nav2 control callback or at camera frame rate.
+
+Benefits of event-driven use:
+
+- lower RAM/GPU pressure;
+- less inference on blurred/transitional views;
+- deterministic navigation timing remains independent of VLM latency;
+- the semantic database grows even before a user asks about a specific object;
+- the rover can use prior observations to answer/search more efficiently later.
+
+## Background semantic mapping versus task-directed perception
+
+There are two related modes.
+
+### Background semantic mapping
+
+When Cosmos is invoked automatically, ask it for **generally useful semantic
+information about the current scene**.
+
+For example:
+
+```text
+office
+- desk
+- chair
+- monitor
+- black backpack near desk
+- doorway to hallway
+```
+
+A later question such as:
+
+```text
+"Where is the black backpack?"
+```
+
+can then query existing world state before beginning a fresh search.
+
+The database therefore does **not** need a previous prompt specifically asking
+for a backpack before it can know that a backpack was seen.
+
+### Task-directed perception
+
+A user objective increases attention and retention for relevant things.
+
+For example:
+
+```text
+objective = "find the blue screwdriver"
+```
+
+causes otherwise low-salience screwdriver-like candidates, negative room
+searches, and relevant frontiers to be retained for that task.
+
+The task-directed pass can be more detailed than normal background mapping.
+
+## Do not inventory everything
+
+Automatic semantic mapping should have a **salience policy** rather than turning
+every visible item into a permanent database row.
+
+Good default persistent candidates include:
+
+- rooms and meaningful areas;
+- doors/passages and navigation-relevant landmarks;
+- furniture-scale landmarks;
+- charging dock;
+- distinctive movable objects;
+- useful household/work objects such as backpack, toolbox, laptop, parcel,
+  bottle, keys, etc.;
+- anything explicitly relevant to a current task;
+- anything the user explicitly asks the rover to remember.
+
+Low-value/background details can remain transient unless later promoted.
+
+Conceptually:
+
+```text
+Cosmos observation
+       |
+       v
+transient observation
+       |
+       v
+salient or task relevant?
+      / \
+    no   yes
+    |     |
+ expire   associate with existing entity
+              |
+              v
+        geometry trustworthy?
+          /          \
+        no            yes
+        |              |
+ semantic-only     map-bound observation
+ memory possible       |
+                        v
+                   persistent DB
+```
+
+## Cosmos should reason; it should not drive
+
+Cosmos is useful as a **deliberative physical-world reasoner** for questions such
+as:
+
+- what useful objects and areas are visible;
+- whether a requested object appears to be present;
+- which doorway/frontier is most relevant to an objective;
+- which of several already-generated candidate targets is worth inspecting;
+- what camera view would reduce ambiguity;
+- whether observations are consistent with entering a room or failing to find
+  something there.
+
+Do not expose:
 
 ```text
 /cmd_vel
 left/right motor power
 raw UART/CAN/GPIO
-arbitrary ROS topic publication
+arbitrary ROS publication
 shell execution
 raw map-frame x/y as a free-form model choice
 ```
 
-The model is not an embodiment-specific rover policy. A visually plausible
-answer such as "move 0.6 m forward and turn 23 degrees" is not a substitute for
-costmaps, the real footprint, collision checking, the planner, or the rover's
-measured actuator envelope.
-
-The safe control chain remains:
+The safe movement chain remains:
 
 ```text
 Cosmos recommendation
         |
         v
-validate target handle and current generation
+validate action + target handle
+        |
+        v
+resolve authoritative map geometry
         |
         v
 existing body-fit / planner checks
@@ -162,13 +304,11 @@ DWB today / MPPI only if separately benchmarked
 motors
 ```
 
-A later Cosmos 3 action/policy experiment can use the same boundary; it should
-not be allowed to collapse it.
+Cosmos chooses **what/where semantically**. Nav2 chooses **how to move there**.
 
-## Keep Qwen Omni
+## Keep Qwen Omni initially
 
-Cosmos should initially **complement**, not replace, the current hosted Qwen Omni
-session.
+Cosmos should complement the current hosted Qwen Omni session.
 
 Qwen currently supplies:
 
@@ -176,34 +316,40 @@ Qwen currently supplies:
 - conversational state;
 - general rover tool choice;
 - streaming speech output;
-- the user-facing personality and turn-taking path.
+- user-facing turn taking.
 
-Cosmos does not provide a reason to rebuild that working path. Instead, give the
-Qwen-side agent one high-level capability such as:
+Cosmos should not force a rewrite of that working path.
+
+Qwen can access semantic capabilities such as:
 
 ```text
 reason_about_scene(question, objective?)
+get_known_targets(query?)
+navigate_to(target_id)
 ```
 
-or, if narrower tools prove easier for the model to choose reliably:
+However, **automatic semantic observation should not require Qwen to ask for it**.
+A small event-driven semantic observer/orchestrator can invoke the local
+`PhysicalReasoner` directly after navigation/observation events and update world
+state independently of the voice session.
+
+That distinction is important:
 
 ```text
-inspect_scene(question)
-locate_visible_object(description)
-choose_frontier(objective, frontier_ids)
+Qwen tool call -> Cosmos
 ```
 
-These are **Qwen tools**, but they do not execute movement. They capture or reuse
-a current image, query local Cosmos, and return a concise structured result.
-Qwen may then call the normal rover tools.
+is one path, but not the only path.
 
-This also leaves a clean future path to an entirely local voice stack without
-coupling that decision to navigation or semantic memory.
+The rover itself can also do:
 
-## Run Cosmos as a sidecar, not inside the daemon
+```text
+navigation event -> semantic observer -> Cosmos -> world state
+```
 
-The first implementation should be a separate local inference process on the
-Orin, listening only on loopback.
+## Run Cosmos as a local sidecar
+
+Run the model as a separate process on the Orin, listening only on loopback.
 
 ```text
 Cosmos model files
@@ -212,90 +358,57 @@ Cosmos model files
 llama.cpp server, 127.0.0.1:<local port>
        ^
        |
-cosmos_client.py
+PhysicalReasoner / cosmos_client.py
        ^
        |
-agent / rover daemon integration
+semantic observer + Qwen-facing tools
 ```
 
-Reasons to keep it separate:
+Reasons:
 
-1. `rover_daemon` owns safety-critical hardware and already has a good reason to
-   stay small and responsive.
-2. A CUDA/model failure must not take the UART owner or STOP path down with it.
-3. The model can be restarted, upgraded or replaced independently.
-4. Memory pressure and inference latency are then observable as a separate
-   process.
-5. Cosmos 3 or another VLM can later replace Reason 2 behind the same client
-   interface.
+1. `rover_daemon` owns safety-critical hardware and should remain responsive.
+2. A CUDA/model failure must not take STOP or the UART owner down with it.
+3. The model can be restarted/replaced independently.
+4. Memory pressure and latency are observable separately.
+5. Cosmos 3 or another VLM can replace Reason 2 behind the same interface.
 
-### Orin Nano 8 GB runtime
-
-Do **not** use the canonical full Transformers/vLLM Reason 2 recipe as the first
-Orin Nano implementation. NVIDIA's main Reason 2 documentation lists much larger
-memory requirements for that path. NVIDIA has separately demonstrated the 2B
-model on an **Orin Nano 8 GB** by serving a 4-bit GGUF build with `llama.cpp`;
-in that example the VLM footprint dropped from about 6.6 GB to about 2.2 GB, and
-the complete VLM + speech + TTS + robot stack used about 4.5 GB of roughly
-7.6 GB usable RAM:
-
-- <https://developer.nvidia.com/blog/maximizing-memory-efficiency-to-run-bigger-models-on-nvidia-jetson/>
-
-The starting deployment should therefore be:
-
-- headless Orin where practical;
-- Cosmos Reason 2 2B;
-- Q4 GGUF;
-- NVIDIA's Jetson `llama.cpp` container/runtime;
-- one request at a time;
-- bounded image resolution and context;
-- no model inference in a navigation control callback;
-- explicit monitoring of total RAM and Nav2/SLAM scheduling latency.
-
-The model should be invoked **event driven**, for example on:
-
-```text
-user asks a visual question
-goal reached
-new room / materially changed view
-object-search decision
-frontier-selection decision
-navigation failure requiring semantic reconsideration
-explicit inspect/look request
-```
-
-not once per camera frame.
-
-## Treat Reason 2 as replaceable from day one
-
-NVIDIA now marks the Cosmos Reason 2 repository as maintenance-only and directs
-new development toward Cosmos 3:
-
-- <https://github.com/nvidia-cosmos/cosmos-reason2>
-- <https://docs.nvidia.com/cosmos/latest/cosmos3/quickstart_guide.html>
-
-Reason 2 2B is still a useful first rover model because NVIDIA has demonstrated a
-workable Orin Nano 8 GB deployment. The code should nevertheless depend on an
-interface such as:
+A generic interface is preferable to Reason-2-specific code throughout the
+application:
 
 ```python
 class PhysicalReasoner:
     def inspect(self, image, prompt, context): ...
 ```
 
-not on Reason-2-specific response classes throughout the application.
+### Orin Nano 8 GB runtime
 
-That makes the model choice a benchmark result rather than an architectural
-commitment.
+Start with:
 
-## Do not use an LLM scratchpad as robot state
+- Cosmos Reason 2 2B;
+- Q4 GGUF;
+- NVIDIA's Jetson `llama.cpp` route;
+- one inference at a time;
+- bounded image resolution/context;
+- explicit RAM and Nav2/SLAM latency monitoring.
 
-The rover needs memory, but the authoritative memory should be a **small typed
-world-state component**, not hidden model reasoning and not a growing prompt.
+NVIDIA has demonstrated a quantized Reason 2 2B configuration on Orin Nano 8 GB:
 
-Use three kinds of state:
+- <https://developer.nvidia.com/blog/maximizing-memory-efficiency-to-run-bigger-models-on-nvidia-jetson/>
 
-### 1. Navigation state: existing ROS/Nav2 ownership
+NVIDIA now marks Reason 2 maintenance-only and points new development toward
+Cosmos 3, so model replacement should be considered normal rather than a rewrite:
+
+- <https://github.com/nvidia-cosmos/cosmos-reason2>
+- <https://docs.nvidia.com/cosmos/latest/cosmos3/quickstart_guide.html>
+
+## World state is not an LLM scratchpad
+
+The authoritative robot memory should be a **typed world-state layer**, not model
+conversation history or hidden reasoning.
+
+Use four categories of state.
+
+### 1. Navigation state — existing ROS/Nav2 authority
 
 Examples:
 
@@ -308,161 +421,400 @@ planner/controller state
 recovery state
 ```
 
-These remain authoritative in SLAM Toolbox/Nav2. Do not duplicate them into a
-semantic database except for references or snapshots.
+Keep these authoritative in SLAM Toolbox/Nav2.
 
-### 2. Ephemeral semantic/navigation handles
+### 2. Ephemeral semantic/navigation state — RAM
 
 Examples:
 
 ```text
-frontier:g184:0
-frontier:g184:1
+frontier:map42:r381:0
+frontier:map42:r381:1
 visible:frame921:2
+current candidate objects
+current semantic inspection
 ```
 
-These are valid only against the map/frame generation that created them.
+These may expire in seconds/minutes and should not be treated as permanent facts.
 
-Keep them in RAM. An old frontier must fail closed rather than silently resolve
-to the nearest new frontier.
-
-### 3. Persistent semantic/task memory
+### 3. Persistent semantic entities — SQLite
 
 Examples:
 
 ```text
 place:kitchen
+place:office
 place:dock
-object:17 = black backpack, last seen near place:office
-task:42 = find the red toolbox; kitchen already searched
+object:17 = black backpack
+object:23 = red toolbox
+task:42 = find red toolbox
 ```
 
-Persist these in SQLite once they exist. This is enough for the likely scale of
-one rover in a house and keeps state inspectable with ordinary tools.
+Semantic identity can outlive any single SLAM map.
 
-Do not introduce KnowRob, ROSPlan, a vector database, LangGraph persistence or a
-separate knowledge graph at this stage. They solve larger problems than the
-current rover has.
+### 4. Map-bound observations — SQLite
 
-## Recommended new component: `world_state`
+Metric geometry belongs to a specific SLAM mapping session and observation
+revision.
 
-Author a thin component rather than importing a framework. It should be a registry
-and resolver, **not a planner**.
-
-A reasonable repository shape is:
+Examples:
 
 ```text
-ros_nav/
-  frontier.py                 existing, stays stateless
-  frontier_registry.py        NEW: current-generation handles
-  target_registry.py          NEW: place/object target handles
-  world_store.py              NEW: small SQLite persistence layer
-  nav_bridge.py               existing, gains internal ops
-
-rover_daemon/
-  cosmos_client.py            NEW: physical-reasoner client/adaptor
-  rover_nav.py                existing, semantic actions call nav bridge
-  tool_schemas.py             existing, only carefully chosen tools exposed
+object:17 was observed at x/y/z in map_session:42
+place:kitchen had an entry/observation pose in map_session:42
 ```
 
-The exact filenames can change during implementation; the important boundary is
-that **frontier geometry stays beside the current map/Nav2 stack**, while
-model-facing semantics stay above it.
+This separation is fundamental:
 
-### Why frontier state belongs on the navigation side
+> **Semantic entities belong to an environment. Metric locations belong to a
+> specific SLAM map/session.**
 
-`frontier.py` already receives the occupancy grid and produces candidates. The
-thing that assigns an ID should therefore sit next to it, where it can also know
-which map revision produced the candidate.
+## Tie geometry explicitly to the SLAM map
 
-Do not copy frontier poses into a long-lived model database and later trust them.
-The map changes as SLAM closes loops and discovers space.
+Every stored coordinate that can later influence navigation must identify which
+SLAM map produced it.
 
-A candidate record can look like:
+Use at least:
+
+```text
+environment_id
+map_session_id
+map_revision
+```
+
+### `environment_id`
+
+Identifies the physical environment, for example:
+
+```text
+environment:home
+environment:workshop
+```
+
+A kitchen in one building must not silently become the kitchen in another.
+
+### `map_session_id`
+
+A new session is created when the SLAM map/pose graph is cleared and rebuilt.
+
+Example:
+
+```text
+map_session:41  archived
+map_session:42  active
+```
+
+Coordinates from session 41 must never be used as session-42 navigation goals
+without explicit relocalization/reassociation.
+
+### `map_revision`
+
+Tracks meaningful changes within one active mapping session.
+
+This is especially relevant because SLAM loop closure/pose-graph optimization can
+change the relationship between earlier observations and the current optimized
+map. Frontier handles should be tightly revision-bound. Persistent object/place
+observations can be less aggressively invalidated, but their source revision must
+remain known and their geometry must be revalidated or updated if optimization
+materially changes it.
+
+Do not assume that a database point written once is forever correct merely
+because `clear_map` was not called.
+
+## Recommended SQLite model
+
+A minimal schema can stay simple.
+
+```text
+environments
+------------
+id
+name
+created_at
+
+map_sessions
+------------
+id
+environment_id
+started_at
+ended_at
+status             # active / archived
+
+entities
+--------
+id
+environment_id
+type               # object / place
+label
+attributes_json
+created_at
+last_seen_at
+
+observations
+------------
+id
+entity_id
+map_session_id
+map_revision
+source_frame_id
+observed_at
+semantic_json
+x                  # nullable
+y                  # nullable
+z                  # nullable
+geometry_status    # none / trusted / stale
+
+places / relations can initially live in semantic_json or a small relation table
+as requirements become clear.
+
+tasks
+-----
+id
+environment_id
+objective
+state
+context_json
+created_at
+updated_at
+```
+
+This is intentionally ordinary SQLite rather than a knowledge graph/vector DB.
+
+## Clearing the SLAM map must not blindly clear semantic memory
+
+`clear_map()` should reset the SLAM pose graph/map as it does today, and **the
+world-state layer must react to that reset**.
+
+Recommended behavior:
+
+```text
+active map_session:41
+        |
+        | clear_map()
+        v
+archive map_session:41
+create map_session:42
+```
+
+Immediately:
+
+```text
+frontier:*                DELETE / expire
+visible:*                 DELETE / expire
+current nav targets       cancel / expire
+map-bound candidate state expire
+```
+
+For persistent entities:
+
+```text
+semantic identity         KEEP
+semantic attributes       KEEP
+observation history       KEEP
+old metric locations      KEEP AS HISTORY, mark stale
+navigation using them     REFUSE
+```
+
+Example before reset:
+
+```text
+object:17
+label = black backpack
+observation:
+  map_session = 41
+  pose = (4.2, 7.1)
+  geometry_status = trusted
+```
+
+After `clear_map()`:
+
+```text
+object:17
+label = black backpack              # retained
+last known environment = home       # retained
+old observation map_session = 41    # retained as history
+old pose = (4.2, 7.1)               # retained as historical data
+geometry_status = stale             # no longer navigable
+```
+
+Therefore:
+
+```text
+navigate_to("object:17")
+```
+
+must fail with a result such as:
 
 ```json
 {
-  "id": "frontier:g184:2",
-  "generation": 184,
-  "map_pose": [7.8, 5.9, 1.57],
-  "route_distance_m": 8.4,
-  "frontier_size_m": 2.1,
-  "score": 4.2,
-  "status": "active"
+  "ok": false,
+  "reason": "target_geometry_stale",
+  "map_session": 42
 }
 ```
 
-The **model-facing** representation should normally omit `map_pose`:
+until a trusted observation in the active map re-establishes its location.
 
-```json
-{
-  "id": "frontier:g184:2",
-  "distance_m": 8.4,
-  "size_m": 2.1,
-  "description": "open boundary beyond the doorway ahead"
-}
-```
+This gives useful persistent memory without ever navigating on coordinates from
+an obsolete map.
 
-The description can initially be geometric and later be enriched by Cosmos.
+## `clear_map()` and `new_environment()` are different operations
 
-## Frontier IDs and exploration
+Treat these differently.
 
-Keep the existing zero-semantics autonomous explorer:
+### `clear_map()`
+
+Means roughly:
+
+> Remap/relocalize this same physical environment.
+
+Result:
+
+- archive the old map session;
+- create a new map session under the same environment;
+- retain semantic entities/history;
+- invalidate old navigable geometry.
+
+### `new_environment()`
+
+Means:
+
+> The rover is now mapping a different physical environment.
+
+Result:
 
 ```text
-explore(minutes)
+environment:home
+  map_session:1
+  map_session:2
+
+environment:workshop
+  map_session:1
 ```
 
-It is already measured, bounded, stoppable and useful when the desired task is
-simply "finish mapping this place".
+Semantic target lookup defaults to the active environment, preventing entities
+from unrelated buildings being mixed together.
 
-Add semantic frontier selection **beside it**, not instead of it.
+## Reacquiring entities after a map reset
 
-### Proposed internal operations
+After a new map session begins, Cosmos can help re-associate persistent semantic
+entities.
+
+For example:
 
 ```text
-list_frontiers()
-explore_frontier(frontier_id)
+old semantic entity:
+place:kitchen
+geometry_status = stale
+
+new map_session:42
+       |
+rover enters room
+       |
+Cosmos: "this appears to be the kitchen"
+       |
+current trusted rover/camera pose
+       |
+association/revalidation
+       |
+new observation for place:kitchen
+map_session = 42
+geometry_status = trusted
 ```
 
-`list_frontiers()`:
+The same principle applies to movable objects, but association should be more
+conservative because a backpack can actually move.
 
-1. reads the current occupancy grid;
-2. runs the existing frontier algorithm;
-3. applies the same reachability/ranking logic used today;
-4. assigns IDs tied to the current generation;
-5. returns the best few candidates rather than every boundary cell.
+Historical observations remain useful for statements such as:
 
-`explore_frontier(id)`:
-
-1. rejects a missing or expired generation;
-2. rechecks the goal against the **current** map/costmap;
-3. applies the existing `goal_fit` body-fit check;
-4. asks `ComputePathToPose` as the current explorer does;
-5. runs the same Nav2 goal path and existing recovery/stall logic;
-6. invalidates the old frontier generation after the map materially changes;
-7. returns a concrete outcome.
-
-This means Cosmos can answer:
-
-```json
-{
-  "recommended_action": {
-    "kind": "explore_frontier",
-    "target": "frontier:g184:2"
-  },
-  "reason": "This frontier is through the only doorway that appears to lead to an unsearched room."
-}
+```text
+"the backpack was last seen in the office in the previous map session"
 ```
 
-without ever owning a map coordinate.
+without pretending the old coordinate is a current navigation goal.
 
-### Do not make IDs stable across maps
+## Observation promotion and object geometry
 
-A frontier is not a landmark. It is a boundary of ignorance, and successful
-exploration destroys it.
+Cosmos output should enter the system first as an **observation**, not as an
+unquestioned permanent entity.
 
-A model calling an old handle should get an explicit result such as:
+Example:
+
+```text
+Cosmos:
+"black backpack visible near the desk"
+```
+
+Without trustworthy depth, the rover may persist useful semantic information:
+
+```text
+object:17
+label = backpack
+attributes = black
+relation = seen_in place:office
+geometry_status = none
+```
+
+but it should not invent a map coordinate from monocular visual reasoning.
+
+Once a trusted depth + TF pipeline is available:
+
+```text
+camera image
+    |
+    v
+Cosmos: object bbox / point
+    |
+    v
+trusted depth
+    |
+    v
+camera intrinsics -> 3D camera point
+    |
+    v
+TF -> active SLAM map
+    |
+    v
+association with entity
+    |
+    v
+map-bound observation in SQLite
+```
+
+Then `object:*` can become navigable.
+
+## Frontier IDs
+
+Frontier IDs should come from the navigation side, not from Cosmos.
+
+Use IDs tied to the map session and revision, for example:
+
+```text
+frontier:map42:r381:0
+frontier:map42:r381:1
+```
+
+A frontier is not a persistent landmark. Successful exploration usually destroys
+it.
+
+`list_frontiers()` should:
+
+1. read the current occupancy grid;
+2. use the existing `frontier.py` algorithm;
+3. apply current reachability/ranking logic;
+4. return only useful candidate clumps;
+5. assign session/revision-bound handles.
+
+`explore_frontier(id)` should:
+
+1. reject unknown/expired/session-mismatched handles;
+2. re-evaluate against the current map;
+3. apply the existing body-fit check;
+4. ask Nav2 whether a route exists;
+5. execute through the same movement/recovery path as today;
+6. return a concrete outcome.
+
+A stale call should fail explicitly:
 
 ```json
 {
@@ -472,12 +824,48 @@ A model calling an old handle should get an explicit result such as:
 }
 ```
 
-and be made to choose from the current list.
+Cosmos can choose an ID, but it never owns the coordinates behind it.
+
+## Keep ordinary `explore()` as the baseline
+
+The existing:
+
+```text
+explore(minutes)
+```
+
+should remain the reliable zero-semantics baseline for:
+
+> map whatever reachable unknown space remains.
+
+Semantic exploration is an additional mode:
+
+```text
+current frontier candidates
+       +
+current visual scene
+       +
+objective / prior semantic state
+       |
+       v
+Cosmos
+       |
+       v
+choose frontier ID
+       |
+       v
+deterministic validator
+       |
+       v
+existing Nav2 path
+```
+
+This gives a measurable comparison between geometric frontier ranking and
+semantic task-directed exploration.
 
 ## `navigate_to(target)`
 
-A semantic `navigate_to()` is useful, but it should be a **resolver above the
-existing navigation path**, not another movement implementation.
+A semantic navigation API should resolve handles above the existing Nav2 path.
 
 Examples:
 
@@ -487,107 +875,60 @@ navigate_to("place:kitchen")
 navigate_to("object:17")
 ```
 
-The resolution chain is:
+Resolution:
 
 ```text
 target handle
      |
      v
-world_state.resolve()
+world_state.resolve(active environment, active map session)
      |
-     +-- place -> stored observation/entry pose
-     |
-     +-- object -> current/last trusted map pose + approach policy
+     +-- semantic entity exists?
+     +-- trusted active-map geometry exists?
+     +-- observation sufficiently recent for entity type?
      |
      v
-safe approach pose
+compute safe approach/observation pose
      |
      v
 existing Nav2 NavigateToPose path
 ```
 
-The world-state component never sends wheel commands.
+The semantic registry never sends wheel commands.
 
-### Keep the existing tools too
-
-Do not immediately remove `drive_to` or `drive_to_map_point`.
-
-`drive_to_map_point` in particular has a good safety property: the model points at
-**the map image it is actually looking at**, and the daemon resolves that picture
-coordinate through the pose captured when the map was rendered. That is much
-safer than asking a model to invent map-frame metres.
-
-`navigate_to(target)` solves a different problem: returning to a **named,
-registered semantic entity** later.
-
-## Object IDs should come later than frontier IDs
-
-Frontier IDs can be implemented immediately because the authoritative geometry
-already exists.
-
-Persistent object navigation should wait until the rover can establish a
-trustworthy object position in the map frame.
-
-A Cosmos bounding box is useful semantic grounding, but it is not a metric
-navigation goal. The desired future pipeline is:
-
-```text
-camera image
-    |
-    v
-Cosmos: object label + image bbox / point
-    |
-    v
-trusted depth measurement
-    |
-    v
-camera intrinsics -> 3D camera-frame point
-    |
-    v
-TF -> map frame
-    |
-    v
-object registry
-    |
-    v
-calculate accessible stand-off / approach pose
-    |
-    v
-Nav2
-```
-
-Until a depth camera and its transforms are part of the running stack, Cosmos can
-say **"the requested backpack is visible on the right"** but should not create an
-`object:*` map position from monocular visual guessing.
-
-This is the boundary that prevents semantic perception from becoming invented
-geometry.
+Keep `drive_to` and `drive_to_map_point` as separate existing capabilities.
+`drive_to_map_point` has a useful safety property: the model points at the map
+image it is actually viewing, and the daemon resolves that image coordinate using
+the pose captured for that rendered map. `navigate_to(target)` solves persistent
+semantic return-to-entity navigation instead.
 
 ## Cosmos response contract
 
-Do not make downstream code parse prose if it can avoid it. Ask Cosmos for a
-small JSON application schema and validate it before use.
+Prefer a small validated JSON application schema rather than downstream prose
+parsing.
 
-For example:
+Example:
 
 ```json
 {
-  "summary": "Hallway with an open doorway on the right; no red toolbox visible.",
+  "summary": "Office with a desk, chair and black backpack; open doorway left.",
   "observations": [
     {
-      "label": "doorway",
-      "bbox_norm": [0.62, 0.18, 0.94, 0.89]
+      "label": "black backpack",
+      "kind": "object",
+      "bbox_norm": [0.55, 0.42, 0.74, 0.78],
+      "salience": "useful"
     }
   ],
   "recommended_action": {
     "kind": "explore_frontier",
-    "target": "frontier:g184:2"
+    "target": "frontier:map42:r381:2"
   },
-  "reason": "The right doorway is the most likely route to an unsearched room."
+  "reason": "The doorway leads toward an unsearched area."
 }
 ```
 
-The allowed action enum should be narrow, for example:
+Allowed recommendations should be narrow, for example:
 
 ```text
 none
@@ -597,22 +938,22 @@ explore_frontier
 navigate_to
 ```
 
-Treat malformed JSON, an unknown action, an unknown target, or an expired target
-as **no action**.
+Malformed JSON, an unknown action, unknown target, stale map session, or expired
+handle means **no action**.
 
-Do not make a model-supplied numeric `confidence` a safety gate. If stored at all,
-it is useful for diagnostics/ranking only; it is not a calibrated collision or
-localization probability.
+A model-supplied numeric confidence is diagnostic/ranking information, not a
+safety probability.
 
 ## Action validator
 
-All Cosmos recommendations pass through deterministic checks before movement.
+All model-driven movement recommendations pass deterministic checks.
 
 For `explore_frontier`:
 
 ```text
 known handle?
-current generation?
+active map session?
+current-enough revision?
 still a frontier?
 body fits?
 Nav2 can plan?
@@ -623,29 +964,31 @@ not stopped/cancelled?
 For `navigate_to`:
 
 ```text
-known semantic target?
-position still trusted / not too old for target type?
+known entity?
+correct environment?
+trusted observation in active map session?
+geometry still current enough for entity type?
 valid stand-off pose?
 body fits?
 Nav2 can plan?
 no other move owns the mutex?
 ```
 
-The validator should call the same functions the current explorer and
-`drive_to` use rather than reimplementing them.
+Reuse the same rover-specific validation functions used by current exploration
+and `drive_to` rather than implementing a second opinion.
 
-A refusal is a normal tool result, not an exception that the model is encouraged
-to explain away.
+A refusal is a normal result, not an exception for a model to reason around.
 
 ## Task memory
 
-A task record is useful once Cosmos starts choosing where to inspect.
+Task state should be ordinary application data, not saved chain-of-thought.
 
-Minimal example:
+Example:
 
 ```json
 {
   "id": "task:42",
+  "environment": "home",
   "objective": "find the red toolbox",
   "state": "searching",
   "visited": ["place:kitchen", "place:hallway"],
@@ -655,11 +998,11 @@ Minimal example:
 }
 ```
 
-This should be application data, not a saved chain of thought. On each Cosmos
-call, construct a small fresh context from authoritative state:
+Build each Cosmos context freshly from authoritative state:
 
 ```text
 objective
+active environment/map session
 current robot/place state
 places already searched
 current camera image
@@ -667,61 +1010,38 @@ current candidate frontiers/targets
 last relevant action result
 ```
 
-That avoids stale prompt history becoming a second world model.
+This prevents stale conversation history becoming a second world model.
 
-## Proposed tool surface
+## Recommended implementation components
 
-Keep the current rover tools as the foundation. Add only tools that provide a
-clear semantic capability.
+Author only the thin pieces specific to semantic robotics.
 
-### Model-facing additions worth considering
-
-```text
-reason_about_scene(question, objective?)
-get_known_targets(query?)
-navigate_to(target_id)
-```
-
-Potentially expose semantic frontier selection as either:
+A reasonable shape is:
 
 ```text
-get_frontiers()
-explore_frontier(frontier_id)
+ros_nav/
+  frontier.py                 existing, stateless frontier algorithm
+  frontier_registry.py        NEW: active map/revision handles
+  target_registry.py          NEW: semantic target resolver
+  world_store.py              NEW: SQLite persistence
+  nav_bridge.py               existing, gains internal semantic ops
+
+rover_daemon/
+  physical_reasoner.py        NEW: replaceable reasoner interface
+  cosmos_client.py            NEW: Reason 2 adaptor
+  semantic_observer.py        NEW: event-driven background inspection
+  rover_nav.py                existing movement/tool orchestration
+  tool_schemas.py             existing model-facing schemas
 ```
 
-or hide both behind a single agent operation if tests show Qwen handles the extra
-choice poorly.
+Exact filenames are flexible. The important boundaries are:
 
-### Keep internal
-
-These should be daemon/nav implementation operations, not necessarily Qwen tools:
-
-```text
-resolve_target(id)
-register_frontiers(...)
-expire_frontier_generation(...)
-register_object(...)
-update_object_pose(...)
-validate_target(...)
-compute_approach_pose(...)
-```
-
-### Never model-facing
-
-```text
-raw /cmd_vel
-motor commands
-raw map-frame coordinate navigation
-SQLite writes
-frontier ID creation
-TF manipulation
-map revision manipulation
-arbitrary ROS calls
-```
+- frontier geometry stays beside map/Nav2;
+- semantic identity/history lives in world state;
+- model inference is outside the safety-critical daemon core where practical;
+- all motion still converges on the existing Nav2 path.
 
 ## Off-the-shelf versus authored code
-
-The preferred split is:
 
 | Need | Use | Author? |
 |---|---|---:|
@@ -729,60 +1049,58 @@ The preferred split is:
 | planning/control/recovery | current Nav2 | no |
 | rover tool boundary | current `rover_daemon` | extend only |
 | frontier detection/ranking | current `ros_nav/frontier.py` | extend only |
-| frontier route/body validation | current nav bridge + `goal_fit` + Nav2 | no new planner |
-| voice/conversation | current Qwen Omni path | no |
-| physical scene reasoning | Cosmos local sidecar | thin adaptor |
-| frontier handle lifecycle | small registry | **yes** |
-| persistent place/object/task state | SQLite-backed registry | **yes** |
-| semantic target -> existing Nav2 goal | thin resolver | **yes** |
+| route/body validation | current bridge + `goal_fit` + Nav2 | no new planner |
+| voice/conversation | current Qwen Omni | no initially |
+| physical scene reasoning | local Cosmos sidecar | thin adaptor |
+| event-driven semantic observation | small orchestrator | **yes** |
+| map/revision-bound frontier handles | small registry | **yes** |
+| persistent semantic memory | SQLite world store | **yes** |
+| semantic target -> Nav2 goal | thin resolver | **yes** |
 | ontology/knowledge graph | none initially | no |
 
-The custom portion is deliberately small because it is the part that is specific
-to this rover's agent semantics. Everything safety- or geometry-critical remains
-in the existing measured stack.
+Do not introduce KnowRob, ROSPlan, a vector DB, LangGraph persistence, or another
+navigation framework without a measured requirement.
 
 ## Recommended implementation phases
 
-### Phase 1 — Cosmos sidecar, advisory only
+### Phase 1 — Cosmos sidecar, advisory + background observation
 
-Goal: establish whether Reason 2 adds enough value to justify running it.
+Goal: determine whether Reason 2 adds useful physical/semantic understanding on
+the actual rover.
 
-1. Add the quantized `llama.cpp` sidecar on the Orin.
-2. Add `cosmos_client.py` behind a generic `PhysicalReasoner` interface.
-3. Feed it still images from the existing gimbal camera path.
-4. Ask for structured descriptions, grounding and next-action recommendations.
-5. Do **not** let a recommendation execute movement.
-6. Record latency, peak RAM, temperature/power if convenient, and whether SLAM
-   or Nav2 timing is affected while inference runs.
-7. Compare the same saved scenes against Qwen's own vision results.
+1. Add quantized `llama.cpp` Reason 2 2B on the Orin.
+2. Add the generic `PhysicalReasoner` interface + Cosmos adaptor.
+3. Feed still images from the existing gimbal-camera path.
+4. Add event-driven inspection after selected navigation/observation events.
+5. Store observations transiently; initially persist only simple semantic logs if
+   useful for evaluation.
+6. Let Cosmos recommend actions but do **not** execute them automatically yet.
+7. Record latency, peak RAM and any effect on Nav2/SLAM scheduling.
+8. Compare saved scenes against Qwen's own vision.
 
-Acceptance criterion: Cosmos is measurably better at the physical/semantic tasks
-we care about and does not destabilize the running navigation stack.
+Acceptance criterion: Cosmos materially improves the physical/semantic tasks we
+care about without destabilizing navigation.
 
 ### Phase 2 — semantic frontier selection
 
-Goal: make Cosmos useful for task-directed exploration without giving it motion
-control.
-
-1. Refactor the current frontier calculation so the best candidates can be
-   listed as well as automatically chosen.
-2. Add transient generation-bound frontier IDs.
+1. Refactor current frontier calculation so candidates can be listed.
+2. Add session/revision-bound frontier IDs.
 3. Add `list_frontiers` and `explore_frontier` internal nav operations.
-4. Keep existing `explore` unchanged as the non-semantic baseline.
-5. Let Cosmos choose **only among those candidate IDs**.
-6. Validate and execute the selected ID through the current checks.
-7. Compare task completion against the current frontier score alone.
+4. Keep existing `explore` unchanged as baseline.
+5. Give Cosmos only candidate IDs to choose from.
+6. Validate and execute through the current checks.
+7. Benchmark semantic versus geometric exploration.
 
-Example benchmark tasks:
+Useful tests:
 
 ```text
 find a doorway into another room
 find a desk area
-find a black backpack placed in one of N visible/searchable rooms
-inspect likely human-occupied areas first
+find a black backpack placed in one of N rooms
+inspect likely useful/human-occupied areas first
 ```
 
-Useful measurements:
+Measure:
 
 ```text
 task success
@@ -795,95 +1113,91 @@ total model latency
 navigation failures
 ```
 
-### Phase 3 — persistent places and task memory
-
-Goal: let the rover return to named places and avoid repeatedly searching the
-same area.
+### Phase 3 — persistent map-aware world state
 
 1. Add SQLite `world_store`.
-2. Add `place:*` identifiers first; these can be manually registered from known
-   map points or map-image selections.
-3. Add task state: objective, searched places, last outcomes.
-4. Add `navigate_to(place:...)` resolver.
-5. Keep geometry in map/Nav2 and semantic metadata in the store.
+2. Add `environment_id`, `map_session_id`, and `map_revision` semantics from the
+   beginning.
+3. Wire `clear_map()` to archive the current map session and invalidate old
+   geometry rather than deleting semantic entities.
+4. Add `place:*` identifiers and task state.
+5. Add `navigate_to(place:...)` resolver.
+6. Let event-driven Cosmos observation populate/update salient semantic entities.
 
-This phase does not require object depth yet.
+This phase does not require object depth.
 
 ### Phase 4 — metric semantic objects
 
-Goal: support `navigate_to(object:...)`.
-
-Only start this when the deployed camera stack provides trustworthy depth plus
+Only start once the deployed camera stack provides trustworthy depth plus
 camera-to-map transforms.
 
-1. Cosmos identifies/grounds the object in the image.
-2. Depth supplies metric range.
-3. Intrinsics + TF produce the map-frame position.
-4. Association logic decides whether this is a new or existing object.
-5. The object registry stores pose, age/source and semantic labels.
-6. Navigation generates a safe stand-off pose rather than driving into the
-   object's literal coordinate.
+1. Cosmos identifies/grounds objects.
+2. Depth supplies range.
+3. Intrinsics + TF produce active-map geometry.
+4. Association determines new versus existing entity.
+5. Store a map-session/revision-bound observation.
+6. Navigation computes a stand-off pose rather than driving to the object's
+   literal coordinate.
 
 ### Phase 5 — decide whether Qwen still earns its place
 
-Do this only after the local physical-reasoning path is proven. Replacing Qwen
-is a voice/conversation architecture decision, not a prerequisite for Cosmos.
+Replacing Qwen is a voice/conversation decision, not a prerequisite for Cosmos.
 
-Possible later local pipeline:
+A future local path could be:
 
 ```text
 STT -> small general agent -> PhysicalReasoner -> rover tools -> local TTS
 ```
 
-NVIDIA's Orin Nano memory-efficiency example demonstrates that a local VLM + STT
-+ TTS combination can fit in 8 GB with careful runtimes, but that should be
-benchmarked against the current Qwen experience before replacing it.
+Benchmark that against the existing realtime Qwen experience before replacing
+it.
 
-## Tests to require before model-driven movement
+## Tests required before model-driven movement
 
-The first semantic movement path should have deterministic tests for:
+Require deterministic coverage for at least:
 
 - stale frontier ID rejected;
 - made-up frontier ID rejected;
 - frontier remapped while Cosmos is thinking;
+- wrong map session rejected;
+- old object/place geometry rejected after `clear_map`;
+- semantic entity survives `clear_map`;
+- `new_environment()` prevents cross-environment target resolution;
 - body no longer fits at selected goal;
 - planner refuses selected goal;
-- STOP while Cosmos inference is in progress;
+- STOP while Cosmos inference is running;
 - STOP between recommendation and execution;
 - another move owns the mutex;
 - Cosmos server unavailable/OOM/restarting;
 - malformed/non-JSON response;
-- valid JSON containing an unrecognised action;
-- valid action containing an unrecognised target;
+- unknown action/target rejected;
 - no camera frame / frame too old;
-- task resumes after a model failure without inventing completed actions.
+- map revision changes during inference;
+- task resumes after model failure without inventing completed actions.
 
-The safe failure for every one is **no new movement**.
+The safe failure for every case is **no new movement**.
 
-The current `frontier.py` style is worth retaining: keep the frontier algorithm,
-registry and target-resolution arithmetic usable in offline self-tests without a
-ROS installation, and test them against recorded map fixtures where possible.
+Keep the current `frontier.py` style: make registry/target arithmetic testable
+offline against recorded fixtures without requiring ROS where practical.
 
 ## What not to add yet
 
-Do not add these as part of the first Cosmos integration:
+Do not add as part of the first implementation:
 
 - RTAB-Map merely because Cosmos is visual;
-- a new ROS navigation framework;
+- another navigation framework;
 - `explore_lite` merely to obtain frontier IDs;
-- KnowRob or a general ontology server;
-- a vector database for dozens of entities;
-- a second tool-execution agent competing with Qwen;
+- a general ontology server;
+- a vector database for dozens/hundreds of entities;
 - continuous VLM inference on the camera feed;
 - VLM-generated metric navigation coordinates;
 - direct VLM motor actions;
-- persistent storage of hidden chain-of-thought reasoning.
-
-Each can be revisited if a measured requirement appears.
+- persistent hidden chain-of-thought;
+- automatic permanent storage of every object Cosmos mentions.
 
 ## Target system structure
 
-After phases 1–3 the preferred structure is:
+After phases 1–3:
 
 ```text
                               USER
@@ -903,79 +1217,97 @@ After phases 1–3 the preferred structure is:
                      /         |          \
                     /          |           \
                    v           v            v
-           PhysicalReasoner  world state   existing direct tools
-             adaptor          facade       lights/gimbal/battery
-                   |           |
-                   v           |
-          Cosmos Reason 2B     |
-          llama.cpp, local     |
-                               |
-                               v
-                         ros_nav bridge
-                    /          |           \
-                   /           |            \
-                  v            v             v
-          frontier registry  target       existing explore
-          + frontier.py      resolver       baseline
-                  \            |             /
-                   +-----------+------------+
-                               |
-                         action validator
-                               |
-                               v
-                              Nav2
-                               |
-                         DWB / recoveries
-                               |
-                               v
-                             wheels
+           semantic tools   world-state   existing direct tools
+                   |          facade       lights/gimbal/battery
+                   |            |
+                   v            v
+             semantic observer + resolver
+                   |            |
+                   v            v
+          PhysicalReasoner   SQLite store
+             adaptor        environments
+                   |         map sessions
+                   v         entities
+          Cosmos Reason 2B  observations
+          llama.cpp, local  tasks
+                   |
+                   +-------------+
+                                 |
+                                 v
+                           ros_nav bridge
+                      /          |           \
+                     /           |            \
+                    v            v             v
+            frontier registry  target       existing explore
+            + frontier.py      resolver       baseline
+                    \            |             /
+                     +-----------+------------+
+                                 |
+                           action validator
+                                 |
+                                 v
+                                Nav2
+                                 |
+                           DWB / recoveries
+                                 |
+                                 v
+                               wheels
 
-                  slam_toolbox remains authoritative
-                  for map -> odom and occupancy map
+                 SLAM Toolbox remains authoritative
+                 for map -> odom and occupancy map
 ```
 
-The important properties are:
+Important properties:
 
 1. **one movement authority** — Nav2;
 2. **one model-facing rover boundary** — the daemon;
-3. **one authoritative source for geometry** — SLAM/Nav2 state;
-4. **one small semantic registry** — typed handles and task facts;
-5. **Cosmos is advisory and replaceable**;
-6. **Qwen remains conversational, not the geometric source of truth**;
-7. **a model can choose names, never invent the coordinates behind them**.
+3. **one authoritative source for geometry** — current SLAM/Nav2 state;
+4. **semantic identity survives remapping, geometry does not**;
+5. **all navigable DB geometry is bound to map session/revision**;
+6. **Cosmos observes automatically at semantic checkpoints, not every frame**;
+7. **Cosmos is advisory and replaceable**;
+8. **Qwen remains conversational rather than geometric source of truth**;
+9. **models choose semantic handles, never invent the coordinates behind them**.
 
 ## Top recommendation
 
-Implement **Phase 1 and Phase 2 first**.
-
-That gives the project the most interesting capability — task-directed semantic
-exploration — with very little new authoritative state:
+Implement the smallest loop that demonstrates persistent semantic value without
+weakening navigation safety:
 
 ```text
-current image + task + current frontier candidates
-                         |
-                         v
-                     Cosmos
-                         |
-                 choose frontier ID
-                         |
-                         v
-               deterministic validator
-                         |
-                         v
-                   current Nav2 path
+Nav2 reaches meaningful observation point
+             |
+             v
+      capture settled image
+             |
+             v
+           Cosmos
+             |
+      semantic observation
+             |
+             v
+  transient association/salience
+             |
+             v
+ SQLite entity/observation if useful
+             |
+             v
+ optional semantic frontier choice
+             |
+             v
+ deterministic validator
+             |
+             v
+ existing Nav2 movement path
 ```
 
-Only add persistent `place:*`, `object:*` and task memory once a real use case
-needs them. In particular, **do not build object navigation before there is a
-trusted metric depth/TF path**.
+The world store should be **map-aware from its first schema migration**, even if
+Phase 1 initially stores only observations. Retrofitting map identity after
+persistent navigation is already implemented is exactly the kind of ambiguity
+that can turn harmless stale memory into a physical navigation error.
 
-This keeps the first experiment small enough to answer the important question:
+The practical rule to carry into implementation is:
 
-> Does a physical-reasoning VLM choose meaningfully better places for this rover
-> to inspect than the existing geometric frontier score and Qwen vision alone?
-
-If the answer is no, the rover has gained a benchmark and a clean inference
-sidecar that can be removed. If the answer is yes, the same interfaces naturally
-extend into persistent semantic navigation without giving a language model
-control of the wheels.
+> **The rover may remember that the black backpack exists and was seen in the
+> office across map resets. It may only navigate to the backpack when it has a
+> trusted location tied to the currently active SLAM map session.**
