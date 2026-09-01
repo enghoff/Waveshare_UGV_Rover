@@ -1162,6 +1162,15 @@ def test_exploring_finishes_and_covers_the_house():
     check("...and the one being driven to is what the next round prefers",
           explorer.previous, (1.0, 1.0))
 
+    # A run that ends before it has looked at the map once still has to be able
+    # to say so. This raised KeyError on the rover -- an explore given less
+    # clock than one goal needs returned nothing at all, and the caller was left
+    # holding an open socket, which reads as a bridge that has hung.
+    check("a run that never got to look at the map can still report itself",
+          frontier.unknown_share({}), None)
+    check("...and one that looked at an empty map does not divide by zero",
+          frontier.unknown_share({"free_cells": 0, "unknown_cells": 0}), None)
+
     # And that the bridge is actually running this policy rather than a second
     # copy of it, which this file cannot check by importing nav_bridge.
     bridge = os.path.join(HERE, "nav_bridge.py")
@@ -1176,6 +1185,20 @@ def test_exploring_finishes_and_covers_the_house():
         check("...and stops when the stop is latched or a stop was asked for",
               'return totals("stopped"' in source
               and 'return totals("blocked"' in source, True)
+
+        # **The stop that used to be swallowed.** `run_goal` clears `cancelled`
+        # as every goal starts, which is right for a move and wrong for a run of
+        # them: a stop pressed while `explore` was between goals -- looking at
+        # the map, checking the body, asking the planner, which is seconds --
+        # was wiped by the next goal and the rover set off again. A counter that
+        # nothing clears is what the loop watches instead, and it is checked
+        # once more immediately before the goal is sent.
+        check("a stop is counted, so no move can clear it by starting",
+              "self.stop_seq += 1" in source, True)
+        check("...and exploring watches that counter, not just the flag",
+              source.count("self.stop_seq != stops") >= 2, True)
+        check("...including in the seconds between choosing and setting off",
+              "before " in source and "the rover set off" in source, True)
 
 
 # --- the navigation bridge ----------------------------------------------------

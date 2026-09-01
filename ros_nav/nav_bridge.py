@@ -358,6 +358,12 @@ class NavBridge(Node):
         self.remaining_m = None
         self.active_goal = None
         self.cancelled = False
+        # How many times a stop has been asked for, ever. `cancelled` cannot
+        # answer that question, because every move clears it on the way in --
+        # which is right for a move, and wrong for `explore`, which is a run of
+        # several moves and has to notice a stop that landed between two of them.
+        # See `explore`, where a swallowed stop meant a rover setting off again.
+        self.stop_seq = 0
 
         self.create_timer(0.5, self.sample_trail, callback_group=self.group)
         self.get_logger().info("nav bridge ready; serving %s:%d"
@@ -658,6 +664,7 @@ class NavBridge(Node):
         with self._lock:
             goal = self.active_goal
             self.cancelled = True
+            self.stop_seq += 1
             if latch:
                 self.estop = True
         stop = Twist()
@@ -1299,10 +1306,17 @@ class NavBridge(Node):
             # anything.
             self.cancelled = False
             self.exploring = True
+            # Every stop from here on is this run's, however many goals it takes.
+            # `cancelled` alone cannot say that: `run_goal` clears it as each goal
+            # starts, so a stop landing while this was choosing where to go next
+            # -- a good few seconds, between the map and the planner -- was wiped
+            # by the next goal and the rover set off again with the STOP button
+            # already pressed. A counter cannot be cleared by accident.
+            stops = self.stop_seq
         try:
             while True:
                 with self._lock:
-                    if self.cancelled:
+                    if self.cancelled or self.stop_seq != stops:
                         return totals("stopped", "a stop was asked for")
                     if self.estop:
                         return totals("blocked", "the stop is latched")
@@ -1381,6 +1395,16 @@ class NavBridge(Node):
                     say("choosing", note)
 
                 # --- drive to it
+                #
+                # Asked again here rather than only at the top of the loop, and
+                # this is the check that matters: everything between the two is
+                # the map, the body check and the planner, which is seconds of
+                # wall clock with the rover standing still and somebody entirely
+                # entitled to press stop during it.
+                with self._lock:
+                    if self.cancelled or self.stop_seq != stops or self.estop:
+                        return totals("stopped", "a stop was asked for before "
+                                                 "the rover set off")
                 goals += 1
                 explorer.committed(candidate["x"], candidate["y"])
 
@@ -1392,7 +1416,11 @@ class NavBridge(Node):
                 outcome = self.goto(
                     (placed[0], placed[1]), math.degrees(placed[2]), narrate)
                 travelled += float(outcome.get("travelled_m") or 0.0)
-                turned += float(outcome.get("turned_deg") or 0.0)
+                # Summed as magnitudes, unlike every other move here. A single
+                # move's turn has a direction worth keeping; a run of nine goals
+                # does not, and signed addition reports a rover that turned left
+                # ninety degrees and then right ninety as having turned nowhere.
+                turned += abs(float(outcome.get("turned_deg") or 0.0))
                 reason = outcome.get("reason")
                 if reason == "arrived":
                     arrived += 1

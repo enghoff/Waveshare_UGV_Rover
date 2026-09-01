@@ -503,8 +503,16 @@ def unknown_share(summary):
     that grows as the rover drives has a denominator that grows with it: a rover
     that has just found a corridor can drive for a minute and see the fraction go
     *up*. What stops the loop is running out of reachable frontiers.
+
+    **Asked with `.get` rather than by subscript, and that is a fix rather than a
+    style.** An `explore` that ends before it has looked at the map once -- out of
+    budget, stopped, no map yet -- has no summary to report, and this used to
+    raise `KeyError: 'free_cells'` while building the sentence that says so. On
+    the rover the whole outcome was then lost and the caller was left holding an
+    open socket with nothing coming down it, which reads as a bridge that has
+    hung rather than a run that never started.
     """
-    total = summary["free_cells"] + summary["unknown_cells"]
+    total = summary.get("free_cells", 0) + summary.get("unknown_cells", 0)
     if not total:
         return None
     return summary["unknown_cells"] / float(total)
