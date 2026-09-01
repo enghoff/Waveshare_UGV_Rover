@@ -211,17 +211,76 @@ Cosmos says can only be measured on the rover, against real rooms, which is what
 
 ## What was measured on the rover
 
-Recorded here because it is the sort of thing a later reader will otherwise
-rediscover:
+Measured on 2026-09-01, in a living room, with the rover parked and the gimbal
+panned between inspections. All of it is here because it is the sort of thing a
+later reader would otherwise have to rediscover.
 
-- **One inspection is about 60 s** at 640×480, Q4, four CPU threads: roughly 480
-  prompt tokens and 450 generated. The sidecar's own wall clock is 180 s and the
-  console's patience is 200 s, in that order, so the sidecar always gives up first.
+### It runs, and what it sees is right
+
+Cosmos Reason 2 2B runs locally on the Orin's CPU and describes the room
+accurately. Across six inspections it named the sofa, the glass table, the coiled
+cable on the floor, the spray bottle, the framed pictures and the doorway —
+**every label was a real thing in the frame, with no hallucinations** — and once
+the boxes are read on the right scale they land on the objects: the sofa came back
+as `[0.40, 0.18, 0.86, 0.65]` in a frame where it occupies roughly `[0.35, 0.13,
+0.90, 0.65]`.
+
+### It cannot recognise what it named a minute ago
+
+**This is the finding the experiment exists for, and it is negative.** In every
+inspection where the model was shown entities it had itself created, it matched
+none of them:
+
+| view | entities shown | matched | created |
+|---|---:|---:|---:|
+| centred | 0 | 0 | 4 |
+| panned 30° left | 4 | 0 | 5 |
+| panned 30° right | 9 | 0 | 6 |
+| centred again — the identical view | 15 | 0 | 6 |
+
+Not a prompt-layout problem. A bench probe put the known list first, instructed the
+model explicitly to prefer a name from it, and showed it **the very frame those
+entities had been created from** a minute earlier; it answered `existing_entity:
+null` for all six things it had just named.
+
+So the store fills with duplicates: two sofas, two tables, two doorways, two spray
+bottles. That is the behaviour the popup is built to make visible rather than to
+hide, and it is what a later slice has to fix — by giving the association step
+something better than the model's own word, or by using a model that can do this.
+
+### Numbers
+
+- **One inspection is 56–89 s** at 640×480, Q4, four CPU threads — about 480 prompt
+  tokens and 450 generated, roughly seven tokens a second. The sidecar's wall clock
+  is 180 s and the console's patience 200 s, in that order, so the sidecar always
+  gives up first.
+- **The sidecar holds about 4 GB resident**, of which 2.1 GB is the two mapped GGUF
+  files, leaving about 2.8 GB available on this 8 GB board.
+- **Nothing else on the rover noticed.** Through the whole run the lidar reported
+  zero dropped scans, a scan age of 0.01 s and a trusted position, and the driver
+  board stayed healthy.
+- The database and its frames came to 2.6 MB after six inspections.
+
+### Three things that had to be fixed, all found by running it
+
 - **The model answers on a 1000-unit grid, not in fractions.** Cosmos Reason 2 is a
   Qwen3-VL fine-tune and places things the way that family was trained to, whatever
-  the prompt asks for. The prompt now asks for the grid and `contract.py` reads
-  both, because a picture is one unit across and a box in the hundreds is therefore
-  not a fraction.
+  the prompt asks. The prompt now asks for the grid and `contract.py` reads both,
+  because a picture is one unit across and a box in the hundreds is therefore not a
+  fraction.
 - **Given an example box of real numbers, it copies them.** The prompt's example
   used `[0.1, 0.2, 0.4, 0.8]` and that exact box came back on every observation. The
-  example now names the four corners in words instead.
+  example now names the four corners in words.
+- **A grammar constrains the shape and not the size.** Asked about a living room,
+  the model wrote three and a half thousand characters of essay into the scene
+  sentence and ran out of tokens before closing the object, so a good look at the
+  room was thrown away as truncated. `maxLength` in the schema fixes it, and the
+  observation cap and the token cap now agree with each other.
+
+### And one thing about the camera
+
+A grab that closely follows another one comes back empty — v4l2-ctl exits at once,
+says nothing on stderr, and hands back no whole picture — while a standalone
+inspection worked every time. Reproduced three times out of three by taking a
+picture and then inspecting. The daemon now asks twice before losing an inspection
+over it, which is worth half a second when a minute of model is about to follow.
