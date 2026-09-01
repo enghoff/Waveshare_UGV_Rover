@@ -246,10 +246,32 @@ Five phases. Each is deployable on its own and each ends with something
 measurable, so the sequence can be stopped at any point without leaving the rover
 half-converted.
 
-### Phase 0 — stop asking the model for identity
+### Phase 0 — stop asking the model for identity — **done, deployed 2026-09-01**
 
 The smallest change, and it makes what is already deployed honest rather than
 wrong.
+
+Running on the rover at `ed53402`. An inspection now returns a kind, a name and a
+box per thing and stores each with the frame, the gimbal angles and the rover
+pose behind it, creating no entity: `stored 2, created 0, matched 0`, with
+`entity_id` null on both rows and no description or location hint written. Two
+measured side effects, neither predicted: **an inspection fell from 56–89 s to
+38 s**, because most of the cost was the model writing the two fields that are
+gone, and the model's own detections are cleaner — a dimly lit room came back as
+a dining table and a doorway with no invented coffee table. Lidar reported a
+0.01 s scan age and zero dropped scans throughout.
+
+Two things had to be decided along the way and are worth not re-deciding.
+The prompt does not mention identity **even to forbid it**, because naming the
+subject in order to forbid it is still naming it and what was measured is that
+raising previously-seen objects at all changes what the model reports. And an
+identity the model volunteers anyway is stripped and reported, the same treatment
+metres get, so that a stale build or a model with an opinion of its own cannot
+put a guess back into the store by the back door.
+
+The rover's database still holds the fourteen duplicate entities the POC created.
+They are inert -- nothing matches to them and nothing updates them -- and a
+`world_state_clear` before the validation drive is the moment to be rid of them.
 
 - Remove `existing_entity` from the prompt and from `RESPONSE_SCHEMA`.
 - Remove the known-entity list from the prompt entirely. Measured: with the list
@@ -264,6 +286,7 @@ wrong.
 
 **Done when** an inspection stores observations with no identity claim, the
 world-state selftest passes, and the change is deployed and verified on the Orin.
+All three met.
 
 ### Phase 1 — the perception sidecar
 
