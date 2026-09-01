@@ -33,6 +33,7 @@ sys.path.insert(0, HERE)
 
 from test_harness import FAIL, PASS, SKIP, check  # noqa: E402
 
+from world_state import locate                     # noqa: E402
 from world_state import view                       # noqa: E402
 from world_state.contract import (                 # noqa: E402
     KINDS, extract_json, validate,
@@ -763,6 +764,78 @@ def test_the_rays_of_one_entity_are_bounded_and_oldest_first() -> None:
           [one["observed_at"] for one in drawn], [3, 2, 1, 0])
 
 
+def _look(x_m, y_m, bearing_deg):
+    return {"x_m": x_m, "y_m": y_m, "bearing_deg": bearing_deg}
+
+
+def test_two_bearings_from_two_places_locate_a_thing() -> None:
+    """The sofa is at (3, 3). The rover sees it from two corners."""
+    # From the origin it is at 45 degrees; from (6, 0) it is at 135.
+    found = locate.fix(_look(0.0, 0.0, 45.0), _look(6.0, 0.0, 135.0))
+    check("two crossing bearings give a point", found is not None, True)
+    check("...where the thing actually is, in x", round(found["x_m"]), 3)
+    check("...and in y", round(found["y_m"]), 3)
+    check("...with the baseline it was measured over",
+          round(found["baseline_m"]), 6)
+    check("...and an honest uncertainty attached",
+          found["uncertainty_m"] > 0.0, True)
+
+
+def test_turning_on_the_spot_locates_nothing() -> None:
+    """The failure mode of the first experiment: every ray from one point."""
+    check("rays from one place do not meet anywhere useful",
+          locate.fix(_look(0.0, 0.0, 40.0), _look(0.0, 0.0, 50.0)), None)
+    check("...nor do rays from a place barely different",
+          locate.fix(_look(0.0, 0.0, 40.0), _look(0.1, 0.0, 50.0)), None)
+
+
+def test_two_looks_along_the_same_line_are_one_look() -> None:
+    check("no parallax, no fix",
+          locate.fix(_look(0.0, 0.0, 45.0), _look(1.0, 1.0, 45.0)), None)
+    check("...and a thing behind the rover was not seen",
+          locate.fix(_look(0.0, 0.0, -135.0), _look(6.0, 0.0, -45.0)), None)
+
+
+def test_uncertainty_grows_when_the_baseline_shrinks() -> None:
+    """Why the rover has to drive rather than shuffle.
+
+    The same thing at (3, 3) seen from the same first place, with the second look
+    taken 1.5 m away and then 6 m away.
+    """
+    short = locate.fix(_look(0.0, 0.0, 45.0), _look(1.5, 0.0, 63.43))
+    long = locate.fix(_look(0.0, 0.0, 45.0), _look(6.0, 0.0, 135.0))
+    check("a short baseline still gives a fix", short is not None, True)
+    check("...on the same thing", round(short["x_m"]), 3)
+    check("...but a much less certain one",
+          short["uncertainty_m"] > long["uncertainty_m"] * 2, True)
+
+
+def test_two_identical_chairs_stay_two_things() -> None:
+    """The case no model can answer from one picture, and geometry answers easily."""
+    chair_a = locate.fix(_look(0.0, 0.0, 45.0), _look(6.0, 0.0, 135.0))
+    # A second chair four metres away, seen from the same two places.
+    chair_b = locate.fix(_look(0.0, 0.0, 8.5), _look(6.0, 0.0, 172.9))
+    apart = ((chair_a["x_m"] - chair_b["x_m"]) ** 2
+             + (chair_a["y_m"] - chair_b["y_m"]) ** 2) ** 0.5
+    check("both chairs get a position", bool(chair_a and chair_b), True)
+    check("...far enough apart to be told apart",
+          apart > chair_a["uncertainty_m"] + chair_b["uncertainty_m"], True)
+    check("a new look at the first chair agrees with the first chair",
+          locate.agrees(chair_a, _look(0.0, 3.0, 0.0)), True)
+    check("...and does not agree with the second",
+          locate.agrees(chair_b, _look(0.0, 3.0, 0.0)), False)
+
+
+def test_the_best_pair_places_the_thing() -> None:
+    looks = [_look(0.0, 0.0, 45.0), _look(0.2, 0.0, 44.0),
+             _look(6.0, 0.0, 135.0)]
+    best = locate.best_fix(looks)
+    check("a fix is found among several looks", best is not None, True)
+    check("...using the pair with the longest useful baseline",
+          round(best["baseline_m"]), 6)
+    check("one look alone places nothing", locate.best_fix(looks[:1]), None)
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -794,6 +867,12 @@ TESTS = (
     test_a_clear_is_refused_while_an_inspection_runs,
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
+    test_two_bearings_from_two_places_locate_a_thing,
+    test_turning_on_the_spot_locates_nothing,
+    test_two_looks_along_the_same_line_are_one_look,
+    test_uncertainty_grows_when_the_baseline_shrinks,
+    test_two_identical_chairs_stay_two_things,
+    test_the_best_pair_places_the_thing,
 )
 
 

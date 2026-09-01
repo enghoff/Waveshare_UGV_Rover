@@ -213,7 +213,7 @@ def test_schemas():
                # out whether that world is worth trusting, and handing a model the
                # authority to write to it -- or to throw it away -- before that
                # question has an answer would be the wrong order. See
-               # docs/task-cosmos-world-state-poc.md, section 9.
+               # docs/task-semantic-world-state.md, "Authority boundaries".
                "world_inspect", "world_map_session", "world_state_clear",
                "world_state_entities", "world_state_entity", "world_state_frame",
                "world_state_observations", "world_state_summary"]

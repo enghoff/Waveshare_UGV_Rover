@@ -13,7 +13,7 @@ rover data:
 > coherent as the rover sees the same place from different views?
 
 The design it implements is [`docs/cosmos-reason2-integration.md`](../docs/cosmos-reason2-integration.md);
-the slice it implements is [`docs/task-cosmos-world-state-poc.md`](../docs/task-cosmos-world-state-poc.md).
+the plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md).
 
 ```text
                 gimbal camera
@@ -207,7 +207,7 @@ Two things are deliberately not covered. The popup's rendering is JavaScript in 
 browser and this repository has no browser in its test loop; what is checked instead
 is the payload it draws from and the two URLs it fetches. And the quality of what
 Cosmos says can only be measured on the rover, against real rooms, which is what
-`docs/task-cosmos-world-state-poc.md` calls the real validation.
+`docs/task-semantic-world-state.md` calls the real validation.
 
 ## What was measured on the rover
 
@@ -391,7 +391,7 @@ meeting things it has not seen before, "cannot say new" is the more dangerous of
 the two.**
 
 This closes the "try Cosmos 3" fork. The remaining route is the one in
-[docs/task-cosmos-world-state-reidentification.md](../docs/task-cosmos-world-state-reidentification.md):
+[docs/task-semantic-world-state.md](../docs/task-semantic-world-state.md):
 take identity away from the model and give it to measured placement and
 appearance. One amendment to that document falls out of this: it allows Cosmos to
 keep receiving the known entities "for semantic context", with its identity answer

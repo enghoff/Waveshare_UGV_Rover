@@ -1087,7 +1087,8 @@ but it will not re-identify anything it has already named -- not from another
 angle and not from the identical frame, with the list of its own entities in
 front of it. The world state fills with duplicates instead. The account is in
 [`../world_state/README.md`](../world_state/README.md) and the slice that
-produced it is [`task-cosmos-world-state-poc.md`](task-cosmos-world-state-poc.md).
+produced it is [`task-semantic-world-state.md`](task-semantic-world-state.md),
+which folded that task and its follow-up into one document on 2026-09-01.
 
 ### Phase 2 — semantic frontier selection
 
