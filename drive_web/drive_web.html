@@ -207,7 +207,7 @@
   #legend i { width: 12px; height: 12px; border: 1px solid rgba(128,128,128,.5);
               border-radius: 2px; display: inline-block; }
   #plan { margin: 8px 0 0; color: var(--accent); }
-  #caption, #mapNote { margin: 4px 0 0; color: var(--dim); font-size: 12px; }
+  #mapNote { margin: 4px 0 0; color: var(--dim); font-size: 12px; }
   #mapError, #frameError { color: var(--bad); font-size: 13px; }
 
   /* --- readings ---------------------------------------------------------- */
@@ -251,9 +251,8 @@
   .keys { font-size: 12px; color: var(--dim); }
   .keys div { margin-top: 3px; }
 
-  /* The map's caption is written for the model that reads it out loud, so it is a
-     paragraph rather than a label. Folded away by default: it explains a picture
-     that is on screen, and the same explanation every two seconds is furniture. */
+  /* Folded away by default, for the one thing on the page that has to be shown
+     but should not sit open: the console's own access token. */
   details { margin-top: 6px; font-size: 12px; color: var(--dim); }
   summary { cursor: pointer; }
   details p { margin: 4px 0 0; }
@@ -297,13 +296,6 @@
       <input class="num mono" type="text" id="speed" placeholder="auto">
       <span class="hint" style="margin:0">m/s, blank for auto</span>
     </div>
-    <p class="hint">Positive is left. Every move is bounded and watched by the
-      lidar the whole way; there is no continuous teleop here.</p>
-    <p class="hint">The <b>explore</b> button at the top drives the rover to the
-      edge of the mapped area over and over, for up to ten minutes, choosing
-      where to go itself. Press it again to stop, or use STOP. It is a move like
-      any other here, so nothing else drives while it runs. It cannot see steps
-      or drops.</p>
     <div class="keys" style="margin-top:8px">
       <div><kbd>space</kbd>stop, even while typing a distance</div>
       <div><kbd>&uarr;</kbd>drive the distance above</div>
@@ -342,16 +334,12 @@
     <p id="plan">-</p>
     <p id="mapNote"></p>
     <p id="mapError"></p>
-    <details><summary>what the picture means</summary><p id="caption"></p></details>
     <div class="row" style="margin-top:8px">
       <label class="check"><input type="checkbox" id="roverUp"> rover up</label>
       <button id="refreshMap">refresh</button>
       <button id="describe">describe surroundings</button>
       <button id="clearMap">clear map</button>
     </div>
-    <p class="hint">Clearing empties the grid and stands the rover at the origin of
-      an empty one. There is no loop closure on this hardware, so a map that has
-      come out of true with itself will stay that way.</p>
   </section>
 </div>
 
@@ -417,9 +405,6 @@
       <button id="wifiScan">look for networks</button>
     </div>
     <p id="wifiNote" class="hint"></p>
-    <p class="hint">The list is what the radio last heard. Nothing polls for a
-      scan: it takes the radio off channel for several seconds. The rover comes
-      back to TheGreatViking whenever it reboots, whatever you pick here.</p>
   </section>
 </div>
 </main>
@@ -504,7 +489,6 @@ function render(next) {
   if (next.map.width) {
     $("mapShot").style.aspectRatio = `${next.map.width} / ${next.map.height}`;
   }
-  $("caption").textContent = next.map.caption;
   // How old the picture is, said out loud, because without a number there is no
   // telling a map that is two seconds behind from one that stopped arriving a
   // minute ago. Two sources, and neither of them ticks in the state: normally this
