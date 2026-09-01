@@ -72,13 +72,13 @@ Conceptually:
                         |
                         v
                  world_state
-             /         |          \
-            /          |           \
-      entities    observations    relations
-            \          |           /
-             +---------+----------+
-                        |
-                     SQLite
+                    /     \
+                   /       \
+            entities     observations
+                   \       /
+                    +-----+
+                       |
+                    SQLite
                         |
                         v
                  read-only API
@@ -118,10 +118,13 @@ For the Orin Nano 8 GB, prefer the quantized `llama.cpp` path described in
 [`docs/cosmos-reason2-integration.md`](cosmos-reason2-integration.md) rather than
 loading a full-precision Transformers stack into the daemon process.
 
-If getting Cosmos itself running safely on the Orin becomes a separate substantial
-piece of work, keep the reasoner interface testable with a deterministic fake so
-the database and console can be completed and exercised independently. Do not
-silently substitute a cloud model and call the local-Cosmos requirement complete.
+Keep the reasoner interface testable with a deterministic fake so the database and
+console can be built and exercised without a GPU or a model download. The fake is
+for development and for the offline tests; it does not finish the task. If Cosmos
+cannot be made to run locally on the Orin, this POC is **blocked, not complete** --
+bank the store, the console and the tests, write up the blocker, and leave the
+question the POC exists to answer open. Do not silently substitute a cloud model
+and call the local-Cosmos requirement complete either.
 
 ---
 
@@ -142,8 +145,7 @@ A reasonable first shape is:
       "label": "sofa",
       "description": "grey three-seat sofa",
       "location_hint": "ahead-left",
-      "bbox_norm": [0.08, 0.31, 0.48, 0.84],
-      "relations": []
+      "bbox_norm": [0.08, 0.31, 0.48, 0.84]
     },
     {
       "existing_entity": null,
@@ -151,8 +153,7 @@ A reasonable first shape is:
       "label": "doorway",
       "description": "open doorway leading to another area",
       "location_hint": "right",
-      "bbox_norm": [0.70, 0.15, 0.96, 0.94],
-      "relations": []
+      "bbox_norm": [0.70, 0.15, 0.96, 0.94]
     }
   ]
 }
@@ -168,7 +169,9 @@ The exact schema may be adjusted during implementation, but keep these rules:
   mutation;
 - bounding boxes are normalized image coordinates only;
 - no model-provided metric `x/y/z`, map pose or navigation target in this task;
-- retain the original/raw validated model result for later inspection.
+- retain the original/raw validated model result for later inspection;
+- retain the frame the model was shown and the measured pose it was taken from,
+  beside the result -- see [section 3](#3-world-state-storage).
 
 Do not use a model-supplied numeric confidence as an authority or safety gate. It
 may be stored for diagnostics if the model naturally supplies one, but this POC
@@ -229,28 +232,76 @@ entity_id                 nullable if association failed/new candidate rejected
 observed_at
 source                     e.g. cosmos_visual
 frame_id
+frame_path                 the stored JPEG this observation was read from
 scene_summary
 label
 description
 location_hint
 bbox_json
+observer_pan_deg           gimbal angles reported by the capture call
+observer_tilt_deg
+observer_pose_json         rover map pose at capture, null if SLAM had none
+map_session                which SLAM map was live, null if unknown
+model_id                   model build and quantization that answered
+prompt_version             the prompt this observation was produced under
 raw_json
-
-relations                  optional for the first cut if it delays the POC
----------
-id
-subject_entity_id
-predicate
-object_entity_id           nullable if relation target is not an entity
-object_text                nullable textual target
-observed_at
-source
 ```
+
+There is no relations table. Relations are out of this slice entirely -- see
+[section 14](#14-scope-exclusions) -- because nothing consumes them, and every
+hour spent on predicates is an hour not spent on the identity question the POC
+exists to answer.
 
 Add fields only when they answer a real POC question. Avoid building a generic
 ontology, vector database or knowledge graph.
 
 The DB file is runtime state and must not be committed to Git.
+
+### Keep the frame, and where it was taken from
+
+Store the JPEG each inspection ran on -- as a file beside the database, named by
+`frame_id` -- and record that path on every observation the frame produced.
+Without the picture there is no way to separate a hallucinated entity from a real
+one that the person reading the popup had forgotten was in the room, and telling
+those two apart is most of what this POC is for. Frames are runtime state like the
+database: never in Git, and removed by clear/reset along with the rows that
+reference them.
+
+Record the **observer** pose with each observation as well:
+
+```text
+observer_pan_deg / observer_tilt_deg   gimbal angles from the capture call
+observer_pose_json                     x_m, y_m, heading from SLAM if available
+```
+
+This is not the invented geometry [section 6](#6-no-invented-geometry) forbids. It
+is where the camera actually was, measured by the rover, rather than a distance the
+model guessed from one picture. It is also what makes the POC's central question
+answerable at all: without it, "the sofa acquired a second ID" and "the rover was
+looking somewhere else" leave the same record behind.
+
+The one-shot capture call already reports the gimbal angles and whether the frame
+came off the live tracking loop or a fresh grab, and the rover's map pose is
+available from the navigator. Store whatever is available and leave the rest null
+rather than failing the inspection over a missing pose.
+
+### Stamp observations with the map session
+
+Add the `map_session` column now, even though nothing in this POC reads it. The
+staleness model in the design document rests entirely on it: entities and their
+history are meant to survive a SLAM map clear, but anything positional recorded
+against the old map has to remain recognisable as belonging to a map that no
+longer exists. Adding the column later means migrating a database that already
+holds the experiment's results.
+
+The store owns the number. Start at one and increment it when the SLAM map is
+cleared -- the console already owns that button, so it can tell the store rather
+than the store polling for it -- and record null while the current session is
+unknown. Nothing here refuses anything on the strength of it; the popup shows it,
+so that an entity last seen under an older map is visible as such.
+
+Both directions matter, and only one of them is obvious: clearing semantic state
+must not touch the map, and clearing the map must not delete semantic state.
 
 ### Provenance
 
@@ -260,6 +311,8 @@ Every stored semantic fact/observation must preserve enough provenance to answer
 what did Cosmos actually say?
 which frame did it come from?
 when was it seen?
+which model build and prompt version produced it?
+which SLAM map session was live at the time?
 which current entity did we associate it with?
 what is the current canonical value versus the observation history?
 ```
@@ -340,11 +393,14 @@ object
 furniture
 opening
 person
-room_hint
-text
-hazard
 unknown
 ```
+
+`room_hint`, `text` and `hazard` are deliberately left out of this slice. Nothing
+consumes them, they pull the experiment away from the identity question, and a
+`hazard` label that reads as a safety signal while driving nothing at all is worse
+than no label. A stair is still worth observing -- as an ordinary entity whose
+description happens to say it is a stair.
 
 Do not force Cosmos to classify everything visible. Prefer a smaller set of
 salient entities that a human would plausibly care about later.
@@ -359,8 +415,7 @@ red toolbox
 black backpack
 open doorway
 closed door
-stair / drop hazard
-sign or readable label
+the stair down to the hall
 ```
 
 Avoid storing transient image trivia as persistent entities unless it matters.
@@ -377,6 +432,9 @@ It is valid to store:
 location_hint = "ahead-left"
 bbox_norm = [...]
 frame_id = "..."
+observer_pan_deg = 35
+observer_tilt_deg = -10
+observer_pose_json = {"x_m": 2.1, "y_m": 0.4, "heading_deg": 88}
 ```
 
 It is not valid to store a Cosmos guess as:
@@ -387,8 +445,14 @@ map_y = 2.18
 distance_m = 2.4
 ```
 
+The line is drawn by who measured the number, not by whether there is a number.
+Where the camera was pointing and where the rover was standing are readings the
+rover already takes; how far away the sofa is would be an inference the model made
+from a single monocular image. Store the first as provenance of the observation,
+never the second as a property of the object.
+
 Persistent metric object location belongs to a later OAK-D + intrinsics + TF
-integration. Leave metric position nullable/absent now so the schema can be
+integration. Leave metric object position nullable/absent now so the schema can be
 extended later without pretending monocular estimates are facts.
 
 ---
@@ -418,8 +482,26 @@ as goal completion, significant motion or heading change.
 
 ## 8. Console World State popup
 
-Add a **World State** control to the existing drive console and show the state in
-a popup/modal consistent with the current console UI.
+Add a **World State** button to the main drive console that opens a separate popup
+over the page. The console today is cards in three stacks and has no modal of any
+kind, so this is new furniture rather than an existing pattern to copy: build the
+overlay, and keep the world state inside it rather than growing another card in the
+page behind it.
+
+How the state is drawn is open, and the most useful shape is probably the semantic
+state over a copy of the SLAM map the console already serves at `/map.png`.
+Entities have no metric position and must not be given one, but every observation
+now records where the rover stood and where the gimbal pointed, so an entity can
+honestly be drawn as a **bearing from a measured pose** -- a ray or a narrow cone
+from the observation point, along the camera's direction, with the bounding box's
+horizontal position refining the angle. Several observations of one entity then
+appear as several rays from different places, and whether they converge on one
+corner of the room is precisely the question this POC is asking; a duplicate shows
+up as two ID labels on rays pointing at the same thing.
+
+That is a suggestion rather than a requirement -- a plain list that makes the
+failures visible beats a map picture that hides them. Fall back to the list
+whenever there is no map, no pose, or nothing observed yet.
 
 This POC viewer should be **read-only** except for an explicit clear/reset action.
 
@@ -444,7 +526,8 @@ selected entity detail
 - full canonical fields
 - all observation history, newest first
 - source
-- frame ID
+- frame ID, and the stored frame itself with its bbox drawn on it
+- gimbal pan/tilt and rover pose at capture
 - location hint / bbox if present
 - raw Cosmos JSON for each observation
 ```
@@ -454,7 +537,6 @@ Useful tabs/sections if they fit naturally:
 ```text
 Entities
 Observations
-Relations             only if relations are implemented
 Raw / diagnostics
 ```
 
@@ -480,6 +562,13 @@ Clearing semantic memory must not clear SLAM Toolbox or Nav2 state.
 Expose only what the console/integration needs. Exact transport should match the
 existing `drive_web` / daemon patterns rather than introducing another LAN service
 without reason.
+
+Give the inspection its own connection and its own patience. The console holds
+several separate connections to the daemon, each with the timeout its own work
+needs, and the wifi scan already has one of its own precisely because it outlasts
+everything else by a factor of three. An inference of seconds to tens of seconds
+on the shared status connection would stall the polling behind it -- lights,
+tracking, wifi -- and must never be able to sit in front of a STOP.
 
 Conceptually useful operations are:
 
@@ -542,10 +631,16 @@ unknown existing_entity ID
 frame capture failure
 frame too old / wrong frame token
 SQLite open/write failure
+SQLite busy/locked while the console is reading
 console request while an inspection is already in progress
 clear during/around inspection
 model returns zero observations
+sidecar generates without stopping
 ```
+
+The runaway generation is the likeliest way this hangs. Cap the sidecar's output
+tokens and put a hard wall-clock limit on the call, so a model that will not stop
+talking fails one inspection rather than holding a connection open indefinitely.
 
 No failure here should stop or interfere with rover driving, STOP, Nav2, face
 tracking, the camera's existing safety/ownership rules, or the Qwen voice session.
@@ -564,7 +659,11 @@ At minimum exercise:
 - entity allocation;
 - observation history retained after canonical update;
 - persistence across process restart;
-- clear/reset affects only semantic state;
+- the frame file is written and referenced by every observation it produced;
+- gimbal angles and rover pose are retained, and a missing pose stores nulls
+  rather than failing the inspection;
+- clear/reset affects only semantic state, and removes stored frames with it;
+- a map clear starts a new session and leaves entities and history intact;
 - malformed stored JSON cannot take the viewer/API down.
 
 ### Association
@@ -587,6 +686,8 @@ At minimum exercise:
 
 - empty world renders;
 - populated world renders;
+- an observation whose stored frame is missing still renders;
+- the map overlay falls back to the list view with no map or no pose;
 - raw observation detail is available;
 - inference error state renders;
 - clear action works and does not touch navigation state.
@@ -603,6 +704,31 @@ Per `CLAUDE.md`, local tests and a commit are not completion.
 Deploy the affected registered components to `orin`, restart only what is needed,
 and prove the running system works there.
 
+### Getting it onto the rover
+
+A new directory deploys nothing by itself. Register the world-state component in
+[`deploy/manifest.json`](../deploy/README.md) with its own sources, restart script
+and verification command, the way every component already on the Orin is
+registered; until that entry exists the deployer will not copy a single file of
+it.
+
+Three things have to stay out of the deployer's way:
+
+```text
+model weights     a quantized GGUF is gigabytes, and belongs neither in Git nor in
+                  a deploy payload. Fetch it on the Orin from an install script,
+                  the way the depth camera's vendored tree is installed, and have
+                  the component's verification check the file is present rather
+                  than ship it.
+database          ~/.ugv/, beside the rover's own secrets and deploy state, where
+                  no deploy and no prune can reach it.
+stored frames     the same place, in a directory of their own.
+```
+
+Open SQLite in WAL mode. The console reads world state while the inspection that
+is writing it is still running, and the default journal turns that ordinary
+overlap into a locked database rather than a slightly stale read.
+
 Perform a small repeatable real-world experiment. For example:
 
 1. clear semantic world state;
@@ -614,7 +740,8 @@ Perform a small repeatable real-world experiment. For example:
 6. inspect again;
 7. repeat for at least three views;
 8. verify whether the same objects retain IDs or duplicate;
-9. inspect raw observations for any hallucinated or contradictory entities;
+9. check each observation against its stored frame for hallucinated or
+    contradictory entities;
 10. restart the relevant service and confirm the SQLite state persists;
 11. clear semantic state and confirm the navigation map remains untouched.
 
@@ -653,6 +780,7 @@ new SLAM/navigation stack
 vector database
 KnowRob / ontology framework
 LangGraph or generic agent-memory framework
+relations / predicates between entities
 model-generated map coordinates
 raw motor/cmd_vel access
 continuous video-rate Cosmos inference
@@ -672,21 +800,29 @@ architecture.
 This task is complete when all of the following are true:
 
 - [ ] A replaceable `PhysicalReasoner` boundary exists.
-- [ ] Cosmos Reason 2 2B can be called locally on the Orin, or any blocker to the
-      local runtime is explicitly demonstrated while the remaining POC is proven
-      against a deterministic fake.
+- [ ] Cosmos Reason 2 2B runs locally on the Orin and answers a real inspection of
+      a real frame. The deterministic fake covers development and offline tests
+      only; if the local runtime cannot be made to work, the task is blocked rather
+      than complete.
 - [ ] A fresh gimbal frame can be inspected without violating existing camera
       ownership.
 - [ ] Only schema-valid structured observations mutate semantic world state.
 - [ ] Application code, never Cosmos, owns entity IDs.
 - [ ] SQLite persists entities and complete observation history across restart.
 - [ ] Raw validated Cosmos observations and provenance are retained.
+- [ ] The frame behind each observation is stored and viewable, together with the
+      gimbal angles and rover pose it was taken from.
 - [ ] No metric/map coordinates are accepted from the VLM as world facts.
-- [ ] The drive console has a read-only World State popup showing entities,
-      observation history and raw inference detail.
+- [ ] A button in the main drive console opens a read-only World State popup
+      showing entities, observation history, stored frames and raw inference
+      detail.
 - [ ] Semantic state can be explicitly cleared without touching the SLAM/Nav2 map.
 - [ ] Deterministic offline tests cover storage, association, validation and UI/API
       behavior.
+- [ ] The world-state component is registered in `deploy/manifest.json` with its
+      own verification, the model weights are installed on the Orin rather than
+      committed or deployed, and the database and stored frames live under
+      `~/.ugv/` where no deploy can overwrite them.
 - [ ] The changed components are deployed and restarted on the Orin.
 - [ ] A real multi-view inspection experiment is performed on the rover.
 - [ ] The final report says plainly whether object/entity continuity is good enough
