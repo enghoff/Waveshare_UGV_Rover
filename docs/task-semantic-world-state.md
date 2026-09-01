@@ -8,8 +8,22 @@ the plan._
 
 ## Where this stands
 
-**The storage half of the world state works and is deployed. The perception half
-is being replaced.**
+**Phases 0 to 3 are built, deployed and running on the rover. Phase 4's search
+is built and tested but not yet deployed, because the rover went off the network
+on 2026-09-01 and getting it back needs the power switch.**
+
+An inspection now measures rather than asks. It costs about a fifth of a second
+on the GPU, stores twelve regions with a bearing worked out from the rover's own
+pose and gimbal angle and two vectors apiece, and then decides which lasting
+thing each one belongs to from where it is. On the rover, standing still, that
+decision is correctly *nothing*: thirty-one observations sit in the pending pool
+with a direction and no home, and the popup says so, because a thing seen once
+from one place is a thing the rover cannot honestly claim to have located.
+
+**What has not been demonstrated is the case where it can place something**,
+which needs the rover to drive between two looks. Everything up to that point is
+proved in the selftests, including the two-identical-chairs case, and nothing of
+it is proved on the hardware.
 
 Built, running on the rover and worth keeping: a SQLite store that separates
 immutable observations from canonical entities, application-owned identifiers,
@@ -347,7 +361,32 @@ The original plan for this phase follows.
 rover in under a second, with the lidar still reporting no dropped scans. The
 lidar half passed; the second did not, and why is above.
 
-### Phase 2 — placement
+### Phase 2 — placement — **done, deployed 2026-09-01**
+
+Every observation now carries the bearing worked out at the moment of the look,
+the box's angular width, what drew the box, both vectors as raw float32, and
+**which backend produced those vectors** — that last one because the GPU engines
+and the CPU graphs agree with full precision to 1.000 and 0.86, which is far too
+wide a gap to compare across. An inspection goes through the encoders rather
+than the language model.
+
+Three things the first real inspection on the rover showed, none of them
+predicted:
+
+- A bearing is three numbers added together and it ran past half a turn: the
+  rover stored −205.9°, which points exactly where +154.1° does and compares
+  with nothing. Every bearing is wrapped now.
+- The two vector columns were about to reach the console as raw bytes, which
+  JSON cannot serialise. The entity list would have crashed the first time it
+  met an observation carrying one.
+- The camera grab, not the model, is now the expensive part of an inspection:
+  6.3 s of which the look was 0.35 s, and 0.6 s on the second inspection when
+  the camera was already open.
+
+**Not demonstrated:** the recorded multi-position drive. That needs the rover to
+move between two looks, and it has not been driven.
+
+### Phase 2 as planned
 
 `world_state/locate.py` already exists, with 196 passing tests covering
 triangulation, the two-identical-chairs case, and the turning-on-the-spot
@@ -373,7 +412,36 @@ entities       placement_json, placement_uncertainty_m, placement_map_session,
 **Done when** a recorded multi-position drive produces map points with
 uncertainties, and the popup can show which two looks placed each thing.
 
-### Phase 3 — the resolver
+### Phase 3 — the resolver — **done, deployed 2026-09-01**
+
+Built as planned, with the gates in the planned order, and one thing the plan
+did not anticipate: **the phantom**.
+
+Two identical chairs seen from two places give four rays and *four* valid
+crossings — the two chairs, and two ghosts where a ray to one chair crosses a
+ray to the other. All four are sound geometry. Appearance cannot break the tie,
+for the reason recorded further up: the twin chair scores 0.735 against the same
+chair's 0.696 across a change of viewpoint. From two viewpoints the answer is
+genuinely not knowable.
+
+Two things settle it, and both are in the code with the measurement that forced
+them. Support for a crossing is counted in **viewpoints rather than in rays**,
+because two regions of one frame cannot be the same object — without that a
+ghost 0.7 m from the rover collected three rays from two frames and beat the
+real chair at 4.2 m, since close to the camera every bearing agrees with
+everything. And a crossing that ties with a conflicting one built from a shared
+ray is refused outright, which is how the two-chair case comes out AMBIGUOUS
+until a third look arrives from somewhere else. With that third look it resolves
+into two things in two places.
+
+One number in `locate.py` is now conservative rather than accurate:
+`BEARING_SIGMA_DEG` is 5.0, measured from Cosmos's box jitter, and the boxes no
+longer come from Cosmos. FastSAM redraws the same box to within a quarter of a
+degree. Leaving it at 5° costs matches rather than causing wrong ones, so it is
+safe, but it is worth re-measuring against the pose and gimbal error that now
+dominate.
+
+### Phase 3 as planned
 
 Three outcomes, and the third is not optional:
 
@@ -411,7 +479,28 @@ answer. A full object-motion model is not wanted in this slice.
 
 **Done when** the acceptance criteria below pass on the rover.
 
-### Phase 4 — search and the console
+### Phase 4 — search and the console — **half built, not deployed**
+
+The search half is written and tested: a phrase goes to the same text tower that
+named every region, so the comparison is a dot product over a few hundred stored
+vectors.
+
+The interesting part was the "nothing matches" threshold, and calibrating an
+absolute one turned out to be the wrong idea. SigLIP's raw cosines sit between
+about 0.08 and 0.12 whether the phrase describes the region or not, so any floor
+drawn across that band is arbitrary. The test is about **separation** instead:
+the best score has to stand a few spreads clear of the middle of the field. A
+query that describes something in the room throws up one or two scores well
+above the rest; a query that describes nothing produces a flat list. That reads
+off the shape of the answer rather than its magnitude and needs no calibration —
+though it has not yet been checked against real crops on the rover, which is the
+next thing to do.
+
+**Still to do:** the console. Placement and its uncertainty, the two looks that
+produced it, the association reason and the search box are all available from
+the daemon and none of them is drawn yet.
+
+### Phase 4 as planned
 
 - Text query embeds with SigLIP2 and ranks stored vectors by cosine. Brute force
   over a few hundred vectors is a numpy dot product.

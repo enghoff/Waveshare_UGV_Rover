@@ -29,16 +29,27 @@ speech path is unchanged.
 | CPU | 6x Cortex-A78AE at 1.728 GHz, aarch64 |
 | RAM | 7.3 GB, shared with the GPU |
 | swap | **none** -- no swap file and no zram unit |
-| storage | 915 GB NVMe (`/dev/nvme0n1`), root on p1, about 3% used |
+| storage | 915 GB NVMe (`/dev/nvme0n1`), root on p1, about 7% used |
 | OS | Ubuntu 24.04.4 LTS, kernel `6.8.12-1021-tegra` |
 | L4T/JetPack | R39.2.1 |
-| GPU driver | 595.78, reporting CUDA 13.2; no CUDA toolkit and no `nvcc` |
+| GPU driver | 595.78, reporting CUDA 13.2 |
+| CUDA / cuDNN / TensorRT | **installed 2026-09-01**: `nvidia-jetpack` 7.2.1, CUDA 13.2.86 with `nvcc`, cuDNN 9.20, TensorRT 10.16.2.10 with its Python bindings |
 | Python | system CPython 3.12, and unlike the Banana Pi it **has pip** |
 | power mode | `nvpmodel` **1 = 25W**; mode 2 `MAXN_SUPER` is available and unused |
 | rover address | **`192.168.1.80`**, the service address, held by whichever radio is healthy |
 | mDNS | `jetson-orin.local`, which Windows does resolve here |
 | GPIO driver-board UART | `/dev/ttyTHS1` at 115200 |
 | lidar serial | `/dev/ttyACM0` at 230400 |
+
+**The GPU is reached two different ways and neither of them is ONNX Runtime.**
+The language model goes through Vulkan; perception goes through TensorRT. No
+build of ONNX Runtime exists for JetPack 7 -- the community Jetson wheel index
+stops at JetPack 6, and the official aarch64 wheel on PyPI carries kernels for
+every architecture except this Orin's own sm_87, so it opens a session on the
+GPU and then dies at the first launch with "no kernel image is available".
+Installing more CUDA does not fix that; the gap is inside the wheel.
+`nvidia-jetpack` is 9.4 GB and installs cleanly from the repository already
+configured here, with nothing removed and no kernel touched.
 
 **Use `192.168.1.80`.** It is the address that stays true: it is written into
 each of the rover's three network profiles as a fixed address, so it is there
