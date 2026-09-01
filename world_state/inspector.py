@@ -251,37 +251,81 @@ class Inspector:
                                 inference_id=inference_id, frame_id=frame_id,
                                 duration_s=look.duration_s, model_id=look.backend)
 
-        detail = self._measured_detail(look, stored)
+        # Identity is settled here rather than in `record`, and after the write
+        # rather than during it. What was measured is history the moment it is
+        # stored; which lasting thing it belongs to is an opinion formed from
+        # that history and from everything already in it, and a failure to form
+        # one must leave the measurement untouched.
+        settled = self._settle()
+        detail = self._measured_detail(look, stored, settled)
         self.store.update_inference(
             inference_id, duration_s=round(time.time() - began, 2), status="ok",
             detail=detail or None, model_id=look.backend,
             returned=look.kept, stored=stored["stored"],
-            matched=0, created=0, rejected=max(0, look.kept - stored["stored"]),
+            matched=settled.get("matched", 0), created=settled.get("created", 0),
+            rejected=max(0, look.kept - stored["stored"]),
             raw_json=None)
         return {"ok": True, "status": "ok", "inference_id": inference_id,
                 "frame_id": frame_id, "scene": "",
                 "duration_s": round(time.time() - began, 2),
                 "returned": look.kept, "stored": stored["stored"],
-                "placed": stored["placed"], "matched": 0, "created": 0,
+                "placed": stored["placed"],
+                "matched": settled.get("matched", 0),
+                "created": settled.get("created", 0),
+                "ambiguous": settled.get("ambiguous", 0),
+                "still_waiting": settled.get("still_waiting", 0),
                 "rejected": max(0, look.kept - stored["stored"]),
                 "entities": [], "detail": detail,
+                "decisions": settled.get("decisions", []),
                 "map_session": stored["map_session"], "model_id": look.backend,
                 "found": look.found, "timings": look.timings,
                 "look_s": look.took_s}
 
-    def _measured_detail(self, look, stored) -> str:
+    def _settle(self) -> dict[str, Any]:
+        """Run the resolver over the pending pool, and never let it break a look.
+
+        A resolver that raises must not turn an inspection that measured twelve
+        regions perfectly well into a failure: the measurements are already
+        stored and are the thing of value, and identity can be settled again on
+        the next look.
+        """
+        from . import resolve as resolver
+
+        try:
+            return resolver.resolve(self.store)
+        except Exception as error:                 # never past here
+            return {"error": f"{type(error).__name__}: {error}"}
+
+    def _measured_detail(self, look, stored, settled) -> str:
         """One sentence a person can act on, in the popup's own column.
 
-        The two numbers that matter are how many regions were kept and how many
-        of them got a bearing, because an observation with no bearing can never
-        become part of a lasting thing however good its vectors are.
+        The numbers that matter are how many regions were kept, how many got a
+        bearing, and what the resolver then did with the pool -- because an
+        inspection that stored twelve observations and settled none of them is a
+        rover that has not yet driven far enough, which is a different thing
+        from one that is broken.
         """
         parts = [f"{stored['stored']} of {look.found} regions kept"]
         if stored["placed"] < stored["stored"]:
             missing = stored["stored"] - stored["placed"]
             parts.append(f"{missing} without a bearing "
                          f"(no pose, no gimbal angle, or no field of view)")
-        return ", ".join(parts)
+        if settled.get("error"):
+            parts.append(f"identity was not settled: {settled['error']}")
+            return ", ".join(parts)
+        settled_parts = []
+        if settled.get("matched"):
+            settled_parts.append(f"{settled['matched']} matched")
+        if settled.get("created"):
+            settled_parts.append(f"{settled['created']} placed")
+        if settled.get("ambiguous"):
+            settled_parts.append(f"{settled['ambiguous']} ambiguous")
+        waiting = settled.get("still_waiting", 0)
+        if waiting:
+            settled_parts.append(f"{waiting} waiting for a look from elsewhere")
+        parts.append(", ".join(settled_parts) if settled_parts
+                     else "nothing to settle")
+        return "; ".join(parts)
 
     def _frame(self) -> dict[str, Any]:
         try:

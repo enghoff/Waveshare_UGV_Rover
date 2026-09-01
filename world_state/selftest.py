@@ -32,6 +32,7 @@ sys.path.insert(0, HERE)
 from test_harness import FAIL, PASS, SKIP, check  # noqa: E402
 
 from world_state import locate                     # noqa: E402
+from world_state import resolve                    # noqa: E402
 from world_state import view                       # noqa: E402
 from world_state.contract import (                 # noqa: E402
     KINDS, extract_json, validate,
@@ -1102,6 +1103,299 @@ def test_the_vectors_never_reach_the_wire_by_accident() -> None:
         store.close()
 
 
+
+# --- the resolver ------------------------------------------------------------
+#
+# The part the proof-of-concept failed at. Every test here is a case the rover
+# actually has to survive rather than a check that the code runs: two identical
+# chairs, a rover that only turned on the spot, and an appearance score high
+# enough to be tempting and pointing at the wrong side of the room.
+
+
+def a_vector(*values, width=8):
+    """A float32 vector, padded, so appearance can be steered in a test."""
+    import struct
+
+    numbers = list(values) + [0.0] * (width - len(values))
+    return struct.pack(f"<{width}f", *numbers)
+
+
+def observe(store, x, y, bearing, label="a wooden chair", vector=None,
+            inference=None, fov_deg=100.0):
+    """One look at something, from a place, along a bearing.
+
+    The box is centred, so the bearing really is the pose's heading minus the
+    gimbal's pan and nothing else -- which keeps these tests about the resolver
+    rather than about `view.ray`, which has its own.
+    """
+    from world_state.perception_client import Sighting
+
+    seen = [Sighting(bbox=[0.45, 0.3, 0.55, 0.9], label=label,
+                     dino=vector if vector is not None else a_vector(1.0, 0.0),
+                     siglip=a_vector(0.5, 0.5))]
+    store.record(seen, capture={"frame_id": "f", "pan": 0.0,
+                                "pose": {"x_m": x, "y_m": y,
+                                         "heading_deg": bearing}},
+                 fov_deg=fov_deg, region_source="fastsam", vectors_from="fake",
+                 inference_id=inference)
+
+
+def test_two_looks_from_two_places_make_one_lasting_thing() -> None:
+    """The whole point, in its simplest form."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 0.0, 0.0, 45.0, inference=1)
+        observe(store, 6.0, 0.0, 135.0, inference=2)
+        result = resolve.resolve(store)
+        check("one thing was created", result["created"], 1)
+        check("...and nothing was left ambiguous", result["ambiguous"], 0)
+        check("...and the pool is empty", len(store.unplaced()), 0)
+
+        placed = store.placed()
+        check("the thing has a position", len(placed), 1)
+        check("...where the two bearings actually cross",
+              (round(placed[0]["placement"]["x_m"]),
+               round(placed[0]["placement"]["y_m"])), (3, 3))
+        check("...with an uncertainty rather than a claim of precision",
+              placed[0]["placement"]["uncertainty_m"] > 0, True)
+        check("...and both looks attached to it",
+              placed[0]["observation_count"], 2)
+        check("the popup can be told which two looks placed it",
+              "crossed at" in result["decisions"][0]["why"], True)
+        store.close()
+
+
+def test_a_rover_that_only_turned_on_the_spot_places_nothing() -> None:
+    """Rays from one point meet nowhere useful, and saying so is the point."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 1.0, 1.0, 40.0, inference=1)
+        observe(store, 1.0, 1.0, 50.0, inference=2)
+        result = resolve.resolve(store)
+        check("nothing was created", result["created"], 0)
+        check("...and both observations are still waiting",
+              len(store.unplaced()), 2)
+        check("...which is reported rather than silent",
+              result["still_waiting"], 2)
+        store.close()
+
+
+def test_two_identical_chairs_are_not_guessed_at_from_two_places() -> None:
+    """**The test the whole design exists to pass.**
+
+    Two chairs and two viewpoints give four rays and four valid crossings: the
+    two real chairs and two phantoms where a ray to one chair crosses a ray to
+    the other. All four are sound geometry, and appearance cannot break the tie
+    -- measured on this rover, the twin chair scores *higher* than the same chair
+    seen from a new angle. From two places the answer is not knowable, so the
+    resolver must wait rather than invent two things in the wrong places.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        # One chair at (3, 3), another at about (2.7, 0.4).
+        observe(store, 0.0, 0.0, 45.0, inference=1)
+        observe(store, 0.0, 0.0, 8.5, inference=1)
+        observe(store, 6.0, 0.0, 135.0, inference=2)
+        observe(store, 6.0, 0.0, 172.9, inference=2)
+        result = resolve.resolve(store)
+        check("nothing was placed from two viewpoints", result["created"], 0)
+        check("...and all four looks are still waiting",
+              len(store.unplaced()), 4)
+
+        # A third viewpoint separates them: a real chair is agreed by every ray
+        # aimed at it, and a phantom by only the two that made it.
+        observe(store, 3.0, -3.0, 90.0, inference=3)      # the chair at (3, 3)
+        observe(store, 3.0, -3.0, 96.5, inference=3)      # the one at (2.7, 0.4)
+        result = resolve.resolve(store)
+        check("a third look from somewhere else settles it", result["created"], 2)
+        places = sorted((round(one["placement"]["x_m"], 1),
+                         round(one["placement"]["y_m"], 1))
+                        for one in store.placed())
+        check("...as two things in two places", len(places), 2)
+        check("...far enough apart to be told apart",
+              abs(places[0][1] - places[1][1]) > 1.5, True)
+        store.close()
+
+
+def test_a_third_look_joins_the_thing_it_points_at() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 0.0, 0.0, 45.0, inference=1)
+        observe(store, 6.0, 0.0, 135.0, inference=2)
+        resolve.resolve(store)
+        entity_id = store.placed()[0]["id"]
+
+        observe(store, 3.0, -1.0, 90.0, inference=3)
+        result = resolve.resolve(store)
+        check("the new look was matched rather than made into a second thing",
+              (result["matched"], result["created"]), (1, 0))
+        check("...to the thing that was already there",
+              result["decisions"][0]["entity_id"], entity_id)
+        check("...and the reason names the distance",
+              "m away" in result["decisions"][0]["why"], True)
+        check("the world still holds one thing", len(store.placed()), 1)
+        check("...with three looks behind it",
+              store.placed()[0]["observation_count"], 3)
+        store.close()
+
+
+def test_appearance_cannot_overrule_where_a_thing_is() -> None:
+    """The redundant-furniture rule, stated as a test.
+
+    A crop that looks *exactly* like the stored exemplar, on a bearing pointing
+    at the other side of the room, must not match. This is the failure mode of
+    every appearance-first design and the reason geometry is the key here.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        twin = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, vector=twin, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=twin, inference=2)
+        resolve.resolve(store)
+        check("something was placed", len(store.placed()), 1)
+
+        # The same appearance entirely, four metres away across the room.
+        observe(store, 0.0, 0.0, -60.0, vector=twin, inference=3)
+        result = resolve.resolve(store)
+        check("a perfect appearance match on the wrong bearing is not a match",
+              result["matched"], 0)
+        check("...and it is not quietly made into a new thing either",
+              result["created"], 0)
+        check("...it waits for a second bearing of its own",
+              len(store.unplaced()), 1)
+        store.close()
+
+
+def test_two_placed_things_on_one_bearing_are_ambiguous_not_a_guess() -> None:
+    """One chair directly behind another, from where the rover is standing.
+
+    Both are placed, both are consistent with the new bearing, and appearance
+    cannot separate them. Attaching the look to the nearer one would be a guess
+    dressed as an answer, so it is attached to neither and the popup is told why.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 0.0, 0.0, 45.0, inference=1)      # a chair at (2, 2)
+        observe(store, 4.0, 0.0, 135.0, inference=2)
+        resolve.resolve(store)
+        observe(store, 0.0, 4.0, 0.0, inference=3)       # another at (4, 4)
+        observe(store, 4.0, 0.0, 90.0, inference=4)
+        resolve.resolve(store)
+        check("both chairs were placed", len(store.placed()), 2)
+
+        # From the origin the two are in exactly the same direction.
+        observe(store, 0.0, 0.0, 45.0, inference=5)
+        result = resolve.resolve(store)
+        check("a bearing consistent with both is left alone",
+              result["ambiguous"], 1)
+        check("...rather than attached to either", result["matched"], 0)
+        check("...and the reason says so in words",
+              "equally consistent" in result["decisions"][0]["why"], True)
+        check("...and the look is still in the pool",
+              len(store.unplaced()), 1)
+        store.close()
+
+
+def test_a_chair_and_a_ceiling_light_are_never_the_same_thing() -> None:
+    """The cheapest gate, doing the one job it is allowed to do."""
+    check("the same phrase is compatible with itself",
+          resolve.compatible("a wooden chair", "a wooden chair"), True)
+    check("...and so is another name for the same kind of thing",
+          resolve.compatible("a wooden chair", "an office chair"), True)
+    check("a chair is not a ceiling light",
+          resolve.compatible("a wooden chair", "a ceiling light"), False)
+    check("an empty label matches nothing", resolve.compatible("", "a chair"),
+          False)
+
+
+def test_a_thing_that_moves_is_not_matched_on_position_alone() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        bottle = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, label="a bottle", vector=bottle,
+                inference=1)
+        observe(store, 6.0, 0.0, 135.0, label="a bottle", vector=bottle,
+                inference=2)
+        resolve.resolve(store)
+        check("a movable thing can still be placed when it looks the same",
+              len(store.placed()), 1)
+
+        # The right place, and nothing like it to look at.
+        observe(store, 3.0, -1.0, 90.0, label="a bottle",
+                vector=a_vector(0.0, 1.0), inference=3)
+        result = resolve.resolve(store)
+        check("a bottle in the right place that looks wrong is not matched",
+              result["matched"], 0)
+        check("...it is called ambiguous rather than guessed",
+              result["ambiguous"], 1)
+        check("...and the reason says the thing moves",
+              "moves" in result["decisions"][0]["why"], True)
+        store.close()
+
+
+def test_the_evidence_survives_the_decision() -> None:
+    """An entity is an opinion; the observations behind it are history."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 0.0, 0.0, 45.0, inference=1)
+        observe(store, 6.0, 0.0, 135.0, inference=2)
+        resolve.resolve(store)
+        entity_id = store.placed()[0]["id"]
+        rows = store.observations(entity_id)
+        check("both observations still hold the bearing they measured",
+              [row["bearing_deg"] for row in rows], [135.0, 45.0])
+        check("...and the pose behind it",
+              all(row["pose"] for row in rows), True)
+        check("the entity keeps an exemplar of what it looked like",
+              len(store.exemplars(entity_id, width=32)), 2)
+        store.close()
+
+
+def test_a_placement_belongs_to_the_map_it_was_measured_in() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 0.0, 0.0, 45.0, inference=1)
+        observe(store, 6.0, 0.0, 135.0, inference=2)
+        resolve.resolve(store)
+        check("the thing is placed in this map", len(store.placed(1)), 1)
+        store.new_map_session()
+        check("...and in no other", len(store.placed(2)), 0)
+
+        observe(store, 3.0, -1.0, 90.0, inference=3)
+        result = resolve.resolve(store)
+        check("a look in the new map cannot join a thing placed in the old one",
+              result["matched"], 0)
+        store.close()
+
+
+
+def test_an_inspection_settles_identity_as_well_as_measuring() -> None:
+    """The two halves joined: measure, then decide, in that order.
+
+    The order is the safety property. Everything measured is written down before
+    anything is decided about it, so a resolver that fails leaves a rover with
+    twelve honest observations rather than with a failed inspection.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store, eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()], [a_sighting()]],
+            capture=a_capture(pan=0.0), pose=a_pose(0.0, 0.0, 45.0))
+        first = inspector.inspect()
+        check("the first look measures and settles nothing",
+              (first["stored"], first["created"]), (1, 0))
+        check("...and says it is waiting for a look from elsewhere",
+              "waiting for a look from elsewhere" in first["detail"], True)
+
+        inspector.pose = a_pose(6.0, 0.0, 135.0)
+        second = inspector.inspect()
+        check("the second look from another place places the thing",
+              second["created"], 1)
+        check("...and the popup is told which two looks did it",
+              "crossed at" in second["decisions"][0]["why"], True)
+        check("the world now holds one placed thing", len(store.placed()), 1)
+        store.close()
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -1152,6 +1446,17 @@ TESTS = (
     test_a_bearing_never_runs_past_half_a_turn,
     test_the_pending_pool_holds_what_has_a_direction_but_no_home,
     test_the_vectors_never_reach_the_wire_by_accident,
+    test_two_looks_from_two_places_make_one_lasting_thing,
+    test_a_rover_that_only_turned_on_the_spot_places_nothing,
+    test_two_identical_chairs_are_not_guessed_at_from_two_places,
+    test_a_third_look_joins_the_thing_it_points_at,
+    test_appearance_cannot_overrule_where_a_thing_is,
+    test_two_placed_things_on_one_bearing_are_ambiguous_not_a_guess,
+    test_a_chair_and_a_ceiling_light_are_never_the_same_thing,
+    test_a_thing_that_moves_is_not_matched_on_position_alone,
+    test_the_evidence_survives_the_decision,
+    test_a_placement_belongs_to_the_map_it_was_measured_in,
+    test_an_inspection_settles_identity_as_well_as_measuring,
 )
 
 

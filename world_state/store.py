@@ -41,6 +41,12 @@ ENV_DIR = "UGV_WORLD_DIR"
 SCHEMA_VERSION = 2
 #: How many past inferences the diagnostics view keeps in front of the reader.
 INFERENCE_LIMIT = 12
+#: How many appearance vectors an entity keeps. Several, because the average of a
+#: chair seen from the front and the same chair from the side is a picture of
+#: neither; few, because every candidate's exemplars are read on every decision
+#: and a thing seen two hundred times is not better identified by two hundred
+#: vectors.
+EXEMPLARS = 5
 
 
 def world_dir() -> str:
@@ -253,7 +259,20 @@ class WorldStore:
                   FROM entities e
                  ORDER BY e.last_seen_at DESC, e.id
             """).fetchall()
-        return [dict(row) for row in rows]
+        found = []
+        for row in rows:
+            entity = dict(row)
+            # The exemplars are raw float32 and this list is about to be JSON.
+            # How many there are is the useful part anyway.
+            blob = entity.pop("exemplars", None)
+            entity["exemplar_count"] = 0 if not blob else max(1, len(blob) // 1536)
+            text = entity.get("placement_json")
+            try:
+                entity["placement"] = json.loads(text) if text else None
+            except (ValueError, TypeError):
+                entity["placement"] = None
+            found.append(entity)
+        return found
 
     def entity(self, entity_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -315,6 +334,132 @@ class WorldStore:
         with self._lock:
             rows = self.db.execute(query, args).fetchall()
         return [_readable(dict(row), vectors=True) for row in rows]
+
+    def placed(self, map_session: int | None = None) -> list[dict[str, Any]]:
+        """Entities that have a position, in the map they were positioned in.
+
+        A placement is meaningless outside its own map session: the coordinates
+        it is written in came from a SLAM map that no longer exists once the map
+        is cleared. So the session is part of the query rather than something a
+        caller is trusted to check.
+        """
+        query = ("SELECT * FROM entities WHERE placement_json IS NOT NULL")
+        args: list[Any] = []
+        if map_session is not None:
+            query += " AND placement_map_session = ?"
+            args.append(int(map_session))
+        with self._lock:
+            rows = self.db.execute(query, args).fetchall()
+        found = []
+        for row in rows:
+            entity = dict(row)
+            try:
+                entity["placement"] = json.loads(entity["placement_json"])
+            except (ValueError, TypeError):
+                continue
+            entity.pop("exemplars", None)
+            found.append(entity)
+        return found
+
+    def create_entity(self, kind: str, label: str) -> str:
+        """A lasting thing, named by this application and nothing else."""
+        now = time.time()
+        entity_id = self.allocate(kind or "object")
+        with self._lock, self.db:
+            self.db.execute(
+                "INSERT INTO entities(id, kind, label, canonical_description,"
+                " created_at, last_seen_at, observation_count)"
+                " VALUES(?,?,?,'',?,?,0)",
+                (entity_id, kind or "object", label, now, now))
+        return entity_id
+
+    def attach(self, entity_id: str, observation_ids: list[int]) -> int:
+        """Say which lasting thing these observations were of.
+
+        The observations are not rewritten in any other respect. What they
+        recorded -- the box, the bearing, the pose behind it -- is the evidence
+        for the decision and must survive the decision being made, and being
+        made again differently later.
+        """
+        if not observation_ids:
+            return 0
+        marks = ",".join("?" * len(observation_ids))
+        with self._lock, self.db:
+            cursor = self.db.execute(
+                f"UPDATE observations SET entity_id = ? WHERE id IN ({marks})",
+                [entity_id, *[int(one) for one in observation_ids]])
+            row = self.db.execute(
+                "SELECT COUNT(*) AS n, MAX(observed_at) AS last FROM observations"
+                " WHERE entity_id = ?", (entity_id,)).fetchone()
+            self.db.execute(
+                "UPDATE entities SET observation_count = ?, last_seen_at = ?"
+                " WHERE id = ?",
+                (row["n"], row["last"] or time.time(), entity_id))
+        return cursor.rowcount
+
+    def place(self, entity_id: str, placement: dict[str, Any] | None,
+              map_session: int) -> None:
+        """Where this thing is, and how far out that might be.
+
+        The placement replaces whatever was there; the observations that produced
+        it do not. That asymmetry is the design: an estimate is the application's
+        current opinion and may improve or be withdrawn, while the measurements
+        behind it are history and are never touched.
+        """
+        with self._lock, self.db:
+            if placement is None:
+                self.db.execute(
+                    "UPDATE entities SET placement_json = NULL,"
+                    " placement_uncertainty_m = NULL, placement_map_session = NULL,"
+                    " placement_updated_at = NULL WHERE id = ?", (entity_id,))
+                return
+            self.db.execute(
+                "UPDATE entities SET placement_json = ?,"
+                " placement_uncertainty_m = ?, placement_map_session = ?,"
+                " placement_updated_at = ? WHERE id = ?",
+                (json.dumps(placement), placement.get("uncertainty_m"),
+                 int(map_session), time.time(), entity_id))
+
+    def exemplars(self, entity_id: str, width: int = 0) -> list[bytes]:
+        """The appearance vectors kept for this thing, as raw float32.
+
+        Several rather than one averaged vector, because the average of a chair
+        seen from the front and the same chair seen from the side is a picture of
+        neither.
+        """
+        with self._lock:
+            row = self.db.execute("SELECT exemplars FROM entities WHERE id = ?",
+                                  (entity_id,)).fetchone()
+        blob = None if row is None else row["exemplars"]
+        if not blob or width <= 0:
+            return []
+        return [blob[start:start + width]
+                for start in range(0, len(blob) - width + 1, width)]
+
+    def add_exemplar(self, entity_id: str, vector: bytes,
+                     keep: int = EXEMPLARS) -> int:
+        """Keep one more appearance vector, dropping the oldest beyond `keep`.
+
+        Bounded because this is evidence for a comparison rather than a history:
+        an entity seen two hundred times does not become better identified by
+        holding two hundred vectors, and the column is read on every candidate.
+        """
+        if not vector:
+            return 0
+        width = len(vector)
+        with self._lock, self.db:
+            row = self.db.execute("SELECT exemplars FROM entities WHERE id = ?",
+                                  (entity_id,)).fetchone()
+            blob = (row["exemplars"] if row is not None else None) or b""
+            if len(blob) % width:
+                # A vector of a different width means a different model produced
+                # it, and mixing the two would compare numbers that mean
+                # different things. The older ones go.
+                blob = b""
+            blob = (blob + vector)[-width * max(1, keep):]
+            self.db.execute("UPDATE entities SET exemplars = ? WHERE id = ?",
+                            (blob, entity_id))
+        return len(blob) // width
 
     def inferences(self, limit: int = INFERENCE_LIMIT) -> list[dict[str, Any]]:
         with self._lock:
