@@ -201,28 +201,35 @@ which it answered at `192.168.1.80` again on the new network. The dongle came up
 reads **-65 to -66 dBm** from where the rover stands, against the -37 to -40 dBm
 the onboard radio saw on `TheGreatLord`'s 5 GHz. That is the price of choosing
 one network and staying on it, and it is worth knowing before blaming a slow
-camera stream on something else. `TheGreatViking 5G` is audible at -88 dBm,
-which is not worth having.
+camera stream on something else.
+
+`TheGreatViking 5G` is the same router's 5 GHz radio under a name of its own. It
+read -88 dBm from where the rover stood that day, which was not worth having; from
+where it stands on 2026-09-02 it is the strongest Viking on the air at 42 %, and
+the 2.4 GHz `TheGreatViking` is not heard at all. It has had a profile of its own
+since then, joined by hand like the others.
 
 ### Which networks this rover can join
 
-All three house networks, on the onboard radio. NetworkManager holds one profile
-per network, named after it, every one pinned to that radio, with
+Every house network, on the onboard radio -- the three house SSIDs and the 5 GHz
+name the Viking router advertises alongside its own. NetworkManager holds one
+profile per network, named after it, every one pinned to that radio, with
 `autoconnect-retries 0` and the service address:
 
 | Profile | Autoconnect | Pinned to | Address |
 |---|---|---|---|
 | `TheGreatViking` | **yes** | `wlP1p1s0` | DHCP + `192.168.1.80` |
+| `TheGreatViking 5G` | no | `wlP1p1s0` | DHCP + `192.168.1.80` |
 | `TheGreatLord` | no | `wlP1p1s0` | DHCP + `192.168.1.80` |
 | `TheMaharaja` | no | `wlP1p1s0` | DHCP + `192.168.1.80` |
 
 **Only `TheGreatViking` comes up by itself**, which is why a reboot always puts
-the rover back on it whatever was chosen before. The other two are joined only
+the rover back on it whatever was chosen before. The others are joined only
 from the console, and that join costs the link: one radio means taking the
 current network down to bring another up, so the browser reconnects a few seconds
 later.
 
-All three share one passphrase, which lives in `~/.ugv/wifi.key` on the rover,
+All four share one passphrase, which lives in `~/.ugv/wifi.key` on the rover,
 outside the deploy tree. `wifi_roam/install-profiles.sh` owns this arrangement
 and is re-run by every `--system` deploy of `wifi_roam`; it writes a missing
 profile as a keyfile rather than using `nmcli con add`, which would put the

@@ -1,15 +1,15 @@
 #!/bin/sh
-# The rover's three NetworkManager profiles, on the onboard radio, with
+# The rover's four NetworkManager profiles, on the onboard radio, with
 # `TheGreatViking` as the one it comes up on.
 #
 #     sh install-profiles.sh          # called by install.sh; needs root
 #
 # **Only `TheGreatViking` autoconnects.** The rover joins it at every boot if it
-# is on the air, and joins nothing else by itself. The other two networks keep
+# is on the air, and joins nothing else by itself. The other networks keep
 # profiles -- passphrase, address, everything ready -- but with autoconnect off,
 # so the only thing that ever puts the rover on one of them is a person pressing
 # `join` in the console. That is the whole of the network policy: one network by
-# default, the other two on request.
+# default, the rest on request.
 #
 # Profiles are matched by the network each one is *for*, never by its name. The
 # rover has had profiles called `TheGreatViking-dongle` in the past, and a loop
@@ -21,10 +21,20 @@
 
 set -eu
 
-# The three house access points this rover is allowed to join, the first of them
-# the one it comes up on. They share one passphrase.
+# The house access points this rover is allowed to join, the first of them the
+# one it comes up on. They share one passphrase.
+#
+# `TheGreatViking 5G` is the same router as `TheGreatViking`, putting its 5 GHz
+# radio on the air under a name of its own -- and that name has a space in it,
+# which is why this list is one network to a line and is read as lines below. A
+# space-separated list turned it into two networks, neither of which exists, and
+# left the console labelling the only Viking it can usually hear as one there is
+# no passphrase for.
 HOME_NET=${HOME_NET:-TheGreatViking}
-NETS=${NETS:-"TheGreatViking TheGreatLord TheMaharaja"}
+NETS=${NETS:-"TheGreatViking
+TheGreatViking 5G
+TheGreatLord
+TheMaharaja"}
 # Where NetworkManager keeps its profiles and its drop-in configuration, and
 # where the passphrase for a new profile is read from. All overridable for the
 # self-test.
@@ -148,7 +158,10 @@ PROFILE
     nmcli con reload
 }
 
-for want in $NETS; do
+# On its own descriptor, because the body reads the profile list from stdin
+# below: a network list left on stdin is one the inner loop would eat.
+while IFS= read -r want <&3; do
+    [ -n "$want" ] || continue
     keep=""
     # A line at a time, and fed in by redirection rather than through a pipe, so
     # that a profile whose name has a space in it stays one profile -- NM has one
@@ -210,7 +223,9 @@ PROFILES
     else
         echo "$want: ready, joined only when somebody asks, holding $SERVICE_IP"
     fi
-done
+done 3<<NETWORKS
+$NETS
+NETWORKS
 
 # The USB dongle carries nothing. Its driver stays -- see dongle_driver/ -- and
 # the interface stays on the bus, so the hardware is still there to be picked up

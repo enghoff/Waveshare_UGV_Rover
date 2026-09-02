@@ -163,8 +163,17 @@ check "the duplicate profile for one network is deleted" \
 check "and the one named after a radio is renamed to its network" \
     "renamed from TheGreatViking-dongle" "$said"
 check "every network ends up with exactly one profile" \
-    "TheGreatLord TheGreatViking TheMaharaja" \
+    "TheGreatLord TheGreatViking TheGreatViking 5G TheMaharaja" \
     "$(cut -d'|' -f2 "$WORK/profiles" | sort | tr '\n' ' ' | sed 's/ $//')"
+
+# The router puts its 5 GHz radio on the air as `TheGreatViking 5G`. A list that
+# splits on spaces makes that two networks, neither of which is on the air, and
+# the console then labels the only Viking the rover can hear as one it holds no
+# passphrase for.
+check "the network whose name has a space in it is one network" \
+    "TheGreatViking 5G: added" "$said"
+check_silent "and gets one profile, not one per word" \
+    "$(awk -F'|' '$2 == "TheGreatViking 5G"' "$WORK/profiles" | sed 1d)"
 
 echo
 echo "one network at boot, and only one"
@@ -269,6 +278,16 @@ echo
 echo "profiles, and the joins they do and do not allow"
 check "profiles are reported as networks, not as profile names" \
     "TheGreatViking" "$(ctl profiles)"
+
+# With no NetworkManager to ask there is nothing but the built-in list, and that
+# list is what a join is checked against. `IFACE` is given so nothing has to go
+# looking for a radio, and the shell is named by path because emptying PATH is
+# the whole point of the run.
+mkdir -p "$WORK/empty"
+check "with NetworkManager gone the built-in list keeps a spaced name whole" \
+    "TheGreatViking 5G" \
+    "$(env PATH="$WORK/empty" IFACE=wlP1p1s0 "$(command -v sh)" \
+        "$HERE/wifi_ctl.sh" profiles)"
 
 : > "$WORK/nmcli.log"
 joined=$(env PINNED=wlP1p1s0 PATH="$WORK/bin:$PATH" NMCLI_LOG="$WORK/nmcli.log" \

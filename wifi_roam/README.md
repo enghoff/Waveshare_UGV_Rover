@@ -4,10 +4,15 @@ One radio, one network it comes up on, and nothing that changes networks by
 itself.
 
 The rover joins `TheGreatViking` at every boot, on its onboard radio, and stays
-there. It holds profiles for the two other house networks as well, with
+there. It holds profiles for the three other house networks as well, with
 autoconnect switched off, so the only thing that ever puts it on one of those is
 a person at the console pressing `join`. Nothing scans unprompted, nothing roams,
 and nothing hands the link between radios.
+
+One of those three is the same router as `TheGreatViking`: the house puts its
+5 GHz radio on the air under the separate name `TheGreatViking 5G`, and where the
+rover usually stands that is the louder of the two -- often the only one it can
+hear at all.
 
 The address to reach it at is:
 
@@ -15,8 +20,8 @@ The address to reach it at is:
 192.168.1.80
 ```
 
-That address is a fixed extra address on each of the three profiles, alongside
-the DHCP lease NetworkManager also takes. It is on all three because the house
+That address is a fixed extra address on each of the four profiles, alongside
+the DHCP lease NetworkManager also takes. It is on all four because the house
 networks are separate SSIDs bridged onto one LAN, so the rover answers there
 whichever of them it is on -- including one somebody chose by hand. The console's
 certificate names it, which is why the browser gets a clean padlock at
@@ -29,7 +34,7 @@ address is ever unreachable, as is `jetson-orin.local`.
 
 | File | What it does |
 |---|---|
-| [`install-profiles.sh`](install-profiles.sh) | writes the three NetworkManager profiles and decides which one autoconnects |
+| [`install-profiles.sh`](install-profiles.sh) | writes the four NetworkManager profiles and decides which one autoconnects |
 | [`wifi_ctl.sh`](wifi_ctl.sh) | the privileged helper: list, scan, join, profiles, status |
 | [`install.sh`](install.sh) | puts both on the rover, with the sudo rule the console needs |
 | [`install-mdns.sh`](install-mdns.sh) | makes `jetson-orin.local` resolvable |
@@ -44,8 +49,14 @@ what they say is what the rover does.
 | Profile | Autoconnect | Pinned to | Address |
 |---|---|---|---|
 | `TheGreatViking` | **yes** | the onboard radio | DHCP + `192.168.1.80` |
+| `TheGreatViking 5G` | no | the onboard radio | DHCP + `192.168.1.80` |
 | `TheGreatLord` | no | the onboard radio | DHCP + `192.168.1.80` |
 | `TheMaharaja` | no | the onboard radio | DHCP + `192.168.1.80` |
+
+The list is one network to a line in the script, because `TheGreatViking 5G` has
+a space in its name and a space-separated list made it two networks, neither of
+which is on the air. That is what had the console offering no `join` for the one
+Viking the rover could hear.
 
 Three settings in that table are each load-bearing.
 
@@ -71,7 +82,7 @@ for one called `TheGreatViking` would have added a second profile for the same
 network rather than finding the one already there. Duplicates are deleted, since
 two answers to "how do I join this" is one too many.
 
-All three networks share one passphrase, which lives in `~/.ugv/wifi.key` on the
+All four networks share one passphrase, which lives in `~/.ugv/wifi.key` on the
 rover, outside the deploy tree. It is only used for a profile that does not exist
 yet -- an existing one keeps the key it has, because a working link is not worth
 risking to a typo -- and it is read from that file rather than taken as an

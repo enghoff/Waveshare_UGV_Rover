@@ -72,7 +72,12 @@ IFACE=${IFACE:-$(default_iface)}
 # The house access points this rover is allowed to join, used only when there is
 # no NetworkManager to ask -- which on this rover means something is badly
 # wrong, but the console's list is still worth drawing.
-NETS=${NETS:-"TheGreatViking TheGreatLord TheMaharaja"}
+# One to a line: `TheGreatViking 5G` is the router's 5 GHz radio under a name
+# of its own, and the space in it makes a space-separated list two networks.
+NETS=${NETS:-"TheGreatViking
+TheGreatViking 5G
+TheGreatLord
+TheMaharaja"}
 
 # How long to let a join spend associating. It sits inside the 60 s the daemon
 # allows this call, so a join that cannot happen says so rather than being cut
@@ -105,8 +110,7 @@ wifi_profile_names() {
 # network the rover holds the key for "no passphrase" and then refuse to join it.
 profiles() {
     if ! command -v nmcli >/dev/null 2>&1; then
-        # shellcheck disable=SC2086
-        printf '%s\n' $NETS
+        printf '%s\n' "$NETS"
         return
     fi
     wifi_profile_names | while IFS= read -r name; do
