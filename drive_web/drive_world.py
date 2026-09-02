@@ -46,6 +46,10 @@ class SessionWorld:
             "observations": 0,
             "backend": "",
             "searching": False,
+            #: None until the rover has been asked. The panel says "-" rather than
+            #: claiming the rover is doing something it may not be.
+            "building": None,
+            "built_looks": 0,
             "gen": 0,
         }
         #: What `/world.json` serves: everything the popup draws.
@@ -82,6 +86,8 @@ class SessionWorld:
             self.world_clear()
         elif what == "search":
             self.world_search(str(action.get("query") or ""))
+        elif what == "build":
+            self.world_build(bool(action.get("on")))
 
     def world_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.world_link is None:
@@ -125,6 +131,20 @@ class SessionWorld:
         self.world["note"] = "looking..."
         self.world_asked_at = time.monotonic()
         self.world_call("world_inspect")
+
+    def world_build(self, on: bool) -> None:
+        """Turn the rover's own looking on or off.
+
+        Sent on the status connection like the poll, so that pressing it while an
+        inspection is running does not wait for that inspection to finish. The
+        panel is not updated here: what it shows comes back from the rover, the
+        same way the tracking panel works, because this console is not the only
+        thing that can change it.
+        """
+        if self.watch is None:
+            self.world["error"] = "not connected"
+            return
+        self.watch.submit("world_building", {"on": on})
 
     def world_search(self, query: str) -> None:
         """Find me the thing I described.
@@ -186,7 +206,10 @@ class SessionWorld:
         self.world_outstanding = max(0, self.world_outstanding - 1)
         if not body.get("ok"):
             error = str(body.get("error") or "no answer")
-            if name in ("world_state_summary", "world_state_entities"):
+            if name == "world_building":
+                self.world_build_outstanding = False
+            if name in ("world_state_summary", "world_state_entities",
+                        "world_building"):
                 # The first ask is also how this console finds out whether the
                 # rover has a world-state component at all. A daemon without one
                 # says so once and the button stays away, rather than the popup
@@ -203,6 +226,15 @@ class SessionWorld:
 
         self.world["available"] = True
         self.world["error"] = ""
+        if name == "world_building":
+            self.world_build_outstanding = False
+            self.world["building"] = bool(body.get("building"))
+            self.world["built_looks"] = body.get("looks") or 0
+            # The loop's own last complaint, which is the only place a rover that
+            # has quietly stopped recording would ever say so.
+            if body.get("error"):
+                self.world["error"] = str(body["error"])
+            return
         if name == "world_state_summary":
             self.world_payload["summary"] = body.get("summary") or {}
             self.world_payload["inferences"] = body.get("inferences") or []

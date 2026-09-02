@@ -187,6 +187,14 @@ def main() -> int | str:
     # The gimbal angles are a model. Put the hardware where that model starts.
     rover.centre_gimbal()
 
+    # And the rover starts recording what it sees. Here rather than in Rover's
+    # constructor: building the world state is something a *daemon* does, and a
+    # bench script that makes a Rover to read the battery should not quietly begin
+    # opening a database and taking pictures. The navigator is attached below and
+    # the loop reads it through `getattr`, so starting first costs nothing but a
+    # look or two without a pose, which are refused rather than stored.
+    rover.start_world_building()
+
     if args.ros_nav:
         try:
             from ros_navigator import RosNavigator

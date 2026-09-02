@@ -23,6 +23,7 @@ from test_drive_web import (
     test_stopping_an_unwatched_rover,
     test_finding_a_thing_from_the_console,
     test_the_audio_socket, test_the_page_draws_every_pane_its_tabs_offer,
+    test_the_switch_for_building_the_world_state,
     test_the_world_state_popup,
     test_the_world_urls, test_tracking_while_the_rover_drives,
     test_the_network_panel,
@@ -51,6 +52,7 @@ def main() -> int:
     test_tracking_while_the_rover_drives()
     test_finding_a_thing_from_the_console()
     test_the_page_draws_every_pane_its_tabs_offer()
+    test_the_switch_for_building_the_world_state()
     test_the_world_state_popup()
     test_the_world_urls()
 

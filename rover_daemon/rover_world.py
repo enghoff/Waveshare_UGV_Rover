@@ -20,6 +20,7 @@ import base64
 import math
 import os
 import sys
+import threading
 import time
 from typing import Any
 
@@ -61,6 +62,27 @@ CAMERA_RETRY_S = 0.5
 ENV_FAKE = "UGV_COSMOS_FAKE"
 
 
+#: The fastest the rover will ever look around by itself. A look is a fifth of a
+#: second of GPU and it is not the cost that sets this -- it is that the resolver
+#: reads the whole pending pool on every look, so a rover that records faster than
+#: it can place things gets slower at placing them.
+LOOK_EVERY_S = 15.0
+#: What counts as somewhere new: the same distance the geometry calls a baseline,
+#: because a look from here can pair with a look from there and one any closer
+#: cannot. **Recording from a place already looked from is not free.** It cannot be
+#: triangulated against the looks already there, and it enlarges the pool every
+#: later look has to scan.
+MOVED_ENOUGH_M = 0.4
+#: And what counts as a new direction, for a rover that turned on the spot without
+#: going anywhere. The camera is then pointed at a different part of the room,
+#: which is worth recording even though no new baseline came of it.
+TURNED_ENOUGH_DEG = 25.0
+#: A rover that has not moved at all still looks this often, so that a parked
+#: rover in a room that changes notices, and so that "nothing is happening" is
+#: distinguishable from "it stopped working".
+LOOK_ANYWAY_S = 300.0
+
+
 class RoverWorld:
     """Semantic world state, as calls on the daemon's existing protocol.
 
@@ -68,6 +90,115 @@ class RoverWorld:
     already holds several connections to this daemon and the alternative was
     another LAN port to secure, discover and keep alive for four control calls.
     """
+
+    # --- building it without being asked --------------------------------------
+
+    def start_world_building(self) -> None:
+        """Look around on a schedule, from the moment the daemon starts.
+
+        **On by default**, because a world state that only records when somebody
+        presses a button is a world state that is empty whenever it is wanted. The
+        rover drives across a building and learns nothing on the way unless
+        something asks it to look, and nothing did.
+
+        Its own thread, and it only ever makes the same call the console's button
+        makes. Nothing here reaches into the store or the resolver directly, so a
+        fault in this loop cannot corrupt anything -- at worst it stops looking.
+        """
+        self._world_build = True
+        self._world_build_stop = threading.Event()
+        self._world_build_at = 0.0
+        self._world_build_from = None
+        self._world_build_looks = 0
+        self._world_build_error = ""
+        thread = threading.Thread(target=self._world_building_loop,
+                                  name="world-building", daemon=True)
+        self._world_build_thread = thread
+        thread.start()
+
+    def world_building(self) -> bool:
+        return bool(getattr(self, "_world_build", False))
+
+    def _world_worth_looking(self, now: float) -> bool:
+        """Whether a look from where the rover stands now would tell it anything.
+
+        A look is worth taking when the rover is somewhere it has not looked from,
+        or pointing somewhere it has not pointed, or when enough time has passed
+        that the room may simply have changed. Standing still and looking the same
+        way over and over records observations that can never be triangulated with
+        the ones already there, and every one of them slows the next look down.
+        """
+        since = now - self._world_build_at
+        if since < LOOK_EVERY_S:
+            return False
+        if since >= LOOK_ANYWAY_S:
+            return True
+        before = self._world_build_from
+        if before is None:
+            return True
+        pose = self._world_pose()
+        if pose is None:
+            return False
+        moved = math.hypot(pose["x_m"] - before["x_m"],
+                           pose["y_m"] - before["y_m"])
+        turned = abs((pose["heading_deg"] - before["heading_deg"] + 180.0)
+                     % 360.0 - 180.0)
+        return moved >= MOVED_ENOUGH_M or turned >= TURNED_ENOUGH_DEG
+
+    def _world_building_loop(self) -> None:
+        """Never raises, and never looks while the wheels are turning.
+
+        A look taken mid-drive carries the pose it was given when the shutter
+        opened and a picture blurred by the move, and a bearing is only as good as
+        the pose behind it -- so the whole point of the measurement is lost. The
+        rover is stopped between one `drive` call and the next, which is when this
+        gets its chance.
+        """
+        while not self._world_build_stop.wait(1.0):
+            try:
+                if not self._world_build:
+                    continue
+                navigator = getattr(self, "nav", None)
+                if navigator is not None and navigator.driving:
+                    continue
+                now = time.monotonic()
+                if not self._world_worth_looking(now):
+                    continue
+                if self._world_ready():
+                    # No component, or no database. Wait out the long gap rather
+                    # than asking again every second for the life of the daemon.
+                    self._world_build_at = now
+                    continue
+                self._world_build_at = now
+                answer = self._tool_world_inspect({})
+                self._world_build_from = self._world_pose()
+                if answer.get("ok"):
+                    self._world_build_looks += 1
+                    self._world_build_error = ""
+                else:
+                    self._world_build_error = str(answer.get("error") or "")
+            except Exception as error:              # never past here: it is a loop
+                self._world_build_error = f"{type(error).__name__}: {error}"
+
+    def _tool_world_building(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Read or set whether the rover builds its world state. A control call.
+
+        Control rather than a model tool for the reason the rest of the world
+        state is: a model that could switch off the rover's own record of the room
+        could quietly stop it learning, and nobody would see a failure. See
+        "Authority boundaries" in docs/task-semantic-world-state.md.
+        """
+        if "on" in arguments and arguments["on"] is not None:
+            self._world_build = bool(arguments["on"])
+            if self._world_build:
+                # Look now rather than in fifteen seconds: somebody has just
+                # pressed a button and an empty panel is what they are watching.
+                self._world_build_at = 0.0
+                self._world_build_from = None
+        return {"ok": True, "building": self.world_building(),
+                "looks": getattr(self, "_world_build_looks", 0),
+                "every_s": LOOK_EVERY_S,
+                "error": getattr(self, "_world_build_error", "")}
 
     def _world_ready(self) -> str:
         """Empty if the world state can be used, otherwise why not, in a sentence."""
@@ -199,6 +330,9 @@ class RoverWorld:
                             else world_state.describe_backend(inspector.reasoner)),
                 "language_model": world_state.describe_backend(inspector.reasoner),
                 "busy": inspector.busy,
+                "building": self.world_building(),
+                "built_looks": getattr(self, "_world_build_looks", 0),
+                "building_error": getattr(self, "_world_build_error", ""),
                 "camera_fov_deg": self.camera_fov_deg,
                 "pose": self._world_pose()}
 
@@ -351,6 +485,16 @@ class RoverWorld:
         return result
 
     def close_world(self) -> None:
+        # The loop first, and joined, so that nothing is part-way through an
+        # inspection when the store underneath it closes.
+        self._world_build = False
+        stop = getattr(self, "_world_build_stop", None)
+        if stop is not None:
+            stop.set()
+        thread = getattr(self, "_world_build_thread", None)
+        if thread is not None:
+            thread.join(timeout=10.0)
+            self._world_build_thread = None
         store = getattr(self, "_world_store_cache", None)
         if store is not None:
             store.close()

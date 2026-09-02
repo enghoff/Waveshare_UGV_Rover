@@ -465,6 +465,16 @@
       <button data-track="stop_tracking">stop</button>
       <span id="tracking" class="mono">-</span>
     </div>
+    <!-- The rover records what it sees on its own; this only stops it. Kept
+         beside face tracking because they are the two things on this page that go
+         on happening after the person who started them has looked away. -->
+    <h2 style="margin-top:14px">world state</h2>
+    <div class="row">
+      <button data-world-build="on">on</button>
+      <button data-world-build="off">off</button>
+      <span id="worldBuilding" class="mono">-</span>
+    </div>
+    <p id="worldBuildNote" class="hint"></p>
     <h2 style="margin-top:14px">headlights</h2>
     <div class="row">
       <button data-light="on">on</button>
@@ -1103,6 +1113,7 @@ const wHue = (id) => {
 };
 
 function drawWorld(w) {
+  drawWorldBuilding(w);
   $("worldBack").hidden = !w.open;
   $("world").classList.toggle("on", w.open);
   $("worldCounts").textContent =
@@ -1152,6 +1163,39 @@ function wPlace(entity) {
                             + `apart crossing at ${Math.round(place.parallax_deg)}°`
                           : "");
   return line;
+}
+
+// The switch below face tracking, which is on whether or not the popup is open.
+// What it shows is what the rover last said, never what this console last asked
+// for: the voice session, another console or a script can turn it off, and a
+// panel showing its own past would be the one place a rover that had quietly
+// stopped recording still looked busy.
+function drawWorldBuilding(w) {
+  const state = $("worldBuilding"), note = $("worldBuildNote");
+  if (w.available === false) {
+    state.textContent = "not on this rover";
+    note.textContent = "";
+    return;
+  }
+  if (w.building === null || w.building === undefined) {
+    state.textContent = "-";
+    note.textContent = "";
+    return;
+  }
+  state.textContent = w.building
+      ? `building — ${w.built_looks} look${w.built_looks === 1 ? "" : "s"}`
+      : "off";
+  // Why a parked rover's count barely moves, said once here rather than left to
+  // look like a fault. A look from a place already looked from cannot be crossed
+  // with the looks already there, so the rover waits until it is somewhere new.
+  note.textContent = w.building
+      ? "looks around when it has moved somewhere new, and every few minutes "
+        + "even when it has not"
+      : "the rover is not recording what it sees";
+  for (const button of document.querySelectorAll("[data-world-build]")) {
+    button.classList.toggle("on",
+      (button.dataset.worldBuild === "on") === !!w.building);
+  }
 }
 
 function drawWorldBody() {
@@ -1792,6 +1836,10 @@ function wire() {
   }
   for (const button of document.querySelectorAll("[data-track]")) {
     button.onclick = () => post({do: "track", name: button.dataset.track});
+  }
+  for (const button of document.querySelectorAll("[data-world-build]")) {
+    button.onclick = () => post({do: "world", what: "build",
+                                 on: button.dataset.worldBuild === "on"});
   }
   for (const button of document.querySelectorAll("[data-light]")) {
     button.onclick = () => post({do: "lights",

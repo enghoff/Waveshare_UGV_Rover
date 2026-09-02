@@ -214,7 +214,8 @@ def test_schemas():
                # authority to write to it -- or to throw it away -- before that
                # question has an answer would be the wrong order. See
                # docs/task-semantic-world-state.md, "Authority boundaries".
-               "world_inspect", "world_map_session", "world_state_clear",
+               "world_building", "world_inspect", "world_map_session",
+               "world_state_clear",
                "world_state_entities", "world_state_entity", "world_state_frame",
                "world_state_observations", "world_state_search",
                "world_state_summary"]
@@ -2296,6 +2297,65 @@ def test_a_board_that_goes_quiet_gets_its_port_reopened():
         serial.Serial = real
 
 
+def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
+    """When building the world state by itself, what is worth a look.
+
+    Not a timer on its own. Observations taken from a place the rover has already
+    looked from cannot be triangulated against the ones already there -- they need
+    a baseline and there is none -- and every one of them enlarges the pool the
+    resolver reads on every later look. So a parked rover recording every fifteen
+    seconds gets steadily slower at placing things and no better at it.
+    """
+    import rover_world
+
+    class Standing:
+        """Enough of a rover to answer the question, and nothing else."""
+
+        def __init__(self, pose):
+            self._world_build_at = 0.0
+            self._world_build_from = None
+            self._pose = pose
+
+        def _world_pose(self):
+            return self._pose
+
+        worth = rover_world.RoverWorld._world_worth_looking
+
+    here = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 30.0}
+    rover = Standing(dict(here))
+    check("a rover that has never looked, looks", rover.worth(1000.0), True)
+
+    rover._world_build_from = dict(here)
+    rover._world_build_at = 1000.0
+    check("...and having just looked, does not look again",
+          rover.worth(1000.0 + rover_world.LOOK_EVERY_S - 1), False)
+    check("...nor a while later from the very same spot",
+          rover.worth(1000.0 + rover_world.LOOK_EVERY_S + 5), False)
+
+    later = 1000.0 + rover_world.LOOK_EVERY_S + 5
+    rover._pose = dict(here, x_m=here["x_m"] + rover_world.MOVED_ENOUGH_M + 0.05)
+    check("a step to somewhere new is worth a look", rover.worth(later), True)
+
+    rover._pose = dict(here,
+                       heading_deg=here["heading_deg"] + rover_world.TURNED_ENOUGH_DEG + 1)
+    check("...and so is turning to face somewhere new", rover.worth(later), True)
+
+    # The heading is an angle, so 359 degrees away is one degree away.
+    rover._pose = dict(here, heading_deg=here["heading_deg"] - 2.0 + 360.0)
+    check("...but two degrees the other side of north is not a new direction",
+          rover.worth(later), False)
+
+    rover._pose = dict(here)
+    check("a rover that has stood still for a long time looks anyway",
+          rover.worth(1000.0 + rover_world.LOOK_ANYWAY_S + 1), True)
+
+    # A pose the navigator will not give is a look that cannot be measured, and an
+    # observation without one is worth nothing to the geometry.
+    rover._pose = None
+    check("and with no pose to record, it does not look",
+          rover.worth(later), False)
+
+
 def main():
     for test in (test_levels, test_battery, test_reading_the_board,
                  test_schemas, test_lights, test_gimbal,
@@ -2327,6 +2387,7 @@ def main():
                  test_the_approach_to_a_face_never_turns_back,
                  test_the_camera_settles_ahead_instead_of_sweeping,
                  test_what_the_camera_does_with_nobody_in_view,
+                 test_the_rover_looks_when_there_is_something_new_to_see,
                  *ROS_NAV_TESTS):
         try:
             test()

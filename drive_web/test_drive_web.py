@@ -1481,6 +1481,65 @@ def test_finding_a_thing_from_the_console() -> None:
     check("...and is shown", session.world_state()["error"], "no perception sidecar")
 
 
+def test_the_switch_for_building_the_world_state() -> None:
+    """On by default on the rover, and this panel never guesses at it.
+
+    What it shows comes back from the rover rather than from what this console
+    last asked for, because the voice session, another console or a script can
+    turn it off -- and a panel showing its own past would leave a rover that had
+    quietly stopped recording still looking busy.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the world-building switch ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    sent = []
+    session.watch = type("Link", (), {
+        "submit": lambda _self, name, arguments=None: sent.append((name, arguments)),
+    })()
+
+    check("nothing is claimed before the rover has been asked",
+          session.world_state()["building"], None)
+
+    session.world_act({"what": "build", "on": False})
+    check("the switch is sent to the rover", sent[-1][0], "world_building")
+    check("...as what was asked for", sent[-1][1], {"on": False})
+    check("...and the panel still does not guess",
+          session.world_state()["building"], None)
+
+    session.world_handle("world_building",
+                         {"ok": True, "building": False, "looks": 7}, 0.0)
+    check("the panel shows what the rover said",
+          session.world_state()["building"], False)
+    check("...and how much it has recorded",
+          session.world_state()["built_looks"], 7)
+
+    session.world_handle("world_building",
+                         {"ok": True, "building": True, "looks": 8}, 0.0)
+    check("and again when it is turned back on",
+          session.world_state()["building"], True)
+
+    # The loop's own complaint is the only place a rover that has stopped
+    # recording would ever say so.
+    session.world_handle("world_building",
+                         {"ok": True, "building": True, "looks": 8,
+                          "error": "the perception sidecar is not running"}, 0.0)
+    check("a loop that is failing says why", session.world_state()["error"],
+          "the perception sidecar is not running")
+
+    # A rover with no world state at all stops being asked, rather than showing
+    # an error every ten seconds for the rest of the session.
+    session.world_handle("world_building",
+                         {"ok": False, "error": "no world_state component"}, 0.0)
+    check("a rover without it is marked absent",
+          session.world_state()["available"], False)
+    check("...and the poll is not left outstanding",
+          session.world_build_outstanding, False)
+
+
 def test_the_page_draws_every_pane_its_tabs_offer() -> None:
     """A tab whose pane is never unhidden is a tab that does nothing.
 

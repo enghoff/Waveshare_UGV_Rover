@@ -14,6 +14,7 @@ from console_model import (
     BATTERY_POLL_S, BATTERY_STALE_S, CLEAR_ARM_S,
     Channel, LIGHT_MAX, MAP_EXTENTS_M, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
+    WORLD_BUILD_POLL_S,
     SLOW_PICTURE_S,
     POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
     WIFI_SCAN_TIMEOUT_S, WORLD_TIMEOUT_S, rung, tap_to_point,
@@ -204,6 +205,8 @@ class Session(SessionShow, SessionWorld):
         self.light_level: int | None = None
         self.battery_outstanding = False
         self.battery_at = 0.0
+        self.world_build_outstanding = False
+        self.world_build_at = 0.0
         self.battery: dict[str, Any] = {"text": "-", "state": "", "note": ""}
 
         # None until the rover has been asked once. The network calls are not in
@@ -430,6 +433,16 @@ class Session(SessionShow, SessionWorld):
             self.track_outstanding = True
             self.track_at = now
             self.watch.submit("tracking_status")
+        # Whether the rover is building its world state, on the status connection
+        # rather than the world one: it reads a flag and touches neither the store
+        # nor the camera, so it must not queue behind an inspection that takes a
+        # minute. Stopped for good once a rover says it has no world state at all.
+        if (self.watch is not None and self.world.get("available") is not False
+                and not self.world_build_outstanding
+                and now - self.world_build_at > WORLD_BUILD_POLL_S):
+            self.world_build_outstanding = True
+            self.world_build_at = now
+            self.watch.submit("world_building")
         # The battery, on the status connection and at a thirtieth of its rate. Only
         # once the daemon has said it offers it, so a rover still running an older
         # daemon shows an empty panel rather than a red error every ten seconds.
