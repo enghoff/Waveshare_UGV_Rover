@@ -121,6 +121,15 @@ class Engine:
                 f"tied to the TensorRT version that built it, so rebuild with "
                 f"install_perception.sh --engines")
         self.context = self.engine.create_execution_context()
+        if self.context is None:
+            # TensorRT answers None rather than raising when it cannot find room
+            # for the activation arena, and the next line to touch it is a
+            # baffling AttributeError several frames away. On this board that is
+            # nearly always memory, so say so.
+            raise NoEngines(
+                f"no room to run {os.path.basename(path)}: TensorRT would not "
+                f"make an execution context for it. Something else on this board "
+                f"is holding the memory")
         error, self.stream = cudart.cudaStreamCreate()
         _ok(cudart, error, "cudaStreamCreate")
 

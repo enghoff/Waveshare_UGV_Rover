@@ -227,6 +227,12 @@ class _CpuModels:
         self._blank = numpy.zeros((1, 3, SIGLIP_SIZE, SIGLIP_SIZE),
                                   dtype=numpy.float32)
 
+    def release(self) -> None:
+        """Nothing to give back. Onnxruntime's graphs are host memory and the CPU
+        backend never has the memory problem this exists to solve; it is here
+        because the two backends are swapped at run time and a method on one and
+        not the other is a crash on whichever board has the wrong one."""
+
     def regions(self, blob):
         return self._fastsam.run(None, {"images": blob})[0]
 
@@ -285,13 +291,24 @@ class _GpuModels:
         # never loads the big one at all.
 
     def open(self) -> None:
-        """The three engines a look needs, once the vocabulary is out of the way."""
+        """The three engines a look needs, once the vocabulary is out of the way.
+
+        Idempotent, and called before every look rather than only at start-up,
+        because a search puts these down to make room for the text tower.
+        """
         from .engines import Engine
 
         if self._fastsam is None:
             self._fastsam = Engine(self._paths["fastsam"], self._directory)
             self._dino = Engine(self._paths["dino"], self._directory)
             self._vision = Engine(self._paths["vision"], self._directory)
+
+    def release(self) -> None:
+        """Give a look's engines back, for something that needs the room more."""
+        for engine in (self._fastsam, self._dino, self._vision):
+            if engine is not None:
+                engine.close()
+        self._fastsam = self._dino = self._vision = None
 
     def regions(self, blob):
         return self._fastsam.run({"images": blob})["output0"]
@@ -312,6 +329,13 @@ class _GpuModels:
         """
         from .engines import Engine
 
+        # A look's three engines come down first. They and the text tower do not
+        # both fit: measured on this rover with the language model resident,
+        # asking for the text tower on top of them got a null execution context
+        # back, which is TensorRT's way of saying it ran out of room. A search is
+        # something a person types, so paying a few seconds to open the look's
+        # engines again afterwards is the right way round.
+        self.release()
         engine = Engine(self._text, self._directory)
         try:
             return engine.run({"input_ids": ids})["pooler_output"]
@@ -524,6 +548,10 @@ class Perception:
         """
         with self._lock:
             self.load()
+            # Idempotent, and here rather than only in `load()` because a search
+            # puts a look's engines down to make room for the text tower. This is
+            # what picks them back up, and on the usual path it does nothing.
+            self._models.open()
             np, cv2 = self._np, self._cv2
             began = time.monotonic()
             image = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8),

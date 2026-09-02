@@ -900,13 +900,16 @@ def test_a_query_can_be_embedded_before_anything_has_been_looked_at() -> None:
 
 def test_both_backends_answer_the_same_four_questions() -> None:
     """They are swapped at run time, so a method on one and not the other is a
-    crash on whichever board has the wrong one."""
+    crash on whichever board has the wrong one. `release` is on the list because
+    the search path calls it on whichever backend is in use, and on the CPU it
+    has nothing to do."""
     from world_state.perceive import _CpuModels, _GpuModels
 
-    wanted = {"regions", "appearance", "image_vectors", "text_vectors"}
+    wanted = {"regions", "appearance", "image_vectors", "text_vectors",
+              "open", "release"}
     for backend in (_CpuModels, _GpuModels):
         have = {name for name in dir(backend) if not name.startswith("_")}
-        check(f"{backend.name} answers all four",
+        check(f"{backend.name} answers all six",
               wanted - have, set())
     check("the two name themselves differently",
           _CpuModels.name != _GpuModels.name, True)
