@@ -210,6 +210,12 @@ class Inspector:
         rover that has not yet driven far enough, which is a different thing
         from one that is broken.
         """
+        if getattr(look, "dark", False):
+            # Said first and on its own, because it is the one outcome that is
+            # about the camera rather than about the room, and the two read
+            # identically otherwise.
+            return ("the frame was too dark to see anything in -- nothing was "
+                    "measured, and this is not an empty room")
         parts = [f"{stored['stored']} of {look.found} regions kept"]
         if getattr(look, "blank", 0):
             parts.append(f"{look.blank} of them with no picture in it "

@@ -99,6 +99,10 @@ class Look:
     #: this is a sixth of what the region finder proposes, and a person reading
     #: "5 of 20 regions kept" deserves to know why.
     blank: int = 0
+    #: Whether the frame was too dark to look at, in which case nothing was
+    #: measured and the room is not therefore empty. Carried because those two
+    #: are the ones a person most needs told apart.
+    dark: bool = False
     timings: dict[str, Any] = field(default_factory=dict)
     took_s: float = 0.0
     duration_s: float = 0.0
@@ -232,6 +236,7 @@ class SidecarEyes(Eyes):
                     found=int(payload.get("found") or 0),
                     kept=int(payload.get("kept") or 0),
                     blank=int(payload.get("blank") or 0),
+                    dark=bool(payload.get("dark")),
                     timings=payload.get("timings") or {},
                     took_s=float(payload.get("took_s") or 0.0),
                     duration_s=took)

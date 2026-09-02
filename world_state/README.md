@@ -649,6 +649,51 @@ placement already made**: the guard stops a wrong entity being created and does
 not withdraw one that exists, so a store written before this arrived keeps its
 mistakes until it is cleared.
 
+### The driven run, and why it placed nothing
+
+The map was cleared and the rover was driven round a flat: seven looks in four
+minutes from seven places, 37 regions, **nothing placed at all.** That is the
+right answer, and none of it is the wall check, which refused exactly one pair of
+bearings out of six hundred. Three things, and the first is the one that matters.
+
+**Triangulation needs two looks that share an object *and* stand apart, and this
+rover has never once had both at the same time.** Of the 21 pairs of looks in the
+run, three had a usable baseline (0.4 to 3 m) and the pair that shared by far the
+most — 33 pairs of crops that could be one object — was taken from two places
+**eight centimetres apart**: the rover looked at the same hallway wall at the
+start and the end of its loop. Everything else is 4 to 6 m apart, through
+doorways, with nothing in common.
+
+The reason is the cadence rather than the code. A look is taken when the rover has
+stopped, has moved 0.4 m, and 15 s have passed — and 0.4 m is `MOVED_ENOUGH_M`,
+which is the *minimum* baseline the geometry can use. Driven in hops at a third of
+a metre a second, the fifteen seconds are what decide, and by the time they are up
+the rover is five metres on and in another room. The parked run has the same
+problem from the other end: 115 of its pairs shared something and almost all of
+them were taken from the same spot.
+
+**And the gimbal has never been panned. Not once, in any run.** Every observation
+the rover has ever stored has `observer_pan_deg` of 0. So a look is the hundred
+degrees in front of the chassis, and two stops a metre apart only share anything
+if the chassis happened to be pointing the same way. Panning is what would turn a
+stop into a survey; `_world_worth_looking` already counts a gimbal turn as a new
+direction, so the machinery is waiting for something to do it.
+
+**Two of the seven frames were 95% and 97% black.** The rover drove out of a lit
+hallway into an unlit room and inspected before the camera's automatic exposure
+caught up, and each of those looks yielded a single junk region. That is the
+white-out of the earlier drive from the other end, and the same trap: "1 of 6
+regions kept" is also what a working rover says about a bare room. A frame that
+dark is refused whole now and says which it was — see `DARK_FRACTION`, and note
+that there is deliberately no matching test at the bright end, because nothing in
+the stored frames is washed out enough to set one from.
+
+The rest of the run is the design working. Four crossings survived every gate,
+and they were refused because four rays from two viewpoints make a two-by-two
+grid of crossings, two of which conflict — the phantom, and from two viewpoints
+it is genuinely unknowable. A third look from a third place settles it, and the
+rover never took one.
+
 ### What is still wrong, and where it is not
 
 **Entities are still mixtures**, which is the fault a person notices first: a

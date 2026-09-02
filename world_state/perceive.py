@@ -121,6 +121,32 @@ CROP_PAD = 0.02
 MIN_CONTRAST = 12.0
 MAX_BLOWN = 0.6
 
+#: When the whole frame is too dark to be a picture of anything, and the two
+#: numbers that say so: a pixel below `DARK_AT` out of 255 is black rather than
+#: dim, and a frame with more than `DARK_FRACTION` of itself like that has
+#: nothing in it.
+#:
+#: **The same lesson as the white-out of 2026-09-02, from the other end.** A
+#: blank frame reads exactly like an empty room: "1 of 6 regions kept" and
+#: "nothing to place" are both things the rover says when it is working
+#: perfectly, so a whole drive was once recorded off white frames before anybody
+#: looked at one. On the driven run of 2026-09-02 two of seven frames came back
+#: 95% and 97% black, because the rover drove out of a lit hallway into an unlit
+#: room and inspected before the camera's automatic exposure had caught up. They
+#: yielded one region and two, both junk.
+#:
+#: Measured over all 52 frames the rover has stored: five are more than 80%
+#: black and hold seven regions between them, a median of one each, while the
+#: other 47 average nine. The gap in the middle is wide -- the next frame down is
+#: 57% black and keeps three regions -- so this refuses nothing worth having.
+#:
+#: There is deliberately no matching test at the bright end. Nothing in the
+#: stored frames is washed out enough to be useless (the worst is 43% at full
+#: white and it kept ten regions), so there is no measurement to set one from,
+#: and the per-crop `MAX_BLOWN` above already refuses the regions that are.
+DARK_AT = 20.0
+DARK_FRACTION = 0.8
+
 
 class Unavailable(RuntimeError):
     """The models are not installed, or the runtime cannot be imported.
@@ -473,6 +499,16 @@ class Perception:
             if image is None:
                 raise ValueError("that was not a picture this could decode")
 
+            # Before anything is asked of the models: is there a picture here at
+            # all? See DARK_FRACTION. A frame the camera has not managed to
+            # expose is not an empty room, and the two must not look alike.
+            if _too_dark(np, image):
+                return {"regions": [], "found": 0, "kept": 0, "blank": 0,
+                        "dark": True, "backend": self.backend,
+                        "timings": {"regions_ms": 0, "dino_ms": 0,
+                                    "siglip_ms": 0},
+                        "took_s": round(time.monotonic() - began, 2)}
+
             boxes, scores, region_s = self._regions(image)
             kept = [(box, score) for box, score in zip(boxes, scores)
                     if _worth_keeping(box)]
@@ -496,7 +532,7 @@ class Perception:
 
             if not cropped:
                 return {"regions": [], "found": len(boxes), "kept": len(kept),
-                        "blank": blank, "backend": self.backend,
+                        "blank": blank, "dark": False, "backend": self.backend,
                         "timings": {"regions_ms": round(region_s * 1000),
                                     "dino_ms": 0, "siglip_ms": 0},
                         "took_s": round(time.monotonic() - began, 2)}
@@ -519,6 +555,7 @@ class Perception:
                 "found": len(boxes),
                 "kept": len(kept),
                 "blank": blank,
+                "dark": False,
                 "backend": self.backend,
                 "timings": {"regions_ms": round(region_s * 1000),
                             "dino_ms": round(dino_s * 1000),
@@ -687,6 +724,17 @@ def _worth_keeping(box) -> bool:
     if not MIN_AREA <= width * height <= MAX_AREA:
         return False
     return max(width / height, height / width) <= MAX_ASPECT
+
+
+def _too_dark(np, image) -> bool:
+    """Whether this whole frame is too dark to be a picture of anything.
+
+    Cheap enough to run before the models rather than after: one mean over the
+    frame's own pixels, against a rule whose numbers are argued at
+    `DARK_FRACTION`.
+    """
+    grey = image.mean(axis=2) if image.ndim == 3 else image
+    return float((grey < DARK_AT).mean()) > DARK_FRACTION
 
 
 def _blank(np, patch) -> bool:

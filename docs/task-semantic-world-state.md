@@ -893,6 +893,39 @@ and the metric-agreement criterion can be settled without moving it.
 
 ---
 
+## The survey the geometry needs, and has never been given
+
+Measured on the driven run of 2026-09-02, and it is the largest single reason
+nothing gets placed. **Triangulation wants two looks that share an object and
+stand a little apart, and this rover has never had both at once.**
+
+- Driven round a flat, seven looks in four minutes: three of the 21 pairs of looks
+  had a usable baseline, and the pair sharing by far the most was taken from two
+  places eight centimetres apart. The rest were 4 to 6 m and two rooms apart, with
+  nothing in common. Nothing was placed.
+- Parked for 96 minutes, 34 looks: 115 pairs shared something and nearly all of
+  them were taken from the same spot, so there was nothing to cross.
+
+The cadence is what does it. A look is taken when the rover has stopped, moved
+`MOVED_ENOUGH_M` (0.4 m) and `LOOK_EVERY_S` (15 s) have passed -- and 0.4 m is the
+*minimum* baseline `locate` can use, not a good one. Driven at a third of a metre
+a second the fifteen seconds decide, and fifteen seconds is five metres.
+
+**And the gimbal has never been panned in any run.** Every observation ever stored
+has `observer_pan_deg` of 0, so a look is the hundred degrees in front of the
+chassis and two nearby stops share objects only by luck of heading.
+`_world_worth_looking` already treats a gimbal turn as a new direction; nothing
+turns it.
+
+What the geometry wants is stops roughly a metre apart with the gimbal swept at
+each -- which is a change to how the rover surveys rather than to how it resolves,
+and it belongs to whoever owns the rover's behaviour. Two things to settle before
+building it: the gimbal has one owner at a time and face tracking is the other
+claimant, and a look taken while the gimbal is still moving carries a pose that
+was right and an angle that was not.
+
+---
+
 ## The missing rule: a repeat look is not evidence
 
 This came out of the review of 2026-09-02 and is the largest thing this design

@@ -638,6 +638,44 @@ def test_a_region_that_is_an_edge_is_not_a_thing() -> None:
           _worth_keeping([0.5, 0.5, 0.5, 0.7]), False)
 
 
+def test_a_frame_too_dark_to_see_is_not_an_empty_room() -> None:
+    """**The other end of the white-out, and the same trap.**
+
+    On the driven run of 2026-09-02 two of seven frames came back 95% and 97%
+    black: the rover drove out of a lit hallway into an unlit room and inspected
+    before the camera's automatic exposure had caught up. Each yielded one junk
+    region, and the diagnostics said "1 of 6 regions kept" -- which is also what
+    a working rover says about a nearly bare room. Those two readings must not
+    look alike, so a frame with no picture in it is refused whole and says which
+    it was.
+    """
+    try:
+        import numpy
+    except ImportError as error:
+        SKIP.append(f"refusing a frame too dark to see ({error})")
+        return
+
+    from world_state.perceive import _too_dark
+
+    unlit = numpy.full((60, 80, 3), 6.0, dtype="float32")
+    check("an unlit room is not a picture", _too_dark(numpy, unlit), True)
+
+    # The frame that must keep working: a dim hallway with a lit end, which is
+    # 29% black on the rover and kept eleven regions.
+    hallway = numpy.full((60, 80, 3), 55.0, dtype="float32")
+    hallway[:, :24] = 8.0
+    check("...but a dim room with something lit in it is",
+          _too_dark(numpy, hallway), False)
+
+    # And the darkest frame the rover has kept anything from: 57% black, three
+    # regions. The rule has to sit clear of it, and the gap is wide -- the next
+    # frame up is 87% black and kept one.
+    dim = numpy.full((60, 80, 3), 90.0, dtype="float32")
+    dim[:, :46] = 7.0                    # 57% of it black
+    check("...and so is the darkest frame this rover has used",
+          _too_dark(numpy, dim), False)
+
+
 def test_a_crop_with_no_picture_in_it_is_not_a_region() -> None:
     """**Reproduces the entity the rover built out of blown-out windows.**
 
@@ -1707,6 +1745,7 @@ TESTS = (
     test_both_backends_answer_the_same_four_questions,
     test_the_installer_builds_exactly_the_engines_the_runtime_opens,
     test_a_region_that_is_an_edge_is_not_a_thing,
+    test_a_frame_too_dark_to_see_is_not_an_empty_room,
     test_a_crop_with_no_picture_in_it_is_not_a_region,
     test_a_cushion_inside_a_sofa_is_not_a_second_thing,
     test_an_inspection_through_the_encoders_keeps_what_it_measured,
