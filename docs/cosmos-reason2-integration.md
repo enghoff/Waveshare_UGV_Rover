@@ -450,7 +450,9 @@ object:23 = red toolbox
 task:42 = find red toolbox
 ```
 
-Semantic identity can outlive any single SLAM map.
+Semantic identity was meant to outlive any single SLAM map. It does not:
+everything the store holds is measured in the map's frame, so the console's
+map clear takes the world state with it -- see `world_state/README.md`.
 
 ### 4. Map-bound observations — SQLite
 

@@ -148,11 +148,17 @@ Only one direction is obvious.
 - **Clearing the semantic world does not touch the map.** It cannot: this process
   does not own the map. `world_state_clear` deletes entities, observations, the
   diagnostics log and the stored frames, and leaves SLAM and Nav2 alone.
-- **Clearing the SLAM map does not delete semantic memory.** Entities outlive the
-  maps they were seen under. What happens instead is that the store starts a new
-  map session, so every observation recorded against the old map stays recognisable
-  as belonging to a map that no longer exists. The console owns the map's clear
-  button, so it tells the store; nothing polls for it.
+- **Clearing the SLAM map clears the semantic world with it.** It did not always:
+  entities were meant to outlive the maps they were seen under, and a map clear
+  only started a new map session so that observations recorded against the old map
+  stayed recognisable as belonging to one that no longer exists. That is
+  defensible and it is not what a person wants. Everything the store holds is a
+  position or a bearing measured in the map's own frame, so what survived a clear
+  was a list of things with nowhere to be, and in practice the two were always
+  cleared together. There is one button now and it is the map's; it still starts a
+  new session afterwards, so a clear that half fails cannot leave old coordinates
+  comparable with new ones. The console owns that button, so it tells the store;
+  nothing polls for it.
 
 ## Where things are
 
