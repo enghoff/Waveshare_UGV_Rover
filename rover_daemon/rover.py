@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Any
 
+from aiming import REST_TILT_DEG
 from board_link import (
     BATTERY_CELLS, BATTERY_MAX_AGE_S, CMD_LIGHTS, CMD_PROBE, PROBE_WAIT_S,
     _battery_percent, _battery_state, _battery_summary,
@@ -42,7 +43,10 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld):
         self._lock = threading.RLock()
         self.level = 0
         self.pan = 0.0
-        self.tilt = 0.0
+        # A guess until `centre_gimbal()` makes it true, which the daemon does
+        # before it serves anything: the servos have no feedback, so where the
+        # camera points is only known by having put it there.
+        self.tilt = float(REST_TILT_DEG)
 
         self._camera = None
         self._camera_used = 0.0
@@ -234,8 +238,14 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld):
                                "SPD": 0, "ACC": 0})
 
     def centre_gimbal(self) -> bool:
+        """Back to rest: straight ahead, and REST_TILT_DEG above level.
+
+        Ten degrees up rather than level, for the reason argued where that
+        number is defined -- the camera is low, and level fills most of the
+        frame with the floor just in front of the wheels.
+        """
         with self._lock:
-            self.pan = self.tilt = 0.0
+            self.pan, self.tilt = 0.0, float(REST_TILT_DEG)
             return self._send_gimbal()
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

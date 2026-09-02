@@ -256,6 +256,37 @@ wins because it is not trying to name anything. The filter that takes 35 down to
 smaller than 0.4% (a highlight on a tile), or more than six times longer than
 they are wide.
 
+#### It segments parts as readily as objects, and that was most of the duplicates
+
+Measured 2026-09-02, on ten frames the rover had already stored. **Of the 114
+regions it embedded across them, 65 — 57% — were at least four fifths inside
+another region embedded from the same picture.** A sofa came back as a sofa and
+also as its arm, its back and two of its cushions; each fragment then earned its
+own bearing and became its own entity, which is a large part of where the
+duplicate furniture in the validation drives came from.
+
+The cause was in the suppression, not in FastSAM. Ordinary non-maximum
+suppression divides the overlap of two boxes by their *union*, which is right
+when the two are rival guesses at one object and wrong when one is a part of the
+other: a cushion inside a sofa scores about 0.15 that way, so no threshold
+anybody would set ever removes it. Nesting was structurally invisible.
+
+Neither existing knob reaches it. Raising the confidence to 0.7 does thin the
+fragments, from 57% to 24%, but takes a third of the room with them; tightening
+the union threshold to 0.3 reaches the same 24% and no lower, because that is
+where the measure itself gives out. Dividing by the **smaller** of the two boxes
+instead takes nesting to none at full yield — 95 regions where there were 114,
+every one of them a separate thing — and is the same strictness as before for
+two boxes of equal size. `FASTSAM_OVERLAP` is 0.8 and `_suppress` divides by the
+smaller box.
+
+Two things this does not fix. FastSAM proposes parts because it is a
+segment-everything model, so what remains after suppression can still be a part
+if the whole was never proposed; and the masks it returns are thrown away in
+favour of the bounding box, so two cushions side by side cannot be recognised as
+one surface. Both are arguments for the merge in Phase 5 rather than for another
+threshold here.
+
 ### The name could be derived rather than detected — and it was not worth having
 
 _Superseded on 2026-09-02. This section is kept because the reasoning below is

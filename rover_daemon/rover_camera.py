@@ -370,7 +370,10 @@ class RoverCamera:
         stopped = self.stop_tracking()
         if not self.centre_gimbal():
             return {"ok": False, "error": "the driver board did not answer"}
-        return {"ok": True, "pan": 0, "tilt": 0, "stopped_tracking": stopped}
+        # Read back rather than written down: rest is not level any more, and a
+        # second copy of that number here is a second place for it to be wrong.
+        return {"ok": True, "pan": round(self.pan), "tilt": round(self.tilt),
+                "stopped_tracking": stopped}
 
     def _tool_count_faces(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.device is None:

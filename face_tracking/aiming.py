@@ -329,6 +329,23 @@ TILT_SIGN = 1  # +1 puts a face above centre at a higher Y. Measured.
 PAN_LIMIT = 180
 TILT_LIMITS = (-30, 90)
 
+# Where the camera rests: straight ahead, and ten degrees above level rather than
+# on it. Not a calibration -- the aiming maths is the same at any tilt -- but a
+# choice about what the rover is pointed at when nothing has asked it to point
+# anywhere. The camera sits low on a rover that sits on the floor, so level puts
+# the bottom two thirds of every frame on the ground a metre in front of it. Ten
+# degrees is enough to spend that on the room instead, and small enough that
+# what was in the middle of the picture stays in it: the lens takes in 76
+# degrees vertically, so this moves the view by about one part in eight.
+#
+# The sweep is unaffected and stays at SCAN_TILT, which is 45: looking for a
+# face is a different job from resting, and it is argued where that number is.
+# What this changes is the picture anything else takes -- a `look`, a
+# count_faces, the world state's own inspections -- because all of them read
+# whatever frame the camera happens to be giving, and off the tracking loop
+# that is this one.
+REST_TILT_DEG = 10
+
 # Servo speed, and the reason the camera used to step from pose to pose.
 #
 # Both gimbal commands carry a speed, and the firmware hands it to the ST3215 in
@@ -721,7 +738,7 @@ class Gimbal:
 
     def __init__(self, gain=GAIN, frame_size=(1280, 720)):
         self.pan = 0.0
-        self.tilt = 0.0
+        self.tilt = REST_TILT_DEG
         self.gain = gain
         # The lens of the mode actually being captured, and where the middle of its
         # picture points. Both are fixed for the life of the loop, so they are
@@ -955,7 +972,8 @@ class Gimbal:
             self.speed_tilt = abs(self.tilt - was_tilt) / travel
 
     def centre(self, speed=PLACE_DEG_S):
-        self.pan = self.tilt = 0.0
+        """Back to rest: straight ahead, and REST_TILT_DEG above level."""
+        self.pan, self.tilt = 0.0, float(REST_TILT_DEG)
         self.speed_pan = self.speed_tilt = speed
 
     def command(self):

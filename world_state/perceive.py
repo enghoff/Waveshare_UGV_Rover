@@ -66,7 +66,15 @@ FASTSAM_SIZE = 512
 #: half were reflections on a tiled floor; at 0.4 it is 29, which is what the plan
 #: recorded and what the eye agrees with.
 FASTSAM_CONF = 0.4
-FASTSAM_IOU = 0.7
+#: How much two boxes may overlap before the lower-scoring one is dropped, as a
+#: fraction of the **smaller** box -- see `_suppress`, where the choice of
+#: denominator is argued and measured. For two boxes of the same size this is
+#: about as strict as the 0.7 against the union it replaces; the difference is
+#: entirely in what it does to a box sitting inside a bigger one. Anything from
+#: 0.9 down to 0.5 removes the nesting; lower than 0.8 starts costing regions
+#: that were not nested (95 at 0.8, 81 at 0.5, over the same ten frames), so
+#: this sits at the top of the range that works rather than in the middle of it.
+FASTSAM_OVERLAP = 0.8
 
 #: What DINOv2 and SigLIP2 are shown, from their own preprocessor configs.
 DINO_SIZE = 224
@@ -516,7 +524,7 @@ class Perception:
             return np.zeros((0, 4)), np.zeros(0), took
         cx, cy, w, h = rows[:, 0], rows[:, 1], rows[:, 2], rows[:, 3]
         boxes = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1)
-        keep = _suppress(np, boxes, scores, FASTSAM_IOU)
+        keep = _suppress(np, boxes, scores, FASTSAM_OVERLAP)
         boxes, scores = boxes[keep], scores[keep]
 
         height, width = image.shape[:2]
@@ -655,11 +663,25 @@ def _worth_keeping(box) -> bool:
 
 
 def _suppress(np, boxes, scores, threshold):
-    """Greedy non-maximum suppression, written out rather than imported.
+    """Greedy suppression, written out rather than imported.
 
     onnxruntime has an NMS operator and torchvision has a fast one, but this
     runs on a few dozen boxes once a look and the alternative is another
     dependency on a board that is deliberately short of them.
+
+    **Overlap is measured against the smaller of the two boxes, not their
+    union**, which is the one place this differs from ordinary NMS and the
+    reason it is written out at all. Union is the right denominator when the
+    boxes are rival guesses at the same object, and the wrong one when one box
+    is a *part* of the other: a seat cushion inside a sofa scores about 0.15
+    against the union, nowhere near any threshold anybody would set, so the
+    cushion and the sofa both survive and the rover records two things where
+    there is one. Measured on ten of the rover's own frames, 65 of the 114
+    regions it embedded -- 57% -- were at least four fifths inside another
+    region embedded from the same picture. Dividing by the smaller box instead
+    takes that to none, and the freed slots refill from further down the list,
+    so the count barely moves: 95 regions where there were 114, and all of them
+    separate things.
     """
     order = scores.argsort()[::-1]
     keep = []
@@ -678,8 +700,8 @@ def _suppress(np, boxes, scores, threshold):
                      * (boxes[best, 3] - boxes[best, 1]))
         area_rest = ((boxes[rest, 2] - boxes[rest, 0])
                      * (boxes[rest, 3] - boxes[rest, 1]))
-        union = area_best + area_rest - overlap
-        order = rest[overlap / np.maximum(union, 1e-9) <= threshold]
+        smaller = np.minimum(area_best, area_rest)
+        order = rest[overlap / np.maximum(smaller, 1e-9) <= threshold]
     return keep
 
 

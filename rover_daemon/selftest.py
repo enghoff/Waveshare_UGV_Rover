@@ -299,8 +299,11 @@ def test_gimbal():
     check("an omitted axis is left alone", rover.call("look_at", {"pan": 20}),
           {"ok": True, "pan": 20, "tilt": 30, "stopped_tracking": False})
     check("a non-numeric angle is refused", rover.call("look_at", {"pan": "left"})["ok"], False)
-    check("center_camera returns to zero", rover.call("center_camera", {}),
-          {"ok": True, "pan": 0, "tilt": 0, "stopped_tracking": False})
+    # Rest is not level: straight ahead, and REST_TILT_DEG above the horizontal,
+    # because a camera this low spends a level frame mostly on the floor.
+    from aiming import REST_TILT_DEG
+    check("center_camera returns to rest", rover.call("center_camera", {}),
+          {"ok": True, "pan": 0, "tilt": REST_TILT_DEG, "stopped_tracking": False})
 
 
 def test_what_the_camera_does_with_nobody_in_view():

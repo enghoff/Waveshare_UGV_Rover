@@ -81,7 +81,8 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "center_camera",
-            "description": "Point the camera straight ahead and level. Stops face tracking.",
+            "description": ("Point the camera straight ahead, at its resting "
+                            "height. Stops face tracking."),
             "parameters": {"type": "object", "properties": {}},
         },
     },

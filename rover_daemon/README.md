@@ -57,7 +57,7 @@ Core hardware/vision tools include:
 | `get_lights()` | return the last commanded light level |
 | `battery()` | board voltage plus estimated charge state |
 | `look_at(pan, tilt)` | point the gimbal; stops face tracking |
-| `center_camera()` | centre the gimbal; stops tracking |
+| `center_camera()` | back to rest — straight ahead, 10° above level; stops tracking |
 | `count_faces()` | take a snapshot and run local YuNet |
 | `start_tracking()` | start local YuNet + aiming loop |
 | `stop_tracking()` | stop tracking and centre |

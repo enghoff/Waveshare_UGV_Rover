@@ -315,8 +315,9 @@ class Rover:
         return {"ok": True, "pan": self.pan, "tilt": self.tilt}
 
     def center_camera(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        self.pan = self.tilt = 0
-        return {"ok": True, "pan": 0, "tilt": 0}
+        # Rest is ten degrees above level on the real rover; see REST_TILT_DEG.
+        self.pan, self.tilt = 0, 10
+        return {"ok": True, "pan": self.pan, "tilt": self.tilt}
 
     def count_faces(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "faces": len(FACES),
