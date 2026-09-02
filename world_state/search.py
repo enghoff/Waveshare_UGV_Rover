@@ -5,20 +5,31 @@ lands in the same space as every stored region vector and the comparison is a do
 product. A few hundred vectors is a few hundred multiplications, which is why
 there is no vector database anywhere in this design and should not be one.
 
-**The hard part is not the ranking, it is saying "nothing matches".** SigLIP's
-raw cosines are uncalibrated and sit in a narrow band whatever is in the picture
--- measured on this rover, region-against-phrase scores fall between about 0.08
-and 0.12 whether the phrase describes the region or not. An absolute floor drawn
-across that band would be arbitrary, and a rover that answers "the spray bottle
-is over there" when there is no spray bottle in the building is worse than one
-that says it cannot find it.
+**The hard part is not the ranking, it is saying "nothing matches".** A list of
+scores always has a top, so a rover that answers "the spray bottle is over there"
+when there is no spray bottle in the building is the failure to design against.
 
-So the test is relative and is about *separation*: the best match has to stand
-clear of the field. A query that describes something in the room produces one or
-two scores well above the rest; a query that describes nothing produces a flat
-list where the top score is indistinguishable from the median. That is a
-property of the shape of the answer rather than of its magnitude, and it does not
-need a calibrated threshold to read.
+This was first built on the argument that the raw cosines are uncalibrated and
+that the honest test is therefore relative: whether the best score stands clear
+of the field. **Measured on the rover, that argument is wrong.** Forty queries
+against its own stored regions -- twenty-four describing things it had seen, in
+the vocabulary's words and in other people's, and sixteen describing things that
+are not in the building -- separate almost perfectly by raw score and not at all
+by separation:
+
+    best score      present 0.065 to 0.140, absent 0.040 to 0.098
+                    a cut at 0.09 gets 4 of the 40 wrong
+    stands clear    present 1.58 to 4.45, absent 1.56 to 3.07
+                    the best cut any threshold could make gets 14 of the 40 wrong
+
+So the verdict is an absolute floor after all. The separation is still computed
+and still reported, because it is a useful thing to look at when a search
+surprises you, but it decides nothing.
+
+The floor is a measurement and not a constant of nature: it was taken with the
+full-precision TensorRT engines against thirty-one regions from a single room,
+and vectors from the CPU backend agree with those only to 0.86, which is why
+rows from another backend are counted out rather than scored.
 """
 from __future__ import annotations
 
@@ -26,14 +37,18 @@ import math
 import struct
 from typing import Any
 
-#: How far above the middle of the field the best score has to stand before it is
-#: called a match, as a multiple of the spread of the field itself. Two and a half
-#: standard deviations: a flat list of a few hundred scores throws up a top score
-#: about two above the median by chance alone, so this asks for meaningfully more
-#: than chance without demanding a separation that only a perfect query produces.
-STANDS_CLEAR = 2.5
-#: Below this many stored vectors the shape of the field means nothing and the
-#: question cannot be answered honestly at all.
+#: What a region has to score against the phrase before the rover will say it has
+#: found it. Measured, not chosen: see the module docstring for the forty queries
+#: it comes from. It sits above every one of the sixteen absent queries but one --
+#: "a laptop computer", which found a television and is a near miss rather than an
+#: invention -- and below all but three of the twenty-four present ones, those
+#: three being small things the rover had seen exactly once.
+#:
+#: It errs towards saying nothing was found, which is the direction to err in.
+MATCHES = 0.09
+#: Not a threshold. Below this many stored vectors the spread of the field is not
+#: worth reading, so the answer says how little has been seen rather than quoting
+#: a separation computed from four numbers.
 ENOUGH_TO_JUDGE = 12
 
 
@@ -87,7 +102,7 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
     spread = _spread(values, middle)
     best = values[0]
     stands = (best - middle) / spread if spread > 1e-9 else 0.0
-    confident = len(values) >= ENOUGH_TO_JUDGE and stands >= STANDS_CLEAR
+    confident = best >= MATCHES
 
     matches = []
     for value, row in scored[:limit]:
@@ -116,19 +131,25 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
         "median": round(middle, 4),
         "spread": round(spread, 4),
         "stands_clear": round(stands, 2),
-        "detail": _detail(confident, stands, len(values)),
+        "detail": _detail(confident, best, stands, len(values)),
     }
 
 
-def _detail(confident: bool, stands: float, count: int) -> str:
-    if count < ENOUGH_TO_JUDGE:
-        return (f"only {count} things have been seen, which is too few to say "
-                f"whether the best of them means anything")
+def _detail(confident: bool, best: float, stands: float, count: int) -> str:
+    where = (f"and it stands {stands:.1f} spreads above the middle of the field"
+             if count >= ENOUGH_TO_JUDGE else
+             f"out of only {count} things seen so far")
     if confident:
-        return (f"the best match stands {stands:.1f} spreads above the middle of "
-                f"the field, which is a real answer")
-    return (f"the best match stands only {stands:.1f} spreads above the middle of "
-            f"the field; nothing here matches that description")
+        return (f"the best match scores {best:.3f} against that description, "
+                f"above the {MATCHES:.2f} a real match takes, {where}")
+    if count < ENOUGH_TO_JUDGE:
+        return (f"the best of the {count} things seen so far scores only "
+                f"{best:.3f} against that description, below the {MATCHES:.2f} a "
+                f"real match takes -- though {count} is little enough that the "
+                f"rover may simply not have looked at it yet")
+    return (f"the best match scores only {best:.3f} against that description, "
+            f"below the {MATCHES:.2f} a real match takes; nothing here matches "
+            f"it, {where}")
 
 
 def _median(values: list[float]) -> float:

@@ -1437,39 +1437,79 @@ def _packed(*values):
 def test_a_query_that_matches_nothing_says_so() -> None:
     """The part that matters, and the part a ranking alone cannot do.
 
-    SigLIP's raw cosines sit in a narrow band whatever is in the picture, so a
-    list of scores always has a top. What separates a real answer from an
-    imaginary one is whether that top stands clear of the field.
+    A list of scores always has a top, so the question is whether that top means
+    anything. Measured on the rover it is the raw score that answers this and not
+    the separation, so a field of near misses is not a match however flat it is.
     """
     query = _packed(1.0, 0.0, 0.0)
-    flat = [{"id": n, "siglip_blob": _packed(0.30 + n * 0.001, 0.95, 0.1),
+    # Everything here scores about 0.05 against the query: the shape a room full
+    # of things that are not what was asked for produces.
+    near = [{"id": n, "siglip_blob": _packed(0.05 + n * 0.0002, 1.0, 0.0),
              "label": "a thing"} for n in range(40)]
-    answer = search.rank(query, flat)
-    check("a flat field is ranked", len(answer["matches"]), 10)
+    answer = search.rank(query, near)
+    check("a field of near misses is ranked", len(answer["matches"]), 10)
     check("...but not believed", answer["confident"], False)
     check("...and the reason is in words a person can read",
-          "nothing here matches that description" in answer["detail"], True)
+          "nothing here matches" in answer["detail"], True)
+    check("...which quotes the score and the bar it missed",
+          f"{search.MATCHES:.2f}" in answer["detail"], True)
 
-    standing = flat + [{"id": 99, "siglip_blob": _packed(1.0, 0.02, 0.0),
-                        "label": "a spray bottle"}]
-    answer = search.rank(query, standing)
-    check("a match that stands clear is believed", answer["confident"], True)
-    check("...and it is the right one", answer["matches"][0]["id"]
-          if "id" in answer["matches"][0] else
-          answer["matches"][0]["observation_id"], 99)
-    check("...with the numbers behind the verdict shown",
-          answer["stands_clear"] > search.STANDS_CLEAR, True)
+    real = near + [{"id": 99, "siglip_blob": _packed(1.0, 0.02, 0.0),
+                    "label": "a spray bottle"}]
+    answer = search.rank(query, real)
+    check("a match that scores well is believed", answer["confident"], True)
+    check("...and it is the right one", answer["matches"][0]["observation_id"], 99)
+    check("...with the score behind the verdict shown",
+          answer["best"] >= search.MATCHES, True)
+
+
+def test_a_flat_field_is_not_what_decides_a_match() -> None:
+    """The rule this replaced, kept as a test so it cannot come back by accident.
+
+    Two searches with the same separation and different scores must get different
+    answers, and two with the same score and different separations the same one.
+    Measured on the rover the separation told present from absent no better than
+    a coin, so it must not be able to overturn the score.
+    """
+    query = _packed(1.0, 0.0, 0.0)
+    crowd = [{"id": n, "siglip_blob": _packed(0.02, 1.0, n * 0.01),
+              "label": "a thing"} for n in range(40)]
+
+    # A real match with nothing else near it, and the same match in a room where
+    # several things score almost as well. The separation differs greatly.
+    alone = search.rank(query, crowd + [
+        {"id": 1, "siglip_blob": _packed(1.0, 0.05, 0.0), "label": "a bottle"}])
+    among = search.rank(query, crowd + [
+        {"id": 1, "siglip_blob": _packed(1.0, 0.05, 0.0), "label": "a bottle"},
+        {"id": 2, "siglip_blob": _packed(1.0, 0.07, 0.0), "label": "a bottle"},
+        {"id": 3, "siglip_blob": _packed(1.0, 0.09, 0.0), "label": "a bottle"}])
+    check("a thing seen once is found", alone["confident"], True)
+    check("...and seeing it three times does not unfind it",
+          among["confident"], True)
+    check("...even though the separation has collapsed",
+          among["stands_clear"] < alone["stands_clear"], True)
 
 
 def test_too_little_seen_is_not_a_match_either() -> None:
+    """Three stored regions cannot rule anything out, but they can still find
+    something. What changes below a dozen is what the answer says about itself,
+    not whether it is believed."""
     query = _packed(1.0, 0.0, 0.0)
-    few = [{"id": n, "siglip_blob": _packed(1.0, 0.0, 0.0), "label": "a chair"}
-           for n in range(3)]
-    answer = search.rank(query, few)
-    check("three things is not a field to stand out from",
-          answer["confident"], False)
-    check("...and it says that rather than blaming the query",
-          "too few" in answer["detail"], True)
+    wrong = [{"id": n, "siglip_blob": _packed(0.04, 1.0, 0.0), "label": "a chair"}
+             for n in range(3)]
+    answer = search.rank(query, wrong)
+    check("three things that are not it is not a match", answer["confident"], False)
+    check("...and it says the rover has barely looked, rather than "
+          "blaming the query", "not have looked at it yet" in answer["detail"],
+          True)
+
+    right = wrong + [{"id": 9, "siglip_blob": _packed(1.0, 0.0, 0.0),
+                      "label": "a bottle"}]
+    answer = search.rank(query, right)
+    check("but a real match among four is still a match",
+          answer["confident"], True)
+    check("...and does not pretend to a separation worth reading",
+          "spreads above" in answer["detail"], False)
 
 
 def test_vectors_from_the_other_backend_are_not_ranked() -> None:
@@ -1549,6 +1589,7 @@ TESTS = (
     test_a_placement_belongs_to_the_map_it_was_measured_in,
     test_an_inspection_settles_identity_as_well_as_measuring,
     test_a_query_that_matches_nothing_says_so,
+    test_a_flat_field_is_not_what_decides_a_match,
     test_too_little_seen_is_not_a_match_either,
     test_vectors_from_the_other_backend_are_not_ranked,
 )
