@@ -17,8 +17,14 @@ person in the room came out at (0.04, 0.63) and the armchair he was sitting in a
 (0.10, 0.55) -- ten centimetres apart, which is the whole claim of this programme
 working on hardware.
 
-It also found three faults that no selftest could have, and they are written up
-under Phase 5 below. Nine duplicate entities remain and are the open problem.
+It also found three faults that no selftest could have, written up under *The
+validation drive* below. Nine duplicate entities remain, and closing them needs
+one mechanism this design does not yet have at all -- see *What is left*.
+
+The store was cleared after the drive, so those twenty-three things are a record
+of what happened rather than what the rover is holding now. Nothing populates the
+world state on its own: it records when an inspection asks it to, and a thing
+gets a position only once the rover has driven between two looks.
 
 An inspection now measures rather than asks. It costs about a fifth of a second
 on the GPU, stores twelve regions with a bearing worked out from the rover's own
@@ -606,23 +612,42 @@ and a bad match can be explained from the popup without reading the database.
 On the real rover, all of them:
 
 - [ ] an identical-frame replay reuses existing identifiers rather than making a
-      second copy;
+      second copy — *not attempted since identity stopped coming from the model;
+      the old result was about Cosmos and says nothing about this*;
 - [ ] the same static object seen from materially different positions keeps one
-      identifier;
+      identifier — *half proven: one television from seven looks across three
+      places, but nine duplicates remain, so it holds for some things and fails
+      for others*;
 - [ ] **two visually near-identical chairs in different places keep different
-      identifiers**;
+      identifiers** — *the drive kept two armchairs as two, which is right, but
+      while duplicates exist this cannot be told apart from the duplicate bug:
+      keeping them separate is what a rover that cannot merge does anyway*;
 - [ ] metric positions for a repeatedly observed static object agree within a
-      documented tolerance;
-- [ ] a high appearance score cannot override clearly incompatible placement;
-- [ ] uncertain cases can stay `AMBIGUOUS` without creating or merging wrongly;
+      documented tolerance — *no tolerance documented and none measured; wants
+      the same object placed on two separate drives*;
+- [ ] a high appearance score cannot override clearly incompatible placement —
+      *holds in the selftests; never exercised on the rover, because no case
+      arose where appearance and placement disagreed*;
+- [ ] uncertain cases can stay `AMBIGUOUS` without creating or merging wrongly —
+      *the drive produced a handful of them and none was wrong, which is
+      encouraging rather than evidence*;
 - [ ] observations, embeddings, placement evidence and association reasons are
-      visible enough in the popup to explain a bad match;
-- [ ] world state survives a restart without losing identity or placement
-      evidence;
-- [ ] a semantic clear still does not touch SLAM or Nav2 state;
-- [ ] a map-session change does not silently compare stale coordinates;
+      visible enough in the popup to explain a bad match — *the daemon supplies
+      all of it and the page draws it, but **the page has never been rendered in
+      a browser**: there is none in this repository's test loop, and until the
+      drive there was nothing placed to draw*;
+- [x] world state survives a restart without losing identity or placement
+      evidence — *23 entities came through a daemon restart with every position,
+      uncertainty and all five exemplars each intact*;
+- [x] a semantic clear still does not touch SLAM or Nav2 state — *cleared, then
+      drove three legs on the same map with the pose still trusted*;
+- [x] a map-session change does not silently compare stale coordinates — *proven
+      twice and in both directions: observations from session 8 were excluded
+      from session 9's resolving, and when the map was cleared after the drive
+      its 23 placements were orphaned rather than compared against the new one*;
 - [ ] none of it destabilises lidar, SLAM, Nav2, STOP, camera ownership or the
-      Qwen voice path.
+      Qwen voice path — *the drive exercised lidar, SLAM, Nav2 and driving for
+      twenty minutes with no trouble; STOP and the voice path were not touched*.
 
 ### The validation drive, 2026-09-02
 
@@ -632,7 +657,7 @@ What it found:
 
 | | |
 |---|---|
-| the camera was blind | Auto-exposure had wound up for a dark room and never came back down, so every frame was white and the first attempt at the drive recorded regions that were not there — a spray bottle, a rug, a fan, in a room holding two armchairs. In "Aperture Priority Mode" this camera saturates regardless of the exposure time it reports; forcing manual at the shortest setting fixed it, 0 regions to 30. **The daemon never touches exposure, so nothing will correct this on its own.** A durable fix belongs in the camera setup and affects face tracking and the voice session too. |
+| the camera was blind | Auto-exposure had wound up for a dark room and never came back down, so every frame was white and the first attempt at the drive recorded regions that were not there — a spray bottle, a rug, a fan, in a room holding two armchairs. In "Aperture Priority Mode" this camera saturates regardless of the exposure time it reports; forcing manual at the shortest setting fixed it, 0 regions to 30, and it has not recurred. Judged a one-off and not being pursued. **The lesson is the one worth keeping: a blank frame reads exactly like an empty room.** "0 of 0 regions kept" and "nothing to place" are both things the rover says when it is working perfectly, so a whole drive was recorded off white frames before anyone looked at one. |
 | fixes landed on the lens | All six placements of the first attempt sat 0.13–0.59 m from the camera that saw them. Two rays pointing inward from two nearby places cross in the gap between them at a healthy parallax off a healthy baseline, so neither guard caught it — and nudging a bearing by 1.5° barely moves a point that close, so the phantom reported two centimetres of uncertainty and outranked every real thing in the room. `MIN_RANGE_M` is now 0.75. |
 | things were placed twice | Four televisions, two of them 8 cm apart, and three people where there was one. An entity is stored as a point but a television is a metre wide, so two looks from different sides of it centre on different parts of it and the match was refused; those looks then paired with each other into a second television, because the list of known things is read once before the pairing pass runs. The match tolerance now carries the thing's own width, and a thing created while pairing is offered to everything still waiting. On the same recording: 37 entities to 23, 22 duplicates to 9. |
 
@@ -643,8 +668,35 @@ finder split. Three people, metres apart, are one person who moved — and a per
 is in `MOVABLE`, so placement should not be identity for them at all. One of the
 three is a fix at 14° of parallax reporting ±1.42 m, which is barely a fix.
 
-None of that is a reason to keep the rover parked, and all of it is measurable
-from the recording already stored.
+### What is left
+
+**Nothing merges.** Every fix so far prevents duplicates at the moment of
+creation -- a minimum range, a width-aware match tolerance, offering each new
+thing to whatever is still waiting. Once two entities exist for one television,
+nothing in the system ever reconciles them, and that is a missing mechanism
+rather than a threshold to tune. Two windows 40 cm apart are one patio door the
+region finder cut in half; a rule that merges same-label entities closer together
+than `SAME_PLACE_M` would take them, and would take whatever the next drive
+throws up too.
+
+**A person should never have been placed.** `MOVABLE` currently only asks
+appearance to agree before creating a thing; it does not stop position from
+becoming that thing's identity. Three people metres apart are one person who
+walked between looks, and for something that moves, a crossing of two bearings
+taken minutes apart means nothing. Changing what movable means during pairing
+removes a third of the duplicates on its own.
+
+**The console has never been looked at.** The placement disc, the uncertainty
+circle and the association reasons are written and deployed and no one has seen
+them render. A viewer that silently fails is worth nothing, and it is the only
+way anyone will ever explain a bad match.
+
+Two smaller things fall out of the same recording: `'a floor'` and `'a wall'` are
+being tracked as entities when they are surfaces rather than things, and dropping
+them from the vocabulary removes two more duplicates and a good deal of noise.
+
+None of it is a reason to keep the rover parked, and all of it except the drive
+for the metric-agreement criterion can be settled without moving it.
 
 ---
 

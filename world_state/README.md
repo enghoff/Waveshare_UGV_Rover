@@ -405,10 +405,17 @@ Two things are deliberately not covered. The popup's rendering is JavaScript in 
 browser and this repository has no browser in its test loop; what is checked instead
 is the payload it draws from, the two URLs it fetches, and -- since a tab whose pane
 is never unhidden is a tab that does nothing -- that every element the page's script
-reaches for by name exists in its markup. And whether placement actually separates
-two identical chairs can only be measured on the rover, driving, which is what
-`docs/task-semantic-world-state.md` calls the validation drive and which has not
-happened.
+reaches for by name exists in its markup. **Nobody has yet opened the page and looked
+at it**, which is the gap that matters: until the validation drive there was nothing
+placed for it to draw.
+
+And whether placement really separates two identical chairs can only be measured on
+the rover, driving. That drive happened on 2026-09-02 and is written up in
+`docs/task-semantic-world-state.md`: twenty-three things placed from three positions,
+including a person ten centimetres from the armchair he was sitting in. It does not
+settle the identical-chairs question, though, because nine duplicate entities came
+with it -- and a rover that cannot merge keeps two chairs apart whether or not it can
+tell them apart.
 
 ## What was measured on the rover, 2026-09-02
 
