@@ -1369,6 +1369,46 @@ def test_the_world_state_calls_reach_the_store():
             check("a frame that does not exist is refused rather than raising",
                   rover.call("world_state_frame", {"frame_id": "nope"})["ok"], False)
 
+            # **A handler that returns a dict is not the same as a call that
+            # answers.** Every one of these replies travels as one line of JSON,
+            # and the console's detail pane was dead for months because one of
+            # them could not: `world_state_entity` handed back the entity row
+            # with its exemplars still in it as raw float32, the daemon failed to
+            # encode the reply and wrote nothing at all, and the page waited
+            # forever and said "nothing selected" for every thing anyone clicked.
+            # So the assertion is on the encoded answer, not on its `ok`.
+            store = rover._world_store()
+            placed_id = store.create_entity()
+            store.place(placed_id, {"x_m": 1.0, "y_m": 2.0, "uncertainty_m": 0.3,
+                                    "baseline_m": 3.0, "parallax_deg": 30.0},
+                        store.map_session())
+            store.add_exemplar(placed_id, b"\x00\x00\x80\x3f" * 8)
+            for name, arguments in (("world_state_summary", {}),
+                                    ("world_state_entities", {}),
+                                    ("world_state_entity", {"id": placed_id}),
+                                    ("world_state_observations", {})):
+                answer = rover.call(name, arguments)
+                check(f"{name} answers", answer["ok"], True)
+                try:
+                    json.dumps(answer)
+                    encoded = True
+                except TypeError as error:
+                    encoded = str(error)
+                check("...and the answer can go down the wire", encoded, True)
+
+            one = rover.call("world_state_entity", {"id": placed_id})
+            check("the entity comes back under the id that was asked for",
+                  one["entity"]["id"], placed_id)
+            check("...with its position decoded rather than as stored JSON",
+                  (one["entity"].get("placement") or {}).get("x_m"), 1.0)
+            check("...and no raw vector anywhere in it",
+                  "exemplars" in one["entity"], False)
+            check("...but a count of the ones it holds",
+                  one["entity"]["exemplar_count"], 1)
+            check("an entity that does not exist is refused in a sentence",
+                  rover.call("world_state_entity", {"id": "object:404"})["ok"],
+                  False)
+
             session = rover.call("world_map_session", {})
             check("clearing the map starts a new session", session["map_session"], 2)
             check("...and deletes nothing",

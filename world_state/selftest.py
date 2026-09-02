@@ -1315,6 +1315,42 @@ def test_the_evidence_survives_the_decision() -> None:
         store.close()
 
 
+def test_one_entity_can_be_sent_to_a_console_like_the_list_can() -> None:
+    """The console's detail pane said "nothing selected" for every entity.
+
+    Not a rendering fault and not a race. `store.entity` handed back the row as
+    SQLite produced it, exemplars and all, so the reply to `world_state_entity`
+    held a raw float32 BLOB; the daemon could not turn it into JSON, wrote no
+    reply at all, and the page waited forever for a payload that never came.
+    Clicking a thing therefore did nothing, in a popup whose whole purpose is
+    showing the looks behind a thing.
+
+    Two properties, and the second is what made the first easy to miss: the row
+    has to be serialisable, and it has to carry the same decoded placement the
+    list carries -- a reply that got through without one would have shown a
+    placed thing as having no position.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            entity_id = store.create_entity()
+            store.place(entity_id, {"x_m": 1.0, "y_m": 2.0, "uncertainty_m": 0.3,
+                                    "baseline_m": 3.0, "parallax_deg": 30.0}, 1)
+            store.add_exemplar(entity_id, a_vector(1.0, 0.0))
+            one = store.entity(entity_id)
+            check("the row carries no raw vector", "exemplars" in one, False)
+            check("...but says how many it has", one["exemplar_count"], 1)
+            check("...and its position, decoded rather than as stored JSON",
+                  (one["placement"] or {}).get("x_m"), 1.0)
+            import json as _json
+            _json.dumps(one)
+            check("...so it can be sent to a console at all", True, True)
+            check("an entity that is not there is still None rather than a crash",
+                  store.entity("object:404"), None)
+        finally:
+            store.close()
+
+
 def test_a_placement_belongs_to_the_map_it_was_measured_in() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
@@ -1542,6 +1578,7 @@ TESTS = (
     test_a_chair_and_a_ceiling_light_are_never_the_same_thing,
     test_the_right_place_is_not_enough_if_it_looks_wrong,
     test_the_evidence_survives_the_decision,
+    test_one_entity_can_be_sent_to_a_console_like_the_list_can,
     test_a_placement_belongs_to_the_map_it_was_measured_in,
     test_an_inspection_settles_identity_as_well_as_measuring,
     test_a_query_that_matches_nothing_says_so,

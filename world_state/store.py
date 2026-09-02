@@ -254,26 +254,24 @@ class WorldStore:
                   FROM entities e
                  ORDER BY e.last_seen_at DESC, e.id
             """).fetchall()
-        found = []
-        for row in rows:
-            entity = dict(row)
-            # The exemplars are raw float32 and this list is about to be JSON.
-            # How many there are is the useful part anyway.
-            blob = entity.pop("exemplars", None)
-            entity["exemplar_count"] = 0 if not blob else max(1, len(blob) // 1536)
-            text = entity.get("placement_json")
-            try:
-                entity["placement"] = json.loads(text) if text else None
-            except (ValueError, TypeError):
-                entity["placement"] = None
-            found.append(entity)
-        return found
+        return [_shown(dict(row)) for row in rows]
 
     def entity(self, entity_id: str) -> dict[str, Any] | None:
+        """One entity, shaped the same way the list shapes them.
+
+        **Through `_shown` for the reason the list is, and this is not a
+        tidy-up.** It used to hand back the row as it came out of SQLite, so
+        the reply to `world_state_entity` carried a raw float32 BLOB of
+        exemplars; the daemon could not serialise it, answered nothing at
+        all, and the console's detail pane said "nothing selected" for every
+        entity anyone clicked. It also left `placement_json` undecoded, so
+        even a reply that got through would have shown a placed thing as
+        having no position.
+        """
         with self._lock:
             row = self.db.execute("SELECT * FROM entities WHERE id = ?",
                                   (entity_id,)).fetchone()
-        return None if row is None else dict(row)
+        return None if row is None else _shown(dict(row))
 
     def observations(self, entity_id: str | None = None, limit: int = 200,
                      unmatched: bool = False) -> list[dict[str, Any]]:
@@ -848,6 +846,28 @@ def _plain_name(name: str) -> bool:
     reason for checking rather than for trusting the caller.
     """
     return bool(name) and all(ch.isalnum() or ch == "-" for ch in name)
+
+
+def _shown(entity: dict[str, Any]) -> dict[str, Any]:
+    """An entity row as something that can be sent to a console.
+
+    The counterpart of `_readable` for the other table, and it exists as one
+    function for the reason that one does: every caller here is about to put
+    the row on a socket as JSON, raw bytes cannot go, and a second copy of
+    this shaping is a second copy that can drift. It already had -- see
+    `entity`.
+
+    The exemplars are raw float32 and how many there are is the useful part
+    anyway; the placement is stored as JSON text and is wanted as an object.
+    """
+    blob = entity.pop("exemplars", None)
+    entity["exemplar_count"] = 0 if not blob else max(1, len(blob) // 1536)
+    text = entity.get("placement_json")
+    try:
+        entity["placement"] = json.loads(text) if text else None
+    except (ValueError, TypeError):
+        entity["placement"] = None
+    return entity
 
 
 def _readable(row: dict[str, Any], vectors: bool = False) -> dict[str, Any]:
