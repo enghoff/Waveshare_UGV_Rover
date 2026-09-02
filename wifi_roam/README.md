@@ -82,8 +82,10 @@ for one called `TheGreatViking` would have added a second profile for the same
 network rather than finding the one already there. Duplicates are deleted, since
 two answers to "how do I join this" is one too many.
 
-All four networks share one passphrase, which lives in `~/.ugv/wifi.key` on the
-rover, outside the deploy tree. It is only used for a profile that does not exist
+All four profiles are written with the one passphrase in `~/.ugv/wifi.key` on
+the rover, outside the deploy tree. Three of those networks are known to share
+it; `TheGreatViking 5G` is assumed to, being the same router as
+`TheGreatViking`, and no join has yet proved it. It is only used for a profile that does not exist
 yet -- an existing one keeps the key it has, because a working link is not worth
 risking to a typo -- and it is read from that file rather than taken as an
 argument, because an argument is readable in `ps` by every account on the machine.

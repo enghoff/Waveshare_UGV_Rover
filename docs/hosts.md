@@ -229,8 +229,12 @@ from the console, and that join costs the link: one radio means taking the
 current network down to bring another up, so the browser reconnects a few seconds
 later.
 
-All four share one passphrase, which lives in `~/.ugv/wifi.key` on the rover,
-outside the deploy tree. `wifi_roam/install-profiles.sh` owns this arrangement
+All four profiles carry the one passphrase in `~/.ugv/wifi.key` on the rover,
+outside the deploy tree. The three house SSIDs are known to share it. Whether
+`TheGreatViking 5G` takes the same key is untested, because the only way to find
+out is a join, and a join that fails leaves the rover on nothing -- the profile
+that autoconnects is the 2.4 GHz Viking, which is not audible where the rover
+now stands. `wifi_roam/install-profiles.sh` owns this arrangement
 and is re-run by every `--system` deploy of `wifi_roam`; it writes a missing
 profile as a keyfile rather than using `nmcli con add`, which would put the
 passphrase in `ps` for every account on the machine to read.
