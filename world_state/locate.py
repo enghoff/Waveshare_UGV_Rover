@@ -197,6 +197,41 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+#: The most an object's own width may add to the tolerance for pointing at it.
+#: A region spanning most of the frame is a wall or a floor, and letting that
+#: claim three metres of slack would let it swallow the room.
+MAX_EXTENT_M = 0.75
+
+
+def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How far off a bearing may be and still be pointing at this thing.
+
+    Three terms, and **the third is the one that was missing**: how wrong the
+    bearing is, how uncertain the thing's position is, and how big the thing
+    actually is. An entity is stored as a point, but a television is a metre
+    wide, and two looks from different sides of it centre on different parts of
+    it -- so a bearing that lands anywhere within the thing's own silhouette is
+    pointing at it, however precisely the bearing itself is known.
+
+    Measured on the rover on 2026-09-02: with only the first two terms, matching
+    a television at two and a half metres allowed 0.115 m, which is a tenth of
+    the television. Looks that should have joined it were refused, fell through
+    to the pairing pass, and made a *second* television eight centimetres from
+    the first -- four in the end, and three people where there was one.
+
+    The width comes from the observation's own `span_deg`, which is what the
+    region measured, so a doorway gets more room than a mug without anything
+    having to store a size.
+    """
+    range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
+                         float(point["y_m"]) - float(ray["y_m"]))
+    span_deg = float(ray.get("span_deg") or 0.0)
+    extent_m = min(MAX_EXTENT_M,
+                   range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0)))
+    return (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
+            + float(point.get("uncertainty_m", 0.0)) + extent_m)
+
+
 def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The most trustworthy fix obtainable from a set of bearings, or None.
 

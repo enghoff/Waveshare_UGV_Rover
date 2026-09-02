@@ -232,7 +232,7 @@ def resolve(store, *, map_session: int | None = None,
             continue
         decisions.append(decision)
 
-    decisions.extend(_pair_up(store, leftover, session))
+    decisions.extend(_pair_up(store, leftover, session, entities, taken_in))
 
     counted = {MATCH: 0, NEW: 0, AMBIGUOUS: 0}
     for decision in decisions:
@@ -276,7 +276,12 @@ def _against_known(store, observation, entities, session,
         if not compatible(entity.get("label", ""), label):
             continue
         placement = entity.get("placement") or {}
-        if not locate.agrees(placement, ray):
+        # Wide enough to cover the thing itself, not just the bearing: see
+        # `locate.match_tolerance`. Asking whether a bearing points at a
+        # television is a different question from asking whether two bearings
+        # converge, and the two want different tolerances.
+        if not locate.agrees(placement, ray,
+                             locate.match_tolerance(placement, ray)):
             continue
         surviving.append({
             "entity_id": entity["id"],
@@ -327,7 +332,7 @@ def _against_known(store, observation, entities, session,
                     candidates=surviving)
 
 
-def _pair_up(store, leftover, session) -> list[Decision]:
+def _pair_up(store, leftover, session, entities, taken_in) -> list[Decision]:
     """Make new things out of pairs of bearings that actually cross.
 
     Grouped by compatible label first, which is cheap, and then every pair inside
@@ -335,6 +340,13 @@ def _pair_up(store, leftover, session) -> list[Decision]:
     because a least-squares fit over rays whose error is dominated by one bad box
     is worse than the best honest pair -- and because the popup has to be able to
     name the two looks that placed the thing.
+
+    **A thing created here is a thing already placed for everything still
+    waiting.** The list of known things is otherwise read once, before any of this
+    runs, so without offering the remainder to each new thing as it appears, the
+    rays that did not fit into the first television pair up into a second one.
+    That is what the rover did on 2026-09-02: four televisions, two of them eight
+    centimetres apart, and three people where there was one.
     """
     decisions: list[Decision] = []
     used: set[int] = set()
@@ -349,6 +361,18 @@ def _pair_up(store, leftover, session) -> list[Decision]:
             decision, taken = placed
             used.update(taken)
             decisions.append(decision)
+            # Re-read rather than appended to, so the new thing arrives in the
+            # same shape as every other and carries the placement the store
+            # actually holds.
+            entities[:] = store.placed(map_session=session)
+            for waiting in leftover:
+                if waiting["id"] in used:
+                    continue
+                joined = _against_known(store, waiting, entities, session,
+                                        taken_in)
+                if joined is not None:
+                    decisions.append(joined)
+                    used.add(waiting["id"])
     return decisions
 
 
@@ -470,7 +494,14 @@ def _place_one(store, available, session):
     # construction.
     claimed = {one.get("inference_id")
                for one in (first_observation, second_observation)}
-    supporting = {one["id"] for one in support}
+    # **Not the same set that counted support.** Support asks whether rays
+    # converge, and must stay tight or a phantom collects agreement from half the
+    # room. This asks whether a ray points at the thing now placed, which is a
+    # question about the thing's silhouette -- so it uses the wider tolerance,
+    # and it is what stops the rays left over from making a second television.
+    supporting = {observation["id"] for ray, observation in rays
+                  if locate.agrees(placement, ray,
+                                   locate.match_tolerance(placement, ray))}
     for _ray, observation in rays:
         if observation["id"] in taken or observation["id"] not in supporting:
             continue

@@ -889,6 +889,38 @@ def test_a_fix_on_top_of_the_camera_is_not_a_thing_in_the_room() -> None:
               > locate.MIN_RANGE_M, True)
 
 
+def test_a_bearing_at_the_edge_of_a_television_still_points_at_it() -> None:
+    """An entity is stored as a point, but a television is a metre wide.
+
+    Two looks from different sides of one centre on different parts of it, so a
+    bearing that lands within the thing's own silhouette is pointing at it. With
+    only the bearing error and the placement error, matching a television at two
+    and a half metres allowed 0.115 m -- a tenth of the television -- and the
+    looks that should have joined it made a second one instead.
+    """
+    telly = {"x_m": 0.0, "y_m": 2.5, "uncertainty_m": 0.05}
+    # Standing at the origin, looking north. A twenty-degree region, which is
+    # what the rover actually recorded for its televisions.
+    edge = {"x_m": 0.0, "y_m": 0.0, "span_deg": 20.0,
+            "bearing_deg": math.degrees(math.atan2(2.5, 0.3))}
+    check("a bearing at the edge of it misses if it is treated as a point",
+          locate.agrees(telly, edge), False)
+    check("...but is pointing at it once its width counts",
+          locate.agrees(telly, edge, locate.match_tolerance(telly, edge)), True)
+
+    # And the width may not be used to swallow the room.
+    across = {"x_m": 0.0, "y_m": 0.0, "span_deg": 20.0,
+              "bearing_deg": math.degrees(math.atan2(2.5, 2.0))}
+    check("something two metres to the side is still not the television",
+          locate.agrees(telly, across, locate.match_tolerance(telly, across)),
+          False)
+    wall = {"x_m": 0.0, "y_m": 0.0, "span_deg": 90.0, "bearing_deg": 0.0}
+    check("and a region filling the frame is capped rather than boundless",
+          locate.match_tolerance(telly, wall)
+          <= 2.5 * math.tan(math.radians(locate.BEARING_SIGMA_DEG)) + 0.05
+          + locate.MAX_EXTENT_M + 1e-9, True)
+
+
 def test_the_best_pair_places_the_thing() -> None:
     looks = [_look(0.0, 0.0, 45.0), _look(0.2, 0.0, 44.0),
              _look(6.0, 0.0, 135.0)]
@@ -1314,6 +1346,48 @@ def test_two_identical_chairs_are_not_guessed_at_from_two_places() -> None:
             store.close()
 
 
+def test_one_television_seen_six_times_is_one_television() -> None:
+    """**The duplicate the validation drive of 2026-09-02 produced.**
+
+    Driven round three places and inspected at six headings from each, the rover
+    placed four televisions, two of them eight centimetres apart, and three people
+    where there was one. Two entities sharing a label is the failure this whole
+    design exists to prevent.
+
+    The cause is an ordering one. A new thing absorbs the rays that support it,
+    but never two rays from the same frame -- two regions of one frame are two
+    different things by construction -- so with six frames looking at one
+    television, the first entity takes a few and the rest are still waiting. They
+    then pair with each other into a second television, because the list of things
+    already placed was read once before any of this began and the thing created a
+    moment ago is not on it.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            # One television at (3, 3), seen from six places around it, each look
+            # its own inspection the way a survey makes them.
+            telly = (3.0, 3.0)
+            from_where = [(0.0, 0.0), (0.6, -0.4), (6.0, 0.0),
+                          (5.4, 0.5), (3.0, -3.0), (2.4, -2.6)]
+            for index, (x_m, y_m) in enumerate(from_where, start=1):
+                bearing = math.degrees(math.atan2(telly[1] - y_m, telly[0] - x_m))
+                observe(store, x_m, y_m, round(bearing, 2), inference=index,
+                        label="a television")
+            result = resolve.resolve(store)
+            check("six looks at one television make one television",
+                  result["created"], 1)
+            placed = store.placed()
+            check("...and only one thing is placed", len(placed), 1)
+            check("...where the television is",
+                  math.dist((placed[0]["placement"]["x_m"],
+                             placed[0]["placement"]["y_m"]), telly) < 0.2, True)
+            check("...with the later looks joining it rather than being ignored",
+                  placed[0]["observation_count"] >= 4, True)
+        finally:
+            store.close()
+
+
 def test_the_reason_survives_the_inspection_that_decided_it() -> None:
     """The question a person asks of an identity is why, not what.
 
@@ -1656,6 +1730,7 @@ TESTS = (
     test_uncertainty_grows_when_the_baseline_shrinks,
     test_two_identical_chairs_stay_two_things,
     test_a_fix_on_top_of_the_camera_is_not_a_thing_in_the_room,
+    test_a_bearing_at_the_edge_of_a_television_still_points_at_it,
     test_the_best_pair_places_the_thing,
     test_a_board_with_no_engines_falls_back_and_says_why,
     test_a_query_can_be_embedded_before_anything_has_been_looked_at,
@@ -1674,6 +1749,7 @@ TESTS = (
     test_two_looks_from_two_places_make_one_lasting_thing,
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
     test_two_identical_chairs_are_not_guessed_at_from_two_places,
+    test_one_television_seen_six_times_is_one_television,
     test_the_reason_survives_the_inspection_that_decided_it,
     test_a_third_look_joins_the_thing_it_points_at,
     test_appearance_cannot_overrule_where_a_thing_is,
