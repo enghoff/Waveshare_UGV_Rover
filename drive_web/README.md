@@ -72,6 +72,13 @@ keys. `run_drive_web.sh` checks the certificate at startup. The stable service
 address `192.168.1.80` is included so the URL the user trusts keeps working
 whichever network the rover is on and whatever DHCP does with its lease.
 
+That check waits for an address and for a synchronised clock before it will mint
+anything. Nothing keeps time on this board while it is unplugged, so it boots in
+1970 and the `@reboot` entry can reach `make_cert.sh` before NTP has answered; a
+certificate written in that window is valid from 1970 until 1972, which every
+browser reads as expired. Where the clock is still unset after 90 s an existing
+certificate is kept rather than replaced.
+
 The certificate can be regenerated manually:
 
 ```bash

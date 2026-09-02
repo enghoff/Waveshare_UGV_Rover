@@ -1,8 +1,8 @@
 #!/bin/sh
 # A certificate for the drive console, so that a browser will hand it a microphone.
 #
-#     ssh bpi-m4zero ~/ugv/drive_web/make_cert.sh
-#     ssh bpi-m4zero ~/ugv/drive_web/make_cert.sh --force     # start again
+#     ssh orin ~/ugv/drive_web/make_cert.sh
+#     ssh orin ~/ugv/drive_web/make_cert.sh --force     # start again
 #
 # **This exists because of one browser rule, not because anything here is
 # secret.** `getUserMedia` -- the call that opens the microphone -- is refused
@@ -36,6 +36,9 @@ DAYS_LEAF=820
 # How long to wait for the wifi to have an address before giving up on naming it.
 # The board is not on the network at all for the first half-minute after a boot.
 WAIT_ADDRESS=90
+# And how long to wait for the clock to be the real one. Same answer, because it
+# is the same cause: NTP cannot answer before the network is up either.
+WAIT_CLOCK=90
 FORCE=""
 [ "$1" = "--force" ] && FORCE=1
 
@@ -43,8 +46,8 @@ mkdir -p "$DIR"
 chmod 700 "$DIR"
 
 # Every name and address this board answers to. A certificate is checked against
-# what was *typed*, so the address matters as much as the name: `bpi-m4zero.local`
-# from a laptop and `192.168.1.47` from a phone are two different subjects and
+# what was *typed*, so the address matters as much as the name: `jetson-orin.local`
+# from a laptop and `192.168.1.80` from a phone are two different subjects and
 # both have to be in here. The board is wifi-only and its address can move, which
 # is the one thing that dates this file -- run it again when it does.
 host="$(hostname)"
@@ -80,6 +83,51 @@ done
 if [ -z "$(lan_addresses)" ] && [ -f "$DIR/console.crt" ]; then
     echo "no address after ${WAIT_ADDRESS}s; leaving $DIR/console.crt as it is"
     exit 0
+fi
+
+# **Wait for the real clock too**, for the same reason as the address and with a
+# worse failure. Nothing keeps time on this board while it is unplugged, so it
+# boots in 1970 and only jumps to the true time when NTP answers -- measured on
+# 2026-09-02, about 35 s after the kernel started, while the @reboot crontab
+# entry had already run this script at 32 s. A certificate minted in that window
+# is valid from 1970 until 1972, which every browser reads as long expired: the
+# padlock goes, and with it the microphone the certificate exists for. And it
+# does not heal at the next boot, because the freshness check below asks the same
+# wrong clock whether the certificate has expired and is told that it has not.
+# That is not a theory either -- it is what the console served on 2026-09-02.
+clock_ok() {
+    # What systemd knows. This is the only answer available on a first run, when
+    # there is no certificate of our own to measure the clock against.
+    if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+        return 0
+    fi
+    # Failing that: the certificate authority below was minted at a moment when
+    # the clock was right, so a clock reading earlier than that is wrong.
+    [ -f "$DIR/console-ca.crt" ] || return 1
+    ca_start="$(openssl x509 -in "$DIR/console-ca.crt" -noout -startdate 2>/dev/null \
+        | cut -d= -f2)"
+    [ -n "$ca_start" ] || return 1
+    ca_epoch="$(date -d "$ca_start" +%s 2>/dev/null)" || return 1
+    [ -n "$ca_epoch" ] && [ "$(date +%s)" -ge "$ca_epoch" ]
+}
+
+waited=0
+while ! clock_ok && [ "$waited" -lt "$WAIT_CLOCK" ]; do
+    sleep 3
+    waited=$((waited + 3))
+done
+[ "$waited" -gt 0 ] && echo "waited ${waited}s for the clock"
+
+if ! clock_ok; then
+    # Keep a certificate that was dated correctly rather than replace it with one
+    # dated 1970. With nothing to keep, mint one anyway and say so: a certificate
+    # a browser complains about is still a secure context, so the microphone works
+    # after a click-through, but this wants running again once the clock is right.
+    if [ -f "$DIR/console.crt" ]; then
+        echo "clock unset after ${WAIT_CLOCK}s (reads $(date -Is)); leaving $DIR/console.crt as it is"
+        exit 0
+    fi
+    echo "clock unset after ${WAIT_CLOCK}s (reads $(date -Is)); the certificate will be misdated -- run this again"
 fi
 
 names="DNS:${host},DNS:${host}.local,DNS:localhost"
