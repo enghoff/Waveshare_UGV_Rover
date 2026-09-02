@@ -8,22 +8,30 @@ the plan._
 
 ## Where this stands
 
-**Phases 0 to 3 are built, deployed and running on the rover. Phase 4's search
-is built and tested but not yet deployed, because the rover went off the network
-on 2026-09-01 and getting it back needs the power switch.**
+**All five phases are built, deployed and running on the rover.** One thing
+remains unproven on hardware and it is the same thing as yesterday: the rover has
+never driven between two inspections, so nothing has ever been *placed* outside
+the selftests.
 
 An inspection now measures rather than asks. It costs about a fifth of a second
 on the GPU, stores twelve regions with a bearing worked out from the rover's own
 pose and gimbal angle and two vectors apiece, and then decides which lasting
 thing each one belongs to from where it is. On the rover, standing still, that
-decision is correctly *nothing*: thirty-one observations sit in the pending pool
-with a direction and no home, and the popup says so, because a thing seen once
-from one place is a thing the rover cannot honestly claim to have located.
+decision is correctly *nothing*: the observations sit in the pending pool with a
+direction and no home, and the popup says so, because a thing seen once from one
+place is a thing the rover cannot honestly claim to have located.
+
+Describing a thing in words finds it. Forty queries against the rover's own
+stored regions, twenty-four for things it had seen and sixteen for things that
+are not in the building, come out right thirty-six times -- and the four it gets
+wrong are three misses and one near-hit ("a laptop computer" finding the
+television), which is the safe direction to err in. That measurement replaced the
+rule the search shipped with; see *Saying "nothing matches"* below.
 
 **What has not been demonstrated is the case where it can place something**,
 which needs the rover to drive between two looks. Everything up to that point is
-proved in the selftests, including the two-identical-chairs case, and nothing of
-it is proved on the hardware.
+proved in the selftests, including the two-identical-chairs case, and none of it
+is proved on the hardware.
 
 Built, running on the rover and worth keeping: a SQLite store that separates
 immutable observations from canonical entities, application-owned identifiers,
@@ -140,18 +148,61 @@ metres away, position uncertainty:
 |---|---|---|---|---|---|---|
 | 5° (Cosmos Reason 2) | — | 4.50 m | 2.24 m | 1.05 m | 0.72 m | 0.57 m |
 | 3° | — | 1.84 m | 1.09 m | 0.57 m | 0.41 m | 0.33 m |
-| 2° | — | 1.05 m | 0.66 m | 0.36 m | 0.26 m | 0.22 m |
-| 1° (a detector) | — | 0.46 m | 0.30 m | 0.17 m | 0.13 m | 0.11 m |
+| **1.5° (measured, 2026-09-02)** | — | **0.75 m** | **0.47 m** | **0.26 m** | **0.19 m** | **0.15 m** |
+| 1° (a detector at its best) | — | 0.46 m | 0.30 m | 0.17 m | 0.13 m | 0.11 m |
 
-Read across the top row: with the VLM's boxes the rover must drive three to four
-metres between looks to place a thing within a metre. Read down the last column:
-with a detector's boxes, a metre and a half of driving beats what the VLM
-managed at six. **The detector is not a speed optimisation, it is what makes the
-rover's driving budget reasonable.**
+Read across the top row: with the VLM's boxes the rover had to drive three to
+four metres between looks to place a thing within a metre. **It now needs about a
+metre and a half**, and this row is measured rather than projected -- see below.
 
 The dash at 1.0 m is not a rounding error. Below about 12° of parallax the
 intersection runs away down the line of sight and `locate.fix` refuses to answer,
 which is the correct response and not a failure.
+
+#### What a bearing is actually made of, measured 2026-09-02
+
+The 5° figure was taken when a language model was drawing the boxes. Re-measured
+now that FastSAM draws them, in three parts, because knowing which part dominates
+is what says whether it is worth trying to improve:
+
+| term | how it was measured | result |
+|---|---|---|
+| the box | eight inspections of an unchanging scene, regions matched between them by their DINO vectors | **0.13°** of scatter, worst 0.16 |
+| the rover's heading | the same inspections, over the two minutes of a gimbal sweep, standing still | **0.2°** |
+| the gimbal | the same objects at pan −30, −15, 0, +15, +30 | **0.7°** out to ±15, **3°** at −30 |
+
+`BEARING_SIGMA_DEG` is 1.5, the root-mean-square across that whole sweep.
+
+Two conclusions. **The box is no longer the problem** -- it fell by a factor of
+forty and is now the smallest of the three terms, so nothing is gained by a
+better region finder. **The gimbal is**, and it is not noise but the pan servo
+not arriving where it was told: the error at −30° is the same size and sign for
+two different objects on opposite sides of the frame, which rules out the lens,
+and the lens itself checks out to within 0.9° of its own calibration. There is
+nothing to correct it with, because the driver board's telemetry carries the
+inertial sensors and the wheel encoders but no gimbal feedback. **A rover that
+inspected only within ±15° of pan would do better than 1.5° says.**
+
+What none of this covers is *driving*. Every measurement above was taken standing
+still, so the heading term is two minutes of drift and not the error SLAM
+accumulates over a few metres -- which is exactly the case a fix is taken in.
+That still wants measuring, and it needs the rover to drive.
+
+#### Saying "nothing matches"
+
+The search shipped with a relative rule: SigLIP's raw cosines were held to be
+uncalibrated, so a real match was one that stood clear of the field rather than
+one that scored above a line. **Measured on the rover, that is wrong.** Forty
+queries against its own stored regions:
+
+| statistic | present queries | absent queries | best cut it can make |
+|---|---|---|---|
+| raw score | 0.065 – 0.140 | 0.040 – 0.098 | **4 of 40 wrong at 0.09** |
+| stands clear of the field | 1.58 – 4.45 | 1.56 – 3.07 | 14 of 40 wrong |
+
+The separation carries no signal at all -- its two distributions are the same
+shape. So `MATCHES = 0.09` decides and the separation is only reported, and the
+old rule is kept as a test so it cannot come back by accident.
 
 ### Decomposition wants no vocabulary at all
 
@@ -434,12 +485,13 @@ ray is refused outright, which is how the two-chair case comes out AMBIGUOUS
 until a third look arrives from somewhere else. With that third look it resolves
 into two things in two places.
 
-One number in `locate.py` is now conservative rather than accurate:
-`BEARING_SIGMA_DEG` is 5.0, measured from Cosmos's box jitter, and the boxes no
-longer come from Cosmos. FastSAM redraws the same box to within a quarter of a
-degree. Leaving it at 5° costs matches rather than causing wrong ones, so it is
-safe, but it is worth re-measuring against the pose and gimbal error that now
-dominate.
+**Re-measured on 2026-09-02 and now 1.5°**, and the working out is under
+*Bearing accuracy buys driving distance* above. Tightening it broke the
+two-identical-chairs test, and why is worth keeping: the resolver refuses a
+placement when a rival crossing sits further away than their combined uncertainty
+allows, so shrinking the uncertainty made it refuse cases it had been accepting.
+Better measurement must not cost the rover answers. Two placements within
+`SAME_PLACE_M` of each other now name the same thing whichever is right.
 
 ### Phase 3 as planned
 
@@ -479,26 +531,53 @@ answer. A full object-motion model is not wanted in this slice.
 
 **Done when** the acceptance criteria below pass on the rover.
 
-### Phase 4 — search and the console — **half built, not deployed**
+### Phase 4 — search and the console — **done, deployed 2026-09-02**
 
-The search half is written and tested: a phrase goes to the same text tower that
-named every region, so the comparison is a dot product over a few hundred stored
-vectors.
+Describe a thing in your own words and the rover finds it. The phrase goes
+through the same text tower that named every region, so it lands in the same
+space as the stored vectors and the comparison is a dot product over a few
+hundred of them -- there is no vector database in this design and should not be
+one. Measured end to end through the console: "a wooden chair" comes back
+confident with the chair on top, "a slice of pizza" comes back saying nothing
+here matches, and both answers arrive in about four seconds.
 
-The interesting part was the "nothing matches" threshold, and calibrating an
-absolute one turned out to be the wrong idea. SigLIP's raw cosines sit between
-about 0.08 and 0.12 whether the phrase describes the region or not, so any floor
-drawn across that band is arbitrary. The test is about **separation** instead:
-the best score has to stand a few spreads clear of the middle of the field. A
-query that describes something in the room throws up one or two scores well
-above the rest; a query that describes nothing produces a flat list. That reads
-off the shape of the answer rather than its magnitude and needs no calibration —
-though it has not yet been checked against real crops on the rover, which is the
-next thing to do.
+The four seconds are the model, not the search. On the GPU the text tower is
+loaded for the call and given back afterwards, and **getting that to fit was most
+of the work in this phase.** Three faults, all found by running it on the rover
+and none of them visible offline:
 
-**Still to do:** the console. Placement and its uncertainty, the two looks that
-produced it, the association reason and the search box are all available from
-the daemon and none of them is drawn yet.
+* The query path reached for the numeric library the loader installs *before*
+  calling the loader, so the first search after a reboot died with an
+  `AttributeError`. Every search on the rover did, because the sidecar loads its
+  models on the first look and a search is not one.
+* Loading the text tower asked the board for 1.1 GB while Python still held the
+  same 1.1 GB as the bytes it had just read. On 7.4 GB shared with the GPU and
+  three gigabytes of language model that is where it ran out, and the
+  out-of-memory killer took llama-server and then the sidecar. The engine file is
+  mapped now rather than read.
+* Even then the text tower and the three engines a look needs do not both fit.
+  TensorRT answers `None` instead of raising when it cannot make an execution
+  context, so the failure arrived several frames later as an attribute error on
+  nothing. A search now puts a look's engines down first and the next look picks
+  them up again, which costs a few seconds afterwards -- the right way round for
+  something a person types.
+
+A fourth was in the deployer rather than the rover: `rover_daemon` holds the
+world-state modules in memory, so deploying `world_state` alone put a new search
+rule on the rover and left the old one answering. The component restarts the
+daemon now.
+
+The console draws the rest of it. A placed thing is a disc on the map, as big as
+the fix that placed it is uncertain, so a thing the rover is sure about and a
+thing it has merely pointed at twice look different at a glance. Its position is
+on the row and in the detail; an entity with no position says it has been seen
+from one place and needs two. And the resolver's own sentence about why an
+observation belongs to a thing is kept on the observation rather than returned
+once and lost, because the question a person asks of an identity is not what it
+decided but why it thought that was the same chair.
+
+**Unproven on hardware:** the disc. Nothing has been placed on the rover, so
+nothing has ever drawn one. It needs the drive.
 
 ### Phase 4 as planned
 

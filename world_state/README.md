@@ -403,10 +403,47 @@ matters.
 
 Two things are deliberately not covered. The popup's rendering is JavaScript in a
 browser and this repository has no browser in its test loop; what is checked instead
-is the payload it draws from and the two URLs it fetches. And whether placement
-actually separates two identical chairs can only be measured on the rover, driving,
-which is what `docs/task-semantic-world-state.md` calls the validation drive and
-which has not happened.
+is the payload it draws from, the two URLs it fetches, and -- since a tab whose pane
+is never unhidden is a tab that does nothing -- that every element the page's script
+reaches for by name exists in its markup. And whether placement actually separates
+two identical chairs can only be measured on the rover, driving, which is what
+`docs/task-semantic-world-state.md` calls the validation drive and which has not
+happened.
+
+## What was measured on the rover, 2026-09-02
+
+A second day of measuring, after the perception models moved to the GPU. Three
+things came out of it and each changed a constant.
+
+**A bearing is good to 1.5 degrees, not 5.** Measured in three parts, because
+knowing which part dominates says whether it is worth improving: the box
+contributes 0.13 degrees of scatter over eight inspections of an unchanging
+scene, the rover's own heading 0.2 over two minutes standing still, and the
+gimbal the rest -- within 0.7 degrees out to plus or minus fifteen, and about
+three at minus thirty. That last is the pan servo not arriving where it was told,
+and it is the same size and sign for two objects on opposite sides of the frame,
+which rules out the lens; the lens checks out to within 0.9 degrees of its own
+calibration. There is nothing to correct it with, because the driver board's
+telemetry carries the inertial sensors and the wheel encoders but no gimbal
+feedback. **A rover that inspected only within fifteen degrees of centre would do
+better than 1.5 says.**
+
+**A search is decided by the raw score, not by how far it stands clear of the
+field.** The module shipped believing the opposite. Forty queries against the
+rover's own stored regions -- twenty-four for things it had seen, in the
+vocabulary's words and in other people's, and sixteen for things that are not in
+the building -- separate almost perfectly by raw score and not at all by
+separation. The best cut any threshold on the separation could make still gets
+fourteen of the forty wrong; a floor at 0.09 on the score gets four, and three of
+those are the safe way round.
+
+**Better geometry cost the resolver answers until it was told not to.** The rival
+test refuses a placement when a competing crossing sits further away than their
+combined uncertainty allows. Shrinking the bearing error shrank those
+uncertainties with it, so a pair of crossings thirty centimetres apart -- which
+had comfortably overlapped -- became a standoff and the resolver stopped placing
+chairs it had been placing. Two placements within half a metre now name the same
+thing whichever is right.
 
 ## What was measured on the rover
 
