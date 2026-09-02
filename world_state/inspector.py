@@ -203,7 +203,7 @@ class Inspector:
         """
         parts = [f"{stored['stored']} of {look.found} regions kept"]
         if getattr(look, "blank", 0):
-            parts.append(f"{look.blank} with no picture in them "
+            parts.append(f"{look.blank} of them with no picture in it "
                          f"(a blown-out window, a bare wall)")
         if stored["placed"] < stored["stored"]:
             missing = stored["stored"] - stored["placed"]
