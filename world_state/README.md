@@ -1,12 +1,15 @@
 # Semantic world state
 
-What the rover has been told is in the room, kept apart from where things are.
+What the rover has seen in the room, kept apart from where things are.
 
 SLAM Toolbox and Nav2 own geometry: the occupancy grid, the pose, the routes. This
-component owns the other kind of memory — that there is a grey sofa, that it was
-seen three times from three places, and where the rover was standing each time.
-Nothing in here drives, plans or refuses a move, and nothing in here is offered to
-a voice model.
+component owns the other kind of memory — that there is *something* at the far end
+of the room, that it was seen three times from three places, and where the rover
+was standing each time. Not what it is called: nothing measures that, and the two
+attempts to are written up below. What a person gets instead is the picture each
+look was read from, with the box on it, and a search box that takes a description
+and compares it against what the rover actually saw. Nothing in here drives, plans
+or refuses a move, and nothing in here is offered to a voice model.
 
 The plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md);
 the earlier design it was first built to, [`docs/cosmos-reason2-integration.md`](../docs/cosmos-reason2-integration.md),
