@@ -16,6 +16,23 @@ settings — is a supporting clause at most, and usually is not needed at all. S
 plainly when something is unproven, failed or was skipped. Two sentences beat two
 paragraphs. Finish with the next step if there is one.
 
+## The console shows state, not explanations
+
+The person at the console owns the rover and has used it before. **Do not add
+descriptive text to the web console**: no help line under a control, no sentence
+saying what a button does, no tooltip restating a label, no paragraph teaching how
+a panel works or why it was built that way. That material belongs in the
+component's README, where it is read once, and not on a screen where it is read
+every time.
+
+Status stays, and status is what changes with the rover: a reading, a count, what
+is happening now, what happened when a button was pressed, what failed and why.
+The test for a line is whether it could be written before the rover was switched
+on. If it could, it is documentation and does not go on the page. Where a status
+line already says the thing, prefer the short form -- `cleared -- 4 entities, 96
+observations` over a sentence explaining what clearing does -- and drop the clause
+that teaches rather than reports.
+
 ## Reproduce faults before fixing them
 
 **A fix for a fault nobody reproduced is a guess.** Replay the reproduction first,

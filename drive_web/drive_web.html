@@ -366,9 +366,9 @@
   <span class="grow"></span>
   <span id="watchers"></span>
   <span id="busy"></span>
-  <button id="world" title="what the rover has been told is in the room">world</button>
-  <button id="explore" title="map the rest of the place, or stop doing so">explore</button>
-  <button id="stop" title="space or escape">STOP</button>
+  <button id="world">world</button>
+  <button id="explore">explore</button>
+  <button id="stop">STOP</button>
 </header>
 
 <div id="notice" hidden></div>
@@ -393,14 +393,13 @@
     <div class="row">
       <label for="speed">speed</label>
       <input class="num mono" type="text" id="speed" placeholder="auto">
-      <span class="hint" style="margin:0">m/s, blank for auto</span>
+      <span class="hint" style="margin:0">m/s</span>
     </div>
     <div class="keys" style="margin-top:8px">
-      <div><kbd>space</kbd>stop, even while typing a distance</div>
-      <div><kbd>&uarr;</kbd>drive the distance above</div>
-      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd>turn by the angle above</div>
-      <div><kbd>+</kbd><kbd>&minus;</kbd>the map closer or wider</div>
-      <div>click the map to drive there, again to go somewhere else</div>
+      <div><kbd>space</kbd>stop</div>
+      <div><kbd>&uarr;</kbd>drive</div>
+      <div><kbd>&larr;</kbd><kbd>&rarr;</kbd>turn</div>
+      <div><kbd>+</kbd><kbd>&minus;</kbd>zoom</div>
     </div>
   </section>
 
@@ -418,7 +417,7 @@
 
 <div class="stack hero">
   <section id="mapCard">
-    <h2>map &mdash; click to drive there, again to change your mind</h2>
+    <h2>map</h2>
     <div id="mapFrame">
       <div class="shot" id="mapShot">
         <img id="mapImg" alt="the rover's map" hidden>
@@ -437,7 +436,7 @@
       <label class="check"><input type="checkbox" id="roverUp"> rover up</label>
       <button id="refreshMap">refresh</button>
       <button id="describe">describe surroundings</button>
-      <button id="clearMap" title="throws away the map and everything the rover has recorded about what is in the room">clear map</button>
+      <button id="clearMap">clear map</button>
     </div>
   </section>
 </div>
@@ -471,9 +470,6 @@
         <input type="password" id="voiceToken" size="24" placeholder="from ~/.ugv/console.token">
         <button id="voiceTokenSave">remember</button>
       </div>
-      <p class="hint">The microphone is the one control on this page with a
-        password on it, because behind it is an account with a free tier and
-        nothing to fall back on. Driving stays as open as it has always been.</p>
     </details>
 
     <h2 style="margin-top:14px">face tracking</h2>
@@ -527,7 +523,7 @@
       <strong>world state</strong>
       <span id="worldCounts" class="mono"></span>
       <span class="grow"></span>
-      <button id="worldInspect" title="take a picture and ask the model about it">inspect world</button>
+      <button id="worldInspect">inspect world</button>
       <button id="worldRefresh">refresh</button>
       <button id="worldClose">close</button>
     </div>
@@ -550,7 +546,7 @@
                twice look different at a glance, which is the whole question this
                experiment is asking. -->
           <div id="wMapWrap" hidden>
-            <img id="wMapImg" alt="the map, with what has been seen from where">
+            <img id="wMapImg" alt="the map">
             <svg id="wRays" preserveAspectRatio="none"></svg>
           </div>
           <p class="hint" id="wMapNote"></p>
@@ -828,9 +824,7 @@ const voice = {
       // folded away is a message about something invisible.
       $("voiceTokenBox").open = true;
       $("voiceToken").focus();
-      this.note("This needs the token from the rover: run "
-        + "`ssh bpi-m4zero cat ~/.ugv/console.token`, paste it below and press "
-        + "remember.");
+      this.note("paste the token from ~/.ugv/console.token below");
       return;
     }
     this.note("opening the microphone...");
@@ -851,19 +845,16 @@ const voice = {
     // is more use than a sentence that guesses wrong.
     const name = (error && error.name) || "";
     if (!navigator.mediaDevices) {
-      return "This browser will not open a microphone for this page. That is the "
-        + "secure-context rule: it has to be https with a certificate the browser "
-        + "accepts, or localhost. Check the padlock.";
+      return "no microphone: this page is not a secure context";
     }
     if (name === "NotAllowedError") {
-      return "The browser refused the microphone. Allow it from the icon in the "
-        + "address bar, then press the button again.";
+      return "the browser refused the microphone -- allow it from the address bar";
     }
     if (name === "NotFoundError") {
-      return "This machine has no microphone the browser can see.";
+      return "no microphone the browser can see";
     }
     if (name === "NotReadableError") {
-      return "Something else on this machine is holding the microphone.";
+      return "something else is holding the microphone";
     }
     return `${error}`;
   },
@@ -900,13 +891,11 @@ const voice = {
     await new Promise((ready, failed) => {
       socket.onopen = ready;
       socket.onerror = () => failed(new Error(
-        "The rover would not open the audio socket. Either the token is wrong, "
-        + "or this console has no microphone -- the state above says which."));
+        "the rover would not open the audio socket"));
       // A socket that is closed before it opens never fires onerror in some
       // browsers, so the close is a failure too until the open has happened.
       socket.onclose = () => failed(new Error(
-        "The rover closed the audio socket immediately. That is what a wrong "
-        + "token looks like from here."));
+        "the rover closed the audio socket at once -- probably a wrong token"));
     });
     socket.onclose = () => this.stop(false);
     socket.onmessage = (event) => this.heard(event.data);
@@ -1174,8 +1163,7 @@ function wPlace(entity) {
   line.className = "wmeta";
   if (!place) {
     line.classList.add("wunplaced");
-    line.textContent = "no position yet — it has been seen from one place, and "
-                     + "a position needs two far enough apart";
+    line.textContent = "no position yet — seen from one place";
     return line;
   }
   const spread = entity.placement_uncertainty_m;
@@ -1230,14 +1218,10 @@ function drawWorldList() {
     const empty = document.createElement("p");
     empty.className = "hint";
     empty.textContent = (summary.observations
-        ? `${summary.observations} observations have been recorded and none of `
-          + "them has been placed yet. Which lasting thing something is comes "
-          + "from where it is, so a thing gets an identity only once it has been "
-          + "seen from two places far enough apart -- see the observations tab."
+        ? `${summary.observations} observations, none placed`
         : summary.inspections
-        ? "nothing has been recorded yet, although the rover has looked "
-          + `${summary.inspections} time(s) -- see the diagnostics tab`
-        : "nothing has been recorded yet. Press “inspect world”.");
+        ? `nothing recorded, after ${summary.inspections} inspections`
+        : "nothing recorded yet");
     list.append(empty);
     return;
   }
@@ -1318,21 +1302,14 @@ function drawWorldMap() {
           || one.placement_map_session === world.summary.map_session));
   if (!view || !view.pose || !state.map.gen || (!rays.length && !placed.length)) {
     wrap.hidden = true;
-    note.textContent = !state.map.gen ? "no map yet, so the list below is all there is"
-        : !rays.length ? "nothing observed from a known pose yet, so there is "
-                         + "nothing to draw on the map"
-        : "the map has not said where it was drawn from, so the list below is "
-          + "all there is";
+    note.textContent = !state.map.gen ? "no map yet"
+        : !rays.length ? "nothing observed from a known pose"
+        : "the map did not say where it was drawn from";
     return;
   }
   wrap.hidden = false;
-  note.textContent = "each ray is one observation, from where the rover stood "
-      + "and where the camera pointed. No distance is claimed by a ray"
-      + (placed.length
-         ? `; the ${placed.length} disc${placed.length === 1 ? "" : "s"} are `
-           + "things placed where two rays crossed, drawn as big as they are "
-           + "uncertain."
-         : ". Nothing has a position yet.");
+  note.textContent = `${rays.length} ray${rays.length === 1 ? "" : "s"}, `
+      + (placed.length ? `${placed.length} placed` : "none placed");
   $("wMapImg").src = `/map.png?gen=${state.map.gen}`;
   const size = state.map.width || 1;
   svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
@@ -1421,7 +1398,7 @@ function wShot(observation) {
   if (!observation.frame_id) {
     const none = document.createElement("div");
     none.className = "wmeta";
-    none.textContent = "no frame was stored for this observation";
+    none.textContent = "no frame stored";
     return none;
   }
   if (!held) {
@@ -1442,7 +1419,7 @@ function wShot(observation) {
   // that exists to show what went wrong must survive that.
   img.onerror = () => {
     img.hidden = true;
-    shot.textContent = `the stored frame ${observation.frame_id} is gone`;
+    shot.textContent = `frame ${observation.frame_id} is gone`;
     shot.className = "wmeta mono";
   };
   shot.append(img);
@@ -1555,12 +1532,7 @@ function drawWorldDetail() {
   if (!entity || !entity.id || entity.id !== state.world.selected) {
     const hint = document.createElement("p");
     hint.className = "hint";
-    hint.textContent = "choose a thing on the left to see every look that was "
-                     + "decided to be it, each with the box drawn on the picture "
-                     + "it was measured in. Nothing here is named, so those "
-                     + "pictures are how you check that they really are one "
-                     + "thing \u2014 and the search tab is how you find "
-                     + "something by describing it.";
+    hint.textContent = "nothing selected";
     pane.append(hint);
     return;
   }
@@ -1600,7 +1572,7 @@ function drawWorldDetail() {
   if (!observations.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = "no observations have been attached to this yet.";
+    empty.textContent = "no observations";
     scroller.append(empty);
   }
   for (const observation of observations) {
@@ -1616,11 +1588,9 @@ function drawWorldObservations() {
   const unmatched = world.unmatched || [];
   const heading = document.createElement("p");
   heading.className = "hint";
-  heading.textContent = `every look the rover has recorded, newest first `
-                      + `(${recent.length} shown)`
+  heading.textContent = `${recent.length} shown, newest first`
                       + (unmatched.length
-                         ? `, of which ${unmatched.length} are not yet part of any `
-                           + `lasting thing` : "");
+                         ? `, ${unmatched.length} with no entity` : "");
   pane.append(heading);
   if (!recent.length) {
     const empty = document.createElement("p");
@@ -1639,20 +1609,15 @@ function drawWorldSearch() {
   results.replaceChildren();
   const answer = world.search;
   if (state.world.searching) {
-    note.textContent = "asking... the phrase has to go through the same model "
-                     + "that named every region, which takes a few seconds.";
+    note.textContent = "asking...";
     return;
   }
   if (!answer) {
-    note.textContent = "describe a thing in your own words. It is matched "
-        + "against what the rover has actually seen, not against a list of "
-        + "names, so \u201csomething to sit on\u201d finds the chair.";
+    note.textContent = "";
     return;
   }
-  note.textContent = `${answer.considered} stored regions were compared`
-      + (answer.skipped ? `, and ${answer.skipped} skipped because they were `
-                          + "measured by the other backend and do not compare"
-                        : "");
+  note.textContent = `${answer.considered} compared`
+      + (answer.skipped ? `, ${answer.skipped} skipped -- other backend` : "");
 
   // The verdict before the list, because a ranked list always has a top and the
   // question is whether that top means anything.
@@ -1667,7 +1632,7 @@ function drawWorldSearch() {
   if (!matches.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = "nothing stored could be compared with that phrase.";
+    empty.textContent = "nothing comparable stored";
     results.append(empty);
     return;
   }
@@ -1710,9 +1675,8 @@ function drawWorldSearch() {
     } else {
       place.classList.add("wunplaced");
       place.textContent = match.bearing_deg == null
-          ? "this was seen without a measured pose, so it says nothing about where"
-          : `no position — this only says the rover saw it on bearing `
-            + `${match.bearing_deg}\u00b0`;
+          ? "no position — no pose recorded"
+          : `no position — bearing ${match.bearing_deg}\u00b0`;
     }
     block.append(place);
     // With the box, so the answer points at the thing rather than at the room it
@@ -1735,13 +1699,6 @@ function drawWorldDiagnostics() {
       + ` · map session ${summary.map_session ?? "?"}`
       + ` · last success ${wAgo(summary.last_ok_at)}`;
   pane.append(lines);
-  const where = document.createElement("p");
-  where.className = "hint";
-  where.textContent = `the model behind this is ${world.backend || "unknown"}. `
-      + `Every row below is one inspection, whether or not it changed anything -- `
-      + `which is what tells "the model failed" apart from "nothing was in view".`;
-  pane.append(where);
-
   const table = document.createElement("table");
   table.className = "wtable";
   const header = document.createElement("tr");
@@ -1940,8 +1897,7 @@ async function start() {
   $("voiceTokenSave").onclick = () => {
     voice.token = $("voiceToken").value.trim();
     localStorage.setItem("omniToken", voice.token);
-    voice.note(voice.token ? "token remembered -- press start talking"
-                           : "the token is empty");
+    voice.note(voice.token ? "token remembered" : "the token is empty");
   };
   $("micButton").onclick = () => voice.toggle();
   // A tab that goes away takes the microphone with it, the same rule the rest of

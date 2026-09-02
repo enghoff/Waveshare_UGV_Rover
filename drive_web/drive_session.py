@@ -893,8 +893,7 @@ class Session(SessionShow, SessionWorld):
         """
         if self.watch is None:
             return
-        self.say("asking the rover to reset the lidar's USB device; the camera and "
-                 "the face detector go with it for a few seconds", "note")
+        self.say("resetting the lidar's USB device", "note")
         self.watch_call("reset_lidar")
 
     def clear_map(self) -> None:

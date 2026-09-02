@@ -1396,7 +1396,7 @@ def test_the_world_state_popup() -> None:
                          {"ok": True, "entities": 4, "observations": 96}, 0.1)
     note = session.world_state()["note"]
     check("what went is counted", "4 entities" in note and "96 " in note, True)
-    check("...as part of clearing the map", "map was cleared" in note, True)
+    check("...as part of clearing the map", note.startswith("cleared"), True)
 
     # A rover with no world-state component says so once. Anything else is a
     # popup that shows the same error every few seconds for the rest of the day.

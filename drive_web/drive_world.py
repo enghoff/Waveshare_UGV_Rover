@@ -257,8 +257,7 @@ class SessionWorld:
             self.world_keep_frame(body)
         elif name == "world_state_clear":
             self.world["note"] = (
-                f"the map was cleared, and with it "
-                f"{body.get('entities', 0)} entities and "
+                f"cleared -- {body.get('entities', 0)} entities, "
                 f"{body.get('observations', 0)} observations")
             self.world_payload = {}
             self.world_refresh()
