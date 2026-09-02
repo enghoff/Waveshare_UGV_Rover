@@ -9,7 +9,7 @@ The current deployed path is:
 
     python3 rover_daemon.py --vision --board-bridge --ros-nav
 
-Face detection is local YuNet on the Banana Pi. `--vision` keeps the current
+Face detection is local YuNet on the rover's own host. `--vision` keeps the current
 supervisor interface but no longer names a model host: the active Alibaba client
 registers its loopback frame server with `set_vision` before it asks for tools.
 An explicit `--vision HOST[:PORT]` remains useful for diagnostics.
@@ -28,28 +28,24 @@ import socketserver
 import sys
 import threading
 import time
-from typing import Any
 
 import scripting
 
 from board_link import (
-    BAUD, CMD_LIGHTS, CMD_PROBE, DEFAULT_SERIAL, HttpLink, SerialLink,
-    open_link, _battery_percent, _battery_state, _battery_summary,
+    DEFAULT_SERIAL, SerialLink, open_link, _battery_percent, _battery_state,
     _field_number, _newest_telemetry,
 )
 from rover import Rover
 from rover_camera import _where, default_camera
-from rover_util import _flag, _level, _number
+from rover_util import _flag, _level
 from rover_nav import (
-    CAMERA_FOV_DEG, MAP_HALF_EXTENT_M, MAP_MAX_HALF_EXTENT_M,
-    MAP_MAX_PIXELS, MAP_MIN_PIXELS, MAP_PIXELS, MAP_POINT_CLEAR_M,
-    MAP_POINT_MAX_AGE_S,
-    _map_cells, _map_view, _model_map_view,
+    CAMERA_FOV_DEG, MAP_HALF_EXTENT_M, MAP_MAX_HALF_EXTENT_M, MAP_MAX_PIXELS,
+    MAP_MIN_PIXELS, MAP_POINT_MAX_AGE_S, _map_cells, _map_view, _model_map_view,
 )
 from rover_wifi import _terse_fields, _wifi_networks
 from tool_schemas import (
-    LIGHT_MAX, LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL,
-    START_SCRIPT_TOOL, STOP_SCRIPT_TOOL, TOOLS,
+    LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
+    STOP_SCRIPT_TOOL, TOOLS,
 )
 
 DEFAULT_BOARD_HOST = "192.168.1.22"

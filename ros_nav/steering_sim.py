@@ -77,8 +77,7 @@ DELAY_S = 0.2            # how stale the pose the follower steers on is
 SPEED_MS = 0.35
 
 
-from drive_mixer import (TURN_PWM_MAX, mix,                    # noqa: E402
-                         pwm_for, steer_pwm)
+from drive_mixer import TURN_PWM_MAX, mix, pwm_for
 
 
 # --- the three mixers -----------------------------------------------------------

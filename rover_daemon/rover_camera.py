@@ -12,8 +12,7 @@ import threading
 import time
 from typing import Any
 
-from rover_util import _flag, _level, _number
-from tool_schemas import LIGHT_MAX
+from rover_util import _number
 
 
 def default_camera() -> str:
@@ -672,8 +671,8 @@ class RoverCamera:
         become two different robots, which is the reason aiming.py exists.
         """
         from aiming import (
-            GAIN, GRACE_FRAMES, LOST_GRACE_S, MAX_DT, SCAN_AFTER_S, SCAN_RATE,
-            Gimbal, Target, clamp, scan_rate_for,
+            GAIN, GRACE_FRAMES, LOST_GRACE_S, MAX_DT, SCAN_AFTER_S, Gimbal, Target,
+            clamp, scan_rate_for,
         )
 
         width, height = self.size

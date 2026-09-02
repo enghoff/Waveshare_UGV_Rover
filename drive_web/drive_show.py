@@ -7,9 +7,8 @@ from typing import Any
 
 import _paths  # noqa: F401 — console_model
 from console_model import (
-    ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_STALE_S,
-    MAP_LEGEND, Reply, STATUS_FIELDS, WIFI_POLL_S,
-    move_sentence, or_dash, rung, wifi_verdict,
+    ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_STALE_S, Reply,
+    STATUS_FIELDS, WIFI_POLL_S, move_sentence, or_dash, wifi_verdict,
 )
 
 

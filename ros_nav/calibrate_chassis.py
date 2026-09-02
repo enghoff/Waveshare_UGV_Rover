@@ -63,7 +63,6 @@ import time
 
 import rclpy
 import rclpy.duration
-from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy

@@ -145,12 +145,6 @@ def covered(grid, footprint, x, y, yaw):
     return cells
 
 
-def worst_cost(grid, footprint, x, y, yaw):
-    """The highest cost anywhere under the body at a pose."""
-    return max(grid.cost(col, row)
-               for col, row in covered(grid, footprint, x, y, yaw))
-
-
 def fits(grid, footprint, x, y, yaw):
     """Can the rover stand here, facing this way, without being in something?"""
     for col, row in covered(grid, footprint, x, y, yaw):

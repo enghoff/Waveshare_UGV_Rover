@@ -6,7 +6,6 @@ import json
 import struct
 import threading
 import time
-from typing import Any
 
 FRAME_TTL_S = 60.0
 MAX_FRAMES = 4

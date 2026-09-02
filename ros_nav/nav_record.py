@@ -47,8 +47,6 @@ from nav2_msgs.srv import GetCostmap
 from rcl_interfaces.srv import GetParameters
 from nav_msgs.msg import Path
 from rclpy.node import Node
-from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
-                       QoSReliabilityPolicy)
 from tf2_ros import Buffer, TransformListener
 
 POSE_HZ = 10.0

@@ -86,7 +86,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import heapq
 import math
 import os
 import sys

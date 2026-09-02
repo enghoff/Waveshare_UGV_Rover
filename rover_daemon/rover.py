@@ -12,12 +12,12 @@ from board_link import (
 )
 from rover_camera import RoverCamera, VisionLink
 from rover_nav import CAMERA_FOV_DEG, RoverNav
-from rover_util import _flag, _level, _number  # noqa: F401
+from rover_util import _level      # noqa: F401
 from rover_wifi import RoverWifi
 from rover_world import RoverWorld
 from tool_schemas import (
-    LIGHT_MAX, LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL,
-    START_SCRIPT_TOOL, STOP_SCRIPT_TOOL, TOOLS,
+    LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
+    STOP_SCRIPT_TOOL, TOOLS,
 )
 
 

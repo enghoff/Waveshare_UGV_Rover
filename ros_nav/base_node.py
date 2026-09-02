@@ -56,7 +56,7 @@ for _candidate in (os.path.join(_HERE, "..", "lidar_slam"),
 
 # The firmware's own protocol numbers. Everything about the *drive model* moved
 # to drive_mixer.py, which is imported below.
-from nav_types import CMD_HEARTBEAT, CMD_PWM, HEARTBEAT_MS      # noqa: E402
+from nav_types import CMD_PWM, HEARTBEAT_MS      # noqa: E402
 
 # Where the daemon stores what it has learned about this chassis.
 ODOMETRY_STORE = os.path.expanduser("~/ugv/odometry.json")

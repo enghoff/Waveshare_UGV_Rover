@@ -1,7 +1,6 @@
 """Wi-Fi scan/join helpers and the daemon tools that expose them."""
 from __future__ import annotations
 
-import json
 import os
 import socket
 import subprocess
@@ -9,7 +8,6 @@ import threading
 import time
 from typing import Any
 
-from rover_util import _flag, _number
 
 # The rover's own network, for the console to show and to choose from. Three
 # access points are configured here, and the rover joins exactly one of them by

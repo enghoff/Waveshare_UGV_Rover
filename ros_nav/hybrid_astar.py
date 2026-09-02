@@ -66,10 +66,6 @@ def angle_bin(yaw, bins=ANGLE_BINS):
     return int(round(wrap(yaw) / step) % bins)
 
 
-def bin_yaw(index, bins=ANGLE_BINS):
-    return wrap(index * 2.0 * math.pi / bins)
-
-
 def traversable(grid, col, row, allow_unknown=True):
     """Can the search step on this cell, the way NavFn would.
 
@@ -483,41 +479,6 @@ def bent_passage(width_m=1.0, bend_deg=55.0, leg_m=2.5):
     grid = goal_fit.CostGrid(width, height, res, origin_x, origin_y, data)
     start = (ax + 0.45, 0.0, 0.0)
     goal = (cx - 0.45 * math.cos(yaw), cy - 0.45 * math.sin(yaw), yaw)
-    return grid, start, goal
-
-
-def l_passage(width_m=1.0, leg_m=3.0):
-    """An L-shaped passage about a metre wide, turning left from east to north.
-
-    The recorded fault was a metre-class doorway whose plan bent 44 to 67
-    degrees in the first 1.2 m. An L of the same width is the same trap in a
-    form that does not need a recording: NavFn cuts the inner corner; a
-    turning-radius planner has to swing.
-    """
-    res = dwb.RESOLUTION
-    margin = 0.6
-    # Inner corner of the L at (0, 0): eastbound y in [-w/2, w/2], x in
-    # [-leg, w/2]; northbound x in [-w/2, w/2], y in [-w/2, leg].
-    origin_x = -leg_m - margin
-    origin_y = -width_m / 2.0 - margin
-    span_x = leg_m + width_m / 2.0 + 2.0 * margin
-    span_y = leg_m + width_m / 2.0 + 2.0 * margin
-    width = int(round(span_x / res))
-    height = int(round(span_y / res))
-    half = width_m / 2.0
-    lethal = []
-    for col in range(width):
-        x = origin_x + (col + 0.5) * res
-        for row in range(height):
-            y = origin_y + (row + 0.5) * res
-            in_east = (-leg_m <= x <= half) and (-half <= y <= half)
-            in_north = (-half <= x <= half) and (-half <= y <= leg_m)
-            if not (in_east or in_north):
-                lethal.append((col, row))
-    data = dwb.inflate(width, height, lethal)
-    grid = goal_fit.CostGrid(width, height, res, origin_x, origin_y, data)
-    start = (-leg_m + 0.45, 0.0, 0.0)
-    goal = (0.0, leg_m - 0.45, math.pi / 2.0)
     return grid, start, goal
 
 

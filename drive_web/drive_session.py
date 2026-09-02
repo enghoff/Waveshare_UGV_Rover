@@ -11,15 +11,12 @@ from typing import Any
 import _paths  # noqa: F401 — rover_tools and console_model
 import rover_tools
 from console_model import (
-    BATTERY_POLL_S, BATTERY_STALE_S, CLEAR_ARM_S,
-    Channel, LIGHT_MAX, MAP_EXTENTS_M, MAP_STALE_S, MOVE_TIMEOUT_S,
+    BATTERY_POLL_S, CLEAR_ARM_S, Channel, MAP_EXTENTS_M, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
-    WORLD_BUILD_POLL_S,
-    SLOW_PICTURE_S,
-    POLL_S, Reply, TRACK_POLL_S, TURN_PRESETS_DEG, WIFI_POLL_S, WIFI_REJOIN_S,
-    WIFI_SCAN_TIMEOUT_S, WORLD_TIMEOUT_S, rung, tap_to_point,
+    WORLD_BUILD_POLL_S, SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
+    WIFI_REJOIN_S, WIFI_SCAN_TIMEOUT_S, WORLD_TIMEOUT_S, rung, tap_to_point,
 )
-from drive_show import SessionShow, _number, _png_width  # noqa: F401
+from drive_show import SessionShow, _number      # noqa: F401
 from drive_world import SessionWorld
 
 # How often the pump wakes: drain what came back, decide what to ask for next, and
