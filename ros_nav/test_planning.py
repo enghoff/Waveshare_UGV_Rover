@@ -12,6 +12,25 @@ import sys
 from test_harness import HERE, check, section
 
 
+def _bridge_source():
+    """The navigation bridge's source, all four files of it, or "" off the rover.
+
+    These checks read the bridge as text because they cannot import it: it needs
+    rclpy, and this file runs on a workstation that has none. Since the bridge was
+    split -- the node, its moves, its exploring and the numbers it is held to --
+    that means reading all four and looking at them as one, which is also what
+    makes a count like "this appears exactly once" mean what it used to.
+    """
+    out = []
+    for name in ("nav_bridge.py", "nav_moves.py", "nav_explore.py",
+                 "nav_limits.py"):
+        path = os.path.join(HERE, name)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                out.append(fh.read())
+    return "\n".join(out)
+
+
 def test_goal_fits_before_it_is_sent():
     """The goal check, on the real geometry rather than a stand-in.
 
@@ -81,10 +100,8 @@ def test_goal_fits_before_it_is_sent():
 
     # And that the bridge actually asks. The geometry being right is no use if
     # `goto` never calls it, and this file cannot import nav_bridge to find out.
-    bridge = os.path.join(HERE, "nav_bridge.py")
-    if os.path.exists(bridge):
-        with open(bridge) as fh:
-            source = fh.read()
+    source = _bridge_source()
+    if source:
         check("the bridge checks a goal before sending it",
               "self.fit_goal(gx, gy, yaw)" in source, True)
         check("...and turns round rather than reversing the length of a room",
@@ -329,10 +346,8 @@ def test_a_goal_that_goes_nowhere_is_given_up():
     check("a pose nobody could vouch for is not read as standing still",
           watch.update(100.0, None, 0), None)
 
-    bridge = os.path.join(HERE, "nav_bridge.py")
-    if os.path.exists(bridge):
-        with open(bridge) as fh:
-            source = fh.read()
+    source = _bridge_source()
+    if source:
         check("exploring passes the watcher to the goal it sends",
               "give_up=going_nowhere" in source, True)
         check("...and only exploring does, so drive_to keeps every recovery",
@@ -408,10 +423,8 @@ def test_a_rover_it_cannot_plan_from_is_not_a_finished_house():
     check("...and only the occupied one is something moving 30 cm can cure",
           nav_codes.START_OCCUPIED, 205)
 
-    bridge = os.path.join(HERE, "nav_bridge.py")
-    if os.path.exists(bridge):
-        with open(bridge) as fh:
-            source = fh.read()
+    source = _bridge_source()
+    if source:
         # Comments stripped for the absence check, so that the account of the
         # fault written above the fix does not read as the fault still being
         # there. What matters is which sentences the code can still produce.
@@ -496,10 +509,8 @@ def test_exploring_finishes_and_covers_the_house():
 
     # And that the bridge is actually running this policy rather than a second
     # copy of it, which this file cannot check by importing nav_bridge.
-    bridge = os.path.join(HERE, "nav_bridge.py")
-    if os.path.exists(bridge):
-        with open(bridge) as fh:
-            source = fh.read()
+    source = _bridge_source()
+    if source:
         check("the bridge explores with the shared policy, not its own copy",
               "frontier.Explorer(" in source and "explorer.committed(" in source,
               True)
