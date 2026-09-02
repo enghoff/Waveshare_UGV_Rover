@@ -73,9 +73,11 @@ LOOK_EVERY_S = 15.0
 #: triangulated against the looks already there, and it enlarges the pool every
 #: later look has to scan.
 MOVED_ENOUGH_M = 0.4
-#: And what counts as a new direction, for a rover that turned on the spot without
-#: going anywhere. The camera is then pointed at a different part of the room,
-#: which is worth recording even though no new baseline came of it.
+#: And what counts as a new direction. **Where the camera points, not where the
+#: chassis does**: heading minus pan, which is what a bearing is built from in the
+#: first place. Measured against the chassis alone, turning the gimbal through
+#: three positions recorded nothing at all, which is the one case a rover standing
+#: still can still learn something from.
 TURNED_ENOUGH_DEG = 25.0
 #: A rover that has not moved at all still looks this often, so that a parked
 #: rover in a room that changes notices, and so that "nothing is happening" is
@@ -141,9 +143,20 @@ class RoverWorld:
             return False
         moved = math.hypot(pose["x_m"] - before["x_m"],
                            pose["y_m"] - before["y_m"])
-        turned = abs((pose["heading_deg"] - before["heading_deg"] + 180.0)
-                     % 360.0 - 180.0)
+        turned = abs((self._world_camera_deg(pose)
+                      - before["camera_deg"] + 180.0) % 360.0 - 180.0)
         return moved >= MOVED_ENOUGH_M or turned >= TURNED_ENOUGH_DEG
+
+    def _world_camera_deg(self, pose: dict[str, Any]) -> float:
+        """Where the camera is looking: the chassis, less the gimbal's pan.
+
+        The gimbal takes pan positive to the right and the map takes bearings
+        positive to the left, which is the same conversion `view.ray` makes when
+        it turns a look into a bearing. Using the chassis alone would mean a rover
+        that swung its camera across the whole room counted as having seen
+        nothing new.
+        """
+        return pose["heading_deg"] - float(getattr(self, "pan", 0.0) or 0.0)
 
     def _world_building_loop(self) -> None:
         """Never raises, and never looks while the wheels are turning.
@@ -171,7 +184,10 @@ class RoverWorld:
                     continue
                 self._world_build_at = now
                 answer = self._tool_world_inspect({})
-                self._world_build_from = self._world_pose()
+                where = self._world_pose()
+                if where is not None:
+                    where["camera_deg"] = self._world_camera_deg(where)
+                self._world_build_from = where
                 if answer.get("ok"):
                     self._world_build_looks += 1
                     self._world_build_error = ""

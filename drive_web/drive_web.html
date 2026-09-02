@@ -474,7 +474,6 @@
       <button data-world-build="off">off</button>
       <span id="worldBuilding" class="mono">-</span>
     </div>
-    <p id="worldBuildNote" class="hint"></p>
     <h2 style="margin-top:14px">headlights</h2>
     <div class="row">
       <button data-light="on">on</button>
@@ -1171,27 +1170,18 @@ function wPlace(entity) {
 // panel showing its own past would be the one place a rover that had quietly
 // stopped recording still looked busy.
 function drawWorldBuilding(w) {
-  const state = $("worldBuilding"), note = $("worldBuildNote");
+  const state = $("worldBuilding");
   if (w.available === false) {
     state.textContent = "not on this rover";
-    note.textContent = "";
     return;
   }
   if (w.building === null || w.building === undefined) {
     state.textContent = "-";
-    note.textContent = "";
     return;
   }
   state.textContent = w.building
       ? `building — ${w.built_looks} look${w.built_looks === 1 ? "" : "s"}`
       : "off";
-  // Why a parked rover's count barely moves, said once here rather than left to
-  // look like a fault. A look from a place already looked from cannot be crossed
-  // with the looks already there, so the rover waits until it is somewhere new.
-  note.textContent = w.building
-      ? "looks around when it has moved somewhere new, and every few minutes "
-        + "even when it has not"
-      : "the rover is not recording what it sees";
   for (const button of document.querySelectorAll("[data-world-build]")) {
     button.classList.toggle("on",
       (button.dataset.worldBuild === "on") === !!w.building);

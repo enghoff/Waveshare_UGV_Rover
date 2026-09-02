@@ -2315,17 +2315,19 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
             self._world_build_at = 0.0
             self._world_build_from = None
             self._pose = pose
+            self.pan = 0.0
 
         def _world_pose(self):
             return self._pose
 
         worth = rover_world.RoverWorld._world_worth_looking
+        _world_camera_deg = rover_world.RoverWorld._world_camera_deg
 
     here = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 30.0}
     rover = Standing(dict(here))
     check("a rover that has never looked, looks", rover.worth(1000.0), True)
 
-    rover._world_build_from = dict(here)
+    rover._world_build_from = dict(here, camera_deg=30.0)
     rover._world_build_at = 1000.0
     check("...and having just looked, does not look again",
           rover.worth(1000.0 + rover_world.LOOK_EVERY_S - 1), False)
@@ -2340,7 +2342,17 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
                        heading_deg=here["heading_deg"] + rover_world.TURNED_ENOUGH_DEG + 1)
     check("...and so is turning to face somewhere new", rover.worth(later), True)
 
-    # The heading is an angle, so 359 degrees away is one degree away.
+    # **Where the camera points, not where the chassis does.** Swinging the gimbal
+    # across the room from a standstill is the one way a rover that has not moved
+    # can still see something new, and measured against the chassis alone it
+    # counted as nothing -- which is what the rover actually did.
+    rover._pose = dict(here)
+    rover.pan = rover_world.TURNED_ENOUGH_DEG + 1
+    check("turning only the gimbal is a new direction too",
+          rover.worth(later), True)
+    rover.pan = 0.0
+
+    # The direction is an angle, so 359 degrees away is one degree away.
     rover._pose = dict(here, heading_deg=here["heading_deg"] - 2.0 + 360.0)
     check("...but two degrees the other side of north is not a new direction",
           rover.worth(later), False)
