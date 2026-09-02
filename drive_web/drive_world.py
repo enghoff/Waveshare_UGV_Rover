@@ -45,6 +45,7 @@ class SessionWorld:
             "entities": 0,
             "observations": 0,
             "backend": "",
+            "searching": False,
             "gen": 0,
         }
         #: What `/world.json` serves: everything the popup draws.
@@ -53,6 +54,9 @@ class SessionWorld:
         #: back to the rover for a picture it already has.
         self.world_frames: dict[str, bytes] = {}
         self.world_selected = ""
+        #: The phrase the search box last sent, kept so that an answer arriving
+        #: after somebody has typed something else can be recognised as stale.
+        self.world_query = ""
         self.world_outstanding = 0
         self.world_asked_at = 0.0
         self.world_clear_armed_until = 0.0
@@ -76,6 +80,8 @@ class SessionWorld:
             self.world_inspect()
         elif what == "clear":
             self.world_clear()
+        elif what == "search":
+            self.world_search(str(action.get("query") or ""))
 
     def world_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.world_link is None:
@@ -119,6 +125,30 @@ class SessionWorld:
         self.world["note"] = "looking..."
         self.world_asked_at = time.monotonic()
         self.world_call("world_inspect")
+
+    def world_search(self, query: str) -> None:
+        """Find me the thing I described.
+
+        Slower than it looks and worth saying so in the note: the phrase has to
+        go through the same text tower that named every region, and on the rover
+        that means loading a model for the call and giving it back afterwards,
+        which is several seconds. A search is something a person types, so that
+        is the right way round, but a box that looks frozen for five seconds is
+        not.
+        """
+        query = query.strip()
+        if self.world_link is None:
+            self.world["error"] = "not connected"
+            return
+        if not query:
+            self.world_query = ""
+            self.world_payload.pop("search", None)
+            self.world_bump()
+            return
+        self.world_query = query
+        self.world["searching"] = True
+        self.world["error"] = ""
+        self.world_call("world_state_search", {"query": query, "limit": 12})
 
     def world_clear(self) -> None:
         """Two presses, and no dialog between them.
@@ -166,6 +196,8 @@ class SessionWorld:
             if name == "world_inspect":
                 self.world["busy"] = False
                 self.world["note"] = ""
+            if name == "world_state_search":
+                self.world["searching"] = False
             self.world_bump()
             return
 
@@ -192,6 +224,15 @@ class SessionWorld:
             self.world_payload["selected_rays"] = body.get("rays") or []
             self.world_want_frames_for(body.get("observations") or [],
                                        FRAMES_PER_ENTITY)
+        elif name == "world_state_search":
+            self.world["searching"] = False
+            # Stale if the box has moved on since this was asked. Dropped rather
+            # than drawn, because a five-second answer arriving under a different
+            # phrase reads as the search having got it wrong.
+            if str(body.get("query") or "") == self.world_query:
+                self.world_payload["search"] = body
+                self.world_want_frames_for(body.get("matches") or [],
+                                           FRAMES_PER_ENTITY)
         elif name == "world_state_frame":
             self.world_keep_frame(body)
         elif name == "world_state_clear":

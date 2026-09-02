@@ -373,13 +373,20 @@ class WorldStore:
                 (entity_id, kind or "object", label, now, now))
         return entity_id
 
-    def attach(self, entity_id: str, observation_ids: list[int]) -> int:
-        """Say which lasting thing these observations were of.
+    def attach(self, entity_id: str, observation_ids: list[int],
+               why: str = "") -> int:
+        """Say which lasting thing these observations were of, and why.
 
         The observations are not rewritten in any other respect. What they
         recorded -- the box, the bearing, the pose behind it -- is the evidence
         for the decision and must survive the decision being made, and being
         made again differently later.
+
+        `why` is the resolver's own sentence about this decision, kept because
+        the question a person asks of an identity is not "what did it decide"
+        but "why did it think that was the same chair", and an answer that only
+        exists in the reply to the inspection that happened to trigger it is
+        gone by the time anybody asks.
         """
         if not observation_ids:
             return 0
@@ -388,6 +395,10 @@ class WorldStore:
             cursor = self.db.execute(
                 f"UPDATE observations SET entity_id = ? WHERE id IN ({marks})",
                 [entity_id, *[int(one) for one in observation_ids]])
+            if why:
+                self.db.execute(
+                    f"UPDATE observations SET note = ? WHERE id IN ({marks})",
+                    [why, *[int(one) for one in observation_ids]])
             row = self.db.execute(
                 "SELECT COUNT(*) AS n, MAX(observed_at) AS last FROM observations"
                 " WHERE entity_id = ?", (entity_id,)).fetchone()

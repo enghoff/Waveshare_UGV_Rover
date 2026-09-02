@@ -1265,6 +1265,31 @@ def test_two_identical_chairs_are_not_guessed_at_from_two_places() -> None:
             store.close()
 
 
+def test_the_reason_survives_the_inspection_that_decided_it() -> None:
+    """The question a person asks of an identity is why, not what.
+
+    The resolver has always written a sentence about each decision, but it went
+    back in the reply to whichever inspection happened to trigger the resolve and
+    was gone by the time anybody opened the console to ask. It is kept on the
+    observation now, which is where the rest of that decision's evidence is.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            observe(store, 0.0, 0.0, 45.0, inference=1)
+            observe(store, 6.0, 0.0, 135.0, inference=2)
+            result = resolve.resolve(store)
+            check("the thing was placed", result["created"], 1)
+            notes = [one["note"] for one in store.observations()
+                     if one.get("entity_id")]
+            check("...and both looks say why they belong to it",
+                  len(notes), 2)
+            check("...in the resolver's own words",
+                  all(note and "crossed at" in note for note in notes), True)
+        finally:
+            store.close()
+
+
 def test_a_third_look_joins_the_thing_it_points_at() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
@@ -1599,6 +1624,7 @@ TESTS = (
     test_two_looks_from_two_places_make_one_lasting_thing,
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
     test_two_identical_chairs_are_not_guessed_at_from_two_places,
+    test_the_reason_survives_the_inspection_that_decided_it,
     test_a_third_look_joins_the_thing_it_points_at,
     test_appearance_cannot_overrule_where_a_thing_is,
     test_two_placed_things_on_one_bearing_are_ambiguous_not_a_guess,

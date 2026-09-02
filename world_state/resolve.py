@@ -316,16 +316,15 @@ def _against_known(store, observation, entities, session,
             candidates=surviving)
 
     already.add(chosen["entity_id"])
-    store.attach(chosen["entity_id"], [observation["id"]])
+    why = (f"the bearing points at {chosen['entity_id']} "
+           f"{chosen['distance_m']} m away, appearance "
+           f"{chosen['appearance']:.2f}")
+    store.attach(chosen["entity_id"], [observation["id"]], why)
     if vector:
         store.add_exemplar(chosen["entity_id"], vector)
     _replace_placement(store, chosen["entity_id"], session)
-    return Decision(
-        observation["id"], MATCH, chosen["entity_id"],
-        why=(f"the bearing points at {chosen['entity_id']} "
-             f"{chosen['distance_m']} m away, appearance "
-             f"{chosen['appearance']:.2f}"),
-        candidates=surviving)
+    return Decision(observation["id"], MATCH, chosen["entity_id"], why=why,
+                    candidates=surviving)
 
 
 def _pair_up(store, leftover, session) -> list[Decision]:
@@ -456,7 +455,10 @@ def _place_one(store, available, session):
     entity_id = store.create_entity(_kind_of(label), label)
     store.place(entity_id, placement, session)
     taken = [first_observation["id"], second_observation["id"]]
-    store.attach(entity_id, taken)
+    why = (f"two looks {placement['baseline_m']} m apart crossed at "
+           f"{placement['parallax_deg']} degrees, placing {entity_id} to "
+           f"within {placement['uncertainty_m']} m")
+    store.attach(entity_id, taken, why)
     for observation in (first_observation, second_observation):
         vector = observation.get("dino_blob") or b""
         if vector:
@@ -476,16 +478,15 @@ def _place_one(store, available, session):
             continue
         claimed.add(observation.get("inference_id"))
         taken.append(observation["id"])
-        store.attach(entity_id, [observation["id"]])
+        store.attach(entity_id, [observation["id"]],
+                     f"points at {entity_id} as well, from the same group")
         vector = observation.get("dino_blob") or b""
         if vector:
             store.add_exemplar(entity_id, vector)
 
     return Decision(
         first_observation["id"], NEW, entity_id,
-        why=(f"two looks {placement['baseline_m']} m apart crossed at "
-             f"{placement['parallax_deg']} degrees, placing {entity_id} to "
-             f"within {placement['uncertainty_m']} m"),
+        why=why,
         candidates=[{"entity_id": entity_id, "label": label,
                      "from_observations": taken,
                      "uncertainty_m": placement["uncertainty_m"]}]), taken

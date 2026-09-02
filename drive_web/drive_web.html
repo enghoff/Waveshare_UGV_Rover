@@ -127,6 +127,19 @@
   #worldTabs button { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
   #worldTabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   #worldBody { overflow: auto; padding: 10px 12px 14px; }
+  #wSearchForm { display: flex; gap: 6px; margin-bottom: 6px; }
+  #wSearchBox { flex: 1 1 auto; min-width: 8em; padding: 5px 8px; font: inherit; }
+  /* The verdict, which is the part of a search that matters: the rover saying it
+     cannot find something has to look different from it saying where something
+     is, not merely score lower. */
+  .wverdict { padding: 6px 8px; border-radius: 4px; margin: 4px 0 8px; }
+  .wverdict.wfound { background: rgba(60,160,90,.14); }
+  .wverdict.wmissing { background: rgba(190,140,40,.14); }
+  .wplaced { font-weight: 600; }
+  .wunplaced { opacity: .75; }
+  /* The resolver's own sentence about why an observation belongs to a thing,
+     which reads as an explanation rather than as the warning `wdup` is. */
+  .wbecause { opacity: .8; font-style: italic; }
   .wpane { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
   .wcol { flex: 1 1 320px; min-width: 0; }
   .wwide { flex: 2 1 520px; min-width: 0; }
@@ -498,16 +511,19 @@
     <div id="worldTabs">
       <button data-wtab="entities" class="on">entities</button>
       <button data-wtab="observations">observations</button>
+      <button data-wtab="search">search</button>
       <button data-wtab="diagnostics">diagnostics</button>
     </div>
     <div id="worldBody">
       <div class="wpane" id="wPaneEntities">
         <div class="wcol">
-          <!-- Entities have no position and must not be given one. What each
-               observation does have is where the rover stood and where the gimbal
-               pointed, both measured, so it is drawn as a bearing from that
-               place -- and whether three views of one sofa converge on one corner
-               of the room is the question this experiment is asking. -->
+          <!-- Each observation is drawn as a bearing from where the rover stood
+               with the gimbal where it pointed, both measured. An entity that has
+               been seen from two places far enough apart also has a position, and
+               that is drawn as a disc whose size is how uncertain it is -- so a
+               thing the rover is sure about and a thing it has merely pointed at
+               twice look different at a glance, which is the whole question this
+               experiment is asking. -->
           <div id="wMapWrap" hidden>
             <img id="wMapImg" alt="the map, with what has been seen from where">
             <svg id="wRays" preserveAspectRatio="none"></svg>
@@ -519,6 +535,22 @@
       </div>
       <div class="wpane" id="wPaneObservations" hidden>
         <div class="wwide" id="wObsAll"></div>
+      </div>
+      <div class="wpane" id="wPaneSearch" hidden>
+        <div class="wwide">
+          <!-- The phrase goes through the same text tower that named every
+               region, so it lands in the same space as the stored vectors and the
+               comparison is a dot product over a few hundred of them. The slow
+               part is the model, not the search. -->
+          <form id="wSearchForm">
+            <input id="wSearchBox" type="search" autocomplete="off"
+                   placeholder="the spray bottle on the shelf"
+                   aria-label="describe the thing to look for">
+            <button id="wSearchGo" type="submit">look for it</button>
+          </form>
+          <p class="hint" id="wSearchNote"></p>
+          <div id="wSearchResults"></div>
+        </div>
       </div>
       <div class="wpane" id="wPaneDiagnostics" hidden>
         <div class="wwide" id="wDiag"></div>
@@ -1098,11 +1130,36 @@ function drawWorld(w) {
     .catch(() => {});    // the next state carrying a new tag asks again
 }
 
+// Where a thing is, in the words the popup uses for it everywhere. An entity
+// without a placement is not a failure and must not read as one: it is a thing
+// the rover has pointed at but not yet walked around, which is the ordinary state
+// of everything until the rover moves.
+function wPlace(entity) {
+  const place = entity && entity.placement;
+  const line = document.createElement("div");
+  line.className = "wmeta";
+  if (!place) {
+    line.classList.add("wunplaced");
+    line.textContent = "no position yet — it has been seen from one place, and "
+                     + "a position needs two far enough apart";
+    return line;
+  }
+  const spread = entity.placement_uncertainty_m;
+  line.classList.add("wplaced");
+  line.textContent = `at (${(+place.x_m).toFixed(2)}, ${(+place.y_m).toFixed(2)}) m`
+      + (spread == null ? "" : ` to within ${(+spread).toFixed(2)} m`)
+      + (place.baseline_m ? ` · from two looks ${(+place.baseline_m).toFixed(2)} m `
+                            + `apart crossing at ${Math.round(place.parallax_deg)}°`
+                          : "");
+  return line;
+}
+
 function drawWorldBody() {
   drawWorldList();
   drawWorldMap();
   drawWorldDetail();
   drawWorldObservations();
+  drawWorldSearch();
   drawWorldDiagnostics();
 }
 
@@ -1184,6 +1241,7 @@ function drawWorldList() {
     if (newest - (entity.last_seen_at || 0) > 300) meta.classList.add("wold");
     meta.append(document.createTextNode(text));
     row.append(meta);
+    row.append(wPlace(entity));
     list.append(row);
   }
 }
@@ -1218,7 +1276,10 @@ function drawWorldMap() {
     const wanted = entity.id === selected ? drawn : drawn.slice(-1);
     for (const ray of wanted) rays.push(Object.assign({}, ray, {id: entity.id}));
   }
-  if (!view || !view.pose || !state.map.gen || !rays.length) {
+  const placed = entities.filter((one) => one.placement
+      && (!(world.summary || {}).map_session
+          || one.placement_map_session === world.summary.map_session));
+  if (!view || !view.pose || !state.map.gen || (!rays.length && !placed.length)) {
     wrap.hidden = true;
     note.textContent = !state.map.gen ? "no map yet, so the list below is all there is"
         : !rays.length ? "nothing observed from a known pose yet, so there is "
@@ -1229,7 +1290,12 @@ function drawWorldMap() {
   }
   wrap.hidden = false;
   note.textContent = "each ray is one observation, from where the rover stood "
-                   + "and where the camera pointed. No distance is claimed.";
+      + "and where the camera pointed. No distance is claimed by a ray"
+      + (placed.length
+         ? `; the ${placed.length} disc${placed.length === 1 ? "" : "s"} are `
+           + "things placed where two rays crossed, drawn as big as they are "
+           + "uncertain."
+         : ". Nothing has a position yet.");
   $("wMapImg").src = `/map.png?gen=${state.map.gen}`;
   const size = state.map.width || 1;
   svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
@@ -1274,6 +1340,39 @@ function drawWorldMap() {
       text.textContent = ray.id;
       svg.append(text);
     }
+  }
+
+  // A placed thing, drawn as big as the fix that placed it is uncertain. The
+  // radius is the honest part: two rays crossing at a shallow angle put a thing
+  // somewhere along a long smear, and a dot would say the rover knows better
+  // than it does.
+  const metresToPx = (metres) => {
+    const [ax, ay] = wPointToPx(0, 0, view);
+    const [bx, by] = wPointToPx(metres, 0, view);
+    return Math.hypot(bx - ax, by - ay);
+  };
+  for (const entity of placed) {
+    const dim = selected && entity.id !== selected;
+    const hue = wHue(entity.id);
+    const [x, y] = wPointToPx(entity.placement.x_m, entity.placement.y_m, view);
+    const radius = Math.max(2, metresToPx(entity.placement_uncertainty_m || 0.2));
+
+    const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    halo.setAttribute("cx", x); halo.setAttribute("cy", y);
+    halo.setAttribute("r", radius);
+    halo.setAttribute("fill", `hsl(${hue} 70% 50%)`);
+    halo.setAttribute("fill-opacity", dim ? "0.12" : "0.3");
+    halo.setAttribute("stroke", `hsl(${hue} 70% 30%)`);
+    halo.setAttribute("stroke-width", dim ? 0.7 : 1.4);
+    halo.setAttribute("stroke-opacity", dim ? "0.4" : "1");
+    svg.append(halo);
+
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("cx", x); dot.setAttribute("cy", y);
+    dot.setAttribute("r", Math.max(1, size / 220));
+    dot.setAttribute("fill", `hsl(${hue} 70% 25%)`);
+    dot.setAttribute("fill-opacity", dim ? "0.4" : "1");
+    svg.append(dot);
   }
 }
 
@@ -1353,11 +1452,15 @@ function wObservation(observation, options) {
     block.append(described);
   }
   if (observation.note) {
-    // Why no entity was made for it, which is the difference between the model
-    // having invented an identifier and the model having said nothing useful.
+    // The same field says two opposite things and they must not look alike: for
+    // an observation with no entity it is why none was made, which is a warning;
+    // for one with an entity it is the resolver's own sentence about why it
+    // belongs there, which is the answer to "why did it think that was the same
+    // chair" and is the reason this popup exists.
     const note = document.createElement("div");
-    note.className = "wdup";
-    note.textContent = observation.note;
+    note.className = observation.entity_id ? "wbecause" : "wdup";
+    note.textContent = observation.entity_id
+        ? `why: ${observation.note}` : observation.note;
     block.append(note);
   }
 
@@ -1419,6 +1522,19 @@ function drawWorldDetail() {
                    + `observations · created ${wTime(entity.created_at)} · `
                    + `last seen ${wTime(entity.last_seen_at)}`;
   head.append(meta);
+  head.append(wPlace(entity));
+  if (entity.placement && entity.placement_map_session
+      && (world.summary || {}).map_session
+      && entity.placement_map_session !== world.summary.map_session) {
+    // The coordinates came from a SLAM map that no longer exists, so they point
+    // at nowhere in the map now on screen. Said here rather than drawn wrongly.
+    const stale = document.createElement("div");
+    stale.className = "wmeta wold";
+    stale.textContent = `this position was measured under map `
+        + `${entity.placement_map_session} and the rover is now on map `
+        + `${world.summary.map_session}, so it is not where the map shows`;
+    head.append(stale);
+  }
   pane.append(head);
 
   const observations = world.selected_observations || [];
@@ -1459,6 +1575,94 @@ function drawWorldObservations() {
   }
   for (const observation of recent) {
     pane.append(wObservation(observation, {showEntity: true}));
+  }
+}
+
+function drawWorldSearch() {
+  const note = $("wSearchNote"), results = $("wSearchResults");
+  results.replaceChildren();
+  const answer = world.search;
+  if (state.world.searching) {
+    note.textContent = "asking... the phrase has to go through the same model "
+                     + "that named every region, which takes a few seconds.";
+    return;
+  }
+  if (!answer) {
+    note.textContent = "describe a thing in your own words. It is matched "
+        + "against what the rover has actually seen, not against a list of "
+        + "names, so \u201csomething to sit on\u201d finds the chair.";
+    return;
+  }
+  note.textContent = `${answer.considered} stored regions were compared`
+      + (answer.skipped ? `, and ${answer.skipped} skipped because they were `
+                          + "measured by the other backend and do not compare"
+                        : "");
+
+  // The verdict before the list, because a ranked list always has a top and the
+  // question is whether that top means anything.
+  const verdict = document.createElement("div");
+  verdict.className = "wverdict " + (answer.confident ? "wfound" : "wmissing");
+  verdict.textContent = (answer.confident
+      ? `found it. ` : `nothing here matches \u201c${answer.query}\u201d. `)
+      + (answer.detail || "");
+  results.append(verdict);
+
+  const matches = answer.matches || [];
+  if (!matches.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "nothing stored could be compared with that phrase.";
+    results.append(empty);
+    return;
+  }
+  for (const match of matches) {
+    const block = document.createElement("div");
+    block.className = "wobs";
+    if (match.entity_id) {
+      block.style.borderLeftColor = `hsl(${wHue(match.entity_id)} 70% 45%)`;
+    }
+    const head = document.createElement("div");
+    const score = document.createElement("span");
+    score.className = "mono";
+    score.textContent = (+match.score).toFixed(4);
+    const what = document.createElement("strong");
+    what.textContent = ` ${match.label || "(no label)"}`;
+    head.append(score, what);
+    if (match.entity_id) {
+      const owner = document.createElement("span");
+      owner.className = "mono";
+      owner.textContent = `  ${match.entity_id}`;
+      head.append(owner);
+    }
+    block.append(head);
+
+    const meta = document.createElement("div");
+    meta.className = "wmeta mono";
+    const bits = [`seen ${wTime(match.observed_at)}`];
+    if (match.bearing_deg != null) bits.push(`bearing ${match.bearing_deg}\u00b0`);
+    bits.push(`map ${match.map_session ?? "?"}`);
+    meta.textContent = bits.join(" \u00b7 ");
+    block.append(meta);
+
+    // Where it is, which is the answer a person wanted when they typed the
+    // phrase. A match on an observation of something never placed can only say
+    // which way to look, and says that rather than nothing.
+    const place = document.createElement("div");
+    place.className = "wmeta";
+    if (match.placement) {
+      place.classList.add("wplaced");
+      place.textContent = `at (${(+match.placement.x_m).toFixed(2)}, `
+          + `${(+match.placement.y_m).toFixed(2)}) m`;
+    } else {
+      place.classList.add("wunplaced");
+      place.textContent = match.bearing_deg == null
+          ? "this was seen without a measured pose, so it says nothing about where"
+          : `no position — this only says the rover saw it on bearing `
+            + `${match.bearing_deg}\u00b0`;
+    }
+    block.append(place);
+    block.append(wShot({frame_id: match.frame_id}));
+    results.append(block);
   }
 }
 
@@ -1537,9 +1741,15 @@ function wireWorld() {
       }
       $("wPaneEntities").hidden = worldTab !== "entities";
       $("wPaneObservations").hidden = worldTab !== "observations";
+      $("wPaneSearch").hidden = worldTab !== "search";
       $("wPaneDiagnostics").hidden = worldTab !== "diagnostics";
+      if (worldTab === "search") $("wSearchBox").focus();
     };
   }
+  $("wSearchForm").onsubmit = (event) => {
+    event.preventDefault();
+    post({do: "world", what: "search", query: $("wSearchBox").value});
+  };
 }
 
 function drawNotice(notice) {

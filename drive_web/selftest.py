@@ -21,7 +21,9 @@ from test_drive_web import (
     test_one_console_at_a_time, test_pictures_are_not_replayed,
     test_pictures_wait_for_the_last_one, test_signal_verdict,
     test_stopping_an_unwatched_rover,
-    test_the_audio_socket, test_the_world_state_popup,
+    test_finding_a_thing_from_the_console,
+    test_the_audio_socket, test_the_page_draws_every_pane_its_tabs_offer,
+    test_the_world_state_popup,
     test_the_world_urls, test_tracking_while_the_rover_drives,
     test_the_network_panel,
     test_web_console, test_what_the_browser_heard,
@@ -47,6 +49,8 @@ def main() -> int:
     test_the_audio_socket()
     test_what_the_browser_heard()
     test_tracking_while_the_rover_drives()
+    test_finding_a_thing_from_the_console()
+    test_the_page_draws_every_pane_its_tabs_offer()
     test_the_world_state_popup()
     test_the_world_urls()
 

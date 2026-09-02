@@ -1420,6 +1420,94 @@ class _Recorder:
         self.calls.append((name, arguments))
 
 
+def test_finding_a_thing_from_the_console() -> None:
+    """Typing a phrase, and the two answers it can get.
+
+    The interesting case is the third one: the model takes several seconds, so an
+    answer can arrive after the person has typed something else, and drawing it
+    would read as the search having got the wrong thing. It is dropped instead.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the console search ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    sent = []
+    session.world_link = type("Link", (), {
+        "submit": lambda _self, name, arguments=None: sent.append((name, arguments)),
+    })()
+
+    session.world_act({"what": "search", "query": "  a spray bottle  "})
+    check("the phrase is sent, trimmed", sent[-1][0], "world_state_search")
+    check("...as the rover's own argument", sent[-1][1]["query"], "a spray bottle")
+    check("...and the box says it is working",
+          session.world_state()["searching"], True)
+
+    session.world_handle("world_state_search", {
+        "ok": True, "query": "a spray bottle", "confident": True,
+        "best": 0.13, "considered": 31, "skipped": 0,
+        "detail": "the best match scores 0.130 against that description",
+        "matches": [{"score": 0.13, "observation_id": 4, "entity_id": "object-1",
+                     "label": "a spray bottle", "frame_id": "f1",
+                     "placement": {"x_m": 2.0, "y_m": 1.0}}]}, 4.0)
+    check("the answer stops the working state",
+          session.world_state()["searching"], False)
+    check("...and is kept for the popup to draw",
+          session.world_payload["search"]["matches"][0]["label"], "a spray bottle")
+
+    # An answer to the phrase before last, arriving after the box has moved on.
+    session.world_act({"what": "search", "query": "a bicycle"})
+    session.world_handle("world_state_search", {
+        "ok": True, "query": "a spray bottle", "confident": True,
+        "matches": [{"score": 0.9, "label": "the wrong answer"}]}, 4.0)
+    check("a late answer to an older phrase is dropped",
+          session.world_payload["search"]["matches"][0]["label"], "a spray bottle")
+
+    # An empty box clears the pane rather than asking the rover about nothing.
+    before = len(sent)
+    session.world_act({"what": "search", "query": "   "})
+    check("an empty phrase asks the rover nothing", len(sent), before)
+    check("...and takes the last answer off the screen",
+          "search" in session.world_payload, False)
+
+    # A rover that cannot answer says so without leaving the box spinning.
+    session.world_act({"what": "search", "query": "a mirror"})
+    session.world_handle("world_state_search",
+                         {"ok": False, "error": "no perception sidecar"}, 0.2)
+    check("a refusal stops the working state",
+          session.world_state()["searching"], False)
+    check("...and is shown", session.world_state()["error"], "no perception sidecar")
+
+
+def test_the_page_draws_every_pane_its_tabs_offer() -> None:
+    """A tab whose pane is never unhidden is a tab that does nothing.
+
+    Cheap to get wrong when a tab is added, invisible until somebody clicks it,
+    and there is no browser in this repository's test loop to catch it.
+    """
+    import os
+    import re
+
+    page = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "drive_web.html")
+    with open(page, encoding="utf-8") as handle:
+        html = handle.read()
+    tabs = set(re.findall(r'data-wtab="([a-z]+)"', html))
+    check("the popup offers four tabs", len(tabs), 4)
+    for tab in sorted(tabs):
+        pane = f'id="wPane{tab.capitalize()}"'
+        check(f"the {tab} tab has a pane", pane in html, True)
+        check(f"...that something unhides",
+              f'$("wPane{tab.capitalize()}").hidden' in html, True)
+    # Every element the script reaches for by name has to be in the markup, which
+    # is the other half of the same mistake.
+    for name in sorted(set(re.findall(r'\$\("(w[A-Za-z]+)"\)', html))):
+        check(f"the page has an element called {name}",
+              f'id="{name}"' in html, True)
+
+
 def test_the_world_urls() -> None:
     """`/world.json` and `/world_frame.jpg`, over a real socket.
 
