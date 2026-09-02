@@ -214,6 +214,8 @@
           "patterns": [
             "drive_web/*.py",
             "drive_web/*.html",
+            "drive_web/*.css",
+            "drive_web/*.js",
             "drive_web/*.sh",
             "drive_web/README.md"
           ],

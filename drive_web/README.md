@@ -35,7 +35,8 @@ python deploy/deploy.py --only drive_web
 Manual fallback:
 
 ```bash
-scp drive_web/*.py drive_web/*.html drive_web/*.sh drive_web/README.md \
+scp drive_web/*.py drive_web/*.html drive_web/*.css drive_web/*.js \
+    drive_web/*.sh drive_web/README.md \
     orin:~/ugv/drive_web/
 scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts}.py \
     orin:~/ugv/drive_web/

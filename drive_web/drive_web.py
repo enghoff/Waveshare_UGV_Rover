@@ -67,8 +67,11 @@ same reason.
 
 Only the standard library, plus [rover_tools.py](../voice_chat/rover_tools.py)
 for the wire and [console_model.py](../voice_chat/console_model.py) for the
-pacing and the English. The page is [drive_web.html](drive_web.html) beside
-this file, read from disk on every request so that editing it needs no restart.
+pacing and the English. The page is [drive_web.html](drive_web.html) beside this
+file, with its stylesheet in [drive_web.css](drive_web.css) and its script split
+between [drive_world.js](drive_world.js), the world-state popup, and
+[drive_web.js](drive_web.js), which is everything else and calls `start()`. All
+four are read from disk on every request, so editing one needs no restart.
 """
 
 from __future__ import annotations
@@ -98,7 +101,19 @@ from drive_session import (
 )
 from drive_show import _png_width
 
-PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drive_web.html")
+HERE = os.path.dirname(os.path.abspath(__file__))
+PAGE = os.path.join(HERE, "drive_web.html")
+# The page's stylesheet and script, which used to be inside it. Served from here
+# rather than inlined so that each stays a file a person can open, and read per
+# request for the same reason the page is: editing one and pressing reload is
+# the whole edit cycle.
+ASSETS = {
+    "/drive_web.css": (os.path.join(HERE, "drive_web.css"), "text/css; charset=utf-8"),
+    "/drive_world.js": (os.path.join(HERE, "drive_world.js"),
+                        "application/javascript; charset=utf-8"),
+    "/drive_web.js": (os.path.join(HERE, "drive_web.js"),
+                      "application/javascript; charset=utf-8"),
+}
 
 # **The microphone is optional and the console is not.** `omni_bridge` pulls in
 # the voice client, which needs `websockets` and numpy, and a desk that has
@@ -202,6 +217,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._missing(f"{PAGE} is missing: {error}")
                 return
             self._send(page, "text/html; charset=utf-8")
+        elif path in ASSETS:
+            where, kind = ASSETS[path]
+            try:
+                with open(where, "rb") as handle:
+                    body = handle.read()
+            except OSError as error:
+                self._missing(f"{where} is missing: {error}")
+                return
+            self._send(body, kind)
         elif path == "/map.png":
             if not self.session.map_png:
                 self._missing("no map yet")
