@@ -2,7 +2,12 @@
 """Offline checks for the drive console. No rover and no browser.
 
     python drive_web/selftest.py
-    ssh bpi-m4zero 'cd ~/ugv/drive_web && python3 selftest.py'
+    ssh orin 'cd ~/ugv/drive_web && python3 selftest.py'
+
+This file is the runner. The checks live beside it, one module per part of the
+console, and each exports a `TESTS` tuple: the network panel, the session a
+browser holds, the frames it is sent, the audio socket, the world-state panel,
+and the page itself read as text.
 """
 from __future__ import annotations
 
@@ -13,50 +18,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import _paths  # noqa: F401
 
-from test_drive_web import (
-    test_a_browser_leaving, test_a_second_conversation_starts_at_once,
-    test_a_slow_browser_is_shown_the_newest_state, test_a_second_click_takes_over,
-    test_choosing_a_network, test_finding_the_rover_again,
-    test_idle_console_waits_for_a_browser,
-    test_one_console_at_a_time, test_pictures_are_not_replayed,
-    test_pictures_wait_for_the_last_one, test_signal_verdict,
-    test_stopping_an_unwatched_rover,
-    test_finding_a_thing_from_the_console,
-    test_the_audio_socket, test_the_page_draws_every_pane_its_tabs_offer,
-    test_the_world_popup_scrolls_its_lists_not_its_body,
-    test_the_switch_for_building_the_world_state,
-    test_the_world_state_popup,
-    test_the_world_urls, test_tracking_while_the_rover_drives,
-    test_the_network_panel,
-    test_web_console, test_what_the_browser_heard,
-)
+from test_audio import TESTS as AUDIO_TESTS
 from test_harness import FAIL, PASS, SKIP
+from test_network import TESTS as NETWORK_TESTS
+from test_page import TESTS as PAGE_TESTS
+from test_pictures import TESTS as PICTURE_TESTS
+from test_session import TESTS as SESSION_TESTS
+from test_world_panel import TESTS as WORLD_TESTS
 
 
 def main() -> int:
-    test_choosing_a_network()
-    test_the_network_panel()
-    test_signal_verdict()
-    test_pictures_wait_for_the_last_one()
-    test_web_console()
-    test_stopping_an_unwatched_rover()
-    test_idle_console_waits_for_a_browser()
-    test_a_second_click_takes_over()
-    test_finding_the_rover_again()
-    test_a_browser_leaving()
-    test_a_slow_browser_is_shown_the_newest_state()
-    test_a_second_conversation_starts_at_once()
-    test_one_console_at_a_time()
-    test_pictures_are_not_replayed()
-    test_the_audio_socket()
-    test_what_the_browser_heard()
-    test_tracking_while_the_rover_drives()
-    test_finding_a_thing_from_the_console()
-    test_the_page_draws_every_pane_its_tabs_offer()
-    test_the_world_popup_scrolls_its_lists_not_its_body()
-    test_the_switch_for_building_the_world_state()
-    test_the_world_state_popup()
-    test_the_world_urls()
+    for test in (*NETWORK_TESTS, *PICTURE_TESTS, *SESSION_TESTS, *AUDIO_TESTS,
+                 *WORLD_TESTS, *PAGE_TESTS):
+        test()
 
     for name in PASS:
         print(f"  ok   {name}")
