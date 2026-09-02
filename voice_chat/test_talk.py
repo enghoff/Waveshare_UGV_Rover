@@ -1,7 +1,7 @@
 """Checks for the omni session, rover_tools, and the prompt reader."""
 from __future__ import annotations
 
-from test_harness import FAIL, PASS, SKIP, check
+from test_harness import SKIP, check
 
 
 def test_rover_client() -> None:
@@ -73,7 +73,7 @@ def test_rover_client() -> None:
         client.call("hang_up", {})
         check("a dropped connection is remade", client.call("ping", {})["ok"], True)
 
-        # And remaking it must not send the client back to the name. `bpi-m4zero.local`
+        # And remaking it must not send the client back to the name. `jetson-orin.local`
         # is answered by mDNS -- multicast UDP, with nothing retransmitting it --
         # so on a rover whose wifi has gone weak the lookup is what fails first,
         # while the connection it was wanted for would have worked. Re-resolving
@@ -184,11 +184,14 @@ def test_rover_client() -> None:
         server.shutdown()
         server.server_close()
 
-    # The name has to come first: it is the only candidate that stays right if
-    # the wifi address moves, and a failed name lookup is slow enough that
-    # paying for one before an address that would have worked is a real cost.
-    check("the rover is looked for by name first",
-          rover_tools.DEFAULT_CANDIDATES[0], "bpi-m4zero.local")
+    # The service address has to come first: it is written into every one of the
+    # rover's network profiles, so it is the candidate that stays right when the
+    # address moves between radios, and it connects in 16 ms where resolving the
+    # name costs 2.2 s before the connection is even attempted.
+    check("the rover is looked for at its service address first",
+          rover_tools.DEFAULT_CANDIDATES[0], "192.168.1.80")
+    check("...and by name when it is not holding it",
+          rover_tools.DEFAULT_CANDIDATES[1], "jetson-orin.local")
 
 def test_connect_errors() -> None:
     """What the client says when the hosted service is not there.

@@ -9,7 +9,7 @@ there is no second copy of a schema to drift out of step with the code that
 honours it.
 
     rover = RoverClient("127.0.0.1:8769")   # on the rover itself
-    rover = RoverClient("bpi-m4zero.local:8769")  # from a desk on the same LAN
+    rover = RoverClient("192.168.1.80:8769")  # from a desk on the same LAN
 
 [omni_bridge.py](../drive_web/omni_bridge.py) uses this on loopback, from the
 rover's own drive console. A desk on the same LAN can still open a
@@ -39,16 +39,22 @@ DEFAULT_PORT = 8769
 
 # Where to look for the rover, in order, when nobody has named it.
 #
-# The name first, because it is the only identifier that stays right if the
-# wifi address ever moves. Defaulting to a number was a real bug on the Pi 1
+# The service address first. Defaulting to a number was a real bug on the Pi 1
 # this rover replaced -- the daemon was serving on wlan0 while the client
 # dialled the docked eth0 address, and the model spent the conversation
-# insisting it had no lights. The Banana Pi is wifi only, but the same rule
-# holds: a name that works costs ~150ms, a name that does not costs 7.3s, and
-# an address that is not there refuses in milliseconds. The number stays as
-# the fallback for a LAN with no mDNS, and it is second for that reason.
-# See docs/hosts.md.
-DEFAULT_CANDIDATES = ("bpi-m4zero.local", "192.168.1.139")
+# insisting it had no lights -- and the rule that came out of it, name first,
+# held for as long as the address was whatever DHCP had handed out that day.
+# It no longer is. `192.168.1.80` is written into every one of the rover's
+# network profiles and is held by whichever radio is healthy, so it is now the
+# identifier that survives the address moving, which is the job the name was
+# doing. It is also far cheaper: from a desk on this LAN it connects in 16 ms
+# where `jetson-orin.local` costs 2.2 s to resolve first, and mDNS is multicast
+# UDP that nobody retransmits -- the first thing to go when the rover's wifi
+# turns marginal, as `_connect` below explains at length.
+#
+# The name stays as the fallback, for a LAN where the rover does not hold its
+# service address. See docs/hosts.md.
+DEFAULT_CANDIDATES = ("192.168.1.80", "jetson-orin.local")
 
 # Long enough for the slowest tool. `count_faces` with the camera cold has to
 # start v4l2-ctl and wait for its first buffer, which is seconds; everything
@@ -131,7 +137,7 @@ class RoverClient:
     def _connect(self) -> None:
         """Open a connection, reusing whatever address the name last led to.
 
-        `bpi-m4zero.local` is answered by mDNS, and mDNS is multicast UDP with
+        `jetson-orin.local` is answered by mDNS, and mDNS is multicast UDP with
         nothing retransmitting it, so it is the first thing to go when the rover's
         wifi turns marginal -- while the TCP underneath a tool call retries and
         rides the same bad moment out. Looking the name up on every reconnect
