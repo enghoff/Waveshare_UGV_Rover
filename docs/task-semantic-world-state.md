@@ -8,10 +8,17 @@ the plan._
 
 ## Where this stands
 
-**All five phases are built, deployed and running on the rover.** One thing
-remains unproven on hardware and it is the same thing as yesterday: the rover has
-never driven between two inspections, so nothing has ever been *placed* outside
-the selftests.
+**All five phases are built, deployed and running on the rover, and the
+validation drive has now happened.** Driven round three places in a real room and
+inspected at six headings from each, the rover placed twenty-three things from
+two hundred and six observations: one television from seven looks, a sofa, a
+cabinet, a doorway, and *two* armchairs, which is how many the room has. The
+person in the room came out at (0.04, 0.63) and the armchair he was sitting in at
+(0.10, 0.55) -- ten centimetres apart, which is the whole claim of this programme
+working on hardware.
+
+It also found three faults that no selftest could have, and they are written up
+under Phase 5 below. Nine duplicate entities remain and are the open problem.
 
 An inspection now measures rather than asks. It costs about a fifth of a second
 on the GPU, stores twelve regions with a bearing worked out from the rover's own
@@ -617,12 +624,27 @@ On the real rover, all of them:
 - [ ] none of it destabilises lidar, SLAM, Nav2, STOP, camera ownership or the
       Qwen voice path.
 
-**The validation drive matters and has not happened.** Every observation recorded
-so far shares one origin — the rover turned on the spot and never translated —
-which is precisely the condition under which triangulation cannot work. The
-experiment is: clear, then inspect from three or more positions a few metres
-apart, including both chairs, and count how many identifiers survive. Until that
-is run, the geometry is proven only in tests.
+### The validation drive, 2026-09-02
+
+Three places about 1.3, 0.9 and 2.1 m apart, six headings surveyed from each with
+the gimbal centred, 206 observations. **23 things placed, and the geometry works.**
+What it found:
+
+| | |
+|---|---|
+| the camera was blind | Auto-exposure had wound up for a dark room and never came back down, so every frame was white and the first attempt at the drive recorded regions that were not there — a spray bottle, a rug, a fan, in a room holding two armchairs. In "Aperture Priority Mode" this camera saturates regardless of the exposure time it reports; forcing manual at the shortest setting fixed it, 0 regions to 30. **The daemon never touches exposure, so nothing will correct this on its own.** A durable fix belongs in the camera setup and affects face tracking and the voice session too. |
+| fixes landed on the lens | All six placements of the first attempt sat 0.13–0.59 m from the camera that saw them. Two rays pointing inward from two nearby places cross in the gap between them at a healthy parallax off a healthy baseline, so neither guard caught it — and nudging a bearing by 1.5° barely moves a point that close, so the phantom reported two centimetres of uncertainty and outranked every real thing in the room. `MIN_RANGE_M` is now 0.75. |
+| things were placed twice | Four televisions, two of them 8 cm apart, and three people where there was one. An entity is stored as a point but a television is a metre wide, so two looks from different sides of it centre on different parts of it and the match was refused; those looks then paired with each other into a second television, because the list of known things is read once before the pairing pass runs. The match tolerance now carries the thing's own width, and a thing created while pairing is offered to everything still waiting. On the same recording: 37 entities to 23, 22 duplicates to 9. |
+
+**The open problem is the nine duplicates that remain**, and they are not all the
+same thing. Two armchairs and three wooden chairs may well be two armchairs and
+three wooden chairs. Two windows 0.4 m apart are one patio door that the region
+finder split. Three people, metres apart, are one person who moved — and a person
+is in `MOVABLE`, so placement should not be identity for them at all. One of the
+three is a fix at 14° of parallax reporting ±1.42 m, which is barely a fix.
+
+None of that is a reason to keep the rover parked, and all of it is measurable
+from the recording already stored.
 
 ---
 
