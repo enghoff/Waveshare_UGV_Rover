@@ -148,7 +148,7 @@ class Inspector:
             stored = self.store.record(
                 look.regions, capture=capture, source=self.source,
                 model_id=look.backend, inference_id=inference_id,
-                fov_deg=self.fov_deg, region_source="fastsam",
+                fov_deg=self.fov_deg, region_source="yoloe",
                 vectors_from=look.backend)
         except sqlite3.Error as error:
             return self._failed("store_error", f"{type(error).__name__}: {error}",

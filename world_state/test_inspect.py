@@ -36,7 +36,7 @@ def test_an_inspection_through_the_encoders_keeps_what_it_measured() -> None:
         check("the backend that produced them travels with them",
               first["vectors_from"], "fake")
         check("what drew the box is recorded apart from what named it",
-              first["region_source"], "fastsam")
+              first["region_source"], "yoloe")
         check("no identity was written", first["entity_id"], None)
         check("nothing was prompted, so no prompt version is claimed",
               first["prompt_version"], None)

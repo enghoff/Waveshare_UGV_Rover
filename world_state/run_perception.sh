@@ -22,7 +22,7 @@ LOG="$DIR/perception.log"
 RETRY=15
 PORT=8776
 
-if [ ! -f "$VENDOR/FastSAM-s.onnx" ]; then
+if [ ! -f "$VENDOR/yoloe-11s-seg-objectness.onnx" ]; then
     echo "--- $(date -Is): no perception models; run install_perception.sh" >> "$LOG"
     exit 1
 fi

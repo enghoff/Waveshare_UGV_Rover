@@ -33,7 +33,7 @@ import os
 #: What `install_perception.sh` names the engines it builds. Batch sizes are not
 #: in the names: an engine carries its own optimisation profile and the runtime
 #: reads the allowed range out of it.
-FASTSAM = "fastsam.plan"
+REGIONS = "yoloe.plan"
 DINO = "dinov2.plan"
 SIGLIP_VISION = "siglip-vision.plan"
 SIGLIP_TEXT = "siglip-text.plan"
@@ -41,7 +41,7 @@ SIGLIP_TEXT = "siglip-text.plan"
 #: Every engine this component needs to be able to run. The text engine is in the
 #: list because a search cannot be answered without it, even though a look never
 #: touches it and it is loaded for the call and let go again.
-REQUIRED = (FASTSAM, DINO, SIGLIP_VISION, SIGLIP_TEXT)
+REQUIRED = (REGIONS, DINO, SIGLIP_VISION, SIGLIP_TEXT)
 
 
 class NoEngines(RuntimeError):

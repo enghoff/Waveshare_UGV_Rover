@@ -1,11 +1,13 @@
-"""Regions and embeddings for one frame, from three models that know no
-categories between them.
+"""Regions and embeddings for one frame, from three models, none of which is
+allowed to name anything.
 
 This is the half of the world state that replaced asking a language model which
 lasting thing it was looking at. Three questions, three mechanisms, and the point
 is that they are separate:
 
-    what regions are in this frame?    FastSAM, which knows no categories at all
+    what regions are in this frame?    YOLOE, whose vocabulary is cut off at
+                                       the graph so only "something is here"
+                                       comes out of it
     is this the same instance?         DINOv2 similarity, gated by geometry
     which lasting thing is it?         **not answered here.** That is a
                                        triangulated map position, and it needs a
@@ -48,24 +50,34 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VENDOR = os.path.join(HERE, "vendor")
 
 #: The three graphs and the tokenizer, as `install_perception.sh` names them.
-FASTSAM = "FastSAM-s.onnx"
+#:
+#: **The region finder is not a stock export and cannot be downloaded.** YOLOE
+#: ends in 4,585 class scores per anchor, and the rover wants one number from
+#: that block -- whether anything is there at all. `export_regions.py` on a
+#: workstation takes the maximum inside the graph, which leaves an output shaped
+#: exactly like the FastSAM export this replaced: four box numbers, one score,
+#: thirty-two mask coefficients. Everything below the model is unchanged by the
+#: swap, and the vocabulary never reaches this machine.
+YOLOE = "yoloe-11s-seg-objectness.onnx"
 DINO = "dinov2-small-int8.onnx"
 SIGLIP = "siglip2-base-patch32-256-int8.onnx"
 TOKENIZER = "siglip2-tokenizer.json"
 
-#: What FastSAM is shown, and the number was walked down until something broke.
-#: Its own default is 1024, which on a 640x480 camera is upsampling before it is
-#: anything else. Measured against objects read off the frames by hand: 640 and
-#: 512 both find the spray bottle, the armchair, the framed picture and the air
-#: purifier, and 512 costs 330 ms on the rover against 510. **448 is where it
-#: breaks** -- the air purifier disappears entirely -- so this is one step above
-#: the cliff rather than at the bottom of it.
-FASTSAM_SIZE = 512
-#: Below this the box is a texture rather than a thing. Measured: at the library's
-#: own default of 0.25 the same living-room frame came back with 49 boxes of which
-#: half were reflections on a tiled floor; at 0.4 it is 29, which is what the plan
-#: recorded and what the eye agrees with.
-FASTSAM_CONF = 0.4
+#: What the region finder is shown. **Fixed at the export rather than chosen
+#: here**: FastSAM's graph took any size and this one is built for 512 alone, so
+#: changing this number without re-exporting is an error the session raises
+#: rather than a slower or coarser look. 512 is where it was measured, and where
+#: the model it replaced was measured before it.
+YOLOE_SIZE = 512
+#: Below this the box is a texture rather than a thing. **Lower than the 0.4 the
+#: previous region finder ran at, and that is the swap's one tuning.** Measured
+#: over the 33 lit frames the rover had stored: 146 regions at 0.4, 188 at 0.25,
+#: 237 at 0.15 and 270 at 0.08, against 258 from FastSAM at its own 0.4. At 0.15
+#: the yield matches what the rover used to get and the extra boxes are still
+#: things -- the chairs round the dining table, a flipchart, a second doorway --
+#: while below it they stop matching anything FastSAM proposed and more crops
+#: come back blank.
+YOLOE_CONF = 0.15
 #: How much two boxes may overlap before the lower-scoring one is dropped, as a
 #: fraction of the **smaller** box -- see `_suppress`, where the choice of
 #: denominator is argued and measured. For two boxes of the same size this is
@@ -74,7 +86,12 @@ FASTSAM_CONF = 0.4
 #: 0.9 down to 0.5 removes the nesting; lower than 0.8 starts costing regions
 #: that were not nested (95 at 0.8, 81 at 0.5, over the same ten frames), so
 #: this sits at the top of the range that works rather than in the middle of it.
-FASTSAM_OVERLAP = 0.8
+#:
+#: Measured on FastSAM's boxes and kept unchanged through the swap, where it has
+#: much less to do: of the 237 regions YOLOE keeps across the rover's 38 stored
+#: frames, one is nested. It stays because the rule is about what a part is, not
+#: about which model proposed it.
+YOLOE_OVERLAP = 0.8
 
 #: What DINOv2 and SigLIP2 are shown, from their own preprocessor configs.
 DINO_SIZE = 224
@@ -222,8 +239,8 @@ class _CpuModels:
         # **The single most expensive line in this file, and it is a one-word
         # setting.** Three sessions run one after another on every look, and by
         # default an onnxruntime thread pool keeps spinning for a while after
-        # its own work finishes -- so FastSAM's threads are still burning cores
-        # while DINOv2 runs, and DINOv2's while SigLIP2 does. Measured on the
+        # its own work finishes -- so the region finder's threads are still
+        # burning cores while DINOv2 runs, and DINOv2's while SigLIP2 does. Measured on the
         # rover's own frames: a look costs 2.64 s with spinning left on and
         # 0.80 s with it off, and the models themselves are identical. Each one
         # alone is as fast either way, which is exactly why this is easy to miss.
@@ -243,12 +260,12 @@ class _CpuModels:
         # reasoned about. This one export carries both towers, so it is also what
         # a text search runs through.
         self._siglip = session(SIGLIP)
-        self._fastsam = self._dino = None
+        self._regions = self._dino = None
 
     def open(self) -> None:
         """The two graphs a look needs beyond the one already open."""
-        if self._fastsam is None:
-            self._fastsam = self._session(FASTSAM)
+        if self._regions is None:
+            self._regions = self._session(YOLOE)
             self._dino = self._session(DINO)
         # This SigLIP2 export carries both towers in one graph, so the image
         # path has to be handed an `input_ids` whether it wants one or not. A
@@ -266,7 +283,7 @@ class _CpuModels:
         not the other is a crash on whichever board has the wrong one."""
 
     def regions(self, blob):
-        return self._fastsam.run(None, {"images": blob})[0]
+        return self._regions.run(None, {"images": blob})[0]
 
     def appearance(self, batch):
         return self._dino.run(None, {"pixel_values": batch})[0][:, 0]
@@ -285,16 +302,24 @@ class _CpuModels:
 class _GpuModels:
     """The same models as TensorRT engines, on the Orin's own GPU.
 
-    Measured on the rover, one frame with twelve regions: FastSAM 5 ms, DINOv2
-    70 ms for all twelve crops in a single call, SigLIP2 42 ms for the same
-    twelve. On the CPU those three are 418 ms, 1137 ms and 854 ms. Batching is
-    most of the difference and it is why the engines carry an optimisation
-    profile centred on twelve rather than on one.
+    Measured on the rover, one frame with twelve regions: the region finder
+    16 ms, DINOv2 70 ms for all twelve crops in a single call, SigLIP2 42 ms for
+    the same twelve. On the CPU those three are 520 ms, 1137 ms and 854 ms.
+    Batching is most of the difference and it is why the engines carry an
+    optimisation profile centred on twelve rather than on one.
+
+    **The region finder costs 10 ms more than the FastSAM engine it replaced**,
+    which is 16 ms against 5.7, and that is the price of the swap on a look that
+    runs to about a fifth of a second. Two thirds of the difference is the
+    maximum over 4,585 class scores, which the export folds into the graph: left
+    outside it the same work is a 99 MB copy off the GPU and 32 ms of numpy, and
+    the whole thing costs 51 ms rather than 16.
 
     Everything here runs in full precision except the region finder. fp16 was
     measured to break SigLIP2 outright -- fifty-seven phrases through the text
     tower collapsed into a 0.92 cone, so every phrase matched everything --
-    while FastSAM's boxes in fp16 match the CPU's to a mean overlap of 0.998,
+    while the region engine's boxes in fp16 match the CPU graph's to a mean
+    overlap of 0.998 over 418 boxes from the rover's own frames, worst 0.894,
     which is the only thing a box is asked for.
     """
 
@@ -302,17 +327,17 @@ class _GpuModels:
 
     def __init__(self, directory: str) -> None:
         from .engines import DINO as DINO_ENGINE
-        from .engines import FASTSAM as FASTSAM_ENGINE
+        from .engines import REGIONS as REGIONS_ENGINE
         from .engines import SIGLIP_TEXT, SIGLIP_VISION, Engine
 
         self._directory = directory
         self._paths = {
-            "fastsam": os.path.join(directory, FASTSAM_ENGINE),
+            "regions": os.path.join(directory, REGIONS_ENGINE),
             "dino": os.path.join(directory, DINO_ENGINE),
             "vision": os.path.join(directory, SIGLIP_VISION),
         }
         self._text = os.path.join(directory, SIGLIP_TEXT)
-        self._fastsam = self._dino = self._vision = None
+        self._regions = self._dino = self._vision = None
         # Nothing is loaded here. **The order the engines are opened in decides
         # whether this board survives opening them at all**: the text tower is
         # 1.1 GB, the other three come to about 0.5 GB, and with the language
@@ -329,20 +354,20 @@ class _GpuModels:
         """
         from .engines import Engine
 
-        if self._fastsam is None:
-            self._fastsam = Engine(self._paths["fastsam"], self._directory)
+        if self._regions is None:
+            self._regions = Engine(self._paths["regions"], self._directory)
             self._dino = Engine(self._paths["dino"], self._directory)
             self._vision = Engine(self._paths["vision"], self._directory)
 
     def release(self) -> None:
         """Give a look's engines back, for something that needs the room more."""
-        for engine in (self._fastsam, self._dino, self._vision):
+        for engine in (self._regions, self._dino, self._vision):
             if engine is not None:
                 engine.close()
-        self._fastsam = self._dino = self._vision = None
+        self._regions = self._dino = self._vision = None
 
     def regions(self, blob):
-        return self._fastsam.run({"images": blob})["output0"]
+        return self._regions.run({"images": blob})["regions"]
 
     def appearance(self, batch):
         return self._dino.run({"pixel_values": batch})["last_hidden_state"][:, 0]
@@ -431,7 +456,7 @@ class Perception:
         # into the numbers the text tower reads, and neither backend has one of
         # its own.
         wanted = ((TOKENIZER,) if backend == "tensorrt"
-                  else (FASTSAM, DINO, SIGLIP, TOKENIZER))
+                  else (YOLOE, DINO, SIGLIP, TOKENIZER))
         missing = [name for name in wanted
                    if not os.path.isfile(os.path.join(self.dir, name))]
         if missing:
@@ -568,13 +593,20 @@ class Perception:
     def _regions(self, image):
         """Class-agnostic boxes, as fractions of the frame.
 
-        FastSAM is a YOLOv8 segmentation head, so what comes back is one row per
-        anchor of four box numbers, one objectness and thirty-two mask
-        coefficients. The masks are not decoded: the box is all that a bearing
-        and a crop need, and the prototypes are the expensive half.
+        YOLOE is a YOLO11 segmentation head, so what comes back is one row per
+        anchor of four box numbers, a score and thirty-two mask coefficients --
+        the same shape FastSAM produced, because the export folds the 4,585 class
+        scores down to their maximum before the graph ends. The masks are not
+        decoded: the box is all that a bearing and a crop need, and the
+        prototypes are the expensive half.
+
+        **The score is therefore a class score and not an objectness.** It is how
+        strongly the best of 4,585 tags fits, which is why the threshold sits
+        lower than the one FastSAM ran at, and why a thing with no tag anywhere
+        near it is a thing this model does not propose at all.
         """
         np = self._np
-        canvas, scale, left, top = self._letterbox(image, FASTSAM_SIZE)
+        canvas, scale, left, top = self._letterbox(image, YOLOE_SIZE)
         blob = (canvas[:, :, ::-1].transpose(2, 0, 1)[None]
                 .astype(np.float32) / 255.0)
         began = time.monotonic()
@@ -583,12 +615,12 @@ class Perception:
 
         rows = raw[0].T
         scores = rows[:, 4]
-        rows, scores = rows[scores >= FASTSAM_CONF], scores[scores >= FASTSAM_CONF]
+        rows, scores = rows[scores >= YOLOE_CONF], scores[scores >= YOLOE_CONF]
         if not len(rows):
             return np.zeros((0, 4)), np.zeros(0), took
         cx, cy, w, h = rows[:, 0], rows[:, 1], rows[:, 2], rows[:, 3]
         boxes = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1)
-        keep = _suppress(np, boxes, scores, FASTSAM_OVERLAP)
+        keep = _suppress(np, boxes, scores, YOLOE_OVERLAP)
         boxes, scores = boxes[keep], scores[keep]
 
         height, width = image.shape[:2]

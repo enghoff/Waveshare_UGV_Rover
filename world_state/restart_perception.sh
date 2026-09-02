@@ -17,7 +17,7 @@
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if [ ! -f "$DIR/vendor/FastSAM-s.onnx" ]; then
+if [ ! -f "$DIR/vendor/yoloe-11s-seg-objectness.onnx" ]; then
     echo "no perception models at $DIR/vendor -- run install_perception.sh first" >&2
     exit 1
 fi

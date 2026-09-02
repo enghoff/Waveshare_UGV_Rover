@@ -193,8 +193,10 @@ def test_a_crop_with_no_picture_in_it_is_not_a_region() -> None:
 def test_a_cushion_inside_a_sofa_is_not_a_second_thing() -> None:
     """Reproduces what made the rover record one sofa several times over.
 
-    FastSAM segments everything, parts included, so a sofa comes back as a sofa
-    *and* as its arm, its back and each of its cushions. Ordinary suppression
+    A region finder proposes parts as readily as wholes, so a sofa comes back as
+    a sofa *and* as its arm, its back and each of its cushions -- FastSAM did it
+    to 57% of the regions it kept, and YOLOE, which replaced it, still does it to
+    one in 237. Ordinary suppression
     cannot see that: it divides the overlap by the union of the pair, and a
     cushion inside a sofa scores about 0.15 that way -- below any threshold
     worth setting -- so both survived, both got a bearing, and both became
@@ -211,7 +213,7 @@ def test_a_cushion_inside_a_sofa_is_not_a_second_thing() -> None:
         SKIP.append(f"suppressing a part inside a whole ({error})")
         return
 
-    from world_state.perceive import FASTSAM_OVERLAP, _suppress
+    from world_state.perceive import YOLOE_OVERLAP, _suppress
 
     sofa = [0.10, 0.30, 0.80, 0.75]
     cushion = [0.30, 0.45, 0.55, 0.70]      # wholly inside it
@@ -219,7 +221,7 @@ def test_a_cushion_inside_a_sofa_is_not_a_second_thing() -> None:
     boxes = numpy.array([sofa, cushion, lamp])
     scores = numpy.array([0.9, 0.8, 0.7])
     kept = sorted(int(index) for index in
-                  _suppress(numpy, boxes, scores, FASTSAM_OVERLAP))
+                  _suppress(numpy, boxes, scores, YOLOE_OVERLAP))
     check("the sofa and the lamp are two things", kept, [0, 2])
 
     # And the other way round, because suppression keeps the higher score and
@@ -227,19 +229,19 @@ def test_a_cushion_inside_a_sofa_is_not_a_second_thing() -> None:
     # of containing the other, not on having scored better.
     scores = numpy.array([0.6, 0.95, 0.7])
     kept = sorted(int(index) for index in
-                  _suppress(numpy, boxes, scores, FASTSAM_OVERLAP))
+                  _suppress(numpy, boxes, scores, YOLOE_OVERLAP))
     check("...whichever of the pair scored higher", len(kept), 2)
 
     # The case the old rule got right, which the new one must not break: two
     # rival guesses at the same object, near enough the same size.
     boxes = numpy.array([[0.1, 0.1, 0.5, 0.5], [0.12, 0.12, 0.52, 0.52]])
-    kept = _suppress(numpy, boxes, numpy.array([0.9, 0.8]), FASTSAM_OVERLAP)
+    kept = _suppress(numpy, boxes, numpy.array([0.9, 0.8]), YOLOE_OVERLAP)
     check("two guesses at one object are still one", len(kept), 1)
 
     # Two things that touch are two things. A quarter of the smaller box lies
     # inside the larger here, which is well under the threshold.
     boxes = numpy.array([[0.1, 0.1, 0.5, 0.5], [0.4, 0.4, 0.8, 0.8]])
-    kept = _suppress(numpy, boxes, numpy.array([0.9, 0.8]), FASTSAM_OVERLAP)
+    kept = _suppress(numpy, boxes, numpy.array([0.9, 0.8]), YOLOE_OVERLAP)
     check("...but two that only touch are two", len(kept), 2)
 
 

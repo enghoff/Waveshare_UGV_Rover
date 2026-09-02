@@ -85,7 +85,7 @@ def main() -> int:
         print(f"\n=== {os.path.basename(path)}")
         print(f"  {best['found']} regions, {best['kept']} after filtering, "
               f"{len(best['regions'])} embedded | "
-              f"fastsam {timings['regions_ms']} ms, dino {timings['dino_ms']} ms, "
+              f"regions {timings['regions_ms']} ms, dino {timings['dino_ms']} ms, "
               f"siglip {timings['siglip_ms']} ms, whole look {best['took_s']:.2f} s")
         for region in best["regions"][:arguments.top]:
             box = ", ".join(f"{value:.2f}" for value in region["bbox"])

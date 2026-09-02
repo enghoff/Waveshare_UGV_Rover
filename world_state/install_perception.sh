@@ -9,7 +9,7 @@
 # lasting thing it was looking at. Three small networks, none of which knows any
 # categories, and between them they answer three separate questions:
 #
-#     FastSAM-s     what regions are in this frame, with no categories at all
+#     YOLOE-11s     what regions are in this frame, with its vocabulary cut off
 #     DINOv2-small  is this the same *instance* as that one
 #     SigLIP2       what is this called, and later: find me the thing I describe
 #
@@ -87,9 +87,16 @@ PATHF_SHA=c44e574dc997fae2814721d1ae97d0fd6db76db82decbe9b753bf75de53f515e
 # DINOv2 and 254 in SigLIP2. The fp16 exports are what the engines are built
 # from. Their weights are rounded but the engines compute in fp32, which is what
 # onnxruntime was silently doing with them anyway.
-FASTSAM_FILE=FastSAM-s.onnx
-FASTSAM_URL=https://huggingface.co/SpatialHub/fastsam-onnx/resolve/main/FastSAM-s.onnx
-FASTSAM_BYTES=47251207
+# **The one model here that is not fetched, because there is nothing to fetch.**
+# The published YOLOE export ends in 4,585 class scores per anchor and this rover
+# wants their maximum and nothing else: taken in numpy that costs 32 ms and a
+# 99 MB copy off the GPU on every look, and taken inside the graph it costs
+# nothing at all. `export_regions.py`, run on a workstation that has ultralytics,
+# does the export and the fold and leaves a file to copy into vendor/ here. So
+# this one is checked for rather than downloaded, and the message says where it
+# comes from.
+REGIONS_FILE=yoloe-11s-seg-objectness.onnx
+REGIONS_LEAST_BYTES=40000000
 
 DINO_FILE=dinov2-small-int8.onnx
 DINO_URL=https://huggingface.co/onnx-community/dinov2-small/resolve/main/onnx/model_int8.onnx
@@ -147,6 +154,22 @@ fetch() {
     fi
 }
 
+require_exported() {
+    # require_exported <path> <least bytes> -- for the model no URL serves
+    path=$1; least=$2
+    have=0
+    [ -f "$path" ] && have=$(wc -c < "$path" | tr -d ' ')
+    if [ "$have" -lt "$least" ]; then
+        echo "no $(basename "$path") in $VENDOR ($have bytes)." >&2
+        echo "It is exported rather than downloaded. On a workstation with" >&2
+        echo "ultralytics installed:" >&2
+        echo "    python world_state/export_regions.py" >&2
+        echo "    scp $(basename "$path") orin:~/ugv/world_state/vendor/" >&2
+        exit 1
+    fi
+    echo "have $(basename "$path") already"
+}
+
 unpack_wheel() {
     # unpack_wheel <url> <name> <sha256> <import name>
     url=$1; name=$2; sha=$3; module=$4
@@ -176,7 +199,7 @@ if [ -z "$ENGINES_ONLY" ]; then
     unpack_wheel "$PATHF_URL" "$PATHF_WHEEL" "$PATHF_SHA" cuda.pathfinder
     unpack_wheel "$CUDAB_URL" "$CUDAB_WHEEL" "$CUDAB_SHA" cuda.bindings.runtime
 
-    fetch "$FASTSAM_URL"     "$VENDOR/$FASTSAM_FILE"     "$FASTSAM_BYTES"
+    require_exported "$VENDOR/$REGIONS_FILE" "$REGIONS_LEAST_BYTES"
     fetch "$DINO_URL"        "$VENDOR/$DINO_FILE"        "$DINO_BYTES"
     fetch "$SIGLIP_URL"      "$VENDOR/$SIGLIP_FILE"      "$SIGLIP_BYTES"
     fetch "$TOKENIZER_URL"   "$VENDOR/$TOKENIZER_FILE"   "$TOKENIZER_BYTES"
@@ -232,8 +255,9 @@ build_engines() {
     # tower came back within 0.92 of one another, so every phrase matched
     # everything. onnxruntime hides this because it has no fp16 kernels and
     # upcasts; a GPU does not.
-    build fastsam.plan "$FASTSAM_FILE" --fp16 \
-        --shapes=images:1x3x512x512 || return 1
+    # No --shapes: this export is built for one input size, and trtexec
+    # refuses explicit shapes for a graph that already states its own.
+    build yoloe.plan "$REGIONS_FILE" --fp16 || return 1
     build dinov2.plan "$DINO_FP16_FILE" \
         --minShapes=pixel_values:1x3x224x224 \
         --optShapes=pixel_values:12x3x224x224 \

@@ -118,5 +118,5 @@ def observe(store, x, y, bearing, vector=None, inference=None, fov_deg=100.0):
     store.record(seen, capture={"frame_id": "f", "pan": 0.0,
                                 "pose": {"x_m": x, "y_m": y,
                                          "heading_deg": bearing}},
-                 fov_deg=fov_deg, region_source="fastsam", vectors_from="fake",
+                 fov_deg=fov_deg, region_source="yoloe", vectors_from="fake",
                  inference_id=inference)

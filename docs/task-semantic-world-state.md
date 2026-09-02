@@ -273,6 +273,15 @@ old rule is kept as a test so it cannot come back by accident.
 
 ### Decomposition wants no vocabulary at all
 
+_Overtaken on 2026-09-02, and the heading is now half wrong. FastSAM was replaced
+by YOLOE-11s, which does have a vocabulary — 4,585 tags — and earns its place by
+proposing the whole armchair that FastSAM never proposed at all. The vocabulary
+is folded out of the graph before the rover sees it, so nothing downstream
+changed, but the recall argument below no longer describes what runs: the measured
+comparison is in [`world_state/README.md`](../world_state/README.md) under "The
+region finder was swapped". The reasoning below is kept as what was true of
+FastSAM._
+
 Region counts on the same three frames, and every one of these is a *class-
 agnostic or open-vocabulary* method:
 

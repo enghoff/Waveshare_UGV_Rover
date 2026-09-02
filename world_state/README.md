@@ -56,7 +56,7 @@ the room and writes them into the scene.
 
 So the language model lost the job, and then — on 2026-09-02 — it left the rover
 altogether. **An inspection measures rather than asks.** A frame goes to the
-perception sidecar, which draws regions with FastSAM and describes each one with a
+perception sidecar, which draws regions with YOLOE and describes each one with a
 DINOv2 appearance vector and a SigLIP2 semantic vector; the store keeps those
 beside the gimbal angles and the rover pose, and identity is settled afterwards by
 bearings that cross. Nothing in this component sends a picture to a language model
@@ -72,7 +72,7 @@ gone. A person who wants prose about what the camera can see asks the daemon's
               perception_client
                       |
                       v            loopback 8776, its own process
-        FastSAM -> DINOv2 + SigLIP2  (TensorRT on the GPU, ONNX on the CPU)
+        YOLOE -> DINOv2 + SigLIP2    (TensorRT on the GPU, ONNX on the CPU)
                       |
         a box and two vectors per region
                       |
@@ -261,18 +261,31 @@ that has no models yet, saying so. That is deliberate: the alternative is a
 component that deploys clean and cannot answer.
 
 ```bash
-python deploy/deploy.py --only world_state          # copies; fails if no models
-ssh orin '~/ugv/world_state/install_perception.sh'  # ~0.5 GB, the three encoders
-python deploy/deploy.py --only world_state          # now passes
+pip install ultralytics onnx onnxslim                # on this machine, not the rover
+python world_state/export_regions.py                 # makes the region finder
+scp yoloe-11s-seg-objectness.onnx orin:~/ugv/world_state/vendor/
+python deploy/deploy.py --only world_state           # copies; fails if no models
+ssh orin '~/ugv/world_state/install_perception.sh'   # ~0.5 GB, the three encoders
+python deploy/deploy.py --only world_state           # now passes
 ```
+
+**The first three lines are the price of running YOLOE**, and they are new. Every
+other model here is downloaded; this one is not published in a form the rover can
+use, and making it wants ultralytics and torch, which the rover has neither the
+room nor the need for. So it is exported on a workstation, copied into `vendor/`
+by hand, and `install_perception.sh` checks for it and says this if it is
+missing. What the export does beyond the stock one is fold YOLOE's 4,585 class
+scores down to their maximum inside the graph — see
+[`export_regions.py`](export_regions.py), which is not deployed and never runs on
+the rover.
 
 One installer, where there were two: the second fetched two gigabytes of language
 model and a llama.cpp server, and both left the rover on 2026-09-02 along with the
-code that called them. `install_perception.sh` fetches FastSAM, DINOv2 and SigLIP2
-as ONNX graphs, unpacks ONNX Runtime and the SigLIP tokenizer as wheels, and
-builds the TensorRT engines. It checks what it fetches against its expected size,
-adds the sidecar's `@reboot` crontab entry, and resumes a part-fetched file —
-which is most of why it is worth re-running rather than starting again.
+code that called them. `install_perception.sh` fetches DINOv2 and SigLIP2 as ONNX
+graphs, unpacks ONNX Runtime and the SigLIP tokenizer as wheels, and builds the
+TensorRT engines. It checks what it fetches against its expected size, adds the
+sidecar's `@reboot` crontab entry, and resumes a part-fetched file — which is
+most of why it is worth re-running rather than starting again.
 
 **Perception reaches the GPU through TensorRT, which comes from JetPack.** What it
 does *not* go through is ONNX Runtime, and that is worth stating because it is the
@@ -305,7 +318,7 @@ they know no categories at all.
 
 ```text
                                                     GPU        CPU
-FastSAM-s      what regions are in this frame         5 ms     418 ms
+YOLOE-11s      what regions are in this frame        16 ms     520 ms
 DINOv2-small   is this the same instance as that     70 ms   1 137 ms   12 crops
 SigLIP2        what a typed phrase would match       42 ms     854 ms   12 crops
 ```
@@ -341,6 +354,53 @@ ssh orin 'cd ~/ugv/world_state && python3 bench_perceive.py'   # what a look cos
 curl -s 127.0.0.1:8776/health
 ```
 
+### The region finder was swapped, and what that changed
+
+**YOLOE-11s replaced FastSAM-s on 2026-09-02**, and this is what the rover gets
+for it. Both models were run over the 38 frames the world state had already
+stored — the rover's own rooms, not a benchmark — and put through the same size
+filter, the same nesting-aware suppression and the same refusal of crops with no
+picture in them, so the only difference between the two columns is the graph that
+drew the boxes.
+
+| over 38 stored frames | FastSAM-s at 0.4 | YOLOE-11s at 0.15 |
+|---|---:|---:|
+| regions kept | 258 | 237 |
+| per lit frame | 7.6 | 7.1 |
+| lit frames it finds nothing in | 0 | 2 |
+| regions the other model also has | 170 | 170 |
+| regions only this model has | 88 | 67 |
+| regions that survive to the next look of the same scene | 64% | 72% |
+
+**The reason for the swap is the armchair.** On six consecutive looks at a chair
+filling the near half of the frame, FastSAM proposed no box on the chair at all —
+it drew the television, a doorway, the air purifier and a scatter of small boxes
+on the furniture behind — while YOLOE puts one box around the whole chair. Thirty
+of the 88 regions FastSAM has and YOLOE lacks are of that kind: a part sitting
+inside a whole that YOLOE proposed and FastSAM never did.
+
+**The cost is that this model can only propose things it has a word for.** YOLOE
+finds regions by matching them against a built-in vocabulary of 4,585 tags, and
+where FastSAM would draw a box around anything at all, YOLOE draws nothing where
+nothing in that list fits: 58 of those 88 are places it proposed nothing
+whatsoever, and two lit frames come back empty that did not before. That is why
+its threshold is 0.15 and not the 0.4 FastSAM ran at — at 0.4 it keeps only 146
+regions, and the walk down to 0.15 buys back the chairs round the dining table, a
+flipchart and a second doorway before the extra boxes stop being things.
+
+**It costs 10 ms a look**, which is 16 ms on the GPU against FastSAM's 5.7, on a
+look that runs to about a fifth of a second; on the CPU fallback it is 520 ms
+against 342. Two thirds of that difference is the maximum over the 4,585 class
+scores. Folded into the graph it is 16 ms; left outside it, where the stock
+export leaves it, the same work is a 99 MB tensor copied off the GPU and 32 ms of
+numpy, and the region finder costs 51 ms instead.
+
+The names themselves never leave the workstation. `export_regions.py` folds the
+4,585 scores to their maximum inside the graph, so what the rover loads answers
+"is something here" and cannot answer "what". It is worth knowing what those
+names were, though, because they say what the model is: it called the doorways
+"entrance hall", the sideboard a "chiffonier" and the dark sofa a "ticket booth".
+
 ### Three things that were measured rather than assumed
 
 **fp16 does not merely blunt SigLIP2, it destroys it.** Built as an fp16 engine,
@@ -351,12 +411,13 @@ agreeing with full precision to only
 has no fp16 kernels on the CPU and quietly computes such graphs in fp32 — so a
 model that "works in fp16" on a desk can be worthless on a board. The engines are
 therefore built at full precision, except the region finder, whose boxes in fp16
-match the CPU's to a mean overlap of 0.998.
+match the CPU graph's to a mean overlap of 0.998 — measured again after the swap
+to YOLOE, over 418 boxes from the rover's own frames, worst case 0.894.
 
 **Turning off onnxruntime's spin-waiting is worth 3.3x.** This applies to the CPU
 fallback only, and it is still true there. Three sessions run one
 after another on every look, and by default each one's thread pool keeps spinning
-after its own work is done — so FastSAM's threads burn cores through DINOv2's turn,
+after its own work is done — so the region finder's threads burn cores through DINOv2's turn,
 and DINOv2's through SigLIP2's. A look is 2.64 s with spinning on and 0.80 s with
 it off, on the same models. Each model alone is exactly as fast either way, which
 is precisely why it is easy to miss.

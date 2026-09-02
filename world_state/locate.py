@@ -43,7 +43,11 @@ from typing import Any
 #:
 #:   the box      eight inspections of an unchanging scene, regions matched
 #:                between them by appearance: 0.13 deg of scatter, worst 0.16.
-#:                FastSAM draws the same box every time, so this term is gone.
+#:                The region finder drew the same box every time, so this term
+#:                is gone. Measured against FastSAM; YOLOE replaced it on
+#:                2026-09-02 and carries 72% of its regions from one look at an
+#:                unchanging scene to the next, against FastSAM's 64%, so if this
+#:                term has moved at all it has moved the right way.
 #:   the heading  the rover's own idea of which way it faces, over the two
 #:                minutes of a gimbal sweep while it stood still: 0.2 deg.
 #:   the gimbal   the same objects seen with the gimbal at -30, -15, 0, +15 and
