@@ -29,7 +29,9 @@
         "test -f ~/ugv/world_state/vendor/Cosmos-Reason2-2B-Q4_K_M.gguf && test -f ~/ugv/world_state/vendor/mmproj-Cosmos-Reason2-2B-F16.gguf && test -x ~/ugv/world_state/vendor/llama/llama-server || { echo 'no model installed -- run ~/ugv/world_state/install.sh' >&2; exit 1; }",
         "test -f ~/ugv/world_state/vendor/FastSAM-s.onnx && test -f ~/ugv/world_state/vendor/siglip2-base-patch32-256-int8.onnx || { echo 'no perception models -- run ~/ugv/world_state/install_perception.sh' >&2; exit 1; }",
         "~/ugv/world_state/restart.sh",
-        "~/ugv/world_state/restart_perception.sh"
+        "~/ugv/world_state/restart_perception.sh",
+        "~/ugv/restart.sh",
+        "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),5); f=s.makefile('rwb'); f.write(json.dumps({'call': 'world_state_summary'}).encode() + bytes([10])); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('daemon reloaded world_state:', r['summary']['observations'], 'observations,', r['backend'])\""
       ],
       "special_commands": [
         {
