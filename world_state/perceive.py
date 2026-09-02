@@ -612,13 +612,17 @@ class Perception:
         space as every stored region vector, so the comparison is a dot product
         and `search.py` does the rest.
         """
+        # Loading comes first, and everything else waits for it. `load()` is what
+        # puts the vendored wheels on the path and the numeric library on this
+        # object, so anything reached for beforehand -- the tokenizer import as
+        # much as `self._np` -- fails on every search that arrives before the
+        # first look, which after a reboot is every search. Measured on the
+        # rover with the import above this line: ModuleNotFoundError, where a
+        # host with no models installed should be told exactly that.
+        self.load()
+
         from tokenizers import Tokenizer
 
-        # Loading comes first. `load()` is what puts the numeric library on this
-        # object, so reaching for it beforehand is an AttributeError on every
-        # search that arrives before the first look -- which, after a reboot, is
-        # every search.
-        self.load()
         np = self._np
         tokenizer = Tokenizer.from_file(os.path.join(self.dir, TOKENIZER))
         tokenizer.enable_padding(length=SIGLIP_TOKENS, pad_id=0, pad_token="<pad>")
