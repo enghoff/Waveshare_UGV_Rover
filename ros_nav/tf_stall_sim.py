@@ -85,7 +85,7 @@ when a simulation cannot report that its subject is fine. The prediction to chec
 on the rover is the threshold, and it is checkable in one line with the stack
 running and a goal in flight:
 
-    ssh bpi-m4zero 'P=$(pgrep -f async_slam_toolbox_node); kill -STOP $P; sleep 0.6; kill -CONT $P'
+    ssh orin 'P=$(pgrep -f async_slam_toolbox_node); kill -STOP $P; sleep 0.6; kill -CONT $P'
 """
 
 import argparse

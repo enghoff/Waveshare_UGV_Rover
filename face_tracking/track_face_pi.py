@@ -6,12 +6,14 @@ detecting. On a Pi 1 -- one ARM1176 at 700 MHz with no NEON -- it could not, and
 the picture had to go out to a detector and the boxes come back: first to YuNet on
 MEDIA over the network, then to the Myriad X inside the OAK camera over USB.
 
-The rover now runs a Banana Pi M4 Zero, four Cortex-A53 cores with NEON, and YuNet
-here is faster than either of those was -- 146 ms a frame against 190 through the
-OAK's loopback service. So `--service local` runs it in this process (yunet.py)
-and that is the default; a host:port still POSTs to `face_detect/` on MEDIA, which
-is the same protocol as ever and why neither this script nor the daemon had to
-change shape when the detector moved.
+Every host since has had cores enough to beat both, and YuNet here is faster than
+either of those was -- 146 ms a frame against 190 through the OAK's loopback
+service, measured on the Banana Pi M4 Zero that followed the Pi 1, and quicker
+again on the Jetson Orin Nano the rover has carried since 2026-08-31. So
+`--service local` runs it in this process (yunet.py) and that is the default; a
+host:port still POSTs to `face_detect/` on MEDIA, which is the same protocol as
+ever and why neither this script nor the daemon had to change shape when the
+detector moved.
 
     python3 track_face_pi.py                          # camera, YuNet here, the UART
     python3 track_face_pi.py --service 192.168.1.3:8768   # or a detector elsewhere
@@ -27,7 +29,7 @@ cannot drift into being two different robots.
 **Whether this decodes a picture depends on where the detector is.** Against a
 service it does not: the camera is asked for MJPEG and those exact bytes are
 forwarded unopened. Against `--service local` the decode happens here, which on
-the Banana Pi is 7 ms and on the Pi 1 was 93 -- the whole reason the choice used
+the Banana Pi was 7 ms and on the Pi 1 was 93 -- the whole reason the choice used
 to matter. The figures below were measured on the Pi 1 and are kept because they
 are what forwarding costs, and because a slow host is a thing this repository
 expects to meet again.
@@ -120,8 +122,8 @@ import threading
 import time
 
 from aiming import (
-    DEADBAND, DETECT_WIDTH, GAIN, KEEP_SCORE, MAX_DT, SCAN_AFTER_S, SCAN_RATE,
-    Gimbal, Scan, Target, clamp, scan_rate_for,
+    DETECT_WIDTH, GAIN, KEEP_SCORE, MAX_DT, SCAN_AFTER_S, SCAN_RATE, Gimbal, Scan,
+    Target, clamp, scan_rate_for,
 )
 
 # --- the camera -----------------------------------------------------------

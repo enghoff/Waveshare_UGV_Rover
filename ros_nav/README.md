@@ -235,7 +235,7 @@ ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGrap
 
 ## Sending it somewhere
 
-The ordinary way is the drive console at `http://<rover>:8771/` — tap the map — or
+The ordinary way is the drive console at `https://<rover>:8771/` — tap the map — or
 a conversation with the voice chat. Both reach the same tools, and both need the
 daemon started with `--ros-nav`; without it the rover offers 11 tools instead of 18
 and the console shows a map it cannot drive on.

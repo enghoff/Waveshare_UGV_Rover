@@ -1,8 +1,8 @@
 #!/bin/sh
 # Put `websockets` where the console's microphone can find it.
 #
-#     ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh'
-#     ssh bpi-m4zero 'sh ~/ugv/drive_web/install_websockets.sh --force'
+#     ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
+#     ssh orin 'sh ~/ugv/drive_web/install_websockets.sh --force'
 #
 # The rover holds its own conversation with Alibaba's realtime service now -- see
 # [omni_bridge.py](omni_bridge.py) -- and the session that speaks the protocol is

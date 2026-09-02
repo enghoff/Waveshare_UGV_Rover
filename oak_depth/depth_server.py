@@ -17,8 +17,8 @@ from. Worse, a booted device that stops hearing from its host kills itself on a
 1500 ms watchdog. "Bring the OAK up when the rover boots" therefore has exactly
 one shape: a process that opens it and stays. This is that process, started from
 `crontab` by `run_oak_depth.sh`, and its being alive is the whole of the camera
-being awake. See [docs/oak-on-the-pi.md](../docs/oak-on-the-pi.md), which worked
-this out while ruling the OAK off the *old* rover.
+being awake. That shape was worked out while ruling the OAK off the *old*
+rover, and it survived the move to this one unchanged.
 
 The camera used to be the rover's face detector, running an SSD on that same VPU
 because a Pi 1 could not run one at all. Every board since has run YuNet faster

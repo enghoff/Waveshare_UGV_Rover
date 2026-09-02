@@ -2,10 +2,11 @@
 
 The rover ran its face detector on the OAK camera's Myriad X for as long as its
 host was a Pi 1, because a 700 MHz ARM11 with no NEON cannot run a CNN at any
-useful rate -- `oak_detect/` in this repo's history is that arrangement, and
-[docs/oak-on-the-pi.md](../docs/oak-on-the-pi.md) is why it had to exist. The
-rover's host is now a Banana Pi M4 Zero: four Cortex-A53 cores at 1.416 GHz with
-NEON, which is enough to run YuNet here and be *faster* than the inference stick.
+useful rate -- `oak_detect/` in this repo's history is that arrangement. Every
+host since has been enough to run YuNet here and beat the inference stick doing
+it: first a Banana Pi M4 Zero, four Cortex-A53 cores at 1.416 GHz with NEON,
+which is the board the figures below were taken on, and since 2026-08-31 the
+Jetson Orin Nano the rover carries now.
 
 Measured 2026-08-23 on the rover, on one 640x480 frame from its own camera, with
 the daemon and the lidar's scan matcher running as usual:

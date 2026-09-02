@@ -1,7 +1,7 @@
 #!/bin/sh
 # Reload the drive console after deploying a new drive_web.py.
 #
-#     ssh bpi-m4zero ~/ugv/drive_web/restart.sh
+#     ssh orin ~/ugv/drive_web/restart.sh
 #
 # Separate from run_drive_web.sh so that its own command line cannot match the
 # pattern it greps for. This is worth repeating in every directory that has a

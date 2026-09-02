@@ -75,6 +75,7 @@ Main rover ports:
 | 8772 | board bridge: daemon lends odometry/motors to ROS |
 | 8773 | navigation bridge: ROS lends Nav2 back to daemon |
 | 8774 | loopback image/frame handoff used by the Alibaba voice session |
+| 8776 | `world_state` perception sidecar: the three ONNX models in a process of their own |
 
 ## First deployment state
 

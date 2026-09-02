@@ -307,6 +307,7 @@ only that unused bridge. Treat them as expected noise rather than a fault.
 | 8772 | loopback / daemon | board telemetry + motor bridge for ROS |
 | 8773 | loopback / ROS nav bridge | navigation backend for daemon |
 | 8774 | loopback / current voice session | image handoff for `look` |
+| 8776 | loopback / `world_state` perception sidecar | segmentation and embedding models |
 
 Started from the `jetson` crontab -- the same `@reboot` arrangement the Banana Pi
 used, and for the same reason, that a system unit needs a sudo password no script

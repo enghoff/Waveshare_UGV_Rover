@@ -2,8 +2,8 @@
 # Put the network recorder on the rover and start it. Idempotent -- run it again
 # after changing anything here.
 #
-#     scp -r netwatch bpi-m4zero:~/ugv/
-#     cat secrets/bpi-sudo.key | ssh bpi-m4zero 'sudo -S -p "" ~/ugv/netwatch/install.sh'
+#     scp -r netwatch orin:~/ugv/
+#     cat secrets/jetson-orin.key | ssh orin 'sudo -S -p "" ~/ugv/netwatch/install.sh'
 #
 # It is a systemd unit rather than a `@reboot` crontab entry like the daemon for
 # two reasons that the daemon does not have. It has to be running before the

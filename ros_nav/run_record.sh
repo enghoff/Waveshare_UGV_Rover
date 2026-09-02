@@ -1,12 +1,12 @@
 #!/bin/bash
 # Record a drive for dwb_replay.py, with the ROS environment sorted out here.
 #
-#   ssh bpi-m4zero '~/ugv/ros_nav/run_record.sh --seconds 240'
+#   ssh orin '~/ugv/ros_nav/run_record.sh --seconds 240'
 #
 # **The point of this file is that the command line has no quotes in it.** The
 # obvious one-liner is
 #
-#   ssh bpi-m4zero 'cd ~/ugv/ros_nav && bash -c "source ./env.sh; python3 ..."'
+#   ssh orin 'cd ~/ugv/ros_nav && bash -c "source ./env.sh; python3 ..."'
 #
 # and from PowerShell that does not work, in a way that takes a while to see.
 # PowerShell strips the inner double quotes on its way to a native command, so

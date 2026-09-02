@@ -1,7 +1,7 @@
 #!/bin/sh
 # Reload the rover daemon after deploying a new rover_daemon.py.
 #
-#     ssh bpi-m4zero ~/ugv/restart.sh
+#     ssh orin ~/ugv/restart.sh
 #
 # Separate from run_daemon.sh so that its own command line cannot match the
 # pattern it greps for -- a pkill run from an ssh command whose text contains the

@@ -1,9 +1,9 @@
 #!/bin/sh
 # Put OpenCV where yunet.py can find it, on a host that has no package for it.
 #
-#     ssh bpi-m4zero '~/ugv/install_opencv.sh'                 # fetch it from PyPI
-#     ssh bpi-m4zero '~/ugv/install_opencv.sh /tmp/opencv.whl' # or from a wheel already here
-#     ssh bpi-m4zero '~/ugv/install_opencv.sh --force'         # unpack again over the top
+#     ssh orin '~/ugv/install_opencv.sh'                 # fetch it from PyPI
+#     ssh orin '~/ugv/install_opencv.sh /tmp/opencv.whl' # or from a wheel already here
+#     ssh orin '~/ugv/install_opencv.sh --force'         # unpack again over the top
 #
 # The rover's board runs Debian's CPython 3.13 with **no pip and no python3-venv**,
 # and `sudo` here wants a password no deploy script has, so neither

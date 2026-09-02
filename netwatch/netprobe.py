@@ -2,7 +2,7 @@
 """The other half of netwatch: watching the rover from a machine that stays up.
 
     python3 netprobe.py                        # watch 192.168.1.139, print changes
-    python3 netprobe.py --host bpi-m4zero.local
+    python3 netprobe.py --host jetson-orin.local
     python3 netprobe.py --log probe.log        # ...and keep a record
     python3 netprobe.py --report probe.log     # read one back
 

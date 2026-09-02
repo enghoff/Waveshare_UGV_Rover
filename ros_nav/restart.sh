@@ -1,8 +1,8 @@
 #!/bin/bash
 # Reload the ROS 2 stack after deploying new nodes or a new config.
 #
-#     ssh bpi-m4zero '~/ugv/ros_nav/restart.sh'
-#     ssh bpi-m4zero '~/ugv/ros_nav/restart.sh --supervisor'   # after changing
+#     ssh orin '~/ugv/ros_nav/restart.sh'
+#     ssh orin '~/ugv/ros_nav/restart.sh --supervisor'   # after changing
 #                                                             # run_ros_nav.sh
 #
 # The patterns below are why this is a file and not an ssh command line. `pkill

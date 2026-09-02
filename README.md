@@ -8,8 +8,9 @@ individual sensors and actuators.
 The current system is deliberately simple about where work happens:
 
 - the **Jetson Orin Nano** owns the rover hardware and runs the daemon, local
-  YuNet face detection, ROS 2 mapping/navigation, the OAK depth service, the web
-  console and the network scripts;
+  YuNet face detection, ROS 2 mapping/navigation, the OAK depth service, the
+  semantic world state and its perception sidecar, the web console and the
+  network scripts;
 - a **browser** supplies the microphone and speaker for voice interaction;
 - **Alibaba DashScope** supplies the realtime Qwen Omni model;
 - no separate GPU/MEDIA host is part of the running system, and nothing that is
@@ -33,6 +34,7 @@ help diagnose what runs, or document a current hardware fact or failure mode.
 | [`rover_daemon/`](rover_daemon) | owns the driver-board UART and gimbal camera; exposes hardware and navigation as tools on TCP 8769 |
 | [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the rover; the rover daemon imports this code |
 | [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it |
+| [`world_state/`](world_state) | what the rover has seen in the room, kept apart from where things are: segmented regions, the picture each look was read from, and a search that compares a description against what was actually seen |
 | [`lidar_slam/`](lidar_slam) | the fast LD19 parser, room description, map renderer and USB recovery code still used by the ROS stack and daemon |
 | [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |
 | [`drive_web/`](drive_web) | HTTPS browser console, map, camera view and microphone/speaker bridge |
@@ -200,6 +202,8 @@ Useful starting points:
 | [`docs/doorway-pivot.md`](docs/doorway-pivot.md) | a focused navigation-fault investigation; current config in `ros_nav/config/` remains authoritative |
 | [`docs/rover-unresponsive.md`](docs/rover-unresponsive.md) | why the rover disappears from the network, and how to get in without the power switch |
 | [`docs/scripting.md`](docs/scripting.md) | rover-side scripts exposed through the daemon |
+| [`docs/task-semantic-world-state.md`](docs/task-semantic-world-state.md) | the plan the semantic world state is built to, and what replaying real runs found |
+| [`docs/cosmos-reason2-integration.md`](docs/cosmos-reason2-integration.md) | closed: the local vision-language model that was tried and removed, and the measurements that ruled it out |
 
 When a document disagrees with executable code or configuration, the code/config
 is authoritative and the document should be corrected rather than the runtime

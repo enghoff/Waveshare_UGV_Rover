@@ -2,8 +2,8 @@
 # Put ROS 2 Jazzy on the rover, from RoboStack. Idempotent -- run it again after
 # changing the package list and it adds what is missing and nothing else.
 #
-#     scp -r ros_nav bpi-m4zero:~/ugv/
-#     ssh bpi-m4zero 'sh ~/ugv/ros_nav/install.sh'
+#     scp -r ros_nav orin:~/ugv/
+#     ssh orin 'sh ~/ugv/ros_nav/install.sh'
 #
 # No sudo anywhere in here, which is the whole reason it is conda and not apt.
 # This board runs Debian trixie and ROS 2 Jazzy's own packages are built for

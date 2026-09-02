@@ -32,10 +32,10 @@ on one board that rides the rover. The price is that the pad's Bluetooth link is
 now the only radio in the chain -- hence a 20 Hz loop that
 does nothing expensive, and a heartbeat that stops the base if it falls behind.
 
-The pad is read through the joystick API (`/dev/input/js*`), not evdev, for the
-same reason check_gamepad.py is -- eight fixed bytes per event and no python
-package to install. Use that script first if the question is whether the pad
-works at all; this one assumes it does and gets on with driving.
+The pad is read through the joystick API (`/dev/input/js*`), not evdev: eight
+fixed bytes per event and no python package to install. If the question is
+whether the pad works at all, `jstest /dev/input/js0` answers it; this assumes
+it does and gets on with driving.
 
 A pad that drops out mid-drive stops the rover and is then waited for: Bluetooth
 reconnects on its own, the device node comes back, and this picks it up without

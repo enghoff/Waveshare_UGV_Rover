@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What the drive console knows: the wire, the pacing, and the English.
 
-[drive_web.py](drive_web.py) is a browser page, and almost nothing that matters
+[drive_web.py](../drive_web/drive_web.py) is a browser page, and almost nothing that matters
 about it is HTML. Which connection a call goes down, how often it is safe to ask
 the rover for a map, what "replanning (#2) -- the corridor closed" is made of, and
 which of those sentences is worth a line in the transcript are all questions about

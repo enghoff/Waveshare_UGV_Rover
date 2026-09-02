@@ -16,8 +16,8 @@ one column in the right order.
     python voice_chat/mock_rover.py --drive             # ...with no rover at all
 
 Started from boot by [run_drive_web.sh](run_drive_web.sh). The page is
-`http://<the rover>:8771/`. A Pi 1 could not afford this and was never asked to;
-the Banana Pi M4 Zero can. What the daemon sees is unchanged: the same six TCP
+`https://<the rover>:8771/`; plain http on that port redirects to it. A Pi 1
+could not afford this and was never asked to; every board since has. What the daemon sees is unchanged: the same six TCP
 connections, the same JSON. `--idle` (the default) is why a process that lives
 from boot is not a client overnight -- it talks to the daemon only while a
 browser is open.

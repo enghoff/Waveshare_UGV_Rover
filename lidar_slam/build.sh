@@ -3,7 +3,7 @@
 # libslam2d.so is per-host and is not committed, so there is no cross-compiler
 # and no build cache to get stale.
 #
-#   ssh bpi-m4zero 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
+#   ssh orin 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
 set -e
 cd "$(dirname "$0")"
 
