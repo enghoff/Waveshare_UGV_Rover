@@ -1695,7 +1695,9 @@ function drawWorldSearch() {
             + `${match.bearing_deg}\u00b0`;
     }
     block.append(place);
-    block.append(wShot({frame_id: match.frame_id}));
+    // With the box, so the answer points at the thing rather than at the room it
+    // was in. `wShot` draws one whenever the observation carries it.
+    block.append(wShot({frame_id: match.frame_id, bbox: match.bbox}));
     results.append(block);
   }
 }

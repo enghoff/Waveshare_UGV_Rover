@@ -1630,6 +1630,39 @@ def test_a_query_that_matches_nothing_says_so() -> None:
           answer["best"] >= search.MATCHES, True)
 
 
+def test_a_search_says_which_part_of_the_frame_it_found() -> None:
+    """A picture of a room is not an answer.
+
+    A stored frame holds a dozen things and the match is one of them, so without
+    the box the person is left to guess which. It travels from the store already
+    decoded, under the same name the rest of the codebase uses.
+    """
+    query = _packed(1.0, 0.0, 0.0)
+    rows = [{"id": 1, "siglip_blob": _packed(1.0, 0.0, 0.0), "label": "a bottle",
+             "frame_id": "f1", "bbox": [0.1, 0.2, 0.3, 0.4]},
+            {"id": 2, "siglip_blob": _packed(0.0, 1.0, 0.0), "label": "a wall",
+             "frame_id": "f1", "bbox": None}]
+    answer = search.rank(query, rows)
+    check("the match carries the box it was found in",
+          answer["matches"][0]["bbox"], [0.1, 0.2, 0.3, 0.4])
+    check("...and an observation without one says so rather than failing",
+          answer["matches"][1]["bbox"], None)
+
+    # And the store hands it over decoded rather than as the JSON it is stored as.
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            observe(store, 0.0, 0.0, 45.0, label="a spray bottle")
+            rows = store.searchable()
+            check("the store decodes the box for a search", len(rows), 1)
+            check("...as four numbers, not a string",
+                  isinstance(rows[0]["bbox"], list), True)
+            check("...and does not leak the column name",
+                  "bbox_json" in rows[0], False)
+        finally:
+            store.close()
+
+
 def test_a_flat_field_is_not_what_decides_a_match() -> None:
     """The rule this replaced, kept as a test so it cannot come back by accident.
 
@@ -1760,6 +1793,7 @@ TESTS = (
     test_a_placement_belongs_to_the_map_it_was_measured_in,
     test_an_inspection_settles_identity_as_well_as_measuring,
     test_a_query_that_matches_nothing_says_so,
+    test_a_search_says_which_part_of_the_frame_it_found,
     test_a_flat_field_is_not_what_decides_a_match,
     test_too_little_seen_is_not_a_match_either,
     test_vectors_from_the_other_backend_are_not_ranked,

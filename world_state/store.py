@@ -486,7 +486,8 @@ class WorldStore:
         and the caller has to be able to say so.
         """
         query = ("SELECT id, entity_id, label, frame_id, observed_at,"
-                 " map_session, bearing_deg, siglip_blob, vectors_from"
+                 " map_session, bearing_deg, bbox_json, siglip_blob,"
+                 " vectors_from"
                  "  FROM observations WHERE siglip_blob IS NOT NULL")
         args: list[Any] = []
         if map_session is not None:
@@ -496,7 +497,19 @@ class WorldStore:
         args.append(int(limit))
         with self._lock:
             rows = self.db.execute(query, args).fetchall()
-        return [dict(row) for row in rows]
+        found = []
+        for row in rows:
+            one = dict(row)
+            # The box comes out decoded, under the name the rest of the codebase
+            # uses for it, so a caller that wants to draw the match on the frame
+            # does not have to know the column is JSON.
+            text = one.pop("bbox_json", None)
+            try:
+                one["bbox"] = json.loads(text) if text else None
+            except (ValueError, TypeError):
+                one["bbox"] = None
+            found.append(one)
+        return found
 
     def inferences(self, limit: int = INFERENCE_LIMIT) -> list[dict[str, Any]]:
         with self._lock:

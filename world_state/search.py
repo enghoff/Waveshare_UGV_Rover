@@ -114,6 +114,10 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
             "entity_id": row.get("entity_id"),
             "label": row.get("label"),
             "frame_id": row.get("frame_id"),
+            # Which part of that frame this actually is. Without it a search
+            # answers with a picture of a room and leaves the person to guess
+            # which of the twelve things in it was the match.
+            "bbox": row.get("bbox"),
             "observed_at": row.get("observed_at"),
             "bearing_deg": row.get("bearing_deg"),
             "map_session": row.get("map_session"),
