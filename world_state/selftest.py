@@ -17,6 +17,7 @@ any real model.
 """
 from __future__ import annotations
 
+import math
 import os
 import sqlite3
 import sys
@@ -1219,31 +1220,49 @@ def test_two_identical_chairs_are_not_guessed_at_from_two_places() -> None:
     seen from a new angle. From two places the answer is not knowable, so the
     resolver must wait rather than invent two things in the wrong places.
     """
+    near, far = (2.7, 0.4), (3.0, 3.0)
+
+    def seen_from(x_m, y_m, chair, inference):
+        """The bearing from a place to a chair, rather than a number typed in.
+
+        Typed-in bearings were rounded to a tenth of a degree and one of them was
+        a degree and a half out, which passed only because a bearing used to be
+        believed to five degrees. What the test means is that the rover stood
+        here and the chair is there.
+        """
+        bearing = math.degrees(math.atan2(chair[1] - y_m, chair[0] - x_m))
+        observe(store, x_m, y_m, round(bearing, 2), inference=inference)
+
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        # One chair at (3, 3), another at about (2.7, 0.4).
-        observe(store, 0.0, 0.0, 45.0, inference=1)
-        observe(store, 0.0, 0.0, 8.5, inference=1)
-        observe(store, 6.0, 0.0, 135.0, inference=2)
-        observe(store, 6.0, 0.0, 172.9, inference=2)
-        result = resolve.resolve(store)
-        check("nothing was placed from two viewpoints", result["created"], 0)
-        check("...and all four looks are still waiting",
-              len(store.unplaced()), 4)
+        try:
+            seen_from(0.0, 0.0, far, 1)
+            seen_from(0.0, 0.0, near, 1)
+            seen_from(6.0, 0.0, far, 2)
+            seen_from(6.0, 0.0, near, 2)
+            result = resolve.resolve(store)
+            check("nothing was placed from two viewpoints", result["created"], 0)
+            check("...and all four looks are still waiting",
+                  len(store.unplaced()), 4)
 
-        # A third viewpoint separates them: a real chair is agreed by every ray
-        # aimed at it, and a phantom by only the two that made it.
-        observe(store, 3.0, -3.0, 90.0, inference=3)      # the chair at (3, 3)
-        observe(store, 3.0, -3.0, 96.5, inference=3)      # the one at (2.7, 0.4)
-        result = resolve.resolve(store)
-        check("a third look from somewhere else settles it", result["created"], 2)
-        places = sorted((round(one["placement"]["x_m"], 1),
-                         round(one["placement"]["y_m"], 1))
-                        for one in store.placed())
-        check("...as two things in two places", len(places), 2)
-        check("...far enough apart to be told apart",
-              abs(places[0][1] - places[1][1]) > 1.5, True)
-        store.close()
+            # A third viewpoint separates them: a real chair is agreed by every
+            # ray aimed at it, and a phantom by only the two that made it.
+            seen_from(3.0, -3.0, far, 3)
+            seen_from(3.0, -3.0, near, 3)
+            result = resolve.resolve(store)
+            check("a third look from somewhere else settles it",
+                  result["created"], 2)
+            places = sorted((round(one["placement"]["x_m"], 1),
+                             round(one["placement"]["y_m"], 1))
+                            for one in store.placed())
+            check("...as two things in two places", len(places), 2)
+            check("...far enough apart to be told apart",
+                  abs(places[0][1] - places[1][1]) > 1.5, True)
+            check("...and each within a handspan of the chair it is",
+                  max(min(math.dist(place, chair) for chair in (near, far))
+                      for place in places) < 0.5, True)
+        finally:
+            store.close()
 
 
 def test_a_third_look_joins_the_thing_it_points_at() -> None:

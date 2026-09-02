@@ -20,23 +20,50 @@ position only once the rover has driven far enough between two looks. That is a
 precondition rather than a limitation: it is what exploring already does.
 
 The uncertainty is reported rather than hidden, because it is what the resolver
-has to gate on and because it is large. With bearings good to about five degrees
--- measured, see BEARING_SIGMA_DEG -- a metre of baseline at three metres of range
-puts the point out by the better part of a metre along the line of sight. Two
-chairs at opposite walls separate easily at that accuracy; two chairs a metre
-apart do not, and the resolver must be told that rather than left to guess.
+has to gate on. With bearings good to a degree and a half -- measured, see
+BEARING_SIGMA_DEG -- a metre of baseline at three metres of range puts the point
+out by about a quarter of a metre along the line of sight. Two chairs at opposite
+walls separate easily at that accuracy and so do two chairs a metre apart; two
+books on the same shelf still do not, and the resolver must be told that rather
+than left to guess.
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
-#: How wrong a bearing is, in degrees, one standard deviation. Measured on the
-#: rover on 2026-09-01 rather than assumed: the same sofa in two inspections of a
-#: byte-identical frame came back 4.8 degrees apart, and the coffee table 2.6,
-#: with the difference coming from the model drawing a slightly different box
-#: each time. Better boxes would shrink this and it is the dominant term.
-BEARING_SIGMA_DEG = 5.0
+#: How wrong a bearing is, in degrees, one standard deviation. Re-measured on the
+#: rover on 2026-09-02 after the region finder moved to the GPU, and it fell by
+#: more than a factor of three -- it stood at 5.0, taken when a language model was
+#: drawing the boxes and redrawing them differently every time.
+#:
+#: A bearing is three things added together, and all three were measured
+#: separately, because knowing which one dominates is what says whether it is
+#: worth trying to improve:
+#:
+#:   the box      eight inspections of an unchanging scene, regions matched
+#:                between them by appearance: 0.13 deg of scatter, worst 0.16.
+#:                FastSAM draws the same box every time, so this term is gone.
+#:   the heading  the rover's own idea of which way it faces, over the two
+#:                minutes of a gimbal sweep while it stood still: 0.2 deg.
+#:   the gimbal   the same objects seen with the gimbal at -30, -15, 0, +15 and
+#:                +30 degrees, which is what is left once the other two are ruled
+#:                out: within 0.7 deg out to +/-15, and about 3 deg at -30, on two
+#:                separate objects on opposite sides of the frame. That is the
+#:                pan servo not arriving where it was told, and there is nothing
+#:                to correct it with: the driver board's telemetry carries the
+#:                inertial sensors and the wheel encoders but no gimbal feedback,
+#:                so the commanded angle is all the rover knows.
+#:
+#: 1.5 is the root-mean-square of the ten sightings across that whole sweep. The
+#: gimbal is now the dominant term by a long way, and a rover that inspected only
+#: within +/-15 degrees of pan would do better than this number says.
+#:
+#: **What this does not cover: driving.** Every measurement above was taken with
+#: the rover standing still, so the heading term here is drift over two minutes
+#: and not the error SLAM accumulates over a few metres of travel -- which is
+#: exactly the case a fix is taken in. That still wants measuring.
+BEARING_SIGMA_DEG = 1.5
 #: Below this angle between two bearings the intersection runs away down the line
 #: of sight and the answer is noise wearing a number. Two rays this close are
 #: better treated as one look than as a fix.

@@ -84,6 +84,20 @@ APPEARANCE_LEAD = 0.05
 #: poorer view of possibly the same thing, not a competing answer. Only crossings
 #: of comparable quality can make each other ambiguous.
 RIVAL_FACTOR = 2.0
+#: How far apart two answers have to be before they are answers to different
+#: questions, in metres. This is a statement about rooms rather than a
+#: measurement: the resolver's question is which *thing* this is, and two
+#: positions a handspan apart name the same chair whichever of them is right, so
+#: refusing to place anything because they disagree by that much helps nobody.
+#:
+#: **It exists because the alternative gets worse as the rover gets better.** The
+#: rival test asks whether two crossings are further apart than their own
+#: uncertainty allows, and when bearings improved from five degrees to one and a
+#: half those uncertainties shrank with them -- so a pair of crossings thirty
+#: centimetres apart, which had comfortably overlapped, became a standoff and the
+#: resolver stopped placing chairs it had been placing. Accuracy should not cost
+#: the rover answers.
+SAME_PLACE_M = 0.5
 
 #: Things that move. Placement is a strong identity rule for a bookcase and a
 #: poor one for a bottle, so a movable thing is never matched on position alone
@@ -424,7 +438,8 @@ def _place_one(store, available, session):
             continue
         apart = math.hypot(other["x_m"] - placement["x_m"],
                            other["y_m"] - placement["y_m"])
-        if apart > other["uncertainty_m"] + placement["uncertainty_m"]:
+        if apart > max(SAME_PLACE_M,
+                       other["uncertainty_m"] + placement["uncertainty_m"]):
             # A third look from somewhere else settles it; nothing here can.
             return None
 
