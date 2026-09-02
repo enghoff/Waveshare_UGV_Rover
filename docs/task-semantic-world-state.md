@@ -8,8 +8,10 @@ the plan._
 
 ## Where this stands
 
-**All five phases are built, deployed and running on the rover, and the
-validation drive has now happened.** Driven round three places in a real room and
+**Phases 0 to 4 are built, deployed and running on the rover, and the validation
+drive has now happened.** Phase 5, the merge, came out of that drive and is not
+built.
+ Driven round three places in a real room and
 inspected at six headings from each, the rover placed twenty-three things from
 two hundred and six observations: one television from seven looks, a sofa, a
 cabinet, a doorway, and *two* armchairs, which is how many the room has. The
@@ -18,8 +20,8 @@ person in the room came out at (0.04, 0.63) and the armchair he was sitting in a
 working on hardware.
 
 It also found three faults that no selftest could have, written up under *The
-validation drive* below. Nine duplicate entities remain, and closing them needs
-one mechanism this design does not yet have at all -- see *What is left*.
+validation drive* below. Nine duplicate entities remain, and closing them needs a
+mechanism this design does not have at all: nothing merges. That is Phase 5.
 
 The store was cleared after the drive, so those twenty-three things are a record
 of what happened rather than what the rover is holding now. Nothing populates the
@@ -607,6 +609,78 @@ and a bad match can be explained from the popup without reading the database.
 
 ---
 
+### Phase 5 — merge — **not built**
+
+Every fix so far prevents duplicates at the moment of creation: a minimum range,
+a match tolerance that knows how wide the thing is, offering each new thing to
+whatever is still waiting. Once two entities exist for one television, nothing
+reconciles them, and the validation drive left nine such pairs.
+
+**The argument for merge existing at all is that placement improves.** Two things
+placed from a 0.7 m baseline at plus or minus 0.30 m are distinguishable; the same
+two, after three more looks, are known to 0.05 m and are obviously one. Without a
+merge step the rover is permanently stuck with the decisions it made when it knew
+least, and no amount of care at creation time fixes that, because at creation time
+the evidence has not arrived yet.
+
+**Merge is the dangerous direction and the design has to start there.** Creating a
+duplicate is recoverable -- the evidence is all still on the table. Merging two
+genuinely different chairs destroys the distinction and leaves nothing to recover
+it from, and it does so in exactly the case this whole programme exists to get
+right. Appearance cannot rescue it either: measured on this rover, the twin chair
+across the room scores 0.735 against the same chair's 0.696 from a new angle, so a
+rule that merged on looking alike would merge the twins first. "Their positions
+overlap" is no better on its own -- two dining chairs forty centimetres apart
+overlap at these uncertainties.
+
+**The veto is co-occurrence, and it is not a threshold.** If two entities have ever
+been seen in the same frame, they are different things. The region finder's own
+suppression guarantees it, and the resolver already leans on that fact in the other
+direction when it refuses to let two regions of one frame match the same entity.
+This is what separates the two real cases cleanly: a patio door split into two
+windows is split *across* frames, because the split is an artefact of one region
+call, while two real chairs appear *together* the moment the camera sees both. One
+query, and it is evidence rather than tuning.
+
+**The positive test mirrors the rival test that already exists.** Same map session,
+compatible labels through the existing synonym gate, and separation within
+`max(SAME_PLACE_M, uncertainty_A + uncertainty_B)` -- the same comparison
+`_place_one` makes when deciding whether two crossings are rival explanations of
+one thing. Two candidates that could not be told apart as crossings should not
+stay apart as entities.
+
+**Merging operates on evidence, not on entities.** Move B's observations to A,
+recompute A's placement from the whole set with `_replace_placement`, fold B's
+exemplars in, write the reason onto each moved observation the way every other
+decision now records itself, and only then delete B. The observations are the
+evidence and all of them survive; only the derived thing goes. That also leaves it
+inspectable afterwards, which matters more here than anywhere else, because a
+wrong merge looks like nothing at all.
+
+- A third step in `resolve`, after matching and pairing, because that is when new
+  evidence has arrived and placements have just tightened.
+- A `MERGED` outcome beside `MATCH`, `NEW` and `AMBIGUOUS`, with its reason in
+  words, so the console can explain it and the summary can count it.
+- At most one pair per pass, re-checking the veto afterwards, so that a row of
+  chairs cannot be collapsed one pair at a time by transitivity.
+- Never across map sessions, never on appearance, and never where a single frame
+  has seen both.
+- Drop `'a floor'` and `'a wall'` from the vocabulary. They are surfaces rather
+  than things, they accounted for two of the nine duplicates, and no useful
+  question is asked of where the floor is.
+
+**Done when** a drive that sees one television from six headings and two armchairs
+from three positions ends with one television and two armchairs -- and when
+forcing the two armchairs to overlap does *not* merge them, because a frame has
+seen them together.
+
+**Blocked on evidence.** The drive's 206 observations were cleared, so there is
+nothing left to build this against. The empirical question that decides whether
+the veto works -- whether the two windows and the two armchairs really do differ on
+co-occurrence -- needs the recording back, which means another drive.
+
+---
+
 ## Acceptance criteria before semantic frontier selection
 
 On the real rover, all of them:
@@ -670,33 +744,28 @@ three is a fix at 14° of parallax reporting ±1.42 m, which is barely a fix.
 
 ### What is left
 
-**Nothing merges.** Every fix so far prevents duplicates at the moment of
-creation -- a minimum range, a width-aware match tolerance, offering each new
-thing to whatever is still waiting. Once two entities exist for one television,
-nothing in the system ever reconciles them, and that is a missing mechanism
-rather than a threshold to tune. Two windows 40 cm apart are one patio door the
-region finder cut in half; a rule that merges same-label entities closer together
-than `SAME_PLACE_M` would take them, and would take whatever the next drive
-throws up too.
+**Nothing merges**, which is Phase 5 above and the largest of it. Two of the nine
+duplicates go with the vocabulary change described there.
 
 **A person should never have been placed.** `MOVABLE` currently only asks
 appearance to agree before creating a thing; it does not stop position from
 becoming that thing's identity. Three people metres apart are one person who
 walked between looks, and for something that moves, a crossing of two bearings
 taken minutes apart means nothing. Changing what movable means during pairing
-removes a third of the duplicates on its own.
+removes a third of the duplicates on its own, and it is not the merge's job:
+these are not two records of one thing, they are three places one thing has been.
 
 **The console has never been looked at.** The placement disc, the uncertainty
 circle and the association reasons are written and deployed and no one has seen
 them render. A viewer that silently fails is worth nothing, and it is the only
 way anyone will ever explain a bad match.
 
-Two smaller things fall out of the same recording: `'a floor'` and `'a wall'` are
-being tracked as entities when they are surfaces rather than things, and dropping
-them from the vocabulary removes two more duplicates and a good deal of noise.
+**Nothing populates the world state on its own.** It records when an inspection
+asks it to, and until something asks on a schedule, a rover that drives across a
+building learns nothing on the way.
 
-None of it is a reason to keep the rover parked, and all of it except the drive
-for the metric-agreement criterion can be settled without moving it.
+None of it is a reason to keep the rover parked, and all of it except the merge
+and the metric-agreement criterion can be settled without moving it.
 
 ---
 
