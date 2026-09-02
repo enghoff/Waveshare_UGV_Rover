@@ -1566,6 +1566,43 @@ def test_the_page_draws_every_pane_its_tabs_offer() -> None:
               f'id="{name}"' in html, True)
 
 
+def test_the_world_popup_scrolls_its_lists_not_its_body() -> None:
+    """The map and headings stay put while the two entity lists move.
+
+    These are layout rules rather than decoration: putting overflow back on the
+    popup body makes the map leave the screen, and an unbounded list makes the
+    popup body grow until that outer scrollbar returns.
+    """
+    page = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "drive_web.html")
+    with open(page, encoding="utf-8") as handle:
+        html = handle.read()
+
+    def rule(selector: str) -> str:
+        match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", html)
+        return re.sub(r"\s+", " ", match.group(1)) if match else ""
+
+    box = rule("#worldBox")
+    body = rule("#worldBody")
+    entities = rule("#wPaneEntities")
+    entity_list = rule("#wList")
+    observation_list = rule("#wDetail .wscroll")
+    check("the world popup has a definite available height",
+          re.search(r"(?<!-)height: 100%", box) is not None, True)
+    check("the popup body cannot own a scrollbar", "overflow: hidden" in body,
+          True)
+    check("...and can shrink inside the popup", "min-height: 0" in body, True)
+    check("the map and lists share one fixed-height row",
+          "overflow: hidden" in entities and "align-items: stretch" in entities,
+          True)
+    check("the entity list scrolls by itself", "overflow-y: auto" in entity_list,
+          True)
+    check("the selected observations fill and scroll in the right pane",
+          "flex: 1" in observation_list
+          and "overflow-y: auto" in observation_list
+          and "max-height: none" in observation_list, True)
+
+
 def test_the_world_urls() -> None:
     """`/world.json` and `/world_frame.jpg`, over a real socket.
 

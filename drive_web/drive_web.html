@@ -112,7 +112,7 @@
   }
   #worldBox {
     background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
-    width: min(1180px, 100%); max-height: 100%;
+    width: min(1180px, 100%); height: 100%; max-height: 100%;
     display: flex; flex-direction: column; overflow: hidden;
     box-shadow: 0 10px 40px rgba(10, 12, 16, .35);
   }
@@ -125,7 +125,13 @@
   #worldTabs { display: flex; gap: 4px; padding: 8px 12px 0; }
   #worldTabs button { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
   #worldTabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-  #worldBody { overflow: auto; padding: 10px 12px 14px; }
+  /* The popup itself never scrolls. Its active pane gets exactly the space left
+     under the fixed heading and tabs, then hands scrolling to the list or lists
+     inside it. */
+  #worldBody {
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+    padding: 10px 12px 14px;
+  }
   #wSearchForm { display: flex; gap: 6px; margin-bottom: 6px; }
   #wSearchBox { flex: 1 1 auto; min-width: 8em; padding: 5px 8px; font: inherit; }
   /* The verdict, which is the part of a search that matters: the rover saying it
@@ -146,13 +152,37 @@
      own heading -- which says how many there are and where it thinks it is --
      stays put while the pictures move under it, and if the list beside it does
      not scroll away at the same time. */
-  #wDetail { display: flex; flex-direction: column; min-height: 0; }
-  .wscroll {
-    overflow-y: auto; overscroll-behavior: contain; min-height: 0;
-    max-height: 62vh; padding-right: 6px; margin-top: 6px;
+  #wDetail {
+    display: flex; flex-direction: column; min-height: 0; height: 100%;
+    overflow: hidden;
+  }
+  #wDetail .wscroll {
+    flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
+    min-height: 0; max-height: none; padding-right: 6px; margin-top: 6px;
     border-top: 1px solid var(--line);
   }
-  .wpane { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .wpane {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;
+    height: 100%; min-height: 0;
+  }
+  /* In the entity view the SLAM map is the fixed reference. The entity list
+     below it and the observations beside it spend the remaining height and
+     scroll independently. */
+  #wPaneEntities {
+    flex-wrap: nowrap; align-items: stretch; overflow: hidden;
+  }
+  #wPaneEntities > .wcol {
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  }
+  #wList {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    overscroll-behavior: contain; padding-right: 6px;
+  }
+  /* The other tabs each contain one list-like pane, so that pane owns its scroll
+     instead of putting the scrollbar back on the popup body. */
+  .wpane:not(#wPaneEntities) {
+    overflow-y: auto; overscroll-behavior: contain; align-content: flex-start;
+  }
   .wcol { flex: 1 1 320px; min-width: 0; }
   .wwide { flex: 2 1 520px; min-width: 0; }
   .wrow {
@@ -186,7 +216,8 @@
     border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
     font-size: 11px; max-height: 240px; overflow: auto;
   }
-  #wMapWrap { position: relative; }
+  #wMapWrap { position: relative; flex: 0 0 auto; }
+  #wMapNote { flex: 0 0 auto; }
   #wMapWrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
   #wMapWrap img { display: block; width: 100%; border-radius: 6px; }
   .wtable { width: 100%; border-collapse: collapse; font-size: 12px; }
