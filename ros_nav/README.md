@@ -1355,7 +1355,7 @@ less honestly. Halving `loop_search_space_dimension` and lengthening
 `map_update_interval` make the stalls shorter and rarer but leave the cliff where
 it is.
 
-**The console cannot see this coming.** `TRANSFORM_STALE_S` in `nav_bridge.py` is
+**The console cannot see this coming.** `TRANSFORM_STALE_S` in `nav_limits.py` is
 1.0 s, so `position_trusted` stays true right through a stall that has already
 abandoned the goal. The number is there in `nav_status` as `transform_age_s`; it
 is the threshold that is too loose.
