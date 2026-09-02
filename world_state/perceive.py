@@ -713,8 +713,12 @@ class Perception:
         """
         from tokenizers import Tokenizer
 
-        np = self._np
+        # Loading comes first. `load()` is what puts the numeric library on this
+        # object, so reaching for it beforehand is an AttributeError on every
+        # search that arrives before the first look -- which, after a reboot, is
+        # every search.
         self.load()
+        np = self._np
         tokenizer = Tokenizer.from_file(os.path.join(self.dir, TOKENIZER))
         tokenizer.enable_padding(length=SIGLIP_TOKENS, pad_id=0, pad_token="<pad>")
         tokenizer.enable_truncation(max_length=SIGLIP_TOKENS)

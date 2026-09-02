@@ -873,6 +873,31 @@ def test_a_board_with_no_engines_falls_back_and_says_why() -> None:
         check("...with the reason kept rather than swallowed", bool(missing), True)
 
 
+def test_a_query_can_be_embedded_before_anything_has_been_looked_at() -> None:
+    """The first thing a freshly booted sidecar is asked may be a search.
+
+    Reproduces a fault seen on the rover: the query path reached for the numeric
+    library the loader installs on the object *before* calling the loader, so the
+    first search after a reboot died with an AttributeError instead of either
+    answering or saying the models were missing.
+    """
+    from world_state.perceive import Perception, Unavailable
+
+    with tempfile.TemporaryDirectory() as empty:
+        perception = Perception(empty)
+        check("a search before the first look has nothing loaded",
+              perception._loaded, False)
+        try:
+            perception.embed_text(["a spray bottle"])
+            raised = None
+        except Exception as failure:                      # noqa: BLE001
+            raised = failure
+        check("...and asking it for a vector fails for a nameable reason",
+              isinstance(raised, Unavailable), True)
+        check("...not because the loader had not run yet",
+              isinstance(raised, AttributeError), False)
+
+
 def test_both_backends_answer_the_same_four_questions() -> None:
     """They are swapped at run time, so a method on one and not the other is a
     crash on whichever board has the wrong one."""
@@ -1496,6 +1521,7 @@ TESTS = (
     test_two_identical_chairs_stay_two_things,
     test_the_best_pair_places_the_thing,
     test_a_board_with_no_engines_falls_back_and_says_why,
+    test_a_query_can_be_embedded_before_anything_has_been_looked_at,
     test_both_backends_answer_the_same_four_questions,
     test_the_installer_builds_exactly_the_engines_the_runtime_opens,
     test_the_vocabulary_is_phrases_and_not_comments,
