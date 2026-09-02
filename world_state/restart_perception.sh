@@ -4,9 +4,9 @@
 #     ssh orin '~/ugv/world_state/restart_perception.sh'
 #     ssh orin '~/ugv/world_state/restart_perception.sh --supervisor'
 #
-# Separate from run_perception.sh for the reason restart.sh is separate from
-# run_cosmos.sh, which this repository has learned three times: a `pkill -f`
-# typed into an ssh command matches that ssh command, the session dies
+# Separate from run_perception.sh for a reason this repository has learned three
+# times: a `pkill -f` typed into an ssh command matches that ssh command, the
+# session dies
 # mid-sentence, and it reads as the service failing rather than as the shell
 # killing itself. The patterns live in files, where nothing else quotes them.
 #
@@ -52,7 +52,7 @@ for _ in range(30):
     except (urllib.error.URLError, OSError, ValueError):
         continue
     if health.get("ready"):
-        print(f"perception: ready, {health.get('vocabulary')} vocabulary phrases")
+        print(f"perception: ready on {health.get('backend')}")
         sys.exit(0)
     print(f"perception: answering, but {health.get('detail')}", file=sys.stderr)
     sys.exit(1)

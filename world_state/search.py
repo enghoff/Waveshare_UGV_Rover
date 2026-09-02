@@ -1,9 +1,16 @@
 """Find me the thing I described.
 
-A phrase is embedded by the same text tower that embedded the vocabulary, so it
-lands in the same space as every stored region vector and the comparison is a dot
-product. A few hundred vectors is a few hundred multiplications, which is why
+A phrase is embedded by SigLIP2's text tower, whose image tower produced every
+stored region vector, so the two land in the same space and the comparison is a
+dot product. A few hundred vectors is a few hundred multiplications, which is why
 there is no vector database anywhere in this design and should not be one.
+
+**This is the only thing that turns a picture into words now, and deliberately
+so.** Regions used to be named by the nearest phrase in a fixed word list to the
+same vector, and that answer was worthless -- 0.08 to 0.12 whatever the crop
+held. Asked the other way round, against a phrase somebody actually typed, the
+identical vectors separate present from absent almost perfectly. The question is
+what was wrong, not the model.
 
 **The hard part is not the ranking, it is saying "nothing matches".** A list of
 scores always has a top, so a rover that answers "the spray bottle is over there"
@@ -12,10 +19,9 @@ when there is no spray bottle in the building is the failure to design against.
 This was first built on the argument that the raw cosines are uncalibrated and
 that the honest test is therefore relative: whether the best score stands clear
 of the field. **Measured on the rover, that argument is wrong.** Forty queries
-against its own stored regions -- twenty-four describing things it had seen, in
-the vocabulary's words and in other people's, and sixteen describing things that
-are not in the building -- separate almost perfectly by raw score and not at all
-by separation:
+against its own stored regions -- twenty-four describing things it had seen, and
+sixteen describing things that are not in the building -- separate almost
+perfectly by raw score and not at all by separation:
 
     best score      present 0.065 to 0.140, absent 0.040 to 0.098
                     a cut at 0.09 gets 4 of the 40 wrong
@@ -112,7 +118,6 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
             if spread > 1e-9 else 0.0,
             "observation_id": row.get("id"),
             "entity_id": row.get("entity_id"),
-            "label": row.get("label"),
             "frame_id": row.get("frame_id"),
             # Which part of that frame this actually is. Without it a search
             # answers with a picture of a room and leaves the person to guess

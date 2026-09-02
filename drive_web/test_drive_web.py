@@ -1313,22 +1313,21 @@ def test_the_world_state_popup() -> None:
           bool(session.world_state()["gen"]), True)
 
     # A populated one.
-    observation = {"id": 1, "entity_id": "furniture:1", "observed_at": 1.0,
-                   "source": "cosmos_visual", "frame_id": "20260901-120000-abc123",
-                   "label": "grey sofa", "description": "a grey three-seat sofa",
-                   "location_hint": "ahead-left", "bbox": [0.1, 0.3, 0.5, 0.9],
+    observation = {"id": 1, "entity_id": "object:1", "observed_at": 1.0,
+                   "source": "perception", "frame_id": "20260901-120000-abc123",
+                   "label": "", "bbox": [0.1, 0.3, 0.5, 0.9],
                    "observer_pan_deg": 20.0, "observer_tilt_deg": -5.0,
                    "pose": {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0},
-                   "map_session": 1, "model_id": "cosmos", "prompt_version": "2",
-                   "raw": {"label": "grey sofa"}, "note": None}
+                   "map_session": 1, "model_id": "tensorrt",
+                   "prompt_version": None,
+                   "raw": {"region_score": 0.83, "area": 0.24}, "note": None}
     session.world_handle("world_state_entities", {
         "ok": True,
-        "entities": [{"id": "furniture:1", "kind": "furniture", "label": "grey sofa",
-                      "canonical_description": "a grey three-seat sofa",
+        "entities": [{"id": "object:1", "kind": "object", "label": "",
+                      "canonical_description": "",
                       "created_at": 1.0, "last_seen_at": 2.0,
                       "observation_count": 2, "last_map_session": 1,
                       "last_frame_id": "20260901-120000-abc123",
-                      "distinct_labels": 1,
                       "rays": [{"x_m": 1.0, "y_m": 2.0, "bearing_deg": 70.0,
                                 "span_deg": 26.0, "length_m": 2.5}]}],
         "recent": [observation], "unmatched": [],
@@ -1369,12 +1368,12 @@ def test_the_world_state_popup() -> None:
           session.world_state()["note"],
           "nothing worth recording in view -- 58 s")
 
-    # A failure. The popup has to be able to say the model failed, because the
+    # A failure. The popup has to be able to say the sidecar failed, because the
     # alternative reading of an unchanged world -- nothing was in view -- is fixed
     # somewhere else entirely.
     session.world_handle("world_inspect", {
-        "ok": False, "error": "the Cosmos sidecar at http://127.0.0.1:8775 is not "
-                              "answering"}, 3.0)
+        "ok": False, "error": "the perception sidecar at http://127.0.0.1:8776 is "
+                              "not answering"}, 3.0)
     check("a failed inspection is reported as one",
           "not answering" in session.world_state()["error"], True)
     check("...and the button comes back", session.world_state()["busy"], False)
@@ -1449,21 +1448,21 @@ def test_finding_a_thing_from_the_console() -> None:
         "ok": True, "query": "a spray bottle", "confident": True,
         "best": 0.13, "considered": 31, "skipped": 0,
         "detail": "the best match scores 0.130 against that description",
-        "matches": [{"score": 0.13, "observation_id": 4, "entity_id": "object-1",
-                     "label": "a spray bottle", "frame_id": "f1",
+        "matches": [{"score": 0.13, "observation_id": 4, "entity_id": "object:1",
+                     "frame_id": "f1",
                      "placement": {"x_m": 2.0, "y_m": 1.0}}]}, 4.0)
     check("the answer stops the working state",
           session.world_state()["searching"], False)
     check("...and is kept for the popup to draw",
-          session.world_payload["search"]["matches"][0]["label"], "a spray bottle")
+          session.world_payload["search"]["matches"][0]["observation_id"], 4)
 
     # An answer to the phrase before last, arriving after the box has moved on.
     session.world_act({"what": "search", "query": "a bicycle"})
     session.world_handle("world_state_search", {
         "ok": True, "query": "a spray bottle", "confident": True,
-        "matches": [{"score": 0.9, "label": "the wrong answer"}]}, 4.0)
+        "matches": [{"score": 0.9, "observation_id": 99}]}, 4.0)
     check("a late answer to an older phrase is dropped",
-          session.world_payload["search"]["matches"][0]["label"], "a spray bottle")
+          session.world_payload["search"]["matches"][0]["observation_id"], 4)
 
     # An empty box clears the pane rather than asking the rover about nothing.
     before = len(sent)

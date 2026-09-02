@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Offline checks for the semantic world state. No rover, no GPU, no model.
+"""Offline checks for the semantic world state. No rover, no GPU, no encoders.
 
     python world_state/selftest.py
     ssh orin 'cd ~/ugv/world_state && python3 selftest.py'
 
 What is covered is the part where a bug is silent rather than loud. An inspection
 that stores nothing says so out loud; an inspection that stores the *wrong* thing
-looks exactly like one that worked. So: nothing the model says can become an
-identity, the provenance the rover measured really is on every row, a database
+looks exactly like one that worked. So: nothing becomes an identity that was not
+measured, the provenance the rover measured really is on every row, a database
 written by an older build still opens, and every failure path leaves the world
 untouched.
 
-Everything here runs against `FakeReasoner` and a temporary directory. That is
-enough to prove the store, the rules and the geometry, and nothing at all about
-any real model.
+Everything here runs against `FakeEyes` and a temporary directory. That is enough
+to prove the store, the rules and the geometry, and nothing at all about what the
+real encoders see.
 """
 from __future__ import annotations
 
@@ -36,15 +36,11 @@ from world_state import locate                     # noqa: E402
 from world_state import resolve                    # noqa: E402
 from world_state import search                     # noqa: E402
 from world_state import view                       # noqa: E402
-from world_state.contract import (                 # noqa: E402
-    KINDS, extract_json, validate,
-)
 from world_state.inspector import Inspector        # noqa: E402
-from world_state.reasoner import FakeReasoner      # noqa: E402
 from world_state.store import WorldStore           # noqa: E402
 
 #: A one-pixel JPEG. Nothing decodes it here -- the store keeps bytes and the fake
-#: reasoner counts them -- but it should be a real picture, because the thing the
+#: sidecar counts them -- but it should be a real picture, because the thing the
 #: rover stores is a real picture.
 JPEG = bytes.fromhex(
     "ffd8ffe000104a46494600010100000100010000ffdb004300ffffffffffffffffffffffff"
@@ -71,15 +67,11 @@ def a_pose(x=1.0, y=2.0, heading=90.0):
     return lambda: {"x_m": x, "y_m": y, "heading_deg": heading}
 
 
-def sofa(label="grey sofa", kind="furniture"):
-    return {"kind": kind, "label": label, "bbox_norm": [0.1, 0.3, 0.5, 0.9]}
-
-
-def answer(*observations, scene="a living room"):
-    return {"scene": scene, "observations": list(observations)}
-
-
 # --- the store --------------------------------------------------------------
+#
+# The rows come from `a_sighting`, defined with the encoder tests further down,
+# because a region is the only thing that reaches the store now: there is no
+# second kind of observation and no model answer to validate on the way in.
 
 def test_an_empty_database_is_an_ordinary_thing_to_open() -> None:
     """A rover that has never inspected anything, and every test below.
@@ -133,23 +125,25 @@ def test_an_inspection_claims_no_identity_at_all() -> None:
     places.
 
     Deliberately not covered here, because it must never start working: matching
-    on the label. The same chair came back as a black leather recliner and then a
-    blue one on a byte-identical frame.
+    on a name. The same chair came back from a model as a black leather recliner
+    and then a blue one on a byte-identical frame, which is why regions arrive
+    here with no name at all.
     """
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         stored = store.record(
-            validate(answer(sofa(), sofa(label="doorway", kind="opening"))).seen,
+            [a_sighting(), a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])],
             capture={"frame_id": "f1"})
         check("both observations are kept", stored["stored"], 2)
         check("...and no entity is created for either", stored["created"], 0)
         check("...nor claimed to be matched", stored["matched"], 0)
         check("...so the entity table stays empty", store.entities(), [])
 
-        # The same two things again, from a second look. A label-matching store
-        # would now report two matches and this is where it would show up.
+        # The same two things again, from a second look. A store that matched on
+        # anything cheap would now report two matches, and this is where it would
+        # show up.
         store.record(
-            validate(answer(sofa(), sofa(label="doorway", kind="opening"))).seen,
+            [a_sighting(), a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])],
             capture={"frame_id": "f2"})
         check("a second look at the same room still creates nothing",
               store.summary()["entities"], 0)
@@ -166,7 +160,7 @@ def test_an_inspection_claims_no_identity_at_all() -> None:
 def test_the_world_survives_the_process_that_wrote_it() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        store.record(validate(answer(sofa())).seen,
+        store.record([a_sighting()],
                      capture={"frame_id": "f1", "pan": 20.0,
                               "pose": {"x_m": 1.0, "y_m": 2.0,
                                        "heading_deg": 90.0}})
@@ -175,7 +169,7 @@ def test_the_world_survives_the_process_that_wrote_it() -> None:
         reopened = a_store(directory)
         rows = reopened.observations()
         check("the observation is still there after a restart",
-              [row["label"] for row in rows], ["grey sofa"])
+              [row["bbox"] for row in rows], [[0.1, 0.3, 0.5, 0.9]])
         check("...with the pose that will one day place it",
               rows[0]["pose"], {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0})
         check("...and the gimbal angle with it", rows[0]["observer_pan_deg"], 20.0)
@@ -227,7 +221,7 @@ def test_the_frame_is_kept_and_every_observation_points_at_it() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         frame_id = store.save_frame(JPEG, 640, 480)
-        store.record(validate(answer(sofa(), sofa(label="table"))).seen,
+        store.record([a_sighting(), a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])],
                      capture={"frame_id": frame_id,
                               "frame_path": store.frame_path(frame_id),
                               "pan": 35.0, "tilt": -10.0,
@@ -255,7 +249,7 @@ def test_a_missing_pose_is_recorded_as_missing() -> None:
     """SLAM not having settled is not a reason to refuse to look at the room."""
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        store.record(validate(answer(sofa())).seen,
+        store.record([a_sighting()],
                      capture={"frame_id": "f1", "pan": 12.0, "tilt": None,
                               "pose": None})
         row = store.observations()[0]
@@ -270,7 +264,7 @@ def test_clearing_the_semantic_world_takes_its_frames_with_it() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         frame_id = store.save_frame(JPEG)
-        store.record(validate(answer(sofa())).seen,
+        store.record([a_sighting()],
                      capture={"frame_id": frame_id})
         store.record_inference(started_at=time.time(), status="ok")
         store.allocate("furniture")
@@ -297,14 +291,14 @@ def test_clearing_the_map_keeps_the_semantic_world() -> None:
     """
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        store.record(validate(answer(sofa())).seen,
+        store.record([a_sighting()],
                      capture={"frame_id": "f1"})
         session = store.new_map_session()
         check("a map clear starts a new session", session, 2)
         check("...and deletes no observation", store.summary()["observations"], 1)
         check("...and the old one still says which map it belongs to",
               store.observations()[0]["map_session"], 1)
-        store.record(validate(answer(sofa())).seen, capture={"frame_id": "f2"})
+        store.record([a_sighting()], capture={"frame_id": "f2"})
         check("...while a new one is stamped with the new session",
               store.observations()[0]["map_session"], 2)
         check("...so the two are never compared as if they shared a map",
@@ -317,7 +311,7 @@ def test_unreadable_stored_json_cannot_take_the_viewer_down() -> None:
     itself what went wrong."""
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        store.record(validate(answer(sofa())).seen,
+        store.record([a_sighting()],
                      capture={"frame_id": "f1"})
         with store.db:
             store.db.execute("UPDATE observations SET raw_json = '{not json',"
@@ -340,7 +334,7 @@ def test_a_reader_is_not_blocked_by_a_writer() -> None:
     """
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        store.record(validate(answer(sofa())).seen,
+        store.record([a_sighting()],
                      capture={"frame_id": "f1"})
         writer = sqlite3.connect(store.path, timeout=1.0)
         try:
@@ -349,7 +343,7 @@ def test_a_reader_is_not_blocked_by_a_writer() -> None:
                            " canonical_description, created_at, last_seen_at)"
                            " VALUES('object:99','object','x','x',1,1)")
             check("a read succeeds while a write is open",
-                  [row["label"] for row in store.observations()], ["grey sofa"])
+                  len(store.observations()), 1)
             writer.rollback()
         except sqlite3.OperationalError as error:
             FAIL.append(f"a read succeeds while a write is open: {error}")
@@ -357,386 +351,6 @@ def test_a_reader_is_not_blocked_by_a_writer() -> None:
             writer.close()
         check("the journal really is WAL",
               store.db.execute("PRAGMA journal_mode").fetchone()[0], "wal")
-        store.close()
-
-
-# --- what the model is not allowed to claim ---------------------------------
-
-def test_an_identity_the_model_volunteers_is_thrown_away() -> None:
-    """Nothing asks for one, and a model that offers one anyway is not obeyed.
-
-    The prompt no longer mentions identity and a grammar-constrained answer
-    cannot contain it, but a backend that could not be constrained still can --
-    and a stale build of this file, or a model with an opinion of its own, is
-    exactly how a guess would creep back into being believed. So it is stripped
-    at the boundary and reported, the same treatment the metres get.
-    """
-    volunteered = dict(sofa(), existing_entity="furniture:1", track_id=7)
-    result = validate(answer(volunteered))
-    check("the observation itself is still kept", len(result.seen), 1)
-    check("...with no way to express an identity on it",
-          hasattr(result.seen[0], "existing_entity"), False)
-    check("...and the claim gone from what the model said",
-          sorted(key for key in result.seen[0].raw
-                 if key in ("existing_entity", "track_id")), [])
-    check("...and reported rather than dropped quietly",
-          "existing_entity" in result.detail(), True)
-
-
-def test_the_prompt_says_nothing_about_what_has_been_seen_before() -> None:
-    """Measured on the rover, twice, and it is the reason the list is gone.
-
-    Cosmos 3 was shown a known list holding a grand piano and a fish tank,
-    neither in the room, and matched the armchair to the piano and drew the fish
-    tank into the scene with its description copied out of the list. The list did
-    not merely fail to settle identity; it corrupted the detections. Cosmos
-    Reason 2 detected *more* real things with the list gone.
-    """
-    from world_state.contract import build_prompt
-
-    prompt = build_prompt()
-    check("the prompt takes no world state at all",
-          build_prompt.__code__.co_argcount, 0)
-    # Not even a prohibition: naming the subject in order to forbid it is still
-    # naming it, and what was measured is that raising previously-seen objects at
-    # all changes what the model reports it can see.
-    for word in ("existing_entity", "already", "seen", "recognise", "object:"):
-        check(f"...and never mentions {word!r}", word in prompt, False)
-    check("what it does say is to report only this picture",
-          "carry anything over" in prompt, True)
-
-
-def test_a_label_that_names_nothing_is_kept_and_marked() -> None:
-    """"a thing" can never be matched to anything, so the row says so.
-
-    Kept rather than refused: it is what the model said, and an observation that
-    was thrown away is indistinguishable in the popup from one that was never
-    made.
-    """
-    with tempfile.TemporaryDirectory() as directory:
-        store = a_store(directory)
-        result = validate(answer(sofa(label="thing"), sofa(label="red toolbox")))
-        stored = store.record(result.seen, capture={"frame_id": "f1"})
-        check("both are recorded as having been said", stored["stored"], 2)
-        check("...and neither becomes an entity", stored["created"], 0)
-        notes = {row["label"]: row["note"] for row in store.observations()}
-        check("the vague one is marked as unmatchable",
-              "names nothing in particular" in (notes["thing"] or ""), True)
-        check("...and the concrete one carries no complaint",
-              notes["red toolbox"], None)
-        store.close()
-
-
-# --- the model's answer -----------------------------------------------------
-
-def test_a_good_answer_is_accepted_whole() -> None:
-    result = validate(answer(sofa(), sofa(label="doorway", kind="opening")),)
-    check("both observations survive", len(result.seen), 2)
-    check("the scene sentence comes through", result.scene, "a living room")
-    check("the kinds are the vocabulary's", [item.kind for item in result.seen],
-          ["furniture", "opening"])
-    check("the box is kept as fractions", result.seen[0].bbox,
-          [0.1, 0.3, 0.5, 0.9])
-    check("...and nothing was thrown away", result.rejected, [])
-
-
-def test_the_schema_holds_the_model_to_a_length() -> None:
-    """Measured on the rover: without a cap this model wrote three and a half
-    thousand characters of essay into `scene` and ran out of tokens before it
-    closed the object, so a perfectly good look at a room was thrown away as
-    truncated. llama.cpp builds `maxLength` into the grammar, so the answer now
-    ends and the object closes -- and the validator's own limits sit above the
-    grammar's, so a backend that cannot constrain anything still cannot store an
-    essay."""
-    from world_state.contract import MAX_LABEL, MAX_SCENE, RESPONSE_SCHEMA
-
-    properties = RESPONSE_SCHEMA["properties"]
-    item = properties["observations"]["items"]["properties"]
-    check("the scene sentence is capped in the grammar",
-          properties["scene"]["maxLength"] <= MAX_SCENE, True)
-    check("...and so is every label", item["label"]["maxLength"] <= MAX_LABEL, True)
-    check("an observation is a kind, a name and a box, and nothing else",
-          sorted(item), ["bbox_norm", "kind", "label"])
-    check("...all three of them required",
-          sorted(properties["observations"]["items"]["required"]),
-          ["bbox_norm", "kind", "label"])
-
-    essay = validate(answer(dict(sofa(), label="x" * 5000)))
-    check("a backend that could not constrain it is still cut down here",
-          len(essay.seen[0].label), MAX_LABEL)
-
-
-def test_prose_and_fences_and_thinking_are_got_through() -> None:
-    """Three things get in the way of json.loads in practice and all three are
-    ordinary. The thinking is dropped here and never reaches the store."""
-    payload, why = extract_json('```json\n{"scene": "x", "observations": []}\n```')
-    check("a fenced block is read", payload, {"scene": "x", "observations": []})
-    check("...without complaint", why, "")
-
-    payload, _ = extract_json(
-        '<think>the sofa is grey, or is it</think>{"scene":"y","observations":[]}')
-    check("a reasoning block is dropped", payload,
-          {"scene": "y", "observations": []})
-
-    payload, _ = extract_json(
-        'Here is what I see: {"scene":"z","observations":[]} -- hope that helps')
-    check("a sentence either side is stepped over", payload,
-          {"scene": "z", "observations": []})
-
-    payload, why = extract_json("I can see a sofa and a table.")
-    check("prose alone is refused", payload, None)
-    check("...and says what happened",
-          "no JSON object" in why, True)
-
-    payload, why = extract_json('{"scene": "cut off", "observations": [{"lab')
-    check("an answer that ran out of tokens is refused", payload, None)
-    check("...and is named as that rather than as bad JSON",
-          "cut off" in why, True)
-
-    payload, why = extract_json("")
-    check("an empty answer is refused", payload, None)
-
-
-def test_the_answer_has_to_be_the_right_shape() -> None:
-    check("a list where an object should be",
-          validate([1, 2, 3]).error, "the model's answer was not an object")
-    check("no observations key at all",
-          validate({"scene": "x"}).error,
-          "the model's answer had no observations list")
-    check("observations that are not a list",
-          validate({"observations": "a sofa"}).error,
-          "the model's observations were not a list")
-    empty = validate({"scene": "an empty room", "observations": []})
-    check("nothing salient is a finding rather than a failure", empty.ok, True)
-    check("...with nothing to store", empty.seen, [])
-
-    from world_state.contract import MAX_OBSERVATIONS
-
-    result = validate(answer(*[sofa(label=f"box {n}") for n in range(20)]))
-    check("a model inventorying the room is cut off at the cap",
-          len(result.seen), MAX_OBSERVATIONS)
-    check("...and told on", "returned 20 observations" in result.detail(), True)
-
-
-def test_a_box_is_clamped_or_dropped_but_never_believed() -> None:
-    result = validate(answer(dict(sofa(), bbox_norm=[-0.4, 0.1, 1.9, 0.8])))
-    check("a box hanging off the edge is pulled back onto the picture",
-          result.seen[0].bbox, [0.0, 0.1, 1.0, 0.8])
-
-    # Measured on the rover: asked for fractions, this model answers on the
-    # thousand-unit grid its Qwen3-VL base was trained on about half the time.
-    # Both are readable, because a picture is one unit across and a box in the
-    # hundreds is therefore not a fraction.
-    grid = validate(answer(dict(sofa(), bbox_norm=[200.0, 550.0, 250.0, 680.0])),)
-    check("a box on the model's own thousand grid is divided down",
-          grid.seen[0].bbox, [0.2, 0.55, 0.25, 0.68])
-    check("...and the popup is told it happened", grid.rescaled, 1)
-    check("...and said so in the diagnostics line",
-          "0-1000 grid" in grid.detail(), True)
-
-    off_grid = validate(answer(dict(sofa(), bbox_norm=[0.0, 0.0, 4096.0, 4096.0])),)
-    check("a box on neither scale is dropped", off_grid.seen[0].bbox, None)
-
-    inside_out = validate(answer(dict(sofa(), bbox_norm=[0.8, 0.1, 0.2, 0.8])),)
-    check("an inside-out box is dropped", inside_out.seen[0].bbox, None)
-    check("...and the observation kept, because the label is the finding",
-          inside_out.seen[0].label, "grey sofa")
-
-    for bad in ([0.1, 0.2], "left", [0.1, 0.2, "x", 0.4], [float("nan")] * 4):
-        dropped = validate(answer(dict(sofa(), bbox_norm=bad)))
-        check(f"a box given as {bad!r} is dropped", dropped.seen[0].bbox, None)
-
-    # A complaint about a box costs nothing, and the counts have to say so. On the
-    # rover this read as eight observations returned and two rejected where the
-    # model had offered six and lost none, which is the sort of number the whole
-    # experiment is later read off.
-    complained = validate(answer(dict(sofa(), bbox_norm=[0.8, 0.1, 0.2, 0.8]),
-                                 {"kind": "object", "bbox_norm": [0.1, 0.1, 0.2,
-                                                                  0.2]}))
-    check("a dropped box does not count as a refused observation",
-          complained.refused, 1)
-    check("...and the observation whose box went is still kept",
-          len(complained.seen), 1)
-    check("...while the one with no label at all is the one refused",
-          "no label" in complained.detail(), True)
-
-
-def test_the_model_is_not_allowed_to_measure_the_room() -> None:
-    """Where the camera was is a reading the rover took; how far away the sofa is
-    would be a guess from one photograph. The first is provenance, the second is
-    never a property of anything here."""
-    metric = dict(sofa(), distance_m=2.4, map_x=4.72, map_y=2.18, z=1.1)
-    result = validate(answer(metric))
-    check("the observation is still kept", len(result.seen), 1)
-    check("...with the metres stripped out of the raw record",
-          sorted(key for key in result.seen[0].raw
-                 if key in ("distance_m", "map_x", "map_y", "z")), [])
-    check("...and the stripping reported rather than done quietly",
-          "distance_m" in result.detail(), True)
-
-
-def test_an_unknown_kind_is_filed_rather_than_refused() -> None:
-    result = validate(answer(dict(sofa(), kind="seating")))
-    check("a kind outside the vocabulary becomes unknown",
-          result.seen[0].kind, "unknown")
-    check("...and the label, which is the content, survives",
-          result.seen[0].label, "grey sofa")
-    check("...and it is still stored somewhere sensible",
-          result.seen[0].kind in KINDS, True)
-    check("an observation with no label at all is refused",
-          validate(answer({"kind": "object"})).seen, [])
-
-
-# --- one inspection, end to end ---------------------------------------------
-
-def an_inspector(directory, answers=None, fail="", capture=None, pose=None):
-    store = a_store(directory)
-    reasoner = FakeReasoner(answers or [], fail=fail)
-    return store, reasoner, Inspector(store, reasoner,
-                                      capture or a_capture(pan=20.0, tilt=-5.0),
-                                      pose or a_pose())
-
-
-def test_one_inspection_records_what_it_saw_and_where_it_stood() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        store, reasoner, inspector = an_inspector(
-            directory, [answer(sofa(), sofa(label="doorway", kind="opening"))])
-        result = inspector.inspect()
-        check("the inspection succeeded", result["ok"], True)
-        check("...storing an observation for each thing seen", result["stored"], 2)
-        check("...and claiming no identity for either", result["created"], 0)
-        check("the model was given a picture and a prompt, and nothing else",
-              sorted(reasoner.calls[0]), ["bytes", "prompt"])
-        row = store.observations()[0]
-        check("the frame it looked at was kept",
-              store.frame(row["frame_id"]) == JPEG, True)
-        check("...with the gimbal angles it was taken at",
-              (row["observer_pan_deg"], row["observer_tilt_deg"]), (20.0, -5.0))
-        check("...and the rover's pose",
-              row["pose"], {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0})
-        check("...and the model that answered", row["model_id"], "fake-reasoner")
-        check("one line went into the diagnostics log",
-              [row["status"] for row in store.inferences()], ["ok"])
-        store.close()
-
-
-def test_the_second_look_is_told_nothing_about_the_first() -> None:
-    """The inverse of what this used to check, and the point of the change.
-
-    The second inspection used to be handed the entities the first one created,
-    so the model could say it was looking at them again. It is now asked the
-    identical question, because the answer to "which thing is this" is not in the
-    picture and asking for it made the picture worse.
-    """
-    with tempfile.TemporaryDirectory() as directory:
-        store, reasoner, inspector = an_inspector(directory, [
-            answer(sofa()),
-            answer(sofa(label="grey three-seat sofa")),
-        ])
-        inspector.inspect()
-        second = inspector.inspect()
-        check("the second look is asked exactly what the first was",
-              reasoner.calls[1]["prompt"], reasoner.calls[0]["prompt"])
-        check("...and still claims nothing about identity", second["created"], 0)
-        check("both looks are kept as observations",
-              store.summary()["observations"], 2)
-        check("...and the store has no opinion yet about whether they are one "
-              "sofa or two", store.summary()["entities"], 0)
-        store.close()
-
-
-def test_every_failure_leaves_the_world_exactly_as_it_was() -> None:
-    """Nine ways an inspection can fail, and one rule for all of them."""
-    cases = [
-        ("the sidecar is not running", dict(fail="nothing is listening on 8775"),
-         "unavailable"),
-        ("the camera gave nothing",
-         dict(answers=[answer(sofa())],
-              capture=a_capture(ok=False, error="the camera gave nothing")),
-         "no_frame"),
-        ("the model answered in prose",
-         dict(answers=["I can see a sofa."]), "bad_json"),
-        ("the model answered with the wrong shape",
-         dict(answers=[{"scene": "x"}]), "invalid"),
-        ("the model answered with nothing at all",
-         dict(answers=[""]), "bad_json"),
-    ]
-    for name, kwargs, status in cases:
-        with tempfile.TemporaryDirectory() as directory:
-            store, _reasoner, inspector = an_inspector(directory, **kwargs)
-            # Something already in the world, so "unchanged" is a claim with
-            # content rather than "still empty".
-            store.record(validate(answer(sofa(label="red toolbox"))).seen,
-                         capture={"frame_id": "f0"})
-            before = store.summary()
-            result = inspector.inspect()
-            check(f"{name}: the inspection fails", result["ok"], False)
-            check(f"{name}: ...saying which kind of failure", result["status"],
-                  status)
-            after = store.summary()
-            check(f"{name}: ...and changes no entity",
-                  after["entities"], before["entities"])
-            check(f"{name}: ...and no observation",
-                  after["observations"], before["observations"])
-            check(f"{name}: ...but is written down where the popup shows it",
-                  store.inferences()[0]["status"], status)
-            store.close()
-
-
-def test_a_model_that_will_not_stop_talking_costs_one_inspection() -> None:
-    """Runaway generation is the likeliest way this hangs, so the truncated answer
-    has to come back as a failure with a name rather than as a parse error."""
-    with tempfile.TemporaryDirectory() as directory:
-        store, _reasoner, inspector = an_inspector(
-            directory, ['{"scene": "a room", "observations": [{"label": "so'])
-        result = inspector.inspect()
-        check("a cut-off answer fails", result["ok"], False)
-        check("...as a truncation rather than as nonsense",
-              "cut off" in result["error"], True)
-        check("...and the frame it was looking at is still there to look at",
-              store.frame(store.inferences()[0]["frame_id"]) == JPEG, True)
-        store.close()
-
-
-def test_only_one_inspection_at_a_time() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        store, _reasoner, inspector = an_inspector(directory, [answer(sofa())])
-        inspector._lock.acquire()
-        inspector.started_at = time.monotonic()
-        try:
-            result = inspector.inspect()
-            check("a second request is refused rather than queued",
-                  result["status"], "busy")
-            check("...and nothing was stored for it", store.inferences(), [])
-        finally:
-            inspector._lock.release()
-        check("...and the next one runs normally", inspector.inspect()["ok"], True)
-        store.close()
-
-
-def test_nothing_salient_is_not_a_failure() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        store, _reasoner, inspector = an_inspector(
-            directory, [{"scene": "an empty corridor", "observations": []}])
-        result = inspector.inspect()
-        check("an empty answer succeeds", result["ok"], True)
-        check("...with nothing stored", result["stored"], 0)
-        check("...and the popup can tell it apart from a failure",
-              store.inferences()[0]["status"], "ok")
-        store.close()
-
-
-def test_a_clear_is_refused_while_an_inspection_runs() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        store, _reasoner, inspector = an_inspector(directory, [answer(sofa())])
-        inspector.inspect()
-        inspector._lock.acquire()
-        try:
-            check("the inspector says it is busy", inspector.busy, True)
-        finally:
-            inspector._lock.release()
-        check("...and is free again afterwards", inspector.busy, False)
-        check("the clear then works", store.clear()["ok"], True)
         store.close()
 
 
@@ -1011,19 +625,6 @@ def test_the_installer_builds_exactly_the_engines_the_runtime_opens() -> None:
           built - set(engines.REQUIRED), set())
 
 
-def test_the_vocabulary_is_phrases_and_not_comments() -> None:
-    from world_state.perceive import read_vocabulary
-
-    with tempfile.TemporaryDirectory() as folder:
-        path = os.path.join(folder, "words.txt")
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write("\n".join(["# a comment", "", "a chair",
-                                    "  a wooden table  ", "", "# another", ""]))
-        words = read_vocabulary(path)
-        check("comments and blank lines are dropped", words,
-              ["a chair", "a wooden table"])
-
-
 def test_a_region_that_is_an_edge_is_not_a_thing() -> None:
     """The three-line filter, on the shapes it exists to reject."""
     from world_state.perceive import _worth_keeping
@@ -1046,13 +647,20 @@ def test_a_region_that_is_an_edge_is_not_a_thing() -> None:
 # failure this whole design exists to avoid.
 
 
-def a_sighting(label="a wooden chair", bbox=None, dino=None, siglip=None):
+def a_sighting(bbox=None, dino=None, siglip=None):
+    """One measured region, and there is nothing on it saying what it is.
+
+    That is the whole shape of what perception returns now: a box, a region
+    score and two vectors. Anything downstream that wants to tell two of
+    these apart has to do it from the vectors or from where they point.
+    """
     from world_state.perception_client import Sighting
 
-    return Sighting(bbox=bbox or [0.1, 0.3, 0.5, 0.9], label=label,
-                    label_score=0.11, region_score=0.83, area=0.24,
-                    dino=dino if dino is not None else b"\x01\x02\x03\x04",
-                    siglip=siglip if siglip is not None else b"\x05\x06\x07\x08")
+    return Sighting(bbox=bbox or [0.1, 0.3, 0.5, 0.9],
+                    region_score=0.83, area=0.24,
+                    dino=dino if dino is not None else a_vector(1.0, 0.0),
+                    siglip=siglip if siglip is not None
+                    else a_vector(0.5, 0.5))
 
 
 def a_seeing_inspector(directory, looks=None, fail="", capture=None, pose=None,
@@ -1062,28 +670,29 @@ def a_seeing_inspector(directory, looks=None, fail="", capture=None, pose=None,
     store = a_store(directory)
     eyes = FakeEyes(looks or [], fail=fail)
     return store, eyes, Inspector(
-        store, FakeReasoner([]), capture or a_capture(pan=20.0, tilt=-5.0),
-        pose or a_pose(), eyes=eyes, fov_deg=fov_deg)
+        store, eyes, capture or a_capture(pan=20.0, tilt=-5.0),
+        pose or a_pose(), fov_deg=fov_deg)
 
 
 def test_an_inspection_through_the_encoders_keeps_what_it_measured() -> None:
     with tempfile.TemporaryDirectory() as directory:
+        seen, matched = a_vector(0.6, 0.8), a_vector(0.0, 1.0)
         store, eyes, inspector = a_seeing_inspector(
-            directory, [[a_sighting(), a_sighting(label="a doorway")]])
+            directory, [[a_sighting(dino=seen, siglip=matched),
+                         a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])]])
         result = inspector.inspect()
         check("the inspection succeeded", result["ok"], True)
         check("...storing one observation per region", result["stored"], 2)
         check("...with a bearing for each", result["placed"], 2)
         check("...and claiming no identity for either", result["created"], 0)
-        check("the language model was never asked", inspector.reasoner.calls, [])
+        check("...having asked the encoders exactly once", len(eyes.calls), 1)
 
         rows = store.db.execute(
             "SELECT * FROM observations ORDER BY id").fetchall()
         first = dict(rows[0])
         check("the appearance vector is stored as the bytes it arrived as",
-              first["dino_blob"], b"\x01\x02\x03\x04")
-        check("...and so is the semantic one", first["siglip_blob"],
-              b"\x05\x06\x07\x08")
+              first["dino_blob"], seen)
+        check("...and so is the semantic one", first["siglip_blob"], matched)
         check("the backend that produced them travels with them",
               first["vectors_from"], "fake")
         check("what drew the box is recorded apart from what named it",
@@ -1137,16 +746,94 @@ def test_a_sidecar_that_is_down_writes_one_row_and_no_observations() -> None:
         store.close()
 
 
-def test_a_vague_label_is_kept_and_marked_the_same_way_either_way() -> None:
-    """A vocabulary can produce an unrecognisable name as easily as a model can."""
+def test_every_failure_leaves_the_world_exactly_as_it_was() -> None:
+    """The ways an inspection can fail, and one rule for all of them."""
+    cases = [
+        ("the sidecar is not running",
+         dict(fail="nothing is listening on 8776"), "unavailable"),
+        ("the camera gave nothing",
+         dict(looks=[[a_sighting()]],
+              capture=a_capture(ok=False, error="the camera gave nothing")),
+         "no_frame"),
+    ]
+    for name, kwargs, status in cases:
+        with tempfile.TemporaryDirectory() as directory:
+            store, _eyes, inspector = a_seeing_inspector(directory, **kwargs)
+            # Something already in the world, so "unchanged" is a claim with
+            # content rather than "still empty".
+            store.record([a_sighting()], capture={"frame_id": "f0"})
+            before = store.summary()
+            result = inspector.inspect()
+            check(f"{name}: the inspection fails", result["ok"], False)
+            check(f"{name}: ...saying which kind of failure", result["status"],
+                  status)
+            after = store.summary()
+            check(f"{name}: ...and changes no entity",
+                  after["entities"], before["entities"])
+            check(f"{name}: ...and no observation",
+                  after["observations"], before["observations"])
+            check(f"{name}: ...but is written down where the popup shows it",
+                  store.inferences()[0]["status"], status)
+            store.close()
+
+
+def test_only_one_inspection_at_a_time() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store, _eyes, inspector = a_seeing_inspector(
-            directory, [[a_sighting(label="a thing")]])
+            directory, [[a_sighting()]])
+        inspector._lock.acquire()
+        inspector.started_at = time.monotonic()
+        try:
+            result = inspector.inspect()
+            check("a second request is refused rather than queued",
+                  result["status"], "busy")
+            check("...and nothing was stored for it", store.inferences(), [])
+        finally:
+            inspector._lock.release()
+        check("...and the next one runs normally", inspector.inspect()["ok"], True)
+        store.close()
+
+
+def test_a_clear_is_refused_while_an_inspection_runs() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]])
+        inspector.inspect()
+        inspector._lock.acquire()
+        try:
+            check("the inspector says it is busy", inspector.busy, True)
+        finally:
+            inspector._lock.release()
+        check("...and is free again afterwards", inspector.busy, False)
+        check("the clear then works", store.clear()["ok"], True)
+        store.close()
+
+
+def test_perception_writes_no_name_and_no_warning_about_one() -> None:
+    """Nothing measures what a region is, so nothing pretends to.
+
+    There used to be a name here and a warning beside it when the name said
+    nothing in particular. Both are gone with the word list that produced
+    them, and what has to be true now is that the row says so by holding
+    nothing rather than by holding a plausible-looking guess -- the same rule
+    the bearing columns follow when there was no pose.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]])
         inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
-        check("the row is kept", row["label"], "a thing")
-        check("...and says it can never be matched",
-              "never be matched" in (row["note"] or ""), True)
+        check("the row carries no name", row["label"], "")
+        check("...and no leftover score for one", row["label_score"], None)
+        check("...and no warning about a name that was never there",
+              row["note"], None)
+        check("what it does carry is the measurement",
+              (row["bearing_deg"] is not None, bool(row["siglip_blob"])),
+              (True, True))
+        import json as _json
+        raw = _json.loads(row["raw_json"])
+        check("...and what the sidecar said has no name in it either",
+              sorted(raw), ["area", "region_score"])
         store.close()
 
 
@@ -1173,7 +860,7 @@ def test_the_pending_pool_holds_what_has_a_direction_but_no_home() -> None:
     """Phase 2's waiting room, and what is deliberately not in it."""
     with tempfile.TemporaryDirectory() as directory:
         store, _eyes, inspector = a_seeing_inspector(
-            directory, [[a_sighting(), a_sighting(label="a doorway")]])
+            directory, [[a_sighting(), a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])]])
         inspector.inspect()
         pending = store.unplaced()
         check("both observations are waiting to be placed", len(pending), 2)
@@ -1186,7 +873,7 @@ def test_the_pending_pool_holds_what_has_a_direction_but_no_home() -> None:
 
         # An observation with no pose was never pending anything: no later look
         # can supply a direction that was never measured.
-        store.record(validate(answer(sofa())).seen, capture={"frame_id": "f9"})
+        store.record([a_sighting()], capture={"frame_id": "f9"})
         check("an observation with no bearing is not in the pool",
               len(store.unplaced()), 2)
         check("...but it is still in the history", store.summary()["observations"], 3)
@@ -1199,18 +886,20 @@ def test_the_pending_pool_holds_what_has_a_direction_but_no_home() -> None:
 def test_the_vectors_never_reach_the_wire_by_accident() -> None:
     """Raw bytes in a row that is about to be JSON is a crash, not a nuisance."""
     with tempfile.TemporaryDirectory() as directory:
-        store, _eyes, inspector = a_seeing_inspector(directory, [[a_sighting()]])
+        seen = a_vector(0.6, 0.8)
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting(dino=seen)]])
         inspector.inspect()
         shown = store.observations()[0]
         check("the console's copy carries no raw vector",
               ("dino_blob" in shown, "siglip_blob" in shown), (False, False))
         check("...but says they are there and how big",
-              (shown["dino_bytes"], shown["siglip_bytes"]), (4, 4))
+              (shown["dino_bytes"], shown["siglip_bytes"]), (32, 32))
         import json as _json
         _json.dumps(shown)
         check("...so the row can be sent as JSON at all", True, True)
         check("the resolver's copy keeps them",
-              store.unplaced()[0]["dino_blob"], b"")
+              store.unplaced()[0]["dino_blob"], seen)
         store.close()
 
 
@@ -1231,8 +920,7 @@ def a_vector(*values, width=8):
     return struct.pack(f"<{width}f", *numbers)
 
 
-def observe(store, x, y, bearing, label="a wooden chair", vector=None,
-            inference=None, fov_deg=100.0):
+def observe(store, x, y, bearing, vector=None, inference=None, fov_deg=100.0):
     """One look at something, from a place, along a bearing.
 
     The box is centred, so the bearing really is the pose's heading minus the
@@ -1241,7 +929,7 @@ def observe(store, x, y, bearing, label="a wooden chair", vector=None,
     """
     from world_state.perception_client import Sighting
 
-    seen = [Sighting(bbox=[0.45, 0.3, 0.55, 0.9], label=label,
+    seen = [Sighting(bbox=[0.45, 0.3, 0.55, 0.9],
                      dino=vector if vector is not None else a_vector(1.0, 0.0),
                      siglip=a_vector(0.5, 0.5))]
     store.record(seen, capture={"frame_id": "f", "pan": 0.0,
@@ -1351,8 +1039,8 @@ def test_one_television_seen_six_times_is_one_television() -> None:
 
     Driven round three places and inspected at six headings from each, the rover
     placed four televisions, two of them eight centimetres apart, and three people
-    where there was one. Two entities sharing a label is the failure this whole
-    design exists to prevent.
+    where there was one. Two entities that are really one thing is the failure
+    this whole design exists to prevent.
 
     The cause is an ordering one. A new thing absorbs the rays that support it,
     but never two rays from the same frame -- two regions of one frame are two
@@ -1372,8 +1060,7 @@ def test_one_television_seen_six_times_is_one_television() -> None:
                           (5.4, 0.5), (3.0, -3.0), (2.4, -2.6)]
             for index, (x_m, y_m) in enumerate(from_where, start=1):
                 bearing = math.degrees(math.atan2(telly[1] - y_m, telly[0] - x_m))
-                observe(store, x_m, y_m, round(bearing, 2), inference=index,
-                        label="a television")
+                observe(store, x_m, y_m, round(bearing, 2), inference=index)
             result = resolve.resolve(store)
             check("six looks at one television make one television",
                   result["created"], 1)
@@ -1493,39 +1180,66 @@ def test_two_placed_things_on_one_bearing_are_ambiguous_not_a_guess() -> None:
 
 
 def test_a_chair_and_a_ceiling_light_are_never_the_same_thing() -> None:
-    """The cheapest gate, doing the one job it is allowed to do."""
-    check("the same phrase is compatible with itself",
-          resolve.compatible("a wooden chair", "a wooden chair"), True)
-    check("...and so is another name for the same kind of thing",
-          resolve.compatible("a wooden chair", "an office chair"), True)
-    check("a chair is not a ceiling light",
-          resolve.compatible("a wooden chair", "a ceiling light"), False)
-    check("an empty label matches nothing", resolve.compatible("", "a chair"),
-          False)
+    """The gate that replaced the word list, doing the one job it may do.
+
+    Two bearings that cross beautifully are still not two looks at one thing
+    if the crops behind them look nothing like each other. This used to be
+    decided by comparing two names against a hand-written list of synonyms;
+    it is decided now by comparing the appearance vectors, which is the same
+    question asked of something the rover actually measured.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            # A perfect crossing at (3, 3), and two crops with nothing in
+            # common: on this rover a chair against a spray bottle is 0.122.
+            observe(store, 0.0, 0.0, 45.0, vector=a_vector(1.0, 0.0),
+                    inference=1)
+            observe(store, 6.0, 0.0, 135.0, vector=a_vector(0.0, 1.0),
+                    inference=2)
+            result = resolve.resolve(store)
+            check("two things that look nothing alike are not one thing",
+                  result["created"], 0)
+            check("...and both looks are left waiting rather than merged",
+                  len(store.unplaced()), 2)
+
+            # The identical geometry, with two crops that do look alike.
+            store.clear()
+            observe(store, 0.0, 0.0, 45.0, vector=a_vector(1.0, 0.05),
+                    inference=1)
+            observe(store, 6.0, 0.0, 135.0, vector=a_vector(1.0, 0.0),
+                    inference=2)
+            check("the same crossing between two views of one thing is placed",
+                  resolve.resolve(store)["created"], 1)
+        finally:
+            store.close()
 
 
-def test_a_thing_that_moves_is_not_matched_on_position_alone() -> None:
+def test_the_right_place_is_not_enough_if_it_looks_wrong() -> None:
+    """What the list of things that move used to buy, without the list.
+
+    A bottle is a poor thing to identify by position, because it was moved;
+    the old rule knew which things those were by name, and there are no names
+    any more. What survives is the half that never needed one: a look on a
+    bearing that points straight at a placed thing, but whose crop looks
+    nothing like anything that thing has shown, is not that thing.
+    """
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         bottle = a_vector(1.0, 0.0)
-        observe(store, 0.0, 0.0, 45.0, label="a bottle", vector=bottle,
-                inference=1)
-        observe(store, 6.0, 0.0, 135.0, label="a bottle", vector=bottle,
-                inference=2)
+        observe(store, 0.0, 0.0, 45.0, vector=bottle, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=bottle, inference=2)
         resolve.resolve(store)
-        check("a movable thing can still be placed when it looks the same",
-              len(store.placed()), 1)
+        check("two looks that agree place the thing", len(store.placed()), 1)
 
         # The right place, and nothing like it to look at.
-        observe(store, 3.0, -1.0, 90.0, label="a bottle",
-                vector=a_vector(0.0, 1.0), inference=3)
+        observe(store, 3.0, -1.0, 90.0, vector=a_vector(0.0, 1.0), inference=3)
         result = resolve.resolve(store)
-        check("a bottle in the right place that looks wrong is not matched",
+        check("a look in the right place that looks wrong is not matched",
               result["matched"], 0)
-        check("...it is called ambiguous rather than guessed",
-              result["ambiguous"], 1)
-        check("...and the reason says the thing moves",
-              "moves" in result["decisions"][0]["why"], True)
+        check("...nor quietly made into a second thing", result["created"], 0)
+        check("...it waits for a second bearing of its own",
+              len(store.unplaced()), 1)
         store.close()
 
 
@@ -1611,8 +1325,8 @@ def test_a_query_that_matches_nothing_says_so() -> None:
     query = _packed(1.0, 0.0, 0.0)
     # Everything here scores about 0.05 against the query: the shape a room full
     # of things that are not what was asked for produces.
-    near = [{"id": n, "siglip_blob": _packed(0.05 + n * 0.0002, 1.0, 0.0),
-             "label": "a thing"} for n in range(40)]
+    near = [{"id": n, "siglip_blob": _packed(0.05 + n * 0.0002, 1.0, 0.0)}
+            for n in range(40)]
     answer = search.rank(query, near)
     check("a field of near misses is ranked", len(answer["matches"]), 10)
     check("...but not believed", answer["confident"], False)
@@ -1621,8 +1335,7 @@ def test_a_query_that_matches_nothing_says_so() -> None:
     check("...which quotes the score and the bar it missed",
           f"{search.MATCHES:.2f}" in answer["detail"], True)
 
-    real = near + [{"id": 99, "siglip_blob": _packed(1.0, 0.02, 0.0),
-                    "label": "a spray bottle"}]
+    real = near + [{"id": 99, "siglip_blob": _packed(1.0, 0.02, 0.0)}]
     answer = search.rank(query, real)
     check("a match that scores well is believed", answer["confident"], True)
     check("...and it is the right one", answer["matches"][0]["observation_id"], 99)
@@ -1638,9 +1351,9 @@ def test_a_search_says_which_part_of_the_frame_it_found() -> None:
     decoded, under the same name the rest of the codebase uses.
     """
     query = _packed(1.0, 0.0, 0.0)
-    rows = [{"id": 1, "siglip_blob": _packed(1.0, 0.0, 0.0), "label": "a bottle",
+    rows = [{"id": 1, "siglip_blob": _packed(1.0, 0.0, 0.0),
              "frame_id": "f1", "bbox": [0.1, 0.2, 0.3, 0.4]},
-            {"id": 2, "siglip_blob": _packed(0.0, 1.0, 0.0), "label": "a wall",
+            {"id": 2, "siglip_blob": _packed(0.0, 1.0, 0.0),
              "frame_id": "f1", "bbox": None}]
     answer = search.rank(query, rows)
     check("the match carries the box it was found in",
@@ -1652,7 +1365,7 @@ def test_a_search_says_which_part_of_the_frame_it_found() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         try:
-            observe(store, 0.0, 0.0, 45.0, label="a spray bottle")
+            observe(store, 0.0, 0.0, 45.0)
             rows = store.searchable()
             check("the store decodes the box for a search", len(rows), 1)
             check("...as four numbers, not a string",
@@ -1672,17 +1385,17 @@ def test_a_flat_field_is_not_what_decides_a_match() -> None:
     a coin, so it must not be able to overturn the score.
     """
     query = _packed(1.0, 0.0, 0.0)
-    crowd = [{"id": n, "siglip_blob": _packed(0.02, 1.0, n * 0.01),
-              "label": "a thing"} for n in range(40)]
+    crowd = [{"id": n, "siglip_blob": _packed(0.02, 1.0, n * 0.01)}
+             for n in range(40)]
 
     # A real match with nothing else near it, and the same match in a room where
     # several things score almost as well. The separation differs greatly.
     alone = search.rank(query, crowd + [
-        {"id": 1, "siglip_blob": _packed(1.0, 0.05, 0.0), "label": "a bottle"}])
+        {"id": 1, "siglip_blob": _packed(1.0, 0.05, 0.0)}])
     among = search.rank(query, crowd + [
-        {"id": 1, "siglip_blob": _packed(1.0, 0.05, 0.0), "label": "a bottle"},
-        {"id": 2, "siglip_blob": _packed(1.0, 0.07, 0.0), "label": "a bottle"},
-        {"id": 3, "siglip_blob": _packed(1.0, 0.09, 0.0), "label": "a bottle"}])
+        {"id": 1, "siglip_blob": _packed(1.0, 0.05, 0.0)},
+        {"id": 2, "siglip_blob": _packed(1.0, 0.07, 0.0)},
+        {"id": 3, "siglip_blob": _packed(1.0, 0.09, 0.0)}])
     check("a thing seen once is found", alone["confident"], True)
     check("...and seeing it three times does not unfind it",
           among["confident"], True)
@@ -1695,7 +1408,7 @@ def test_too_little_seen_is_not_a_match_either() -> None:
     something. What changes below a dozen is what the answer says about itself,
     not whether it is believed."""
     query = _packed(1.0, 0.0, 0.0)
-    wrong = [{"id": n, "siglip_blob": _packed(0.04, 1.0, 0.0), "label": "a chair"}
+    wrong = [{"id": n, "siglip_blob": _packed(0.04, 1.0, 0.0)}
              for n in range(3)]
     answer = search.rank(query, wrong)
     check("three things that are not it is not a match", answer["confident"], False)
@@ -1703,8 +1416,7 @@ def test_too_little_seen_is_not_a_match_either() -> None:
           "blaming the query", "not have looked at it yet" in answer["detail"],
           True)
 
-    right = wrong + [{"id": 9, "siglip_blob": _packed(1.0, 0.0, 0.0),
-                      "label": "a bottle"}]
+    right = wrong + [{"id": 9, "siglip_blob": _packed(1.0, 0.0, 0.0)}]
     answer = search.rank(query, right)
     check("but a real match among four is still a match",
           answer["confident"], True)
@@ -1716,9 +1428,9 @@ def test_vectors_from_the_other_backend_are_not_ranked() -> None:
     """Comparing across backends would rank noise, so it is refused."""
     query = _packed(1.0, 0.0, 0.0)
     rows = [{"id": 1, "siglip_blob": _packed(1.0, 0.0, 0.0),
-             "vectors_from": "onnxruntime", "label": "a chair"},
+             "vectors_from": "onnxruntime"},
             {"id": 2, "siglip_blob": _packed(0.2, 1.0, 0.0),
-             "vectors_from": "tensorrt", "label": "a chair"}]
+             "vectors_from": "tensorrt"}]
     answer = search.rank(query, rows, backend="tensorrt")
     check("the row from the other backend is counted out",
           (answer["considered"], answer["skipped"]), (1, 1))
@@ -1738,23 +1450,6 @@ TESTS = (
     test_clearing_the_map_keeps_the_semantic_world,
     test_unreadable_stored_json_cannot_take_the_viewer_down,
     test_a_reader_is_not_blocked_by_a_writer,
-    test_an_identity_the_model_volunteers_is_thrown_away,
-    test_the_prompt_says_nothing_about_what_has_been_seen_before,
-    test_a_label_that_names_nothing_is_kept_and_marked,
-    test_a_good_answer_is_accepted_whole,
-    test_the_schema_holds_the_model_to_a_length,
-    test_prose_and_fences_and_thinking_are_got_through,
-    test_the_answer_has_to_be_the_right_shape,
-    test_a_box_is_clamped_or_dropped_but_never_believed,
-    test_the_model_is_not_allowed_to_measure_the_room,
-    test_an_unknown_kind_is_filed_rather_than_refused,
-    test_one_inspection_records_what_it_saw_and_where_it_stood,
-    test_the_second_look_is_told_nothing_about_the_first,
-    test_every_failure_leaves_the_world_exactly_as_it_was,
-    test_a_model_that_will_not_stop_talking_costs_one_inspection,
-    test_only_one_inspection_at_a_time,
-    test_nothing_salient_is_not_a_failure,
-    test_a_clear_is_refused_while_an_inspection_runs,
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
     test_two_bearings_from_two_places_locate_a_thing,
@@ -1769,13 +1464,15 @@ TESTS = (
     test_a_query_can_be_embedded_before_anything_has_been_looked_at,
     test_both_backends_answer_the_same_four_questions,
     test_the_installer_builds_exactly_the_engines_the_runtime_opens,
-    test_the_vocabulary_is_phrases_and_not_comments,
     test_a_region_that_is_an_edge_is_not_a_thing,
     test_an_inspection_through_the_encoders_keeps_what_it_measured,
     test_a_bearing_is_the_pose_the_gimbal_and_the_box_together,
     test_without_a_pose_nothing_pretends_to_know_a_direction,
     test_a_sidecar_that_is_down_writes_one_row_and_no_observations,
-    test_a_vague_label_is_kept_and_marked_the_same_way_either_way,
+    test_every_failure_leaves_the_world_exactly_as_it_was,
+    test_only_one_inspection_at_a_time,
+    test_a_clear_is_refused_while_an_inspection_runs,
+    test_perception_writes_no_name_and_no_warning_about_one,
     test_a_bearing_never_runs_past_half_a_turn,
     test_the_pending_pool_holds_what_has_a_direction_but_no_home,
     test_the_vectors_never_reach_the_wire_by_accident,
@@ -1788,7 +1485,7 @@ TESTS = (
     test_appearance_cannot_overrule_where_a_thing_is,
     test_two_placed_things_on_one_bearing_are_ambiguous_not_a_guess,
     test_a_chair_and_a_ceiling_light_are_never_the_same_thing,
-    test_a_thing_that_moves_is_not_matched_on_position_alone,
+    test_the_right_place_is_not_enough_if_it_looks_wrong,
     test_the_evidence_survives_the_decision,
     test_a_placement_belongs_to_the_map_it_was_measured_in,
     test_an_inspection_settles_identity_as_well_as_measuring,

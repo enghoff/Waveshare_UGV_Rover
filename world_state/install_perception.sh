@@ -9,18 +9,18 @@
 # lasting thing it was looking at. Three small networks, none of which knows any
 # categories, and between them they answer three separate questions:
 #
-#     FastSAM-s     what regions are in this frame, with no vocabulary at all
+#     FastSAM-s     what regions are in this frame, with no categories at all
 #     DINOv2-small  is this the same *instance* as that one
 #     SigLIP2       what is this called, and later: find me the thing I describe
 #
-# **Separate from install.sh on purpose.** That one fetches Cosmos Reason 2, which
-# is still wanted for the conversational `look` where a person is waiting for
-# prose. This one is the per-look path, and the two have to be installable and
-# breakable independently.
+# **The only installer this component has.** There were two: the other fetched a
+# local language model and a llama.cpp server to run it, and both left the rover
+# on 2026-09-02 when the encoders took over the per-look path and nothing was
+# left calling the model.
 #
-# Under two gigabytes, fetched here rather than deployed, for the reason the
-# GGUFs are: the deployer carries the bytes a commit describes, and neither a
-# quantized ONNX graph nor a compiled engine is described by a commit.
+# Under two gigabytes, fetched here rather than deployed: the deployer carries the
+# bytes a commit describes, and neither a quantized ONNX graph nor a compiled
+# engine is described by a commit.
 # vendor/ is preserved across deploys by deploy/manifest.json.
 
 set -eu
@@ -111,7 +111,7 @@ TOKENIZER_BYTES=34363039
 
 # The engine sources. SigLIP2 is fetched as two towers rather than as the
 # combined graph: only the vision half runs per look, and the text half runs
-# once at start-up over the vocabulary and is then let go.
+# only when somebody types a search and is let go again straight after.
 DINO_FP16_FILE=dinov2-small-fp16.onnx
 DINO_FP16_URL=https://huggingface.co/onnx-community/dinov2-small/resolve/main/onnx/model_fp16.onnx
 DINO_FP16_BYTES=44420939
@@ -189,11 +189,11 @@ fi
 #
 # **This is the slow part and it needs the board largely to itself.** Building an
 # engine means trying many kernel implementations and keeping their workspaces,
-# and the first attempt at it here -- with the language model holding 3.1 GB of
-# the board's 7.5 -- ended with the kernel's out-of-memory killer taking the
-# language model and the build script together. So the language sidecar is
-# stopped for the duration and started again afterwards, which is a rude thing
-# for one installer to do to another service and is why it is announced.
+# and the first attempt at it here ended with the kernel's out-of-memory killer
+# taking the build script: a language model was holding 3.1 GB of the board's
+# 7.5 at the time. That model has since been removed from the rover altogether,
+# which is where the headroom now comes from -- so nothing is stopped here any
+# more, and anything else large that is running is the operator's to consider.
 #
 # About ten minutes, once. An engine is compiled for this GPU, this TensorRT
 # version and these batch sizes, so it cannot be shipped and it does not survive
@@ -204,18 +204,6 @@ build_engines() {
              "will be used instead. Install it with: sudo apt install nvidia-jetpack"
         return 0
     fi
-
-    # The vocabulary decides the text tower's usual batch. The ceiling is well
-    # above it so that editing vocabulary.txt does not mean rebuilding an engine.
-    words=$(grep -cve '^\s*$' -e '^\s*#' "$HERE/vocabulary.txt" 2>/dev/null || echo 57)
-    [ "$words" -ge 1 ] 2>/dev/null || words=57
-    [ "$words" -le 128 ] || words=128
-
-    echo "--- stopping the language sidecar for the engine build"
-    pkill -f 'world_state/run_cosmos[.]sh' 2>/dev/null || true
-    sleep 1
-    pkill -f 'vendor/llama/llama-serve[r]' 2>/dev/null || true
-    sleep 3
 
     build() {
         # build <engine> <onnx> <extra trtexec arguments...>
@@ -240,9 +228,9 @@ build_engines() {
     # model that runs on the whole frame rather than on crops.
     #
     # **Full precision for the other three, and that is not caution.** In genuine
-    # fp16 SigLIP2 collapses: measured here, all fifty-seven vocabulary vectors
-    # came back within 0.92 of one another and a single phrase won every region
-    # in the frame. onnxruntime hides this because it has no fp16 kernels and
+    # fp16 SigLIP2 collapses: measured here, fifty-seven phrases through the text
+    # tower came back within 0.92 of one another, so every phrase matched
+    # everything. onnxruntime hides this because it has no fp16 kernels and
     # upcasts; a GPU does not.
     build fastsam.plan "$FASTSAM_FILE" --fp16 \
         --shapes=images:1x3x512x512 || return 1
@@ -254,21 +242,21 @@ build_engines() {
         --minShapes=pixel_values:1x3x256x256 \
         --optShapes=pixel_values:12x3x256x256 \
         --maxShapes=pixel_values:16x3x256x256 || return 1
+    # One phrase is the whole of it now. This tower used to embed a word list
+    # of fifty-seven at start-up; nothing names a region any more, so the only
+    # thing that loads it is somebody typing a search, and that is one phrase.
+    # The ceiling stays where it was because /embed accepts up to sixty-four.
     build siglip-text.plan "$TEXT_FP16_FILE" \
         --minShapes=input_ids:1x64 \
-        --optShapes=input_ids:${words}x64 \
+        --optShapes=input_ids:1x64 \
         --maxShapes=input_ids:128x64 || return 1
 }
 
 engine_status=ok
 build_engines || engine_status="failed -- the CPU backend will be used"
 
-echo "--- starting the language sidecar again"
-setsid nohup "$HERE/run_cosmos.sh" > /dev/null 2>&1 < /dev/null &
-
 # The sidecar comes back after a reboot the way every other service on this rover
-# does: a crontab entry for the rover user. Its own line, separate from the
-# language model's, so that stopping one does not stop the other.
+# does: a crontab entry for the rover user.
 LINE="@reboot $HERE/run_perception.sh"
 current=$(crontab -l 2>/dev/null || true)
 if printf '%s\n' "$current" | grep -q 'world_state/run_perception.sh'; then

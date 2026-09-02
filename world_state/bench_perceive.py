@@ -65,7 +65,7 @@ def main() -> int:
 
     began = time.monotonic()
     perception.load()
-    print(f"loaded three models and {len(perception.words)} vocabulary phrases "
+    print(f"loaded three models on {perception.backend} "
           f"in {time.monotonic() - began:.1f} s"
           + (f" ({arguments.threads} threads)" if arguments.threads else ""))
 
@@ -89,7 +89,7 @@ def main() -> int:
               f"siglip {timings['siglip_ms']} ms, whole look {best['took_s']:.2f} s")
         for region in best["regions"][:arguments.top]:
             box = ", ".join(f"{value:.2f}" for value in region["bbox"])
-            print(f"    {region['label']:<22} {region['label_score']:.3f}  "
+            print(f"    region {region['region_score']:.3f}  "
                   f"area {region['area']:.3f}  box [{box}]")
 
     if everything:

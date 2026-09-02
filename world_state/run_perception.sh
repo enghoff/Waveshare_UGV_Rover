@@ -1,10 +1,9 @@
 #!/bin/sh
 # Keep the perception sidecar up, and bring it back after a reboot.
 #
-# The same arrangement run_cosmos.sh has, one port along, and for the same
-# reasons: a `@reboot` crontab entry for the rover user, because a system unit
-# would want a sudo password no script here has and a user unit would want
-# `loginctl enable-linger`.
+# The arrangement every service on this rover uses: a `@reboot` crontab entry for
+# the rover user, because a system unit would want a sudo password no script here
+# has and a user unit would want `loginctl enable-linger`.
 #
 #     @reboot /home/jetson/ugv/world_state/run_perception.sh
 #

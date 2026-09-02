@@ -18,9 +18,9 @@ rover and nothing here is in the repository. If TensorRT refuses to load one it
 says so plainly, and `perceive` falls back to the CPU.
 
 **Precision is a per-model decision, and fp16 is not safe by default.** SigLIP2
-in genuine fp16 collapses: measured on the rover, all fifty-seven vocabulary
-vectors came back within 0.92 of each other, so a single phrase won every region
-in the frame. This is invisible under onnxruntime, which has no fp16 kernels and
+in genuine fp16 collapses: measured on the rover, fifty-seven phrases through
+the text tower came back within 0.92 of each other, so every phrase matched
+everything. This is invisible under onnxruntime, which has no fp16 kernels and
 quietly computes such graphs in fp32. The build script therefore asks for fp16
 only where it has been checked against a full-precision reference.
 """
@@ -38,9 +38,9 @@ DINO = "dinov2.plan"
 SIGLIP_VISION = "siglip-vision.plan"
 SIGLIP_TEXT = "siglip-text.plan"
 
-#: Every engine a look needs to be able to run. The text engine is in the list
-#: because the vocabulary has to be embedded before the first look can be named,
-#: even though it is loaded once and then let go.
+#: Every engine this component needs to be able to run. The text engine is in the
+#: list because a search cannot be answered without it, even though a look never
+#: touches it and it is loaded for the call and let go again.
 REQUIRED = (FASTSAM, DINO, SIGLIP_VISION, SIGLIP_TEXT)
 
 
@@ -184,9 +184,9 @@ class Engine:
     def close(self) -> None:
         """Give the GPU memory back.
 
-        Used for the text tower, which embeds the vocabulary at start-up and is
-        then dead weight: it is the largest engine of the four and the board
-        shares its memory with everything else.
+        Used for the text tower, which a search loads and is then dead weight: it
+        is the largest engine of the four and the board shares its memory with
+        everything else.
         """
         cudart = self._cudart
         for pointer in self._device.values():

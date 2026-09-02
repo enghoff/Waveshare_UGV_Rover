@@ -137,8 +137,21 @@
   .wplaced { font-weight: 600; }
   .wunplaced { opacity: .75; }
   /* The resolver's own sentence about why an observation belongs to a thing,
-     which reads as an explanation rather than as the warning `wdup` is. */
+     which reads as an explanation. */
   .wbecause { opacity: .8; font-style: italic; }
+  /* The selected entity's observations, and they scroll on their own rather than
+     with the popup. Nothing names a thing any more, so the pictures *are* the
+     identity: what a person does here is scroll the crops and decide whether
+     they are all the same object. That reading is only possible if the entity's
+     own heading -- which says how many there are and where it thinks it is --
+     stays put while the pictures move under it, and if the list beside it does
+     not scroll away at the same time. */
+  #wDetail { display: flex; flex-direction: column; min-height: 0; }
+  .wscroll {
+    overflow-y: auto; overscroll-behavior: contain; min-height: 0;
+    max-height: 62vh; padding-right: 6px; margin-top: 6px;
+    border-top: 1px solid var(--line);
+  }
   .wpane { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
   .wcol { flex: 1 1 320px; min-width: 0; }
   .wwide { flex: 2 1 520px; min-width: 0; }
@@ -148,9 +161,10 @@
   }
   .wrow.on { border-color: var(--accent); }
   .wrow .wid { font-weight: 600; }
-  /* Two entities with the same label is the failure this whole experiment is
-     looking for, so it is marked rather than left to be noticed. */
-  .wrow .wdup, .wdrift { color: var(--warn); }
+  /* An observation that belongs to nothing, and the reason it belongs to
+     nothing: a warning rather than a note, because a store filling with orphans
+     is the failure this popup is watching for. */
+  .wrow .wdup, .wdup, .wdrift { color: var(--warn); }
   .wrow .wold { color: var(--dim); }
   .wmeta { color: var(--dim); font-size: 12px; }
   .wshot { position: relative; display: inline-block; max-width: 100%; }
@@ -162,6 +176,10 @@
   .wobs {
     border-left: 3px solid var(--line); padding: 4px 0 6px 8px; margin: 6px 0;
   }
+  /* Inside the entity's own scroller the picture is the point, so it is given
+     the width and the numbers sit under it. Capped so that four observations are
+     never four screens of scrolling. */
+  .wscroll .wshot { display: block; max-width: 420px; margin-top: 4px; }
   .wobs.wfailed { border-left-color: var(--bad); }
   .wraw {
     white-space: pre-wrap; word-break: break-word; background: var(--sunken);
@@ -1088,10 +1106,18 @@ function drawNetworks() {
 // Read-only, apart from the two buttons that act on the rover. The point of it is
 // to decide whether any of this is worth believing, and everything in here is
 // arranged so that the ways it can be wrong show up rather than being smoothed
-// over: two entities with the same label sit next to each other and are marked,
-// an entity whose wording has drifted from its own history says so, an entity last
-// seen under a map that has since been cleared is greyed, and a failed inference
-// is a row in the diagnostics tab rather than a popup that quietly did nothing.
+// over: choosing a thing shows every look that was decided to be it, each with
+// the box on the frame it was read from, so two things wrongly merged into one
+// are visible as two different objects in one scroller; an entity last seen under
+// a map that has since been cleared is greyed; and a failed inference is a row in
+// the diagnostics tab rather than a popup that quietly did nothing.
+//
+// **Nothing here shows what a thing is called, because nothing measures that any
+// more.** The word list that used to supply a name scored every phrase between
+// 0.08 and 0.12 whatever the crop held, and it put "a computer monitor" on a
+// sofa. What replaced it is the search tab, where the phrase a person types is
+// compared with what the rover actually saw, and the pictures in the pane beside
+// the entity list.
 
 let worldGen = "", world = {}, worldTab = "entities";
 
@@ -1209,17 +1235,12 @@ function drawWorldList() {
           + "from where it is, so a thing gets an identity only once it has been "
           + "seen from two places far enough apart -- see the observations tab."
         : summary.inspections
-        ? "nothing has been recorded yet, although the model has been asked "
+        ? "nothing has been recorded yet, although the rover has looked "
           + `${summary.inspections} time(s) -- see the diagnostics tab`
         : "nothing has been recorded yet. Press “inspect world”.");
     list.append(empty);
     return;
   }
-  // Two entities with the same label is the failure this experiment is looking
-  // for, so it is counted here and marked on both of them rather than left to be
-  // noticed by reading down the column.
-  const labels = {};
-  for (const entity of entities) labels[entity.label] = (labels[entity.label] || 0) + 1;
   const newest = Math.max(...entities.map((e) => e.last_seen_at || 0));
 
   for (const entity of entities) {
@@ -1229,31 +1250,15 @@ function drawWorldList() {
     row.onclick = () => post({do: "world", what: "select",
                               id: entity.id === state.world.selected ? "" : entity.id});
 
+    // An identifier and no name. Nothing measures what a thing is called any
+    // more, so a row says which thing it is, how often it has been seen and
+    // where it is; what it looks like is one click away in the pane beside it.
     const head = document.createElement("div");
     const id = document.createElement("span");
     id.className = "wid mono";
     id.textContent = entity.id;
-    const label = document.createElement("span");
-    label.textContent = ` ${entity.label}`;
-    head.append(id, label);
-    if (labels[entity.label] > 1) {
-      const dup = document.createElement("span");
-      dup.className = "wdup";
-      dup.textContent = `  — ${labels[entity.label]} entities share this label`;
-      head.append(dup);
-    }
-    if (entity.distinct_labels > 1) {
-      const drift = document.createElement("span");
-      drift.className = "wdrift";
-      drift.textContent = `  — called ${entity.distinct_labels} different things`;
-      head.append(drift);
-    }
+    head.append(id);
     row.append(head);
-
-    const described = document.createElement("div");
-    described.className = "wmeta";
-    described.textContent = entity.canonical_description || "";
-    row.append(described);
 
     const meta = document.createElement("div");
     meta.className = "wmeta";
@@ -1408,9 +1413,9 @@ function drawWorldMap() {
   }
 }
 
-// The stored frame with the model's own box drawn on it. This is the check the
-// whole popup exists for: a label beside the picture it came from is how a
-// hallucinated entity and a real one somebody had forgotten get told apart.
+// The stored frame with the measured box drawn on it. This is the check the
+// whole popup exists for, and since nothing names a region any more it is the
+// only thing that can settle whether four observations are really one object.
 function wShot(observation) {
   const held = (world.frames || []).includes(observation.frame_id);
   if (!observation.frame_id) {
@@ -1465,9 +1470,15 @@ function wObservation(observation, options) {
   const when = document.createElement("span");
   when.className = "mono";
   when.textContent = wTime(observation.observed_at);
-  const what = document.createElement("strong");
-  what.textContent = ` ${observation.label || "(no label)"}`;
-  head.append(when, what);
+  head.append(when);
+  if (observation.label) {
+    // Only the language model's inspections carry a name, and they are history:
+    // nothing writes one now. Shown where it exists rather than dropped, because
+    // an old row saying what the model said is the record of that experiment.
+    const what = document.createElement("strong");
+    what.textContent = ` ${observation.label}`;
+    head.append(what);
+  }
   if (options && options.showEntity) {
     const owner = document.createElement("span");
     owner.className = "mono";
@@ -1520,7 +1531,12 @@ function wObservation(observation, options) {
   const raw = document.createElement("details");
   const summary = document.createElement("summary");
   summary.className = "wmeta";
-  summary.textContent = "what the model actually said";
+  // Two different things behind one field. A language model's inspection is
+  // words it chose; a look through the encoders is numbers that were measured,
+  // and calling those "what the model said" invites a reader to weigh them as
+  // an opinion.
+  summary.textContent = observation.prompt_version
+      ? "what the model actually said" : "what was measured";
   const body = document.createElement("pre");
   body.className = "wraw mono";
   body.textContent = JSON.stringify(observation.raw, null, 2);
@@ -1536,18 +1552,19 @@ function drawWorldDetail() {
   if (!entity || !entity.id || entity.id !== state.world.selected) {
     const hint = document.createElement("p");
     hint.className = "hint";
-    hint.textContent = "choose an entity on the left to see every observation "
-                     + "behind it, with the picture each was read from.";
+    hint.textContent = "choose a thing on the left to see every look that was "
+                     + "decided to be it, each with the box drawn on the picture "
+                     + "it was measured in. Nothing here is named, so those "
+                     + "pictures are how you check that they really are one "
+                     + "thing \u2014 and the search tab is how you find "
+                     + "something by describing it.";
     pane.append(hint);
     return;
   }
   const head = document.createElement("div");
   const title = document.createElement("h2");
-  title.textContent = `${entity.id} — ${entity.label}`;
+  title.textContent = entity.id;
   head.append(title);
-  const canonical = document.createElement("div");
-  canonical.textContent = entity.canonical_description || "(no description)";
-  head.append(canonical);
   const meta = document.createElement("div");
   meta.className = "wmeta mono";
   meta.textContent = `kind ${entity.kind} · ${entity.observation_count} `
@@ -1570,19 +1587,23 @@ function drawWorldDetail() {
   pane.append(head);
 
   const observations = world.selected_observations || [];
-  // The canonical wording is the newest observation's, so a canonical value that
-  // does not match the history means the model changed its mind -- which is a
-  // finding, not a glitch, and is said here rather than hidden.
-  const labels = new Set(observations.map((o) => o.label));
-  if (labels.size > 1) {
-    const drift = document.createElement("p");
-    drift.className = "wdrift";
-    drift.textContent = `this entity has been called ${labels.size} different `
-                      + `things: ${[...labels].join(", ")}. The current wording is `
-                      + `the newest, and the rest are below.`;
-    pane.append(drift);
+  // Every look that was decided to be this thing, newest first, in a scroller of
+  // its own so that the heading above stays put and the entity list beside it
+  // does not scroll away. **The pictures are what a person is here to read**:
+  // nothing names a region any more, so whether these four crops really are one
+  // object is a question only the boxes can answer.
+  const scroller = document.createElement("div");
+  scroller.className = "wscroll";
+  if (!observations.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "no observations have been attached to this yet.";
+    scroller.append(empty);
   }
-  for (const observation of observations) pane.append(wObservation(observation));
+  for (const observation of observations) {
+    scroller.append(wObservation(observation));
+  }
+  pane.append(scroller);
 }
 
 function drawWorldObservations() {
@@ -1592,7 +1613,7 @@ function drawWorldObservations() {
   const unmatched = world.unmatched || [];
   const heading = document.createElement("p");
   heading.className = "hint";
-  heading.textContent = `everything the model has said, newest first `
+  heading.textContent = `every look the rover has recorded, newest first `
                       + `(${recent.length} shown)`
                       + (unmatched.length
                          ? `, of which ${unmatched.length} are not yet part of any `
@@ -1657,9 +1678,7 @@ function drawWorldSearch() {
     const score = document.createElement("span");
     score.className = "mono";
     score.textContent = (+match.score).toFixed(4);
-    const what = document.createElement("strong");
-    what.textContent = ` ${match.label || "(no label)"}`;
-    head.append(score, what);
+    head.append(score);
     if (match.entity_id) {
       const owner = document.createElement("span");
       owner.className = "mono";

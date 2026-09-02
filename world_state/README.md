@@ -10,7 +10,8 @@ a voice model.
 
 The plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md);
 the earlier design it was first built to, [`docs/cosmos-reason2-integration.md`](../docs/cosmos-reason2-integration.md),
-is now history rather than instruction, for the reason below.
+is closed history rather than instruction, for the reason below — the local
+language model it describes is no longer on the rover.
 
 ## Where this stands
 
@@ -26,73 +27,122 @@ conclusion are further down; the short version is that Cosmos Reason 2 never
 recognises anything it has named, and Cosmos 3 recognises things that are not in
 the room and writes them into the scene.
 
-So the model has lost the job. **It is now shown one picture and told nothing
-about what the rover has already seen**, and what it returns is a kind, a name and
-a box — no description, no location hint, and no claim about which lasting thing
-it is looking at. Identity will come from a triangulated map position, and until
-the resolver that does that arrives, an inspection records observations and no
-entity is created at all. `entities` is an empty table waiting for a better
-answer, not a dead one.
+So the language model lost the job, and then — on 2026-09-02 — it left the rover
+altogether. **An inspection measures rather than asks.** A frame goes to the
+perception sidecar, which draws regions with FastSAM and describes each one with a
+DINOv2 appearance vector and a SigLIP2 semantic vector; the store keeps those
+beside the gimbal angles and the rover pose, and identity is settled afterwards by
+bearings that cross. Nothing in this component sends a picture to a language model
+any more, and there is no local one on the rover to send it to: the sidecar, the
+2.1 GB of weights and the `PhysicalReasoner` boundary in front of them are all
+gone. A person who wants prose about what the camera can see asks the daemon's
+`look`, which puts the frame in front of the conversation's own model.
 
 ```text
                 gimbal camera
                       |            rover_daemon owns it, and takes the picture
                       v            through the same path camera_jpeg uses
-              PhysicalReasoner
+              perception_client
                       |
-                      v            loopback 8775, its own process
-            llama.cpp + Cosmos Reason 2 2B (Q4)
+                      v            loopback 8776, its own process
+        FastSAM -> DINOv2 + SigLIP2  (TensorRT on the GPU, ONNX on the CPU)
                       |
-              structured JSON only
+        a box and two vectors per region
                       |
                       v
-              validate -> observation
+                 observation
                       |            with the gimbal angles and the rover pose
-                      v            that will one day place it
+                      v            that turn a box into a bearing
         SQLite + JPEGs under ~/.ugv/world
                       |
-                      v
+                      v            resolve.py: two bearings that cross
       control calls on TCP 8769 -> drive console popup
 ```
 
 ## The one rule
 
-**The model proposes; the application disposes.** It never allocates an
+**Perception proposes; the application disposes.** The sidecar never allocates an
 identifier, never claims which lasting thing it is looking at, never writes a row
-and never states a distance. What it returns is a proposal that
-[`contract.py`](contract.py) validates and [`store.py`](store.py) records, and
-every path through [`inspector.py`](inspector.py) that fails leaves the world
-exactly as it was, with one line in the diagnostics log saying which failure it
-was.
+and never states a distance. What it returns is a measurement that
+[`store.py`](store.py) records, and every path through
+[`inspector.py`](inspector.py) that fails leaves the world exactly as it was, with
+one line in the diagnostics log saying which failure it was.
 
-That rule has grown teeth. It used to mean the model could only refer to an
-identifier it had been shown; it now means there is no field it could use, no
-grammar that would let it produce one, and a validator that strips an identity
-claim out of the answer and reports having done so — the same treatment metres
-have always had. What is left is deliberately blunt:
+That rule has grown teeth. It used to mean a language model could only refer to an
+identifier it had been shown; then that there was no field it could use and a
+validator that stripped an identity claim out of the answer; now there is nothing
+in the pipeline capable of forming an opinion about identity at all. What is left
+is deliberately blunt:
 
-1. every observation is stored exactly as the model said it, with the frame, the
+1. every observation is stored exactly as it was measured, with the frame, the
    gimbal angles and the rover pose behind it;
 2. no observation is ever rewritten;
-3. nothing is matched to anything, because nothing yet knows where anything is;
-4. a label that names nothing in particular — "a thing" — is kept and marked as
-   unmatchable, because it is what the model said.
+3. what a thing is *called* is not recorded at all, because nothing here can
+   measure it — see below.
 
-There is deliberately no cheap stand-in in the meantime. Matching on the label
-would be the obvious one, and the rover has already measured what it would be
-worth: the same chair came back as a "black leather recliner" and then, on the
-byte-identical frame, a "blue leather recliner", with its twin becoming a "black
-leather couch". An empty entity table beats confident wrong answers.
+There is deliberately no cheap stand-in. Matching on a name would be the obvious
+one, and the rover has measured what it would be worth twice over. Asked of a
+language model, the same chair came back as a "black leather recliner" and then,
+on the byte-identical frame, a "blue leather recliner", with its twin becoming a
+"black leather couch". Asked of a fixed word list and a SigLIP2 vector, the score
+sat between 0.08 and 0.12 whatever the crop held, so only the ranking meant
+anything — and the ranking put "a computer monitor" on a sofa. An empty entity
+table beats confident wrong answers.
+
+## Nothing is named, and that is a result rather than an omission
+
+**A region has a box, two vectors and no word.** It used to carry the nearest
+phrase in `vocabulary.txt` to its SigLIP2 vector, and that name reached the
+console, the entity list, the search results and — worse — the resolver's first
+gate, which threw out any candidate whose name was not a synonym of this one.
+All of it is gone: the file, the start-up embedding of it, the cached vectors,
+the score beside the name, the synonym families, the list of things that move,
+and the `furniture:`/`opening:` identifier prefixes that were guessed from the
+word.
+
+The reason is that the number underneath was never a measurement. Those scores
+sit in a band of 0.08 to 0.12 whichever crop they are taken of, so there is no
+threshold at which the answer is "none of these" and no sense in which one name
+is more confident than another. What is left when you strip the calibration away
+is an argmax over fifty-seven phrases, and it is wrong often enough to see: on
+the rover's own frame it named a sofa a computer monitor.
+
+**The same vector answers the same question honestly when the question comes
+from a person.** Forty queries typed against the rover's own stored regions
+separate present from absent almost perfectly at a floor of 0.09 — four wrong
+out of forty, three of them the safe way round. So the vector is stored and
+[`search.py`](search.py) asks it what somebody actually wants to find. The
+picture was never the problem; naming it without being asked was.
+
+Two things had to replace what the name was doing.
+
+- **The resolver's semantic gate** is now `DIFFERENT_THING` in
+  [`resolve.py`](resolve.py): two crops whose DINOv2 vectors are less alike than
+  0.5 are not two looks at one object, so the candidate is removed. It removes
+  only and never confirms, exactly as the synonym gate did, and it sits between
+  two numbers this rover measured — a chair against a spray bottle at 0.122, and
+  the same chair across a real change of viewpoint at 0.696.
+- **The console** shows a thing by its identifier and its pictures. Choosing an
+  entity fills the pane beside the list with every look that was decided to be
+  it, each drawn as the stored frame with the measured box on it, scrolling on
+  its own. Whether four observations really are one object is a question the
+  crops answer and a word never did.
+
+One thing is not replaced and is worth stating plainly: the resolver used to
+know which things move, from a list of names, and refuse to identify a bottle by
+position alone. It cannot know that any more. What survives is the half that
+needed no name — a look whose crop does not resemble what the entity has shown
+is not that entity however well the bearing points at it.
 
 ## Observations and entities are different things
 
-An **observation** is what the model said about one picture at one moment. It is
+An **observation** is one region of one picture, as measured at one moment. It is
 never rewritten. An **entity** is the application's current opinion about a lasting
 thing in the room, derived from observations.
 
-Collapsing the two — letting an answer update a row in place — would destroy the
-evidence, because "the sofa's description changed" and "the model saw a different
-sofa" would leave the same record behind.
+Collapsing the two — letting a later look update a row in place — would destroy
+the evidence, because "this thing looks different now" and "the rover was looking
+at something else" would leave the same record behind.
 
 Keeping them apart is what makes the current state survivable. Nothing creates an
 entity at the moment, so every observation is an orphan; but each carries the
@@ -120,17 +170,18 @@ Every observation carries where the camera was:
 ```text
 observer_pan_deg / observer_tilt_deg    the gimbal, from the capture call
 observer_pose_json                      x, y and heading from SLAM, or null
-frame_id / frame_path                   the JPEG the model was shown
+frame_id / frame_path                   the JPEG the encoders were given
 map_session                             which SLAM map was live
-model_id / prompt_version               which build, under which wording
+model_id / vectors_from                 which backend measured it
 ```
 
 **The line is drawn by who measured the number, not by whether there is a number.**
 Where the gimbal was pointing and where the rover was standing are readings the
-rover already takes. How far away the sofa is would be an inference the model made
-from a single photograph, and none of that is stored: `contract.py` strips
-`distance_m`, `map_x` and their relatives out of the answer before anything sees it,
-and reports that it did.
+rover already takes. How far away the sofa is would be a guess from a single
+photograph, and nothing here is in a position to make one: the sidecar returns a
+box in fractions of the frame and two vectors, and metres enter this component
+only from SLAM. `prompt_version` is a column the language model used to fill and
+nothing writes now.
 
 That provenance is now the whole basis of identity rather than a decoration on it.
 [`view.py`](view.py) turns one observation into a **bearing from a measured pose** —
@@ -164,44 +215,40 @@ Only one direction is obvious.
 
 ```text
 ~/ugv/world_state/            this component, deployed
-~/ugv/world_state/vendor/     weights, llama.cpp, the ONNX models and the two
-                              unpacked wheels, fetched by the two install scripts
+~/ugv/world_state/vendor/     the ONNX models, their TensorRT engines and the two
+                              unpacked wheels, fetched by the install script
 ~/.ugv/world/world.db         entities, observations, inferences
 ~/.ugv/world/frames/          one JPEG per inspection
 ```
 
 The database and the frames are under `~/.ugv/` for the same reason the TLS keys
 are: a source deploy replaces `~/ugv`, and an experiment's results are not source.
-The weights are in `vendor/`, which the deploy manifest preserves, for the reason
-the depth camera's DepthAI tree is — two gigabytes is neither describable by a
+The models are in `vendor/`, which the deploy manifest preserves, for the reason
+the depth camera's DepthAI tree is — half a gigabyte is neither describable by a
 commit nor sensible to send over the rover's wi-fi on every change.
 
 ## Installing it
 
 A deploy copies the source and will then **fail its own verification** on a host
-that has no model yet, saying so. That is deliberate: the alternative is a component
-that deploys clean and cannot answer.
+that has no models yet, saying so. That is deliberate: the alternative is a
+component that deploys clean and cannot answer.
 
 ```bash
 python deploy/deploy.py --only world_state          # copies; fails if no models
-ssh orin '~/ugv/world_state/install.sh'             # ~2 GB, the language model
 ssh orin '~/ugv/world_state/install_perception.sh'  # ~0.5 GB, the three encoders
 python deploy/deploy.py --only world_state          # now passes
 ```
 
-Two installers because there are two model sets and they have to break
-independently. `install.sh` fetches a pinned Q4 GGUF of Cosmos Reason 2 2B and its
-vision projector, and unpacks a pinned aarch64 `llama.cpp`.
-`install_perception.sh` fetches FastSAM, DINOv2 and SigLIP2 as ONNX graphs and
-unpacks ONNX Runtime and the SigLIP tokenizer as wheels. Both check what they
-fetch against its expected size, add their sidecar's `@reboot` crontab entry, and
-resume a part-fetched file — which is most of why they are worth re-running rather
-than starting again.
+One installer, where there were two: the second fetched two gigabytes of language
+model and a llama.cpp server, and both left the rover on 2026-09-02 along with the
+code that called them. `install_perception.sh` fetches FastSAM, DINOv2 and SigLIP2
+as ONNX graphs, unpacks ONNX Runtime and the SigLIP tokenizer as wheels, and
+builds the TensorRT engines. It checks what it fetches against its expected size,
+adds the sidecar's `@reboot` crontab entry, and resumes a part-fetched file —
+which is most of why it is worth re-running rather than starting again.
 
-**Both halves now use the GPU, and they get there by different roads.** The
-language model goes through Vulkan, which needs nothing but a 27 MB llama.cpp
-build. Perception goes through TensorRT, which comes from JetPack. What it does
-*not* go through is ONNX Runtime, and that is worth stating because it is the
+**Perception reaches the GPU through TensorRT, which comes from JetPack.** What it
+does *not* go through is ONNX Runtime, and that is worth stating because it is the
 thing most likely to be tried again: CUDA and cuDNN are perfectly available for
 this board from NVIDIA, but **no build of ONNX Runtime exists for JetPack 7**.
 The community Jetson wheel index stops at JetPack 6, and the official aarch64
@@ -213,15 +260,13 @@ Installing more CUDA does not help; the gap is inside the wheel.
 ## Running it
 
 ```bash
-ssh orin '~/ugv/world_state/restart.sh'                  # reload the language model
-ssh orin '~/ugv/world_state/restart_perception.sh'       # reload the encoders
-ssh orin '~/ugv/world_state/restart.sh --supervisor'     # after changing run_*.sh
-ssh orin 'tail ~/ugv/world_state/cosmos.log'
+ssh orin '~/ugv/world_state/restart_perception.sh'              # reload the encoders
+ssh orin '~/ugv/world_state/restart_perception.sh --supervisor' # after changing run_perception.sh
 ssh orin 'tail ~/ugv/world_state/perception.log'
 ```
 
-Use the restart scripts rather than relaunching the `run_*.sh` by hand: the
-supervisors are where the flags live, and the `pkill` patterns live in files where
+Use the restart script rather than relaunching `run_perception.sh` by hand: the
+supervisor is where the flags live, and the `pkill` patterns live in files where
 an ssh command cannot match itself. That last point is not theoretical — writing
 `pkill -f llama-vulkan/llama-server` into an ssh command while writing this killed
 the session mid-sentence, for the fourth time in this repository's history.
@@ -235,17 +280,16 @@ they know no categories at all.
                                                     GPU        CPU
 FastSAM-s      what regions are in this frame         5 ms     418 ms
 DINOv2-small   is this the same instance as that     70 ms   1 137 ms   12 crops
-SigLIP2        what is it called, and text search    42 ms     854 ms   12 crops
+SigLIP2        what a typed phrase would match       42 ms     854 ms   12 crops
 ```
 
 **Which backend runs is decided by whether the board has engines built for it**,
 and every look and every health check says which one answered. The GPU is the one
 to want. It is about sixteen times faster, and it is also *more accurate*: against
 a full-precision reference on the rover's own frame the engines agree to 1.000
-where the int8 graphs the CPU path runs agree to 0.86, and the CPU's names are
-visibly worse — three regions called "a bookcase" where the reference says a
-window, a television and a chair. Dynamic quantisation is what costs that, since
-it recomputes its scales from each activation rather than from a calibration set.
+where the int8 graphs the CPU path runs agree to 0.86 — wide enough to move a
+search's ranking. Dynamic quantisation is what costs that, since it recomputes
+its scales from each activation rather than from a calibration set.
 
 The CPU path is kept because an engine is not a model file: it is compiled for one
 GPU and one TensorRT version, so a fresh install or a JetPack upgrade leaves a
@@ -254,15 +298,16 @@ be compared with each other**, which is why the backend that produced one travel
 with it.
 
 Building the engines is the slow part of installing — about ten minutes, once, and
-it needs the board largely to itself. The first attempt with the language model
-still resident ended with the kernel's out-of-memory killer taking the language
-model and the build together, so `install_perception.sh` now stops that sidecar
-for the duration and starts it again afterwards.
+it needs the board largely to itself. The first attempt ended with the kernel's
+out-of-memory killer taking the build, with the language model holding 3.1 GB of
+the board's 7.5 at the time; the installer stopped that sidecar for the duration
+and started it again afterwards. Neither is needed now that the model is gone, so
+the installer stops nothing.
 
-The vocabulary is [`vocabulary.txt`](vocabulary.txt) and nothing in the models
-knows it. A region's name is the nearest phrase to its stored SigLIP2 vector, so
-editing that file re-labels every object the rover has ever seen without
-reprocessing a frame.
+The text tower is never held. It is the largest of the four engines at over half
+a gigabyte, nothing on the per-look path wants it, and a search loads it for the
+call and gives it back — so an ordinary start-up does not open it at all. That is
+new: it used to be loaded at every start to embed the word list.
 
 ```bash
 ssh orin 'cd ~/ugv/world_state && python3 bench_perceive.py'   # what a look costs
@@ -272,9 +317,9 @@ curl -s 127.0.0.1:8776/health
 ### Three things that were measured rather than assumed
 
 **fp16 does not merely blunt SigLIP2, it destroys it.** Built as an fp16 engine,
-the text tower collapsed: all fifty-seven vocabulary vectors came back within 0.92
-of one another, so a single phrase won every region in the frame and every label
-was wrong. The image tower went with it, agreeing with full precision to only
+the text tower collapsed: fifty-seven phrases came back within 0.92 of one
+another, so every phrase matched everything. The image tower went with it,
+agreeing with full precision to only
 0.71. This is invisible until the work reaches a real GPU, because ONNX Runtime
 has no fp16 kernels on the CPU and quietly computes such graphs in fp32 — so a
 model that "works in fp16" on a desk can be worthless on a board. The engines are
@@ -291,16 +336,18 @@ is precisely why it is easy to miss.
 
 **SigLIP2 patch32-256 beats patch16-224 at both jobs.** The patch16 model is the
 obvious choice and the worse one here: 66 ms a crop against 24, and on the rover's
-own living-room frame it called the spray bottle a cardboard box and the armchair a
-sofa, where patch32 named the spray bottle, the armchair and the framed picture
-correctly. Sixty-four patch tokens rather than a hundred and ninety-six, and the
-crops are small.
+own living-room frame it matched the spray bottle to "a cardboard box" and the
+armchair to "a sofa", where patch32 got the spray bottle, the armchair and the
+framed picture right. Sixty-four patch tokens rather than a hundred and
+ninety-six, and the crops are small.
 
-**A vocabulary of mixed phrase lengths has one entry that always wins.** An early
-list had "a power cable on the floor" among two-word phrases and it beat everything
-on every region in every frame, including an armchair and a framed picture. A
+**Phrase length decides a match more than content does.** An early word list had
+"a power cable on the floor" among two-word phrases and it beat everything on
+every region in every frame, including an armchair and a framed picture: a
 longer, more circumstantial caption matches a whole scene better than a short one
-does. Keep them two or three words, an article, no clauses.
+does. That was the measurement that killed the word list, and it is still worth
+knowing at the search box — a long, circumstantial description will score better
+against a busy region than a short accurate one does.
 
 ### Appearance is weaker than the plan assumed, and that matters
 
@@ -331,6 +378,9 @@ already narrowed the field to one candidate.
 
 ### The language sidecar was eating the board, and had been all along
 
+_History. The sidecar was removed from the rover on 2026-09-02, which is where
+the three gigabytes below went._
+
 `llama-server` defaults to **8192 MiB of prompt cache**. This board has 7485 MiB
 and no swap. So the sidecar grew by about a hundred megabytes an inspection and
 never gave any back: sixteen inspections took the rover from 1.5 GB free to 48 MB,
@@ -350,8 +400,10 @@ because nobody had run more than six inspections in a row.
 
 Switching llama.cpp to its Vulkan build took an inspection from **38 s to 9.5 s**,
 and to 10–12 s with the perception sidecar loaded alongside. Twenty-seven megabytes,
-no toolchain, one flag. The same binary carries the CPU backends, so
-`--n-gpu-layers 0` is the way back if the driver ever misbehaves.
+no toolchain, one flag. That measurement is history — the language model is off the
+rover — and it is kept because it is the honest floor for anything like it: even
+four times faster, a language model in the per-look path cost ten seconds where
+the encoders cost a fifth of one.
 
 Moving perception to TensorRT took a look's model time from about 2.4 s to about
 120 ms, on the same frame with the same twelve regions. That one cost 9.4 GB of
@@ -361,7 +413,8 @@ getting wrong.
 
 Ten alternating rounds of a look and an inspection, with everything loaded: llama
 flat at 3228 MB, perception flat at 1216 MB, about 1.65 GB free throughout, and
-**zero dropped lidar scans**.
+**zero dropped lidar scans**. Those 3228 MB are now free, because that process no
+longer exists on the rover.
 
 ## The calls
 
@@ -377,14 +430,15 @@ that has an answer would be the wrong order.
 | `world_state_entity(id)` | one entity and its whole recent history |
 | `world_state_observations(entity_id?)` | the history on its own |
 | `world_state_frame(frame_id)` | the stored JPEG, base64, for the console |
-| `world_inspect` | take a picture, ask the model, record what it said |
+| `world_inspect` | take a picture, measure the regions in it, record them |
 | `world_state_clear` | empty the semantic world; the map is untouched |
 | `world_map_session` | the map was cleared, so start a new session |
 
-`world_inspect` is about a minute on this board. It runs on the calling thread, so
-the daemon goes on answering STOP, status and the map throughout, and the console
-gives it a connection of its own with a patience of its own — the same arrangement,
-for the same reason, as the wi-fi scan.
+`world_inspect` is about a fifth of a second on this board, where it was a minute
+when a language model answered it. It still runs on the calling thread, so the
+daemon goes on answering STOP, status and the map throughout, and the console
+still gives it a connection of its own with a patience of its own — the same
+arrangement, for the same reason, as the wi-fi scan.
 
 ## Tests
 
@@ -394,18 +448,17 @@ python rover_daemon/selftest.py       # the daemon's control calls
 python drive_web/selftest.py          # the console's payload and its two URLs
 ```
 
-Everything there runs against `FakeReasoner` and a temporary directory. **That
-proves the store, the rules and the arithmetic, and nothing whatever about any real
-model** — which is why the fake is development scaffolding rather than a result.
+Everything there runs against `FakeEyes` and a temporary directory. **That proves
+the store, the rules and the arithmetic, and nothing whatever about what the real
+encoders see** — which is why the fake is development scaffolding rather than a
+result.
 
-Three checks are worth knowing about by name. One asserts that an identity the
-model volunteers is thrown away rather than obeyed, because a stale build or a
-model with an opinion of its own is exactly how a guess would creep back into
-being believed. One asserts that the prompt never mentions what the rover has seen
-before — not even to forbid it, since naming the subject in order to forbid it is
-still naming it. And one opens a database built to the older schema and checks that
-the missing column is added rather than the insert failing on the one machine that
-matters.
+Three checks are worth knowing about by name. One asserts that two looks at the
+same room create no entity and claim no match, because a store that matched on
+anything cheap is exactly how a confident wrong answer would creep in. One asserts
+that a look with no pose stores no bearing rather than a guessed one. And one
+opens a database built to the older schema and checks that the missing column is
+added rather than the insert failing on the one machine that matters.
 
 Two things are deliberately not covered. The popup's rendering is JavaScript in a
 browser and this repository has no browser in its test loop; what is checked instead
@@ -418,10 +471,10 @@ placed for it to draw.
 And whether placement really separates two identical chairs can only be measured on
 the rover, driving. That drive happened on 2026-09-02 and is written up in
 `docs/task-semantic-world-state.md`: twenty-three things placed from three positions,
-including a person ten centimetres from the armchair he was sitting in. It does not
-settle the identical-chairs question, though, because nine duplicate entities came
-with it -- and a rover that cannot merge keeps two chairs apart whether or not it can
-tell them apart.
+including a person ten centimetres from the armchair they were sitting in. It does
+not settle the identical-chairs question, though, because nine duplicate entities
+came with it -- and a rover that cannot merge keeps two chairs apart whether or not
+it can tell them apart.
 
 ## What was measured on the rover, 2026-09-02
 
@@ -443,10 +496,9 @@ better than 1.5 says.**
 
 **A search is decided by the raw score, not by how far it stands clear of the
 field.** The module shipped believing the opposite. Forty queries against the
-rover's own stored regions -- twenty-four for things it had seen, in the
-vocabulary's words and in other people's, and sixteen for things that are not in
-the building -- separate almost perfectly by raw score and not at all by
-separation. The best cut any threshold on the separation could make still gets
+rover's own stored regions -- twenty-four for things it had seen and sixteen for
+things that are not in the building -- separate almost perfectly by raw score and
+not at all by separation. The best cut any threshold on the separation could make still gets
 fourteen of the forty wrong; a floor at 0.09 on the score gets four, and three of
 those are the safe way round.
 
@@ -464,12 +516,17 @@ Measured on 2026-09-01, in a living room, with the rover parked and the gimbal
 panned between inspections. All of it is here because it is the sort of thing a
 later reader would otherwise have to rediscover.
 
+**Everything from here to the end of this file is about the local language model,
+which was removed from the rover on 2026-09-02.** None of it describes what runs
+now; it is the evidence for why nothing like it does. Anyone proposing a local VLM
+for this rover again should start here rather than repeat it.
+
 ### It runs, and what it sees is right
 
 Cosmos Reason 2 2B runs locally on the Orin's CPU and describes the room
 accurately. Across six inspections it named the sofa, the glass table, the coiled
 cable on the floor, the spray bottle, the framed pictures and the doorway —
-**every label was a real thing in the frame, with no hallucinations** — and once
+**every name was a real thing in the frame, with no hallucinations** — and once
 the boxes are read on the right scale they land on the objects: the sofa came back
 as `[0.40, 0.18, 0.86, 0.65]` in a frame where it occupies roughly `[0.35, 0.13,
 0.90, 0.65]`.
@@ -524,9 +581,10 @@ be believed.
 
 - **The model answers on a 1000-unit grid, not in fractions.** Cosmos Reason 2 is a
   Qwen3-VL fine-tune and places things the way that family was trained to, whatever
-  the prompt asks. The prompt now asks for the grid and `contract.py` reads both,
-  because a picture is one unit across and a box in the hundreds is therefore not a
-  fraction.
+  the prompt asks. The prompt was changed to ask for the grid, and the validator
+  read both, because a picture is one unit across and a box in the hundreds is
+  therefore not a fraction. (Both went with the model; FastSAM answers in
+  fractions and always did.)
 - **Given an example box of real numbers, it copies them.** The prompt's example
   used `[0.1, 0.2, 0.4, 0.8]` and that exact box came back on every observation. The
   example now names the four corners in words.
@@ -648,16 +706,16 @@ treated as advisory. The evidence here says go further and **withhold the known
 list from the perception call altogether**, because what it corrupts is the
 detections themselves, not just the identity field.
 
-That amendment has since been made and the code follows it: the known list, the
-identity field and the whole question are gone from the perception call, and the
-prompt does not mention any of it even to forbid it.
+That amendment was made, and then overtaken: there is no perception call to a
+language model any more, no prompt, and no answer to validate. The encoders
+replaced the whole path on 2026-09-02.
 
 ### A trap left behind for the next model
 
 Cosmos 3 writes the *string* `"null"` where Reason 2 leaves the field out, which
 the validator refused as an invented identifier — quietly throwing away every
-observation in three perfectly good answers. That particular trap has been
-disarmed by removing the field it was set in; the class of thing it belongs to has
-not. Any model swapped in behind `PhysicalReasoner` is worth reading raw output
-from before its answers are believed, because what makes this kind of bug
-expensive is that it looks like the model saying nothing.
+observation in three perfectly good answers. That particular trap went with the
+field it was set in, and then with the validator itself; the class of thing it
+belongs to did not. Any model ever put behind a call like this is worth reading
+raw output from before its answers are believed, because what makes this kind of
+bug expensive is that it looks like the model saying nothing.

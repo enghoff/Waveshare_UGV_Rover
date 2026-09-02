@@ -146,10 +146,8 @@ class WorldStore:
 
         Nothing here refuses anything on the strength of the number. It is stamped
         on every observation so that an entity last seen under an older map is
-        visible as such, and so that when the staleness model in
-        [docs/cosmos-reason2-integration.md](../docs/cosmos-reason2-integration.md)
-        arrives it finds a history to apply itself to rather than a migration to
-        perform.
+        visible as such, and so that a staleness rule -- whenever one arrives --
+        finds a history to apply itself to rather than a migration to perform.
 
         Both directions matter and only one of them is obvious: this does not touch
         a single entity or observation, and `clear` does not touch the SLAM map.
@@ -236,12 +234,11 @@ class WorldStore:
     def entities(self) -> list[dict[str, Any]]:
         """Every entity, most recently seen first.
 
-        Two derived columns come with it, and both exist to make a failure
-        visible rather than to be pretty: the map session the entity was last seen
-        under, so that one belonging to a map that no longer exists shows as such,
-        and how many different labels its own history holds, which is what a
-        canonical description drifting away from its observations looks like from
-        the outside.
+        Two derived columns come with it, and both exist so the console can show
+        an entity without asking a second question: the map session it was last
+        seen under, so that one belonging to a map that no longer exists shows as
+        such, and the newest frame it appeared in, which is the picture the list
+        draws.
         """
         with self._lock:
             rows = self.db.execute("""
@@ -253,9 +250,7 @@ class WorldStore:
                        (SELECT o.frame_id FROM observations o
                          WHERE o.entity_id = e.id
                          ORDER BY o.observed_at DESC, o.id DESC LIMIT 1)
-                           AS last_frame_id,
-                       (SELECT COUNT(DISTINCT o.label) FROM observations o
-                         WHERE o.entity_id = e.id) AS distinct_labels
+                           AS last_frame_id
                   FROM entities e
                  ORDER BY e.last_seen_at DESC, e.id
             """).fetchall()
@@ -361,16 +356,23 @@ class WorldStore:
             found.append(entity)
         return found
 
-    def create_entity(self, kind: str, label: str) -> str:
-        """A lasting thing, named by this application and nothing else."""
+    def create_entity(self, kind: str = "object") -> str:
+        """A lasting thing, identified by this application and nothing else.
+
+        It gets an identifier and no name. Nothing measures what a thing is
+        called any more -- the word list that used to supply one was measured to
+        put "a computer monitor" on a sofa -- so the `label` column is written
+        empty rather than filled with a guess, and what the console shows instead
+        is the crops the thing was seen in.
+        """
         now = time.time()
         entity_id = self.allocate(kind or "object")
         with self._lock, self.db:
             self.db.execute(
                 "INSERT INTO entities(id, kind, label, canonical_description,"
                 " created_at, last_seen_at, observation_count)"
-                " VALUES(?,?,?,'',?,?,0)",
-                (entity_id, kind or "object", label, now, now))
+                " VALUES(?,?,'','',?,?,0)",
+                (entity_id, kind or "object", now, now))
         return entity_id
 
     def attach(self, entity_id: str, observation_ids: list[int],
@@ -485,7 +487,7 @@ class WorldStore:
         embedded on the GPU cannot be compared with a vector produced on the CPU
         and the caller has to be able to say so.
         """
-        query = ("SELECT id, entity_id, label, frame_id, observed_at,"
+        query = ("SELECT id, entity_id, frame_id, observed_at,"
                  " map_session, bearing_deg, bbox_json, siglip_blob,"
                  " vectors_from"
                  "  FROM observations WHERE siglip_blob IS NOT NULL")
@@ -563,9 +565,8 @@ class WorldStore:
                             (kind, number + 1))
         return f"{kind}:{number}"
 
-    def record(self, seen: list, *, capture: dict[str, Any], scene: str = "",
-               source: str = "cosmos_visual", model_id: str = "",
-               prompt_version: str = "",
+    def record(self, seen: list, *, capture: dict[str, Any],
+               source: str = "perception", model_id: str = "",
                inference_id: int | None = None,
                fov_deg: float | None = None,
                region_source: str = "",
@@ -582,11 +583,12 @@ class WorldStore:
         and claims nothing further.
 
         What is deliberately **not** done meanwhile is a cheap stand-in -- matching
-        on the label, say. The rover has already measured what that would be worth:
-        one model called the same chair a black leather recliner and then a blue
-        leather one on a byte-identical frame, and the twin chair a couch. Keying
-        identity off a name that drifts like that would fill the store with
-        confident wrong answers, which is worse than an empty entity table.
+        on a name, say. The rover has already measured what that would be worth
+        twice over: one language model called the same chair a black leather
+        recliner and then a blue leather one on a byte-identical frame, and the
+        word list that replaced it scored every phrase between 0.08 and 0.12
+        whatever the crop held. Nothing measures what a thing is called any more,
+        so `label` is written empty for anything perception saw.
         """
         now = time.time()
         session = self.map_session()
@@ -612,33 +614,29 @@ class WorldStore:
                         bearing = drawn["bearing_deg"]
                         span = drawn["span_deg"]
                         placed += 1
-                # The one thing worth saying about a row beyond what it holds:
-                # whether its label could ever be recognised again. "a thing" is
-                # kept as history, because it is what the model said, but it will
-                # never pass the resolver's first gate and the popup should say so
-                # rather than leave a reader wondering.
-                note = None if item.concrete else (
-                    "the label names nothing in particular, so this observation "
-                    "can never be matched to a lasting thing")
+                # A row carries no name, no scene sentence, no prompt version and
+                # no warning about any of them. Those four columns belonged to a
+                # language model describing the picture in words; nothing writes
+                # them now, and they stay in the table because the rows that hold
+                # them are the record of that having been tried.
                 self.db.execute(
                     "INSERT INTO observations(entity_id, inference_id, observed_at,"
-                    " source, frame_id, frame_path, scene_summary, label,"
+                    " source, frame_id, frame_path, label,"
                     " bbox_json, observer_pan_deg,"
                     " observer_tilt_deg, observer_pose_json, map_session, model_id,"
-                    " prompt_version, raw_json, note,"
+                    " raw_json,"
                     " bearing_deg, span_deg, region_source, region_score,"
-                    " label_score, dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " dino_blob, siglip_blob, vectors_from)"
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
-                     capture.get("frame_path"), scene, item.label,
+                     capture.get("frame_path"),
+                     getattr(item, "label", "") or "",
                      None if bbox is None else json.dumps(bbox),
                      capture.get("pan"), capture.get("tilt"),
                      None if pose is None else json.dumps(pose), session, model_id,
-                     prompt_version or None,
-                     json.dumps(item.raw, sort_keys=True), note,
+                     json.dumps(item.raw, sort_keys=True),
                      bearing, span, region_source or None,
                      getattr(item, "region_score", None) or None,
-                     getattr(item, "label_score", None) or None,
                      getattr(item, "dino", b"") or None,
                      getattr(item, "siglip", b"") or None,
                      vectors_from or None))
@@ -718,9 +716,14 @@ ADDED_COLUMNS = {
         # is a property of the rover at the moment of the look.
         "bearing_deg": "REAL",
         "span_deg": "REAL",
-        # What drew the box, which is not the same question as what named it.
+        # What drew the box, and how sure the region finder was of it.
         "region_source": "TEXT",
         "region_score": "REAL",
+        # Nothing writes this now. It held how near a region's vector was to the
+        # nearest phrase in a fixed word list, and the answer was between 0.08
+        # and 0.12 whatever the crop held -- which is why there is no word list
+        # any more. The column stays because the rows that carry it are the
+        # record of that having been tried.
         "label_score": "REAL",
         # The two vectors, as raw float32. A BLOB and a numpy dot product is the
         # whole of the design's answer to "where is the vector database".

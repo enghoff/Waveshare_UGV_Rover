@@ -1294,9 +1294,9 @@ def test_the_world_state_calls_reach_the_store():
     one of these calls answers a browser in a sentence rather than raising on a
     rover where the component is not installed.
 
-    The deterministic fake stands in for Cosmos, which is exactly what it is for
-    and exactly what it does not settle: whether the world state is any good is a
-    question only the rover and the real model can answer.
+    The deterministic fake stands in for the perception sidecar, which is exactly
+    what it is for and exactly what it does not settle: whether the world state is
+    any good is a question only the rover and the real encoders can answer.
     """
     import tempfile
 
@@ -1304,9 +1304,9 @@ def test_the_world_state_calls_reach_the_store():
     import world_state.view
 
     with tempfile.TemporaryDirectory() as directory:
-        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_COSMOS_FAKE"))
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
         os.environ["UGV_WORLD_DIR"] = directory
-        os.environ["UGV_COSMOS_FAKE"] = "1"
+        os.environ["UGV_WORLD_FAKE"] = "1"
         try:
             rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
             # The camera path is the daemon's own; only the device under it is
@@ -1336,7 +1336,7 @@ def test_the_world_state_calls_reach_the_store():
             # into them rather than into the language model -- which the daemon
             # still holds, for the conversational `look`.
             rover._world_inspector_cache.eyes.looks.append(
-                [world_state.Sighting(bbox=[0.1, 0.3, 0.5, 0.9], label="a sofa",
+                [world_state.Sighting(bbox=[0.1, 0.3, 0.5, 0.9],
                                       dino=b"", siglip=b"")])
             saw = rover.call("world_inspect", {})
             check("a second inspection records what was measured",
@@ -1380,7 +1380,7 @@ def test_the_world_state_calls_reach_the_store():
             check("...and of the pictures it kept", cleared["frames_removed"], 2)
             rover.close_world()
         finally:
-            for name, value in zip(("UGV_WORLD_DIR", "UGV_COSMOS_FAKE"), was):
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
                 if value is None:
                     os.environ.pop(name, None)
                 else:
@@ -1403,7 +1403,7 @@ def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
     with tempfile.TemporaryDirectory() as directory:
         was = os.environ.get("UGV_WORLD_DIR")
         os.environ["UGV_WORLD_DIR"] = directory
-        os.environ["UGV_COSMOS_FAKE"] = "1"
+        os.environ["UGV_WORLD_FAKE"] = "1"
         try:
             rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
             jpeg = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
@@ -1443,7 +1443,7 @@ def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
             rover._tracking.clear()
             rover.close_world()
         finally:
-            os.environ.pop("UGV_COSMOS_FAKE", None)
+            os.environ.pop("UGV_WORLD_FAKE", None)
             if was is None:
                 os.environ.pop("UGV_WORLD_DIR", None)
             else:
@@ -1460,7 +1460,7 @@ def test_a_rover_without_a_camera_refuses_to_inspect():
     with tempfile.TemporaryDirectory() as directory:
         was = os.environ.get("UGV_WORLD_DIR")
         os.environ["UGV_WORLD_DIR"] = directory
-        os.environ["UGV_COSMOS_FAKE"] = "1"
+        os.environ["UGV_WORLD_FAKE"] = "1"
         try:
             rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
             blind = rover.call("world_inspect", {})
@@ -1474,7 +1474,7 @@ def test_a_rover_without_a_camera_refuses_to_inspect():
                   "no_frame")
             rover.close_world()
         finally:
-            os.environ.pop("UGV_COSMOS_FAKE", None)
+            os.environ.pop("UGV_WORLD_FAKE", None)
             if was is None:
                 os.environ.pop("UGV_WORLD_DIR", None)
             else:

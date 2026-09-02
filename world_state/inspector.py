@@ -1,16 +1,21 @@
-"""One inspection, end to end: take a picture, ask the model, believe some of it.
+"""One inspection, end to end: take a picture, measure what is in it, keep that.
 
-What is believed is what was in the picture. Which lasting thing each of those
-things is does not come from here and no longer comes from the model at all; an
-inspection ends with observations that carry the gimbal angles and the rover pose
-behind them, and identity is settled afterwards from those measurements.
+A look goes through the encoders and nothing else. There was a language model
+here once, asked in words what it could see; it cost sixty seconds against a
+fifth of one, it named the same chair three different things on one frame, and
+what identity is decided from turned out to be a box and two vectors rather than
+a sentence. `world_state/README.md` keeps the measurements.
+
+What is stored is what was measured. Which lasting thing each region is does not
+come from here: an inspection ends with observations carrying the gimbal angles
+and the rover pose behind them, and identity is settled afterwards from those.
 
 The order of the steps here is most of the failure behaviour. Nothing touches the
 camera until the sidecar has said it is there, nothing touches the database until
-the answer has been validated, and every path -- including the ones that never
-reach the model -- writes exactly one line to the diagnostics log, so a popup
-showing nothing new can always say whether that was a model that failed or a model
-that found nothing.
+an answer has arrived, and every path -- including the ones that never reach the
+encoders -- writes exactly one line to the diagnostics log, so a popup showing
+nothing new can always say whether that was a sidecar that failed or a look that
+found nothing.
 
 No failure in here is allowed to reach the caller as an exception. The caller is
 the process that owns STOP.
@@ -22,9 +27,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from .contract import PROMPT_VERSION, extract_json, validate
 from .perception_client import describe_eyes
-from .reasoner import describe_backend
 
 #: A picture older than this is not what the camera is looking at now. Only ever
 #: reached through the tracking loop's frame, which is the one path here that hands
@@ -41,28 +44,23 @@ class Inspector:
     knows nothing about either.
     """
 
-    def __init__(self, store, reasoner, capture: Callable[[], dict[str, Any]],
+    def __init__(self, store, eyes, capture: Callable[[], dict[str, Any]],
                  pose: Callable[[], dict[str, Any] | None] | None = None,
-                 source: str = "cosmos_visual", eyes=None,
                  fov_deg: float | None = None,
-                 measured_source: str = "perception") -> None:
+                 source: str = "perception") -> None:
         self.store = store
-        self.reasoner = reasoner
+        #: The perception sidecar, and the only thing an inspection asks. It is
+        #: required rather than optional: an inspector with nothing to look
+        #: through can do nothing, and a constructor that accepted one would push
+        #: that discovery to the first look instead of to the caller.
+        self.eyes = eyes
         self.capture = capture
         self.pose = pose
-        self.source = source
-        #: The perception sidecar, when there is one. **When it is set it is what
-        #: an inspection uses**, and the language model is not called at all: a
-        #: look through the encoders costs a fifth of a second against ten
-        #: seconds, and the thing that was measured -- a box, and two vectors --
-        #: is what identity is going to be decided from. The language model stays
-        #: for the conversational `look`, where a person is waiting for prose.
-        self.eyes = eyes
         #: The camera's horizontal field of view, which the daemon owns. Without
         #: it a box cannot become an angle, so the bearing columns stay null and
         #: say so rather than being filled in from a guess.
         self.fov_deg = fov_deg
-        self.measured_source = measured_source
+        self.source = source
         self._lock = threading.Lock()
         self.started_at = 0.0
 
@@ -74,9 +72,9 @@ class Inspector:
         """Look once, and answer with what happened rather than with what was found.
 
         A second request while one is running is refused rather than queued. An
-        inspection holds the camera and a couple of gigabytes of model for the best
-        part of a minute, and two of them at once on this board means both are
-        slower than one and neither is the picture anybody asked for.
+        inspection holds the camera and the sidecar's engines, and two at once on
+        this board means both are slower than one and neither is looking at the
+        picture anybody asked for.
         """
         if not self._lock.acquire(blocking=False):
             return {"ok": False, "status": "busy", "busy": True,
@@ -94,115 +92,13 @@ class Inspector:
     # --- the steps ------------------------------------------------------------
 
     def _inspect(self) -> dict[str, Any]:
-        if self.eyes is not None:
-            return self._measure()
-        return self._ask_the_model()
+        """One inspection: a frame, the encoders, and what they measured.
 
-    def _ask_the_model(self) -> dict[str, Any]:
-        began = time.time()
-        backend = describe_backend(self.reasoner)
-
-        ready, why = self.reasoner.available()
-        if not ready:
-            # Asked before the camera is touched. A sidecar that is not running
-            # means this inspection cannot happen at all, and opening the camera to
-            # find that out costs the rover a second and the face tracker its feed.
-            return self._failed("unavailable", why, began=began, backend=backend)
-
-        frame = self._frame()
-        if not frame.get("ok"):
-            return self._failed("no_frame", str(frame.get("error", "no picture")),
-                                began=began, backend=backend)
-
-        jpeg = frame["jpeg"]
-        frame_id = self.store.save_frame(jpeg, frame.get("width"),
-                                         frame.get("height"))
-        capture = {"frame_id": frame_id,
-                   "frame_path": self.store.frame_path(frame_id),
-                   "pan": frame.get("pan"), "tilt": frame.get("tilt"),
-                   "pose": self._pose()}
-        inference_id = self.store.record_inference(
-            started_at=began, status="running", backend=backend,
-            prompt_version=PROMPT_VERSION, frame_id=frame_id,
-            frame_live=1 if frame.get("live") else 0,
-            map_session=self.store.map_session())
-
-        # Nothing about the world goes into the call. The model is asked what is in
-        # front of it and is told nothing about what the rover has seen before,
-        # because on this rover's own frames that context corrupted the detections
-        # themselves rather than merely failing to settle identity.
-        answer = self.reasoner.inspect(jpeg)
-        if not answer.ok:
-            return self._failed("model_error", answer.error, began=began,
-                                backend=backend, inference_id=inference_id,
-                                frame_id=frame_id, duration_s=answer.duration_s,
-                                model_id=answer.model_id)
-
-        payload, why = extract_json(answer.text)
-        if payload is None:
-            # The model's own words are kept even here, and especially here: the
-            # answer that could not be read is the one somebody will want to look
-            # at, and the frame it was looking at is already stored beside it.
-            return self._failed("bad_json", why, began=began, backend=backend,
-                                inference_id=inference_id, frame_id=frame_id,
-                                duration_s=answer.duration_s,
-                                model_id=answer.model_id,
-                                raw_json=answer.text[:4000])
-
-        result = validate(payload)
-        if not result.ok:
-            return self._failed("invalid", result.error, began=began,
-                                backend=backend, inference_id=inference_id,
-                                frame_id=frame_id, duration_s=answer.duration_s,
-                                model_id=answer.model_id,
-                                raw_json=answer.text[:4000])
-
-        try:
-            stored = self.store.record(
-                result.seen, capture=capture, scene=result.scene,
-                source=self.source, model_id=answer.model_id,
-                prompt_version=PROMPT_VERSION, inference_id=inference_id)
-        except sqlite3.Error as error:
-            return self._failed("store_error", f"{type(error).__name__}: {error}",
-                                began=began, backend=backend,
-                                inference_id=inference_id, frame_id=frame_id,
-                                duration_s=answer.duration_s,
-                                model_id=answer.model_id)
-
-        detail = result.detail()
-        if answer.usage.get("truncated"):
-            detail = ("the model was cut off at its token limit; "
-                      + detail if detail else
-                      "the model was cut off at its token limit")
-        self.store.update_inference(
-            inference_id, duration_s=round(time.time() - began, 2), status="ok",
-            detail=detail or None, model_id=answer.model_id,
-            # What the model offered and what was not kept, counted as
-            # observations. A complaint about a bounding box is neither.
-            returned=len(result.seen) + result.refused,
-            stored=stored["stored"],
-            matched=stored["matched"], created=stored["created"],
-            rejected=stored["rejected"] + result.refused,
-            raw_json=answer.text[:8000])
-        return {"ok": True, "status": "ok", "inference_id": inference_id,
-                "frame_id": frame_id, "scene": result.scene,
-                "duration_s": round(time.time() - began, 2),
-                "returned": len(result.seen) + result.refused,
-                "stored": stored["stored"],
-                "matched": stored["matched"], "created": stored["created"],
-                "rejected": stored["rejected"] + result.refused,
-                "entities": stored["entities"], "detail": detail,
-                "map_session": stored["map_session"], "model_id": answer.model_id}
-
-    def _measure(self) -> dict[str, Any]:
-        """One inspection through the encoders rather than through the model.
-
-        The same skeleton as `_ask_the_model` and the same failure discipline --
-        the sidecar is asked before the camera is touched, nothing is written
-        until an answer arrives, and every path writes exactly one diagnostics
-        row. What is different is what comes back and what is kept: a box per
-        region, two vectors per box, and a bearing worked out from the pose and
-        the gimbal angle behind them.
+        The failure discipline is the whole of the order here -- the sidecar is
+        asked before the camera is touched, nothing is written until an answer
+        arrives, and every path writes exactly one diagnostics row. What is kept
+        is a box per region, two vectors per box, and a bearing worked out from
+        the pose and the gimbal angle behind them.
 
         There is no scene sentence and no prompt version, because nothing here
         was prompted. Those columns stay empty rather than being filled with a
@@ -241,7 +137,7 @@ class Inspector:
 
         try:
             stored = self.store.record(
-                look.regions, capture=capture, source=self.measured_source,
+                look.regions, capture=capture, source=self.source,
                 model_id=look.backend, inference_id=inference_id,
                 fov_deg=self.fov_deg, region_source="fastsam",
                 vectors_from=look.backend)
@@ -371,8 +267,7 @@ class Inspector:
         """
         began = time.time() if began is None else began
         row = {"duration_s": round(time.time() - began, 2), "status": status,
-               "detail": why, "backend": backend,
-               "prompt_version": PROMPT_VERSION, **fields}
+               "detail": why, "backend": backend, **fields}
         try:
             if inference_id is None:
                 row.setdefault("started_at", began)

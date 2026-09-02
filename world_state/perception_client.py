@@ -1,16 +1,18 @@
 """Asking the perception sidecar what is in a frame, and what comes back.
 
-The mirror of [reasoner.py](reasoner.py), and deliberately the same shape: one
-small interface, a deterministic fake for tests, and a client that treats the
+One small interface, a deterministic fake for tests, and a client that treats the
 sidecar being absent as an ordinary answer rather than as an exception. The
 caller is an inspection running inside the process that owns STOP, so nothing
-here may raise at it.
+here may raise at it. The shape is inherited from the language-model client this
+replaced, which is worth knowing only because it is why a backend swap costs
+nothing here.
 
 **What comes back is a measurement, not a claim.** Each region is a box in
-fractions of the frame, two vectors, and a name that was derived by comparing one
-of those vectors with the phrases in `vocabulary.txt`. None of it says which
-lasting thing anything is; that needs a bearing from a second place, which is
-`locate.py`'s business.
+fractions of the frame and two vectors, and there is deliberately no name among
+them: naming a region by the nearest phrase in a word list was measured to be
+worth nothing, and what the semantic vector is genuinely good for is answering a
+phrase somebody types. None of it says which lasting thing anything is; that
+needs a bearing from a second place, which is `locate.py`'s business.
 
 The vectors arrive base64-encoded and are kept as raw float32 bytes all the way
 into the database, because that is what they are for: a stored BLOB and a numpy
@@ -28,15 +30,15 @@ from typing import Any
 from urllib.parse import urlparse
 
 #: Where the sidecar listens. 8769 is the daemon, 8770 the depth camera, 8771 the
-#: console, 8772 and 8773 the ROS bridges, 8774 the frame service and 8775 the
-#: language model.
+#: console, 8772 and 8773 the ROS bridges, 8774 the frame service, and 8775 was
+#: the language model that used to answer inspections and is gone.
 DEFAULT_URL = "http://127.0.0.1:8776"
 ENV_URL = "UGV_PERCEPTION_URL"
 
 #: The wall clock on one look. Generous beside the 0.2 s a look costs on the GPU,
-#: because the first call after a restart also pays for loading three models and
-#: embedding the vocabulary, and because a board that has fallen back to the CPU
-#: takes ten times longer and is still worth waiting for.
+#: because the first call after a restart also pays for loading three models, and
+#: because a board that has fallen back to the CPU takes ten times longer and is
+#: still worth waiting for.
 TIMEOUT_S = 60.0
 #: How long to wait on health. It answers at once or it is loading; neither is
 #: worth blocking an inspection on.
@@ -45,17 +47,17 @@ PROBE_S = 3.0
 
 @dataclass
 class Sighting:
-    """One region of one frame, as measured.
+    """One region of one frame, as measured. The box is the measurement.
 
-    `label` is the nearest phrase in the vocabulary to `siglip`, and it is a hint
-    rather than a fact -- `label_score` sits between about 0.08 and 0.12 whatever
-    is in the picture, so only the ordering means anything. The box is the
-    measurement.
+    There is no name on this and there is not going to be one. A region used to
+    carry the nearest phrase in a fixed word list to `siglip`, scored between
+    0.08 and 0.12 whatever was in the picture; it named a sofa "a computer
+    monitor" on the rover's own frame and nothing downstream could safely read
+    it. `siglip` itself is kept, because a phrase a person types compares against
+    it honestly.
     """
 
     bbox: list[float]
-    label: str = ""
-    label_score: float = 0.0
     region_score: float = 0.0
     area: float = 0.0
     dino: bytes = b""
@@ -66,28 +68,6 @@ class Sighting:
     kind: str = "object"
 
     @property
-    def concrete(self) -> bool:
-        """Could this name ever be recognised again?
-
-        The same question `contract.Seen` asks, and the same answer, because the
-        store's note about a label that names nothing in particular applies
-        whether a language model or a vocabulary file produced it.
-
-        The article has to come off first. Every phrase in `vocabulary.txt` has
-        one -- "a chair", "a doorway" -- and the words that name nothing in
-        particular are listed without one, so "a thing" would otherwise pass a
-        test that "thing" fails.
-        """
-        from .contract import VAGUE
-
-        words = self.label.strip().lower()
-        for article in ("a ", "an ", "the "):
-            if words.startswith(article):
-                words = words[len(article):]
-                break
-        return words not in VAGUE and len(words) >= 3
-
-    @property
     def raw(self) -> dict[str, Any]:
         """What was measured about this region, for the row that keeps it.
 
@@ -95,9 +75,7 @@ class Sighting:
         768-float BLOB inside a JSON string would be neither readable nor usable.
         """
         return {"region_score": round(self.region_score, 3),
-                "label_score": round(self.label_score, 4),
-                "area": round(self.area, 4),
-                "label": self.label}
+                "area": round(self.area, 4)}
 
 
 @dataclass
@@ -236,8 +214,6 @@ class SidecarEyes(Eyes):
             try:
                 regions.append(Sighting(
                     bbox=[float(value) for value in region["bbox"]],
-                    label=str(region.get("label") or ""),
-                    label_score=float(region.get("label_score") or 0.0),
                     region_score=float(region.get("region_score") or 0.0),
                     area=float(region.get("area") or 0.0),
                     dino=base64.b64decode(region.get("dino") or ""),

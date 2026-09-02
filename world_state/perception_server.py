@@ -34,13 +34,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-from world_state.perceive import (                       # noqa: E402
-    Perception, Unavailable, read_vocabulary,
-)
+from world_state.perceive import Perception, Unavailable   # noqa: E402
 
 #: 8769 is the daemon, 8770 the depth camera, 8771 the console, 8772 and 8773 the
-#: ROS bridges, 8774 the frame service the voice session uses and 8775 the
-#: language model. This is the next one along.
+#: ROS bridges, 8774 the frame service the voice session uses, and 8775 was the
+#: language model that used to answer inspections and is gone. This is the next
+#: one along, and it stays where it is rather than moving into the gap.
 DEFAULT_PORT = 8776
 DEFAULT_BIND = "127.0.0.1"
 
@@ -58,7 +57,9 @@ class Handler(BaseHTTPRequestHandler):
     camera, so it must be free.
 
     `POST /look` takes a JPEG, as raw bytes or as base64 in JSON, and answers
-    with regions, their vectors and their names.
+    with regions and their vectors. Nothing is named: `POST /embed` turns a
+    phrase somebody typed into a vector in the same space, and the comparison
+    happens in the daemon.
     """
 
     protocol_version = "HTTP/1.1"
@@ -93,10 +94,6 @@ class Handler(BaseHTTPRequestHandler):
             "no_gpu_because": missing_gpu,
             "fallback": self.server.perception.fallback,
             "load_s": self.server.perception.load_s,
-            # Counted from the file rather than from the loaded state, because
-            # health is answered before anything is loaded and "0 phrases" reads
-            # as a broken vocabulary rather than as an unopened one.
-            "vocabulary": self.server.vocabulary,
             "looks": self.server.looks,
             "busy": self.server.busy,
             "uptime_s": round(time.monotonic() - self.server.started, 1),
@@ -124,11 +121,11 @@ class Handler(BaseHTTPRequestHandler):
     def _embed(self):
         """Text vectors for arbitrary phrases, which is what a search is made of.
 
-        The same tower that embedded the vocabulary, so a query's vector lands in
-        the same space as the stored region vectors and the comparison is a dot
-        product. On the GPU this loads the text engine for the call and gives it
-        back afterwards, which costs a couple of seconds -- a search is something
-        a person types, not something a look does.
+        The same model whose image tower produced every stored region vector, so
+        a query lands in the same space and the comparison is a dot product. On
+        the GPU this loads the text engine for the call and gives it back
+        afterwards, which costs a couple of seconds -- a search is something a
+        person types, not something a look does.
         """
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         try:
@@ -206,10 +203,6 @@ class Server(ThreadingHTTPServer):
         self.busy = False
         self.started = time.monotonic()
         self._lock = threading.Lock()
-        try:
-            self.vocabulary = len(read_vocabulary(perception.vocabulary_path))
-        except OSError:
-            self.vocabulary = 0
 
     def look(self, jpeg: bytes) -> dict:
         with self._lock:
@@ -261,8 +254,8 @@ def main() -> int:
     if arguments.preload and ready:
         began = time.monotonic()
         perception.load()
-        print(f"loaded in {time.monotonic() - began:.1f} s, "
-              f"{len(perception.words)} vocabulary phrases", flush=True)
+        print(f"loaded in {time.monotonic() - began:.1f} s on "
+              f"{perception.backend}", flush=True)
 
     server = Server((arguments.bind, arguments.port), perception,
                     quiet=arguments.quiet)

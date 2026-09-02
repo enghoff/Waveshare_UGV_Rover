@@ -1,6 +1,23 @@
 # Cosmos physical reasoning and semantic world state
 
-_Status: design recommendation, revised 2026-09-01._
+_Status: **closed, 2026-09-02.** Kept as the record of a line of work that was
+tried on the rover and abandoned, not as a description of anything that runs._
+
+**Nothing in this document is deployed.** A local vision-language model did run
+here — Cosmos Reason 2 2B behind a llama.cpp server, answering inspections in
+JSON — and it has been removed from the rover entirely, weights and all. What
+replaced it is in [world_state/README.md](../world_state/README.md): FastSAM
+draws the regions, DINOv2 and SigLIP2 describe them as vectors, and identity
+comes from bearings that cross rather than from anything a model says. The
+reasons are measured and they are worth reading before anyone proposes a local
+VLM again: a model that never says "new" over-creates, a better model that
+cannot say "new" invents furniture that is not in the room, an inspection cost
+sixty seconds against a fifth of one, and the names drifted between "black
+leather recliner" and "blue leather recliner" on a byte-identical frame.
+
+The design below is left as it was written.
+
+_Originally: design recommendation, revised 2026-09-01._
 
 ## Decision
 

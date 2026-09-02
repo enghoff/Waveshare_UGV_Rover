@@ -55,11 +55,11 @@ RAY_LIMIT = 6
 #: the minute of model that follows. See :meth:`RoverWorld._world_capture`.
 CAMERA_RETRY_S = 0.5
 #: Substitutes the deterministic fake for the real sidecar. For bringing the
-#: console up on the rover before the model is installed, and for nothing else --
-#: every row it writes is stamped with the backend that wrote it and the popup
-#: shows that, so a rover left in this state says so rather than looking like one
-#: where Cosmos is working.
-ENV_FAKE = "UGV_COSMOS_FAKE"
+#: console up on the rover before the encoders are installed, and for nothing
+#: else -- every row it writes is stamped with the backend that wrote it and the
+#: popup shows that, so a rover left in this state says so rather than looking
+#: like one that is really measuring anything.
+ENV_FAKE = "UGV_WORLD_FAKE"
 
 
 #: The fastest the rover will ever look around by itself. A look is a fifth of a
@@ -243,23 +243,19 @@ class RoverWorld:
     def _world_inspector(self):
         inspector = getattr(self, "_world_inspector_cache", None)
         if inspector is None:
-            if os.environ.get(ENV_FAKE) == "1":
-                reasoner = world_state.FakeReasoner(model_id="fake (no model)")
-                eyes = world_state.FakeEyes()
-            else:
-                reasoner = world_state.CosmosReasoner()
-                eyes = world_state.SidecarEyes()
-            # **The encoders are what an inspection uses, not the language
-            # model.** A look through them costs a fifth of a second against ten
-            # seconds, it comes back with the two vectors and the box that
-            # identity will actually be decided from, and the model's own names
-            # were measured drifting between "black leather recliner" and "blue
-            # leather recliner" on a byte-identical frame. The language model
-            # stays for the conversational `look`, where a person is waiting for
-            # prose and a slow answer is fine.
+            # **The encoders are the whole of an inspection.** A language model
+            # used to sit behind this call, describing the room in words; it
+            # cost ten seconds against a fifth of one, and its names drifted
+            # between "black leather recliner" and "blue leather recliner" on a
+            # byte-identical frame, so nothing downstream could read them. It is
+            # gone from the rover entirely. A person who wants prose about what
+            # the camera can see asks `look`, which puts the frame in front of
+            # the conversation's own model.
+            eyes = (world_state.FakeEyes() if os.environ.get(ENV_FAKE) == "1"
+                    else world_state.SidecarEyes())
             inspector = world_state.Inspector(
-                self._world_store(), reasoner, self._world_capture,
-                self._world_pose, eyes=eyes, fov_deg=self.camera_fov_deg)
+                self._world_store(), eyes, self._world_capture,
+                self._world_pose, fov_deg=self.camera_fov_deg)
             self._world_inspector_cache = inspector
         return inspector
 
@@ -336,15 +332,10 @@ class RoverWorld:
         inspector = self._world_inspector()
         return {"ok": True, "summary": store.summary(),
                 "inferences": store.inferences(),
-                # What would answer an inspection, which is the encoders when
-                # there are any. The language model is named separately because
-                # it is still what the conversational `look` uses, and a popup
-                # that showed only one of the two would be describing the wrong
-                # thing half the time.
-                "backend": (world_state.describe_eyes(inspector.eyes)
-                            if inspector.eyes is not None
-                            else world_state.describe_backend(inspector.reasoner)),
-                "language_model": world_state.describe_backend(inspector.reasoner),
+                # What would answer an inspection, named so the popup can tell a
+                # rover that is really measuring from one that has the fake
+                # standing in.
+                "backend": world_state.describe_eyes(inspector.eyes),
                 "busy": inspector.busy,
                 "building": self.world_building(),
                 "built_looks": getattr(self, "_world_build_looks", 0),
@@ -355,9 +346,12 @@ class RoverWorld:
     def _tool_world_state_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Find me the thing I described. A control call.
 
-        The phrase is embedded by the same text tower that named every region,
-        so it lands in the same space as the stored vectors and the comparison is
-        a dot product over a few hundred of them. Which is why the answer arrives
+        The phrase goes through SigLIP2's text tower, whose image tower produced
+        every stored region vector, so it lands in the same space and the
+        comparison is a dot product over a few hundred of them. It is also the
+        only thing that turns what the rover saw into words -- nothing names a
+        region any more -- so this is how a person finds anything by describing
+        it. Which is why the answer arrives
         in milliseconds once the query itself has been embedded -- that part goes
         to the sidecar and, on the GPU, loads the text engine for the call.
         """

@@ -674,9 +674,9 @@ class Session(SessionShow, SessionWorld):
         self.scanner = Channel("scan", address, self.replies,
                                timeout=WIFI_SCAN_TIMEOUT_S)
         # The slowest thing this console can ask for, and the reason it has a
-        # connection at all: an inspection is tens of seconds of a model looking at
-        # a picture, and a status poll queued behind one would leave the lights,
-        # the tracking panel and the map stopped for that whole minute.
+        # connection at all: an inspection holds the camera and the encoders, and
+        # a status poll queued behind one would leave the lights, the tracking
+        # panel and the map stopped for as long as it took.
         self.world_link = Channel("world", address, self.replies,
                                   timeout=WORLD_TIMEOUT_S)
         self.channels = [self.moves, self.halt, self.watch, self.picture,

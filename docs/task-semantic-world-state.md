@@ -11,6 +11,23 @@ the plan._
 **Phases 0 to 4 are built, deployed and running on the rover, and the validation
 drive has now happened.** Phase 5, the merge, came out of that drive and is not
 built.
+
+**One thing the plan asked for has been removed rather than finished: the derived
+name.** Ranking a region's embedding against a word list was built and measured,
+and the scores sit between 0.08 and 0.12 whatever the crop holds -- so there is no
+threshold at which the answer is "none of these", and the argmax that is left put
+"a computer monitor" on a sofa. The word list, the name, its score, the resolver's
+synonym gate and the list of things that move are all gone as of 2026-09-02. The
+same vector still answers the same question honestly when a person types the
+phrase, which is the search below and is unaffected.
+
+**A second thing is gone for a different reason: the local vision-language
+model.** Cosmos Reason 2 behind llama.cpp stopped answering inspections when the
+encoders took that job, and after that nothing called it at all -- while it went
+on holding three gigabytes of the board's 7.4 and being restarted by every
+deploy. The sidecar, its weights and the code that spoke to it were removed on
+2026-09-02. Prose about what the camera can see comes from the conversation's own
+model through `look`, which is where it was already coming from.
  Driven round three places in a real room and
 inspected at six headings from each, the rover placed twenty-three things from
 two hundred and six observations: one television from seven looks, a sofa, a
@@ -127,8 +144,8 @@ Four jobs, four mechanisms, and the important part is that they are separate:
 | Is this the same object as that one? | DINOv2 similarity, gated by geometry |
 | **Which persistent thing is it?** | **Triangulated map position** |
 | Find me the thing I am describing | SigLIP2, text against stored embeddings |
-| What is it called? | Derived from the SigLIP2 vector, not detected |
-| What is that, in words? | The VLM, on demand, when a person asks |
+| What is it called? | **Nobody. Nothing names a region — see below** |
+| What is that, in words? | The conversation's own model, through `look`, when a person asks |
 
 ---
 
@@ -151,7 +168,9 @@ chair became a "black leather couch". Three names for two chairs. Cosmos Reason 
 drifts between sofa, couch and armchair the same way.
 
 **So the box is the measurement and the label is a hint.** Anything that keys
-identity off the label inherits the drift.
+identity off the label inherits the drift -- which is why, in the end, nothing
+does: the derived name went too, and identity is decided from where a thing is
+and what its crop looks like.
 
 ### Bearing accuracy buys driving distance
 
@@ -237,22 +256,33 @@ wins because it is not trying to name anything. The filter that takes 35 down to
 smaller than 0.4% (a highlight on a tile), or more than six times longer than
 they are wide.
 
-### The name can be derived rather than detected
+### The name could be derived rather than detected — and it was not worth having
+
+_Superseded on 2026-09-02. This section is kept because the reasoning below is
+what the experiment tested, and the result went the other way; the word list, the
+derived name and everything that read one are removed from the build._
 
 Ranking a region's SigLIP2 embedding against a word list named the spray bottle,
 the framed picture, the armchair, the air purifier and a doorway in the forward
 frame. In the twin-chair frame the top-scoring region at 0.162 was **"a sheepskin
 blanket"** — the most distinctive thing in that picture, which no detector
-labelled at all.
+labelled at all. The appeal was that the vocabulary lives in a config file rather
+than in a model, so changing the word list would re-name every stored object
+without reprocessing a single frame.
 
-This matters beyond convenience. The vocabulary lives in a config file rather
-than in a model, so **changing the word list re-labels every stored object
-without reprocessing a single frame.**
+**The second of the two limits noted here at the time turned out to be fatal, and
+the first has no fix.** The raw cosines are not calibrated: on the rover's own
+crops they sit between 0.08 and 0.12 whatever is in the picture, so there is no
+score at which the answer is "none of these" and no sense in which one name is
+more confident than another. What is left is an argmax over fifty-seven phrases,
+and it named a sofa "a computer monitor". Calibrating a floor against real crops
+was the owed work, and forty real queries showed the floor belongs on the *other*
+direction of the same comparison — a phrase a person types against the stored
+vectors, which separates present from absent almost perfectly at 0.09.
 
-Two limits to carry forward. A word list still exists; it has only moved
-somewhere editable. And SigLIP's raw cosines are not calibrated — scores sit
-around 0.10 to 0.16 and only the ranking is meaningful, so a "nothing here"
-threshold has to be calibrated against real crops rather than guessed.
+So the same vector answers the question honestly when a person asks it and
+dishonestly when nobody did. Search stays; the derived name goes, along with the
+synonym gate and the list of movable things that read it.
 
 ### Appearance is evidence, geometry is the key
 
@@ -276,8 +306,15 @@ second against 7 — but the floor is still ten to fifteen seconds, because most
 the time is the model *writing*, not looking. The pipeline above runs in well
 under a second.
 
-Keep the VLM for the conversational `look`, where a person is waiting for prose
-and a minute is acceptable.
+That was written when the plan was to keep the local VLM for the conversational
+`look`, where a person is waiting for prose and a minute is acceptable. **It has
+since been removed from the rover altogether, on 2026-09-02**, because nothing
+ever called it: `look` puts the frame in front of the conversation's own model,
+which is where prose about a picture already comes from. What that took off the
+board was three gigabytes of resident memory on a machine with 7.4 and no swap,
+2.1 GB of weights on disk, and a sidecar that had to be restarted on every
+deploy. If a local VLM is ever wanted again, it comes back as a new decision with
+its own measurements, not by reviving this one.
 
 ---
 
@@ -419,13 +456,14 @@ The original plan for this phase follows.
 - Benchmark all three on the Orin GPU against the three recorded frames. The
   desktop figures — 0.12 s, and 129 ms a crop for DINOv2 on a CPU — are a
   starting point, not a prediction.
-- Keep `PhysicalReasoner` and the llama.cpp sidecar for the conversational
-  `look`. While that is still in the per-look path, switch it to the Vulkan
-  binary: 27 MB, no toolchain, 2.4x to 4x.
+- ~~Keep `PhysicalReasoner` and the llama.cpp sidecar for the conversational
+  `look`.~~ Superseded: nothing ever called it there, and the whole language
+  sidecar was removed from the rover on 2026-09-02.
 
-**Done when** one frame yields regions, embeddings and derived labels on the
-rover in under a second, with the lidar still reporting no dropped scans. The
-lidar half passed; the second did not, and why is above.
+**Done when** one frame yields regions and embeddings on the rover in under a
+second, with the lidar still reporting no dropped scans. The lidar half passed;
+the second did not, and why is above. (The phase as written also asked for
+derived labels; those were built, measured and removed on 2026-09-02.)
 
 ### Phase 2 — placement — **done, deployed 2026-09-01**
 
@@ -520,8 +558,12 @@ AMBIGUOUS   two candidates are, or the evidence is too thin to choose
 
 Order, cheapest gate first:
 
-1. **Semantic gate** — compatible labels only, with a small synonym set. A hint,
-   not a key.
+1. ~~**Semantic gate** — compatible labels only, with a small synonym set. A hint,
+   not a key.~~ **Removed 2026-09-02 with the word list that fed it.** What does
+   this job now is a floor on the DINOv2 similarity (`DIFFERENT_THING`, 0.5):
+   two crops less alike than that are not two looks at one object. Same rule —
+   it may remove a candidate and may never confirm one — asked of something the
+   rover measured rather than of a hand-written synonym list.
 2. **Map-session check** — compare positions only within one session.
 3. **Spatial gate** — reject candidates outside the placement uncertainty. For
    static furniture this is a hard gate. A very high appearance score must never
@@ -601,8 +643,12 @@ nothing has ever drawn one. It needs the drive.
 - Calibrate a "nothing matches" threshold against real crops.
 - Extend the popup: placement and its uncertainty, the two looks that produced
   it, the association reason, and the search box.
-- The label is derived from the stored vector at display time, so the word list
-  can change without reprocessing.
+- ~~The label is derived from the stored vector at display time, so the word list
+  can change without reprocessing.~~ Removed 2026-09-02: the derived name was
+  measured to be worthless and is gone. Choosing an entity in the popup now shows
+  every observation behind it as the stored frame with its measured box, in a
+  scroller of its own — the pictures are what say whether four looks are one
+  thing.
 
 **Done when** "find the spray bottle" returns the spray bottle from the console,
 and a bad match can be explained from the popup without reading the database.
@@ -643,7 +689,8 @@ call, while two real chairs appear *together* the moment the camera sees both. O
 query, and it is evidence rather than tuning.
 
 **The positive test mirrors the rival test that already exists.** Same map session,
-compatible labels through the existing synonym gate, and separation within
+appearance no further apart than `DIFFERENT_THING` (the synonym gate this
+originally named is gone), and separation within
 `max(SAME_PLACE_M, uncertainty_A + uncertainty_B)` -- the same comparison
 `_place_one` makes when deciding whether two crossings are rival explanations of
 one thing. Two candidates that could not be told apart as crossings should not
@@ -738,22 +785,29 @@ What it found:
 **The open problem is the nine duplicates that remain**, and they are not all the
 same thing. Two armchairs and three wooden chairs may well be two armchairs and
 three wooden chairs. Two windows 0.4 m apart are one patio door that the region
-finder split. Three people, metres apart, are one person who moved — and a person
-is in `MOVABLE`, so placement should not be identity for them at all. One of the
-three is a fix at 14° of parallax reporting ±1.42 m, which is barely a fix.
+finder split. Three people, metres apart, are one person who moved, and placement
+should not be identity for anything that moves. One of the three is a fix at 14°
+of parallax reporting ±1.42 m, which is barely a fix.
 
 ### What is left
 
 **Nothing merges**, which is Phase 5 above and the largest of it. Two of the nine
 duplicates go with the vocabulary change described there.
 
-**A person should never have been placed.** `MOVABLE` currently only asks
-appearance to agree before creating a thing; it does not stop position from
-becoming that thing's identity. Three people metres apart are one person who
-walked between looks, and for something that moves, a crossing of two bearings
-taken minutes apart means nothing. Changing what movable means during pairing
-removes a third of the duplicates on its own, and it is not the merge's job:
-these are not two records of one thing, they are three places one thing has been.
+**A person should never have been placed, and the rover can no longer tell that
+a person is a person.** Three people metres apart are one person who walked
+between looks, and for something that moves, a crossing of two bearings taken
+minutes apart means nothing. The old answer was a list of movable words checked
+against the derived name, and that name is gone as of 2026-09-02 for being
+uncalibrated -- see *The name could be derived* above. So this is now an open
+problem with no mechanism behind it rather than a partial one, and whatever
+replaces it has to work from something the rover measures. Two candidates worth
+trying, in order: the thing's own history, since something that has been
+triangulated in three incompatible places is by demonstration a thing that moves
+and its placement should be withdrawn rather than duplicated; and asking a model,
+once, about a crop the rover has already decided is interesting -- a slow answer
+is affordable when it is not on the per-look path. That second one now means the
+conversation's own model, since the local one is gone from the rover.
 
 **The console has never been looked at.** The placement disc, the uncertainty
 circle and the association reasons are written and deployed and no one has seen

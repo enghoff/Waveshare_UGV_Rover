@@ -1,42 +1,40 @@
-"""Regions, embeddings and names for one frame, from three models that know no
+"""Regions and embeddings for one frame, from three models that know no
 categories between them.
 
 This is the half of the world state that replaced asking a language model which
-lasting thing it was looking at. Four questions, four mechanisms, and the point is
-that they are separate:
+lasting thing it was looking at. Three questions, three mechanisms, and the point
+is that they are separate:
 
-    what regions are in this frame?    FastSAM, which has no vocabulary at all
+    what regions are in this frame?    FastSAM, which knows no categories at all
     is this the same instance?         DINOv2 similarity, gated by geometry
-    what is it called?                 the nearest phrase in vocabulary.txt to
-                                       the region's SigLIP2 vector
     which lasting thing is it?         **not answered here.** That is a
                                        triangulated map position, and it needs a
                                        second look from somewhere else.
 
 Nothing in this file decides an identity, and nothing in it may. What it produces
-is a measurement of one picture: boxes, two vectors per box, and a name that is
-derived rather than detected. The box is the measurement and the label is a hint
--- on two byte-identical frames the detectors redrew the same box to within a
-quarter of a degree of bearing, while the language model's label for one chair
-moved between "black leather recliner" and "blue leather recliner".
+is a measurement of one picture: boxes and two vectors per box.
 
-**The vectors are what is stored; the name is worked out again at display time.**
-That is what makes the vocabulary a config file rather than a model: editing
-`vocabulary.txt` re-labels every object the rover has ever seen without
-reprocessing a frame.
+**Nothing here names anything, and that is deliberate.** A region used to be
+called the nearest phrase in a fixed word list to its SigLIP2 vector, and the
+name was worth nothing: the scores sat between 0.08 and 0.12 whatever was in the
+picture, so the ranking was all there was, and on the rover's own frames it put
+"a computer monitor" on a sofa. What the vector is genuinely good for is the
+other question -- "find me the spray bottle" -- where the phrase a person types
+is embedded by the same tower and compared against the stored vectors, with a
+floor that was measured against forty real queries. So the vector is stored and
+the search asks the question; nothing in between guesses a word.
 
-The models are unpacked into `vendor/` by `install_perception.sh`, which is
-deliberately separate from the Cosmos installer -- the language model is still
-wanted for the conversational `look`, and the two have to break independently.
+The models are unpacked into `vendor/` by `install_perception.sh`, which is the
+only installer this component has: the language model that used to sit beside
+them, and its own installer, were removed from the rover on 2026-09-02.
 
 **There are two backends and they are not equivalent.** Where the board has
 TensorRT engines built for it the work runs on the GPU, and where it has not it
 runs on the CPU under onnxruntime. The GPU is not merely faster: measured
 against a full-precision reference on the rover's own frame, the engines agree
-with it to 1.000 while the int8 graphs the CPU path uses agree to 0.86, and the
-two backends name the same twelve regions differently. So every look says which
-backend produced it, and a vector from one must never be compared with a vector
-from the other.
+with it to 1.000 while the int8 graphs the CPU path uses agree to 0.86. So every
+look says which backend produced it, and a vector from one must never be
+compared with a vector from the other.
 """
 from __future__ import annotations
 
@@ -54,7 +52,6 @@ FASTSAM = "FastSAM-s.onnx"
 DINO = "dinov2-small-int8.onnx"
 SIGLIP = "siglip2-base-patch32-256-int8.onnx"
 TOKENIZER = "siglip2-tokenizer.json"
-VOCABULARY = os.path.join(HERE, "vocabulary.txt")
 
 #: What FastSAM is shown, and the number was walked down until something broke.
 #: Its own default is 1024, which on a 640x480 camera is upsampling before it is
@@ -145,23 +142,6 @@ def _onnxruntime():
     return onnxruntime
 
 
-def read_vocabulary(path: str = VOCABULARY) -> list[str]:
-    """The phrases a region can be called, in file order.
-
-    Comments and blank lines are dropped. Order is kept because it is what the
-    stored label index would mean if anything ever stored one -- nothing does,
-    and it should stay that way: the vector is the record and the name is a view
-    of it.
-    """
-    words = []
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                words.append(line)
-    return words
-
-
 class _CpuModels:
     """The three graphs under onnxruntime, on the CPU, which is where this began.
 
@@ -171,11 +151,10 @@ class _CpuModels:
 
     It is slower and it is also less accurate, and the second matters more.
     Measured on the rover's own frame against a full-precision reference, these
-    int8 graphs agree to 0.96 on DINOv2 but only 0.86 on SigLIP2, and the names
-    that come out are visibly worse -- three regions called "a bookcase" where
-    the reference says a window, a television and a chair. Dynamic quantisation
-    is what costs that: it recomputes its scales from each activation rather
-    than from a calibration set.
+    int8 graphs agree to 0.96 on DINOv2 but only 0.86 on SigLIP2, which is
+    enough to move a search's ranking. Dynamic quantisation is what costs that:
+    it recomputes its scales from each activation rather than from a calibration
+    set.
     """
 
     name = "onnxruntime"
@@ -207,14 +186,15 @@ class _CpuModels:
                                         providers=["CPUExecutionProvider"])
 
         self._session = session
-        # Only the graph the vocabulary needs is opened here. The other two wait
-        # for `open`, so that both backends load in the same order and the GPU's
-        # memory peak stays where it can be reasoned about.
+        # SigLIP2 first and the other two on `open`, so that both backends load
+        # in the same order and the GPU's memory peak stays where it can be
+        # reasoned about. This one export carries both towers, so it is also what
+        # a text search runs through.
         self._siglip = session(SIGLIP)
         self._fastsam = self._dino = None
 
     def open(self) -> None:
-        """The two graphs a look needs, as opposed to the one a vocabulary does."""
+        """The two graphs a look needs beyond the one already open."""
         if self._fastsam is None:
             self._fastsam = self._session(FASTSAM)
             self._dino = self._session(DINO)
@@ -260,10 +240,10 @@ class _GpuModels:
     profile centred on twelve rather than on one.
 
     Everything here runs in full precision except the region finder. fp16 was
-    measured to break SigLIP2 outright -- the whole vocabulary collapsed into a
-    0.92 cone and one phrase won every region -- while FastSAM's boxes in fp16
-    match the CPU's to a mean overlap of 0.998, which is the only thing a box is
-    asked for.
+    measured to break SigLIP2 outright -- fifty-seven phrases through the text
+    tower collapsed into a 0.92 cone, so every phrase matched everything --
+    while FastSAM's boxes in fp16 match the CPU's to a mean overlap of 0.998,
+    which is the only thing a box is asked for.
     """
 
     name = "tensorrt"
@@ -286,12 +266,11 @@ class _GpuModels:
         # 1.1 GB, the other three come to about 0.5 GB, and with the language
         # model holding 3.2 GB of 7.4 the two together were enough for the
         # out-of-memory killer to take the sidecar -- exit 137, measured. So the
-        # vocabulary is embedded first and its engine given back before a look's
-        # engines are opened, and the answer is cached so that the usual start-up
-        # never loads the big one at all.
+        # text tower is never held: a search loads it for the call and gives it
+        # back, and an ordinary start-up does not open it at all.
 
     def open(self) -> None:
-        """The three engines a look needs, once the vocabulary is out of the way.
+        """The three engines a look needs.
 
         Idempotent, and called before every look rather than only at start-up,
         because a search puts these down to make room for the text tower.
@@ -323,7 +302,7 @@ class _GpuModels:
         """The text tower, loaded for this call and then given back.
 
         It is the largest of the four engines at over half a gigabyte and it
-        runs once at start-up over the vocabulary, so holding it for the life of
+        runs only when somebody types a search, so holding it for the life of
         the process to save a two-second load is the wrong trade on a board
         whose GPU memory is the same memory everything else is using.
         """
@@ -344,7 +323,7 @@ class _GpuModels:
 
 
 class Perception:
-    """The one interface: a JPEG in, regions with vectors and names out.
+    """The one interface: a JPEG in, regions with vectors out.
 
     Loaded lazily and once. Three sessions and a 34 MB tokenizer are the better
     part of a gigabyte of resident memory on a board that shares eight with SLAM,
@@ -356,14 +335,11 @@ class Perception:
     the caller is a sidecar serving one client.
     """
 
-    def __init__(self, directory: str = VENDOR, threads: int = 0,
-                 vocabulary: str = VOCABULARY) -> None:
+    def __init__(self, directory: str = VENDOR, threads: int = 0) -> None:
         self.dir = directory
         self.threads = threads
-        self.vocabulary_path = vocabulary
         self._lock = threading.RLock()
         self._loaded = False
-        self.words: list[str] = []
         self.load_s = 0.0
         #: Which backend actually ran, filled in by `load`. It travels with
         #: every look because the two do not produce comparable vectors.
@@ -371,9 +347,6 @@ class Perception:
         #: Why the GPU was not used, when it was not. Empty when nothing was
         #: given up; a sentence when the rover is seeing less well than it could.
         self.fallback = ""
-        #: Whether the vocabulary's vectors were read from a previous start
-        #: rather than computed. False means the largest engine was loaded once.
-        self.words_cached = False
 
     # --- loading --------------------------------------------------------------
 
@@ -402,7 +375,7 @@ class Perception:
         except Unavailable as error:
             return False, str(error)
         backend, _ = self.chosen()
-        # The tokenizer is wanted either way: it is what turns the vocabulary
+        # The tokenizer is wanted either way: it is what turns a search phrase
         # into the numbers the text tower reads, and neither backend has one of
         # its own.
         wanted = ((TOKENIZER,) if backend == "tensorrt"
@@ -415,7 +388,7 @@ class Perception:
         return True, ""
 
     def load(self) -> None:
-        """Open the models and embed the vocabulary. Idempotent.
+        """Open the models a look needs. Idempotent.
 
         A GPU that has engines but cannot run them falls back rather than
         failing: a rover that sees a little worse is worth having and a rover
@@ -442,99 +415,12 @@ class Perception:
                 self._models = _CpuModels(self.dir, self.threads)
 
             self.backend = self._models.name
-            # The vocabulary first, then a look's own models. On the GPU that
-            # ordering is what keeps the board alive: see `_GpuModels`.
-            self._load_words()
+            # A look's own models and nothing else. The text tower is not opened
+            # here and is not held: on the GPU it is over half a gigabyte, and a
+            # search is the only thing that wants it. See `_GpuModels`.
             self._models.open()
             self.load_s = round(time.monotonic() - began, 2)
             self._loaded = True
-
-    def _load_words(self) -> None:
-        """Embed the vocabulary once, because it is the same every frame.
-
-        Measured: thirty phrases through the text tower is 870 ms, which is more
-        than every crop in a frame costs put together. Doing it per look would
-        have made the vocabulary the most expensive thing in the pipeline, for an
-        answer that cannot change between frames.
-        """
-        from tokenizers import Tokenizer
-
-        np = self._np
-        self.words = read_vocabulary(self.vocabulary_path)
-        tokenizer = Tokenizer.from_file(os.path.join(self.dir, TOKENIZER))
-        # The file already carries padding to 64 with pad id 0. Setting it here
-        # with a different id is the mistake that costs a day: every text vector
-        # comes back plausible and wrong, and the only symptom is that one phrase
-        # wins on every region.
-        tokenizer.enable_padding(length=SIGLIP_TOKENS, pad_id=0, pad_token="<pad>")
-        tokenizer.enable_truncation(max_length=SIGLIP_TOKENS)
-        ids = np.array([e.ids for e in tokenizer.encode_batch(
-            [word.lower() for word in self.words])], dtype=np.int64)
-        self._word_ids = ids
-        cached = self._remembered_words()
-        if cached is not None:
-            self._word_vectors = cached
-            self.words_cached = True
-            return
-        self._word_vectors = _unit(np, self._models.text_vectors(ids))
-        self._remember_words()
-
-    def _words_key(self) -> str:
-        """What the cached vectors were computed from.
-
-        The word list and the backend, because both change the answer and neither
-        changes the file name. A vocabulary edit or a fall back to the CPU has to
-        invalidate the cache, and getting that wrong would leave the rover naming
-        regions from a word list it no longer has.
-        """
-        import hashlib
-
-        digest = hashlib.sha256()
-        digest.update("\n".join(self.words).encode("utf-8"))
-        digest.update(self.backend.encode("utf-8"))
-        return digest.hexdigest()[:16]
-
-    def _words_path(self) -> str:
-        return os.path.join(self.dir, f"vocabulary-{self._words_key()}.f32")
-
-    def _remembered_words(self):
-        """The vocabulary's vectors from a previous start, or None.
-
-        **This is what keeps the big engine out of the ordinary start-up.** The
-        text tower is the largest of the four by a factor of three, it runs once,
-        and its answer cannot change while the word list does not -- so it is
-        computed on the first start after an edit and read from a file every time
-        after that.
-        """
-        np = self._np
-        path = self._words_path()
-        try:
-            raw = np.fromfile(path, dtype=np.float32)
-        except OSError:
-            return None
-        if raw.size == 0 or raw.size % max(len(self.words), 1):
-            return None
-        return raw.reshape(len(self.words), -1)
-
-    def _remember_words(self) -> None:
-        """Keep them, and throw away the ones from an older word list.
-
-        Failure here is not an error. A read-only vendor directory or a full disk
-        costs a slower start-up, which is not worth refusing to see over.
-        """
-        import glob
-
-        path = self._words_path()
-        try:
-            self._word_vectors.astype(self._np.float32).tofile(path)
-        except OSError:
-            return
-        for stale in glob.glob(os.path.join(self.dir, "vocabulary-*.f32")):
-            if stale != path:
-                try:
-                    os.remove(stale)
-                except OSError:
-                    pass
 
     # --- looking --------------------------------------------------------------
 
@@ -542,9 +428,11 @@ class Perception:
         """One frame, measured. Never raises for anything a rover does daily.
 
         The answer is a list of regions, each with a box in fractions of the
-        frame, the two vectors, and the nearest phrase in the vocabulary. The
-        timings come with it because the whole question about this pipeline is
-        whether it fits in the time between two lidar scans.
+        frame and the two vectors behind it. Nothing is named: what a region is
+        called was measured to be worthless, and the question a person actually
+        asks -- "find me the spray bottle" -- is answered from the same vector by
+        `search.py`. The timings come with it because the whole question about
+        this pipeline is whether it fits in the time between two lidar scans.
         """
         with self._lock:
             self.load()
@@ -582,17 +470,13 @@ class Perception:
             patches = [patch for _, _, patch in cropped]
             dino, dino_s = self._appearance(patches)
             siglip, siglip_s = self._semantic(patches)
-            names = self._name(siglip)
 
             regions = []
             for index, (box, score, _) in enumerate(cropped):
-                label, confidence = names[index]
                 regions.append({
                     "bbox": [round(float(value), 4) for value in box],
                     "region_score": round(float(score), 3),
                     "area": round(_area(box), 4),
-                    "label": label,
-                    "label_score": round(float(confidence), 4),
                     "dino": dino[index].astype("float32").tobytes(),
                     "siglip": siglip[index].astype("float32").tobytes(),
                 })
@@ -671,11 +555,14 @@ class Perception:
         return _unit(np, out), time.monotonic() - began
 
     def _semantic(self, patches):
-        """SigLIP2's image embedding per crop: what this is, and what it matches.
+        """SigLIP2's image embedding per crop: what a description would match.
 
-        The same vector answers two questions in different phases -- the name
-        now, and "find me the spray bottle" later -- which is why it is stored
-        rather than reduced to a label.
+        Stored rather than reduced to a word, because reducing it was measured to
+        throw away everything it was worth: the nearest phrase in a fixed list
+        scored between 0.08 and 0.12 whatever the crop held, while the same
+        vector against a phrase somebody actually typed separates present from
+        absent at a floor of 0.09. The vector is the record; the question is
+        asked later.
         """
         np = self._np
         batch = np.stack([
@@ -684,20 +571,6 @@ class Perception:
         began = time.monotonic()
         out = self._models.image_vectors(batch)
         return _unit(np, out), time.monotonic() - began
-
-    def _name(self, vectors):
-        """The nearest phrase in the vocabulary to each region's vector.
-
-        A dot product against a few dozen stored vectors, which is the whole of
-        it and the reason the plan refuses a vector database. The score comes
-        back with the name and is **not** a confidence: these sit between about
-        0.08 and 0.12 whatever is in the picture, and only the ordering means
-        anything until somebody calibrates a floor against real crops.
-        """
-        scores = vectors @ self._word_vectors.T
-        best = scores.argmax(axis=1)
-        return [(self.words[index], scores[row, index])
-                for row, index in enumerate(best)]
 
     # --- pictures -------------------------------------------------------------
 
@@ -733,11 +606,11 @@ class Perception:
         return image[top:bottom, left:right]
 
     def embed_text(self, phrases: list[str]):
-        """Text vectors for arbitrary phrases, for the search a later phase adds.
+        """Text vectors for arbitrary phrases, which is what a search is made of.
 
-        Here rather than in that phase because the model that answers it is
-        already loaded and the tokenizer is already open. It is not on the
-        per-look path and nothing calls it yet.
+        The only thing the text tower is loaded for. A phrase lands in the same
+        space as every stored region vector, so the comparison is a dot product
+        and `search.py` does the rest.
         """
         from tokenizers import Tokenizer
 

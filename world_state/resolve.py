@@ -11,14 +11,23 @@ where they are, which the rover already measures.
 So identity here is a geometry problem with two supporting witnesses. The gates
 run cheapest first and each one can only *remove* a candidate:
 
-    1. semantic     a chair is not a ceiling light. A hint, never a key.
-    2. map session   coordinates from a map that no longer exists mean nothing.
-    3. spatial       the bearing has to point at where the thing already is.
+    1. map session   coordinates from a map that no longer exists mean nothing.
+    2. spatial       the bearing has to point at where the thing already is.
                      **For furniture this is a hard gate**, and no amount of
                      appearance may overrule it -- that is the redundant-
                      furniture test the whole design exists to pass.
-    4. appearance    DINOv2 against several stored exemplars.
-    5. history       how recently and how often, as a tiebreak of last resort.
+    3. appearance    DINOv2 against several stored exemplars, twice over: to
+                     throw out a candidate that plainly is not the same object,
+                     and then to choose between the ones geometry accepted.
+    4. history       how recently and how often, as a tiebreak of last resort.
+
+**There used to be a semantic gate in front of all of these** -- a chair is not a
+ceiling light -- and it is gone with the word list that fed it. Nothing measures
+what a region is called any more, because the nearest phrase in that list scored
+between 0.08 and 0.12 whatever the crop held and put "a computer monitor" on a
+sofa. What took its place is `DIFFERENT_THING`, which asks the same question of
+the appearance vector and answers it from two numbers this rover measured rather
+than from a hand-written list of synonyms.
 
 Three outcomes, and the third is not optional:
 
@@ -49,25 +58,19 @@ MATCH = "match"
 NEW = "new"
 AMBIGUOUS = "ambiguous"
 
-#: Families of vocabulary phrases that may be the same thing under a different
-#: name. **A permissive gate on purpose.** Too strict and one thing becomes two
-#: entities, which is a duplicate nobody notices; too loose and the spatial gate
-#: still has to reject it, which is visible in the popup as an ambiguity. The
-#: second failure is the cheaper one, so this errs towards letting things in.
+#: Below this, two crops are not two views of one object, and the candidate is
+#: removed. **A removal-only gate and never a confirmation**, which is the role
+#: the word list's synonym families used to have and the reason this number is
+#: nowhere near a matching threshold. It sits between the two things this rover
+#: measured with DINOv2: a chair against a spray bottle scores 0.122, and the
+#: same chair across a real change of viewpoint -- the worst honest case -- still
+#: scores 0.696. Anything in between only ever removes what is plainly unrelated,
+#: and geometry decides everything else.
 #:
-#: Labels come from `vocabulary.txt`, so anything not named here simply has to
-#: match exactly, which is the safe default rather than an omission.
-SYNONYMS = (
-    {"a wooden chair", "an office chair", "an armchair", "a chair", "a stool"},
-    {"a sofa", "a couch", "an armchair"},
-    {"a doorway", "a door", "an open door"},
-    {"a cupboard", "a cabinet", "a wardrobe", "a bookcase", "a shelf"},
-    {"a table", "a desk", "a coffee table", "a side table"},
-    {"a television", "a computer monitor", "a screen"},
-    {"a lamp", "a floor lamp", "a ceiling light", "a light"},
-    {"a rug", "a carpet", "a mat"},
-    {"a picture", "a painting", "a framed picture", "a mirror"},
-)
+#: It applies only where there is something to compare. An entity with no stored
+#: exemplar, or an observation whose look produced no appearance vector, is
+#: passed through to the spatial gate rather than rejected for silence.
+DIFFERENT_THING = 0.5
 
 #: How alike two DINOv2 vectors have to be before appearance is allowed to break
 #: a tie. **Deliberately not a matching threshold.** Measured on this rover: the
@@ -99,16 +102,6 @@ RIVAL_FACTOR = 2.0
 #: the rover answers.
 SAME_PLACE_M = 0.5
 
-#: Things that move. Placement is a strong identity rule for a bookcase and a
-#: poor one for a bottle, so a movable thing is never matched on position alone
-#: and never placed from a single crossing without appearance agreeing too.
-MOVABLE = {
-    "a bottle", "a spray bottle", "a cup", "a mug", "a glass", "a bag",
-    "a cable", "a power cable", "a book", "a remote control", "a phone",
-    "a box", "a cardboard box", "a cushion", "a plate", "a bowl", "a toy",
-}
-
-
 @dataclass
 class Decision:
     """What was decided about one observation, and why, in words.
@@ -126,25 +119,6 @@ class Decision:
 
     def line(self) -> str:
         return f"observation {self.observation_id}: {self.outcome} -- {self.why}"
-
-
-def compatible(first: str, second: str) -> bool:
-    """Could these two names be the same thing?
-
-    The first gate, and the weakest. Labels drift: the same scene named a chair
-    "a wooden chair" from one angle and "an office chair" from another, which is
-    exactly why this may only remove candidates and may never confirm one.
-    """
-    left, right = (first or "").strip().lower(), (second or "").strip().lower()
-    if not left or not right:
-        return False
-    if left == right:
-        return True
-    return any(left in family and right in family for family in SYNONYMS)
-
-
-def movable(label: str) -> bool:
-    return (label or "").strip().lower() in MOVABLE
 
 
 def ray_of(observation: dict[str, Any]) -> dict[str, Any] | None:
@@ -189,18 +163,26 @@ def similarity(left: bytes, right: bytes) -> float:
     return dot / (na * nb)
 
 
-def best_appearance(store, entity_id: str, vector: bytes) -> float:
+def best_appearance(store, entity_id: str, vector: bytes) -> float | None:
     """How much this crop looks like the best of what the entity has shown.
 
     The best rather than the average, for the reason the exemplars are kept
     separately at all: a chair seen from the front and the same chair from the
     side average to a picture of neither.
+
+    **None means the question could not be asked**, and that is not the same as a
+    low score: an observation whose look produced no appearance vector, or an
+    entity that has never stored an exemplar, has said nothing about whether it
+    is the same thing. Since appearance is now the only gate left that can throw
+    out a candidate on what it looks like, reporting silence as 0.0 would reject
+    every candidate on a rover whose vectors had not arrived.
     """
     if not vector:
-        return 0.0
-    best = 0.0
+        return None
+    best = None
     for exemplar in store.exemplars(entity_id, width=len(vector)):
-        best = max(best, similarity(exemplar, vector))
+        seen = similarity(exemplar, vector)
+        best = seen if best is None else max(best, seen)
     return best
 
 
@@ -264,7 +246,6 @@ def _against_known(store, observation, entities, session,
     ray = ray_of(observation)
     if ray is None:
         return None
-    label = observation.get("label") or ""
     vector = observation.get("dino_blob") or b""
 
     frame = observation.get("inference_id")
@@ -272,8 +253,6 @@ def _against_known(store, observation, entities, session,
     surviving = []
     for entity in entities:
         if entity["id"] in already:
-            continue
-        if not compatible(entity.get("label", ""), label):
             continue
         placement = entity.get("placement") or {}
         # Wide enough to cover the thing itself, not just the bearing: see
@@ -283,47 +262,43 @@ def _against_known(store, observation, entities, session,
         if not locate.agrees(placement, ray,
                              locate.match_tolerance(placement, ray)):
             continue
+        looks = best_appearance(store, entity["id"], vector)
+        # The only gate left that can rule a candidate out on what it is rather
+        # than on where it is, and it removes only the plainly unrelated: this
+        # rover measured a chair against a spray bottle at 0.122 and the same
+        # chair across a change of viewpoint at 0.696.
+        if looks is not None and looks < DIFFERENT_THING:
+            continue
         surviving.append({
             "entity_id": entity["id"],
-            "label": entity.get("label", ""),
             "distance_m": round(math.hypot(
                 float(placement.get("x_m", 0.0)) - ray["x_m"],
                 float(placement.get("y_m", 0.0)) - ray["y_m"]), 2),
-            "appearance": round(best_appearance(store, entity["id"], vector), 3),
+            "appearance": None if looks is None else round(looks, 3),
             "seen": entity.get("observation_count", 0),
         })
 
     if not surviving:
         return None
     if len(surviving) > 1:
-        surviving.sort(key=lambda one: (-one["appearance"], -one["seen"]))
-        lead = surviving[0]["appearance"] - surviving[1]["appearance"]
+        surviving.sort(key=lambda one: (-_looks(one), -one["seen"]))
+        lead = _looks(surviving[0]) - _looks(surviving[1])
         if lead < APPEARANCE_LEAD:
             return Decision(
                 observation["id"], AMBIGUOUS, None,
                 why=(f"{len(surviving)} placed things are equally consistent with "
                      f"this bearing and appearance cannot separate them "
-                     f"({surviving[0]['appearance']:.2f} against "
-                     f"{surviving[1]['appearance']:.2f}); left unassigned "
-                     f"rather than guessed"),
+                     f"({_says(surviving[0])} against {_says(surviving[1])}); "
+                     f"left unassigned rather than guessed"),
                 candidates=surviving)
         # Appearance is allowed to choose only among candidates the geometry has
         # already accepted, and only when one is clearly ahead. It may never
         # bring a candidate back that the spatial gate rejected.
 
     chosen = surviving[0]
-    if movable(label) and chosen["appearance"] < APPEARANCE_LEAD:
-        return Decision(
-            observation["id"], AMBIGUOUS, None,
-            why=(f"{label} is a thing that moves, so its position is not enough "
-                 f"on its own, and it does not look like what "
-                 f"{chosen['entity_id']} has shown before"),
-            candidates=surviving)
-
     already.add(chosen["entity_id"])
     why = (f"the bearing points at {chosen['entity_id']} "
-           f"{chosen['distance_m']} m away, appearance "
-           f"{chosen['appearance']:.2f}")
+           f"{chosen['distance_m']} m away, appearance {_says(chosen)}")
     store.attach(chosen["entity_id"], [observation["id"]], why)
     if vector:
         store.add_exemplar(chosen["entity_id"], vector)
@@ -332,14 +307,35 @@ def _against_known(store, observation, entities, session,
                     candidates=surviving)
 
 
+def _looks(candidate: dict[str, Any]) -> float:
+    """A candidate's appearance score as a number to sort by.
+
+    Silence sorts last rather than first. A candidate nothing could be compared
+    against has not earned the lead, and treating it as 0.0 here only decides an
+    ordering -- it never removes anything, which `DIFFERENT_THING` does and this
+    must not.
+    """
+    value = candidate.get("appearance")
+    return 0.0 if value is None else float(value)
+
+
+def _says(candidate: dict[str, Any]) -> str:
+    """The same number for a person to read, or the fact that there is none."""
+    value = candidate.get("appearance")
+    return "not comparable" if value is None else f"{float(value):.2f}"
+
+
 def _pair_up(store, leftover, session, entities, taken_in) -> list[Decision]:
     """Make new things out of pairs of bearings that actually cross.
 
-    Grouped by compatible label first, which is cheap, and then every pair inside
-    a group is tried. What comes out is the pair with the smallest uncertainty,
-    because a least-squares fit over rays whose error is dominated by one bad box
-    is worse than the best honest pair -- and because the popup has to be able to
-    name the two looks that placed the thing.
+    Every pair is tried. There used to be a cheap grouping by compatible name in
+    front of this, and it went with the word list: what stops a ray at a chair
+    pairing with a ray at a bottle now is that the two crops have to look like
+    each other, which `DIFFERENT_THING` asks of the appearance vector directly.
+    What comes out is the pair with the smallest uncertainty, because a
+    least-squares fit over rays whose error is dominated by one bad box is worse
+    than the best honest pair -- and because the popup has to be able to name the
+    two looks that placed the thing.
 
     **A thing created here is a thing already placed for everything still
     waiting.** The list of known things is otherwise read once, before any of this
@@ -350,42 +346,28 @@ def _pair_up(store, leftover, session, entities, taken_in) -> list[Decision]:
     """
     decisions: list[Decision] = []
     used: set[int] = set()
-    for group in _by_label(leftover):
-        while True:
-            available = [one for one in group if one["id"] not in used]
-            if len(available) < 2:
-                break
-            placed = _place_one(store, available, session)
-            if placed is None:
-                break
-            decision, taken = placed
-            used.update(taken)
-            decisions.append(decision)
-            # Re-read rather than appended to, so the new thing arrives in the
-            # same shape as every other and carries the placement the store
-            # actually holds.
-            entities[:] = store.placed(map_session=session)
-            for waiting in leftover:
-                if waiting["id"] in used:
-                    continue
-                joined = _against_known(store, waiting, entities, session,
-                                        taken_in)
-                if joined is not None:
-                    decisions.append(joined)
-                    used.add(waiting["id"])
+    while True:
+        available = [one for one in leftover if one["id"] not in used]
+        if len(available) < 2:
+            break
+        placed = _place_one(store, available, session)
+        if placed is None:
+            break
+        decision, taken = placed
+        used.update(taken)
+        decisions.append(decision)
+        # Re-read rather than appended to, so the new thing arrives in the
+        # same shape as every other and carries the placement the store
+        # actually holds.
+        entities[:] = store.placed(map_session=session)
+        for waiting in leftover:
+            if waiting["id"] in used:
+                continue
+            joined = _against_known(store, waiting, entities, session, taken_in)
+            if joined is not None:
+                decisions.append(joined)
+                used.add(waiting["id"])
     return decisions
-
-
-def _by_label(observations) -> list[list[dict[str, Any]]]:
-    groups: list[list[dict[str, Any]]] = []
-    for observation in observations:
-        for group in groups:
-            if compatible(group[0].get("label", ""), observation.get("label", "")):
-                group.append(observation)
-                break
-        else:
-            groups.append([observation])
-    return groups
 
 
 def _place_one(store, available, session):
@@ -425,6 +407,13 @@ def _place_one(store, available, session):
             if (first_observation.get("inference_id") is not None
                     and first_observation.get("inference_id")
                     == second_observation.get("inference_id")):
+                continue
+            # Two crops that do not look like each other are not two looks at
+            # one thing, however well their bearings cross. This is what stops a
+            # ray at a chair pairing with a ray at a bottle now that nothing
+            # names either of them, and it is the same removal-only gate
+            # `_against_known` uses.
+            if not _could_be_one(first_observation, second_observation):
                 continue
             crossing = locate.fix(first, second)
             if crossing is None:
@@ -466,17 +455,7 @@ def _place_one(store, available, session):
             # A third look from somewhere else settles it; nothing here can.
             return None
 
-    label = first_observation.get("label") or "a thing"
-    if movable(label):
-        # A movable thing placed from one crossing is a guess about where it was
-        # a moment ago. Appearance has to agree as well before it becomes a
-        # lasting thing with a position.
-        seen = similarity(first_observation.get("dino_blob") or b"",
-                          second_observation.get("dino_blob") or b"")
-        if seen < 0.5:
-            return None
-
-    entity_id = store.create_entity(_kind_of(label), label)
+    entity_id = store.create_entity()
     store.place(entity_id, placement, session)
     taken = [first_observation["id"], second_observation["id"]]
     why = (f"two looks {placement['baseline_m']} m apart crossed at "
@@ -518,25 +497,25 @@ def _place_one(store, available, session):
     return Decision(
         first_observation["id"], NEW, entity_id,
         why=why,
-        candidates=[{"entity_id": entity_id, "label": label,
+        candidates=[{"entity_id": entity_id,
                      "from_observations": taken,
                      "uncertainty_m": placement["uncertainty_m"]}]), taken
 
 
-def _kind_of(label: str) -> str:
-    """The coarse bucket an identifier is counted in.
+def _could_be_one(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Could these two crops be two views of one object?
 
-    Only three, and only because the identifier reads better as `furniture:3`
-    than as `object:47`. Nothing decides anything on it.
+    A removal-only test, and it removes only the plainly unrelated -- see
+    `DIFFERENT_THING` for the two measurements the number sits between. Two
+    observations with no appearance vector between them say nothing either way,
+    and saying nothing must not stop a placement: before perception carried
+    vectors at all, every look was in exactly that position.
     """
-    words = (label or "").lower()
-    if any(word in words for word in ("door", "window", "doorway", "staircase")):
-        return "opening"
-    if any(word in words for word in ("chair", "sofa", "couch", "table", "desk",
-                                      "bookcase", "cupboard", "cabinet", "bed",
-                                      "shelf", "wardrobe", "stool")):
-        return "furniture"
-    return "object"
+    left = first.get("dino_blob") or b""
+    right = second.get("dino_blob") or b""
+    if not left or not right:
+        return True
+    return similarity(left, right) >= DIFFERENT_THING
 
 
 def _replace_placement(store, entity_id: str, session: int) -> None:

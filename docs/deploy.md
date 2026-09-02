@@ -29,7 +29,7 @@ Omni model is Alibaba-hosted and has no repository deployment target.
 | `ros_nav/` | Jetson | `~/ugv/ros_nav/`; ROS 2 environment remains under `~/miniforge3` |
 | `oak_depth/` | Jetson | `~/ugv/oak_depth/`; its unpacked DepthAI wheel remains in `vendor/` |
 | `drive_web/` | Jetson | `~/ugv/drive_web/` |
-| `world_state/` | Jetson | `~/ugv/world_state/`; the semantic store and the Cosmos sidecar, with its model weights fetched into `vendor/` by its own installer |
+| `world_state/` | Jetson | `~/ugv/world_state/`; the semantic store and the perception sidecar, with its models and TensorRT engines fetched or built into `vendor/` by its own installer |
 | selected `voice_chat/` modules | Jetson | copied beside `drive_web` for the console/Alibaba realtime session |
 | `wifi_roam/` | Jetson | staged at `~/ugv/wifi_roam/`, then privileged copies via its installer |
 | `dongle_driver/` | Jetson | staged at `~/ugv/dongle_driver/`; its installer builds and DKMS-registers the USB radio's kernel module |
