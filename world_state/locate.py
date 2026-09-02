@@ -75,6 +75,27 @@ MIN_BASELINE_M = 0.4
 #: Beyond this, indoors, the fix is a pair of nearly parallel rays agreeing by
 #: accident rather than a thing in a room.
 MAX_RANGE_M = 12.0
+#: And nearer than this, from either of the two places that saw it, a fix is not a
+#: thing in the room either. **This is the fault the validation drive of
+#: 2026-09-02 found**, and it is worth stating because neither of the two guards
+#: above catches it: two rays pointing *inward* from two nearby places cross in
+#: the gap between them at a perfectly healthy parallax, off a perfectly healthy
+#: baseline. Driven between three places, the rover placed six things and every
+#: one of them landed between 0.13 and 0.59 m from the nearest camera that saw
+#: it -- a doorway fourteen centimetres away, a floor lamp thirteen.
+#:
+#: Worse, such a crossing wins. The uncertainty is measured by nudging each
+#: bearing, and a degree and a half barely moves a point a quarter of a metre
+#: away, so a phantom on the lens reports a couple of centimetres of uncertainty
+#: and outranks every real thing in the room.
+#:
+#: 0.75 m is a statement about the rover rather than about the arithmetic: it does
+#: not drive closer than that to anything, its region finder throws away anything
+#: filling more than a third of the frame, and a crop of something on the lens is
+#: not a crop of a lamp. Refusing a real object that close costs a placement the
+#: rover can make again from somewhere else; accepting a phantom writes a thing
+#: that was never there into the world and keeps it.
+MIN_RANGE_M = 0.75
 
 
 def _unit(bearing_deg: float) -> tuple[float, float]:
@@ -145,6 +166,15 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
     point = _cross(first, second)
     if point is None:
         return None
+    # Far enough from both, and not so far that two nearly parallel rays are
+    # agreeing by accident. Measured from each observer rather than from their
+    # midpoint, because the failure is asymmetric: the crossing sits on top of
+    # one camera and a comfortable distance from the other.
+    for observer in (first, second):
+        range_m = math.hypot(point[0] - float(observer["x_m"]),
+                             point[1] - float(observer["y_m"]))
+        if range_m < MIN_RANGE_M or range_m > MAX_RANGE_M:
+            return None
 
     worst = 0.0
     for da in (-BEARING_SIGMA_DEG, BEARING_SIGMA_DEG):

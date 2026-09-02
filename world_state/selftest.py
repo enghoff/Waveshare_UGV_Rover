@@ -840,6 +840,55 @@ def test_two_identical_chairs_stay_two_things() -> None:
           locate.agrees(chair_b, _look(0.0, 3.0, 0.0)), False)
 
 
+def test_a_fix_on_top_of_the_camera_is_not_a_thing_in_the_room() -> None:
+    """**The fault the validation drive of 2026-09-02 found, in its own numbers.**
+
+    Driven between three places, the rover placed six things and every one of them
+    landed between 0.13 and 0.59 m from the nearest camera that saw it. That is
+    not a floor lamp; the rover would have driven into it, and no crop of anything
+    thirteen centimetres from that lens survives the region filter.
+
+    The cause is that two rays pointing *inward* from two nearby places cross in
+    the gap between them, at a healthy parallax angle, so neither the baseline
+    guard nor the parallax guard catches it -- and because a nudge of a degree and
+    a half barely moves a point a quarter of a metre away, such a crossing reports
+    a tiny uncertainty and wins the resolver's ranking against every real thing in
+    the room.
+
+    The four cases below are the rover's own recorded rays.
+    """
+    from_rover = [
+        # what it called it, where it stood, the bearing, where it put it
+        ("a ceiling light", (-0.134, 1.347), -23.2, (0.364, 1.346), -147.8),
+        ("a wall", (-0.134, 1.347), -49.3, (0.364, 1.346), -104.0),
+        ("a floor lamp", (0.304, 1.276), -174.8, (-0.812, 1.076), 134.6),
+        ("a houseplant", (0.304, 1.276), -176.4, (-0.812, 1.076), 112.1),
+    ]
+    for label, first, first_deg, second, second_deg in from_rover:
+        found = locate.fix(_look(first[0], first[1], first_deg),
+                           _look(second[0], second[1], second_deg))
+        check(f"{label!r} was not really that close to the camera", found, None)
+
+    # And the guard must not cost anything real. The furthest apart the rover got
+    # on that drive was 1.73 m, and from those two places a thing three metres out
+    # in the room is still placed.
+    here, there = (-0.856, 1.065), (0.857, 0.838)
+    thing = (0.0, 4.0)
+    real = locate.fix(
+        _look(here[0], here[1],
+              math.degrees(math.atan2(thing[1] - here[1], thing[0] - here[0]))),
+        _look(there[0], there[1],
+              math.degrees(math.atan2(thing[1] - there[1], thing[0] - there[0]))))
+    check("a thing out in the room is still placed", real is not None, True)
+    if real:
+        check("...where it actually is",
+              math.dist((real["x_m"], real["y_m"]), thing) < 0.1, True)
+        check("...well clear of both cameras",
+              min(math.dist((real["x_m"], real["y_m"]), here),
+                  math.dist((real["x_m"], real["y_m"]), there))
+              > locate.MIN_RANGE_M, True)
+
+
 def test_the_best_pair_places_the_thing() -> None:
     looks = [_look(0.0, 0.0, 45.0), _look(0.2, 0.0, 44.0),
              _look(6.0, 0.0, 135.0)]
@@ -1606,6 +1655,7 @@ TESTS = (
     test_two_looks_along_the_same_line_are_one_look,
     test_uncertainty_grows_when_the_baseline_shrinks,
     test_two_identical_chairs_stay_two_things,
+    test_a_fix_on_top_of_the_camera_is_not_a_thing_in_the_room,
     test_the_best_pair_places_the_thing,
     test_a_board_with_no_engines_falls_back_and_says_why,
     test_a_query_can_be_embedded_before_anything_has_been_looked_at,
