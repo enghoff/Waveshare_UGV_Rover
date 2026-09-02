@@ -17,15 +17,19 @@ face_tracking/yunet.py      LocalDetector / OpenCV YuNet
       | [x, y, w, h, score]
       v
 face_tracking/aiming.py     Target + Gimbal + Scan
+face_tracking/lens.py       the lens, and pixels -> angles
       |
       v
 rover_daemon -> driver-board UART -> ST3215 pan/tilt servos
 ```
 
 The same aiming law is also used by `face_tracking/track_face.py` on a workstation
-and `track_face_pi.py` on the rover. Keeping the geometry and control law in one
-file is intentional: two programs controlling the same gimbal must not carry two
-sets of gains, lens parameters or scan rules.
+and `track_face_pi.py` on the rover. Both import it rather than restating it, which
+is the point: two programs controlling the same gimbal must not carry two sets of
+gains, lens parameters or scan rules. The control law is in `aiming.py` and the
+lens it is solved against is in `lens.py`, which `aiming.py` re-exports -- they are
+two files because a changed lens and a changed control law are different events,
+not because there are two of either.
 
 ## Detector
 

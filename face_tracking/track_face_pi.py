@@ -578,3 +578,7 @@ def main():
         print(f"centred, stopped -- {frames} frames tracked, {camera.dropped} dropped, "
               f"{camera.unpaired} without a V4L2 stamp")
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

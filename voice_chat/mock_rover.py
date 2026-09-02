@@ -114,7 +114,9 @@ def _test_card() -> bytes | None:
     return bytes(buffer) if ok else None
 
 
-from mock_room import RoverRoom
+from mock_room import (
+    ROOM_BACK_M, ROOM_FORWARD_M, ROOM_LEFT_M, ROOM_RIGHT_M, RoverRoom,
+)
 
 
 class Rover(RoverRoom):

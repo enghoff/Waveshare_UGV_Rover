@@ -36,6 +36,7 @@ navigation do not make an unnecessary trip through another machine.
 | [`talk_frames.py`](talk_frames.py) | small HTTP frame stash used to hand a `look` image into the current session |
 | [`console_model.py`](console_model.py) | shared wording/pacing for the drive console |
 | [`mock_rover.py`](mock_rover.py) | invented rover used to exercise the client/console without hardware |
+| [`mock_room.py`](mock_room.py) | the room that rover drives in: ranges, a planner that refuses, and the map |
 | [`test_talk.py`](test_talk.py) | offline tests for the current session helpers, prompts, frames and rover client |
 
 `drive_web/omni_bridge.py` adapts `Session` to the browser's microphone/speaker

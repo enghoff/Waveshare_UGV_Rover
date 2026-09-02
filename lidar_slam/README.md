@@ -61,7 +61,7 @@ ssh orin 'cd ~/ugv/lidar_slam && ./build.sh && ./selftest'
 Nothing here opens a serial port by itself any more.
 [`ros_nav/lidar_node.py`](../ros_nav/lidar_node.py) owns the lidar, feeds bytes in
 with `feed()` and publishes what comes back out of `scan_xy()` as `/scan`. To look
-at a scan without ROS, `python3 mapimg.py` and `python3 slam2d.py` both run their
+at a scan without ROS, `python3 mapcheck.py` and `python3 slam2d.py` both run their
 own checks, and [`lidar/lidar_view.py`](../lidar/lidar_view.py) draws the sensor
 live from a desk.
 
@@ -184,7 +184,7 @@ forward and left rather than row and column. They did not, for a while: an extra
 transpose reflected the walls about the diagonal and left the rover, its heading and
 its track alone, so the track ran across a corridor instead of down it. Each half
 looked plausible by itself, and the mock rover draws both halves with one function of
-its own, so only the real map showed it. `python mapimg.py` now asserts that a wall
+its own, so only the real map showed it. `python mapcheck.py` now asserts that a wall
 straight ahead and a track that drove into it come out as a vertical line meeting a
 horizontal one, that a wall to the left is drawn on the left, and that the arrow
 swings counter-clockwise when the heading says left.
@@ -232,7 +232,7 @@ the fill lands on. A translucent fill is the one shape here that has to *read* w
 is underneath it rather than overwrite it, which would be a per-pixel Python loop —
 so the colour and the fraction, both fixed for the whole shape, are folded into a
 256-entry table per channel and `bytes.translate` applies it a row at a time in C.
-`python mapimg.py` checks that more of the picture changed than the outline accounts
+`python mapcheck.py` checks that more of the picture changed than the outline accounts
 for, because every other check there finds the cone by its exact colour and would
 pass an outline with nothing inside it.
 
@@ -240,7 +240,7 @@ pass an outline with nothing inside it.
 The gimbal counts pan positive to the right; the lidar, the map and everything else
 count bearings positive to the left, counter-clockwise from straight ahead. So the
 daemon hands the renderer minus the pan, in one place — `_camera_cone` — and both
-`rover_daemon/selftest.py` and `python mapimg.py` check the *direction* rather than
+`rover_daemon/selftest.py` and `python mapcheck.py` check the *direction* rather than
 the value, because a mirrored cone draws perfectly ordinarily over the wrong half of
 the room and nothing about the picture gives it away. The caption says which way and
 how wide in words as well, since a wedge on its own cannot say whether it is 40
@@ -346,6 +346,7 @@ build.sh      builds libslam2d.so and selftest, on the machine that runs them
 slam2d.py     ctypes binding, and describe(); checks its struct layout each load
 nav_types.py  the driver board's protocol, the chassis fallback, Outcome, MoveReport
 mapimg.py     a PNG encoder and the map rendering, in colour, stdlib only
+mapcheck.py   its synthetic checks: a box with a gap, rendered and read back
 usbreset.py   replugs the lidar in software when it drops off the USB bus; self-tests
 99-rover-usb-reset.rules  what lets the daemon do that without being root
 install-udev.sh           installs that rule; needs root, once, per rover
