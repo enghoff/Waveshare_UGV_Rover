@@ -18,6 +18,21 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**Three faults were found on 2026-09-02 by replaying the rover's own run, and two
+of them were upstream of everything the design argues about.** The write-up is
+under *What replaying a real run found* below; the short version is that the pose
+an observation was recorded against was not where the rover was, that a sixth of
+the regions it stored were pictures of nothing, and that a placed thing would
+move out from under the looks that placed it. All three are fixed. What is not
+fixed, and is now the open problem, is that **an entity is still often a mixture
+of several objects** — see the same section for why the resolver's own rules
+turn out not to be where that comes from.
+
+[`replay.py`](replay.py) is the harness that found them: it feeds a database the
+rover wrote back through the live resolver, one look at a time, and scores what
+comes out. Replaying an unchanged build reproduces the rover's entities exactly,
+which is what makes a change measurable before it flies.
+
 The question this component was built to answer has an answer, and it is no.
 
 > Does the model build and maintain a description of the environment that stays
@@ -456,6 +471,23 @@ the store, the rules and the arithmetic, and nothing whatever about what the rea
 encoders see** — which is why the fake is development scaffolding rather than a
 result.
 
+**A fourth thing runs against what the rover actually saw**, and it is the one to
+reach for before changing a rule about identity:
+
+```bash
+scp orin:'~/.ugv/world/world.db' /tmp/run.db
+scp orin:'~/.ugv/world/frames/*.jpg' /tmp/frames/
+python world_state/replay.py /tmp/run.db --frames /tmp/frames --detail
+```
+
+[`replay.py`](replay.py) feeds a recorded database back through the live resolver
+one look at a time and scores what comes out — how much of each entity is
+something other than the thing it is mostly of, and how many of its own bearings
+miss its own position. Replaying an unchanged build reproduces the rover's own
+entities exactly, which is what makes the comparison mean anything. Three of the
+resolver's rules were swept against a real run this way and none of them turned
+out to matter; see *What replaying a real run found* above.
+
 Three checks are worth knowing about by name. One asserts that two looks at the
 same room create no entity and claim no match, because a store that matched on
 anything cheap is exactly how a confident wrong answer would creep in. One asserts
@@ -478,6 +510,115 @@ including a person ten centimetres from the armchair they were sitting in. It do
 not settle the identical-chairs question, though, because nine duplicate entities
 came with it -- and a rover that cannot merge keeps two chairs apart whether or not
 it can tell them apart.
+
+## What replaying a real run found, 2026-09-02
+
+Ninety-six minutes of the rover building its world state by itself: 34 looks, 338
+regions, 23 things placed. [`replay.py`](replay.py) puts that recording back
+through the resolver at a desk, and reproduces it exactly, so a change can be
+measured against what the rover actually saw rather than against a fake.
+
+Two scores come out of it, and neither asks the resolver to mark its own
+homework. **Mixed** counts the crops in an entity that belong to something other
+than the biggest thing in it, clustered from the stored appearance vectors at a
+threshold between what two regions of one frame score (0.32) and what one object
+scores across a change of viewpoint (0.70). **Stray** counts an entity's own
+bearings that miss its own stated position by more than bearing error and its own
+uncertainty allow.
+
+| | entities | mixed | stray |
+|---|---:|---:|---:|
+| what the rover did | 23 | 19% | **45%** |
+| the placement fixed | 21 | 26% | 26% |
+| and the two bad inputs removed | 22 | 21% | **18%** |
+
+### The pose was not where the rover was
+
+`rover_world._world_pose` read `nav.slam.pose`, and that is not the rover's
+position: `nav.slam` is the occupancy grid the map renderer was last handed, and
+the pose on it belongs to whoever last asked for a map picture. With a console
+open it tracks, because a console polls the map three times a second. With no
+console open it stands still while the rover drives. And on a daemon that has
+just started it is the placeholder's `(0, 0, 0)`.
+
+The rover recorded all three. The daemon restarted twice during this run, and the
+two inspections that followed — 22 regions — went into the database on bearings
+drawn from the map origin. Those crossed real bearings 4.8 m away at a healthy
+parallax off a healthy baseline, so nothing downstream could tell, and six of the
+run's biggest entities are built partly on them.
+
+It asks the navigator now, and **a position the navigator does not trust is no
+position at all**: `position_trusted` is slam_toolbox still publishing where the
+rover is, and without it the observation is stored with no bearing, which is a
+state this store already handles honestly.
+
+### A sixth of the regions were pictures of nothing
+
+58 of the 338, and every one was a window the camera had burnt to white or a bare
+patch of wall. The box filter cannot see them — they are the right size and the
+right shape — and they do real harm rather than merely wasting a slot, because
+**two pictures of nothing resemble each other**. `object:14` was built almost
+entirely out of blown-out windows and wandered four metres across the map.
+
+`perceive._blank` refuses them: below 12 of contrast, or more than 60% of the
+crop at full white. Every one of the 58 it removes from this recording is a
+non-thing, checked by eye.
+
+### A placed thing moved out from under its own evidence
+
+An entity is re-placed from everything attached to it whenever a look joins, and
+`locate.best_fix` took the pair of bearings with the smallest uncertainty. That is
+a statement about two rays and about nothing else, so one lucky pair could move a
+thing with a dozen looks behind it clean out from under all of them: 13 of this
+run's 151 re-placements moved more than half a metre and one moved 2.6 m in a
+single step. `object:14`'s stored position was agreed by 5 of its own 18
+bearings.
+
+`best_fix` counts agreement first now and uses uncertainty only to break the tie,
+which takes stray from 45% to 26%. Agreement is counted in rays rather than in
+viewpoints, which is the opposite of how `_place_one` counts support, and the two
+really are different questions — there a phantom near the camera collects
+agreement from half the room, here every ray already belongs to this one thing.
+Counting viewpoints instead leaves 37%.
+
+### What is still wrong, and where it is not
+
+**Entities are still mixtures**, which is the fault a person notices first: a
+lampshade entity that also holds a chair back, a framed picture and a sheepskin;
+one that starts as a sheepskin, becomes a chair and ends as eleven looks at a
+picture on the wall. Nineteen of the 23 hold at least two visually distinct
+things.
+
+Every rule in the resolver was swept against the recording and **none of them
+moves that number.** Pinning the founding appearance vectors so a later look
+cannot rewrite what an entity looks like: 19% to 17% on one measure and worse on
+the other. Narrowing the match cone: no better at any cap. Raising the appearance
+floor from 0.5 to 0.75: 23%, having thrown away half the attachments. The reason
+is upstream of all of them and is two things.
+
+**Seventy-one per cent of every attachment came from a viewpoint that entity had
+already been seen from.** The rover had 16 distinct positions in 96 minutes and
+never once panned the gimbal. From one place a bearing cannot separate two things
+along the same line, so a repeat look confirms nothing — and it is still allowed
+to add an exemplar and to move the placement. That is exactly how a lampshade
+becomes a picture on the wall, one 0.97-scoring step at a time.
+
+**The appearance gate is not a gate.** `best_appearance` takes the best of five
+exemplars, and the five are a sliding window of whatever last attached. Measured
+on this recording: an unrelated crop clears the 0.5 floor against one exemplar
+12% of the time and against five **45%** of the time. And 46% of later
+attachments would fail that floor against the look that founded the entity, where
+only 8% fail against the rolling window — the gate is measuring against a set the
+drift itself wrote.
+
+### The merge veto does not work, and Phase 5 is built on it
+
+The plan makes co-occurrence the safety rule for merging: two entities ever seen
+in one frame are different things. Tested against the five near-duplicate pairs in
+this recording, **it vetoes all five**, including `object:8` and `object:10`,
+which sit 3 cm apart and are two halves of one sofa: 17 frames hold observations
+of both. The premise is false wherever the region finder splits one object into
+parts, which is the case merge exists to fix. Phase 5 needs a different veto.
 
 ## What was measured on the rover, 2026-09-02
 

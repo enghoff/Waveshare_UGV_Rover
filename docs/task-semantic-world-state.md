@@ -10,7 +10,27 @@ the plan._
 
 **Phases 0 to 4 are built, deployed and running on the rover, and the validation
 drive has now happened.** Phase 5, the merge, came out of that drive and is not
-built.
+built -- and the veto it was designed around has since been measured and does not
+work; see *What replaying a real run found* below.
+
+**Reviewed on 2026-09-02 against a second, longer run, and three faults came out
+of it that no selftest could have found.** Two were upstream of everything in
+this plan: the pose an observation was recorded against was not where the rover
+was, and a sixth of the regions it stored were pictures of nothing. The third was
+in the geometry -- a placed thing would move out from under the looks that placed
+it. All three are fixed, and `world_state/replay.py` is the harness that found
+them: it feeds a database the rover wrote back through the live resolver and
+scores the result, reproducing the rover's own entities exactly. The measurements
+and what is still wrong are in
+[`world_state/README.md`](../world_state/README.md), which stays the record.
+
+**What is still wrong is what a person notices first: an entity is often a
+mixture of several objects.** Nineteen of that run's 23 held at least two
+visually distinct things. Every rule in the resolver was swept against the
+recording and none of them moves that number, because the cause is not in the
+resolver -- it is that 71% of every attachment came from a viewpoint the entity
+had already been seen from, and from one place a bearing cannot separate two
+things along the same line. See *The missing rule* below.
 
 **One thing the plan asked for has been removed rather than finished: the derived
 name.** Ranking a region's embedding against a word list was built and measured,
@@ -710,14 +730,20 @@ rule that merged on looking alike would merge the twins first. "Their positions
 overlap" is no better on its own -- two dining chairs forty centimetres apart
 overlap at these uncertainties.
 
-**The veto is co-occurrence, and it is not a threshold.** If two entities have ever
-been seen in the same frame, they are different things. The region finder's own
-suppression guarantees it, and the resolver already leans on that fact in the other
-direction when it refuses to let two regions of one frame match the same entity.
-This is what separates the two real cases cleanly: a patio door split into two
-windows is split *across* frames, because the split is an artefact of one region
-call, while two real chairs appear *together* the moment the camera sees both. One
-query, and it is evidence rather than tuning.
+**The veto was co-occurrence, and it does not work.** The idea was that if two
+entities have ever been seen in the same frame they are different things, because
+the region finder's own suppression guarantees it -- and the resolver already
+leans on that fact in the other direction when it refuses to let two regions of
+one frame match the same entity.
+
+**Measured on the run of 2026-09-02 and it vetoes every merge there is.** Five
+pairs of entities in that run sit close enough together to be merge candidates,
+and all five share frames: `object:8` and `object:10` are 3 cm apart, are two
+halves of one sofa, and 17 frames hold observations of both. The premise fails
+exactly where merge is needed, because the region finder splits one object into
+parts and those parts appear together in every frame that sees the object at all
+-- which the plan already knew, two sections up, and did not carry through to
+here. Phase 5 needs a different veto before it is worth building.
 
 **The positive test mirrors the rival test that already exists.** Same map session,
 appearance no further apart than `DIFFERENT_THING` (the synonym gate this
@@ -851,6 +877,45 @@ building learns nothing on the way.
 
 None of it is a reason to keep the rover parked, and all of it except the merge
 and the metric-agreement criterion can be settled without moving it.
+
+---
+
+## The missing rule: a repeat look is not evidence
+
+This came out of the review of 2026-09-02 and is the largest thing this design
+does not have. It is not a parameter and no threshold reaches it.
+
+**Seventy-one per cent of every attachment in that run came from a viewpoint the
+entity had already been seen from.** The rover had 16 distinct positions in 96
+minutes and never once panned the gimbal, because it was building its world state
+on a timer while parked. From one place a bearing is a direction and nothing more,
+so every object along that line agrees with it equally -- and the resolver treats
+each repeat as a match, feeds its crop into the entity's exemplars and lets it
+move the placement. That is how one entity in the run began as a sheepskin over a
+chair, became the chair, and ended as eleven looks at a framed picture on the
+wall behind it, every step scoring above 0.9 against the step before.
+
+Two halves to it, and they want different answers.
+
+**A repeat look must not be allowed to redefine what an entity is.** It may join
+it -- the record is worth having, and the search reads it -- but it should not add
+an exemplar and should not move the placement, because it carries no information
+about either. Tried on the recording, this takes an entity's stray bearings from
+45% to 35% on its own; it is right in principle whatever the number says, because
+the alternative is an entity whose identity is written by whatever last happened
+to point that way.
+
+**The appearance gate has to be a gate.** `best_appearance` compares against the
+best of five exemplars and the five are a sliding window of whatever last
+attached, so it measures against a set the drift itself wrote: 46% of later
+attachments in that run would fail the 0.5 floor against the look that *founded*
+the entity, where only 8% fail against the window. And best-of-five is much
+weaker than best-of-one -- an unrelated crop clears the floor 12% of the time
+against one exemplar and 45% of the time against five. Whatever replaces it, the
+founding look has to stay in the comparison and cannot be aged out.
+
+Neither of these is a reason to reopen "let the model decide". They are both
+about not letting a weak signal accumulate authority it was never given.
 
 ---
 

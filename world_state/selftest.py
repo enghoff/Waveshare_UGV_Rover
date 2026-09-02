@@ -638,6 +638,53 @@ def test_a_region_that_is_an_edge_is_not_a_thing() -> None:
           _worth_keeping([0.5, 0.5, 0.5, 0.7]), False)
 
 
+def test_a_crop_with_no_picture_in_it_is_not_a_region() -> None:
+    """**Reproduces the entity the rover built out of blown-out windows.**
+
+    The filter above works on the shape of a box and nothing else, so a window
+    the camera has burnt to white and a bare patch of wall both sail through it:
+    right size, right aspect, nothing inside. On the drive of 2026-09-02, 58 of
+    the 338 regions the rover stored -- 17% -- were one or the other, and they do
+    real harm rather than merely wasting a slot, because two pictures of nothing
+    look like each other. `object:14` was built almost entirely out of them and
+    wandered four metres across the map.
+
+    Two ways to have no picture, so two numbers: no contrast at all, and mostly
+    burnt out. A window frame across a white sky has plenty of contrast and still
+    says nothing about what is behind it, which is why the second test exists.
+    """
+    try:
+        import numpy
+    except ImportError as error:
+        SKIP.append(f"rejecting a crop with no picture in it ({error})")
+        return
+
+    from world_state.perceive import _blank
+
+    wall = numpy.full((40, 40, 3), 200.0, dtype="float32")
+    check("a bare patch of wall is not a region", _blank(numpy, wall), True)
+
+    window = numpy.zeros((40, 40, 3), dtype="float32")
+    window[:, :34] = 255.0                      # burnt-out glass, frame at one edge
+    check("...nor is a window the camera has blown out",
+          _blank(numpy, window), True)
+
+    chair = numpy.zeros((40, 40, 3), dtype="float32")
+    chair[:20] = 40.0
+    chair[20:] = 190.0                          # dark against a light floor
+    check("but something with a picture in it is",
+          _blank(numpy, chair), False)
+
+    # A pale lampshade against a wall is the case this must not eat: bright, and
+    # burnt out over part of itself, but with a shape in it. The line is drawn by
+    # contrast and by how much of the crop is at full white, not by brightness.
+    lamp = numpy.full((40, 40, 3), 210.0, dtype="float32")
+    lamp[8:32, 8:32] = 255.0                    # half the crop, blown out
+    lamp[32:] = 120.0                           # the table it stands on
+    check("...and neither is a pale thing with a shape in it",
+          _blank(numpy, lamp), False)
+
+
 def test_a_cushion_inside_a_sofa_is_not_a_second_thing() -> None:
     """Reproduces what made the rover record one sofa several times over.
 
@@ -1129,6 +1176,53 @@ def test_one_television_seen_six_times_is_one_television() -> None:
             store.close()
 
 
+def test_a_thing_does_not_move_out_from_under_its_own_evidence() -> None:
+    """**The wandering entity the drive of 2026-09-02 recorded, with its numbers.**
+
+    An entity is re-placed from everything attached to it whenever a look joins,
+    and it used to take the pair of bearings with the smallest uncertainty --
+    which is a statement about two rays and about nothing else. So one lucky pair
+    could move a thing with a dozen looks behind it clean out from under all of
+    them: 13 of that drive's 151 re-placements moved more than half a metre, one
+    of them 2.6 m in a single step, and afterwards 45% of every entity's own
+    bearings missed its own stated position.
+
+    The four bearings below are `object:14`'s, taken out of the rover's own
+    database. The tightest pair among them lands somewhere two of the four
+    disagree with; the pair all four agree with is two metres away and has a
+    wider uncertainty, and it is the right answer. `world_state/replay.py` is
+    what this was found with.
+    """
+    measured = [(-3.739, 2.906, -82.2), (-4.351, 4.421, -89.6),
+                (-3.782, 2.911, -88.6), (0.544, 0.078, -119.1)]
+    rays = [{"x_m": x, "y_m": y, "bearing_deg": bearing, "span_deg": 20.0}
+            for x, y, bearing in measured]
+
+    def tightest(candidates):
+        """What `best_fix` used to do, kept here so the test is a comparison."""
+        best = None
+        for index, first in enumerate(candidates):
+            for second in candidates[index + 1:]:
+                found = locate.fix(first, second)
+                if found is None:
+                    continue
+                if best is None or found["uncertainty_m"] < best["uncertainty_m"]:
+                    best = found
+        return best
+
+    was = tightest(rays)
+    now = locate.best_fix(rays)
+    check("the tightest pair of these four is agreed by only half of them",
+          sum(1 for ray in rays if locate.agrees(was, ray)), 2)
+    check("...and the placement chosen instead is agreed by all four",
+          sum(1 for ray in rays if locate.agrees(now, ray)), 4)
+    check("...which is a different place, not a rounding",
+          math.dist((was["x_m"], was["y_m"]), (now["x_m"], now["y_m"])) > 1.5,
+          True)
+    check("...and it is allowed to be the less certain of the two",
+          now["uncertainty_m"] > was["uncertainty_m"], True)
+
+
 def test_the_reason_survives_the_inspection_that_decided_it() -> None:
     """The question a person asks of an identity is why, not what.
 
@@ -1555,6 +1649,7 @@ TESTS = (
     test_both_backends_answer_the_same_four_questions,
     test_the_installer_builds_exactly_the_engines_the_runtime_opens,
     test_a_region_that_is_an_edge_is_not_a_thing,
+    test_a_crop_with_no_picture_in_it_is_not_a_region,
     test_a_cushion_inside_a_sofa_is_not_a_second_thing,
     test_an_inspection_through_the_encoders_keeps_what_it_measured,
     test_a_bearing_is_the_pose_the_gimbal_and_the_box_together,
@@ -1571,6 +1666,7 @@ TESTS = (
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
     test_two_identical_chairs_are_not_guessed_at_from_two_places,
     test_one_television_seen_six_times_is_one_television,
+    test_a_thing_does_not_move_out_from_under_its_own_evidence,
     test_the_reason_survives_the_inspection_that_decided_it,
     test_a_third_look_joins_the_thing_it_points_at,
     test_appearance_cannot_overrule_where_a_thing_is,

@@ -21,6 +21,7 @@ to cross it. Nothing here asks a model anything.
     search.py            a typed phrase against the stored semantic vectors
     view.py              an observation's measured provenance as a bearing to draw
     locate.py            two bearings from two places as a point on the map
+    replay.py            a recorded run back through the resolver, at a desk
 
 The rover deploys this to ``~/ugv/world_state`` and the daemon imports it from
 there; the database and the frames live under ``~/.ugv/world``, where no deploy

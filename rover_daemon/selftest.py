@@ -2340,6 +2340,59 @@ def test_a_board_that_goes_quiet_gets_its_port_reopened():
         serial.Serial = real
 
 
+def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
+    """Where an inspection says the rover was standing.
+
+    **The fault this reproduces was recorded on the rover.** `_world_pose` used to
+    read `nav.slam.pose`, which is not where the rover is: it is the pose printed
+    on the last map picture somebody asked for, and `nav.slam` starts life as a
+    placeholder whose pose is the map origin. So a daemon that had just restarted
+    with no console watching put twenty-two regions on bearings drawn from (0, 0),
+    those crossed real bearings 4.8 m away, and six things were placed in a room
+    that never held them.
+    """
+    import rover_world
+
+    class Nav:
+        """A navigator whose map cache and whose live position disagree, which is
+        the ordinary case: the cache is as old as the last drawn map."""
+
+        class slam:
+            pose = (0.0, 0.0, 0.0)
+
+        def __init__(self, trusted=True, pose=None):
+            self._trusted = trusted
+            self._pose = pose
+
+        def status(self):
+            return {"position_trusted": self._trusted, "pose": self._pose}
+
+    class Asking:
+        _world_pose = rover_world.RoverWorld._world_pose
+
+    rover = Asking()
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0})
+    check("the pose is the live one, not the one on the last map drawn",
+          rover._world_pose(),
+          {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0})
+
+    rover.nav = Nav(False, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0})
+    check("a position the navigator does not trust is no position at all",
+          rover._world_pose(), None)
+
+    rover.nav = Nav(True, None)
+    check("...and neither is a navigator that has no pose to give",
+          rover._world_pose(), None)
+
+    class Broken:
+        def status(self):
+            raise OSError("the bridge is not answering")
+
+    rover.nav = Broken()
+    check("a bridge that is down leaves the observation without a bearing",
+          rover._world_pose(), None)
+
+
 def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
     """When building the world state by itself, what is worth a look.
 
@@ -2443,6 +2496,7 @@ def main():
                  test_the_camera_settles_ahead_instead_of_sweeping,
                  test_what_the_camera_does_with_nobody_in_view,
                  test_the_rover_looks_when_there_is_something_new_to_see,
+                 test_a_world_observation_takes_the_live_pose_and_no_other,
                  *ROS_NAV_TESTS):
         try:
             test()

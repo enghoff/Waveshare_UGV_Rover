@@ -103,6 +103,24 @@ MAX_REGIONS = 12
 #: picture of upholstery; a little of what is behind it is what makes it a chair.
 CROP_PAD = 0.02
 
+#: **A crop with no picture in it is not a region, and it took a rover to find
+#: that out.** The box filter above works on shape alone, so a window the camera
+#: has blown to white and a bare patch of wall both pass it: they are the right
+#: size and the right aspect, and there is nothing in them at all. Measured on
+#: the 338 regions of the drive of 2026-09-02, 58 of them -- 17% -- were one or
+#: the other, and every one that reached the resolver did damage, because two
+#: pictures of nothing resemble each other. One entity was built almost entirely
+#: out of blown-out windows and wandered four metres across the map.
+#:
+#: Two numbers, because there are two ways to have no picture. Contrast, as the
+#: standard deviation of the crop's brightness, is below 12 for a flat wall and
+#: above 27 for three quarters of the regions the rover keeps. And the fraction
+#: of the crop that is at full white, which catches the other case: a window
+#: frame across a white sky has plenty of contrast and still says nothing about
+#: what is behind it.
+MIN_CONTRAST = 12.0
+MAX_BLOWN = 0.6
+
 
 class Unavailable(RuntimeError):
     """The models are not installed, or the runtime cannot be imported.
@@ -463,14 +481,22 @@ class Perception:
             # thing in the room, which is also the hardest to place from a bearing.
             kept.sort(key=lambda pair: -_area(pair[0]))
             cropped = []
+            blank = 0
             for box, score in kept[:MAX_REGIONS]:
                 patch = self._crop(image, box)
-                if patch is not None:
-                    cropped.append((box, score, patch))
+                if patch is None:
+                    continue
+                # The one test that needs the pixels rather than the box. See
+                # MIN_CONTRAST: a blown-out window and a bare wall pass every
+                # filter above and carry no identity whatever.
+                if _blank(np, patch):
+                    blank += 1
+                    continue
+                cropped.append((box, score, patch))
 
             if not cropped:
                 return {"regions": [], "found": len(boxes), "kept": len(kept),
-                        "backend": self.backend,
+                        "blank": blank, "backend": self.backend,
                         "timings": {"regions_ms": round(region_s * 1000),
                                     "dino_ms": 0, "siglip_ms": 0},
                         "took_s": round(time.monotonic() - began, 2)}
@@ -492,6 +518,7 @@ class Perception:
                 "regions": regions,
                 "found": len(boxes),
                 "kept": len(kept),
+                "blank": blank,
                 "backend": self.backend,
                 "timings": {"regions_ms": round(region_s * 1000),
                             "dino_ms": round(dino_s * 1000),
@@ -660,6 +687,21 @@ def _worth_keeping(box) -> bool:
     if not MIN_AREA <= width * height <= MAX_AREA:
         return False
     return max(width / height, height / width) <= MAX_ASPECT
+
+
+def _blank(np, patch) -> bool:
+    """Whether this crop is a picture of nothing.
+
+    Two ways for it to be, and both were on the rover: a flat patch of wall or
+    ceiling, which has no contrast, and a window the camera has blown to white,
+    which has plenty at its frame and nothing inside it. Neither can be told
+    apart from any other one of its kind by any encoder, so both are refused
+    here rather than left for the resolver to be confused by.
+    """
+    grey = patch.mean(axis=2) if patch.ndim == 3 else patch
+    if float(grey.std()) < MIN_CONTRAST:
+        return True
+    return float((grey > 250).mean()) > MAX_BLOWN
 
 
 def _suppress(np, boxes, scores, threshold):

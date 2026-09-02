@@ -94,6 +94,11 @@ class Look:
     regions: list[Sighting] = field(default_factory=list)
     found: int = 0
     kept: int = 0
+    #: How many regions were dropped for having no picture in them -- a blown-out
+    #: window, a bare wall. Carried so the diagnostics can say so: on the rover
+    #: this is a sixth of what the region finder proposes, and a person reading
+    #: "5 of 20 regions kept" deserves to know why.
+    blank: int = 0
     timings: dict[str, Any] = field(default_factory=dict)
     took_s: float = 0.0
     duration_s: float = 0.0
@@ -226,6 +231,7 @@ class SidecarEyes(Eyes):
                     regions=regions,
                     found=int(payload.get("found") or 0),
                     kept=int(payload.get("kept") or 0),
+                    blank=int(payload.get("blank") or 0),
                     timings=payload.get("timings") or {},
                     took_s=float(payload.get("took_s") or 0.0),
                     duration_s=took)

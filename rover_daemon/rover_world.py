@@ -298,22 +298,48 @@ class RoverWorld:
                 "width": width, "height": height}
 
     def _world_pose(self) -> dict[str, Any] | None:
-        """Where the rover was standing, as SLAM has it, or None.
+        """Where the rover is standing now, as SLAM has it, or None.
 
         Measured, not inferred -- which is the line this whole experiment draws.
         Where the camera was is a reading the rover already takes; how far away the
         sofa is would be a guess the model made from one photograph, and no amount
         of it goes in the database.
+
+        **Asked of the navigator rather than read off the last map picture, and
+        that is a fix rather than a preference.** `nav.slam` is the grid the
+        renderer was last handed, and the pose on it is whoever last called
+        `map_png` -- a console polling the map, or nobody. With no console open it
+        stands still while the rover drives; on a freshly started daemon it is the
+        placeholder's `(0, 0, 0)`. The rover recorded both on 2026-09-02: two
+        inspections a minute apart, straight after the daemon restarted, put
+        twenty-two regions on bearings drawn from the map origin, and those
+        crossed real bearings 4.8 m away at a healthy parallax and placed six
+        things that were never there.
+
+        **A pose the navigator does not trust is no pose at all.** `position_
+        trusted` is slam_toolbox still publishing where the rover is; without it
+        the coordinates are dead reckoning wearing a map's clothes, and an
+        observation with no pose is a thing this store already handles honestly --
+        it keeps the picture and records no bearing.
         """
         navigator = getattr(self, "nav", None)
         if navigator is None:
             return None
         try:
-            x, y, heading = navigator.slam.pose
+            status = navigator.status()
         except Exception:
             return None
-        return {"x_m": round(x, 3), "y_m": round(y, 3),
-                "heading_deg": round(math.degrees(heading), 1)}
+        if not status.get("position_trusted"):
+            return None
+        where = status.get("pose")
+        if not isinstance(where, dict):
+            return None
+        try:
+            return {"x_m": round(float(where["x_m"]), 3),
+                    "y_m": round(float(where["y_m"]), 3),
+                    "heading_deg": round(float(where["heading_deg"]), 1)}
+        except (KeyError, TypeError, ValueError):
+            return None
 
     # --- the control calls ----------------------------------------------------
 

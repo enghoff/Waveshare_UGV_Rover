@@ -235,10 +235,33 @@ def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
 def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The most trustworthy fix obtainable from a set of bearings, or None.
 
-    The pair with the smallest uncertainty rather than an average of all of them:
-    a least-squares fit over rays whose errors are dominated by one bad bounding
-    box is worse than the best honest pair, and this stays explainable -- the
-    popup can name the two looks that placed the thing.
+    A pair rather than a least-squares fit over all of them: a fit whose errors
+    are dominated by one bad bounding box is worse than the best honest pair, and
+    a pair stays explainable -- the popup can name the two looks that placed the
+    thing.
+
+    **Which pair is the one the rest of the rays agree with, and that is a fix
+    rather than a preference.** It used to be the pair with the smallest
+    uncertainty, which is a statement about two rays and about nothing else: an
+    entity with a dozen looks behind it would move to wherever the luckiest two of
+    them happened to cross, out from under everything already attached to it.
+    Measured on the drive of 2026-09-02, 13 of 151 placements moved more than half
+    a metre when a new look arrived, one of them 2.6 m in a single step, and
+    afterwards 45% of every entity's own rays missed its own stated position.
+    Counting agreement first takes that to 26% on the same recording.
+
+    Agreement is counted in **rays and not in viewpoints**, which is the opposite
+    of how `_place_one` counts support, and the two are answering different
+    questions. There, a pool of unattached bearings is being searched for
+    something to place, and a phantom close to the camera collects agreement from
+    half the room -- so support has to be counted in looks. Here every ray already
+    belongs to this one thing, and a second look at it from the same standstill is
+    a real second opinion about which direction it lies in. Measured on the drive
+    of 2026-09-02, counting rays leaves 26% of an entity's bearings missing its
+    own position where counting viewpoints leaves 37%.
+
+    Uncertainty still breaks the tie, so nothing changes for an entity with only
+    two looks behind it.
     """
     best = None
     for index, first in enumerate(rays):
@@ -246,9 +269,11 @@ def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
             found = fix(first, second)
             if found is None:
                 continue
-            if best is None or found["uncertainty_m"] < best["uncertainty_m"]:
-                best = found
-    return best
+            agreed = sum(1 for ray in rays if agrees(found, ray))
+            rank = (-agreed, found["uncertainty_m"])
+            if best is None or rank < best[0]:
+                best = (rank, found)
+    return None if best is None else best[1]
 
 
 def bearing_to(point: dict[str, Any], observation: dict[str, Any]) -> float:
