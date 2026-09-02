@@ -553,7 +553,8 @@ uncertainty allow.
 |---|---:|---:|---:|
 | what the rover did | 23 | 19% | **45%** |
 | the placement fixed | 21 | 26% | 26% |
-| and the two bad inputs removed | 22 | 21% | **18%** |
+| and the two bad inputs removed | 22 | 21% | 18% |
+| and the thing's own width, not the candidate's | 25 | 21% | **15%** |
 
 ### The pose was not where the rover was
 
@@ -693,6 +694,37 @@ and they were refused because four rays from two viewpoints make a two-by-two
 grid of crossings, two of which conflict — the phantom, and from two viewpoints
 it is genuinely unknowable. A third look from a third place settles it, and the
 rover never took one.
+
+### One entity ate fifty-three degrees of hallway
+
+Left parked in that hallway afterwards, the rover placed one thing a metre and a
+half in front of it and then attached thirteen more bearings to it, spanning
+**fifty-three degrees**: a ceiling corner, a dark doorway, a small framed picture
+and a wall panel, all one entity. The pictures are what say so; the geometry says
+why.
+
+The slack a bearing was allowed came from *whichever crop was asking to join*,
+capped at `MAX_EXTENT_M`, and the cap saturated. Over one run's 54,607 tolerance
+decisions the median total was 1.00 m of which 0.75 was that cap — a cone
+eleven degrees wide in the median, against a bearing measured to one and a half.
+So a region spanning most of the frame could claim any small thing roughly in its
+direction, and observation 2632 of that run did exactly that: 79 degrees of
+hallway wall, pointed 25 degrees away from the picture, granted 0.75 m of room
+against a miss of 0.67.
+
+**The width is the thing's own now.** `locate.extent_of` measures it when the
+crossing is made, from the angular width of the two crops at the range they put
+it, taking the *smaller* of the two views — the region finder segments parts as
+readily as wholes, so one view of a picture can come back as the picture and the
+other as the wall panel around it, and the tighter claim is the better one. It
+travels with the placement; the candidate's own span is only a fallback for a
+placement written before this existed.
+
+Replayed over the 96-minute run, the entity's own bearings that miss its own
+position fall from 26% to **15%**, and the crops belonging to something other than
+the thing an entity is mostly of from 26% to 21%. It also finds 25 things where it
+found 21, which is the right direction: fewer entities swallowing their
+neighbours.
 
 ### What is still wrong, and where it is not
 

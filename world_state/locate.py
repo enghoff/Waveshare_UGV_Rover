@@ -256,40 +256,86 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         "uncertainty_m": round(worst, 3),
         "baseline_m": round(baseline_m(first, second), 3),
         "parallax_deg": round(parallax_deg(first, second), 1),
+        # How wide the thing itself is, measured rather than assumed. See
+        # `extent_of`: this is what a later bearing is allowed to be off by, and
+        # it has to be a property of the thing rather than of whatever crop is
+        # asking to join it.
+        "extent_m": round(extent_of(point, first, second), 3),
     }
+
+
+def extent_of(point: tuple[float, float], *observers: dict[str, Any]) -> float:
+    """Half the width of the thing at `point`, from the crops that saw it.
+
+    A region's angular width, at the range the crossing puts it, is a
+    measurement of how wide the thing is. **The smaller of the two views wins**,
+    which is the conservative direction and the deliberate one: the region finder
+    segments parts as readily as wholes, so one view of a picture on a wall can
+    come back as the picture and the other as the whole wall panel around it, and
+    the tighter of the two is the better claim about the object.
+    """
+    widths = []
+    for observer in observers:
+        span_deg = float(observer.get("span_deg") or 0.0)
+        if span_deg <= 0.0:
+            continue
+        range_m = math.hypot(point[0] - float(observer["x_m"]),
+                             point[1] - float(observer["y_m"]))
+        widths.append(range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0)))
+    if not widths:
+        return 0.0
+    return min(MAX_EXTENT_M, min(widths))
 
 
 #: The most an object's own width may add to the tolerance for pointing at it.
 #: A region spanning most of the frame is a wall or a floor, and letting that
 #: claim three metres of slack would let it swallow the room.
+#:
+#: **It used to be doing most of the work rather than capping it.** Measured over
+#: the 54,607 tolerance decisions of one run, the median total was 1.00 m of which
+#: 0.75 was this cap, saturated -- because the term was taken from whichever crop
+#: was asking to join rather than from the thing it wanted to join. It is a cap
+#: again now: `extent_of` measures the thing when it is placed and the tolerance
+#: uses that.
 MAX_EXTENT_M = 0.75
 
 
 def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
     """How far off a bearing may be and still be pointing at this thing.
 
-    Three terms, and **the third is the one that was missing**: how wrong the
-    bearing is, how uncertain the thing's position is, and how big the thing
-    actually is. An entity is stored as a point, but a television is a metre
-    wide, and two looks from different sides of it centre on different parts of
-    it -- so a bearing that lands anywhere within the thing's own silhouette is
-    pointing at it, however precisely the bearing itself is known.
+    Three terms: how wrong the bearing is, how uncertain the thing's position is,
+    and how big the thing actually is. The third one matters because an entity is
+    stored as a point while a television is a metre wide, and two looks from
+    different sides of it centre on different parts of it -- so a bearing landing
+    anywhere within the thing's own silhouette is pointing at it, however
+    precisely the bearing itself is known. Without it, matching a television at
+    two and a half metres allowed 0.115 m, a tenth of the television; looks that
+    should have joined it were refused, fell through to the pairing pass and made
+    a *second* television eight centimetres from the first.
 
-    Measured on the rover on 2026-09-02: with only the first two terms, matching
-    a television at two and a half metres allowed 0.115 m, which is a tenth of
-    the television. Looks that should have joined it were refused, fell through
-    to the pairing pass, and made a *second* television eight centimetres from
-    the first -- four in the end, and three people where there was one.
+    **The width is the thing's own and not the candidate's, which is a fix.** It
+    used to come from whichever crop was asking to join, capped at
+    `MAX_EXTENT_M` -- and the cap saturated, so more than half of every match
+    decision on the rover was made with three quarters of a metre of slack
+    whatever the thing was. Expressed as an angle that is a cone eleven degrees
+    wide in the median against a bearing measured to one and a half, and it let
+    any wide region claim any small thing in roughly its direction. On the driven
+    run of 2026-09-02 it cost exactly that: one entity a metre and a half from a
+    parked rover collected thirteen bearings spanning fifty-three degrees -- a
+    ceiling corner, a dark doorway, a framed picture and a wall panel, all one
+    thing.
 
-    The width comes from the observation's own `span_deg`, which is what the
-    region measured, so a doorway gets more room than a mug without anything
-    having to store a size.
+    So `extent_m` is measured when the thing is placed and travels with the
+    placement, and the candidate's own span is only a fallback for a placement
+    written before this existed.
     """
     range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
                          float(point["y_m"]) - float(ray["y_m"]))
-    span_deg = float(ray.get("span_deg") or 0.0)
-    extent_m = min(MAX_EXTENT_M,
-                   range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0)))
+    own = point.get("extent_m")
+    if own is None:
+        span_deg = float(ray.get("span_deg") or 0.0)
+        own = range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0))
+    extent_m = min(MAX_EXTENT_M, max(0.0, float(own)))
     return (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
             + float(point.get("uncertainty_m", 0.0)) + extent_m)
 

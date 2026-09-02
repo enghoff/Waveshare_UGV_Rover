@@ -1214,6 +1214,56 @@ def test_one_television_seen_six_times_is_one_television() -> None:
             store.close()
 
 
+def test_one_thing_cannot_swallow_the_wall_behind_it() -> None:
+    """**The entity that ate fifty-three degrees of hallway, 2026-09-02.**
+
+    The slack a bearing is allowed used to come from whichever crop was asking to
+    join, capped at `MAX_EXTENT_M` -- and the cap saturated, so most match
+    decisions were made with three quarters of a metre of room whatever the thing
+    was. At a metre and a half that is a cone twenty-seven degrees either side of
+    a bearing measured to one and a half, and a rover parked in a hallway
+    collected thirteen bearings spanning fifty-three degrees into one entity: a
+    ceiling corner, a dark doorway, a framed picture and a wall panel.
+
+    The width is the thing's own now, measured when it is placed.
+    """
+    # A small thing -- a framed picture, a hand's breadth across -- placed 1.44 m
+    # from where the rover stands, which is the geometry of that hallway.
+    picture = {"x_m": -2.63, "y_m": 5.14, "uncertainty_m": 0.16,
+               "extent_m": 0.12}
+    at = (-2.25, 3.75)
+    straight = math.degrees(math.atan2(picture["y_m"] - at[1],
+                                       picture["x_m"] - at[0]))
+
+    def off_by(degrees, span_deg, own_width):
+        ray = {"x_m": at[0], "y_m": at[1],
+               "bearing_deg": straight + degrees, "span_deg": span_deg}
+        point = dict(picture)
+        if own_width is None:
+            point.pop("extent_m")               # what the old rule saw
+        return locate.agrees(point, ray, locate.match_tolerance(point, ray))
+
+    check("a bearing straight at it matches", off_by(0.0, 18.0, 0.12), True)
+    check("...and so does one a few degrees off, which is the bearing's own error",
+          off_by(8.0, 18.0, 0.12), True)
+
+    # Observation 2632 of that run, with its own numbers: a region spanning
+    # seventy-nine degrees -- most of the hallway -- pointed twenty-five degrees
+    # away from the picture, which at this range is two thirds of a metre off.
+    check("but a region spanning most of the frame cannot claim it from 25 degrees away",
+          off_by(25.0, 79.5, 0.12), False)
+    check("...which is exactly what the old rule allowed, because the slack came "
+          "from that region rather than from the picture",
+          off_by(25.0, 79.5, None), True)
+
+    # A thing that really is wide keeps its room: a television a metre across,
+    # seen from two and a half metres.
+    telly = {"x_m": 2.5, "y_m": 0.0, "uncertainty_m": 0.1, "extent_m": 0.5}
+    wide = {"x_m": 0.0, "y_m": 0.0, "bearing_deg": 11.0, "span_deg": 5.0}
+    check("a television is still matched across its own width",
+          locate.agrees(telly, wide, locate.match_tolerance(telly, wide)), True)
+
+
 def test_a_thing_cannot_be_seen_through_a_wall() -> None:
     """**The fault that put two rooms inside one entity, with its own numbers.**
 
@@ -1763,6 +1813,7 @@ TESTS = (
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
     test_two_identical_chairs_are_not_guessed_at_from_two_places,
     test_one_television_seen_six_times_is_one_television,
+    test_one_thing_cannot_swallow_the_wall_behind_it,
     test_a_thing_cannot_be_seen_through_a_wall,
     test_a_thing_does_not_move_out_from_under_its_own_evidence,
     test_the_reason_survives_the_inspection_that_decided_it,
