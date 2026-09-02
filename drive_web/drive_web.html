@@ -1472,9 +1472,10 @@ function wObservation(observation, options) {
   when.textContent = wTime(observation.observed_at);
   head.append(when);
   if (observation.label) {
-    // Only the language model's inspections carry a name, and they are history:
-    // nothing writes one now. Shown where it exists rather than dropped, because
-    // an old row saying what the model said is the record of that experiment.
+    // Only rows the language model wrote carry a name, and there is no language
+    // model any more -- so this fires on history alone, in a database that
+    // survives deploys. Shown where it exists rather than dropped, because an
+    // old row saying what the model said is the record of that experiment.
     const what = document.createElement("strong");
     what.textContent = ` ${observation.label}`;
     head.append(what);
@@ -1522,7 +1523,9 @@ function wObservation(observation, options) {
   } else {
     bits.push("no usable box");
   }
-  bits.push(`${observation.model_id || "?"} / prompt ${observation.prompt_version || "?"}`);
+  bits.push(observation.prompt_version
+      ? `${observation.model_id || "?"} / prompt ${observation.prompt_version}`
+      : `${observation.model_id || "?"}`);
   meta.textContent = bits.join(" · ");
   block.append(meta);
 

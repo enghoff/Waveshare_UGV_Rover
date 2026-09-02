@@ -280,9 +280,9 @@ class WorldStore:
         """Observation history, newest first.
 
         `entity_id` selects one entity's history; `unmatched` selects the
-        observations no entity was allocated for, which is where a model that
-        invented an identifier or answered with nothing concrete ends up, and which
-        the popup shows so that those are visible rather than lost.
+        observations no entity was allocated for, which is where everything
+        starts and where a thing seen once from one place stays. The popup shows
+        them so that a pool that is not draining is visible rather than lost.
         """
         query = "SELECT * FROM observations"
         args: list[Any] = []
@@ -588,7 +588,7 @@ class WorldStore:
         recliner and then a blue leather one on a byte-identical frame, and the
         word list that replaced it scored every phrase between 0.08 and 0.12
         whatever the crop held. Nothing measures what a thing is called any more,
-        so `label` is written empty for anything perception saw.
+        so nothing writes `label` at all and it comes back null.
         """
         now = time.time()
         session = self.map_session()
@@ -621,16 +621,15 @@ class WorldStore:
                 # them are the record of that having been tried.
                 self.db.execute(
                     "INSERT INTO observations(entity_id, inference_id, observed_at,"
-                    " source, frame_id, frame_path, label,"
+                    " source, frame_id, frame_path,"
                     " bbox_json, observer_pan_deg,"
                     " observer_tilt_deg, observer_pose_json, map_session, model_id,"
                     " raw_json,"
                     " bearing_deg, span_deg, region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
-                     getattr(item, "label", "") or "",
                      None if bbox is None else json.dumps(bbox),
                      capture.get("pan"), capture.get("tilt"),
                      None if pose is None else json.dumps(pose), session, model_id,

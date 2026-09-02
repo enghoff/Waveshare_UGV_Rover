@@ -823,7 +823,8 @@ def test_perception_writes_no_name_and_no_warning_about_one() -> None:
             directory, [[a_sighting()]])
         inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
-        check("the row carries no name", row["label"], "")
+        check("nothing wrote a name, so the column is null rather than blank",
+              row["label"], None)
         check("...and no leftover score for one", row["label_score"], None)
         check("...and no warning about a name that was never there",
               row["note"], None)
