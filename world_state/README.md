@@ -18,8 +18,17 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
-**Three faults were found on 2026-09-02 by replaying the rover's own run, and two
-of them were upstream of everything the design argues about.** The write-up is
+**A fourth fault was found on 2026-09-02 and it is the one that mattered most:
+the rover was placing things through walls, and its own map said so.** An entity
+held observations of two different objects in two different rooms, and what joined
+them was not appearance at all — it was that two bearings pointed at two
+different things a couple of metres away and crossed ten metres off, outside the
+edge of the map. Nothing asked whether the rover could have seen that far in that
+direction. It can now, out of the occupancy grid; the write-up is *You cannot see
+a thing through a wall* below.
+
+**Three earlier faults were found the same way, and two of them were upstream of
+everything the design argues about.** The write-up is
 under *What replaying a real run found* below; the short version is that the pose
 an observation was recorded against was not where the rover was, that a sixth of
 the regions it stored were pictures of nothing, and that a placed thing would
@@ -480,6 +489,20 @@ scp orin:'~/.ugv/world/frames/*.jpg' /tmp/frames/
 python world_state/replay.py /tmp/run.db --frames /tmp/frames --detail
 ```
 
+To replay with the wall check the rover now applies, save the grid too and pass
+`--map`:
+
+```bash
+ssh orin 'python3 - <<"EOF"
+import json, socket
+s = socket.create_connection(("127.0.0.1", 8773), 20)
+f = s.makefile("rwb"); f.write(b"{\"op\": \"map\"}\n"); f.flush()
+open("/tmp/map.json", "w").write(f.readline().decode())
+EOF'
+scp orin:/tmp/map.json /tmp/map.json
+python world_state/replay.py /tmp/run.db --frames /tmp/frames --map /tmp/map.json
+```
+
 [`replay.py`](replay.py) feeds a recorded database back through the live resolver
 one look at a time and scores what comes out — how much of each entity is
 something other than the thing it is mostly of, and how many of its own bearings
@@ -580,6 +603,51 @@ viewpoints, which is the opposite of how `_place_one` counts support, and the tw
 really are different questions — there a phantom near the camera collects
 agreement from half the room, here every ray already belongs to this one thing.
 Counting viewpoints instead leaves 37%.
+
+### You cannot see a thing through a wall
+
+**This is the fault that put two rooms inside one entity, and the constraint that
+fixes it was in the rover all along.** A bearing carries no range. Two bearings
+therefore cross *somewhere*, whatever they are pointed at — and two cameras
+aimed at two different things a couple of metres away in two different rooms
+produce rays that meet ten metres off, at a healthy angle and off a healthy
+baseline. Every guard in `locate` accepted that, because none of them asked the
+question that settles it.
+
+The rover placed three things in the run of 2026-09-02 after the first three fixes
+were deployed. **Two of them sat outside the edge of its own map**, one 4.7 m past
+it; and 19 of the 22 bearings attached to those three claimed a thing further away
+than the first obstacle along their own bearing. One claimed something 3.8 m away
+through a wall 55 cm in front of the rover.
+
+The appearance vectors never came into it. `DIFFERENT_THING` only ever removes,
+at 0.5, and a blown-out window against a picture frame on a yellow wall clears
+that easily. Geometry joined them, and geometry was working with rays of unbounded
+length.
+
+So the occupancy grid now bounds every sighting. `rover_world._world_reach` walks
+the bearing out from the pose and stops at the first occupied cell or at the edge
+of what has been mapped, and `locate.beyond_reach` refuses a crossing — and
+refuses a later bearing joining one — that sits further out than that. On the
+same recording, all three placements go and all 68 observations stay pending,
+which is the honest answer: standing in a few places looking at different things
+from each, this rover had not earned a single placement.
+
+```text
+       the rover at (-0.72, 0.08)         a wall 0.55 m ahead
+                    o------------------X- - - - - - - - - - - -> claimed 3.84 m
+                                          the crossing lived here
+```
+
+Two things about the number. The margin is a metre — `SEE_PAST_M` — and it
+is generous on purpose: the map is drawn by a 2D scanner at chassis height while
+the camera sits on a gimbal above it, so a sofa two metres away is a wall to the
+lidar and something the camera looks straight over. It costs nothing here, because
+every placement this refuses is claiming 3.3 to 9.6 m past its own first obstacle
+and the whole band from 0 to 3 m refuses the same three. And **nothing revisits a
+placement already made**: the guard stops a wrong entity being created and does
+not withdraw one that exists, so a store written before this arrived keeps its
+mistakes until it is cleared.
 
 ### What is still wrong, and where it is not
 

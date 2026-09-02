@@ -13,8 +13,20 @@ drive has now happened.** Phase 5, the merge, came out of that drive and is not
 built -- and the veto it was designed around has since been measured and does not
 work; see *What replaying a real run found* below.
 
-**Reviewed on 2026-09-02 against a second, longer run, and three faults came out
-of it that no selftest could have found.** Two were upstream of everything in
+**The strongest gate in the design was missing and the rover already had it: a
+thing cannot be seen through a wall.** Reviewed again on 2026-09-02 after the
+three fixes below were deployed, and the rover promptly placed two things outside
+the edge of its own map, from bearings that were each individually correct. A
+bearing carries no range, so two of them cross somewhere whatever they are aimed
+at; the occupancy grid says where the first obstacle on a bearing is, and that
+bounds every sighting from a single look. It is consulted now -- see
+*You cannot see a thing through a wall* in
+[`world_state/README.md`](../world_state/README.md). On the recording it refuses
+all three of that run's placements, which is right: all three were mixtures of
+objects in different rooms.
+
+**Reviewed on 2026-09-02 against a second, longer run, and three further faults
+came out of it that no selftest could have found.** Two were upstream of everything in
 this plan: the pose an observation was recorded against was not where the rover
 was, and a sixth of the regions it stored were pictures of nothing. The third was
 in the geometry -- a placed thing would move out from under the looks that placed
@@ -162,7 +174,8 @@ Four jobs, four mechanisms, and the important part is that they are separate:
 |---|---|
 | What regions are in this frame? | FastSAM, which knows no categories |
 | Is this the same object as that one? | DINOv2 similarity, gated by geometry |
-| **Which persistent thing is it?** | **Triangulated map position** |
+| **Which persistent thing is it?** | **Triangulated map position, bounded by the occupancy grid** |
+| How far away could it possibly be? | The first obstacle on its own bearing |
 | Find me the thing I am describing | SigLIP2, text against stored embeddings |
 | What is it called? | **Nobody. Nothing names a region — see below** |
 | What is that, in words? | The conversation's own model, through `look`, when a person asks |

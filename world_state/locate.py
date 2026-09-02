@@ -97,6 +97,62 @@ MAX_RANGE_M = 12.0
 #: that was never there into the world and keeps it.
 MIN_RANGE_M = 0.75
 
+#: How far past the first thing on its own bearing a sighting may still be, in
+#: metres. **The thing itself is often the obstacle** -- a picture on a wall, a
+#: doorway, a window -- so this cannot be zero, and the grid's own cell is 5 cm
+#: before a bearing good to 1.5 degrees clips a corner early.
+#:
+#: **The generous end of a wide safe band, chosen for the lidar rather than for
+#: the arithmetic.** The map is drawn by a 2D scanner at chassis height and the
+#: camera is on a gimbal above it, so the two do not agree about what blocks a
+#: view: a sofa two metres away is a wall to the lidar and something the camera
+#: looks straight over. A metre of slack is the allowance for that, and it costs
+#: nothing here -- measured on the run of 2026-09-02, every placement this refuses
+#: is claiming a thing 3.3 to 9.6 m past its own first obstacle, and the whole
+#: band from 0 to 3 m refuses exactly the same three placements. Past 5 m they
+#: start coming back.
+#:
+#: What it cannot do is tell furniture from a wall, so a thing genuinely more than
+#: a metre behind a sofa still goes unplaced until the rover looks from somewhere
+#: with a clear view. That is the safe direction: the observation is kept, with
+#: its picture and its bearing, and waits.
+SEE_PAST_M = 1.0
+
+
+def beyond_reach(observer: dict[str, Any], point: tuple[float, float]) -> bool:
+    """Whether this observer would have had to see through a wall.
+
+    **This is the constraint the design was missing, and it comes from the map
+    rather than from the picture.** A bearing has no range, so two bearings will
+    cross *somewhere* -- and two cameras pointed at two different things a couple
+    of metres away in two different rooms produce rays that cross ten metres away
+    at a perfectly healthy angle off a perfectly healthy baseline. Every guard
+    here passed such a crossing, because none of them asks the one question that
+    settles it: could the rover have seen that far in that direction at all?
+
+    It could not, and the rover already knows. The occupancy grid says where the
+    first obstacle on a bearing is, and **you cannot see a thing through a
+    wall** -- so the first obstacle bounds the range of every single sighting,
+    from one look, with no triangulation involved. Measured on the run of
+    2026-09-02: 19 of the 22 bearings that had been attached to a placed thing
+    claimed something further away than the first wall along their own bearing,
+    and two of the three things placed sat outside the edge of the map
+    altogether. One of them was nine metres past a wall 55 cm in front of the
+    rover.
+
+    `reach_m` is put on the ray by whoever built it, because it belongs to the
+    map at the moment of the decision rather than to the observation -- a map
+    grows as the rover explores, and a bearing that could not be checked last
+    time can be checked now. A ray without it is unbounded, which is what this
+    module did before and is what the selftests get unless they say otherwise.
+    """
+    reach = observer.get("reach_m")
+    if reach is None:
+        return False
+    range_m = math.hypot(point[0] - float(observer["x_m"]),
+                         point[1] - float(observer["y_m"]))
+    return range_m > float(reach) + SEE_PAST_M
+
 
 def _unit(bearing_deg: float) -> tuple[float, float]:
     radians = math.radians(bearing_deg)
@@ -174,6 +230,12 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         range_m = math.hypot(point[0] - float(observer["x_m"]),
                              point[1] - float(observer["y_m"]))
         if range_m < MIN_RANGE_M or range_m > MAX_RANGE_M:
+            return None
+        # And not through a wall. See `beyond_reach`: this is the guard that
+        # refuses a crossing invented out of two bearings pointed at two
+        # different things in two different rooms, which every guard above
+        # accepts.
+        if beyond_reach(observer, point):
             return None
 
     worst = 0.0
@@ -294,6 +356,12 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
     range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
                          float(point["y_m"]) - float(ray["y_m"]))
     if range_m > MAX_RANGE_M:
+        return False
+    # A bearing cannot be pointing at something behind a wall, however well the
+    # angle lines up. Same guard as in `fix`, and it has to be in both: one
+    # decides whether a crossing places a thing, this decides whether a later
+    # look joins one, and the run of 2026-09-02 had both kinds of error.
+    if beyond_reach(ray, (float(point["x_m"]), float(point["y_m"]))):
         return False
     if tolerance_m is None:
         # What the bearing noise alone allows at this range, plus however

@@ -145,11 +145,65 @@ def blank_ids(path: str, frames_dir: str) -> set:
     return doomed
 
 
+def reach_from(path: str):
+    """A range bound out of a saved occupancy grid, or None.
+
+    The grid is whatever the nav bridge answers `{"op": "map"}` with, saved as
+    JSON -- one short script on the rover against loopback 8773, which the
+    component README spells out.
+
+    A copy of `rover_world._world_reach`, deliberately: the daemon's runs inside
+    the process that owns the camera and answers from a live grid, this one
+    answers from a file at a desk, and neither host would import a shared module
+    the same way. Two short walks over an array is the cheaper thing to keep in
+    step.
+    """
+    import base64
+    import zlib
+    try:
+        import numpy as np
+    except ImportError:
+        print("  (--map needs numpy; bearings will be unbounded)")
+        return None
+    if not os.path.exists(path):
+        print(f"  (no such map: {path}; bearings will be unbounded)")
+        return None
+    payload = json.load(open(path))
+    width, height = int(payload["width"]), int(payload["height"])
+    resolution = float(payload["resolution_m"])
+    origin_x, origin_y = float(payload["origin_x_m"]), float(payload["origin_y_m"])
+    cells = np.frombuffer(zlib.decompress(base64.b64decode(payload["data"])),
+                          dtype=np.int8).reshape(height, width)
+    step = resolution / 2.0
+
+    def reach(x_m, y_m, bearing_deg):
+        dx = math.cos(math.radians(bearing_deg)) * step
+        dy = math.sin(math.radians(bearing_deg)) * step
+        got = 0.0
+        for count in range(1, int(12.0 / step) + 1):
+            ix = math.floor((x_m + dx * count - origin_x) / resolution)
+            iy = math.floor((y_m + dy * count - origin_y) / resolution)
+            if not (0 <= ix < width and 0 <= iy < height):
+                break
+            if cells[iy, ix] >= 50:
+                break
+            got = step * count
+        return got
+
+    return reach
+
+
 # --- the replay itself -------------------------------------------------------
 
 def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
-           verbose: bool = False) -> tuple[list[dict], list[dict]]:
-    """Feed a recording back through the live resolver, from an empty world."""
+           verbose: bool = False, reach=None) -> tuple[list[dict], list[dict]]:
+    """Feed a recording back through the live resolver, from an empty world.
+
+    `reach` is the same callable the daemon hands the resolver -- how far the
+    rover could see from a place in a direction. `--map` builds one from a grid
+    fetched off the rover; without it every bearing is unbounded, which is what
+    the resolver did before it could ask.
+    """
     skip = skip or set()
     directory = tempfile.mkdtemp(prefix="world-replay-")
     try:
@@ -174,7 +228,7 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
                         + ",".join(COLUMNS) + ") VALUES(NULL, "
                         + ",".join("?" * len(COLUMNS)) + ")",
                         tuple(row[name] for name in COLUMNS))
-            outcome = resolver.resolve(store)
+            outcome = resolver.resolve(store, reach=reach)
             if verbose:
                 print(f"  look {group[0]['inference_id']}: "
                       f"+{len(wanted)} regions -> {outcome['matched']} matched, "
@@ -328,6 +382,9 @@ def main() -> int:
     parser.add_argument("--frames", default="",
                         help="the matching frames directory; enables the "
                              "blank-region filter on an old recording")
+    parser.add_argument("--map", default="",
+                        help="a map.json fetched from the nav bridge; supplies "
+                             "the range bound the occupancy grid gives")
     parser.add_argument("--no-untrusted-pose", action="store_true",
                         help="drop the observations taken at exactly the map "
                              "origin, which is what an unlocalised stack gave")
@@ -343,9 +400,10 @@ def main() -> int:
     skip = blank_ids(args.database, args.frames) if args.frames else set()
     if skip:
         print(f"  {len(skip)} regions with no picture in them, left out")
+    reach = reach_from(args.map) if args.map else None
     entities, observations = replay(args.database, skip=skip,
                                     drop_untrusted=args.no_untrusted_pose,
-                                    verbose=args.verbose)
+                                    verbose=args.verbose, reach=reach)
     score(entities, observations, detail=args.detail)
     return 0
 

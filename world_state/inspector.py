@@ -47,7 +47,9 @@ class Inspector:
     def __init__(self, store, eyes, capture: Callable[[], dict[str, Any]],
                  pose: Callable[[], dict[str, Any] | None] | None = None,
                  fov_deg: float | None = None,
-                 source: str = "perception") -> None:
+                 source: str = "perception",
+                 reach: Callable[[float, float, float], float | None] | None = None
+                 ) -> None:
         self.store = store
         #: The perception sidecar, and the only thing an inspection asks. It is
         #: required rather than optional: an inspector with nothing to look
@@ -56,6 +58,13 @@ class Inspector:
         self.eyes = eyes
         self.capture = capture
         self.pose = pose
+        #: How far the rover could see from a place in a direction, out of the
+        #: occupancy grid. Supplied rather than reached for, like the camera and
+        #: the pose, because the map belongs to the navigator -- and optional,
+        #: because a rover with no map still measures perfectly good regions and
+        #: should still record them. What it buys when it is there is in
+        #: `locate.beyond_reach`, and it is the strongest gate the resolver has.
+        self.reach = reach
         #: The camera's horizontal field of view, which the daemon owns. Without
         #: it a box cannot become an angle, so the bearing columns stay null and
         #: say so rather than being filled in from a guess.
@@ -188,7 +197,7 @@ class Inspector:
         from . import resolve as resolver
 
         try:
-            return resolver.resolve(self.store)
+            return resolver.resolve(self.store, reach=self.reach)
         except Exception as error:                 # never past here
             return {"error": f"{type(error).__name__}: {error}"}
 

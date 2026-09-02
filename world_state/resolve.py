@@ -121,24 +121,44 @@ class Decision:
         return f"observation {self.observation_id}: {self.outcome} -- {self.why}"
 
 
-def ray_of(observation: dict[str, Any]) -> dict[str, Any] | None:
+def ray_of(observation: dict[str, Any],
+           reach=None) -> dict[str, Any] | None:
     """The bearing already stored on an observation, as `locate` wants it.
 
     Recomputed from nothing: the bearing was worked out when the look was taken,
     from the field of view the camera had at that moment, and it is a
     measurement rather than a derivation.
+
+    `reach` is the exception, and it is deliberately *not* a measurement of the
+    observation. It answers "how far could the rover see in that direction",
+    which is a question about the map, and the map grows as the rover explores --
+    so a bearing that could not be bounded on one pass can be bounded on the
+    next. It is asked here, once per ray, because the alternative is asking it
+    inside the pair loops, which is the same answer computed a few hundred times.
+    See `locate.beyond_reach` for what it stops.
     """
     pose = observation.get("pose")
     bearing = observation.get("bearing_deg")
     if not isinstance(pose, dict) or bearing is None:
         return None
     try:
-        return {"x_m": float(pose["x_m"]), "y_m": float(pose["y_m"]),
-                "bearing_deg": float(bearing),
-                "span_deg": float(observation.get("span_deg") or 0.0),
-                "observation_id": observation.get("id")}
+        built = {"x_m": float(pose["x_m"]), "y_m": float(pose["y_m"]),
+                 "bearing_deg": float(bearing),
+                 "span_deg": float(observation.get("span_deg") or 0.0),
+                 "observation_id": observation.get("id")}
     except (KeyError, TypeError, ValueError):
         return None
+    if reach is not None:
+        try:
+            far = reach(built["x_m"], built["y_m"], built["bearing_deg"])
+        except Exception:
+            # A map that cannot be read leaves the bearing unbounded, which is
+            # what this did before there was a map to ask. It must never turn an
+            # inspection into a failure.
+            far = None
+        if far is not None:
+            built["reach_m"] = float(far)
+    return built
 
 
 def similarity(left: bytes, right: bytes) -> float:
@@ -187,7 +207,7 @@ def best_appearance(store, entity_id: str, vector: bytes) -> float | None:
 
 
 def resolve(store, *, map_session: int | None = None,
-            limit: int = 500) -> dict[str, Any]:
+            limit: int = 500, reach=None) -> dict[str, Any]:
     """One pass over the pending pool. Decides, records, and explains.
 
     Two passes internally, and the order is the whole algorithm. First every
@@ -195,6 +215,15 @@ def resolve(store, *, map_session: int | None = None,
     a known thing is cheaper and safer than inventing one. Only what is left over
     is considered for pairing into something new, and only where two bearings
     genuinely cross.
+
+    `reach(x_m, y_m, bearing_deg) -> metres | None` is how far the rover could
+    see from there in that direction, which only the owner of the occupancy grid
+    can answer -- so it arrives as a callable rather than being reached for, the
+    way the camera and the pose do. **It is the strongest gate in here**, and
+    what it stops is written up in `locate.beyond_reach`. Without it every
+    bearing is a ray of unbounded length, which is what this was before, and two
+    of them pointed at two different things in two different rooms cross in a
+    third room.
     """
     session = store.map_session() if map_session is None else int(map_session)
     pending = store.unplaced(map_session=session, limit=limit)
@@ -208,13 +237,15 @@ def resolve(store, *, map_session: int | None = None,
     taken_in: dict[Any, set] = {}
     leftover = []
     for observation in pending:
-        decision = _against_known(store, observation, entities, session, taken_in)
+        decision = _against_known(store, observation, entities, session,
+                                  taken_in, reach)
         if decision is None:
             leftover.append(observation)
             continue
         decisions.append(decision)
 
-    decisions.extend(_pair_up(store, leftover, session, entities, taken_in))
+    decisions.extend(_pair_up(store, leftover, session, entities, taken_in,
+                              reach))
 
     counted = {MATCH: 0, NEW: 0, AMBIGUOUS: 0}
     for decision in decisions:
@@ -235,7 +266,7 @@ def resolve(store, *, map_session: int | None = None,
 
 
 def _against_known(store, observation, entities, session,
-                   taken_in) -> Decision | None:
+                   taken_in, reach=None) -> Decision | None:
     """Offer one observation to the things already placed.
 
     None means "no candidate survived the gates", which is not a decision: the
@@ -243,7 +274,7 @@ def _against_known(store, observation, entities, session,
     new. A decision means it was matched, or that it was ambiguous and is being
     left alone deliberately.
     """
-    ray = ray_of(observation)
+    ray = ray_of(observation, reach)
     if ray is None:
         return None
     vector = observation.get("dino_blob") or b""
@@ -302,7 +333,7 @@ def _against_known(store, observation, entities, session,
     store.attach(chosen["entity_id"], [observation["id"]], why)
     if vector:
         store.add_exemplar(chosen["entity_id"], vector)
-    _replace_placement(store, chosen["entity_id"], session)
+    _replace_placement(store, chosen["entity_id"], session, reach)
     return Decision(observation["id"], MATCH, chosen["entity_id"], why=why,
                     candidates=surviving)
 
@@ -325,7 +356,8 @@ def _says(candidate: dict[str, Any]) -> str:
     return "not comparable" if value is None else f"{float(value):.2f}"
 
 
-def _pair_up(store, leftover, session, entities, taken_in) -> list[Decision]:
+def _pair_up(store, leftover, session, entities, taken_in,
+             reach=None) -> list[Decision]:
     """Make new things out of pairs of bearings that actually cross.
 
     Every pair is tried. There used to be a cheap grouping by compatible name in
@@ -350,7 +382,7 @@ def _pair_up(store, leftover, session, entities, taken_in) -> list[Decision]:
         available = [one for one in leftover if one["id"] not in used]
         if len(available) < 2:
             break
-        placed = _place_one(store, available, session)
+        placed = _place_one(store, available, session, reach)
         if placed is None:
             break
         decision, taken = placed
@@ -363,14 +395,15 @@ def _pair_up(store, leftover, session, entities, taken_in) -> list[Decision]:
         for waiting in leftover:
             if waiting["id"] in used:
                 continue
-            joined = _against_known(store, waiting, entities, session, taken_in)
+            joined = _against_known(store, waiting, entities, session,
+                                    taken_in, reach)
             if joined is not None:
                 decisions.append(joined)
                 used.add(waiting["id"])
     return decisions
 
 
-def _place_one(store, available, session):
+def _place_one(store, available, session, reach=None):
     """The best-supported crossing among these observations, or None.
 
     **Two bearings crossing is not enough on its own, and this is the phantom
@@ -392,7 +425,7 @@ def _place_one(store, available, session):
     """
     rays = []
     for observation in available:
-        ray = ray_of(observation)
+        ray = ray_of(observation, reach)
         if ray is not None:
             rays.append((ray, observation))
     if len(rays) < 2:
@@ -518,14 +551,15 @@ def _could_be_one(first: dict[str, Any], second: dict[str, Any]) -> bool:
     return similarity(left, right) >= DIFFERENT_THING
 
 
-def _replace_placement(store, entity_id: str, session: int) -> None:
+def _replace_placement(store, entity_id: str, session: int,
+                       reach=None) -> None:
     """Work the placement out again from everything now attached.
 
     Every observation-level measurement is kept when this happens: what changes
     is the application's opinion, and the evidence it was formed from is history.
     """
     observations = store.observations(entity_id, limit=24)
-    rays = [ray for ray in (ray_of(one) for one in observations) if ray]
+    rays = [ray for ray in (ray_of(one, reach) for one in observations) if ray]
     best = locate.best_fix(rays)
     if best is not None:
         store.place(entity_id, best, session)

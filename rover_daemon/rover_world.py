@@ -84,6 +84,25 @@ TURNED_ENOUGH_DEG = 25.0
 #: distinguishable from "it stopped working".
 LOOK_ANYWAY_S = 300.0
 
+#: How long a fetched occupancy grid is reused for. One resolve pass asks how far
+#: the rover could see for every bearing in the pending pool -- a few hundred
+#: questions of the same map -- and refetching for each would be a few hundred
+#: round trips to the bridge and a few hundred decompressions of the same 80 kB.
+#: Short enough that a map five seconds further explored is used on the next look,
+#: which is far finer than the rover can drive.
+MAP_CACHE_S = 5.0
+#: No sighting is bounded beyond this, in metres. It is `locate.MAX_RANGE_M`,
+#: which already refuses a crossing further out, so walking past it would only
+#: cost time.
+REACH_LIMIT_M = 12.0
+#: What counts as a wall in the grid the bridge sends. The same threshold
+#: `ros_navigator.GRID_OCCUPIED_AT` renders a map with, stated here rather than
+#: imported because this module already survives that one being missing.
+OCCUPIED_AT = 50
+#: How long to wait for the bridge to send the map. The same patience `map_png`
+#: has, for the same request.
+MAP_ASK_S = 8.0
+
 
 class RoverWorld:
     """Semantic world state, as calls on the daemon's existing protocol.
@@ -255,7 +274,8 @@ class RoverWorld:
                     else world_state.SidecarEyes())
             inspector = world_state.Inspector(
                 self._world_store(), eyes, self._world_capture,
-                self._world_pose, fov_deg=self.camera_fov_deg)
+                self._world_pose, fov_deg=self.camera_fov_deg,
+                reach=self._world_reach)
             self._world_inspector_cache = inspector
         return inspector
 
@@ -340,6 +360,93 @@ class RoverWorld:
                     "heading_deg": round(float(where["heading_deg"]), 1)}
         except (KeyError, TypeError, ValueError):
             return None
+
+    def _world_grid(self):
+        """The occupancy grid, decoded, or None. Cached for `MAP_CACHE_S`.
+
+        Fetched from the navigator rather than read off `nav.slam`, for the
+        reason `_world_pose` no longer reads that either: `nav.slam` is whatever
+        the map renderer was last handed, and a world state that only knew about
+        walls while somebody had the console open would be worse than one that
+        knew about none.
+        """
+        now = time.monotonic()
+        held = getattr(self, "_world_grid_cache", None)
+        if held is not None and now - held[0] < MAP_CACHE_S:
+            return held[1]
+        self._world_grid_cache = (now, None)
+        navigator = getattr(self, "nav", None)
+        if navigator is None:
+            return None
+        try:
+            import zlib
+
+            import numpy as np
+
+            answer = navigator.ask({"op": "map"}, MAP_ASK_S)
+            if not answer.get("ok") or not answer.get("data"):
+                return None
+            width, height = int(answer["width"]), int(answer["height"])
+            cells = np.frombuffer(
+                zlib.decompress(base64.b64decode(answer["data"])), dtype=np.int8)
+            if cells.size != width * height:
+                return None
+            grid = (width, height, float(answer["resolution_m"]),
+                    float(answer["origin_x_m"]), float(answer["origin_y_m"]),
+                    cells.reshape(height, width))
+        except Exception:
+            # No map is a state the resolver handles: every bearing is unbounded,
+            # which is what it did before it could ask.
+            return None
+        self._world_grid_cache = (now, grid)
+        return grid
+
+    def _world_reach(self, x_m: float, y_m: float,
+                     bearing_deg: float) -> float | None:
+        """How far the rover could see from there in that direction, in metres.
+
+        **This is the strongest thing the world state has, and the rover had
+        already measured it.** A bearing carries no range, so two bearings cross
+        somewhere whatever they are pointed at -- and on 2026-09-02 the rover
+        placed two things outside the edge of its own map, and one of them nine
+        metres past a wall 55 cm in front of it, from bearings that were each
+        individually correct. The occupancy grid answers the question that
+        settles it: you cannot see a thing through a wall, so the first obstacle
+        along a bearing is the furthest that sighting can possibly be.
+
+        None means the map cannot say, and None leaves the bearing unbounded
+        rather than refused. What the resolver does with the number is
+        `locate.beyond_reach`, and the margin it allows lives there, because a
+        thing standing against a wall *is* the obstacle.
+        """
+        grid = self._world_grid()
+        if grid is None:
+            return None
+        width, height, resolution, origin_x, origin_y, cells = grid
+        step = resolution / 2.0
+        dx = math.cos(math.radians(bearing_deg)) * step
+        dy = math.sin(math.radians(bearing_deg)) * step
+        reached = 0.0
+        for count in range(1, int(REACH_LIMIT_M / step) + 1):
+            at_x = float(x_m) + dx * count
+            at_y = float(y_m) + dy * count
+            # **Floor, not truncation.** `int()` rounds toward zero, so a point
+            # five centimetres the wrong side of the origin lands in cell 0 and a
+            # walk off that edge of the map never notices it left.
+            ix = math.floor((at_x - origin_x) / resolution)
+            iy = math.floor((at_y - origin_y) / resolution)
+            if not (0 <= ix < width and 0 <= iy < height):
+                # Off the edge of what has been mapped, which bounds a sighting
+                # as firmly as a wall does: the rover has never seen anything out
+                # there, so it cannot have been looking at a thing out there.
+                break
+            if cells[iy, ix] >= OCCUPIED_AT:
+                break
+            reached = step * count
+        # The last sample that was clear, so the answer is short by up to half a
+        # cell rather than long by it. Erring short means erring toward refusing
+        # a placement, and `locate.SEE_PAST_M` is ten times the error either way.
+        return reached
 
     # --- the control calls ----------------------------------------------------
 

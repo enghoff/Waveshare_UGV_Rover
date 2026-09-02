@@ -1176,6 +1176,64 @@ def test_one_television_seen_six_times_is_one_television() -> None:
             store.close()
 
 
+def test_a_thing_cannot_be_seen_through_a_wall() -> None:
+    """**The fault that put two rooms inside one entity, with its own numbers.**
+
+    A bearing carries no range, so two bearings cross *somewhere* whatever they
+    are pointed at -- and two cameras aimed at two different things a couple of
+    metres away in two different rooms give rays that meet ten metres off, at a
+    healthy angle and off a healthy baseline. Every guard in `locate` accepted
+    that, because none of them asked whether the rover could have seen that far
+    in that direction at all.
+
+    The rover could not, and the rover already knew: its own occupancy grid says
+    where the first wall on a bearing is. On the run of 2026-09-02 it placed one
+    thing at (9.87, 1.29) -- 4.7 m outside the edge of its own map -- from
+    bearings whose first obstacle was 1.1 and 1.95 m away, and another 3.8 m out
+    through a wall 55 cm in front of the rover. Those two are below.
+    """
+    # Two bearings from the rover's own record, and the crossing they made.
+    first = {"x_m": 3.028, "y_m": 6.26, "bearing_deg": -36.0, "span_deg": 10.9}
+    second = {"x_m": -0.724, "y_m": 0.081, "bearing_deg": 7.3, "span_deg": 10.5}
+    unbounded = locate.fix(first, second)
+    check("the two bearings cross, which is why this was ever placed",
+          unbounded is not None, True)
+    check("...ten and a half metres out, and confident about it",
+          (round(math.dist((unbounded["x_m"], unbounded["y_m"]),
+                           (second["x_m"], second["y_m"])), 1),
+           unbounded["uncertainty_m"]), (10.5, 0.713))
+
+    # What the map said at the time: a wall about a metre ahead of each of them.
+    walled = locate.fix({**first, "reach_m": 1.95},
+                        {**second, "reach_m": 1.10})
+    check("...and with the map consulted, there is no such thing to place",
+          walled, None)
+
+    # The case that must keep working, and the reason the margin exists: a thing
+    # a couple of metres away with the far wall of the room behind it.
+    close = locate.fix({"x_m": 0.0, "y_m": 0.0, "bearing_deg": 45.0,
+                        "reach_m": 6.0, "span_deg": 10.0},
+                       {"x_m": 6.0, "y_m": 0.0, "bearing_deg": 135.0,
+                        "reach_m": 6.0, "span_deg": 10.0})
+    check("a thing in front of a far wall is still placed", close is not None,
+          True)
+    check("...and so is one standing right against the wall itself",
+          locate.fix({"x_m": 0.0, "y_m": 0.0, "bearing_deg": 45.0,
+                      "reach_m": 4.1, "span_deg": 10.0},
+                     {"x_m": 6.0, "y_m": 0.0, "bearing_deg": 135.0,
+                      "reach_m": 4.1, "span_deg": 10.0}) is not None, True)
+
+    # And the other half of it: a bearing may not join a thing that sits behind
+    # its own wall, however well the angle lines up.
+    point = {"x_m": 1.66, "y_m": -2.93, "uncertainty_m": 0.56}
+    aimed = {"x_m": -0.72, "y_m": 0.08, "bearing_deg": -50.2, "span_deg": 10.0}
+    check("the bearing does point that way", locate.agrees(point, aimed), True)
+    check("...but not through a wall 55 cm ahead of it",
+          locate.agrees(point, {**aimed, "reach_m": 0.55}), False)
+    check("a bearing the map cannot bound is left alone",
+          locate.agrees(point, {**aimed, "reach_m": None}), True)
+
+
 def test_a_thing_does_not_move_out_from_under_its_own_evidence() -> None:
     """**The wandering entity the drive of 2026-09-02 recorded, with its numbers.**
 
@@ -1666,6 +1724,7 @@ TESTS = (
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
     test_two_identical_chairs_are_not_guessed_at_from_two_places,
     test_one_television_seen_six_times_is_one_television,
+    test_a_thing_cannot_be_seen_through_a_wall,
     test_a_thing_does_not_move_out_from_under_its_own_evidence,
     test_the_reason_survives_the_inspection_that_decided_it,
     test_a_third_look_joins_the_thing_it_points_at,

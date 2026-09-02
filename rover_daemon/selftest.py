@@ -2393,6 +2393,80 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
           rover._world_pose(), None)
 
 
+def test_how_far_the_rover_could_see_comes_off_its_own_map() -> None:
+    """The range bound the world state was missing, read out of the grid.
+
+    The resolver cannot ask this for itself -- the map belongs to the navigator --
+    so the daemon answers it, and the answer is what stops a thing being placed
+    through a wall. Two things have to come out right: a wall stops the walk, and
+    so does the edge of what has been mapped, because the rover has never seen
+    anything out there either.
+    """
+    try:
+        import numpy
+    except ImportError as error:
+        SKIP.append(f"reading reach off the occupancy grid ({error})")
+        return
+
+    import base64
+    import zlib
+
+    import rover_world
+
+    # A 4 m x 4 m room at 10 cm cells with its origin at the corner, free
+    # everywhere except a wall two metres along the +x axis.
+    cells = numpy.zeros((40, 40), dtype=numpy.int8)
+    cells[:, 20] = 100
+    payload = {
+        "ok": True, "width": 40, "height": 40, "resolution_m": 0.1,
+        "origin_x_m": 0.0, "origin_y_m": 0.0,
+        "data": base64.b64encode(zlib.compress(cells.tobytes())).decode(),
+    }
+
+    class Nav:
+        asked = 0
+
+        def ask(self, request, timeout_s):
+            Nav.asked += 1
+            return payload
+
+    class Asking:
+        _world_grid = rover_world.RoverWorld._world_grid
+        _world_reach = rover_world.RoverWorld._world_reach
+
+    rover = Asking()
+    rover.nav = Nav()
+
+    # Good to the grid's own resolution and never longer than the truth, which
+    # is the direction that errs toward refusing a placement.
+    def within_a_cell(got, want):
+        return got is not None and want - 0.1 <= got <= want
+
+    check("a wall two metres ahead bounds the sighting there",
+          within_a_cell(rover._world_reach(0.5, 2.0, 0.0), 1.5), True)
+    check("...and the map's own edge bounds it when there is no wall",
+          within_a_cell(rover._world_reach(0.5, 2.0, 180.0), 0.5), True)
+    check("a bearing along a clear line runs to the far edge",
+          within_a_cell(rover._world_reach(0.5, 2.0, 90.0), 2.0), True)
+
+    # The grid is fetched once and reused, because one resolve pass asks this for
+    # every bearing in the pending pool.
+    before = Nav.asked
+    for _ in range(20):
+        rover._world_reach(0.5, 2.0, 0.0)
+    check("...and the map is not refetched for every bearing",
+          Nav.asked, before)
+
+    class Down:
+        def ask(self, request, timeout_s):
+            return {"ok": False, "error": "the bridge is not answering"}
+
+    rover = Asking()
+    rover.nav = Down()
+    check("no map means the bearing is left unbounded, not refused",
+          rover._world_reach(0.5, 2.0, 0.0), None)
+
+
 def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
     """When building the world state by itself, what is worth a look.
 
@@ -2497,6 +2571,7 @@ def main():
                  test_what_the_camera_does_with_nobody_in_view,
                  test_the_rover_looks_when_there_is_something_new_to_see,
                  test_a_world_observation_takes_the_live_pose_and_no_other,
+                 test_how_far_the_rover_could_see_comes_off_its_own_map,
                  *ROS_NAV_TESTS):
         try:
             test()
