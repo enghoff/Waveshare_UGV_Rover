@@ -400,6 +400,24 @@ class Camera:
         # which is what made it hard to see -- luma survives a chroma swap, so
         # faces were still found in a picture that plainly looked wrong.
         # --silent would take the text away and the exposure timestamps with it.
+        # **Full auto, on every open, because v4l2 controls do not survive the
+        # device.** They are the driver's state, not the daemon's: a reboot or a
+        # re-plug puts them back to whatever the camera powers up with, and
+        # anything set by hand in between is gone. Set here rather than left
+        # alone because the alternative was measured -- this camera's exposure
+        # wound itself up during a spell in a dark room, stayed there when
+        # daylight returned, and every frame came back pure white. Nothing
+        # noticed: a blank frame reads exactly like an empty room, and a whole
+        # drive was recorded off white pictures before anyone looked at one.
+        #
+        # These are the camera's own defaults rather than a policy of ours, so
+        # this restores documented behaviour rather than imposing any. One call
+        # each, so a camera that lacks one of them still gets the other, and
+        # failures are ignored for the same reason: a different lens on a bench
+        # must not stop the daemon opening it.
+        for control in ("auto_exposure=3", "white_balance_automatic=1"):
+            subprocess.run(["v4l2-ctl", "-d", device, "-c", control],
+                           capture_output=True, check=False)
         subprocess.run(
             ["v4l2-ctl", "-d", device,
              "--set-fmt-video=width=%d,height=%d,pixelformat=%s"

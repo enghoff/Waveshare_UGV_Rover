@@ -1379,25 +1379,25 @@ def test_the_world_state_popup() -> None:
           "not answering" in session.world_state()["error"], True)
     check("...and the button comes back", session.world_state()["busy"], False)
 
-    # Clearing. Armed first, and separate from the map's clear in both directions.
+    # Clearing. One button, the map's, because everything the world state holds is
+    # a position measured in the map's frame: what used to survive a map clear was
+    # a list of things with nowhere to be, and the two were always cleared
+    # together anyway.
     session.world_link = _Recorder()
-    session.world_clear()
-    check("the first press arms rather than clears", session.world_link.calls, [])
-    check("...and says what the second one will do",
-          "map is not touched" in session.world_state()["note"], True)
-    session.world_clear()
-    check("the second press clears the semantic world",
-          [name for name, _ in session.world_link.calls], ["world_state_clear"])
-    check("...and nothing about it went near the navigator",
-          [name for name, _ in session.world_link.calls
-           if "map" in name or "nav" in name], [])
-
-    # And the other direction: clearing the SLAM map starts a new map session and
-    # deletes no semantic state.
-    session.world_link.calls.clear()
     session.world_map_cleared()
-    check("clearing the map starts a new session in the store",
-          [name for name, _ in session.world_link.calls], ["world_map_session"])
+    check("clearing the map clears the world with it",
+          [name for name, _ in session.world_link.calls],
+          ["world_state_clear", "world_map_session"])
+    check("...and lets go of the frames it was holding",
+          session.world_frames, {})
+    check("...and of whatever was selected", session.world_selected, "")
+
+    # The store says what went, and it is the map's clear that is being reported.
+    session.world_handle("world_state_clear",
+                         {"ok": True, "entities": 4, "observations": 96}, 0.1)
+    note = session.world_state()["note"]
+    check("what went is counted", "4 entities" in note and "96 " in note, True)
+    check("...as part of clearing the map", "map was cleared" in note, True)
 
     # A rover with no world-state component says so once. Anything else is a
     # popup that shows the same error every few seconds for the rest of the day.

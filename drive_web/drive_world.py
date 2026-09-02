@@ -63,7 +63,6 @@ class SessionWorld:
         self.world_query = ""
         self.world_outstanding = 0
         self.world_asked_at = 0.0
-        self.world_clear_armed_until = 0.0
 
     # --- what the buttons ask for --------------------------------------------
 
@@ -75,15 +74,12 @@ class SessionWorld:
             self.world_refresh()
         elif what == "close":
             self.world["open"] = False
-            self.world_clear_armed_until = 0.0
         elif what == "refresh":
             self.world_refresh()
         elif what == "select":
             self.world_select(str(action.get("id") or ""))
         elif what == "inspect":
             self.world_inspect()
-        elif what == "clear":
-            self.world_clear()
         elif what == "search":
             self.world_search(str(action.get("query") or ""))
         elif what == "build":
@@ -170,34 +166,26 @@ class SessionWorld:
         self.world["error"] = ""
         self.world_call("world_state_search", {"query": query, "limit": 12})
 
-    def world_clear(self) -> None:
-        """Two presses, and no dialog between them.
-
-        The same arming the map's clear uses, for the same reason: `confirm()`
-        blocks the page's script, and the page's script is what holds the stop
-        button. This one is separate from that one on purpose -- clearing the
-        semantic world must not be reachable by somebody aiming at the map, and
-        clearing the map must not take the semantic world with it.
-        """
-        now = time.monotonic()
-        if now > self.world_clear_armed_until:
-            self.world_clear_armed_until = now + 5.0
-            self.world["note"] = ("press again to throw away every entity and "
-                                  "observation; the map is not touched")
-            return
-        self.world_clear_armed_until = 0.0
-        self.world_frames.clear()
-        self.world_selected = ""
-        self.world_call("world_state_clear")
-
     def world_map_cleared(self) -> None:
-        """The SLAM map was thrown away, so tell the store to start a new session.
+        """The SLAM map was thrown away, so the world state goes with it.
 
-        The console owns that button, so it says so rather than the store polling
-        for it. Nothing semantic is deleted: entities outlive maps, and only the
-        stamp on new observations moves.
+        **It used to survive**, on the argument that an entity outlives the map it
+        was seen under: only the session stamp moved, so that positions measured
+        against a map that no longer exists were visible as such rather than
+        compared. That is defensible and it is not what happens. Everything the
+        world state holds is a position or a bearing measured in the old map's
+        frame, so what survived a clear was a list of things with nowhere to be,
+        and in practice the two were always cleared together -- the second press
+        being a separate button was friction, not a safeguard.
+
+        So there is one button now, and it is the map's. The session is still
+        started afresh afterwards, because a clear that half fails must not leave
+        old coordinates comparable with new ones.
         """
         if self.world_link is not None and self.world.get("available"):
+            self.world_frames.clear()
+            self.world_selected = ""
+            self.world_call("world_state_clear")
             self.world_call("world_map_session")
 
     # --- what comes back ------------------------------------------------------
@@ -269,13 +257,14 @@ class SessionWorld:
             self.world_keep_frame(body)
         elif name == "world_state_clear":
             self.world["note"] = (
-                f"cleared {body.get('entities', 0)} entities and "
-                f"{body.get('observations', 0)} observations; the map is untouched")
+                f"the map was cleared, and with it "
+                f"{body.get('entities', 0)} entities and "
+                f"{body.get('observations', 0)} observations")
             self.world_payload = {}
             self.world_refresh()
         elif name == "world_map_session":
-            self.world["note"] = (f"the map was cleared; new observations are "
-                                  f"session {body.get('map_session')}")
+            # Second half of the same button, and it has nothing of its own to
+            # say: the clear above has already reported what went.
             self.world_refresh()
         elif name == "world_inspect":
             self.world["busy"] = False
@@ -336,7 +325,6 @@ class SessionWorld:
     def world_state(self) -> dict[str, Any]:
         """The part of the world that rides in every pushed state."""
         return dict(self.world, gen=self.tag(self.world["gen"]),
-                    clear_armed=self.world_clear_armed_until > time.monotonic(),
                     selected=self.world_selected)
 
 

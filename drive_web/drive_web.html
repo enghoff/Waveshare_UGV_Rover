@@ -122,7 +122,6 @@
     border-bottom: 1px solid var(--line);
   }
   #worldHead .grow { flex: 1 1 12px; }
-  #worldClear.armed { border-color: var(--stop); color: var(--stop); font-weight: 600; }
   #worldTabs { display: flex; gap: 4px; padding: 8px 12px 0; }
   #worldTabs button { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
   #worldTabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
@@ -420,7 +419,7 @@
       <label class="check"><input type="checkbox" id="roverUp"> rover up</label>
       <button id="refreshMap">refresh</button>
       <button id="describe">describe surroundings</button>
-      <button id="clearMap">clear map</button>
+      <button id="clearMap" title="throws away the map and everything the rover has recorded about what is in the room">clear map</button>
     </div>
   </section>
 </div>
@@ -512,7 +511,6 @@
       <span class="grow"></span>
       <button id="worldInspect" title="take a picture and ask the model about it">inspect world</button>
       <button id="worldRefresh">refresh</button>
-      <button id="worldClear" title="throws away entities and observations; the map is not touched">clear</button>
       <button id="worldClose">close</button>
     </div>
     <p id="worldNote" class="hint" style="margin:6px 12px 0"></p>
@@ -664,8 +662,10 @@ function render(next) {
         .filter(Boolean).join(" -- ");
   $("mapError").textContent = next.map.error || "";
   $("roverUp").checked = next.map.rover_up;
+  // What it takes with it, said on the armed press rather than in a dialog: the
+  // world state is measured entirely in the map's own frame, so it goes too.
   $("clearMap").textContent = next.clear_armed
-    ? "clear map -- press again" : "clear map";
+    ? "clear map and world state -- press again" : "clear map";
 
   drawPicture($("frameImg"), $("frameEmpty"), "/frame.jpg", next.frame.gen,
               () => frameGen, (g) => frameGen = g, next.frame.error);
@@ -1127,8 +1127,6 @@ function drawWorld(w) {
   // enough that two people will.
   $("worldInspect").disabled = w.busy || !state.link.connected;
   $("worldInspect").textContent = w.busy ? "looking..." : "inspect world";
-  $("worldClear").classList.toggle("armed", !!w.clear_armed);
-  $("worldClear").textContent = w.clear_armed ? "clear -- again to confirm" : "clear";
   if (!w.open || !w.gen || w.gen === worldGen) return;
   // Fetched rather than pushed, like the network list: tens of kilobytes that
   // change when somebody presses a button, against a state that goes out ten
@@ -1762,7 +1760,6 @@ function wireWorld() {
   $("worldClose").onclick = () => post({do: "world", what: "close"});
   $("worldRefresh").onclick = () => post({do: "world", what: "refresh"});
   $("worldInspect").onclick = () => post({do: "world", what: "inspect"});
-  $("worldClear").onclick = () => post({do: "world", what: "clear"});
   // A click on the dimmed page behind the popup closes it, which is what a popup
   // over a page is expected to do. A click inside must not, or every press of a
   // button in it would also shut it.
