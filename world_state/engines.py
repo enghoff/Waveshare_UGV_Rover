@@ -26,6 +26,8 @@ only where it has been checked against a full-precision reference.
 """
 from __future__ import annotations
 
+import gc
+import mmap
 import os
 
 #: What `install_perception.sh` names the engines it builds. Batch sizes are not
@@ -104,8 +106,15 @@ class Engine:
         self.path = path
         self.logger = trt.Logger(trt.Logger.ERROR)
         self.runtime = trt.Runtime(self.logger)
+        # Mapped, not read. `handle.read()` would hold the whole engine in
+        # Python memory while TensorRT allocates its own copy, and for the text
+        # tower that is 1.1 GB twice over -- measured here as an OutOfMemory on
+        # the second of the two, on a board whose 7.4 GB is shared with the GPU
+        # and with three gigabytes of language model. A mapping is paged in and
+        # dropped again as TensorRT walks it.
         with open(path, "rb") as handle:
-            self.engine = self.runtime.deserialize_cuda_engine(handle.read())
+            with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+                self.engine = self.runtime.deserialize_cuda_engine(mapped)
         if self.engine is None:
             raise NoEngines(
                 f"TensorRT would not load {os.path.basename(path)}. An engine is "
@@ -179,6 +188,12 @@ class Engine:
             self.stream = None
         self.context = None
         self.engine = None
+        # The runtime goes too. It is small beside the engine, but it is what
+        # owns the engine's plugin registry, and leaving one behind per call
+        # means a rover that has answered a hundred searches is carrying a
+        # hundred of them.
+        self.runtime = None
+        gc.collect()
 
 
 def _ok(cudart, error, what: str) -> None:
