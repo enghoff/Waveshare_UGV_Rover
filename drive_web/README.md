@@ -222,6 +222,33 @@ What is drawn now:
   that misses by in metres and what the resolver allowed. A row that disagrees has a
   dashed edge so it can be found in a scroller of forty.
 
+**Choosing a thing empties the map of everything else and closes in on it.** All of
+it at once is the overview — where the things are, one look each — and it is only
+readable as an overview: ninety-three things' bearings over a map six metres across
+is a smear a centimetre deep, and drawing the other ninety-two faintly behind the
+chosen one kept the smear and made it grey. So a chosen thing is the only thing
+drawn, and the panel shows the square of the map picture that holds its looks and
+the ring they settled on, with a margin, never closing in past two and a half
+metres across. The picture underneath is the same PNG moved and magnified, so its
+cells become the squares they are rather than a blur, and every line, letter and
+arrowhead is divided by the same factor so that closing in does not draw the map in
+crayon. The line under it says how many metres across the view now is.
+
+That square is often mostly empty, and that is not a fault. The map is drawn a few
+metres around wherever the rover is standing and most of what it has seen was seen
+from somewhere else, so a thing can be perfectly well placed and have no map under
+it at all; the line under the map says "outside the drawn map" when the view has
+left the picture.
+
+**Pointing at a look in the list beside the map picks its line out of the others.**
+Reading that scroller is reading one crop at a time, and the question each one
+raises — where was this taken from, is this the line that forks — can only be
+answered by the map. So the row under the pointer lights its own line and dims the
+rest. Each look is drawn into a group carrying the observation's own row
+identifier, which is what makes this two class names rather than a redraw of
+several hundred lines on every pointer move; a look with no pose never reached the
+map, and its row lights nothing rather than dimming the map to say so.
+
 The arithmetic behind "agrees" is not the page's. It is `world_state/view.relate`,
 which calls the same `locate.agrees` against the same `locate.match_tolerance` that
 `resolve` uses when it attaches a look — so a look drawn as off the thing is a look

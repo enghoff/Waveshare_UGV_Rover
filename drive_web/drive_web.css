@@ -290,10 +290,33 @@
     border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
     font-size: 11px; max-height: 240px; overflow: auto;
   }
-  #wMapWrap { position: relative; flex: 0 0 auto; }
+  /* The picture is moved and magnified inside this frame when a thing is chosen,
+     so the frame keeps the rounded corner and clips what runs past it. The
+     ground behind it shows wherever the chosen thing sits off the drawn map,
+     which is most of the room: the map is only a few metres around the rover. */
+  #wMapWrap {
+    position: relative; flex: 0 0 auto; overflow: hidden; border-radius: 6px;
+    background: var(--sunken);
+  }
   #wMapNote { flex: 0 0 auto; }
   #wMapWrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #wMapWrap img { display: block; width: 100%; border-radius: 6px; }
+  #wMapWrap img { display: block; width: 100%; transform-origin: 0 0; }
+  /* Closed in on one thing, a map cell is several pixels across, and smoothing
+     it invents a gradient where the rover measured a square. */
+  #wMapWrap img.wclose { image-rendering: pixelated; }
+  /* The one look the pointer is resting on in the list beside the map. The
+     others are not hidden -- what is being judged is whether this line sits with
+     the rest or forks away from them, and that needs the rest still there. */
+  #wRays .wray { transition: opacity .1s linear; }
+  #wRays.whover .wray { opacity: .15; }
+  #wRays.whover .wray.whot { opacity: 1; }
+  /* Drawn heavier as well as alone, because on a map closed in on eleven looks
+     that all run the same way, one of them at full strength among ten faint ones
+     is still a line among lines. `--wpen` is the width one map pixel is being
+     drawn at, set where the closing-in is worked out, so this thickens the line
+     by the same factor whatever the view. */
+  #wRays.whover .wray.whot line { stroke-width: calc(var(--wpen) * 3); }
+  #wDetail .wscroll .wobs:hover { background: var(--sunken); }
   .wtable { width: 100%; border-collapse: collapse; font-size: 12px; }
   .wtable td, .wtable th { padding: 3px 6px; border-bottom: 1px solid var(--line);
     text-align: left; vertical-align: top; }
