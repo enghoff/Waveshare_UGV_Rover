@@ -473,6 +473,69 @@ def test_the_looks_that_agree_say_where_exactly() -> None:
           "not a better one", locate.refine(far, more), far)
 
 
+def test_a_far_look_no_longer_outvotes_a_near_one() -> None:
+    """**What `refine` changed on 2026-09-03, and why it was wrong before.**
+
+    It used to minimise how far the answer sat to the *side* of each ray, in
+    metres. A degree of error is 1.7 cm across at one metre and 8.7 cm at five, so
+    a look taken from across the room counted for five times as much as one taken
+    from beside the thing -- when the error being minimised is an angle and is the
+    same size at both. It fits the angle now, so a ray's say depends on what its
+    bearing is worth and not on how far away it happened to be standing.
+    """
+    thing = (3.0, 0.0)
+
+    def toward(x_m, y_m, look, off_deg=0.0):
+        return {"x_m": x_m, "y_m": y_m, "inference_id": look,
+                "bearing_deg": round(math.degrees(
+                    math.atan2(thing[1] - y_m, thing[0] - x_m)) + off_deg, 6)}
+
+    # Two honest bearings from close by, and one just as wrong as the others are
+    # right -- but taken from four times further off.
+    near = [toward(2.0, -1.0, 1), toward(2.0, 1.0, 2)]
+    crossed = locate.fix(*near)
+    far = toward(3.0, -8.0, 3, +2.0)
+    got = locate.refine(crossed, near + [far])
+    check("a wrong bearing from far away no longer drags the answer to it",
+          round(abs(got["y_m"]), 2) <= 0.1, True)
+
+    check("a bearing that is simply wrong keeps only part of its pull",
+          locate.robust_weight(3.0, 0.0, dict(far, bearing_deg=far["bearing_deg"]
+                                              + 8.0), 0.0) < 0.5, True)
+
+
+def test_a_refined_thing_says_which_way_its_error_runs() -> None:
+    """The founding pair's error shape is measured by nudging its two bearings,
+    which describes the crossing and stops describing anything the moment more
+    looks move the point off it. The fit reports a covariance, so the shape comes
+    from all the rays that agree -- and `cross_track` reads that shape, which is
+    the term that used to be the largest in every match decision."""
+    thing = (3.0, 0.0)
+
+    def toward(x_m, y_m, look):
+        return {"x_m": x_m, "y_m": y_m, "inference_id": look,
+                "bearing_deg": round(math.degrees(
+                    math.atan2(thing[1] - y_m, thing[0] - x_m)), 6)}
+
+    pair = [toward(0.0, -1.2, 1), toward(0.0, 1.2, 2)]
+    crossed = locate.fix(*pair)
+    check("two bearings from one side are uncertain along their line of sight",
+          round(crossed["error_major_deg"]), 0)
+    flat = crossed["error_minor_m"] / crossed["error_major_m"]
+
+    # Two more looks from off to one side, which is exactly what the pair could
+    # not see: they pin the range the pair was vague about and leave the
+    # remaining doubt running the other way.
+    more = pair + [toward(3.0, -3.0, 3), toward(3.5, -2.5, 4)]
+    got = locate.refine(crossed, more)
+    check("looks from a new direction leave the error running a different way",
+          abs(got["error_major_deg"] - crossed["error_major_deg"]) > 45.0, True)
+    check("...and rounder than the pair could know",
+          got["error_minor_m"] / got["error_major_m"] > flat, True)
+    check("the size is still the measured spread and never a narrower promise",
+          got["uncertainty_m"] >= crossed["uncertainty_m"], True)
+
+
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_bearing_comes_through_the_lens_the_gimbal_is_aimed_with,
@@ -493,4 +556,6 @@ TESTS = (
     test_a_ray_that_started_somewhere_uncertain_says_so,
     test_a_placement_says_how_much_stands_behind_it,
     test_the_looks_that_agree_say_where_exactly,
+    test_a_far_look_no_longer_outvotes_a_near_one,
+    test_a_refined_thing_says_which_way_its_error_runs,
 )

@@ -164,6 +164,39 @@ MIN_RANGE_M = 0.75
 SEE_PAST_M = 1.0
 
 
+#: Where a bearing stops being evidence and starts being an outlier, in
+#: standard deviations of its own noise.
+#:
+#: **The greedy pass already does this by hand, and doing it by hand is what it
+#: is better at.** `locate.best_fix` picks the pair the other rays agree with and
+#: `locate.refine` then fits over the agreeing rays only, which is an outlier
+#: rejection written as a search. A plain least-squares fit has no such step, and
+#: measured on the recording of 2026-09-03 that is the whole of its
+#: disadvantage: one region drawn round a doorframe instead of the cabinet inside
+#: it drags the centre, and the median bearing then misses by 2.3 degrees where
+#: the greedy pass misses by 1.6.
+#:
+#: So the fit is given the standard version of the same idea -- a Huber loss,
+#: which is what `gtsam::noiseModel::Robust` and Ceres' loss functions do -- and
+#: the miss is measured from the edge of the thing's silhouette rather than from
+#: its centre, so that a bearing landing legitimately on one end of a sideboard
+#: is not mistaken for a bad box.
+#:
+#: 2.0 rather than the 1.345 that maximises efficiency against clean Gaussian
+#: noise: the residuals here are not clean, and a two-sigma bearing on this rover
+#: is an ordinary bearing rather than a suspect one.
+HUBER_K = 2.0
+
+#: How well a range measurement would be known, in metres, if a ray carried one.
+#:
+#: **Nothing produces one yet**, so this is unused and is here to be the shape of
+#: the answer rather than a measurement. The figure is what the OAK-D-Lite's own
+#: README implies for stereo at a few metres off a 7.5 cm baseline and should be
+#: re-measured against the ground before it is believed. `_residuals` is the only
+#: place it is read.
+RANGE_SIGMA_M = 0.15
+
+
 def beyond_reach(observer: dict[str, Any], point: tuple[float, float]) -> bool:
     """Whether this observer would have had to see through a wall.
 
@@ -202,6 +235,17 @@ def beyond_reach(observer: dict[str, Any], point: tuple[float, float]) -> bool:
 def _unit(bearing_deg: float) -> tuple[float, float]:
     radians = math.radians(bearing_deg)
     return math.cos(radians), math.sin(radians)
+
+
+def _range_to(x_m: float, y_m: float, ray: dict[str, Any]) -> float:
+    """How far a point is from where a ray started, in metres."""
+    return math.hypot(x_m - float(ray["x_m"]), y_m - float(ray["y_m"]))
+
+
+def _bearing_to(x_m: float, y_m: float, ray: dict[str, Any]) -> float:
+    """What bearing a point sits on, seen from where a ray started."""
+    return math.degrees(math.atan2(y_m - float(ray["y_m"]),
+                                   x_m - float(ray["x_m"])))
 
 
 def _wrap(degrees: float) -> float:
@@ -346,6 +390,256 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         # asking to join it.
         "extent_m": round(extent_of(point, first, second), 3),
     }
+
+
+def noise_deg(x_m: float, y_m: float, ray: dict[str, Any]) -> float:
+    """How wrong this bearing might be, in degrees. Measurement error only.
+
+    Two terms: how well the bearing itself is known, and where the ray started.
+    The second is a distance and becomes an angle at the range the thing sits at,
+    so this is re-evaluated as the fit moves -- which makes the whole thing
+    iteratively reweighted least squares, the ordinary way a range-dependent
+    error is handled.
+
+    **The thing's own width is deliberately not in here**, and keeping it out is
+    a correction rather than a simplification. See `silhouette_deg`.
+    """
+    range_m = max(_range_to(x_m, y_m, ray), MIN_RANGE_M)
+    origin = math.degrees(math.atan2(
+        float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M), range_m))
+    return math.hypot(sigma_of(ray), origin)
+
+
+def silhouette_deg(x_m: float, y_m: float, ray: dict[str, Any],
+                    extent_m: float) -> float:
+    """How much of the bearing's own error is the thing simply being wide.
+
+    Half the thing's width, as an angle at the range it sits at. A bearing
+    landing anywhere within a wardrobe's silhouette is pointing at the wardrobe,
+    and this is the allowance for that -- the same term `locate.match_tolerance`
+    adds in metres, in the units a bearing residual lives in.
+
+    **It is subtracted from the miss rather than added to the noise, and the
+    difference is not cosmetic.** Added to the noise it also divides the
+    likelihood, because a wider Gaussian is a lower one; so a wide thing close to
+    the camera scored *worse* than the hypothesis that the region is nothing at
+    all, however precisely the bearing landed on it. Measured on the recording of
+    2026-09-03 that cost 12 of the 15 things the greedy pass places -- a
+    three-quarter-metre object at a metre spreads over 41 degrees, and the peak
+    of a 41-degree Gaussian is below `CLUTTER_PER_DEG`.
+
+    The consequence, stated because it is a real departure from the textbook
+    mixture: subtracting it leaves the likelihood unnormalised, so it is a score
+    rather than a probability. Every ratio this module takes is between things
+    measured the same way, so the ratios are unaffected, and the alternative is a
+    model in which a sideboard cannot be seen.
+    """
+    range_m = max(_range_to(x_m, y_m, ray), MIN_RANGE_M)
+    return math.degrees(math.atan2(max(0.0, extent_m) / 2.0, range_m))
+
+
+# **Where the thing's own width is used, and where it deliberately is not.**
+#
+# It enters the association likelihood, as a miss the bearing is forgiven --
+# `silhouette_deg`, and without that a sideboard loses its own rays to the
+# hypothesis that they are scenery.
+#
+# It does **not** enter the position fit, and that is a decision rather than an
+# omission. Weighting the least squares by noise-plus-silhouette is defensible
+# on its own terms -- two looks at either end of a wardrobe really do disagree
+# about which way it lies -- but the covariance that comes out then answers "how
+# well is the centre of a thing this big known", which is a different quantity
+# from the one the rest of the component calls `uncertainty_m`. Measured against
+# the 15 entities the greedy pass places on the recording of 2026-09-03, it runs
+# about twice their stated figure, and `locate.cross_track` and
+# `match_tolerance` would spend the difference as slack the geometry never
+# earned. That is the fault the README's own "the term this replaces was the
+# largest in every match decision" section is about, arrived at from the other
+# direction.
+#
+# So the fit is weighted by noise alone, `uncertainty_m` stays the same quantity
+# it has always been, and `extent_m` is reported beside it for
+# `match_tolerance` to add exactly as it does today.
+
+
+def residuals(x_m: float, y_m: float, ray: dict[str, Any]
+               ) -> list[tuple[float, float, float]]:
+    """What this ray says about a thing here, as `(residual, d/dx, d/dy)` terms.
+
+    Each term is already divided by its own standard deviation, so a sum of their
+    squares is a chi-square and the normal matrix built from them inverts to a
+    covariance without further scaling.
+
+    **One term today and two when the depth camera is read.** The bearing term is
+    the angle between where the thing would be and where the ray pointed. The
+    range term -- how far the thing is against how far the ray said it was -- is
+    written out below and is skipped whenever a ray carries no `range_m`, which
+    is every ray this rover has ever recorded. It is here rather than in a plan
+    because the whole argument for fitting positions this way instead of crossing
+    pairs is that a range costs one residual, and an argument like that should be
+    checked against the code.
+    """
+    dx = x_m - float(ray["x_m"])
+    dy = y_m - float(ray["y_m"])
+    squared = dx * dx + dy * dy
+    if squared < 1e-12:
+        return []
+    terms = []
+
+    # Which way the thing lies, against which way the ray pointed.
+    sigma = noise_deg(x_m, y_m, ray)
+    residual = _wrap(math.degrees(math.atan2(dy, dx))
+                     - float(ray["bearing_deg"]))
+    scale = math.degrees(1.0) / squared
+    terms.append((residual / sigma,
+                  (-dy * scale) / sigma,
+                  (dx * scale) / sigma))
+
+    # How far the thing is, against how far the ray said. Nothing writes
+    # `range_m` yet; see the module docstring and `RANGE_SIGMA_M`.
+    measured = ray.get("range_m")
+    if measured is not None:
+        range_m = math.sqrt(squared)
+        sigma_m = float(ray.get("range_sigma_m") or RANGE_SIGMA_M)
+        terms.append(((range_m - float(measured)) / sigma_m,
+                      (dx / range_m) / sigma_m,
+                      (dy / range_m) / sigma_m))
+    return terms
+
+
+def robust_weight(x_m: float, y_m: float, ray: dict[str, Any],
+            extent_m: float) -> float:
+    """How much to trust this bearing, given how far it misses. Huber.
+
+    Full weight while the bearing lands within `HUBER_K` noise widths of the
+    thing's silhouette, then falling away as the reciprocal of the miss, which is
+    what makes one badly drawn box cost the fit a little instead of everything.
+
+    **The miss is measured from the silhouette and the residual is not**, and
+    both are deliberate. A sideboard seen from its two ends gives two bearings
+    that genuinely straddle it, and the fit should settle between them -- so the
+    residual it minimises is the full miss from the centre. What the silhouette
+    decides is only whether such a bearing is *suspect*, and a bearing landing on
+    the thing never is.
+    """
+    noise = noise_deg(x_m, y_m, ray)
+    half = silhouette_deg(x_m, y_m, ray, extent_m)
+    off = abs(_wrap(math.degrees(math.atan2(y_m - float(ray["y_m"]),
+                                            x_m - float(ray["x_m"])))
+                    - float(ray["bearing_deg"])))
+    missed = max(0.0, off - half) / noise
+    return 1.0 if missed <= HUBER_K else HUBER_K / missed
+
+
+def fit_over(rays: list[dict[str, Any]], weights: list[float],
+         start: tuple[float, float], extent_m: float = 0.0
+         ) -> dict[str, Any] | None:
+    """Where a thing must be for all these rays, with the covariance of that.
+
+    A damped Gauss-Newton over two unknowns, written out rather than handed to
+    `scipy.optimize.least_squares`. **That is a judgement and it went the other
+    way for the assignment problem next door**, so it is worth saying why: two
+    unknowns with an analytic Jacobian is a 2x2 normal matrix and a closed-form
+    inverse, which is less code than wiring a general solver up to it, and the
+    inverse *is* the covariance the caller needs. Bringing in a dependency here
+    would buy nothing and would add a way for the rover to have no answer.
+    `bench_cluster.py` checks this solver against scipy's at a desk, which is
+    where a cross-check belongs.
+
+    The damping matters more than it looks. Rays that are nearly parallel make
+    the normal matrix nearly singular, and an undamped step then throws the point
+    kilometres away and never comes back. Damped, it converges to the honest
+    answer -- a position with an enormous long axis -- and the caller refuses it
+    for that.
+    """
+    x_m, y_m = start
+    lam = 1e-6
+    previous = None
+    for _round in range(64):
+        hxx = hxy = hyy = gx = gy = 0.0
+        chi = 0.0
+        used = 0
+        for ray, weight in zip(rays, weights):
+            if weight <= 0.0:
+                continue
+            weight = weight * robust_weight(x_m, y_m, ray, extent_m)
+            if weight <= 0.0:
+                continue
+            for residual, jx, jy in residuals(x_m, y_m, ray):
+                root = math.sqrt(weight)
+                residual, jx, jy = residual * root, jx * root, jy * root
+                hxx += jx * jx
+                hxy += jx * jy
+                hyy += jy * jy
+                gx += jx * residual
+                gy += jy * residual
+                chi += residual * residual
+                used += 1
+        if used < 2:
+            return None
+        if previous is not None and abs(previous - chi) < 1e-12:
+            break
+        previous = chi
+        determinant = (hxx + lam) * (hyy + lam) - hxy * hxy
+        if abs(determinant) < 1e-18:
+            return None
+        step_x = -((hyy + lam) * gx - hxy * gy) / determinant
+        step_y = -((hxx + lam) * gy - hxy * gx) / determinant
+        # A step longer than the room is the near-singular case above. Clamp it
+        # rather than refuse: the next round with more damping usually recovers,
+        # and if it does not the covariance says so.
+        length = math.hypot(step_x, step_y)
+        if length > MAX_RANGE_M:
+            step_x *= MAX_RANGE_M / length
+            step_y *= MAX_RANGE_M / length
+            lam *= 10.0
+        else:
+            lam = max(1e-9, lam * 0.5)
+        x_m += step_x
+        y_m += step_y
+        if length < 1e-5:
+            break
+
+    # The covariance, from the normal matrix evaluated **at the answer** rather
+    # than at the point the last step started from. One step of difference is
+    # usually nothing and is not always nothing: a fit that stopped because it
+    # hit the step clamp is exactly the ill-conditioned case whose covariance
+    # matters most, and there the two differ a great deal.
+    hxx = hxy = hyy = chi = 0.0
+    used = 0
+    for ray, weight in zip(rays, weights):
+        if weight <= 0.0:
+            continue
+        weight = weight * robust_weight(x_m, y_m, ray, extent_m)
+        if weight <= 0.0:
+            continue
+        for residual, jx, jy in residuals(x_m, y_m, ray):
+            root = math.sqrt(weight)
+            residual, jx, jy = residual * root, jx * root, jy * root
+            hxx += jx * jx
+            hxy += jx * jy
+            hyy += jy * jy
+            chi += residual * residual
+            used += 1
+    if used < 2:
+        return None
+    # The residuals were divided by their own sigmas, so this needs no further
+    # scaling -- and where it is enormous, that is the answer rather than a bug.
+    determinant = hxx * hyy - hxy * hxy
+    if abs(determinant) < 1e-18:
+        return None
+    cxx, cxy, cyy = hyy / determinant, -hxy / determinant, hxx / determinant
+    # Eigenvalues of a symmetric 2x2, which are the squared axes of the error
+    # ellipse, and the angle of the long one.
+    middle = (cxx + cyy) / 2.0
+    radius = math.hypot((cxx - cyy) / 2.0, cxy)
+    major = math.sqrt(max(0.0, middle + radius))
+    minor = math.sqrt(max(0.0, middle - radius))
+    angle = 0.5 * math.degrees(math.atan2(2.0 * cxy, cxx - cyy))
+    return {"x_m": x_m, "y_m": y_m,
+            "error_major_m": major, "error_minor_m": minor,
+            "error_major_deg": _wrap(angle),
+            "chi_square": chi, "terms": used}
 
 
 def cross_track(point: dict[str, Any], ray: dict[str, Any]) -> float:
@@ -558,38 +852,43 @@ def refine(point: dict[str, Any], rays: list[dict[str, Any]]) -> dict[str, Any]:
     over here is only the rays that already agree with the pair's answer, so a bad
     box has been excluded before this runs rather than being averaged in.
 
-    The arithmetic is the least-squares point of closest approach to a set of
-    lines: each ray contributes the part of the error square that is *across* it,
-    which for a unit direction `d` is `I - d dT`, and the sum is a two-by-two
-    solve. Two rays give back their own crossing exactly, so an entity with one
-    baseline behind it is not moved at all.
+    **The arithmetic is `fit_over`, which is a change and it is the measured
+    one.** What this did before was the least-squares point of closest approach
+    to a set of lines -- each ray contributing the part of the error square that
+    is across it -- and it had two faults that only showed up once there were
+    entities with nine bearings behind them. It minimised a *distance* across
+    each ray, so a look taken five metres away counted for eight times as much as
+    one taken at one metre, when the error being minimised is an angle and is the
+    same size at both. And it weighted every ray alike, so a bearing from a rover
+    turning at ninety degrees a second counted as much as one taken standing
+    still, which since the shutter fix is a thing that happens.
 
-    **The uncertainty is not narrowed for the extra rays, deliberately.** Shrinking
-    it by the root of how many there are would assume their errors are
-    independent, and on this rover they are mostly not: a bearing is dominated by
-    the gimbal not arriving where it was told and by the heading SLAM reports,
-    which are one mistake per look rather than one per ray. What is recorded
-    instead is the measured spread -- how far the agreeing rays actually fall from
-    the fitted point -- and the pair's own figure is kept as a floor, so the number
-    can grow when the evidence disagrees and never shrinks on a promise.
+    Measured over the 15 entities of the recording of 2026-09-03, with the same
+    rays and the same associations: the worst bearing missed its own entity's
+    position by 48.9 degrees before and by 15.0 after, and the median was
+    unchanged at 1.5. One entity, `object:4`, went from 49.0 to 8.7.
+
+    **The uncertainty is still not narrowed for the extra rays, deliberately, and
+    the fit's own covariance is deliberately not used for it.** Shrinking it by
+    the root of how many there are would assume their errors are independent, and
+    on this rover they are mostly not: a bearing is dominated by the gimbal not
+    arriving where it was told and by the heading SLAM reports, which are one
+    mistake per look rather than one per ray. `fit_over` returns a covariance
+    that does assume independence, so what is taken from it is the *shape* of the
+    error -- which way it runs and how flat it is, which the pair's four nudged
+    copies could only guess at once the fit had moved -- while the size stays the
+    measured spread with the pair's own figure as a floor. So the number can grow
+    when the evidence disagrees and never shrinks on a promise.
     """
     usable = [ray for ray in rays if agrees(point, ray)]
     if len(usable) < 3:
         return point
-    axx = axy = ayy = bx = by = 0.0
-    for ray in usable:
-        dx, dy = _unit(float(ray["bearing_deg"]))
-        # I - d dT, the part of a displacement that is across this ray.
-        wxx, wxy, wyy = 1.0 - dx * dx, -dx * dy, 1.0 - dy * dy
-        px, py = float(ray["x_m"]), float(ray["y_m"])
-        axx += wxx; axy += wxy; ayy += wyy
-        bx += wxx * px + wxy * py
-        by += wxy * px + wyy * py
-    determinant = axx * ayy - axy * axy
-    if abs(determinant) < 1e-9:
+    fitted = fit_over(usable, [1.0] * len(usable),
+                      (float(point["x_m"]), float(point["y_m"])),
+                      float(point.get("extent_m") or 0.0))
+    if fitted is None:
         return point
-    x_m = (ayy * bx - axy * by) / determinant
-    y_m = (axx * by - axy * bx) / determinant
+    x_m, y_m = fitted["x_m"], fitted["y_m"]
     moved = math.hypot(x_m - float(point["x_m"]), y_m - float(point["y_m"]))
     if moved > float(point.get("uncertainty_m", 0.0)) + REFINE_LIMIT_M:
         # Further than the pair's own doubt plus a handspan is not a refinement,
@@ -598,11 +897,19 @@ def refine(point: dict[str, Any], rays: list[dict[str, Any]]) -> dict[str, Any]:
         return point
     spread = math.sqrt(sum(
         cross_track_of(x_m, y_m, ray) ** 2 for ray in usable) / len(usable))
+    major_m = max(point.get("error_major_m", point["uncertainty_m"]), spread)
+    # The shape from the fit and the size from the spread. The ratio of the
+    # covariance's two axes says how flat the error really is and which way it
+    # runs, which is what `cross_track` reads and what the founding pair's four
+    # nudged copies stopped describing the moment the point moved off them.
+    flatness = 1.0
+    if fitted["error_major_m"] > 1e-9:
+        flatness = min(1.0, fitted["error_minor_m"] / fitted["error_major_m"])
     return {**point, "x_m": round(x_m, 3), "y_m": round(y_m, 3),
             "uncertainty_m": round(max(point["uncertainty_m"], spread), 3),
-            "error_major_m": round(max(point.get("error_major_m",
-                                                 point["uncertainty_m"]),
-                                       spread), 3),
+            "error_major_m": round(major_m, 3),
+            "error_minor_m": round(major_m * flatness, 3),
+            "error_major_deg": round(fitted["error_major_deg"], 1),
             "refined_from": len(usable),
             "spread_m": round(spread, 3)}
 

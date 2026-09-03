@@ -1,8 +1,8 @@
 """The fixtures the world-state checks share, and the paths they need.
 
 A store in a temporary directory, a camera that returns one real one-pixel JPEG,
-a pose, a sighting shaped the way the sidecar returns them, and an inspector that
-sees whatever a check tells it to. Nothing here touches a rover, a GPU or an
+a pose, a sighting shaped the way the sidecar returns them, a bearing pointed at
+a known answer, and an inspector that sees whatever a check tells it to. Nothing here touches a rover, a GPU or an
 encoder.
 
 Importing this module also puts the package's parent on `sys.path` -- `~/ugv` on
@@ -11,6 +11,7 @@ as a package from both.
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 import time
@@ -139,6 +140,18 @@ def a_vector(*values, width=8):
 #: carrying it. Written as the axis rather than as the numbers it comes to, so
 #: that a re-swept lens moves the fixture instead of breaking forty tests.
 ON_AXIS = (315.9 / 640.0, 227.4 / 480.0)
+
+
+def a_ray(x_m, y_m, at, *, sigma=None, span=0.0, look=None, off=0.0,
+          observation=None):
+    """A bearing from `(x_m, y_m)` that points at `at`, give or take `off`."""
+    bearing = math.degrees(math.atan2(at[1] - y_m, at[0] - x_m)) + off
+    built = {"x_m": x_m, "y_m": y_m, "bearing_deg": bearing,
+             "span_deg": span, "origin_sigma_m": 0.0,
+             "inference_id": look, "observation_id": observation}
+    if sigma is not None:
+        built["bearing_sigma_deg"] = sigma
+    return built
 
 
 def a_box(width=0.10, height=0.60):
