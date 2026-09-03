@@ -230,13 +230,32 @@ class RoverCamera:
         """A few whole frames from a camera that is shut again straight away.
 
         The seam the self-test replaces, and the reason it is a method rather than a
-        bare import at each call site. Nothing is held: no lock, no camera, no
-        thread -- so this is safe to call while the rover is driving, which is the
-        whole point of it.
+        bare import at each call site. It holds the camera and nothing else -- not
+        the board lock, no open feed, no thread -- so this is still safe to call
+        while the rover is driving, which is the whole point of it.
+
+        **One at a time, because this camera hands the second caller nothing.**
+        Two v4l2-ctl processes on it at once is not two pictures: one of them
+        exits in about 30 ms having written no bytes and said nothing at all on
+        stderr, so what reaches the person at the console is "the camera gave no
+        whole picture" with no reason after it. Measured on the rover on
+        2026-09-03, over 60 grabs: 46 that had the camera to themselves all came
+        back with three frames, and 12 of the 14 that overlapped another grab came
+        back empty. The gap between them makes no difference -- back to back is as
+        good as a second and a half apart -- so it is the overlap and only the
+        overlap.
+
+        It became a daily fault rather than a rare one when the world state
+        started looking once a second: the console asks for a frame every two
+        seconds and the looking loop asks for one every second, both through here,
+        and better than half of the console's pictures were lost to the collision.
+        Waiting costs the loser about a third of a second, which is what one grab
+        takes.
         """
         from track_face_pi import snapshot
 
-        return snapshot(self.device, self.size, frames=frames)
+        with self._camera_lock:
+            return snapshot(self.device, self.size, frames=frames)
 
     def _close_camera(self) -> None:
         if self._camera is not None:
@@ -677,7 +696,13 @@ class RoverCamera:
 
         width, height = self.size
         try:
-            with self._lock:
+            # The feed under the same lock a one-shot grab takes, and for the
+            # same reason: `_tracking` is set before this thread runs, so a
+            # picture that was already in flight when tracking started would
+            # otherwise still be holding the camera as the feed opens on it --
+            # and a feed that opens on a busy camera comes up with no frames at
+            # all while `start_tracking` has already answered "ok".
+            with self._camera_lock, self._lock:
                 camera = self._open_camera()
             detector = self._open_detector()
         except Exception as error:

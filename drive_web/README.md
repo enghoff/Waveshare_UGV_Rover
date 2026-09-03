@@ -199,6 +199,17 @@ and the map behind it, and nothing may ever sit in front of STOP. The popup's
 contents are fetched from `/world.json` when a generation tag in the state moves,
 for the reason the network list and the pictures are fetched rather than pushed.
 
+**The popup keeps itself current while it is open, and there is nothing to press.**
+The rover records a look a second and decides identities every ten, so a panel that
+only changed when it was asked to was a still photograph of a store that had moved
+on — and the person watching had no way to tell those apart. While the popup is on
+screen the console asks the rover for the counts every two seconds, which are 7 kB
+and 16 ms; it fetches the body behind them, 74 kB and about 70 ms, only once those
+counts have moved; and the tag the browser re-fetches under moves only when the body
+is really different. So a rover recording nothing costs the counts alone and no
+redraw, and one that is looking costs a payload per change. **refresh** stays for
+asking outright. Nothing is polled while the popup is shut.
+
 The stored frames come from `/world_frame.jpg`, and that one goes to the rover on a
 connection of its own again, synchronously, on whichever thread is serving the
 page. **It used to guess ahead instead** — one frame per entity, the newest four of

@@ -283,6 +283,119 @@ def test_the_switch_for_building_the_world_state() -> None:
           session.world_build_outstanding, False)
 
 
+def test_an_open_popup_keeps_itself_current() -> None:
+    """Nobody presses refresh, and nothing is re-sent that has not changed.
+
+    The rover records a look a second and settles identities every ten, so a
+    popup that only moved when it was asked to was a still photograph of a store
+    that had gone on changing. What has to hold is both halves of the fix: that
+    an open popup asks the rover on its own, and that asking every couple of
+    seconds does not push 74 kB of unchanged payload at the browser each time --
+    the tag it fetches under only moves when the body is really different.
+    """
+    try:
+        import drive_web
+        from console_model import WORLD_OPEN_POLL_S
+    except ImportError as exc:
+        SKIP.append(f"the open world popup ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.world_link = _Recorder()
+    session.listeners = 1
+    # No rover to find, so the pump would otherwise spend every tick looking for
+    # one and throwing away the connections under this test.
+    session.find_outstanding = True
+
+    def asked():
+        names = [name for name, _ in session.world_link.calls]
+        session.world_link.calls.clear()
+        return names
+
+    # Shut, and the rover is left alone however long the console runs.
+    session.world["available"] = True
+    for _ in range(3):
+        session.world_watched_at = 0.0
+        session.pump()
+    check("a shut popup asks the rover nothing", asked(), [])
+
+    # Open. What goes out is the counts alone -- 7 kB against the 74 kB the
+    # entity list costs, and they move whenever anything in the store does.
+    session.world["open"] = True
+    session.world_watched_at = 0.0
+    session.pump()
+    check("an open popup asks on its own, with nobody pressing anything",
+          asked(), ["world_state_summary"])
+    check("...and not again before the poll is due", (session.pump(), asked())[1],
+          [])
+
+    counts = {"entities": 1, "observations": 12, "inspections": 3,
+              "map_session": 4}
+    session.world_handle("world_state_summary",
+                         {"ok": True, "summary": counts, "backend": "tensorrt"}, 0.0)
+    check("counts that have moved fetch the body they describe",
+          asked(), ["world_state_entities"])
+
+    first = session.world_state()["gen"]
+    check("...and the browser is told there is something new", bool(first), True)
+
+    # The same counts again, which is what a rover recording nothing looks like.
+    session.world_outstanding = 0
+    session.world_watched_at = 0.0
+    session.pump()
+    check("the counts are asked for again", asked(), ["world_state_summary"])
+    session.world_handle("world_state_summary",
+                         {"ok": True, "summary": counts, "backend": "tensorrt"}, 0.0)
+    check("...and counts that have not moved fetch nothing", asked(), [])
+    check("...and do not send the browser back for a payload it holds",
+          session.world_state()["gen"], first)
+
+    # A body that arrives identical -- the entity list can be unchanged even when
+    # an inspection has been recorded -- must not move the tag either.
+    body = {"ok": True, "entities": [], "unmatched": [], "recent": [],
+            "summary": counts}
+    session.world_handle("world_state_entities", body, 0.0)
+    held = session.world_state()["gen"]
+    session.world_handle("world_state_entities", dict(body), 0.0)
+    check("an unchanged body leaves the tag alone",
+          session.world_state()["gen"], held)
+    session.world_handle("world_state_entities", dict(body, recent=[{"id": 9}]), 0.0)
+    check("...and a changed one moves it",
+          session.world_state()["gen"] != held, True)
+
+    # The refresh button asks for the body itself, so the counts that come back
+    # beside it must not fetch it a second time -- which at a look a second they
+    # would, because the store moves between those two calls.
+    session.world_refresh()
+    check("the button asks for everything", asked(),
+          ["world_state_entities", "world_state_summary"])
+    session.world_handle("world_state_summary",
+                         {"ok": True, "summary": dict(counts, observations=13),
+                          "backend": "tensorrt"}, 0.0)
+    check("...and its counts do not fetch the body a second time", asked(), [])
+
+    # A rover that refuses is not a reason to re-send the payload every two
+    # seconds for the rest of the session.
+    moved = session.world_state()["gen"]
+    session.world_handle("world_state_summary",
+                         {"ok": False, "error": "the store could not be opened"},
+                         0.0)
+    check("a refusal leaves the tag where it was",
+          session.world_state()["gen"], moved)
+    check("...and says why, in the state that is pushed anyway",
+          session.world_state()["error"], "the store could not be opened")
+
+    # Shutting it stops the asking, rather than leaving a console polling a
+    # store nobody is looking at.
+    session.world["available"] = True
+    session.world["open"] = False
+    session.world_outstanding = 0
+    session.world_watched_at = 0.0
+    session.pump()
+    check("shutting the popup stops the asking", asked(), [])
+    check("the poll is paced, not per tick", WORLD_OPEN_POLL_S >= 1.0, True)
+
+
 def test_the_world_urls() -> None:
     """`/world.json` and `/world_frame.jpg`, over a real socket.
 
@@ -347,5 +460,6 @@ TESTS = (
     test_the_world_state_popup,
     test_finding_a_thing_from_the_console,
     test_the_switch_for_building_the_world_state,
+    test_an_open_popup_keeps_itself_current,
     test_the_world_urls,
 )

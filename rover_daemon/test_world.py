@@ -187,13 +187,13 @@ def test_a_rover_without_a_camera_refuses_to_inspect():
 
 
 def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
-    """A grab that follows another one closely comes back empty on this rover.
+    """An empty grab in front of a look is retried rather than recorded as a loss.
 
-    Reproduced three times out of three: `camera_jpeg` and then an inspection in
-    the same breath, and the inspection got no whole picture while a standalone one
-    always worked. The retry is worth its half second here because the picture is
-    the front of a minute of model; it is not worth it on `camera_jpeg`, which is
-    over in a second and can simply say so.
+    The fault this was written for turned out to be two grabs overlapping rather
+    than one following another closely, and `_snapshot` now holds the camera for
+    the length of a grab so that cannot happen -- see rover_camera. The retry
+    stays as the backstop for an empty grab from any other cause, and this is
+    what checks it still asks twice and no more.
     """
     import tempfile
 

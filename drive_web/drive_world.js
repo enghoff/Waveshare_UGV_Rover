@@ -61,9 +61,11 @@ function drawWorld(w) {
   $("worldInspect").disabled = w.busy || !state.link.connected;
   $("worldInspect").textContent = w.busy ? "looking..." : "inspect world";
   if (!w.open || !w.gen || w.gen === worldGen) return;
-  // Fetched rather than pushed, like the network list: tens of kilobytes that
-  // change when somebody presses a button, against a state that goes out ten
-  // times a second.
+  // Fetched rather than pushed, like the network list: tens of kilobytes against
+  // a state that goes out ten times a second. While the popup is open the rover
+  // is asked for the world every couple of seconds, so this tag moves on its own
+  // as the rover records -- and it moves only when the body really differs, which
+  // is what keeps that from being 74 kB of wi-fi every two seconds.
   worldGen = w.gen;
   fetch(`/world.json?gen=${w.gen}`)
     .then((reply) => reply.ok ? reply.json() : null)

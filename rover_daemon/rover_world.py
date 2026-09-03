@@ -356,16 +356,16 @@ class RoverWorld:
         one-shot grab that closes the device again. Nothing here opens the camera
         a second time, which is the whole rule.
 
-        **The second attempt is worth its half second here and nowhere else.**
-        Measured on the rover: a grab that follows another one closely comes back
-        empty -- v4l2-ctl exits at once, says nothing on stderr, and hands back no
-        whole picture -- and the next attempt a moment later works. Three times out
-        of three, with a standalone inspection working every time. What makes it
-        worth handling rather than reporting is what is about to happen: this
-        picture is the front of a minute of model, and throwing that minute away
-        over a hiccup that a pause of half a second fixes is a poor trade. A tool
-        call that is over in a second, like `camera_jpeg`, is better off saying so
-        at once and letting whoever asked press the button again.
+        **The second attempt is a backstop now rather than the fix it was.** It
+        was put here because a grab that followed another one closely came back
+        empty, and the retry a moment later worked; what was actually happening,
+        measured properly on 2026-09-03, is that two grabs *overlapping* lose one
+        of the two, and the pause simply outlasted the other grab. `_snapshot`
+        holds the camera for the length of a grab now, so overlaps cannot happen
+        and this should never fire. It stays because it is half a second in front
+        of a look that is worth keeping, and because an empty grab from some cause
+        nobody has measured yet is better retried than recorded as a failed
+        inspection.
         """
         if self.device is None:
             return {"ok": False, "error": "this rover has no camera attached"}

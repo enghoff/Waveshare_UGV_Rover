@@ -152,6 +152,19 @@ A one-shot picture is captured as MJPEG and the camera is closed again. Keeping 
 30 fps feed alive just in case another tool call arrives costs CPU/USB bandwidth
 for no benefit; only face tracking keeps the continuous feed open.
 
+**Only one thing may have the camera at a time, and the daemon enforces it.** Two
+captures overlapping is not two pictures: one of the two exits in about 30 ms
+having written no bytes and said nothing on stderr, so the caller gets "the camera
+gave no whole picture" with no reason after it. Measured on the rover over 60
+grabs: 46 that had the camera to themselves all succeeded, and 12 of the 14 that
+overlapped another grab came back empty — the gap between grabs makes no
+difference, only the overlap. It became a daily fault once the world state began
+looking once a second, because the console asks for a frame every two seconds
+through the same path and better than half of its pictures were lost. Captures now
+queue behind one another, which costs the loser about a third of a second, and the
+tracking feed opens under the same lock so it cannot come up on a camera a
+one-shot grab is still holding.
+
 For the current Alibaba voice session, `drive_web/omni_bridge.py` runs a small
 frame service on loopback TCP 8774. The voice client registers that destination
 through the daemon's control protocol. When Qwen calls `look`:

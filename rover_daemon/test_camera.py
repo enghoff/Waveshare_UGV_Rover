@@ -200,6 +200,72 @@ def test_snapshot_splitting():
           [a, b])
 
 
+def test_two_pictures_at_once_do_not_share_the_camera():
+    """Only one thing may have this camera, because the loser gets nothing.
+
+    Measured on the rover on 2026-09-03, over 60 grabs: 46 that had the camera to
+    themselves all came back with three frames, and 12 of the 14 that overlapped
+    another grab came back empty -- in about 30 ms, with nothing written to stderr
+    to say why. The gap between grabs made no difference at all, so it is the
+    overlap and nothing else. It became a daily fault when the world state started
+    looking once a second, because the console asks for a frame every two seconds
+    through the same path, and better than half of the console's pictures were
+    lost to the collision.
+
+    What is checked is that the second caller waits rather than being handed the
+    empty result the camera would really give it.
+    """
+    import rover_daemon
+    import sys
+    import threading
+    import time
+
+    try:
+        import track_face_pi
+    except ImportError as error:            # no aiming.py beside it, e.g. a bare copy
+        SKIP.append(f"one grab at a time ({error})")
+        return
+
+    whole = b"\xff\xd8" + b"jpeg" + b"\xff\xd9"
+    inside = threading.Semaphore(0)
+    go = threading.Event()
+    overlapped, holding = [], []
+    count = threading.Lock()
+
+    def grabber(device, size, frames=3):
+        with count:
+            holding.append(1)
+            overlapped.append(len(holding))
+        inside.release()
+        go.wait(5.0)
+        with count:
+            holding.pop()
+        return [(whole, time.monotonic())], ""
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
+    was, track_face_pi.snapshot = track_face_pi.snapshot, grabber
+    try:
+        got = []
+        for _ in range(2):
+            threading.Thread(target=lambda: got.append(rover._snapshot()),
+                             daemon=True).start()
+        check("one grab reaches the camera", inside.acquire(timeout=5.0), True)
+        # The second one must still be waiting: if it were inside the capture
+        # alongside the first, this would come back at once.
+        check("...and the other is made to wait for it",
+              inside.acquire(timeout=0.5), False)
+        go.set()
+        check("...and then gets in", inside.acquire(timeout=5.0), True)
+        deadline = time.monotonic() + 5.0
+        while len(got) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        check("both callers get their picture", len(got), 2)
+        check("...and never two on the camera at once", max(overlapped), 1)
+    finally:
+        track_face_pi.snapshot = was
+        rover.close()
+
+
 def test_counting_faces_does_not_hold_the_board():
     """A slow detector on another host must not lock the rover up.
 
@@ -389,6 +455,7 @@ TESTS = (
     test_default_camera,
     test_look,
     test_snapshot_splitting,
+    test_two_pictures_at_once_do_not_share_the_camera,
     test_counting_faces_does_not_hold_the_board,
     test_the_local_detector_scales_its_boxes_back_up,
     test_camera_cone,

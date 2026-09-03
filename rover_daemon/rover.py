@@ -77,6 +77,12 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld):
         # What the loop last saw, for tracking_status and count_faces while it
         # is running -- the loop owns the camera then, so nothing else may look.
         self._seen = {"faces": 0, "locked": False, "at": 0.0, "where": []}
+        # Whoever has the camera, has it alone. Two v4l2-ctl processes on this
+        # device at once is not two pictures: one of them exits in 30 ms with no
+        # bytes and nothing at all on stderr, and which one loses is a coin toss.
+        # Its own lock rather than the board's, for the reason `_snapshot` is
+        # outside that one: a picture must never be able to delay a stop.
+        self._camera_lock = threading.Lock()
         # The detector is one kept-open connection that takes strictly one request
         # at a time, so two `count_faces` arriving together must not both be in it.
         # Its own lock rather than the board's: waiting on a detector on another

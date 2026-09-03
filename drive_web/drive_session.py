@@ -14,7 +14,7 @@ from console_model import (
     BATTERY_POLL_S, Channel, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
     WORLD_BUILD_POLL_S, SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
-    WIFI_SCAN_TIMEOUT_S, WORLD_TIMEOUT_S,
+    WIFI_SCAN_TIMEOUT_S, WORLD_OPEN_POLL_S, WORLD_TIMEOUT_S,
 )
 from drive_actions import SessionActions
 from drive_show import SessionShow
@@ -436,6 +436,17 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.world_build_outstanding = True
             self.world_build_at = now
             self.watch.submit("world_building")
+        # And the world itself, but only while somebody has the popup open. The
+        # rover records a look a second, so what a person is watching goes out of
+        # date as they watch it; before this, only the refresh button moved it.
+        # On the world connection, because that is where the world's calls belong
+        # and a summary must not queue behind an inspection on the status one.
+        if (self.world_link is not None and self.world["open"]
+                and self.world.get("available") is not False
+                and not self.world_outstanding
+                and now - self.world_watched_at > WORLD_OPEN_POLL_S):
+            self.world_watched_at = now
+            self.world_watch()
         # The battery, on the status connection and at a thirtieth of its rate. Only
         # once the daemon has said it offers it, so a rover still running an older
         # daemon shows an empty panel rather than a red error every ten seconds.

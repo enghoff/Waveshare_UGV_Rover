@@ -9,10 +9,20 @@ patience, exactly as the wi-fi scan does and for the same reason, and the consol
 goes on being a console throughout.
 
 The world state itself is fetched rather than pushed, like the network list and the
-pictures: it is tens of kilobytes, it changes when somebody presses a button, and
-the state on the event stream goes out many times a second. What rides in the state
-is a handful of counts and a generation tag; the body is served from `/world.json`
-when that tag moves.
+pictures: it is tens of kilobytes against a state that goes out ten times a second.
+What rides in the state is a handful of counts and a generation tag; the body is
+served from `/world.json` when that tag moves.
+
+**Nobody presses refresh any more, and the tag is what made that affordable.**
+The rover records a look a second and settles identities every ten, so a popup
+that only changed when it was asked to was a still photograph of a store that had
+moved on -- and the person watching had no way to tell those apart. While the
+popup is open the pump asks the rover for the counts every `WORLD_OPEN_POLL_S`,
+the body is asked for only once those have moved, and the tag only moves when
+something in the body is genuinely different. A rover that has recorded nothing
+since the last look therefore costs 7 kB every two seconds and no redraw at all;
+one that is looking costs the body, once per change, which is what the person is
+there to see.
 
 **The pictures do not go through that channel at all, and they used to.** The
 popup asked the rover ahead of time for the frames it thought would be wanted --
@@ -89,6 +99,11 @@ class SessionWorld:
         self.world_query = ""
         self.world_outstanding = 0
         self.world_asked_at = 0.0
+        #: When the counts were last asked for while the popup was open, and
+        #: whether the answer now coming back is that ask. See `world_watch`,
+        #: which is what keeps an open popup current.
+        self.world_watched_at = 0.0
+        self.world_watching = False
 
     # --- what the buttons ask for --------------------------------------------
 
@@ -119,18 +134,42 @@ class SessionWorld:
         self.world_link.submit(name, arguments)
 
     def world_refresh(self) -> None:
+        """Everything the popup draws, asked for again. What the button does."""
         self.world_call("world_state_entities")
         self.world_call("world_state_summary")
         if self.world_selected:
             self.world_call("world_state_entity", {"id": self.world_selected})
 
+    def world_watch(self) -> None:
+        """Ask what the rover has now, while somebody is looking at the popup.
+
+        **This is why nobody has to press refresh any more.** The rover records
+        a look a second and settles identities every ten, so a panel that only
+        changed when it was asked to was a still photograph of a store that had
+        moved on -- and the person watching it had no way to tell the two apart.
+        The pump calls this every `WORLD_OPEN_POLL_S` for as long as the popup is
+        open, and never when it is shut.
+
+        What goes out is the counts alone. They are 7 kB and under 16 ms against
+        the 74 kB and 50-95 ms the entity list costs, and the counts move whenever
+        anything in the store does -- so `world_handle` asks for the body only
+        once they have, and a rover that has recorded nothing since the last look
+        costs nothing but the counts.
+        """
+        # Only this ask goes on to fetch the body. `world_refresh` asks for the
+        # counts too, having already asked for the body beside them, and a rover
+        # that recorded something between those two calls -- which at a look a
+        # second is most of them -- would otherwise fetch it twice.
+        self.world_watching = True
+        self.world_call("world_state_summary")
+
     def world_select(self, entity_id: str) -> None:
         self.world_selected = entity_id
         if entity_id:
             self.world_call("world_state_entity", {"id": entity_id})
-        else:
-            self.world_payload.pop("selected", None)
+        elif self.world_payload.pop("selected", None) is not None:
             self.world_payload.pop("selected_observations", None)
+            self.world_payload.pop("selected_rays", None)
             self.world_bump()
 
     def world_inspect(self) -> None:
@@ -218,6 +257,10 @@ class SessionWorld:
 
     def world_handle(self, name: str, body: dict[str, Any], seconds: float) -> None:
         self.world_outstanding = max(0, self.world_outstanding - 1)
+        # `world_watch` only asks with nothing else in flight, so whatever comes
+        # back next is its answer -- and cleared here whatever that answer is,
+        # so a refusal does not leave the next reply looking like a watch.
+        watching, self.world_watching = self.world_watching, False
         if not body.get("ok"):
             error = str(body.get("error") or "no answer")
             if name == "world_building":
@@ -235,7 +278,10 @@ class SessionWorld:
                 self.world["note"] = ""
             if name == "world_state_search":
                 self.world["searching"] = False
-            self.world_bump()
+            # No bump: everything said here rides in the pushed state, which is
+            # compared whole on every tick. Moving the tag would send the browser
+            # back for 74 kB it already has, and a poll every two seconds means a
+            # rover that is refusing would do that every two seconds.
             return
 
         self.world["available"] = True
@@ -250,36 +296,50 @@ class SessionWorld:
             if body.get("error"):
                 self.world["error"] = str(body["error"])
             return
+        moved = False
         if name == "world_state_summary":
-            self.world_payload["summary"] = body.get("summary") or {}
-            self.world_payload["inferences"] = body.get("inferences") or []
-            self.world_payload["backend"] = body.get("backend") or ""
-            self.world_payload["camera_fov_deg"] = body.get("camera_fov_deg")
+            moved = self.world_put(
+                summary=body.get("summary") or {},
+                inferences=body.get("inferences") or [],
+                backend=body.get("backend") or "",
+                camera_fov_deg=body.get("camera_fov_deg"))
             self.world["backend"] = body.get("backend") or ""
             self.world["busy"] = bool(body.get("busy"))
             self.world["settled"] = body.get("settled") or {}
             self.world_counts()
+            # The counts are how an open popup finds out there is anything new to
+            # draw: they are what `world_watch` asks for every couple of seconds,
+            # and they move whenever the store does. So the body is fetched here,
+            # once, on the strength of them, rather than on a timer of its own.
+            if moved and watching and self.world["open"]:
+                self.world_call("world_state_entities")
+                if self.world_selected:
+                    self.world_call("world_state_entity",
+                                    {"id": self.world_selected})
         elif name == "world_state_entities":
-            self.world_payload["entities"] = body.get("entities") or []
-            self.world_payload["unmatched"] = body.get("unmatched") or []
-            self.world_payload["summary"] = body.get("summary") or {}
-            self.world_payload["recent"] = body.get("recent") or []
+            moved = self.world_put(
+                entities=body.get("entities") or [],
+                unmatched=body.get("unmatched") or [],
+                summary=body.get("summary") or {},
+                recent=body.get("recent") or [])
             self.world_counts()
         elif name == "world_state_entity":
-            self.world_payload["selected"] = body.get("entity") or {}
-            self.world_payload["selected_observations"] = body.get("observations") or []
-            self.world_payload["selected_rays"] = body.get("rays") or []
+            moved = self.world_put(
+                selected=body.get("entity") or {},
+                selected_observations=body.get("observations") or [],
+                selected_rays=body.get("rays") or [])
         elif name == "world_state_search":
             self.world["searching"] = False
             # Stale if the box has moved on since this was asked. Dropped rather
             # than drawn, because a five-second answer arriving under a different
             # phrase reads as the search having got it wrong.
             if str(body.get("query") or "") == self.world_query:
-                self.world_payload["search"] = body
+                moved = self.world_put(search=body)
         elif name == "world_state_clear":
             self.world["note"] = (
                 f"cleared -- {body.get('entities', 0)} entities, "
                 f"{body.get('observations', 0)} observations")
+            moved = bool(self.world_payload)
             self.world_payload = {}
             self.world_refresh()
         elif name == "world_map_session":
@@ -290,7 +350,27 @@ class SessionWorld:
             self.world["busy"] = False
             self.world["note"] = _inspection_note(body, seconds)
             self.world_refresh()
-        self.world_bump()
+        if moved:
+            self.world_bump()
+
+    def world_put(self, **fields: Any) -> bool:
+        """Hold these in the payload, and say whether any of them is new.
+
+        The tag `/world.json` is published under only moves when the answer is
+        yes, and that is what makes asking the rover every two seconds
+        affordable. The body is 74 kB, the browser holds it under a URL that is
+        served `immutable`, and it re-fetches the lot the moment that tag
+        changes -- so a console that bumped on every reply would put 74 kB on the
+        wi-fi every two seconds to redraw a panel that had not changed. It used
+        to bump on every reply, which cost nothing only because nothing asked
+        unless a person pressed the button.
+        """
+        moved = False
+        for field, value in fields.items():
+            if self.world_payload.get(field) != value:
+                self.world_payload[field] = value
+                moved = True
+        return moved
 
     def world_counts(self) -> None:
         summary = self.world_payload.get("summary") or {}

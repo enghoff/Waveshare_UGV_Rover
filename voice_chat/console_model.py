@@ -145,6 +145,18 @@ BATTERY_POLL_S = 10.0
 # console or a script can turn it off, and a panel showing what this console last
 # set would be describing its own past rather than the rover.
 WORLD_BUILD_POLL_S = 10.0
+# How often to ask the rover for the world itself while the popup is on screen,
+# so that what a person is watching is what the rover has rather than what it had
+# when they opened it. The rover records a look a second and settles identities
+# every ten, so a panel that only moved when somebody pressed refresh was showing
+# a still photograph of a store that had gone on changing underneath it.
+#
+# Two seconds is what the two calls behind it cost. Measured on the rover with
+# 349 observations stored: the counts are 7 kB and under 16 ms, the entity list
+# with every entity's rays is 74 kB and 50-95 ms. The list is the expensive one
+# and it is only asked for when the counts say something moved, so a rover that
+# is not looking costs the counts alone.
+WORLD_OPEN_POLL_S = 2.0
 # Past this the reading has stopped being refreshed. The daemon serves one for
 # five seconds, so anything much older than that means the board went quiet.
 BATTERY_STALE_S = 20.0

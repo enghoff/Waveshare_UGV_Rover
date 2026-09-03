@@ -242,9 +242,11 @@ class Handler(BaseHTTPRequestHandler):
                        "public, max-age=31536000, immutable")
         elif path == "/world.json":
             # The semantic world, fetched rather than pushed, for the reason the
-            # network list is: it is tens of kilobytes, it changes when somebody
-            # presses a button, and the state it would otherwise ride in goes out
-            # ten times a second. Immutable because the URL carries the generation.
+            # network list is: it is tens of kilobytes and the state it would
+            # otherwise ride in goes out ten times a second. Immutable because the
+            # URL carries the generation, and the generation only moves when the
+            # body is really different -- which is what lets the console keep an
+            # open popup current without re-sending it every couple of seconds.
             self._send(json.dumps(self.session.world_payload).encode(),
                        "application/json; charset=utf-8",
                        "public, max-age=31536000, immutable")
