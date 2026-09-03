@@ -26,14 +26,27 @@ heartbeat exists to stop the *base* when commands stop arriving, and `T:133` doe
 not feed it, so setting it short here would achieve nothing but a stream of stop
 commands to motors that were never started.
 
-The detector is YuNet, OpenCV's own small CNN face detector. Measured here it is
-5.8 ms of a 33 ms frame, the rest being spent waiting on the camera: the loop runs
-at the camera's 30 fps and detection is not remotely what limits it, which is why
-the frame is not decimated or the detector run every other pass. Its model is a
-230 kB ONNX file that OpenCV does not ship; the first run fetches it to sit beside
-this script, and `--model` points at one already downloaded. Haar cascades would
-need no file, but OpenCV 5 dropped them from the wheel -- `cv2.data.haarcascades`
-is an empty directory here -- so a file has to come from somewhere regardless.
+The detector is YuNet, OpenCV's own small CNN face detector, and on this board it
+is the slowest thing in the loop. Measured on the Orin under the rover's ordinary
+load, 2026-09-03: one detect() is 37 ms, of which 34 is YuNet's own inference and
+3 is the JPEG. That is a ceiling near 26 frames a second against a camera offering
+30, so unlike on the Banana Pi -- where the same call was 5.8 ms of a 33 ms frame
+and the loop simply waited on the camera -- detection now sets the rate. It is
+still not worth decimating the frames: the aiming loop's dead time is eight frames
+either way, and dropping every other detection doubles it. The two levers that
+would actually move it are halving `aiming.DETECT_WIDTH` from 640, which cuts the
+inference roughly fourfold and costs the range at which a small face is still
+found, and putting the same ONNX through TensorRT the way `world_state/engines.py`
+already does. Note that OpenCV's own CUDA support is not one of them and was
+measured not to be worth it: the wheel unpacked by install_opencv.sh has no CUDA,
+and a network this small would spend more on kernel launches and copies to the
+device than it saves.
+
+Its model is a 230 kB ONNX file that OpenCV does not ship; the first run fetches
+it to sit beside this script, and `--model` points at one already downloaded.
+Haar cascades would need no file, but OpenCV 5 dropped them from the wheel --
+`cv2.data.haarcascades` is an empty directory here -- so a file has to come from
+somewhere regardless.
 
 Control is closed through the world -- the camera is on the thing being aimed, so
 every correction changes the next measurement -- but open around the servos, which
