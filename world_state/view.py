@@ -27,6 +27,8 @@ visible as a fork instead of being averaged into a bundle of arrows.
 from __future__ import annotations
 
 import math
+import os
+import sys
 from typing import Any
 
 from . import locate
@@ -38,6 +40,98 @@ RAY_M = 2.5
 #: otherwise be a line, and a line reads as a precision this has nowhere near.
 MIN_SPAN_DEG = 6.0
 MAX_SPAN_DEG = 90.0
+#: The capture mode to read the lens in when nothing says otherwise. The rover
+#: captures at this size; `lens.lens_for` has its own documented rule for a mode
+#: it has not been swept in, and this only decides which one it is asked about.
+FRAME_SIZE = (640, 480)
+
+
+def _lens_module():
+    """`face_tracking/lens.py`, wherever this checkout or this rover keeps it.
+
+    **One description of the optics and not two.** The lens is a property of the
+    hardware rather than of any component, it was swept and fitted on this rover
+    by `usb_cameras/calibrate_fov.py`, and `face_tracking/aiming.py` has aimed
+    through it since 2026-08-19. A copy of those numbers here could only ever
+    drift away from the ones the gimbal is driven with.
+
+    Deployment flattens `face_tracking/` into `~/ugv/` while this package lands
+    in `~/ugv/world_state/`, so the directory above this one is where it lives on
+    the rover and `face_tracking/` beside it is where it lives in a checkout.
+    Both go on the path and whichever exists wins -- the same dance
+    `bench_bearing.py` has been doing.
+    """
+    global _LENS_MODULE
+    if _LENS_MODULE is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        root = os.path.dirname(here)
+        for path in (root, os.path.join(root, "face_tracking")):
+            if os.path.isdir(path) and path not in sys.path:
+                sys.path.append(path)
+        import lens                                    # noqa: PLC0415
+
+        _LENS_MODULE = lens
+    return _LENS_MODULE
+
+
+_LENS_MODULE = None
+_LENSES: dict[tuple[int, int], Any] = {}
+
+
+def _lens_for(size: tuple[int, int] | None):
+    """The fitted lens for a capture mode, or None if it cannot be reached.
+
+    None rather than a raise, and rather than falling back to a multiplication:
+    a host that cannot find the lens has no business writing bearings, and the
+    store already knows what to do with an observation that has none. It is the
+    same answer this module gives for a missing pose or a missing gimbal angle,
+    for the same reason.
+    """
+    key = tuple(size or FRAME_SIZE)
+    got = _LENSES.get(key)
+    if got is None:
+        try:
+            got = _lens_module().lens_for(key[0], key[1])
+        except Exception:                              # noqa: BLE001
+            return None
+        _LENSES[key] = got
+    return got
+
+
+def azimuth_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
+                size: tuple[int, int] | None = None) -> float | None:
+    """Where a point in the picture lies, in degrees left of where the camera
+    was aimed, or None if the lens cannot be reached.
+
+    **This replaces one multiplication, and the multiplication was wrong twice
+    over.** What used to be here mapped the box's horizontal position across the
+    frame straight onto an angle, which is only true along the two centre lines
+    of a 130-degree fisheye -- and it dropped the gimbal's tilt entirely,
+    although every observation records it. Measured over the 441 boxes of the
+    drive of 2026-09-03, the two together put **184 of them outside the 1.5
+    degrees `locate.BEARING_SIGMA_DEG` promises the geometry**, with a median of
+    1.24 and a worst of 16.9. The error is almost all vertical: about a degree
+    across the middle band of the picture and eleven to thirteen along the top,
+    because that is where a tilted fisheye bends most.
+
+    Two steps, and the second is the one a separable model leaves out. The pixel
+    becomes a direction through the fitted projection; that direction is then
+    rotated back by the tilt the gimbal was holding, because the gimbal pans
+    about the world's vertical and tilts about its own horizontal, so a ray's
+    bearing cannot be read off until the tilt is undone. Only the component out
+    of the lens survives that: how high the ray ends up does not change which
+    way it points.
+    """
+    lens = _lens_for(size)
+    if lens is None:
+        return None
+    width, height = tuple(size or FRAME_SIZE)
+    x, y, z = _lens_module().ray_at(cx_frac * width, cy_frac * height, lens)
+    tilt = math.radians(tilt_deg or 0.0)
+    z_level = y * math.sin(tilt) + z * math.cos(tilt)
+    # Positive to the camera's left, which is the map's convention and the
+    # opposite of the gimbal's -- the same swap `ray` makes for the pan.
+    return math.degrees(math.atan2(-x, z_level))
 
 
 def _wrap(degrees: float) -> float:
@@ -46,19 +140,38 @@ def _wrap(degrees: float) -> float:
 
 
 def ray(observation: dict[str, Any], fov_deg: float,
-        length_m: float = RAY_M) -> dict[str, Any] | None:
+        length_m: float = RAY_M,
+        size: tuple[int, int] | None = None) -> dict[str, Any] | None:
     """One observation as a bearing from where the rover stood, or None.
 
     None whenever the rover did not measure enough for an honest answer: no pose
     means there is no point to draw from, and no gimbal angle means there is no
     direction to draw in. Falling back to the middle of the map or to straight
     ahead would be inventing the very geometry this experiment refuses to invent.
+    A lens that cannot be reached is the same kind of silence and gets the same
+    answer -- see `_lens_for`.
 
     **The two sign conventions are opposite and that is the whole of the
     arithmetic.** The gimbal takes pan positive to the *right*; the map, the lidar
     and everything under `ros_nav` take bearings positive to the *left*. Same
     conversion, same reason, as the camera cone the map already draws -- see
     `_camera_cone` in [rover_nav.py](../rover_daemon/rover_nav.py).
+
+    **`fov_deg` no longer does the arithmetic and is kept as the switch.** It
+    says the caller is in a position to know what the camera saw; what the angle
+    is actually worked out through is the swept lens in `face_tracking/lens.py`,
+    chosen by the frame's own size. A rover with a different camera wants
+    `usb_cameras/calibrate_fov.py` run on it and an entry in `lens.LENS`, not a
+    number passed in here -- the old multiplication is what this fixed.
+
+    **A bearing the rover already measured is returned rather than recomputed.**
+    The store works one out at the moment of the look, from the field of view the
+    camera had then, and that is a measurement: a lens refitted afterwards must
+    not silently rewrite every bearing the rover has ever recorded. So a row that
+    carries `bearing_deg` keeps it, which also makes the sight line the console
+    draws the same one `resolve.ray_of` reads -- until this was so, the page was
+    quietly redrawing old looks through today's model while the resolver went on
+    matching them through yesterday's.
     """
     pose = observation.get("pose")
     if not isinstance(pose, dict):
@@ -77,7 +190,19 @@ def ray(observation: dict[str, Any], fov_deg: float,
     except (TypeError, ValueError):
         return None
 
-    offset_deg, span_deg = _from_box(observation.get("bbox"), fov_deg)
+    stored_bearing = observation.get("bearing_deg")
+    stored_span = observation.get("span_deg")
+    if stored_bearing is None:
+        measured = _from_box(observation.get("bbox"),
+                             _tilt_of(observation), size)
+        if measured is None:
+            return None
+        offset_deg, span_deg = measured
+        bearing_deg = _wrap(heading_deg - pan_deg + offset_deg)
+    else:
+        bearing_deg = _wrap(float(stored_bearing))
+        span_deg = float(stored_span if stored_span is not None
+                         else MIN_SPAN_DEG * 3)
     return {
         "id": observation.get("id"),
         "x_m": round(x_m, 3),
@@ -103,29 +228,70 @@ def ray(observation: dict[str, Any], fov_deg: float,
         # inspection stored bearings of -205.9 and -208.6 degrees, which point
         # exactly where +154.1 and +151.4 do but compare with nothing. Every
         # bearing that is written down or compared has to be canonical.
-        "bearing_deg": round(_wrap(heading_deg - pan_deg + offset_deg), 1),
+        "bearing_deg": round(bearing_deg, 1),
         "span_deg": round(span_deg, 1),
         "length_m": length_m,
     }
 
 
-def _from_box(bbox: Any, fov_deg: float) -> tuple[float, float]:
-    """How far off the middle of the picture the thing was, and how wide it was,
-    both in degrees. (0, a default cone) when there is no usable box: the camera
-    direction is still measured, and only the refinement is missing."""
+def _tilt_of(observation: dict[str, Any]) -> float:
+    """Where the gimbal was tilted to, in degrees, or level if it did not say.
+
+    Level is the right silence here and not a guess: it is what a rover that
+    never tilts records, and it is what every bearing written before this was
+    read was worked out as. What it is *not* is a substitute for a missing pan --
+    the pan says which way the camera was aimed and its absence means no ray at
+    all, while the tilt only bends the answer.
+    """
+    try:
+        return float(observation.get("observer_tilt_deg") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+def _from_box(bbox: Any, tilt_deg: float = 0.0,
+              size: tuple[int, int] | None = None
+              ) -> tuple[float, float] | None:
+    """How far off the camera's aim the thing was, and how wide it was, both in
+    degrees, or None if the lens cannot be reached.
+
+    (0, a default cone) when there is no usable box: the camera direction is
+    still measured, and only the refinement is missing.
+
+    **Off the lens axis rather than off the middle of the picture**, which is a
+    choice worth naming because the two are 0.8 degrees apart on this camera --
+    the sweep put the principal point thirteen pixels above the centre of the
+    frame. The axis is what the fitted projection calls forward and what
+    `lens.ray_at` answers (0, 0, 1) for, so taking it needs no assumption the
+    calibration did not make. What *is* unmeasured is where pan = 0 actually
+    points relative to either, and it is worth more than this 0.8 degrees to
+    anybody chasing it: the gimbal is already known to arrive about three degrees
+    short of where it is sent, which no lens model can see.
+
+    **The width is measured the same way as the direction**, as the angle between
+    the box's two vertical edges taken at its own height in the frame, rather
+    than as its pixel width times a field of view. The two answers differ for the
+    same reason the centre's did -- a box of a given pixel width spans more angle
+    at the edge of a fisheye than at the middle -- and `locate.match_tolerance`
+    spends this number, so it has to come from the same optics as everything
+    else.
+    """
     default = MIN_SPAN_DEG * 3
+    if _lens_for(size) is None:
+        return None
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         return 0.0, default
     try:
-        left, _top, right, _bottom = (float(value) for value in bbox)
+        left, top, right, bottom = (float(value) for value in bbox)
     except (TypeError, ValueError):
         return 0.0, default
-    centre = (left + right) / 2.0
-    # Left of the middle of the picture is to the camera's left, which is positive
-    # in the map's convention.
-    offset_deg = (0.5 - centre) * fov_deg
-    span_deg = max(MIN_SPAN_DEG, min(MAX_SPAN_DEG, abs(right - left) * fov_deg))
-    return offset_deg, span_deg
+    cx, cy = (left + right) / 2.0, (top + bottom) / 2.0
+    at_centre = azimuth_deg(cx, cy, tilt_deg, size)
+    at_left = azimuth_deg(left, cy, tilt_deg, size)
+    at_right = azimuth_deg(right, cy, tilt_deg, size)
+    if at_centre is None or at_left is None or at_right is None:
+        return None
+    return at_centre, max(MIN_SPAN_DEG,
+                          min(MAX_SPAN_DEG, abs(at_left - at_right)))
 
 
 def relate(placement: dict[str, Any] | None,

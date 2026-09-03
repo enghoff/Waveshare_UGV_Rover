@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 
+from test_fakes import a_box
 from test_harness import check
 from world_state import locate
 from world_state import view
@@ -25,13 +26,13 @@ def test_an_observation_becomes_a_bearing_from_a_measured_pose() -> None:
     check("the ray starts where the rover was", (drawn["x_m"], drawn["y_m"]),
           (1.0, 2.0))
     check("a gimbal turned right of the nose points right of the heading",
-          drawn["bearing_deg"], 60.0)
+          drawn["bearing_deg"], 59.2)
     check("...and a box the width of a fifth of the picture is that wide",
-          drawn["span_deg"], 26.0)
+          drawn["span_deg"], 25.3)
 
     left = dict(observation, bbox=[0.0, 0.2, 0.2, 0.8])
     check("something at the left of the picture is further to the left again",
-          view.ray(left, fov_deg=130.0)["bearing_deg"], 112.0)
+          view.ray(left, fov_deg=130.0)["bearing_deg"], 110.6)
 
     check("no pose means no ray, rather than a ray from the origin",
           view.ray(dict(observation, pose=None), 130.0), None)
@@ -39,6 +40,56 @@ def test_an_observation_becomes_a_bearing_from_a_measured_pose() -> None:
           view.ray(dict(observation, observer_pan_deg=None), 130.0), None)
     check("a box that is missing still leaves the camera direction",
           view.ray(dict(observation, bbox=None), 130.0)["bearing_deg"], 60.0)
+
+
+def test_the_bearing_comes_through_the_lens_the_gimbal_is_aimed_with() -> None:
+    """**The fault this replaced put 184 of one drive's 441 boxes outside the
+    accuracy `locate` is promised.** A box's horizontal position times a field of
+    view is only the right angle along the two centre lines of a 130-degree
+    fisheye, and the tilt the gimbal was holding -- recorded on every observation
+    -- was thrown away entirely. Both are wrong in the same place: high in the
+    frame, which is where things on walls are."""
+    check("a point on the lens axis is straight ahead whatever the tilt",
+          [round(view.azimuth_deg(315.9 / 640, 227.4 / 480, tilt), 3)
+           for tilt in (0.0, 10.0, 30.0)], [0.0, 0.0, 0.0])
+
+    # Down one column near the left edge, tilting the camera up by 30 degrees.
+    # The old multiplication said all three of these were the same angle and that
+    # the tilt did not enter into it.
+    moved = [round(view.azimuth_deg(0.1, cy, 30.0)
+                   - view.azimuth_deg(0.1, cy, 0.0), 1)
+             for cy in (0.1, 227.4 / 480, 0.9)]
+    check("tilting the camera up swings a bearing high in the picture wide",
+          moved[0], 21.4)
+    check("...swings one low in the picture the other way",
+          moved[2], -12.2)
+    check("...and moves one on the axis row least of the three",
+          min(abs(one) for one in moved) == abs(moved[1]), True)
+
+    corner = {"pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
+              "observer_pan_deg": 0.0, "observer_tilt_deg": 30.0,
+              "bbox": [0.05, 0.05, 0.15, 0.15]}
+    check("and the tilt reaches the bearing the store writes",
+          view.ray(corner, 130.0)["bearing_deg"],
+          view.ray(dict(corner, observer_tilt_deg=0.0), 130.0)["bearing_deg"]
+          + 21.4)
+
+
+def test_a_bearing_the_rover_measured_is_not_recomputed() -> None:
+    """A lens refitted today must not rewrite what the rover measured a month
+    ago, and the console must draw the same sight line the resolver matches on:
+    until this held, the page redrew old looks through the new model while
+    `resolve.ray_of` went on reading the old number off the row."""
+    observation = {"pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
+                   "observer_pan_deg": 0.0, "bbox": [0.4, 0.2, 0.6, 0.8],
+                   "bearing_deg": -175.0, "span_deg": 12.0}
+    drawn = view.ray(observation, fov_deg=130.0)
+    check("the stored bearing is what comes back", drawn["bearing_deg"], -175.0)
+    check("...and its span with it", drawn["span_deg"], 12.0)
+    check("a row with no stored bearing is worked out from the box",
+          view.ray({k: v for k, v in observation.items()
+                    if k not in ("bearing_deg", "span_deg")},
+                   130.0)["bearing_deg"], -0.8)
 
 
 def test_the_rays_of_one_entity_are_bounded_and_oldest_first() -> None:
@@ -55,7 +106,7 @@ def test_a_look_is_related_to_the_position_the_thing_settled_on() -> None:
     """What the map draws once a thing has a position: not six stubs of the same
     length, but how each look stands to the one place it was settled at."""
     observation = {"id": 4, "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
-                   "observer_pan_deg": 0.0, "bbox": [0.45, 0.4, 0.55, 0.6]}
+                   "observer_pan_deg": 0.0, "bbox": a_box(0.10, 0.20)}
     drawn = view.ray(observation, fov_deg=130.0)
     check("the rover's own facing rides along, not only the camera's",
           (drawn["heading_deg"], drawn["pan_deg"]), (0.0, 0.0))
@@ -424,6 +475,8 @@ def test_the_looks_that_agree_say_where_exactly() -> None:
 
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
+    test_the_bearing_comes_through_the_lens_the_gimbal_is_aimed_with,
+    test_a_bearing_the_rover_measured_is_not_recomputed,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
     test_a_look_is_related_to_the_position_the_thing_settled_on,
     test_the_rays_of_a_placed_thing_carry_the_relation,

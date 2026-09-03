@@ -213,6 +213,14 @@ class Inspector:
         capture = {"frame_id": frame_id,
                    "frame_path": self.store.frame_path(frame_id),
                    "pan": frame.get("pan"), "tilt": frame.get("tilt"),
+                   # Which capture mode this was, because it chooses the lens
+                   # the bearing is worked out through: a mode is a window onto
+                   # the sensor as well as a pixel count, and this camera's two
+                   # modes do not see the same angle. See `view.azimuth_deg`.
+                   "frame_size": (None if not frame.get("width")
+                                  or not frame.get("height")
+                                  else (int(frame["width"]),
+                                        int(frame["height"]))),
                    "pose": where,
                    # Half of what the rover covered while the shutter was open,
                    # which is how far out the ray's own starting point may be.

@@ -58,6 +58,7 @@ if __package__ in (None, ""):                       # run as a script
     __package__ = "world_state"
 
 from . import resolve as resolver                   # noqa: E402
+from . import view                                  # noqa: E402
 from .store import WorldStore                       # noqa: E402
 
 #: The columns an observation is replayed with. Everything the rover measured,
@@ -100,6 +101,53 @@ def inspections(path: str) -> list[list[dict]]:
             order.append(key)
         groups[key].append(row)
     return [groups[key] for key in order]
+
+
+def remeasure(groups: list[list[dict]], size: tuple[int, int] | None = None
+              ) -> tuple[int, float]:
+    """Work every recorded bearing out again through today's model, in place.
+
+    **The gap this closes was written up before it was needed.** `resolve.ray_of`
+    reads the bearing off the row rather than deriving it from the box --
+    deliberately, because a bearing is a measurement taken at the moment of the
+    look and a lens refitted afterwards must not silently rewrite the rover's
+    history. The cost of that is that a recording replays with the bearings it
+    was recorded with whatever `view` now says, so the harness that exists to
+    judge a change to identity could not judge a change to *this*.
+
+    So it is asked for explicitly and only here, at a desk, on a copy. The box,
+    the pose and the gimbal angles are still the rover's own; what is recomputed
+    is only the arithmetic between them. Answers how many rows changed and by how
+    much in the median, because "nothing moved" is the result that says the
+    recording was taken after the change rather than before it.
+    """
+    moved = []
+    for group in groups:
+        for row in group:
+            pose = row.get("observer_pose_json")
+            try:
+                pose = json.loads(pose) if pose else None
+            except (TypeError, ValueError):
+                pose = None
+            # Deliberately without the bearing the row already carries: `ray`
+            # hands a stored one straight back, which is exactly the behaviour
+            # this function exists to step around. `fov_deg` is the switch that
+            # says a camera was known and no longer does any arithmetic.
+            drawn = view.ray({"pose": pose,
+                              "bbox": json.loads(row["bbox_json"])
+                              if row.get("bbox_json") else None,
+                              "observer_pan_deg": row.get("observer_pan_deg"),
+                              "observer_tilt_deg": row.get("observer_tilt_deg")},
+                             fov_deg=1.0, size=size)
+            if drawn is None:
+                continue
+            was = row.get("bearing_deg")
+            row["bearing_deg"] = drawn["bearing_deg"]
+            row["span_deg"] = drawn["span_deg"]
+            if was is not None:
+                moved.append(abs(_wrap(float(was) - drawn["bearing_deg"])))
+    moved.sort()
+    return len(moved), (moved[len(moved) // 2] if moved else 0.0)
 
 
 def blank_ids(path: str, frames_dir: str) -> set:
@@ -197,7 +245,9 @@ def reach_from(path: str):
 # --- the replay itself -------------------------------------------------------
 
 def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
-           verbose: bool = False, reach=None) -> tuple[list[dict], list[dict]]:
+           verbose: bool = False, reach=None,
+           groups: list[list[dict]] | None = None
+           ) -> tuple[list[dict], list[dict]]:
     """Feed a recording back through the live resolver, from an empty world.
 
     `reach` is the same callable the daemon hands the resolver -- how far the
@@ -206,11 +256,12 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
     the resolver did before it could ask.
     """
     skip = skip or set()
+    groups = inspections(path) if groups is None else groups
     directory = tempfile.mkdtemp(prefix="world-replay-")
     try:
         store = WorldStore(directory)
         session = None
-        for group in inspections(path):
+        for group in groups:
             wanted = [row for row in group if row["id"] not in skip
                       and not (drop_untrusted
                                and row["observer_pose_json"] == ORIGIN)]
@@ -390,6 +441,14 @@ def main() -> int:
     parser.add_argument("--map", default="",
                         help="a map.json fetched from the nav bridge; supplies "
                              "the range bound the occupancy grid gives")
+    parser.add_argument("--recompute-bearings", action="store_true",
+                        help="work every bearing out again through today's "
+                             "view.ray instead of replaying the ones the rover "
+                             "stored; the only way to judge a change to the "
+                             "bearing model on a recording")
+    parser.add_argument("--frame-size", default="640x480",
+                        help="the capture mode the recording was taken in, "
+                             "which chooses the lens")
     parser.add_argument("--no-untrusted-pose", action="store_true",
                         help="drop the observations taken at exactly the map "
                              "origin, which is what an unlocalised stack gave")
@@ -406,9 +465,16 @@ def main() -> int:
     if skip:
         print(f"  {len(skip)} regions with no picture in them, left out")
     reach = reach_from(args.map) if args.map else None
+    groups = inspections(args.database)
+    if args.recompute_bearings:
+        width, height = (int(part) for part in args.frame_size.lower().split("x"))
+        count, median = remeasure(groups, (width, height))
+        print(f"  {count} bearings worked out again, median move "
+              f"{median:.2f} deg")
     entities, observations = replay(args.database, skip=skip,
                                     drop_untrusted=args.no_untrusted_pose,
-                                    verbose=args.verbose, reach=reach)
+                                    verbose=args.verbose, reach=reach,
+                                    groups=groups)
     score(entities, observations, detail=args.detail)
     return 0
 

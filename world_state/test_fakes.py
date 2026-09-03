@@ -103,16 +103,34 @@ def a_vector(*values, width=8):
     return struct.pack(f"<{width}f", *numbers)
 
 
+#: A box sitting on the lens axis, so that the angle it contributes is zero.
+#:
+#: **Not the middle of the picture, which is a different point.** The sweep put
+#: this camera's principal point thirteen pixels above the centre of the frame,
+#: and a bearing is now worked out through that lens rather than by multiplying
+#: a fraction of the frame by a field of view -- so a box centred in the picture
+#: contributes 0.8 degrees and every expectation in every resolver test would be
+#: carrying it. Written as the axis rather than as the numbers it comes to, so
+#: that a re-swept lens moves the fixture instead of breaking forty tests.
+ON_AXIS = (315.9 / 640.0, 227.4 / 480.0)
+
+
+def a_box(width=0.10, height=0.60):
+    """A box of this size in the frame, centred on the lens axis."""
+    return [ON_AXIS[0] - width / 2.0, ON_AXIS[1] - height / 2.0,
+            ON_AXIS[0] + width / 2.0, ON_AXIS[1] + height / 2.0]
+
+
 def observe(store, x, y, bearing, vector=None, inference=None, fov_deg=100.0):
     """One look at something, from a place, along a bearing.
 
-    The box is centred, so the bearing really is the pose's heading minus the
-    gimbal's pan and nothing else -- which keeps these tests about the resolver
-    rather than about `view.ray`, which has its own.
+    The box sits on the lens axis, so the bearing really is the pose's heading
+    minus the gimbal's pan and nothing else -- which keeps these tests about the
+    resolver rather than about `view.ray`, which has its own.
     """
     from world_state.perception_client import Sighting
 
-    seen = [Sighting(bbox=[0.45, 0.3, 0.55, 0.9],
+    seen = [Sighting(bbox=a_box(),
                      dino=vector if vector is not None else a_vector(1.0, 0.0),
                      siglip=a_vector(0.5, 0.5))]
     store.record(seen, capture={"frame_id": "f", "pan": 0.0,

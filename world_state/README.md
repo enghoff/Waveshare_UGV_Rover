@@ -60,19 +60,19 @@ something on a wall several metres away.** The write-up is *Three things placed
 where nothing is* below. One of the three causes is fixed here; the other two are
 measured and are not.
 
-**A fifth fault was found on 2026-09-03 and it is upstream of all of them: the
-rover works out its bearings with the model face tracking was measured off and
-moved away from a fortnight earlier.** `view.py` turns a box into an angle with one
+**A fifth fault was found on 2026-09-03 and it was upstream of all of them: the
+rover worked out its bearings with the model face tracking was measured off and
+moved away from a fortnight earlier. It is fixed.** `view.py` turns a box into an angle with one
 multiplication, which on a 130-degree fisheye on a tilting gimbal is only right
 along the two centre lines — and the gimbal's own tilt, recorded on every
-observation, is dropped rather than used. On the 71 boxes of that morning's
-recording the median error is 1.34 degrees and the worst is 14.5, against the 1.5
-that `BEARING_SIGMA_DEG` promises the geometry: **half of every bearing the rover
-has ever stored is outside the accuracy the resolver is told to expect.** It is
-measured and **not fixed** — the write-up, the shape of the fix and why it wants
-its own drive are under *The bearing is worked out with the model aiming was
-measured off* below. It is also the best current explanation for the open problem
-two paragraphs down.
+observation, is dropped rather than used. On the 441 boxes of the evening drive the
+median error is 1.24 degrees and the worst is 16.9, against the 1.5 that
+`BEARING_SIGMA_DEG` promises the geometry: **184 of them are outside the accuracy
+the resolver is told to expect.** A bearing comes through the swept lens in
+`face_tracking/lens.py` now, with the gimbal's tilt taken out, and replaying that
+drive either side of the change places two more things while taking the bearings
+that miss their own entity's position from 9% to 3%. The write-up is under *The
+bearing was worked out with the model aiming was measured off* below.
 
 **A fourth fault was found on 2026-09-02 and it is the one that mattered most:
 the rover was placing things through walls, and its own map said so.** An entity
@@ -651,12 +651,14 @@ with the swept lens in `face_tracking/lens.py`:
 python world_state/bench_bearing.py /tmp/run.db
 ```
 
-**`replay.py` cannot judge a change to that model as it stands**, which is worth
-knowing before reaching for it: `resolve.ray_of` reads the bearing off the row
-rather than recomputing it from the box, deliberately — the bearing is a
-measurement taken at the moment of the look — so a recording replays with the
-bearings it was recorded with whatever `view.py` now says. Judging a new bearing
-model on a recording means teaching the replay to recompute them.
+**`replay.py` replays a recording with the bearings it was recorded with**, unless
+it is told otherwise, and that is deliberate: `resolve.ray_of` reads the bearing
+off the row rather than recomputing it from the box, because the bearing is a
+measurement taken at the moment of the look. `--recompute-bearings` is the way
+round it, added on 2026-09-03 so that the change to the bearing model could be
+judged on a real run before it flew — it works every bearing out again
+through today's `view.ray`, from the box, the pose and the gimbal angles the rover
+recorded, and says how many moved and by how much.
 
 [`replay.py`](replay.py) feeds a recorded database back through the live resolver
 one look at a time and scores what comes out — how much of each entity is
@@ -1035,25 +1037,28 @@ that had just confused it. It looks every `LOOK_BLIND_S` now and stores frames
 with no bearing, which the store already handles honestly: the picture is kept and
 only the direction is missing.
 
-### The bearing is worked out with the model aiming was measured off, and it is the biggest error in the component
+### The bearing was worked out with the model aiming was measured off, and now it is not
 
-**Not fixed. Measured, and it is worse than everything else here put together.**
+**Fixed on 2026-09-03, and measured on a recording either side of the change.**
+What follows is kept in the tense it was found in, because it is the case for the
+fix; what the fix came to is at the end of it.
 
-[`view.py`](view.py) turns a box into an angle with one multiplication:
+[`view.py`](view.py) turned a box into an angle with one multiplication:
 
 ```python
 offset_deg = (0.5 - centre) * fov_deg
 ```
 
-That is the separable pixels-times-a-gain model, and this repository already
-found out what it is worth. `face_tracking/aiming.py` did the same thing until
+That was the separable pixels-times-a-gain model, and this repository had
+already found out what it is worth. `face_tracking/aiming.py` did the same thing until
 2026-08-19, and a probe on the rover measured it 2 degrees out at 20 degrees off
 centre, 5 to 9 at 35 to 45, and 13 to 20 at 50 to 65 — on a 130-degree fisheye
 hung on a gimbal that pans about the vertical and then tilts about its own
 horizontal, it is only right along the two centre lines. It was replaced by a
 swept and fitted lens in [`face_tracking/lens.py`](../face_tracking/lens.py) and
 verified live. **The world state was never moved with it**, and its bearings are
-the foundation everything in `locate.py` and `resolve.py` stands on.
+the foundation everything in `locate.py` and `resolve.py` stands on. It is moved
+with it now.
 
 What the difference comes to on the 71 boxes of the recording of 2026-09-03,
 against `lens.ray_at` at the frames' own 640x480 with the lens as fitted —
@@ -1085,23 +1090,63 @@ Two separate faults, and the second is the cheaper one to be sure of:
     pointing where a level camera would, and the gimbal has been at 10 degrees for
     every look in this recording.
 
-The fix has an obvious shape and it is not a copy of the lens. The daemon already
-hands `Inspector` its camera, its pose and its reach as callables, "supplied
-rather than reached for, because the things they read belong to the daemon" — and
-the lens belongs to the daemon too, for exactly the same reason. So a `bearing`
-callable alongside them, with `store.record` and `view.ray` taking the tilt they
-are already given. One copy of the calibration, in the file whose whole purpose is
-to be the one place it is re-measured.
+The fix must not be a copy of the lens: one copy of the calibration, in the file
+whose whole purpose is to be the one place it is re-measured. It was first
+sketched as a `bearing` callable handed in beside the camera, the pose and the
+reach — "supplied rather than reached for, because the things they read belong
+to the daemon" — and that is not what it wanted. Those three are live readings
+taken at the moment of the look; a lens is a fact about the hardware sitting in a
+file, so `view` imports it and `store.record` passes the tilt and the frame size
+it already holds.
 
-**What has to happen with it, and why it was not done in the same pass as the
-cadence.** Changing this changes every bearing the rover records from then on, so
-the database becomes half one model and half the other; `BEARING_SIGMA_DEG` was
-measured under the old model and has to be re-measured under the new one; and
-`replay.py` cannot judge it as it stands, because `ray_of` reads the bearing off
-the row rather than recomputing it from the box — so replaying a change to the
-bearing model needs the replay harness extended first. None of that is hard and
-all of it is more than an afternoon, and the honest order is to do it as its own
-change with a drive behind it rather than to bolt it onto a rate fix.
+#### What it came to
+
+`view.azimuth_deg` puts a pixel through `lens.ray_at` and then undoes the tilt the
+gimbal was holding, because the gimbal pans about the world's vertical and tilts
+about its own horizontal, so a ray's bearing cannot be read off until the tilt is
+taken out. The lens is imported from
+[`face_tracking/lens.py`](../face_tracking/lens.py) rather than copied — one
+description of this camera's optics, in the file whose whole purpose is to be the
+one place it is re-measured — and it is chosen by the frame's own size,
+because a capture mode is a window onto the sensor as well as a pixel count. The
+box's *width* comes through the same lens now as well, measured as the angle
+between its two vertical edges: `locate.match_tolerance` spends that number, so it
+cannot come from different optics than everything else.
+
+The angle is taken off the **lens axis** rather than off the middle of the
+picture, and the two are 0.8 degrees apart here because the sweep put this
+camera's principal point thirteen pixels above the centre of the frame. What is
+still unmeasured is where pan = 0 actually points relative to either, and it is
+worth more than that 0.8 degrees: the gimbal is already known to arrive about
+three degrees short of where it is sent.
+
+`fov_deg` survives as the switch and no longer does any arithmetic. It says the
+caller is in a position to know what the camera saw; a rover with a different
+camera wants `usb_cameras/calibrate_fov.py` run on it and an entry in `lens.LENS`,
+which is the whole point of not passing a number in.
+
+**Measured on the drive of 2026-09-03 (evening), replayed against the map the
+rover had.** 152 of that recording's bearings move, by 1.40 degrees in the median:
+
+| | entities | attached | bearings missing their own entity |
+|---|---:|---:|---:|
+| as the rover recorded them | 14 | 68 | 6 (9%) |
+| worked out again through the lens | 16 | 71 | **2 (3%)** |
+
+More things placed, more looks attached to them, and a third as many of an
+entity's own bearings missing the position that entity settled on — which is
+the column that matters, because it is a thing disagreeing with its own evidence.
+
+Three things about it are worth keeping in view. **A stored bearing is never
+rewritten**: `view.ray` hands back the one on the row when there is one, so a
+database is half one model and half the other by design, and the console now draws
+the same sight line `resolve.ray_of` matches on — until this held, the page
+was quietly redrawing old looks through the new model while the resolver went on
+using the old number. **`BEARING_SIGMA_DEG` was measured under the old model** and
+is still 1.5; what it should be under this one wants its own sweep, and the
+gimbal's own under-travel is the larger term in it either way. And **`replay.py`
+had to be taught to recompute** before any of this could be measured, which is
+`--recompute-bearings`.
 
 It is also the best current explanation for the open problem this component has
 been carrying: **an entity is often a mixture of several objects.** Rays that are
@@ -1329,7 +1374,7 @@ not move where anything was placed.
 
 1. **The bearing.** Everything above is downstream of it. The fitted lens is the
    part that can be fixed at a desk; the gimbal and the heading want the rover.
-   See *The bearing is worked out with the model aiming was measured off* above.
+   See *The bearing was worked out with the model aiming was measured off* above.
 2. **`BEARING_SIGMA_DEG` is a promise the rover does not keep**, and it is what
    the uncertainty, the tolerance and the parallax floor are all sized from. Until
    the bearing is fixed it is understating by a factor of four in the median and

@@ -53,10 +53,14 @@ def test_a_bearing_is_the_pose_the_gimbal_and_the_box_together() -> None:
         inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
         # Heading 90 to the left, gimbal 20 to the right, and a box centred in
-        # the picture: 90 - 20 + 0.
+        # the picture: 90 - 20, less the 0.8 degrees by which the middle of the
+        # frame is not the lens axis. `fov_deg` is passed and no longer decides
+        # anything -- the angle comes through the swept lens now, chosen by the
+        # frame's size -- and it is left here because it is still the switch
+        # that says the caller knows what the camera saw.
         check("the stored bearing is heading minus pan plus the box offset",
-              row["bearing_deg"], 70.0)
-        check("...and the box's width became a cone", row["span_deg"], 20.0)
+              row["bearing_deg"], 69.2)
+        check("...and the box's width became a cone", row["span_deg"], 25.6)
 
         store.close()
 
@@ -192,7 +196,7 @@ def test_a_bearing_never_runs_past_half_a_turn() -> None:
     facing = {"pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": -150.4},
               "observer_pan_deg": 50.0, "bbox": [0.4, 0.3, 0.6, 0.9]}
     check("the sum wraps rather than running past half a turn",
-          view.ray(facing, 100.0)["bearing_deg"], 159.6)
+          view.ray(facing, 100.0)["bearing_deg"], 158.8)
     other_way = dict(facing, observer_pan_deg=-200.0)
     check("...in the other direction too",
           -180.0 < view.ray(other_way, 100.0)["bearing_deg"] <= 180.0, True)

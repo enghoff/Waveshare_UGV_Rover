@@ -670,9 +670,20 @@ class WorldStore:
                 # every bearing the rover ever measured.
                 bearing = span = None
                 if fov_deg:
+                    # The gimbal's tilt goes in with the pan, and it is not a
+                    # decoration: the camera tilts about its own horizontal, so
+                    # a ray's bearing cannot be read off the picture until the
+                    # tilt is undone. It was recorded on every observation and
+                    # dropped here, which put 184 of the 441 boxes of the drive
+                    # of 2026-09-03 outside the accuracy `locate` is promised.
+                    # The frame's size goes in because it chooses the lens, the
+                    # capture mode being a window onto the sensor as well as a
+                    # pixel count. See `view.azimuth_deg`.
                     drawn = view.ray({"pose": pose, "bbox": bbox,
-                                      "observer_pan_deg": capture.get("pan")},
-                                     float(fov_deg))
+                                      "observer_pan_deg": capture.get("pan"),
+                                      "observer_tilt_deg": capture.get("tilt")},
+                                     float(fov_deg),
+                                     size=capture.get("frame_size"))
                     if drawn is not None:
                         bearing = drawn["bearing_deg"]
                         span = drawn["span_deg"]
