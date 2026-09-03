@@ -14,7 +14,7 @@ from console_model import (
     BATTERY_POLL_S, Channel, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
     WORLD_BUILD_POLL_S, SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
-    WIFI_SCAN_TIMEOUT_S, WORLD_OPEN_POLL_S, WORLD_TIMEOUT_S,
+    WIFI_SCAN_TIMEOUT_S, WORLD_OPEN_POLL_S, WORLD_RETRY_S, WORLD_TIMEOUT_S,
 )
 from drive_actions import SessionActions
 from drive_show import SessionShow
@@ -429,8 +429,9 @@ class Session(SessionActions, SessionShow, SessionWorld):
         # Whether the rover is building its world state, on the status connection
         # rather than the world one: it reads a flag and touches neither the store
         # nor the camera, so it must not queue behind an inspection that takes a
-        # minute. Stopped for good once a rover says it has no world state at all.
-        if (self.watch is not None and self.world.get("available") is not False
+        # minute. Stopped for good once a daemon turns out never to have heard of
+        # it, which is the only thing its failing proves.
+        if (self.watch is not None and self.world_build_offered
                 and not self.world_build_outstanding
                 and now - self.world_build_at > WORLD_BUILD_POLL_S):
             self.world_build_outstanding = True
@@ -438,13 +439,19 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.watch.submit("world_building")
         # And the world itself, but only while somebody has the popup open. The
         # rover records a look a second, so what a person is watching goes out of
-        # date as they watch it; before this, only the refresh button moved it.
+        # date as they watch it, and there is no refresh button to press any more.
         # On the world connection, because that is where the world's calls belong
         # and a summary must not queue behind an inspection on the status one.
+        #
+        # A rover that refused the last one is asked again more slowly rather
+        # than not at all -- see WORLD_RETRY_S. That is what makes the panel
+        # recover on its own from a rover that has just been given the component
+        # or a store that was busy for a moment.
+        watch_gap = (WORLD_RETRY_S if self.world.get("available") is False
+                     else WORLD_OPEN_POLL_S)
         if (self.world_link is not None and self.world["open"]
-                and self.world.get("available") is not False
                 and not self.world_outstanding
-                and now - self.world_watched_at > WORLD_OPEN_POLL_S):
+                and now - self.world_watched_at > watch_gap):
             self.world_watched_at = now
             self.world_watch()
         # The battery, on the status connection and at a thirtieth of its rate. Only
@@ -636,6 +643,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.tools = []
         self.can_drive = False
         self.world_outstanding = 0
+        # A reconnect is how a daemon that came back *different* is
+        # noticed, and whether it offers the world-state switch is one of
+        # the things asked once and otherwise kept for the session.
+        self.world_build_offered = True
         self.busy_since = None
         # The move connection has just been thrown away, so the reply that would
         # have handed the wheels over is never coming. Said out loud rather than

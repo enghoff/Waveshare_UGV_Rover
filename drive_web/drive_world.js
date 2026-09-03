@@ -845,7 +845,6 @@ function drawWorldDiagnostics() {
 function wireWorld() {
   $("world").onclick = () => post({do: "world", what: state.world.open ? "close" : "open"});
   $("worldClose").onclick = () => post({do: "world", what: "close"});
-  $("worldRefresh").onclick = () => post({do: "world", what: "refresh"});
   $("worldInspect").onclick = () => post({do: "world", what: "inspect"});
   // A click on the dimmed page behind the popup closes it, which is what a popup
   // over a page is expected to do. A click inside must not, or every press of a

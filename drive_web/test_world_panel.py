@@ -305,14 +305,26 @@ def test_the_switch_for_building_the_world_state() -> None:
     check("a loop that is failing says why", session.world_state()["error"],
           "the perception sidecar is not running")
 
-    # A rover with no world state at all stops being asked, rather than showing
-    # an error every ten seconds for the rest of the session.
+    # A daemon too old to have heard of the switch is asked once, rather than
+    # every ten seconds for the rest of the session.
     session.world_handle("world_building",
-                         {"ok": False, "error": "no world_state component"}, 0.0)
-    check("a rover without it is marked absent",
-          session.world_state()["available"], False)
+                         {"ok": False, "error": "no such tool: world_building"}, 0.0)
+    check("a daemon that does not offer it stops being asked",
+          session.world_build_offered, False)
     check("...and the poll is not left outstanding",
           session.world_build_outstanding, False)
+    # It does not decide whether the rover has a world state, though, and it
+    # cannot: on a rover with no world-state component this call still answers
+    # ok, because it reads a flag rather than opening the store. Only the world
+    # channel's own calls can tell, and they are what says so.
+    check("...and it does not pronounce on whether there is a world state",
+          session.world_state()["available"], None)
+    session.world_handle("world_state_summary",
+                         {"ok": False,
+                          "error": "this rover has no world_state component "
+                                   "installed"}, 0.0)
+    check("the world's own call is what marks a rover absent",
+          session.world_state()["available"], False)
 
 
 def test_an_open_popup_keeps_itself_current() -> None:
@@ -327,7 +339,7 @@ def test_an_open_popup_keeps_itself_current() -> None:
     """
     try:
         import drive_web
-        from console_model import WORLD_OPEN_POLL_S
+        from console_model import WORLD_OPEN_POLL_S, WORLD_RETRY_S
     except ImportError as exc:
         SKIP.append(f"the open world popup ({type(exc).__name__})")
         return
@@ -404,11 +416,11 @@ def test_an_open_popup_keeps_itself_current() -> None:
     check("...and a changed one moves it",
           session.world_state()["gen"] != held, True)
 
-    # The refresh button asks for the body itself, so the counts that come back
+    # Opening the popup asks for the body itself, so the counts that come back
     # beside it must not fetch it a second time -- which at a look a second they
     # would, because the store moves between those two calls.
     session.world_refresh()
-    check("the button asks for everything", asked(),
+    check("opening it asks for everything", asked(),
           ["world_state_entities", "world_state_summary"])
     session.world_handle("world_state_summary",
                          {"ok": True, "summary": dict(counts, observations=13),
@@ -426,9 +438,28 @@ def test_an_open_popup_keeps_itself_current() -> None:
     check("...and says why, in the state that is pushed anyway",
           session.world_state()["error"], "the store could not be opened")
 
+    # A rover that has refused is asked again, slowly, rather than never. There
+    # is no refresh button to press any more, so a popup that gave up on the
+    # first refusal would need closing and opening to find out that the rover
+    # has since been given the component -- or that its store was only busy for
+    # a moment while the daemon restarted.
+    session.world["available"] = False
+    session.world_outstanding = 0
+    session.world_watched_at = 0.0
+    session.pump()
+    check("a refusal does not stop the asking for good", asked(),
+          ["world_state_summary"])
+    check("...but slows it right down", WORLD_RETRY_S >= 10 * WORLD_OPEN_POLL_S,
+          True)
+    session.world_handle("world_state_summary",
+                         {"ok": True, "summary": counts, "backend": "tensorrt"},
+                         0.0)
+    check("...and an answer brings the panel back on its own",
+          session.world_state()["available"], True)
+
     # Shutting it stops the asking, rather than leaving a console polling a
     # store nobody is looking at.
-    session.world["available"] = True
+    asked()                       # the body that answer sent for
     session.world["open"] = False
     session.world_outstanding = 0
     session.world_watched_at = 0.0

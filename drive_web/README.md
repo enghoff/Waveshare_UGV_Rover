@@ -244,8 +244,18 @@ screen the console asks the rover for the counts every two seconds, which are 7 
 and 16 ms; it fetches the body behind them, 74 kB and about 70 ms, only once those
 counts have moved; and the tag the browser re-fetches under moves only when the body
 is really different. So a rover recording nothing costs the counts alone and no
-redraw, and one that is looking costs a payload per change. **refresh** stays for
-asking outright. Nothing is polled while the popup is shut.
+redraw, and one that is looking costs a payload per change. Nothing is polled while
+the popup is shut.
+
+**There is no refresh button, and there is nothing for one to do.** Opening the
+popup asks for the whole of it and the poll above keeps it that way, so a button
+could only fetch what the console had a moment ago. The one thing it was still
+good for was un-sticking a console that had decided this rover has no world state
+— which happens on any refusal, including a store that was busy for a moment while
+the daemon restarted — and that is handled where it belongs: after a refusal the
+asking slows to `WORLD_RETRY_S` rather than stopping, so the panel comes back on
+its own. A rover too old to offer the world-building switch at all is still asked
+once and no more, since that call failing is the only thing that proves it.
 
 The stored frames come from `/world_frame.jpg`, and that one goes to the rover on a
 connection of its own again, synchronously, on whichever thread is serving the

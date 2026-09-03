@@ -157,6 +157,13 @@ WORLD_BUILD_POLL_S = 10.0
 # and it is only asked for when the counts say something moved, so a rover that
 # is not looking costs the counts alone.
 WORLD_OPEN_POLL_S = 2.0
+# And how long to leave it after the rover has refused before asking again, for
+# as long as the popup stays open. A refusal is not remembered for the session:
+# it is usually a rover with no world-state component, and it is sometimes a
+# store that was locked while the daemon restarted, and those two must not be
+# told apart by making somebody close the popup and open it again. Slow enough
+# that a rover which really has none is asked twice a minute and no more.
+WORLD_RETRY_S = 30.0
 # Past this the reading has stopped being refreshed. The daemon serves one for
 # five seconds, so anything much older than that means the board went quiet.
 BATTERY_STALE_S = 20.0

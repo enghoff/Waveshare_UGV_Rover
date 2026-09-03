@@ -104,6 +104,11 @@ class SessionWorld:
         #: which is what keeps an open popup current.
         self.world_watched_at = 0.0
         self.world_watching = False
+        #: Whether this daemon has heard of the switch at all. A rover too old
+        #: to offer it is asked once rather than every ten seconds for the rest
+        #: of the session. Reset on reconnect, because a reconnect is how a
+        #: daemon that came back different is noticed.
+        self.world_build_offered = True
 
     # --- what the buttons ask for --------------------------------------------
 
@@ -115,8 +120,6 @@ class SessionWorld:
             self.world_refresh()
         elif what == "close":
             self.world["open"] = False
-        elif what == "refresh":
-            self.world_refresh()
         elif what == "select":
             self.world_select(str(action.get("id") or ""))
         elif what == "inspect":
@@ -134,7 +137,16 @@ class SessionWorld:
         self.world_link.submit(name, arguments)
 
     def world_refresh(self) -> None:
-        """Everything the popup draws, asked for again. What the button does."""
+        """Everything the popup draws, asked for again.
+
+        **There is no refresh button on the page any more, and this is
+        why.** Opening the popup asks for the whole of it, and `world_watch`
+        keeps it that way for as long as it is open; a button that asked again
+        could only ever fetch what the console already had a moment ago. What it
+        used to be good for besides was un-sticking a console that had decided
+        the rover has no world state, and that is handled where it belongs --
+        the asking slows down after a refusal rather than stopping.
+        """
         self.world_call("world_state_entities")
         self.world_call("world_state_summary")
         if self.world_selected:
@@ -255,7 +267,39 @@ class SessionWorld:
 
     # --- what comes back ------------------------------------------------------
 
+    def world_switch(self, body: dict[str, Any]) -> None:
+        """Whether the rover is building its world state, and how much of it.
+
+        Kept out of `world_handle`'s bookkeeping because it is the only world
+        call that does not go down the world channel -- it rides on the status
+        connection, so counting it there would let a poll landing every ten
+        seconds cancel a body fetch the open popup was waiting on.
+
+        It does not decide whether the rover has a world state either. On a rover
+        with no world-state component at all this call still answers "ok", since
+        it reads a flag on the daemon rather than opening the store; only the
+        world channel's own calls can tell. What its failing does mean is a
+        daemon too old to have heard of it, and then it is not asked again.
+        """
+        self.world_build_outstanding = False
+        if not body.get("ok"):
+            self.world_build_offered = False
+            self.world["error"] = str(body.get("error") or "no answer")
+            return
+        self.world["building"] = bool(body.get("building"))
+        self.world["built_looks"] = body.get("looks") or 0
+        self.world["settled"] = body.get("settled") or {}
+        # The loop's own last complaint, which is the only place a rover that
+        # has quietly stopped recording would ever say so. Set and not cleared:
+        # the world channel's calls own this line, and a switch poll landing
+        # between them must not wipe what they put there.
+        if body.get("error"):
+            self.world["error"] = str(body["error"])
+
     def world_handle(self, name: str, body: dict[str, Any], seconds: float) -> None:
+        if name == "world_building":
+            self.world_switch(body)
+            return
         self.world_outstanding = max(0, self.world_outstanding - 1)
         # `world_watch` only asks with nothing else in flight, so whatever comes
         # back next is its answer -- and cleared here whatever that answer is,
@@ -263,14 +307,14 @@ class SessionWorld:
         watching, self.world_watching = self.world_watching, False
         if not body.get("ok"):
             error = str(body.get("error") or "no answer")
-            if name == "world_building":
-                self.world_build_outstanding = False
-            if name in ("world_state_summary", "world_state_entities",
-                        "world_building"):
-                # The first ask is also how this console finds out whether the
-                # rover has a world-state component at all. A daemon without one
-                # says so once and the button stays away, rather than the popup
-                # showing an error every few seconds for the rest of the session.
+            if name in ("world_state_summary", "world_state_entities"):
+                # This is also how the console finds out whether the rover has a
+                # world-state component at all, and the panel says so rather than
+                # showing an error over and over. It is not remembered for the
+                # session, though: the popup goes on asking at `WORLD_RETRY_S`
+                # while it is open, so a rover that has just been given the
+                # component, or a store that was locked while the daemon
+                # restarted, comes back on its own.
                 self.world["available"] = False
             self.world["error"] = error
             if name == "world_inspect":
@@ -286,16 +330,6 @@ class SessionWorld:
 
         self.world["available"] = True
         self.world["error"] = ""
-        if name == "world_building":
-            self.world_build_outstanding = False
-            self.world["building"] = bool(body.get("building"))
-            self.world["built_looks"] = body.get("looks") or 0
-            self.world["settled"] = body.get("settled") or {}
-            # The loop's own last complaint, which is the only place a rover that
-            # has quietly stopped recording would ever say so.
-            if body.get("error"):
-                self.world["error"] = str(body["error"])
-            return
         moved = False
         if name == "world_state_summary":
             moved = self.world_put(
