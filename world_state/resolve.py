@@ -188,6 +188,10 @@ def unit(blob: bytes) -> tuple[float, ...]:
 
 
 #: Unit vectors by the blob they came from, for the length of one resolve pass.
+#: Shared and unlocked, which is safe for the reason it is keyed on the bytes: an
+#: entry is a pure function of its key, so a reader that finds one left behind by
+#: a pass that has not cleared yet gets the right answer. The daemon serialises
+#: its passes behind the inspector's lock in any case.
 _UNIT: dict[bytes, tuple[float, ...]] = {}
 
 

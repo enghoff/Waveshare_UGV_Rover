@@ -440,11 +440,16 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
     check("a rover that has stood still for a long time looks anyway",
           rover.worth(1000.0 + rover_world.LOOK_ANYWAY_S + 1), True)
 
-    # A pose the navigator will not give is a look that cannot be measured, and an
-    # observation without one is worth nothing to the geometry.
+    # A pose the navigator will not give is a bearing that cannot be measured --
+    # but not a picture that cannot be taken, and it used to stop both. A rover
+    # whose scan matcher has lost confidence then fell back to one look every five
+    # minutes, while it was driving through the very part of the building that had
+    # confused it. It keeps looking now, slower, and stores frames with no bearing.
     rover._pose = None
-    check("and with no pose to record, it does not look",
-          rover.worth(later), False)
+    check("with no pose it does not look on the ordinary clock",
+          rover.worth(1000.0 + rover_world.LOOK_EVERY_S + 0.1), False)
+    check("...but it does keep taking pictures, on a slower one",
+          rover.worth(1000.0 + rover_world.LOOK_BLIND_S + 0.1), True)
 
 
 TESTS = (

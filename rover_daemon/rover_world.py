@@ -103,6 +103,12 @@ TURNED_ENOUGH_DEG = 25.0
 #: rover in a room that changes notices, and so that "nothing is happening" is
 #: distinguishable from "it stopped working".
 LOOK_ANYWAY_S = 300.0
+#: And how often it looks when it cannot tell whether it has moved -- when the
+#: scan matcher has stopped trusting its own position. Slower than a look a second
+#: because none of these can be triangulated with anything, and far faster than
+#: the five minutes above because the pictures are still worth having and this is
+#: the part of the building that just confused the rover.
+LOOK_BLIND_S = 5.0
 
 #: How long a fetched occupancy grid is reused for. One resolve pass asks how far
 #: the rover could see for every bearing in the pending pool -- a few hundred
@@ -170,6 +176,14 @@ class RoverWorld:
         that the room may simply have changed. Standing still and looking the same
         way over and over records observations that can never be triangulated with
         the ones already there, and every one of them slows the next look down.
+
+        **No pose is a reason to keep looking, not to stop.** It used to return
+        False here, so a rover whose scan matcher had lost confidence fell back to
+        one look every five minutes -- exactly while it was driving through the
+        part of the building that had confused it, and exactly when a picture is
+        worth most. What a look with no pose stores is the frame, the regions and
+        the vectors with no bearing, which is a state the store already handles
+        honestly, so the picture is kept and only the direction is missing.
         """
         since = now - self._world_build_at
         if since < LOOK_EVERY_S:
@@ -181,7 +195,7 @@ class RoverWorld:
             return True
         pose = self._world_pose()
         if pose is None:
-            return False
+            return since >= LOOK_BLIND_S
         moved = math.hypot(pose["x_m"] - before["x_m"],
                            pose["y_m"] - before["y_m"])
         turned = abs((self._world_camera_deg(pose)

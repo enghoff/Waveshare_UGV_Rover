@@ -918,6 +918,24 @@ picture of the room from a place the rover has not photographed. At 0.35 m/s tha
 is a look every 0.4 s, so `LOOK_EVERY_S` governs while driving — a picture a
 second, which is 40 to 80 times what the run of that morning managed.
 
+### Two consequences worth knowing about
+
+**The resolver's horizon is about 85 seconds of driving.** `resolve` reads at most
+500 pending bearings and the rover now records six or so a second, so two bearings
+more than that apart can never be paired. Inside the window there is plenty of
+baseline — 29 m of travel at 0.35 m/s — and anything already *placed* is matched
+against for ever, because `_against_known` reads every placed entity with no limit
+at all. What ages out is a bearing that never crossed anything, which is the right
+thing to lose. Raising the cap is a straight trade against the settle: 500 is 1.4 s
+and 1000 is 3.2 s, on a board that is also running SLAM.
+
+**A pose the navigator will not vouch for no longer stops the looking.** It used
+to, and that meant a rover whose scan matcher had lost confidence fell back to one
+look every five minutes — while it was driving through the part of the building
+that had just confused it. It looks every `LOOK_BLIND_S` now and stores frames
+with no bearing, which the store already handles honestly: the picture is kept and
+only the direction is missing.
+
 **What is not yet measured is whether it places more things.** Everything above is
 a rate and a cost. The recording of 2026-09-03 replays to exactly the entity the
 rover produced from it, which is what makes the change safe rather than useful,
