@@ -227,7 +227,8 @@
             "voice_chat/rover_tools.py",
             "voice_chat/session.py",
             "voice_chat/talk_frames.py",
-            "voice_chat/prompts.py"
+            "voice_chat/prompts.py",
+            "voice_chat/test_harness.py"
           ],
           "strip": "voice_chat"
         }
