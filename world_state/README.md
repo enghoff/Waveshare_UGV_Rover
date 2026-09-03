@@ -19,6 +19,32 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**A thing is placed by every bearing that agrees with it, since 2026-09-03.** It
+used to be placed by two of them crossing, with the rest only getting a vote on
+which two — and the nudge that followed minimised a *distance* across each ray,
+so a look taken five metres away pulled eight times as hard as one taken at one
+metre, and a bearing from a rover swinging at ninety degrees a second pulled as
+hard as one taken standing still. `locate.refine` fits properly now, weighting
+each ray by what its own bearing is worth and discounting one badly drawn box
+rather than being dragged by it. Replayed on the evening drive with the same rays
+and the same associations, the worst bearing missing its own entity goes from
+**48.9 degrees to 21.1**, the median from 1.56 to 1.41, with the same 15 entities
+and none of their crops belonging to something else. The write-up is *A thing is
+placed by every bearing that agrees* below.
+
+**Fitting the associations at the same time was built, measured and left switched
+off.** [cluster.py](cluster.py) estimates positions and which-ray-is-which
+together by expectation-maximisation, which is the standard formulation for this
+problem, and on this recording it places 10 things where the greedy pass places
+15. The reason is not the arithmetic but that discovery here is incremental and no
+single pass holds enough of the pool. What would change that is measured rather
+than hoped: **a range on each ray**, which the depth camera on the front of this
+rover has been serving on loopback 8770 since 2026-08-31 with nothing reading it.
+Three objects in a row seen from two places cannot be told from a phantom by
+angles alone; give every ray a range and all three come back exactly.
+`resolve.DISCOVERY` is the switch and [bench_cluster.py](bench_cluster.py) is the
+comparison.
+
 **Two thirds of a drive used to record no direction for anything it saw, and the
 missing fact was already in the frame.** 71 of the evening drive's 108 looks
 stored no bearing, every one because the rover was turning while the shutter was
@@ -1934,6 +1960,90 @@ fall from **13% to 10%** on this drive and from 13% to 7% on the morning run, an
 two more observations attach. It costs one entity on this drive, by merging two
 chair groups into one nine-crop chair -- which reads correctly off the crops --
 while moving one chair crop into a group of framed pictures, which does not.
+
+## A thing is placed by every bearing that agrees, 2026-09-03
+
+**A placement used to be two bearings crossing, and everything else attached to
+it only got a vote.** `locate.best_fix` picks the pair the other rays agree with
+and `locate.refine` then nudged the answer over the agreeing ones — which was
+already a fit, and had two faults that only became visible once entities carried
+nine bearings each.
+
+It minimised a **distance across each ray**, so a look taken five metres away
+counted for eight times as much as one taken at one metre, when the error being
+minimised is an *angle* and is the same size at both. And it weighted every ray
+alike, so a bearing from a rover turning at ninety degrees a second counted as
+much as one taken standing still — which, since looks taken while turning keep
+their bearings, is a thing that now happens.
+
+`refine` fits properly now: weighted least squares on the angular residual, each
+ray scaled by what its own bearing is worth, with a Huber loss so one badly drawn
+box costs the answer a little instead of everything. Replayed on the evening
+drive with the same rays and the same associations:
+
+| | median miss | 90th | worst |
+|---|---:|---:|---:|
+| crossing a pair and nudging it | 1.56 deg | 6.41 | **48.9 deg** |
+| fitting over every agreeing ray | **1.41 deg** | 6.05 | **21.1 deg** |
+
+Same 15 entities, same 0% of crops belonging to something else, one bearing fewer
+attached. One entity, `object:4`, went from a worst bearing 49.0 degrees out to
+8.7. **The uncertainty is deliberately not taken from the fit**, though the fit
+computes a real covariance: shrinking the figure by the root of how many rays
+there are would assume their errors are independent, and on this rover they are
+one gimbal mistake per *look* rather than one per ray. What is taken is the
+error's **shape** — which way it runs and how flat it is, which `cross_track`
+reads and which the founding pair's four nudged copies stopped describing the
+moment the point moved off them.
+
+### Fitting all the bearings at once, and why it is not switched on
+
+[cluster.py](cluster.py) is the other half and it is built, tested and measured:
+the positions are continuous unknowns, which ray belongs to which thing is a
+latent variable, and the two are estimated together by expectation-maximisation.
+It is Bowman's probabilistic data association SLAM, and the point of writing it
+was that the greedy pass commits early and every fault it has had is a fault of
+committing early.
+
+**It loses, and `resolve.DISCOVERY` names the greedy pass.** Not on the
+arithmetic — the fit above *is* this module's estimator — but because
+discovery here is incremental. `_pair_up` sees the pool again after every look and
+offers every waiting ray to everything already placed, through the wide
+`match_tolerance` gate; the fitted pass has to find things from crossings inside
+one pass's leftovers. With 35 usable looks in the whole recording, and **275 of
+its 406 regions carrying no pose at all**, no single pass holds enough.
+[bench_cluster.py](bench_cluster.py) is the comparison and the switch is one name.
+
+Three things worth keeping from it.
+
+**The overlapping pair really was one seam cut two ways, and the leftovers really
+are nothing.** Of the 65 bearings the greedy pass leaves unattached, 30 pairs
+cross admissibly — and the best of those 30 scores 0.48 on appearance, below
+what two regions of *the same frame* reach at the 95th percentile. They are
+genuinely different things and refusing them is correct.
+
+**A crossing where no object is cannot be told from a real one by angles alone.**
+It lies *exactly* on rays belonging to the real objects either side of it and
+fits them exactly as well. Three objects in a row seen from two places: the fit
+places one thing and it is the phantom. A third place to look from settles it.
+This is not a threshold that wants tuning, and `_place_one` has always said the
+same of the same situation.
+
+**A range on each ray settles it, and that is the measurement the choice of
+formulation rests on.** The same three objects from the same two places, each ray
+also carrying a range: all three placed exactly, no phantom. A range costs one
+residual in `locate.residuals` and one factor in the association likelihood —
+and the second is the one that matters, which is easy to miss, because a range in
+the fit only refines a thing already associated. The OAK-D-Lite on the front of
+this rover has served stereo depth on loopback 8770 since 2026-08-31 and nothing
+reads it. What stands in the way is extrinsics rather than arithmetic; see
+[oak_depth/README.md](../oak_depth/README.md), which lists what has to be settled.
+
+The other reason it is off is cost: one expectation step enumerates every
+feasible arrangement of every look, and pruning runs one of those per candidate
+dropped, which is minutes against the greedy pass's 1.6 seconds on the same
+recording. A range bounds that too, by collapsing each ray's candidate set from a
+handful to one.
 
 ## What was measured on the rover, 2026-09-02
 

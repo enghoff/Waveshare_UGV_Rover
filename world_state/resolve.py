@@ -51,7 +51,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import locate
+from . import cluster, locate
 
 MATCH = "match"
 NEW = "new"
@@ -403,8 +403,8 @@ def resolve(store, *, map_session: int | None = None,
         decisions.extend(settled)
         leftover.extend(one for one in group if one["id"] not in spoken_for)
 
-    decisions.extend(_pair_up(store, leftover, session, entities, taken_in,
-                              reach))
+    decisions.extend(DISCOVERY(store, leftover, session, entities, taken_in,
+                               reach))
 
     _UNIT.clear()
     counted = {MATCH: 0, NEW: 0, AMBIGUOUS: 0}
@@ -812,6 +812,116 @@ def _pair_up(store, leftover, session, entities, taken_in,
     return decisions
 
 
+def _cluster_up(store, leftover, session, entities, taken_in,
+                reach=None) -> list[Decision]:
+    """Make new things by fitting all the leftover bearings at once.
+
+    The same slot `_pair_up` fills and the same contract -- create what the
+    evidence supports, then offer everything still waiting to whatever was
+    created -- with the discovery itself handed to [cluster.py](cluster.py)
+    instead of to a search over pairs. What changes is that a thing is placed
+    from every ray that believes in it rather than from the best two, and that
+    two rays which cross in two defensible ways no longer refuse each other.
+
+    `MAX_NEW_PER_PASS` still applies. A pass that invents everything it can see
+    leaves the look that follows it nothing to check, and the rest of the pool is
+    still there next time.
+    """
+    rays = []
+    blobs: dict[Any, bytes] = {}
+    for observation in leftover:
+        ray = ray_of(observation, reach)
+        if ray is None:
+            continue
+        rays.append(ray)
+        blobs[observation["id"]] = observation.get("dino_blob") or b""
+    if len(rays) < 2:
+        return []
+
+    def looks_like(ray, others) -> bool:
+        """Could this ray be the same thing as any of these? Removal only.
+
+        The same question `_could_be_one` asks of a pair and `appearance` asks
+        of an entity's exemplars, put to `cluster` as a veto. Best-of rather
+        than all-of, because one object photographed from two sides scores 0.70
+        against a good exemplar and much less against a bad one, and requiring
+        every exemplar to agree would shrink an entity as it grew.
+        """
+        mine = blobs.get(ray.get("observation_id")) or b""
+        if not mine:
+            return True
+        best = None
+        for other in others:
+            theirs = blobs.get(other.get("observation_id")) or b""
+            if not theirs:
+                continue
+            got = similarity(mine, theirs)
+            best = got if best is None else max(best, got)
+        return best is None or best >= DIFFERENT_THING
+
+    found = cluster.discover(rays, looks_like=looks_like,
+                             limit=MAX_NEW_PER_PASS)
+    decisions: list[Decision] = []
+    used: set[int] = set()
+    frame_of = {one["id"]: one.get("inference_id") for one in leftover}
+    by_id = {one["id"]: one for one in leftover}
+
+    for placement in found:
+        members = [one["observation_id"] for one in placement["members"]
+                   if one["observation_id"] not in used]
+        if len(members) < 2:
+            continue
+        # A thing may take at most one region from any one picture. `cluster`
+        # already enforces that inside a look, and it is asserted again here
+        # because the pool spans many looks and the store's own record of what a
+        # frame has accounted for has to agree with what is about to be written.
+        claimed: set = set()
+        kept = []
+        for observation_id in members:
+            frame = frame_of.get(observation_id)
+            if frame in claimed:
+                continue
+            claimed.add(frame)
+            kept.append(observation_id)
+        if len(kept) < 2:
+            continue
+        entity_id = store.create_entity()
+        store.place(entity_id, placement, session)
+        why = (f"{placement['rays_agreeing']} bearings from "
+               f"{placement['viewpoints']} places fitted {entity_id} to within "
+               f"{placement['uncertainty_m']} m")
+        store.attach(entity_id, kept, why)
+        for observation_id in kept:
+            vector = (by_id.get(observation_id) or {}).get("dino_blob") or b""
+            if vector:
+                store.add_exemplar(entity_id, vector)
+            frame = frame_of.get(observation_id)
+            if frame in taken_in:
+                taken_in[frame].add(entity_id)
+        used.update(kept)
+        decisions.append(Decision(
+            kept[0], NEW, entity_id, why=why,
+            candidates=[{"entity_id": entity_id, "from_observations": kept,
+                         "uncertainty_m": placement["uncertainty_m"]}]))
+
+    if not decisions:
+        return []
+    # Everything still waiting is offered to what was just made, for the reason
+    # `_pair_up` gives: the list of known things was read before any of this ran,
+    # so without this the rays that did not make it into the first television
+    # pair up into a second one next pass.
+    entities[:] = store.placed(map_session=session)
+    for waiting in leftover:
+        if waiting["id"] in used:
+            continue
+        joined = _against_known(store, waiting, entities, session, taken_in,
+                                reach)
+        if joined is not None:
+            decisions.append(joined)
+            used.add(waiting["id"])
+    return decisions
+
+
 def _place_one(store, available, session, reach=None):
     """The best-supported crossing among these observations that nothing
     contradicts, or None.
@@ -1042,3 +1152,33 @@ def _replace_placement(store, entity_id: str, session: int,
         # to confirm a thing worth taking, because until it existed a third
         # agreeing bearing changed nothing at all.
         store.place(entity_id, locate.refine(best, rays), session)
+
+
+#: Which pass makes new things out of bearings that nothing already placed
+#: accounts for.
+#:
+#: `_pair_up` searches over pairs and commits to the best-supported crossing;
+#: `_cluster_up` fits every leftover bearing at once and lets the association
+#: settle itself. Both fill the same slot, take the same arguments and keep the
+#: same gates, so which one runs is one name -- which is what makes them
+#: comparable on a recording instead of on an argument.
+#:
+#: **It is `_pair_up`, and that is a measurement rather than caution.** Replayed
+#: on the recording of 2026-09-03 by [bench_cluster.py](bench_cluster.py), the
+#: greedy pass places 15 things with none of them mixed; the fitted pass places
+#: 8 with soft weights or 12 with hard, and loosening its own gate as far as it
+#: will go still reaches only 11. The reason is not the arithmetic -- the same
+#: fit is what `locate.refine` now uses and it is better at *placing* than
+#: anything here has been -- it is that discovery on this rover is
+#: **incremental**. The greedy pass sees the pool again after every look and
+#: offers every waiting ray to everything already placed, through the wide
+#: `locate.match_tolerance` gate; the fitted pass has to find things from
+#: crossings inside one pass's leftovers. With 35 usable looks in the whole
+#: recording, and 275 of its 406 regions carrying no pose at all, no one pass
+#: holds enough for the second to win.
+#:
+#: So this stays what it is until there is a recording where it does not. The
+#: thing that would produce one is the shutter fix: looks taken while the rover
+#: was turning now keep their bearings, which is where the pool gets several
+#: times denser per pass. Flip this name and re-run the bench.
+DISCOVERY = _pair_up

@@ -11,7 +11,10 @@ the plan._
 **Phases 0 to 4 are built, deployed and running on the rover, and the validation
 drive has now happened.** Phase 5, the merge, came out of that drive and is not
 built -- and the veto it was designed around has since been measured and does not
-work; see *What replaying a real run found* below.
+work; see *What replaying a real run found* below. Phase 6 replaced the arithmetic
+that places a thing and is deployed; the half of it that would also decide which
+rays are which thing is built and measured and switched off, and what it is
+waiting for is a range per ray from the depth camera this rover already has.
 
 **The strongest gate in the design was missing and the rover already had it: a
 thing cannot be seen through a wall.** Reviewed again on 2026-09-02 after the
@@ -847,6 +850,54 @@ the cheaper and safer half and is done. What a merge is still for is the case th
 argument above opens with -- two things placed when the rover knew least, both
 genuinely of one object, which more looks later prove to be one -- and no recording
 of that case exists yet.
+
+---
+
+### Phase 6 — fitting instead of crossing — **half built, half measured and left off, 2026-09-03**
+
+The plan's placement step has always been "two bearings cross", with a nudge
+afterwards over whatever agreed. That is two decisions welded together — *where*
+a thing is, and *which rays are that thing* — and the standard way to take them
+apart is to make the positions continuous unknowns, the associations a latent
+variable, and estimate both together. It is Bowman's probabilistic data
+association SLAM in the robotics literature and joint probabilistic data
+association in the tracking literature, and it was chosen over the alternatives
+(multiple-hypothesis tracking, PHD filters, max-mixture in a factor graph) for one
+reason the others do not share: **a range measurement enters it as one more
+residual on the same unknown**, so the depth camera already on this rover is an
+addition rather than a rewrite.
+
+**The estimator half shipped.** `locate.refine` fits over every agreeing ray,
+weighted by what each bearing is worth and with a Huber loss against a badly drawn
+box. Measured on the drive of 2026-09-03 with the same rays and the same
+associations, the worst bearing missing its own entity fell from 48.9 degrees to
+21.1 and the median from 1.56 to 1.41, with the same 15 entities and no crop
+belonging to something else.
+
+**The association half did not.** `world_state/cluster.py` is written, tested and
+benchmarked, and `resolve.DISCOVERY` names the greedy pass because on this
+recording the greedy pass places 15 things and the fitted one places 10. The
+cause is that discovery here is *incremental*: the greedy pass sees the pool again
+after every look and offers every waiting ray to everything already placed, while
+the fitted pass must find things inside one pass's leftovers, and with 35 usable
+looks in the whole recording — 275 of its 406 regions carry no pose at all — no
+pass holds enough.
+
+**What would change that is measured, and it is the depth camera.** A crossing
+where no object is lies exactly on rays belonging to the real objects either side
+of it and fits them exactly as well, so angles alone cannot separate them: three
+objects in a row seen from two places come back as one phantom. Give every ray a
+range and all three come back exactly. The OAK-D-Lite has served stereo depth on
+loopback 8770 since 2026-08-31 and nothing reads it; what stands in the way is
+extrinsics between it, the lidar and the tracks, none of which exist in this
+repository. That is the next thing this plan should want, and it is a bench job
+with a target rather than an algorithm.
+
+Cost is the second reason it is off: one expectation step enumerates every
+feasible arrangement of every look and the pruning runs one per candidate dropped,
+which is half a minute against the greedy pass's two seconds on the same
+recording, against a daemon that resolves after every look. A range bounds that
+too, by collapsing each ray's candidate set from a handful to one.
 
 ---
 
