@@ -107,8 +107,8 @@
     flex: 1 1 auto; min-height: 0; overflow: hidden;
     padding: 10px 12px 14px;
   }
-  #wSearchForm { display: flex; gap: 6px; margin-bottom: 6px; }
-  #wSearchBox { flex: 1 1 auto; min-width: 8em; padding: 5px 8px; font: inherit; }
+  #wSearchForm { margin-bottom: 6px; }
+  #wSearchBox { width: 100%; box-sizing: border-box; padding: 5px 8px; font: inherit; }
   /* The verdict, which is the part of a search that matters: the rover saying it
      cannot find something has to look different from it saying where something
      is, not merely score lower. */
