@@ -119,9 +119,11 @@ import sys
 import time
 
 # `snapshot` and `split_jpegs` are re-exported: the daemon and its checks import
-# them from here, which is where they were when those callers were written.
+# them from here, which is where they were when those callers were written. The
+# three exposure names join them for the checks' sake and for the same reason.
 from uvc_camera import (           # noqa: F401
-    Camera, DEFAULT_DEVICE, DEFAULT_SIZE, snapshot, split_jpegs,
+    Camera, DEFAULT_DEVICE, DEFAULT_SIZE, nothing_in_it, restore_automatic,
+    snapshot, split_jpegs, under_manual_control,
 )
 from aiming import (
     DETECT_WIDTH, GAIN, KEEP_SCORE, MAX_DT, SCAN_AFTER_S, SCAN_RATE, Gimbal, Scan,

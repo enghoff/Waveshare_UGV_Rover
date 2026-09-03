@@ -1,9 +1,11 @@
 """The gimbal camera as a stream of MJPEG frames, newest only.
 
-v4l2-ctl does the capturing -- there is no OpenCV on this host and no reason to
-want one, because nothing here looks inside a frame. Frames arrive as bytes, are
-split on their own markers, and the newest complete one is kept; older ones are
-dropped where they lie, since a queue of frames is a queue of stale aiming errors.
+v4l2-ctl does the capturing. Frames arrive as bytes, are split on their own
+markers, and the newest complete one is kept; older ones are dropped where they
+lie, since a queue of frames is a queue of stale aiming errors. Only one thing
+here looks inside a frame, and only ever at one: `nothing_in_it` reads the
+brightness of a finished picture to find out whether it is a picture at all, so
+that a camera which has not stopped down is reported rather than passed on.
 
 Two threads, because the two pipes have to be drained independently: stderr
 filling while only stdout is read would deadlock v4l2-ctl, and stdout filling
@@ -142,6 +144,58 @@ SNAPSHOT_FRAMES = 3
 SNAPSHOT_TIMEOUT_S = 8.0
 
 
+# How long a capture streams for when the one before it came back with nothing in
+# it, and what the exposure is handed back to.
+#
+# **This camera only adapts while it is streaming, and a one-shot capture is a
+# tenth of a second of streaming.** Measured on the rover on 2026-09-03 by swinging
+# the gimbal off a dark corner onto a sunlit window and then taking one picture a
+# second: each row is a run of captures at one frame count, and each number is the
+# brightness of the picture that capture handed back, out of 255, where settled for
+# that view is about 122.
+#
+#      3 frames a capture (0.27 s)   160 153 144 142  -- 139 138 137 136
+#      6                    (0.38)   146 137 134 130 128 126 122 121 121
+#     10                    (0.54)   133 128 125 121 121 121 121 121 120
+#     24                    (1.01)   129 122 122 122 122 123 123 123 123
+#
+# The exposure moves about one step per capture however short the capture is, so
+# three frames is seven seconds of visibly wrong pictures after a large change in
+# light, and a long capture is there in one. Recovery therefore streams rather than
+# asking for three frames again. It is not the ordinary path and does not set the
+# ordinary cost: SNAPSHOT_FRAMES stays at three because a look a second is built on
+# a capture that takes a third of a second, and this is only reached when the
+# picture that came back was not a picture.
+RECOVER_FRAMES = 24
+# The camera's own default exposure time, in units of 100 us, so 17 ms. Written on
+# the way past manual rather than left where it was, so that what auto-exposure is
+# handed back is the camera's documented starting point and not the wound-up value
+# that produced the blank picture.
+EXPOSURE_DEFAULT = 166
+# The two settings of `auto_exposure` this camera offers: 1 is "Manual Mode" and 3
+# is "Aperture Priority Mode", which is its default and the only automatic one it
+# has. 0 and 2 are in the UVC standard and not in this device's menu.
+EXPOSURE_MANUAL = 1
+EXPOSURE_AUTO = 3
+
+
+# When a frame is not a picture of anything. A quarter of the pixels at full white
+# is not a bright room: measured in this house, the most extreme honest picture --
+# the gimbal aimed straight into a sunlit window at midday -- puts 13% of its pixels
+# there, where the fault this guards against was found at 35% and has been seen at
+# 89%. Black is the same fault upside down, and the threshold is far below any room
+# with a light on in it.
+BLOWN_FRACTION = 0.25
+BLACK_MEAN = 6.0
+
+
+# How long to wait on v4l2-ctl for a control rather than a picture. These calls are
+# a few milliseconds and are on the way to a photograph somebody is waiting for, so
+# the point of the bound is that a wedged device costs a slow picture rather than
+# no picture at all.
+CONTROL_TIMEOUT_S = 2.0
+
+
 # Where camera work sits relative to everything else on this host. Positive is
 # *down*: it asks the kernel to prefer the thread driving the rover whenever the
 # two want the core at the same moment. See stand_aside().
@@ -196,6 +250,74 @@ def die_with_parent():
         ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM, 0, 0, 0)
     except Exception:
         pass  # not Linux, or no libc under that name: the explicit close still runs
+
+
+def restore_automatic(device):
+    """Give the camera back control of its own exposure and white balance.
+
+    **A v4l2 control set by hand outlives whatever set it.** These are the driver's
+    state and not this program's: they survive every open and close, and only a
+    reboot or a re-plug clears them. So a camera pinned to a fixed exposure to
+    rescue one blown-out picture stays pinned for every picture after it, in every
+    room, at every hour -- which is what the rover was found in on 2026-09-03, held
+    at the shortest exposure the device allows, a day after somebody had cleared a
+    white frame that way.
+
+    Auto-exposure is taken *through* manual and back rather than simply set to
+    automatic, because writing a control the value it already holds resets nothing:
+    measured on the rover, `auto_exposure=3` on a camera already at 3 takes 7 ms and
+    leaves the picture at the same brightness to the grey level, three times
+    running. It is the round trip that has an effect, and only on a camera that was
+    in manual -- one pinned wide open, at 249 out of 255, was back to 134 on the
+    very next capture. On a camera already looking after itself the trip changes
+    nothing, which is what makes it safe to do without knowing which it is.
+
+    One call per control, so a camera that lacks one still gets the others, and
+    failures are ignored for the same reason: a different lens on a bench must not
+    stop the daemon opening it. The four together cost about 60 ms.
+    """
+    for control in ("auto_exposure=%d" % EXPOSURE_MANUAL,
+                    "exposure_time_absolute=%d" % EXPOSURE_DEFAULT,
+                    "auto_exposure=%d" % EXPOSURE_AUTO,
+                    "white_balance_automatic=1"):
+        subprocess.run(["v4l2-ctl", "-d", device, "-c", control],
+                       capture_output=True, check=False)
+
+
+def under_manual_control(device):
+    """Whether somebody has taken the camera's exposure or white balance off it.
+
+    Asked rather than inferred, because the state that most needs catching cannot
+    be seen in a picture. A camera pinned *open* is obvious -- the frame is white --
+    but a camera pinned *shut* just returns a dark picture, which is exactly what a
+    dark room returns, and it stays pinned through every capture, every restart and
+    every reboot until somebody thinks to look. That is not hypothetical: it is the
+    state the rover was found in on 2026-09-03, held at the shortest exposure the
+    device allows by the hand-run command that had rescued a white frame the day
+    before.
+
+    Both controls in one call, which costs 3.5 ms on the Orin against a capture's
+    320. False when it cannot tell, so a camera that does not offer these controls
+    is left exactly as it was.
+    """
+    try:
+        done = subprocess.run(
+            ["v4l2-ctl", "-d", device,
+             "--get-ctrl=auto_exposure,white_balance_automatic"],
+            capture_output=True, text=True, timeout=CONTROL_TIMEOUT_S, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    manual = False
+    for line in done.stdout.split("\n"):
+        name, _, value = line.partition(":")
+        value = value.strip().split(" ")[0]
+        if not value.isdigit():
+            continue
+        if name.strip() == "auto_exposure":
+            manual = manual or int(value) != EXPOSURE_AUTO
+        elif name.strip() == "white_balance_automatic":
+            manual = manual or int(value) != 1
+    return manual
 
 
 class Camera:
@@ -270,23 +392,18 @@ class Camera:
         # faces were still found in a picture that plainly looked wrong.
         # --silent would take the text away and the exposure timestamps with it.
         # **Full auto, on every open, because v4l2 controls do not survive the
-        # device.** They are the driver's state, not the daemon's: a reboot or a
-        # re-plug puts them back to whatever the camera powers up with, and
-        # anything set by hand in between is gone. Set here rather than left
-        # alone because the alternative was measured -- this camera's exposure
-        # wound itself up during a spell in a dark room, stayed there when
-        # daylight returned, and every frame came back pure white. Nothing
-        # noticed: a blank frame reads exactly like an empty room, and a whole
-        # drive was recorded off white pictures before anyone looked at one.
+        # device.** The reason it is `restore_automatic` and no longer a pair of
+        # writes is measured and recorded there: setting a control to the value it
+        # already holds is not a reset, so the version of this that wrote
+        # `auto_exposure=3` did nothing whatever on a camera that was already in
+        # automatic, and nothing to rescue one that was not.
         #
-        # These are the camera's own defaults rather than a policy of ours, so
-        # this restores documented behaviour rather than imposing any. One call
-        # each, so a camera that lacks one of them still gets the other, and
-        # failures are ignored for the same reason: a different lens on a bench
-        # must not stop the daemon opening it.
-        for control in ("auto_exposure=3", "white_balance_automatic=1"):
-            subprocess.run(["v4l2-ctl", "-d", device, "-c", control],
-                           capture_output=True, check=False)
+        # This restores the camera's own documented defaults rather than imposing
+        # a policy of ours. The feed can afford it where a one-shot capture cannot:
+        # tracking holds the camera for as long as it runs, so 60 ms once at the
+        # start of it is nothing, and the exposure is then adapting at 30 frames a
+        # second for the rest of the session.
+        restore_automatic(device)
         subprocess.run(
             ["v4l2-ctl", "-d", device,
              "--set-fmt-video=width=%d,height=%d,pixelformat=%s"
@@ -526,40 +643,40 @@ def split_jpegs(buf):
         at = end + 2
 
 
-def snapshot(device=DEFAULT_DEVICE, size=DEFAULT_SIZE, frames=SNAPSHOT_FRAMES,
-             timeout=SNAPSHOT_TIMEOUT_S):
-    """A few complete frames from a camera that is opened for them and then shut.
+def nothing_in_it(jpeg):
+    """Whether a frame is too blown out, or too dark, to be a picture of anything.
 
-    Returns `(frames, complaint)`: a list of `(jpeg, exposed_at)` oldest first, and
-    a sentence about why the list is short or empty. A short list is not an error on
-    its own -- one frame is enough to look at something.
+    The one place in this file that looks inside a frame, and it exists because a
+    blank frame reads exactly like an empty room: on 2026-09-02 a whole validation
+    drive was recorded off pure white pictures, and what noticed was a person
+    finally opening one, not anything in the software.
 
-    **This exists because of what holding the camera open costs the rover, not
-    because of what opening it costs.** `Camera` above is a feed: v4l2-ctl streams
-    at 30 fps for as long as it lives and the reader threads reassemble every frame
-    whether or not anybody wants one. Measured on the Pi against the 10 Hz control
-    loop in [ros_nav/nav_bridge.py](../ros_nav/nav_bridge.py), with the rover
-    standing still and one picture taken:
+    Cheap on purpose. The decode is at an eighth scale -- 80x60 pixels -- which
+    costs 0.74 ms on the Orin against 1.23 for the whole frame and gives the same
+    mean to the grey level, against a capture that takes three hundred times as
+    long. False when it cannot tell: a frame that will not decode is a different
+    fault with its own report, and OpenCV is not on every bench this module runs
+    on, where the behaviour then is exactly what it was before this existed.
+    """
+    try:
+        import cv2
+        import numpy
+    except ImportError:
+        return False
+    grey = cv2.imdecode(numpy.frombuffer(jpeg, numpy.uint8),
+                        cv2.IMREAD_REDUCED_GRAYSCALE_8)
+    if grey is None:
+        return False
+    return bool(float((grey >= 250).mean()) >= BLOWN_FRACTION
+                or float(grey.mean()) <= BLACK_MEAN)
 
-        camera closed      9.94 revolutions/s matched,  0.0% dropped, replies  16 ms
-        camera streaming   7.52                      , 22.1% dropped, replies 109 ms
 
-    A quarter of the lidar revolutions, and it lasted the whole twenty seconds the
-    daemon kept the camera warm for -- long after the picture had been sent. Since
-    the scan matcher is the only odometer this rover has, those revolutions are the
-    measurement that `drive` closes its loop on, so a photograph taken on the move
-    was quietly corrupting the thing keeping the rover off the walls.
+def _capture(device, size, frames, timeout):
+    """One bounded run of v4l2-ctl: `(frames, complaint)`, as snapshot returns them.
 
-    A bounded capture is 0.56 s on this host, start to exit, and leaves nothing
-    behind to compete with anything. It is strictly the better way to take one
-    picture, so it is what every one-shot caller uses; the feed is now only for
-    tracking a face, which genuinely needs 30 fps.
-
-    The stamps here are honest but coarse -- one clock reading as v4l2-ctl exits,
-    less the camera's own pipeline lag, rather than the per-buffer V4L2 timestamps
-    `Camera._stamp_for` pairs up. Nothing steers on them: they reach the detector as
-    an opaque identity token and come back untouched. Aiming a gimbal from a stamp
-    this rough would not be safe, and nothing that aims uses this path.
+    Split out of snapshot only so that a picture with nothing in it can be taken
+    again with the camera given longer to expose. Everything about how the capture
+    is made, and why it is made this way, is in snapshot's own docstring.
     """
     argv = ["v4l2-ctl", "-d", device,
             "--set-fmt-video=width=%d,height=%d,pixelformat=MJPG" % size,
@@ -598,3 +715,76 @@ def snapshot(device=DEFAULT_DEVICE, size=DEFAULT_SIZE, frames=SNAPSHOT_FRAMES,
                     + (f": {said}" if said else ""))
     at = time.monotonic() - CAMERA_LAG_S
     return [(jpeg, at) for jpeg in got], ""
+
+
+def snapshot(device=DEFAULT_DEVICE, size=DEFAULT_SIZE, frames=SNAPSHOT_FRAMES,
+             timeout=SNAPSHOT_TIMEOUT_S, recover=True):
+    """A few complete frames from a camera that is opened for them and then shut.
+
+    Returns `(frames, complaint)`: a list of `(jpeg, exposed_at)` oldest first, and
+    a sentence about why the list is short or empty. A short list is not an error on
+    its own -- one frame is enough to look at something.
+
+    **This exists because of what holding the camera open costs the rover, not
+    because of what opening it costs.** `Camera` above is a feed: v4l2-ctl streams
+    at 30 fps for as long as it lives and the reader threads reassemble every frame
+    whether or not anybody wants one. Measured on the Pi against the 10 Hz control
+    loop in [ros_nav/nav_bridge.py](../ros_nav/nav_bridge.py), with the rover
+    standing still and one picture taken:
+
+        camera closed      9.94 revolutions/s matched,  0.0% dropped, replies  16 ms
+        camera streaming   7.52                      , 22.1% dropped, replies 109 ms
+
+    A quarter of the lidar revolutions, and it lasted the whole twenty seconds the
+    daemon kept the camera warm for -- long after the picture had been sent. Since
+    the scan matcher is the only odometer this rover has, those revolutions are the
+    measurement that `drive` closes its loop on, so a photograph taken on the move
+    was quietly corrupting the thing keeping the rover off the walls.
+
+    A bounded capture is 0.56 s on this host, start to exit, and leaves nothing
+    behind to compete with anything. It is strictly the better way to take one
+    picture, so it is what every one-shot caller uses; the feed is now only for
+    tracking a face, which genuinely needs 30 fps.
+
+    The stamps here are honest but coarse -- one clock reading as v4l2-ctl exits,
+    less the camera's own pipeline lag, rather than the per-buffer V4L2 timestamps
+    `Camera._stamp_for` pairs up. Nothing steers on them: they reach the detector as
+    an opaque identity token and come back untouched. Aiming a gimbal from a stamp
+    this rough would not be safe, and nothing that aims uses this path.
+
+    **The camera is not trusted to be looking after its own exposure, because
+    nothing puts it back if it is not.** A v4l2 control set by hand outlives the
+    program that set it, the device being closed, and the machine being rebooted, so
+    a camera pinned to a fixed exposure stays pinned in every room at every hour
+    until somebody notices. Half of that is invisible: pinned open gives a white
+    frame, which is at least obvious, but pinned shut gives a dark picture, which is
+    exactly what a dark room gives. So the controls are read before the capture --
+    3.5 ms against the capture's 320 -- and handed back if they are not automatic.
+
+    **And a picture with nothing in it is not handed back as though it were one.**
+    Even under its own control this camera can settle a long way from what the room
+    needs and stay there, and a capture of three frames of white is something
+    nothing downstream can tell from a photograph of an empty wall. When that
+    happens the exposure is handed back and the picture is taken again with the
+    camera allowed to stream for RECOVER_FRAMES, which is what the numbers recorded
+    there say it takes to catch up in one go. That second capture is the answer if
+    it is a picture; if it is white too the frames still come back -- somebody
+    aiming into the sun should see what there is -- but with the complaint saying
+    so, because a camera that cannot expose the room is worth reporting and a blank
+    frame will not report itself.
+    """
+    if recover and under_manual_control(device):
+        restore_automatic(device)
+    got, why = _capture(device, size, frames, timeout)
+    if not got or not recover or not nothing_in_it(got[-1][0]):
+        return got, why
+    restore_automatic(device)
+    again, why_again = _capture(device, size, RECOVER_FRAMES, timeout)
+    if not again:
+        # The recovery capture found the camera gone or busy. The first pictures are
+        # poor but they are what there is, and the complaint is the newer one.
+        return got, why_again
+    if nothing_in_it(again[-1][0]):
+        return again, (f"the camera at {device} could not expose this: the picture "
+                       f"is blank after a second, longer look")
+    return again, ""
