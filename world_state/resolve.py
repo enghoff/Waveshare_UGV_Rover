@@ -262,11 +262,26 @@ _UNIT: dict[bytes, tuple[float, ...]] = {}
 
 
 def similarity(left: bytes, right: bytes) -> float:
-    """Cosine between two float32 vectors, without numpy.
+    """Cosine between two float32 vectors, written out rather than in numpy.
 
-    Written out because this runs inside the daemon, which imports no third-party
-    package, and because a few hundred multiplications is not worth an import
-    that would have to be vendored and could be missing.
+    **Not because the daemon may not import one.** It said so here and that was
+    already wrong: `python3-numpy` and `python3-scipy` are apt packages on this
+    rover, in `/usr/lib/python3/dist-packages`, so they are neither vendored nor
+    liable to be missing and a source deploy cannot remove them. The rule this
+    docstring used to state was written for the Pi and has no force now.
+
+    What is left is a measurement rather than a prohibition, and it points the
+    other way as the pool grows. Timed on the rover, one thread, over 500 of its
+    own stored vectors: comparing every pair takes **5.5 s this way and 73 ms as
+    one matrix multiply**, which is 76 times. Three of the resolver's shapes are
+    workarounds for that cost -- geometry runs before appearance, `MAX_NEW_PER_PASS`
+    is 2, and the pending pool is capped at the newest 500 -- and all three stop
+    being necessary once the arithmetic moves. What holds the change back is that
+    it is the working part of a working resolver, not the import.
+
+    If it does move, pin `OMP_NUM_THREADS=1` with it. The lidar scan matcher is
+    this rover's only odometer, and what a spinning thread pool costs it has been
+    measured here before: turning off onnxruntime's was worth 3.3x.
     """
     if not left or not right or len(left) != len(right):
         return 0.0
