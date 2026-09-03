@@ -169,6 +169,8 @@ def test_the_exposure_is_handed_back_through_manual():
     # the real subprocess module: this check must not leave a stub where the rest of
     # the daemon's checks reach for a process.
     class Fake:
+        TimeoutExpired = TimeoutError
+
         def __init__(self):
             self.ran = []
 
@@ -207,6 +209,8 @@ def test_reading_whether_the_camera_is_on_automatic():
         return
 
     class Fake:
+        TimeoutExpired = TimeoutError
+
         def __init__(self, stdout):
             self.stdout = stdout
 

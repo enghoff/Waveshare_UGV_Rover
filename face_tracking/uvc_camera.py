@@ -274,14 +274,19 @@ def restore_automatic(device):
 
     One call per control, so a camera that lacks one still gets the others, and
     failures are ignored for the same reason: a different lens on a bench must not
-    stop the daemon opening it. The four together cost about 60 ms.
+    stop the daemon opening it. The four together cost about 60 ms, and each is
+    bounded, because this is on the way to a photograph somebody is waiting for.
     """
     for control in ("auto_exposure=%d" % EXPOSURE_MANUAL,
                     "exposure_time_absolute=%d" % EXPOSURE_DEFAULT,
                     "auto_exposure=%d" % EXPOSURE_AUTO,
                     "white_balance_automatic=1"):
-        subprocess.run(["v4l2-ctl", "-d", device, "-c", control],
-                       capture_output=True, check=False)
+        try:
+            subprocess.run(["v4l2-ctl", "-d", device, "-c", control],
+                           capture_output=True, check=False,
+                           timeout=CONTROL_TIMEOUT_S)
+        except (OSError, subprocess.TimeoutExpired):
+            pass  # no v4l2-ctl, or a device that will not answer: the capture still runs
 
 
 def under_manual_control(device):
