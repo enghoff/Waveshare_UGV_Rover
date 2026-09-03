@@ -38,12 +38,12 @@ worked out, and 77 off a box the frame had cut.
 | | things | attached | still waiting | stray | a look against its entity | worst | over a metre |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | flat | 41 | 373 | 75 | 29 | 0.11 | 3.42 | 12 of 41 |
-| **vertical** | **46** | **380** | **68** | **26** | **0.10** | **1.34** | **11 of 46** |
+| **vertical** | **45** | **377** | **71** | **26** | **0.10** | **1.33** | **11 of 45** |
 
 Metres. **More things, more looks attached to them, fewer bearings straying, and
 the vertical tail cut by two thirds** -- no entity spans more than 1.75 m of
-height now where one spanned 3.81, and no single look sits more than 1.34 m from
-the middle of its own entity where one sat 3.42. The gate refuses 1,298
+height now where one spanned 3.81, and no single look sits more than 1.33 m from
+the middle of its own entity where one sat 3.42. The gate refuses 1,136
 crossings on the way.
 
 The reason it separates is worth stating on its own, because it is the thing

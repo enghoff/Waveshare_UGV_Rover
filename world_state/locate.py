@@ -925,9 +925,27 @@ def height_over(point: dict[str, Any], rays: list[dict[str, Any]]
     2026-09-03, the two together left nine of thirty-eight things spanning more
     than a metre with the gate switched on, every one of them a look at
     something else rather than a tall thing seen properly.
+
+    **A look the frame cut is the exception, and the rover found it rather than
+    the replay.** Asked for a fresh inspection on 2026-09-04, the store came back
+    with `object:14` standing 3.58 m above the camera give or take 0.23 -- off
+    one box whose top edge was two thousandths of a frame from the ceiling of the
+    picture. Where on that thing the box was centred is exactly what a clipped
+    box does not know, and unlike every other ray's version of that doubt there
+    is nothing later to forgive it: `rise_extent_m` allows for the crop that is
+    *joining*, and this is the crop the height was taken from. So a clipped look
+    carries its own allowance into the figure it claims, and an entity with any
+    uncut look in it is unaffected -- the tightest still wins.
     """
-    seen = [(got, rise_noise_m(point, ray)) for got, ray in
-            ((rise_m(point, ray), ray) for ray in rays) if got is not None]
+    seen = []
+    for ray in rays:
+        got = rise_m(point, ray)
+        if got is None:
+            continue
+        # See the docstring: what a clipped box cannot say about itself has to be
+        # charged here, because no later ray charges it.
+        cut = rise_extent_m(point, ray) if ray.get("elevation_clipped") else 0.0
+        seen.append((got, rise_noise_m(point, ray) + cut))
     if not seen:
         return None
     heights = sorted(one for one, _ in seen)

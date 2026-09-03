@@ -30,7 +30,7 @@ separate a picture on the wall from the sideboard beneath it. Over the 12,299
 pairs of the drive of 2026-09-04 that clear every other gate, two crops that look
 like one object disagree about height by 0.16 m in the median and two that do not
 by 0.62 -- **four times the gap, at a cost of 2% of the pairs that were genuinely
-the same thing.** Replayed, the run goes from 41 things to 46 with more looks
+the same thing.** Replayed, the run goes from 41 things to 45 with more looks
 attached to them and fewer bearings straying, and the vertical tail is cut by two
 thirds: no entity spans more than 1.75 m of height where one spanned 3.81. The
 write-up is *A thing has a height, and the ray always carried it* below;
@@ -1775,7 +1775,7 @@ and stops saying exactly how far.
 | | things | attached | still waiting | stray | a look against its entity | worst |
 |---|---:|---:|---:|---:|---:|---:|
 | flat | 41 | 373 | 75 | 29 | 0.11 | 3.42 |
-| **vertical** | **46** | **380** | **68** | **26** | **0.10** | **1.34** |
+| **vertical** | **45** | **377** | **71** | **26** | **0.10** | **1.33** |
 
 Metres, on the drive of 2026-09-04, both arms replayed through the same resolver
 with `locate.rise_disagreement` silenced in one. More things, more looks attached
@@ -1786,6 +1786,17 @@ Every one of those numbers is a replay and none of them is a drive. What the
 recording cannot show is whether the *rover* does better, and this one can be
 replayed honestly -- unlike the shutter fix, whose recording held no timestamps
 -- because the box, the pose, the tilt and the lens are all still on the row.
+
+**What the replay could not show, the rover did within a minute of the deploy.**
+Asked for a fresh inspection, the store came back with a thing standing 3.58 m
+above the camera give or take 0.23 -- off a single box whose top edge was two
+thousandths of a frame from the top of the picture. Where on a thing a cut box
+was centred is exactly what it cannot say, and it is the one version of that
+doubt nothing later forgives, because `rise_extent_m` allows for the crop that is
+*joining* and this was the crop the height came from. A clipped look now carries
+its own allowance into the figure it claims. It costs the replay almost nothing
+-- 45 things rather than 46, the same 26 strays -- and it is the difference
+between a wrong height and a wrong height that admits it.
 
 ### What is not measured, in the order it would hurt
 

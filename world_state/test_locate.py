@@ -681,7 +681,16 @@ def test_a_thing_is_forgiven_its_own_height_once_and_not_twice() -> None:
     check("what a placement's own height is known to is measurement error and "
           "not any of that",
           locate.height_over(point, [tall, cut])[1],
-          min(locate.rise_noise_m(point, tall), locate.rise_noise_m(point, cut)))
+          locate.rise_noise_m(point, tall))
+    # ...with one exception, and the rover found it rather than the replay: a
+    # height taken off a cut box has nothing later to forgive where its middle
+    # sat, because `rise_extent_m` allows for the crop that is joining.
+    check("a height with nothing but a cut box behind it says so",
+          locate.height_over(point, [cut])[1]
+          > locate.height_over(point, [tight])[1] + 0.9, True)
+    check("...and one uncut look in the entity is enough to settle it",
+          locate.height_over(point, [cut, tight])[1],
+          locate.rise_noise_m(point, tight))
 
 
 def test_the_height_improves_as_the_looks_do() -> None:
