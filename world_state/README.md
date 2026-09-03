@@ -1694,10 +1694,37 @@ of them are inside the constant anyway; the worst is 2.84 degrees. The recovery
 survives being wrong about the timing by more than threefold, which is what makes
 it worth flying before that number has been measured on a bench.
 
-**It is an estimate and it is the one thing this rests on.** Measuring it properly
-means timestamping frames against a turn of known rate. What is cheap and worth
-doing first is the frame-to-frame interval spread on this camera, which bounds the
-jitter without a turntable.
+### What the camera's stamp is worth, measured
+
+**Measured on the rover over 18 bursts, and it settles both halves of the
+question.** [`bench_shutter.py`](bench_shutter.py) is the measurement.
+
+| | |
+|---|---:|
+| grab length | 670 ms |
+| call start to the newest frame's stamp | 626 ms, spread **7.8 ms** |
+| stamp spread *within* one burst | 0.0 ms |
+| what that jitter costs a bearing at 29 deg/s | 0.23 deg |
+| ...and at the 94.8 deg/s this rover reached | 0.74 deg |
+
+Two things follow, and the first is about the fault rather than the fix. **The
+stamp lands 94% of the way through the grab**, so the midpoint the old code
+assumed was wrong by 44% of whatever the rover turned — 6.7 degrees on that
+drive's median 15.3-degree turn. Refusing the look really was the only safe answer
+while the instant was going unasked for.
+
+Second, the jitter is far smaller than `FRAME_TIME_SIGMA_S` allows for, and that
+is deliberate, because the jitter is not what the number is for. What
+`uvc_camera.snapshot` stamps a grab with is one clock reading as v4l2-ctl exits —
+its own docstring says so, and warns that aiming a gimbal from a stamp this rough
+would not be safe. Nothing aims from it; a bearing is now worked out from it. The
+**bias** between that reading and the true exposure is unmeasurable from here and
+does not wash out: a stamp systematically late swings every bearing taken while
+turning the same way. Its scale is one frame interval, 33 ms at 30 fps, which is
+what the 30 ms is sized for. Measuring it wants a turn of known rate or a strobe,
+and the stamp spread of 0.0 ms inside a burst is the reminder of why: these are
+not per-frame timestamps at all. The tracking feed's are, and that is the better
+path when it is running.
 
 That the bearings come back is not the same as things being placed. Those 71 looks
 are the ones taken while the chassis was swinging, which is to say from directions

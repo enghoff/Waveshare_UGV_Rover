@@ -81,21 +81,39 @@ TURNED_WHILE_LOOKING_DEG = 3.0
 
 #: How well the moment a frame was taken is known, in seconds.
 #:
-#: **Not measured, and it is the one number this fix rests on.** The timestamp is
-#: taken in userspace when the frame arrives, so it lags the exposure by the
-#: driver's own buffering; a constant lag would not matter, since it applies to
-#: every frame alike and washes out of a bearing, and what matters is the jitter
-#: around it. Estimated from the recording rather than measured on the sensor: at
-#: the 29 degrees a second this rover turns in the median, 30 ms is a degree of
-#: bearing, which is inside what the geometry already expects, and 100 ms is
-#: three degrees and would leave 52 of those 71 looks worse off than the constant
-#: promises.
+#: **Two terms, and only one of them is measurable from here.** What
+#: `uvc_camera.snapshot` stamps a one-shot grab with is a single clock reading as
+#: v4l2-ctl exits, less an estimate of the camera's pipeline lag -- not the
+#: per-buffer V4L2 timestamps the tracking feed pairs up. So every frame in a
+#: burst carries the same stamp, and the question is where that stamp sits
+#: relative to the exposure.
+#:
+#: **The jitter is measured and it is small.** Over 18 bursts on the rover
+#: (`bench_shutter.py`), the stamp lands 94% of the way through the grab with
+#: 7.8 ms of spread about that: 0.23 degrees of bearing at the 29 degrees a
+#: second this rover turns in the median, and 0.74 at the 94.8 it reached at
+#: worst. Both are inside `locate.BEARING_SIGMA_DEG` and neither is what this
+#: number is sized for.
+#:
+#: **The bias is not measurable from here and does not wash out.** A stamp
+#: systematically late swings every bearing taken while turning the same way, and
+#: nothing on this rover knows the true exposure instant to compare against.
+#: Its scale is one frame interval -- the newest frame was exposed within one of
+#: the stamp, which at 30 fps is 33 ms -- so 30 ms is that scale, and the
+#: measured jitter fits inside it with room to spare. Measuring the bias means a
+#: turn of known rate or a strobe, and neither has been done.
 #:
 #: It is used to *widen* the answer and never to narrow it -- `locate.sigma_of`
-#: floors every bearing at `BEARING_SIGMA_DEG` -- so being wrong here optimistic
+#: floors every bearing at `BEARING_SIGMA_DEG` -- so being wrong optimistic
 #: understates a fast-turning look's cone and being wrong pessimistic only costs
-#: precision. **Measuring it properly means timestamping a frame against a
-#: known-rate turn**, which wants its own bench run and has not had one.
+#: precision.
+#:
+#: **What the same measurement says about the fault this replaced**: the stamp
+#: landing at 94% of the grab means the midpoint the old code assumed was wrong
+#: by 44% of whatever the rover turned, which on that drive's median 15.3-degree
+#: turn is 6.7 degrees. That is why refusing the look was the only safe answer
+#: before the instant was asked for, and why interpolating to it is worth this
+#: much.
 FRAME_TIME_SIGMA_S = 0.03
 
 #: How wide a bearing may be before it is not a direction any more, in degrees.
