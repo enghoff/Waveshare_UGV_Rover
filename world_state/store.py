@@ -661,16 +661,18 @@ class WorldStore:
                     " bbox_json, observer_pan_deg,"
                     " observer_tilt_deg, observer_pose_json, map_session, model_id,"
                     " raw_json,"
-                    " bearing_deg, span_deg, region_source, region_score,"
+                    " bearing_deg, span_deg, origin_sigma_m,"
+                    " region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
                      capture.get("pan"), capture.get("tilt"),
                      None if pose is None else json.dumps(pose), session, model_id,
                      json.dumps(item.raw, sort_keys=True),
-                     bearing, span, region_source or None,
+                     bearing, span, capture.get("origin_sigma_m"),
+                     region_source or None,
                      getattr(item, "region_score", None) or None,
                      getattr(item, "dino", b"") or None,
                      getattr(item, "siglip", b"") or None,
@@ -751,6 +753,12 @@ ADDED_COLUMNS = {
         # is a property of the rover at the moment of the look.
         "bearing_deg": "REAL",
         "span_deg": "REAL",
+        # How far out the point the bearing starts from may be, in metres: half
+        # of whatever the rover covered while the shutter was open. Null on every
+        # row written before this was measured, and null is right for them --
+        # the gate that produced those rows refused any look taken on the move.
+        # See `Inspector.MOVED_WHILE_LOOKING_M` and `locate.fix`.
+        "origin_sigma_m": "REAL",
         # What drew the box, and how sure the region finder was of it.
         "region_source": "TEXT",
         "region_score": "REAL",

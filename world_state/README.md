@@ -18,7 +18,21 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
-**The run of 2026-09-03 placed four things and three of them are where nothing
+**A second drive on the afternoon of 2026-09-03 placed nothing false and almost
+nothing at all: 866 regions over 214 looks, and one entity.** The cause is that
+**163 of those 214 looks stored no direction for anything they saw**, because the
+limit on how far the rover may travel while the shutter is open was derived from a
+0.29 s capture at 0.35 m/s and the rover now takes 0.36 s and drives at 0.47 —
+so an ordinary look taken while driving straight was refused by a hair. That left
+94 bearings from eight standing places out of a thirteen-minute drive. Travel now
+buys a wider answer instead of no answer, turning still costs the look its
+bearing, and a standoff between two crossings no longer ends the whole pairing
+pass — which on that recording takes it from one entity to three. **The size of
+the recovery is a prediction and wants the next drive**: the looks that lost their
+bearing recorded no pose either, so it cannot be replayed. The write-up is *One
+entity out of a thirteen-minute drive* below.
+
+**The run of that morning placed four things and three of them are where nothing
 is.** One entity is right: `object:3` is three crops of one framed picture. The
 other three are not, and between them they say what is left to fix. `object:1`
 holds a dark cabinet, a lit doorway and a blue sofa; `object:2` a doorway seen
@@ -905,10 +919,11 @@ one `drive` call and the next. What replaced it is a measurement rather than a
 refusal: `Inspector` reads the pose on **both sides** of the capture, uses the
 midpoint, and drops the bearing — keeping the picture, the regions and the
 vectors — on the looks where the rover covered more ground than that midpoint can
-account for. See `MOVED_WHILE_LOOKING_M` and `TURNED_WHILE_LOOKING_DEG`, both
-derived from the 1.5 degrees of bearing error the geometry is already told to
-expect, so a look taken on the move is no worse than the accuracy the store
-already claims.
+account for. See `MOVED_WHILE_LOOKING_M` and `TURNED_WHILE_LOOKING_DEG` — and
+note that they no longer say the same thing, because the drive of that afternoon
+found that treating them alike threw away three quarters of a run. Travel widens
+the answer and turning still refuses the look: *One entity out of a thirteen-
+minute drive* below has the measurement.
 
 **`LOOK_EVERY_S` was 15 s, and what set it was the resolver.** Identity was
 settled inside every inspection, and one pass compares every pair in the pending
@@ -945,7 +960,11 @@ that a look is never wasted.
 ### What the rate is bounded by now, measured on this host
 
 A bounded capture is **0.29 s** on the Orin and a look through the encoders
-**0.16 s**, so a look a second is a 45% duty cycle. The question that decides
+**0.16 s**, so a look a second is a 45% duty cycle. (Timed again through the
+daemon's own socket on the afternoon of 2026-09-03 the grab is **0.36 s**, which
+is the number the shutter-motion limit is now derived from; the difference is the
+call rather than the camera, and it is the honest one for that purpose because the
+pose readings bracket the call.) The question that decides
 whether that is affordable is not the GPU but the lidar, because the scan matcher
 is the only odometer this rover has and `uvc_camera.snapshot` records a camera
 held open costing it 22% of its revolutions. Re-measured here against the nav
@@ -1283,6 +1302,159 @@ not move where anything was placed.
    support and is worth refusing outright.
 4. **Appearance cannot separate what the rover sees**, on the vectors it runs.
    Nothing above changes that, and no threshold rescues it.
+
+## One entity out of a thirteen-minute drive, 2026-09-03 (afternoon)
+
+A second drive the same day, after the appearance gate above was closed: 866
+regions over 214 looks, and **one entity**. Nothing false was placed, which is
+what the previous fix was for; almost nothing was placed at all.
+
+Replaying the recording reproduces that one entity exactly, so everything below
+is measured rather than argued.
+
+### Three quarters of the run recorded no bearing, and it was a constant
+
+**163 of the 214 looks stored no direction for anything they saw.** Not because
+SLAM had lost the rover -- the pose was there -- but because `Inspector._where`
+refused to draw a bearing from it. It reads the pose either side of the shutter
+and drops the bearing when the rover covered too much ground between the two, and
+the limit was 0.12 m.
+
+That number was derived from a 0.29 s capture at the 0.35 m/s the rover explores
+at, which is 0.10 m of travel with a little room over. **Neither half of the
+derivation still held.** A bounded grab timed through the daemon is 0.36 s, and
+the travel recorded on the looks that lost their bearing puts the explore speed at
+0.47 m/s. So an ordinary look taken while driving in a straight line covers 0.17 m
+-- median, over 63 such looks -- and was refused by a hair.
+
+| | looks | regions |
+|---|---:|---:|
+| the run | 214 | 866 |
+| lost the bearing | 163 | 772 |
+| ...of those, turned less than 3 deg | 63 | 342 |
+| had a bearing to work with | 51 | 94 |
+
+What was left is **94 bearings from eight standing places**, 60 of them from one
+of those places. Rays from one place share an origin exactly and cross nowhere, so
+the run's whole triangulating power was seven usable viewpoints in thirteen
+minutes of driving.
+
+### Travelling and turning are not the same mistake
+
+The fix is not to loosen the limit and hope. The two kinds of movement do
+different things to a ray and only one of them can be paid for:
+
+- **Travelling shifts where the ray starts.** The midpoint of two pose readings
+  leaves the origin out by half of what was covered -- 0.085 m on an ordinary
+  look -- and the crossing moves by about as much, in a direction nothing can
+  predict. That is a number, and a number can be carried: it is written on the
+  observation as `origin_sigma_m` and `locate.fix` adds both rays' worth to the
+  answer's uncertainty, widening it in both axes.
+- **Turning swings where the ray points.** There is nothing to charge that to but
+  a crossing somewhere there is nothing at all, which is how a phantom is made.
+
+So `MOVED_WHILE_LOOKING_M` is 0.30 -- twice an ordinary look's travel, refusing
+the genuine outliers (the worst on this run was 0.65 m) -- and
+`TURNED_WHILE_LOOKING_DEG` stays at 3.0, which is what cost the other 100 looks
+their bearings. Those are the ones worth losing.
+
+The pose is also read the moment the picture is in hand rather than after it has
+been written to disk, so the bracket measures the shutter and nothing else. That
+is correctness rather than a saving: saving a frame is 1.4 ms, measured on the
+Orin.
+
+**This cannot be replayed.** The recording has no pose at all on the 163 looks
+that lost one, because dropping the bearing is what happened at the time -- so the
+size of the recovery is a prediction from the counts above and not a measurement.
+It wants the next drive.
+
+### A standoff in one corner stopped the other corner
+
+The second fault is structural and it is measurable here. `_place_one` ranks the
+crossings it can make and refuses the best one when another crossing built from
+one of the same rays disagrees -- correctly: a ray points at one thing, and
+nothing in a pool of bearings can say which of two answers on it is right.
+
+But it answered `None` for that, and `None` is also how it says "there is nothing
+left to place here", which is what `_pair_up` stops on. **So one standoff threw
+away every other crossing in the pool.** Measured on this run: 65 of the 181
+pairing passes ended that way, with a median of four crossings still on the table.
+
+The rival test is now asked of each candidate in turn (`_contested`), and the
+first crossing nothing contradicts is placed. A candidate sharing a ray with a
+standoff is refused along with it, because that ray is spoken for either way.
+
+**On this recording it takes the run from one entity to three.** One is the framed
+picture it already had; one is an office chair, seen from 15.34,1.15 and from
+13.13,-0.42 -- a 2.71 m baseline at 79 degrees of parallax, placed to within
+0.072 m, appearance 0.648 -- which the old code refused because a third ray
+crossed one of its two somewhere 0.64 m away. That is a genuine thing the rover
+saw twice and could not keep.
+
+The third is wrong: a door seen up close and a blown-out ceiling panel, which
+DINOv2 scores above the 0.5 floor because two washed-out pictures resemble each
+other. That is the known weakness of appearance on this rover rather than a new
+one -- the old code did not refuse it, it simply stopped before reaching it.
+
+### Recovering the bearings walks into a cost cliff, so it is bounded
+
+Both fixes above make the pending pool much bigger, and the resolver's cost is
+worse than linear in it: a pass compares every pair of bearings and then asks
+every ray whether it agrees with each crossing that survived. Measured on the Orin
+over a synthetic pool of 500 rays dense enough to place things from -- which is
+roughly what a driven run will now produce, where the recorded run had 94:
+
+| pool | one pass, before | one pass, with the standoff fix |
+|---:|---:|---:|
+| 200 | 3.6 s | 4.9 s |
+| 350 | 16.4 s | 21.0 s |
+| 500 | 47.0 s | 54.7 s |
+
+**So the standoff fix costs 17% and the pool size costs everything.** 47 seconds
+was already the price at a full pool; the old build never paid it because three
+quarters of every look recorded no bearing, and stopping at the first standoff cut
+the work short besides.
+
+Two things bound it. `MAX_NEW_PER_PASS` stops a pairing pass after two new
+placements and leaves the rest of the pool for the next one -- the cost is linear
+in that (2.7 s per placement at a 500-ray pool, so 5.3 s for two against a
+`SETTLE_EVERY_S` of 10), and two every ten seconds is twelve a minute against the
+four things the rover's best drive has placed in thirteen minutes. **Only new
+things are rationed**; joining an observation to something already placed is the
+cheap path and still runs over the whole pool every pass.
+
+And the loop's settle clock is now read *after* the pass rather than before it. A
+pass longer than `SETTLE_EVERY_S` was otherwise due again the instant it returned,
+so a rover with a large enough pool would have settled for ever and never looked
+again -- a trap the small pool was hiding.
+
+### What a sparse pool does to everything else
+
+Worth stating plainly, because it explains why nothing here is settled by tuning:
+with 94 bearings and seven viewpoints, **which entities appear is decided by which
+two rays happen to be in the pool.** Tightening the blown-out-crop filter from 0.6
+to 0.5 -- every one of the run's 24 most blown-out crops is a window or a light
+panel, so the cut is defensible on its own -- removes the false door, and removes
+the office chair with it, by changing which crossing wins a ranking three passes
+later. The constant was left alone for that reason.
+
+The design's own answer to a standoff is "a third look from somewhere else settles
+it". The whole of this run had seven places to look from.
+
+### What is left, in the order it matters
+
+1. **The next drive is the measurement.** Everything in the first section is a
+   prediction until the rover drives again: the counts say the pool should go from
+   94 bearings to something over 400, from seven viewpoints to more than sixty.
+2. **The bearing itself**, which the section above this one measures and which
+   nothing here has touched.
+3. **The gimbal never moved.** Pan was 0.0 on all 866 regions of this run, because
+   nothing in the world-building loop turns it and the camera therefore stares
+   down the rover's nose for a whole drive. Whatever is beside the route is seen
+   once, in passing, at the edge of the frame. A sweep while driving is the
+   obvious next multiplier and it is a behaviour change, not a constant.
+4. **Appearance still cannot separate what the rover sees.** A door and a
+   blown-out ceiling score above the floor, and no threshold rescues that.
 
 ## What was measured on the rover, 2026-09-02
 

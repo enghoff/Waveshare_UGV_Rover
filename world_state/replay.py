@@ -66,7 +66,8 @@ from .store import WorldStore                       # noqa: E402
 COLUMNS = (
     "inference_id observed_at source frame_id frame_path bbox_json "
     "observer_pan_deg observer_tilt_deg observer_pose_json map_session "
-    "model_id raw_json bearing_deg span_deg region_source region_score "
+    "model_id raw_json bearing_deg span_deg origin_sigma_m "
+    "region_source region_score "
     "dino_blob siglip_blob vectors_from"
 ).split()
 
@@ -227,7 +228,11 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
                         "INSERT INTO observations(entity_id, "
                         + ",".join(COLUMNS) + ") VALUES(NULL, "
                         + ",".join("?" * len(COLUMNS)) + ")",
-                        tuple(row[name] for name in COLUMNS))
+                        # `get`, because a recording is a database written by
+                        # an older build and may predate a column this one
+                        # replays. Missing is null, which is what the store's own
+                        # migration leaves on the rows it adds a column to.
+                        tuple(row.get(name) for name in COLUMNS))
             outcome = resolver.resolve(store, reach=reach)
             if verbose:
                 print(f"  look {group[0]['inference_id']}: "

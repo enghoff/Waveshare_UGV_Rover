@@ -88,10 +88,16 @@ ENV_FAKE = "UGV_WORLD_FAKE"
 #: the scan matcher is the only odometer this rover has.
 LOOK_EVERY_S = 1.0
 #: How often identity is decided, in seconds. Separate from looking because the
-#: two cost wildly different amounts: a look is a near-constant 0.45 s, while one
-#: resolver pass is 1.4 s at 500 pending bearings and 8 s at 2000 -- it compares
-#: every pair, so it grows as the square of what is waiting. Settling after every
-#: look is what made looking often unaffordable.
+#: two cost wildly different amounts: a look is a near-constant 0.45 s, while a
+#: resolver pass compares every pair and then asks every ray whether it agrees
+#: with each crossing that survived, so it grows as the square of what is waiting.
+#: Settling after every look is what made looking often unaffordable.
+#:
+#: **The 1.4 s at 500 bearings this used to claim was measured on a pool that
+#: could place nothing.** Re-measured on the Orin on 2026-09-03 with a pool of 500
+#: that can, one pass is 55 s, and `resolve.MAX_NEW_PER_PASS` is what bounds that
+#: now. The clock below is also read after the pass rather than before it, because
+#: a pass longer than this was otherwise due again the instant it returned.
 SETTLE_EVERY_S = 10.0
 #: What counts as somewhere new. **Deliberately shorter than the 0.4 m the
 #: geometry calls a baseline**, which is what this was: two looks this close
@@ -260,8 +266,16 @@ class RoverWorld:
                 # completely, because a driving rover has a look due every second
                 # and identity would then never be decided until it stopped.
                 if now - self._world_settle_at >= SETTLE_EVERY_S:
-                    self._world_settle_at = now
                     outcome = self._world_inspector().settle()
+                    # **Timed from when it finished, not from when it started.**
+                    # A pass that ran longer than `SETTLE_EVERY_S` was instantly
+                    # due again the moment it returned, so a rover whose pending
+                    # pool had grown large enough would settle for ever and never
+                    # look again. Measured on the Orin, a pass over a 500-bearing
+                    # pool is tens of seconds against a cadence of ten, and the
+                    # pool only stayed small enough to hide it while three
+                    # quarters of every look was recording no bearing at all.
+                    self._world_settle_at = time.monotonic()
                     if outcome.get("ok"):
                         self._world_settled = {
                             "at": time.time(),

@@ -114,6 +114,35 @@ RIVAL_FACTOR = 2.0
 #: the rover answers.
 SAME_PLACE_M = 0.5
 
+#: How many new things one pairing pass may place before it stops and leaves the
+#: rest for the next one.
+#:
+#: **A cost bound, and it became necessary the moment looks taken on the move
+#: kept their bearings.** Searching for a crossing compares every pair and then
+#: asks every ray whether it agrees with each survivor, which is one second at a
+#: pool of 500 on the Orin -- and the search runs again after each placement,
+#: because placing a thing takes rays out of the pool and changes what the rest
+#: support. Measured there with a 500-ray pool, a pass that placed 107 things took
+#: 55 seconds, against a `SETTLE_EVERY_S` of 10. The old build never met that
+#: because it had a hundred bearings to work with, and stopped at the first
+#: standoff besides.
+#:
+#: The cost is linear in this at a given pool size -- measured on the Orin over a
+#: 500-ray pool, one placement is 2.7 s, two 5.3, three 7.7 and four 10.0. Two
+#: keeps the worst pass comfortably inside `SETTLE_EVERY_S`, and two every ten
+#: seconds is twelve a minute against the four things the rover's best drive so
+#: far has placed in thirteen minutes.
+#:
+#: **Only new things are capped.** Joining an observation to something already
+#: placed is the cheap path and runs over the whole pool every pass, which is the
+#: right priority: an entity the rover already knows about should collect its
+#: evidence immediately, and only inventing one is worth rationing.
+#:
+#: Nothing is lost by stopping: the pool persists, the next pass carries on from
+#: it, and identity was never a queue that had to be drained in one go. What is
+#: gained is that settling can never eat the looking.
+MAX_NEW_PER_PASS = 2
+
 @dataclass
 class Decision:
     """What was decided about one observation, and why, in words.
@@ -157,6 +186,11 @@ def ray_of(observation: dict[str, Any],
         built = {"x_m": float(pose["x_m"]), "y_m": float(pose["y_m"]),
                  "bearing_deg": float(bearing),
                  "span_deg": float(observation.get("span_deg") or 0.0),
+                 # How far out this ray's own starting point is, which the
+                 # inspection measured and `locate` charges to every answer the
+                 # ray takes part in. Absent on a row written before the rover
+                 # measured it, and absent means nothing was moving.
+                 "origin_sigma_m": float(observation.get("origin_sigma_m") or 0.0),
                  "observation_id": observation.get("id")}
     except (KeyError, TypeError, ValueError):
         return None
@@ -447,6 +481,11 @@ def _pair_up(store, leftover, session, entities, taken_in,
         available = [one for one in leftover if one["id"] not in used]
         if len(available) < 2:
             break
+        if sum(1 for one in decisions if one.outcome == NEW) >= MAX_NEW_PER_PASS:
+            # Enough for one pass. See `MAX_NEW_PER_PASS`: the search behind each
+            # placement is a second at a full pool, and the rest of the pool is
+            # still there next time.
+            break
         placed = _place_one(store, available, session, reach)
         if placed is None:
             break
@@ -479,7 +518,8 @@ def _pair_up(store, leftover, session, entities, taken_in,
 
 
 def _place_one(store, available, session, reach=None):
-    """The best-supported crossing among these observations, or None.
+    """The best-supported crossing among these observations that nothing
+    contradicts, or None.
 
     **Two bearings crossing is not enough on its own, and this is the phantom
     problem rather than a refinement.** Two identical chairs seen from two places
@@ -493,10 +533,13 @@ def _place_one(store, available, session, reach=None):
     What separates them is a third look. A real chair is agreed by every ray that
     was pointed at it; a phantom is agreed by exactly the two rays that made it.
     So a crossing is chosen by **how many rays support it**, and a crossing that
-    ties with a conflicting one somewhere else is refused.
+    ties with a conflicting one built from one of the same rays is passed over --
+    see `_contested`, and note that it is passed over rather than ending the
+    search, which is what it used to do.
 
-    None ends the group, and the whole group stays pending. That is the right
-    answer for a rover that has looked at something from one place only.
+    None means no crossing here survived that, and the whole group stays pending.
+    That is the right answer for a rover that has looked at something from one
+    place only.
     """
     rays = []
     for observation in available:
@@ -549,26 +592,22 @@ def _place_one(store, available, session, reach=None):
         return None
 
     found_fixes.sort(key=lambda one: (-one[4], one[0]["uncertainty_m"]))
-    placement, first_observation, second_observation, support, strength =         found_fixes[0]
-    chosen_rays = {first_observation["id"], second_observation["id"]}
-    for other, other_first, other_second, _support, other_strength in found_fixes[1:]:
-        if other_strength < strength:
+    # **A contested crossing is one crossing being refused, not the end of the
+    # group, and running the two together cost the run of 2026-09-03 most of what
+    # it could have placed.** `_pair_up` stops the moment this answers None, so a
+    # single standoff between two rays threw away every other crossing in the
+    # pool -- 65 of that run's 181 pairing passes ended that way, with a median of
+    # four crossings still on the table. What is genuinely unknowable is which of
+    # two answers built from the same ray is right; the chair on the other side of
+    # the room is not in doubt for it.
+    chosen = None
+    for index in range(len(found_fixes)):
+        if not _contested(found_fixes, index):
+            chosen = found_fixes[index]
             break
-        # **Only a crossing that shares a ray is a rival.** A ray points at one
-        # thing, so two equally supported answers built from the same ray cannot
-        # both be right and nothing here can say which. Two crossings built from
-        # entirely different rays are simply two different objects, and refusing
-        # those would mean a room could only ever hold one chair.
-        if {other_first["id"], other_second["id"]}.isdisjoint(chosen_rays):
-            continue
-        if other["uncertainty_m"] > placement["uncertainty_m"] * RIVAL_FACTOR:
-            continue
-        apart = math.hypot(other["x_m"] - placement["x_m"],
-                           other["y_m"] - placement["y_m"])
-        if apart > max(SAME_PLACE_M,
-                       other["uncertainty_m"] + placement["uncertainty_m"]):
-            # A third look from somewhere else settles it; nothing here can.
-            return None
+    if chosen is None:
+        return None
+    placement, first_observation, second_observation, support, strength = chosen
 
     entity_id = store.create_entity()
     store.place(entity_id, placement, session)
@@ -631,6 +670,42 @@ def _place_one(store, available, session, reach=None):
         candidates=[{"entity_id": entity_id,
                      "from_observations": taken,
                      "uncertainty_m": placement["uncertainty_m"]}]), taken
+
+
+def _contested(found_fixes: list, index: int) -> bool:
+    """Whether another crossing built from one of these same rays disagrees.
+
+    **Only a crossing that shares a ray is a rival.** A ray points at one thing,
+    so two comparably supported answers built from the same ray cannot both be
+    right and nothing here can say which; a third look from somewhere else
+    settles it. Two crossings built from entirely different rays are simply two
+    different objects, and refusing those would mean a room could only ever hold
+    one chair.
+
+    Asked of every candidate in turn rather than only of the best one, which is
+    what lets the caller pass over a standoff and place what is not in doubt.
+    Better-supported crossings count as rivals to a worse-supported one, so a
+    candidate that shares a ray with a standoff is refused along with it -- the
+    ray is spoken for either way.
+    """
+    placement, first, second, _support, strength = found_fixes[index]
+    rays = {first["id"], second["id"]}
+    for other, other_first, other_second, _rest, other_strength in found_fixes:
+        if other is placement:
+            continue
+        if other_strength < strength:
+            # Sorted by support first, so nothing further down can be a rival.
+            break
+        if {other_first["id"], other_second["id"]}.isdisjoint(rays):
+            continue
+        if other["uncertainty_m"] > placement["uncertainty_m"] * RIVAL_FACTOR:
+            continue
+        apart = math.hypot(other["x_m"] - placement["x_m"],
+                           other["y_m"] - placement["y_m"])
+        if apart > max(SAME_PLACE_M,
+                       other["uncertainty_m"] + placement["uncertainty_m"]):
+            return True
+    return False
 
 
 def _could_be_one(first: dict[str, Any], second: dict[str, Any]) -> bool:

@@ -76,6 +76,12 @@ MIN_PARALLAX_DEG = 12.0
 #: only turned on the spot share an origin exactly, and no amount of parallax in
 #: the arithmetic makes that a measurement.
 MIN_BASELINE_M = 0.4
+#: How far a ray's own starting point might be out, when the observation does not
+#: say. Zero, because a row written before the rover measured it was taken from a
+#: rover standing still: the gate that produced those rows refused every look
+#: taken on the move, so silence there really does mean "the rover was not going
+#: anywhere". See `Inspector._where` for what writes it now.
+NO_ORIGIN_ERROR_M = 0.0
 #: Beyond this, indoors, the fix is a pair of nearly parallel rays agreeing by
 #: accident rather than a thing in a room.
 MAX_RANGE_M = 12.0
@@ -263,7 +269,18 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
                 # A nudge that destroys the fix means the fix was marginal.
                 return None
             moved.append((nudged[0] - point[0], nudged[1] - point[1]))
-    worst = max(math.hypot(dx, dy) for dx, dy in moved)
+    # **Where the ray started is uncertain too, and it is charged here rather
+    # than used to throw the look away.** A rover driving in a straight line
+    # through a 0.36 s shutter covers 0.17 m, and the pose behind the bearing is
+    # the midpoint of two readings, so the ray begins somewhere within half of
+    # what it travelled. That shifts the whole ray sideways, which moves the
+    # crossing by about as much in a direction nothing here can predict -- so it
+    # widens the answer both ways rather than along one axis. See
+    # `Inspector.MOVED_WHILE_LOOKING_M` for why this is now measured and kept
+    # instead of being the reason 76% of a driven run recorded no bearing at all.
+    origin_m = (float(first.get("origin_sigma_m") or NO_ORIGIN_ERROR_M)
+                + float(second.get("origin_sigma_m") or NO_ORIGIN_ERROR_M))
+    worst = max(math.hypot(dx, dy) for dx, dy in moved) + origin_m
     # The direction the error runs in is the furthest the point moved, and the
     # width is how far the cloud reaches either side of that. Four points is a
     # bounding box rather than a covariance, which is the honest amount of shape
@@ -271,7 +288,7 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
     long_dx, long_dy = max(moved, key=lambda one: math.hypot(*one))
     axis_deg = math.degrees(math.atan2(long_dy, long_dx))
     ux, uy = _unit(axis_deg)
-    across = max(abs(-dx * uy + dy * ux) for dx, dy in moved)
+    across = max(abs(-dx * uy + dy * ux) for dx, dy in moved) + origin_m
     return {
         "x_m": round(point[0], 3),
         "y_m": round(point[1], 3),
@@ -398,7 +415,12 @@ def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
         own = range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0))
     extent_m = min(MAX_EXTENT_M, max(0.0, float(own)))
     return (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
-            + cross_track(point, ray) + extent_m)
+            + cross_track(point, ray) + extent_m
+            # And where this ray started, which is a sideways error like the
+            # bearing's own and belongs on the same side of the comparison. A
+            # look taken while the rover was driving must not be refused for
+            # missing by less than its own starting point is known to.
+            + float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M))
 
 
 def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -487,7 +509,8 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
         # -- and a tie is broken on uncertainty, which is the wandering the
         # count was introduced to stop.
         tolerance_m = (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
-                       + float(point.get("uncertainty_m", 0.0)))
+                       + float(point.get("uncertainty_m", 0.0))
+                       + float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M))
     off_deg = abs(_wrap(bearing_to(point, ray) - float(ray["bearing_deg"])))
     if off_deg >= 90.0:
         return False

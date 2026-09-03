@@ -91,6 +91,11 @@ def ray(observation: dict[str, Any], fov_deg: float,
         # labelled as such wherever it is shown.
         "heading_deg": round(heading_deg, 1),
         "pan_deg": round(pan_deg, 1),
+        # How far out this ray's starting point is, carried through so that the
+        # console's agreement test is the resolver's own and not a second
+        # opinion: `relate` hands this dictionary to `locate.match_tolerance`,
+        # which allows for it.
+        "origin_sigma_m": float(observation.get("origin_sigma_m") or 0.0),
         # Where the rover's nose was, plus where the gimbal was turned to, plus
         # where in the picture the thing sat -- brought back into (-180, 180].
         # **The wrap is not cosmetic.** Three numbers added together run past

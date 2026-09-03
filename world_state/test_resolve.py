@@ -670,6 +670,87 @@ def test_a_wrong_exemplar_does_not_make_the_next_one_easier() -> None:
             store.close()
 
 
+def test_a_standoff_in_one_corner_does_not_stop_the_other_corner() -> None:
+    """Two identical chairs from two places is a standoff nothing can settle, and
+    it used to end the whole pass -- so the lamp across the room, which no ray
+    disagrees about at all, went unplaced with it. On the run of 2026-09-03 that
+    happened in 65 of 181 pairing passes, with a median of four crossings still on
+    the table each time.
+
+    What is unknowable is which of two answers built from *the same ray* is right.
+    That says nothing about a crossing built from two other rays entirely.
+    """
+    near, far = (2.7, 0.4), (3.0, 3.0)
+    lamp = (0.0, 8.0)
+
+    def seen_from(x_m, y_m, thing, inference, vector):
+        bearing = math.degrees(math.atan2(thing[1] - y_m, thing[0] - x_m))
+        observe(store, x_m, y_m, round(bearing, 2), vector=vector,
+                inference=inference)
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            chair, brass = a_vector(1.0, 0.0), a_vector(0.0, 1.0)
+            seen_from(0.0, 0.0, far, 1, chair)
+            seen_from(0.0, 0.0, near, 1, chair)
+            seen_from(6.0, 0.0, far, 2, chair)
+            seen_from(6.0, 0.0, near, 2, chair)
+            seen_from(-2.0, 5.0, lamp, 3, brass)
+            seen_from(2.0, 5.0, lamp, 4, brass)
+
+            result = resolve.resolve(store)
+            check("the lamp nothing argues about is placed", result["created"], 1)
+            placed = store.placed()
+            check("...and the two chairs are still a standoff, not two guesses",
+                  len(placed), 1)
+            check("...where it actually is",
+                  [(round(one["placement"]["x_m"]),
+                    round(one["placement"]["y_m"])) for one in placed],
+                  [(0, 8)])
+            check("...with all four of their looks still waiting",
+                  len(store.unplaced()), 4)
+        finally:
+            store.close()
+
+
+def test_one_pass_places_a_few_things_and_leaves_the_rest_for_the_next() -> None:
+    """Searching for a crossing is a second at a full pool and it runs again after
+    every placement, so a pass that placed everything it could took 55 s on the
+    rover against a settle cadence of 10. The pool is not a queue that has to be
+    drained in one go, so it is not drained in one go."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            # Six lamps in a row, each seen from two places well apart, so every
+            # one of them is placeable and none of them argues with any other.
+            for n in range(6):
+                lamp = (float(n) * 3.0, 9.0)
+                # One dimension each, so no lamp can be mistaken for another and
+                # what is being counted is the pass and not the appearance gate.
+                mark = a_vector(*[1.0 if axis == n else 0.0 for axis in range(6)])
+                for index, (x_m, y_m) in enumerate(((lamp[0] - 2.0, 0.0),
+                                                    (lamp[0] + 2.0, 0.0))):
+                    bearing = math.degrees(math.atan2(lamp[1] - y_m, lamp[0] - x_m))
+                    observe(store, x_m, y_m, round(bearing, 2), vector=mark,
+                            inference=n * 2 + index)
+
+            first = resolve.resolve(store)
+            check("one pass places what it is allowed to and stops",
+                  first["created"], resolve.MAX_NEW_PER_PASS)
+            check("...leaving the rest of the pool exactly where it was",
+                  len(store.unplaced()), (6 - resolve.MAX_NEW_PER_PASS) * 2)
+            check("...and the next pass carries on from it",
+                  resolve.resolve(store)["created"], resolve.MAX_NEW_PER_PASS)
+            for _again in range(6):                # bounded: six lamps, at worst
+                if not resolve.resolve(store)["created"]:
+                    break
+            check("...until every lamp is placed", len(store.placed()), 6)
+            check("...and nothing is left waiting", len(store.unplaced()), 0)
+        finally:
+            store.close()
+
+
 TESTS = (
     test_two_looks_from_two_places_make_one_lasting_thing,
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
@@ -690,4 +771,6 @@ TESTS = (
     test_an_inspection_settles_identity_as_well_as_measuring,
     test_one_look_gives_a_thing_one_region_however_many_passes_it_takes,
     test_a_wrong_exemplar_does_not_make_the_next_one_easier,
+    test_a_standoff_in_one_corner_does_not_stop_the_other_corner,
+    test_one_pass_places_a_few_things_and_leaves_the_rest_for_the_next,
 )

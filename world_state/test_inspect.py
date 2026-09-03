@@ -248,13 +248,32 @@ def test_the_vectors_never_reach_the_wire_by_accident() -> None:
 def test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing() -> None:
     """The pose is read either side of the shutter, and the gap is the verdict.
 
-    A capture is 0.29 s on the rover and the rover may be driving through all of
-    it, so a bearing drawn from one reading taken afterwards is drawn from where
-    the rover ended up. What has to hold is that a look taken while moving too
-    much still stores its picture, its regions and its vectors -- a rover
-    recording once a second is recording pictures -- and stores no direction it
-    cannot stand behind.
+    A bounded grab is 0.36 s on the rover and the rover may be driving through
+    all of it, so a bearing drawn from one reading taken afterwards is drawn from
+    where the rover ended up. **Travelling and turning are answered differently
+    and that is the point**: travel shifts where the ray starts, which is a
+    residual the geometry can be told about, and turning swings where it points,
+    which is a crossing in the wrong place. So an ordinary drive keeps its
+    bearing and says how good it is, and a turn still costs the look its
+    direction -- while the picture, the regions and the vectors are kept either
+    way, because a rover recording once a second is recording pictures.
     """
+    with tempfile.TemporaryDirectory() as directory:
+        driving = iter([{"x_m": 0.0, "y_m": 0.0, "heading_deg": 90.0},
+                        {"x_m": 0.0, "y_m": 0.17, "heading_deg": 90.0}])
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]], pose=lambda: next(driving))
+        result = inspector.inspect()
+        check("an ordinary look taken while driving straight keeps its bearing",
+              result["placed"], 1)
+        row = dict(store.db.execute(
+            "SELECT bearing_deg, origin_sigma_m FROM observations").fetchone())
+        check("...and records how far out its own starting point may be",
+              row["origin_sigma_m"], 0.085)
+        check("...which is half of what the rover covered, not all of it",
+              round(result["moved_m"] / 2.0, 3), row["origin_sigma_m"])
+        store.close()
+
     with tempfile.TemporaryDirectory() as directory:
         walking = iter([{"x_m": 0.0, "y_m": 0.0, "heading_deg": 90.0},
                         {"x_m": 0.0, "y_m": 0.6, "heading_deg": 90.0}])
@@ -262,7 +281,7 @@ def test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing() -> N
             directory, [[a_sighting()]], pose=lambda: next(walking))
         result = inspector.inspect()
         check("the look was recorded", result["stored"], 1)
-        check("...with no bearing, because the rover was moving",
+        check("...with no bearing, because the rover covered too much ground",
               result["placed"], 0)
         check("...and says how far it moved for it", result["moved_m"], 0.6)
         check("...in a sentence rather than a silence",
@@ -273,6 +292,18 @@ def test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing() -> N
         check("...and the vector with it", len(row["dino_blob"]), 32)
         check("...and the direction is absent rather than guessed",
               row["bearing_deg"], None)
+        store.close()
+
+    with tempfile.TemporaryDirectory() as directory:
+        swinging = iter([{"x_m": 0.0, "y_m": 0.0, "heading_deg": 90.0},
+                         {"x_m": 0.0, "y_m": 0.02, "heading_deg": 104.0}])
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]], pose=lambda: next(swinging))
+        result = inspector.inspect()
+        check("a look taken mid-turn still loses its bearing, however little "
+              "ground it covered", result["placed"], 0)
+        check("...and the sentence blames the turn rather than the travel",
+              "swings the bearing" in result["detail"], True)
         store.close()
 
     with tempfile.TemporaryDirectory() as directory:
@@ -291,8 +322,9 @@ def test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing() -> N
 def test_looking_and_settling_are_separately_paced() -> None:
     """A rover that looks once a second cannot settle once a second.
 
-    One resolver pass is 1.4 s at 500 pending bearings on the rover and 8 s at
-    2000, because it compares every pair; a look is a near-constant 0.45 s. So
+    One resolver pass over a pool of 500 bearings that can place things is 55 s on
+    the rover, because it compares every pair and then asks every ray whether it
+    agrees with each crossing that survived; a look is a near-constant 0.45 s. So
     the caller decides, and a look that did not settle has to say so rather than
     reporting nothing found.
     """

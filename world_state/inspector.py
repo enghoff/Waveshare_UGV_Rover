@@ -35,23 +35,42 @@ from .perception_client import describe_eyes
 #: back something it took for its own reasons rather than for this call.
 FRAME_MAX_AGE_S = 5.0
 
-#: How far the rover may travel while the shutter is open before its own position
-#: stops being good enough to draw a bearing from, in metres. **This exists
-#: because taking the picture is not instant**: a bounded capture is 0.29 s on the
-#: Orin, measured, and the rover covers 0.10 m of that at the 0.35 m/s it explores
-#: at. So the pose is read on both sides of the capture and the midpoint used,
-#: which leaves the origin of the ray wrong by half of whatever the rover
-#: travelled. 0.12 m admits an ordinary drive and leaves that residual at 0.06 m,
-#: which is under the 0.08 m of lateral error the 1.5 degrees of bearing noise
-#: already amounts to at three metres -- so a look taken on the move is no worse
-#: than the accuracy the store already claims. Past it the picture and the regions
-#: are kept and the bearing is not, which is a state this store already handles
-#: honestly.
-MOVED_WHILE_LOOKING_M = 0.12
+#: How far the rover may travel while the shutter is open before the look is not
+#: worth a bearing at all, in metres. **This exists because taking the picture is
+#: not instant**: the pose is read on both sides of the capture and the midpoint
+#: used, which leaves the origin of the ray wrong by half of whatever the rover
+#: travelled.
+#:
+#: **It stood at 0.12 and that number threw away three quarters of a driven run.**
+#: The figure was derived from a 0.29 s capture at the 0.35 m/s the rover explores
+#: at, which is 0.10 m; on the run of 2026-09-03 neither half of that held. A
+#: bounded grab measured through the daemon is 0.36 s now, and the travel recorded
+#: on the looks that lost their bearing puts the explore speed at 0.47 m/s -- so an
+#: ordinary look taken while driving straight covers 0.17 m and was refused by a
+#: hair. Of the 214 looks that run took, 163 recorded no bearing, and 63 of those
+#: had turned less than three degrees: they were straight-line drives whose
+#: bearings were fine. That left 94 usable bearings out of 866 regions, from eight
+#: standing places, and one entity out of a thirteen-minute drive.
+#:
+#: 0.30 m is twice an ordinary look's travel, so an unusually fast stretch still
+#: keeps its bearing, and it refuses the genuine outliers -- the worst on that run
+#: was 0.65 m. **What it no longer does is hide the residual.** Half of whatever
+#: was travelled is written on the observation as `origin_sigma_m` and charged to
+#: the answer by `locate.fix`, so a look taken on the move places a thing less
+#: precisely instead of not at all.
+MOVED_WHILE_LOOKING_M = 0.30
 #: And how far it may turn, in degrees. Rotation is the term that actually hurts:
 #: it swings the whole bearing rather than shifting its origin. The midpoint
 #: halves it, so 3.0 leaves 1.5 -- exactly `locate.BEARING_SIGMA_DEG`, which is
 #: the error the geometry is already told to expect from the gimbal.
+#:
+#: **Unchanged while the limit above was loosened, and the asymmetry is the
+#: point.** Travel moves where a ray starts, which shifts the crossing by about as
+#: much and is reported as uncertainty; a turn swings where the ray points, and a
+#: bearing wrong by ten degrees crosses another one somewhere there is nothing at
+#: all. That is how a phantom is made, so this one still refuses the look. It cost
+#: 100 of the 163 bearings lost on the run of 2026-09-03, and those are the ones
+#: worth losing.
 TURNED_WHILE_LOOKING_DEG = 3.0
 
 
@@ -166,14 +185,23 @@ class Inspector:
         if not ready:
             return self._failed("unavailable", why, began=began, backend=backend)
 
-        # **Read before the shutter as well as after it.** The capture is 0.29 s
-        # and the rover may be driving through all of it, so one reading taken
-        # afterwards is the pose the rover had arrived at rather than the pose the
-        # picture was taken from -- and a bearing is only as good as the pose
-        # behind it. Two readings bracket the picture, and how far apart they are
-        # is a measurement of how much this particular look can be trusted.
+        # **Read before the shutter as well as after it.** A bounded grab is
+        # 0.36 s on the Orin and the rover may be driving through all of it, so
+        # one reading taken afterwards is the pose the rover had arrived at
+        # rather than the pose the picture was taken from -- and a bearing is
+        # only as good as the pose behind it. Two readings bracket the picture,
+        # and how far apart they are is a measurement of how much this
+        # particular look can be trusted.
+        #
+        # **The second reading is taken the moment the picture is in hand and
+        # before it is written down**, so that the bracket measures the shutter
+        # and nothing else. Saving the frame is 1.4 ms of disk and one row,
+        # measured, so this buys almost nothing back -- but a bracket that
+        # includes work done after the shutter is measuring the wrong thing, and
+        # what it measures is charged to every bearing in the look.
         before = self._pose()
         frame = self._frame()
+        after = self._pose()
         if not frame.get("ok"):
             return self._failed("no_frame", str(frame.get("error", "no picture")),
                                 began=began, backend=backend)
@@ -181,11 +209,17 @@ class Inspector:
         jpeg = frame["jpeg"]
         frame_id = self.store.save_frame(jpeg, frame.get("width"),
                                          frame.get("height"))
-        where, moved, turned = self._where(before, self._pose())
+        where, moved, turned = self._where(before, after)
         capture = {"frame_id": frame_id,
                    "frame_path": self.store.frame_path(frame_id),
                    "pan": frame.get("pan"), "tilt": frame.get("tilt"),
-                   "pose": where}
+                   "pose": where,
+                   # Half of what the rover covered while the shutter was open,
+                   # which is how far out the ray's own starting point may be.
+                   # Kept with the observation rather than folded into the pose,
+                   # because the pose is a measurement and this is how good it
+                   # is; `locate.fix` charges it to the answer.
+                   "origin_sigma_m": None if where is None else round(moved / 2.0, 3)}
         inference_id = self.store.record_inference(
             started_at=began, status="running", backend=backend,
             frame_id=frame_id, frame_live=1 if frame.get("live") else 0,
@@ -280,10 +314,13 @@ class Inspector:
                          f"(a blown-out window, a bare wall)")
         if stored["placed"] < stored["stored"]:
             missing = stored["stored"] - stored["placed"]
-            why = ("no pose, no gimbal angle, or no field of view"
-                   if not (moved or turned) else
-                   f"the rover moved {moved:.2f} m and turned {turned:.1f} deg "
-                   f"while the shutter was open")
+            if not (moved or turned):
+                why = "no pose, no gimbal angle, or no field of view"
+            elif turned > TURNED_WHILE_LOOKING_DEG:
+                why = (f"the rover turned {turned:.1f} deg while the shutter was "
+                       f"open, which swings the bearing")
+            else:
+                why = (f"the rover moved {moved:.2f} m while the shutter was open")
             parts.append(f"{missing} without a bearing ({why})")
         if not settled:
             parts.append("identity not settled yet")
@@ -314,9 +351,16 @@ class Inspector:
         ground than `MOVED_WHILE_LOOKING_M` or `TURNED_WHILE_LOOKING_DEG` allow --
         and `None` here is not a failure. The picture, the regions and the vectors
         are all kept; what is dropped is the one thing that was not measured well
-        enough to keep, which is the direction. A rover recording once a second
-        while it drives fills the store with pictures either way, and only the
-        bearings it can stand behind reach the geometry.
+        enough to keep, which is the direction.
+
+        **How much movement is too much is a different question for the two
+        kinds, and treating them alike is what starved the run of 2026-09-03 of
+        bearings.** Travelling shifts where the ray starts, so the midpoint leaves
+        a residual the caller can measure and `locate.fix` can charge to the
+        answer; turning swings where the ray points, and there is nothing to
+        charge that to but a crossing in the wrong place. So the caller keeps the
+        travel as `origin_sigma_m` and only a turn still costs the look its
+        bearing.
         """
         if not isinstance(before, dict) or not isinstance(after, dict):
             return (after if isinstance(after, dict) else before), 0.0, 0.0

@@ -333,6 +333,33 @@ def test_a_thing_may_not_claim_a_cone_the_geometry_never_earned() -> None:
           was_deg > cone_deg * 2.0, True)
 
 
+def test_a_ray_that_started_somewhere_uncertain_says_so() -> None:
+    """A look taken while the rover was driving. The bearing is as good as ever;
+    where it started from is not, and the answer has to carry that rather than
+    the look being thrown away for it."""
+    still = locate.fix(_look(0.0, 0.0, 45.0), _look(6.0, 0.0, 135.0))
+    moving = locate.fix(dict(_look(0.0, 0.0, 45.0), origin_sigma_m=0.09),
+                        dict(_look(6.0, 0.0, 135.0), origin_sigma_m=0.06))
+    check("the crossing is in the same place", 
+          (round(moving["x_m"]), round(moving["y_m"])),
+          (round(still["x_m"]), round(still["y_m"])))
+    check("...and both rays' doubt about where they began is charged to it",
+          round(moving["uncertainty_m"] - still["uncertainty_m"], 3), 0.15)
+    check("...across the answer as well as along it, because a shifted ray "
+          "moves the crossing in no particular direction",
+          round(moving["error_minor_m"] - still["error_minor_m"], 3), 0.15)
+    check("a ray that says nothing about it is a ray that was not moving",
+          locate.fix(_look(0.0, 0.0, 45.0),
+                     dict(_look(6.0, 0.0, 135.0), origin_sigma_m=None)),
+          still)
+
+    placed = dict(still, extent_m=0.0)
+    ray = _look(0.0, -1.0, 76.0)
+    check("and a bearing may miss by as much as its own start is unknown by",
+          round(locate.match_tolerance(placed, dict(ray, origin_sigma_m=0.12))
+                - locate.match_tolerance(placed, ray), 3), 0.12)
+
+
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
@@ -348,4 +375,5 @@ TESTS = (
     test_the_best_pair_places_the_thing,
     test_a_shallow_crossing_is_uncertain_lengthways_and_not_sideways,
     test_a_thing_may_not_claim_a_cone_the_geometry_never_earned,
+    test_a_ray_that_started_somewhere_uncertain_says_so,
 )
