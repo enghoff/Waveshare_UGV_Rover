@@ -144,7 +144,15 @@ function wPlace(entity) {
       + (place.extent_m ? ` · ${(+place.extent_m).toFixed(2)} m wide` : "")
       + (place.baseline_m ? ` · from two looks ${(+place.baseline_m).toFixed(2)} m `
                             + `apart crossing at ${Math.round(place.parallax_deg)}°`
-                          : "");
+                          : "")
+      // How many separate places agreed, which is the number that says whether
+      // the position was ever tested. Ten looks from one doorway and two from
+      // opposite sides of the room are not the same evidence, and the count of
+      // observations beside this cannot tell them apart.
+      + (place.viewpoints ? ` · agreed from ${place.viewpoints} place`
+                            + (place.viewpoints === 1 ? "" : "s")
+                          : "")
+      + (place.refined_from ? `, fitted over ${place.refined_from} looks` : "");
   return line;
 }
 

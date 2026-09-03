@@ -76,7 +76,9 @@ def test_the_world_state_popup() -> None:
                                     "error_major_m": 0.4,
                                     "error_minor_m": 0.08,
                                     "error_major_deg": 30.0,
-                                    "extent_m": 0.2},
+                                    "extent_m": 0.2,
+                                    "rays_agreeing": 7, "viewpoints": 3,
+                                    "refined_from": 7},
                       "placement_map_session": 1,
                       "rays": [{"id": 9, "x_m": 1.0, "y_m": 2.0,
                                 "heading_deg": 90.0, "pan_deg": 20.0,
@@ -113,6 +115,10 @@ def test_the_world_state_popup() -> None:
     check("...and the placement keeps the shape of its error, not just a radius",
           (place["error_major_m"], place["error_minor_m"],
            place["error_major_deg"]), (0.4, 0.08, 30.0))
+    # Seven rays from three places is different evidence from seven rays taken
+    # from one doorway, and the observation count beside it cannot say which.
+    check("...and how many separate places agreed with it, not just how many "
+          "looks did", (place["viewpoints"], place["rays_agreeing"]), (3, 7))
     check("...and the whole observation stream, so duplicates are visible",
           len(session.world_payload["recent"]), 1)
 

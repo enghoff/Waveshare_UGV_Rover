@@ -267,6 +267,13 @@ it is about to draw and the browser asks only for the ones on screen, which is w
 makes it bounded on a rover that records a look a second. Each is fetched once,
 because a stored frame never changes under its name.
 
+The line under a placed thing says how many separate **places** agreed with it, not
+just how many looks did, and the two are different evidence: ten looks taken from
+one doorway and two from opposite sides of a room read identically in a count of
+observations, and the evening drive of 2026-09-03 placed a thing with ten agreeing
+rays from two places 42 cm apart. Where the position has been fitted over the looks
+that agree rather than left on its founding pair, it says that too.
+
 ### The observation stream: thumbnails, and one at a time large
 
 The **observations** tab holds everything the rover has recorded, newest first. It
