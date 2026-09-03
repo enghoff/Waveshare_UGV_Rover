@@ -601,11 +601,27 @@ def _place_one(store, available, session, reach=None):
             continue
         if observation.get("inference_id") in claimed:
             continue
+        vector = observation.get("dino_blob") or b""
+        # **The same appearance gate every other way in is behind, and it was
+        # missing here.** This is the one path that attached a crop on geometry
+        # alone: a thing has just been placed, everything else in the group that
+        # points near it joins, and nothing asked whether any of them looked like
+        # it. On the run of 2026-09-03 that is exactly what put a lit doorway
+        # into an entity founded on a dark cabinet and a sofa, at 0.28 and 0.26
+        # against its two exemplars, and the pole of a floor lamp into an entity
+        # of framed pictures at 0.09 -- both far below what the founding pair
+        # itself had to clear. The tolerance this loop uses is deliberately the
+        # wide one, because it asks whether a bearing lands inside a thing's
+        # silhouette; a wide gate on where it is wants the same gate on what it
+        # looks like as everything else.
+        looks = appearance(store, entity_id, vector)
+        if looks is not None and looks < DIFFERENT_THING:
+            continue
         claimed.add(observation.get("inference_id"))
         taken.append(observation["id"])
         store.attach(entity_id, [observation["id"]],
-                     f"points at {entity_id} as well, from the same group")
-        vector = observation.get("dino_blob") or b""
+                     f"points at {entity_id} as well, from the same group"
+                     + ("" if looks is None else f", appearance {looks:.2f}"))
         if vector:
             store.add_exemplar(entity_id, vector)
 

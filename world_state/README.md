@@ -18,18 +18,20 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
-**A fourth fault was found on 2026-09-02 and it is the one that mattered most:
-the rover was placing things through walls, and its own map said so.** An entity
-held observations of two different objects in two different rooms, and what joined
-them was not appearance at all — it was that two bearings pointed at two
-different things a couple of metres away and crossed ten metres off, outside the
-edge of the map. Nothing asked whether the rover could have seen that far in that
-direction. It can now, out of the occupancy grid; the write-up is *You cannot see
-a thing through a wall* below.
+**The run of 2026-09-03 placed four things and three of them are where nothing
+is.** One entity is right: `object:3` is three crops of one framed picture. The
+other three are not, and between them they say what is left to fix. `object:1`
+holds a dark cabinet, a lit doorway and a blue sofa; `object:2` a doorway seen
+from across the room and a door frame seen up close; `object:4` six crops of one
+picture and the pole of a floor lamp. **Every one of the four sits in open floor
+between 0.6 and 2.8 m from the camera that saw it, while every crop is of
+something on a wall several metres away.** The write-up is *Three things placed
+where nothing is* below. One of the three causes is fixed here; the other two are
+measured and are not.
 
-**A fifth was found on 2026-09-03 and it is upstream of all of them: the rover
-works out its bearings with the model face tracking was measured off and moved
-away from a fortnight earlier.** `view.py` turns a box into an angle with one
+**A fifth fault was found on 2026-09-03 and it is upstream of all of them: the
+rover works out its bearings with the model face tracking was measured off and
+moved away from a fortnight earlier.** `view.py` turns a box into an angle with one
 multiplication, which on a 130-degree fisheye on a tilting gimbal is only right
 along the two centre lines — and the gimbal's own tilt, recorded on every
 observation, is dropped rather than used. On the 71 boxes of that morning's
@@ -39,7 +41,16 @@ has ever stored is outside the accuracy the resolver is told to expect.** It is
 measured and **not fixed** — the write-up, the shape of the fix and why it wants
 its own drive are under *The bearing is worked out with the model aiming was
 measured off* below. It is also the best current explanation for the open problem
-in the next paragraph.
+two paragraphs down.
+
+**A fourth fault was found on 2026-09-02 and it is the one that mattered most:
+the rover was placing things through walls, and its own map said so.** An entity
+held observations of two different objects in two different rooms, and what joined
+them was not appearance at all — it was that two bearings pointed at two
+different things a couple of metres away and crossed ten metres off, outside the
+edge of the map. Nothing asked whether the rover could have seen that far in that
+direction. It can now, out of the occupancy grid; the write-up is *You cannot see
+a thing through a wall* below.
 
 **Three earlier faults were found the same way, and two of them were upstream of
 everything the design argues about.** The write-up is
@@ -232,6 +243,16 @@ bearings, taken from places far enough apart, into a point on the map with an
 uncertainty attached. One bearing is a direction and not a position, so a thing
 gets located only once the rover has driven between two looks. No pose or no
 gimbal angle means no cone, rather than a cone from the origin.
+
+Once a thing has been placed, `view.relate` answers the other half of it: how one
+look stands to the one position the application settled on — how far away it is
+from there, how many degrees off the bearing was, how far that misses by across
+the line of sight, and whether that is inside what the resolver allows. It calls
+`locate.agrees` against `locate.match_tolerance`, which is the same pair
+`resolve._against_known` uses to attach a look in the first place, so **a look the
+console draws as off the thing is a look the rover would not attach today.** That
+is what the drive console's map is built from; the drawing is described in
+[`drive_web/README.md`](../drive_web/README.md).
 
 ## Clearing, in both directions
 
@@ -1111,6 +1132,157 @@ what the three fixes above assume. Mean-centring the vectors was tried and does
 not rescue DINOv2 (10.9% of unrelated pairs beat the founding pair, 10.7% after
 centring); it does help SigLIP2 markedly, from 6.1% to 1.9%, which is worth a
 proper measurement on a run with more than one true cross-viewpoint pair in it.
+
+## Three things placed where nothing is, 2026-09-03
+
+The run of that morning is 466 regions over 99 looks, and it placed four things.
+One of them is right and three are not, and the three fail in two different ways
+that had been sitting behind each other.
+
+Replaying the recording with the map the rover was using reproduces its four
+entities exactly, which is what makes any of the below measurable.
+
+### What the four actually are
+
+Read off the stored crops rather than off a score:
+
+| | what it holds |
+|---|---|
+| `object:3` | three crops of one framed picture. Right. |
+| `object:1` | a dark cabinet, a lit doorway on a yellow wall, and a blue sofa |
+| `object:2` | a doorway seen from across the room, and a door frame seen up close |
+| `object:4` | six crops of one framed picture, and the pole of a floor lamp |
+
+**The replay's own mixing score says 12% and the pictures say three entities out
+of four**, so the score is worth stating carefully: it clusters an entity's crops
+by DINOv2 at 0.55 and counts what is not in the biggest cluster, and on the
+TensorRT vectors this rover runs, a dark cabinet and a doorway score 0.57. Single
+linkage then chains them into one cluster and reports a clean entity. The number
+is still useful for comparing two builds on one recording; it is not evidence that
+an entity is one thing, and the crops in the console are.
+
+### Nowhere near enough of the run could be placed at all
+
+**314 of the 466 regions carry no rover pose**, because `slam_toolbox` was not
+publishing a position it trusted, and an observation with no pose gets no bearing
+by design — the picture is kept and the geometry is not invented. That is the
+right behaviour and it is not free: two thirds of a run recorded at a look a
+second is evidence that can never be used.
+
+Of the 152 that do have a pose there are **six distinct standing places in the
+whole run**, and 127 of the 152 share one of them. Rays from one place share an
+origin exactly and cross nowhere, so the run's entire triangulating power is five
+viewpoints, all within about 3 m of each other.
+
+### Every fix landed a metre or two from the camera, and the geometry says it had to
+
+All four placements sit in open floor 0.6 to 2.8 m from the cameras that saw them.
+Every crop behind them is of something on a wall four to six metres away.
+
+The reason is the parallax floor, working exactly backwards from the way it reads.
+`MIN_PARALLAX_DEG` is 12 degrees and it is there to refuse shallow crossings that
+run away down their own line of sight. But parallax is not free: two looks a
+baseline `b` apart at a thing `r` away subtend about `2·atan(b / 2r)`, so
+**demanding 12 degrees is the same as capping the range of any accepted fix at
+about 4.8 times the baseline.** On this run:
+
+| | baseline | recorded parallax | the furthest 12° allows | where it was placed |
+|---|---:|---:|---:|---:|
+| `object:3` | 0.70 m | 25.5° | 3.3 m | 0.75–1.30 m |
+| `object:2` | 2.34 m | 57.5° | 11.1 m | 1.55–2.78 m |
+| `object:4` | 2.60 m | 65.4° | 12.4 m | 1.14–1.91 m |
+| `object:1` | 3.12 m | 29.9° | 14.8 m | 0.58–1.77 m |
+
+`object:3`'s two looks are 0.70 m apart, so nothing beyond about 3.3 m was ever
+placeable from them — and the picture is on the far wall. The 25.5 degrees it
+recorded is not geometry, because the geometry cannot produce it: a thing 4.5 m
+away, seen from those two poses, subtends **5.7 degrees**, which the resolver
+would have refused. The extra 20 came from the bearings being wrong, and once
+they are wrong in that direction the crossing lands wherever they put it and every
+remaining guard is satisfied. Simulated on those two poses, with a thing genuinely
+4.5 m out and each bearing 3 degrees wrong the closing way, the crossing lands at
+3.05 m; 6 degrees wrong puts it at 2.34 m.
+
+**So the arithmetic in `locate.py` is not what is broken. Its inputs are four to
+ten times worse than it is told they are, and its baselines are a metre when they
+need to be several.** What it does with that is not refuse: it reports
+`object:3` to within 0.138 m, because the uncertainty is worked out by nudging
+each bearing by `BEARING_SIGMA_DEG`, and that constant still says 1.5 degrees.
+
+Two independent measurements of how wrong a bearing is, on this recording:
+
+- `bench_bearing.py` over its 466 boxes, against the swept lens in
+  `face_tracking/lens.py`: **median 1.06 degrees, 90th percentile 7.10, worst
+  17.62, and 180 of 466 outside the 1.5 the resolver is promised.** The worst is
+  a box at the top right corner of the frame, where the one multiplication says
+  −60.8 degrees and the fitted lens says −78.4.
+- Six looks at one framed picture from one standstill, with the gimbal at one
+  commanded angle, spread their computed bearings over **10.4 degrees**
+  (`obs4194` to `obs4261`, from the pose at 6.36, −3.76). Nothing moved and the
+  answer moved ten degrees.
+
+Rewriting every bearing in the recording with the fitted lens and replaying it
+still gives four entities with the same mixing, so the lens is real and is not
+the whole of it. The other terms are the gimbal arriving where it was not told —
+this run commanded a pan of 150 degrees, far outside the ±30 the 1.5 was measured
+over — and SLAM's heading, which the same standing place reports as 158.1 and then
+169.1 degrees over the run.
+
+### Two rays at two different things, and nothing that can tell
+
+`object:1` and `object:2` are the phantom this component was built to refuse, and
+they got through the whole gauntlet. `object:1` is a ray at a dark cabinet from
+one pose and a ray at a blue sofa from another, 3.12 m apart, crossing at 29.9
+degrees in the middle of the floor. Baseline, parallax, range, both wall checks
+and the rival test all pass, because each of the two bearings is individually fine
+and the two things really are in those directions.
+
+The only gate that could refuse it is appearance, and it cannot: the cabinet and
+the sofa score **0.57** against a `DIFFERENT_THING` floor of 0.5, and `object:2`'s
+doorway and door frame score 0.64. Those sit inside the band already measured on
+this rover's TensorRT vectors, where two regions of one frame — different things by
+construction — reach a 95th percentile of 0.740 while a genuine cross-viewpoint
+match scored 0.674. **There is no threshold that separates them**, which is the
+same conclusion the section above this one reached, arrived at from the other end.
+
+### One gate was missing, and it is fixed
+
+Every way into an entity applies `DIFFERENT_THING` except one, and that one was
+`_place_one`'s last loop: a thing has just been placed from two looks, and
+everything else in the same group whose bearing lands inside its silhouette joins
+it — on geometry alone, with nothing asked about what it looks like. The tolerance
+that loop uses is deliberately the wide one, because it asks whether a bearing
+lands within a thing's own width; a wide gate on where it is wants the same gate
+on what it looks like as everywhere else.
+
+It is what put the lit doorway into `object:1`, at 0.28 and 0.26 against that
+entity's two exemplars, and the pole of the floor lamp into `object:4` at 0.09 —
+both far below what the founding pair itself had to clear. The loop now asks
+`appearance` against the entity's exemplars, which is the same call
+`_against_known` makes.
+
+Replaying the recording: the lamp pole and the doorway both go, `object:4` becomes
+seven crops of framed pictures with nothing else in it, and the replay's mixing
+score falls from 5 crops of 18 to 0 of 15. **It does not fix `object:1` or
+`object:2`**, whose fault is the crossing itself and not the joining, and it does
+not move where anything was placed.
+
+### What is left, in the order it matters
+
+1. **The bearing.** Everything above is downstream of it. The fitted lens is the
+   part that can be fixed at a desk; the gimbal and the heading want the rover.
+   See *The bearing is worked out with the model aiming was measured off* above.
+2. **`BEARING_SIGMA_DEG` is a promise the rover does not keep**, and it is what
+   the uncertainty, the tolerance and the parallax floor are all sized from. Until
+   the bearing is fixed it is understating by a factor of four in the median and
+   ten at the edges of the frame, which is what makes a phantom report two
+   centimetres of doubt.
+3. **A short baseline should refuse a distant thing rather than manufacture a
+   near one.** The parallax floor caps range at 4.8 baselines whether anybody
+   meant it to or not, so a fix taken near that cap is a fix the geometry cannot
+   support and is worth refusing outright.
+4. **Appearance cannot separate what the rover sees**, on the vectors it runs.
+   Nothing above changes that, and no threshold rescues it.
 
 ## What was measured on the rover, 2026-09-02
 

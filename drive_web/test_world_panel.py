@@ -71,16 +71,48 @@ def test_the_world_state_popup() -> None:
                       "created_at": 1.0, "last_seen_at": 2.0,
                       "observation_count": 2, "last_map_session": 1,
                       "last_frame_id": "20260901-120000-abc123",
-                      "rays": [{"x_m": 1.0, "y_m": 2.0, "bearing_deg": 70.0,
-                                "span_deg": 26.0, "length_m": 2.5}]}],
+                      "placement": {"x_m": 3.0, "y_m": 4.0,
+                                    "uncertainty_m": 0.4,
+                                    "error_major_m": 0.4,
+                                    "error_minor_m": 0.08,
+                                    "error_major_deg": 30.0,
+                                    "extent_m": 0.2},
+                      "placement_map_session": 1,
+                      "rays": [{"id": 9, "x_m": 1.0, "y_m": 2.0,
+                                "heading_deg": 90.0, "pan_deg": 20.0,
+                                "bearing_deg": 70.0,
+                                "span_deg": 26.0, "length_m": 2.5,
+                                "relation": {"range_m": 2.83, "to_deg": 45.0,
+                                             "off_deg": 25.0, "miss_m": 1.32,
+                                             "tolerance_m": 0.68,
+                                             "agrees": False}}]}],
         "recent": [observation], "unmatched": [],
         "summary": {"entities": 1, "observations": 2, "inspections": 1,
                     "map_session": 1}}, 0.2)
     check("a populated world reaches the counts",
           (session.world_state()["entities"], session.world_state()["observations"]),
           (1, 2))
+    drawn = session.world_payload["entities"][0]["rays"][0]
     check("...and the payload carries the ray the map is drawn from",
-          session.world_payload["entities"][0]["rays"][0]["bearing_deg"], 70.0)
+          drawn["bearing_deg"], 70.0)
+    # The map draws each look against the one position the thing settled on, and
+    # the numbers behind that are the rover's -- the resolver's own arithmetic,
+    # worked out where the geometry lives. A console that recomputed them could
+    # draw a look as agreeing that the rover would refuse.
+    check("...with where the rover was facing, which the camera angle hides",
+          (drawn["heading_deg"], drawn["pan_deg"]), (90.0, 20.0))
+    check("...and how that look stands to the settled position",
+          (drawn["relation"]["miss_m"], drawn["relation"]["agrees"]),
+          (1.32, False))
+    check("...and the observation it came from, so a row can be joined to it",
+          drawn["id"], 9)
+    # The error is a shape rather than a radius, and the popup has both axes: a
+    # crossing taken at a shallow angle is long down the sight line and short
+    # across it, and one number is the long one.
+    place = session.world_payload["entities"][0]["placement"]
+    check("...and the placement keeps the shape of its error, not just a radius",
+          (place["error_major_m"], place["error_minor_m"],
+           place["error_major_deg"]), (0.4, 0.08, 30.0))
     check("...and the whole observation stream, so duplicates are visible",
           len(session.world_payload["recent"]), 1)
 

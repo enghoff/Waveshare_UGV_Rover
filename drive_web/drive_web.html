@@ -217,13 +217,16 @@
     <div id="worldBody">
       <div class="wpane" id="wPaneEntities">
         <div class="wcol">
-          <!-- Each observation is drawn as a bearing from where the rover stood
-               with the gimbal where it pointed, both measured. An entity that has
-               been seen from two places far enough apart also has a position, and
-               that is drawn as a disc whose size is how uncertain it is -- so a
-               thing the rover is sure about and a thing it has merely pointed at
-               twice look different at a glance, which is the whole question this
-               experiment is asking. -->
+          <!-- One thing, one place, and every look drawn against it. An entity
+               seen from two places far enough apart has a settled position, and
+               that is drawn as the shape the crossing actually measured -- long
+               down the line of sight, short across it -- with the thing's own
+               width as a second ring. Each look is a sighting from where the
+               rover stood, facing where it faced, and its line runs to that
+               position, so a look that disagrees is a fork rather than one more
+               arrow in a bundle. An entity with no position yet has only its
+               bearings, which is the ordinary state of everything until the
+               rover has driven far enough between two looks. -->
           <div id="wMapWrap" hidden>
             <img id="wMapImg" alt="the map">
             <svg id="wRays" preserveAspectRatio="none"></svg>

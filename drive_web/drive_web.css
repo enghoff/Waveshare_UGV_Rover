@@ -186,6 +186,10 @@
      never four screens of scrolling. */
   .wscroll .wshot { display: block; max-width: 420px; margin-top: 4px; }
   .wobs.wfailed { border-left-color: var(--bad); }
+  /* A look whose own bearing does not point at the position its entity settled
+     on. Dashed rather than red: it is attached and it is evidence, and the row
+     has to be findable in a scroller of forty without reading as a failure. */
+  .wobs.woff { border-left-style: dashed; }
   .wraw {
     white-space: pre-wrap; word-break: break-word; background: var(--sunken);
     border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;

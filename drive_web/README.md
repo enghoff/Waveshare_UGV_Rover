@@ -179,19 +179,56 @@ seconds later. See [`wifi_roam/README.md`](../wifi_roam/README.md).
 
 ## The world-state popup
 
-**world** in the header opens a read-only view of what the rover has been told is
-in the room: the entities a local physical-reasoning model has named, every
-observation behind each one, and the picture each observation was read from with
-the model's own box drawn on it. It is the only popup on this page, because what it
-shows is a page of history looked at deliberately and then closed, and a card of it
-would push the map off the screen for everybody who is only driving.
+**world** in the header opens a read-only view of what the rover has seen in the
+room: the lasting things it has worked out are there, every look behind each one,
+and the picture each look was read from with the measured box drawn on it. Nothing
+in it is named, because nothing on the rover measures what a thing is called any
+more. It is the only popup on this page, because what it shows is a page of history
+looked at deliberately and then closed, and a card of it would push the map off the
+screen for everybody who is only driving.
 
-Two buttons in it act on the rover. **inspect world** takes a picture and asks the
-model about it, which is about a minute; **clear** throws the semantic world away
-and is armed by a first press, exactly as the map's clear is and separately from it.
-Clearing the map does not clear the semantic world -- it starts a new map session in
-the store instead, so observations recorded against a map that no longer exists stay
-recognisable as such.
+Two buttons in it act on the rover. **inspect world** takes one look through the
+perception sidecar, which is about a fifth of a second; **clear** is the map's, and
+throws the semantic world away with the map, because everything the store holds is
+a position or a bearing measured in that map's own frame.
+
+### The map in it: one place per thing, and every look drawn against it
+
+This is the part a person reads to decide whether any of it is worth believing, and
+it was rearranged on 2026-09-03 because the old drawing could not be read that way.
+It drew each look as a wedge 2.5 m long from where the rover stood — a length that
+was a drawing convention and not a measurement — and the position the thing had
+been settled at as a separate disc somewhere else on the map. A look and the thing
+it supports were two unconnected marks, so no arrangement of them read as wrong.
+
+What is drawn now:
+
+- **The settled position**, as the shape the crossing actually measured rather than
+  as a circle. Two bearings meeting at a shallow angle put a thing somewhere along
+  a long smear — precise across the line of sight and vague down it — and
+  `locate.fix` records that as a long axis, a short one and a direction. A circle of
+  the long radius claims the rover is that unsure in every direction, which is
+  flattering in exactly the direction that decides whether the next look joins.
+- **The thing's own width**, as a second dashed ring. That is the silhouette a later
+  bearing has to land inside to count as pointing at it, which is a different
+  question from where its centre is, so it is a different ring.
+- **Each look as a sighting**: an arrowhead where the rover stood, pointing the way
+  the rover itself was facing, with the cone the box subtends drawn only as far out
+  as the thing is, and a line running from there **to the settled position**. Where
+  the look agrees the line is solid and the measured bearing lies under it; where it
+  does not, the two part and the disagreement is a visible fork.
+- **How far off it is, in numbers**, on the look's own row beside the picture: how
+  far away the thing is from there, how many degrees off the bearing was, how far
+  that misses by in metres and what the resolver allowed. A row that disagrees has a
+  dashed edge so it can be found in a scroller of forty.
+
+The arithmetic behind "agrees" is not the page's. It is `world_state/view.relate`,
+which calls the same `locate.agrees` against the same `locate.match_tolerance` that
+`resolve` uses when it attaches a look — so a look drawn as off the thing is a look
+the rover would not attach today, rather than a second opinion the browser formed.
+The shapes are built from points in map metres and each one is put through
+`wPointToPx`, for the same reason: the map can be drawn rover-up, and a shape that
+did its own trigonometry would be right only while that switch was off.
 
 The inspection has a connection of its own, for the reason the wi-fi scan does: a
 minute of model on the status connection would stall the lights, the tracking panel

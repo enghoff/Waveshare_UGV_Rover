@@ -48,8 +48,16 @@ else:
 #: How many observations one entity's detail carries. Enough to see whether the
 #: descriptions have drifted, bounded because this crosses a socket to a phone.
 DETAIL_LIMIT = 40
-#: How many of an entity's newest observations become rays on the map.
+#: How many of an entity's newest observations become rays on the map, in the
+#: list where every entity is drawn at once.
 RAY_LIMIT = 6
+#: And how many for the one entity somebody has chosen. Higher because the
+#: question changes: in the list the map has to stay readable with every thing on
+#: it at once, while a chosen thing's sightings all end at its own settled
+#: position, so more of them is more evidence about whether they converge rather
+#: than more clutter. Bounded all the same -- the rover records a look a second,
+#: and this crosses a socket to a phone.
+SELECTED_RAY_LIMIT = 24
 #: How long to wait before asking the camera a second time. Long enough for the
 #: previous v4l2-ctl to be well out of the way, short enough to be nothing beside
 #: the minute of model that follows. See :meth:`RoverWorld._world_capture`.
@@ -594,8 +602,13 @@ class RoverWorld:
         entities = store.entities()
         for entity in entities:
             observations = store.observations(entity["id"], limit=RAY_LIMIT)
+            # With the placement, each ray also carries how it stands to it --
+            # the range, how far off the bearing is and whether that is inside
+            # what the resolver allows. The map draws a sighting rather than an
+            # arrow of arbitrary length, and the numbers are the resolver's own.
             entity["rays"] = world_view.rays(observations, self.camera_fov_deg,
-                                             limit=RAY_LIMIT)
+                                             limit=RAY_LIMIT,
+                                             placement=entity.get("placement"))
         return {"ok": True, "entities": entities,
                 # Everything the model has ever said, newest first, and the
                 # observations no entity was made for. Both are here so the popup
@@ -619,7 +632,8 @@ class RoverWorld:
         observations = store.observations(entity_id, limit=DETAIL_LIMIT)
         return {"ok": True, "entity": entity, "observations": observations,
                 "rays": world_view.rays(observations, self.camera_fov_deg,
-                                        limit=RAY_LIMIT)}
+                                        limit=SELECTED_RAY_LIMIT,
+                                        placement=entity.get("placement"))}
 
     def _tool_world_state_observations(self,
                                        arguments: dict[str, Any]) -> dict[str, Any]:

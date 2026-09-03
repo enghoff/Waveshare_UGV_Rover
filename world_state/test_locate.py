@@ -51,6 +51,59 @@ def test_the_rays_of_one_entity_are_bounded_and_oldest_first() -> None:
           [one["observed_at"] for one in drawn], [3, 2, 1, 0])
 
 
+def test_a_look_is_related_to_the_position_the_thing_settled_on() -> None:
+    """What the map draws once a thing has a position: not six stubs of the same
+    length, but how each look stands to the one place it was settled at."""
+    observation = {"id": 4, "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
+                   "observer_pan_deg": 0.0, "bbox": [0.45, 0.4, 0.55, 0.6]}
+    drawn = view.ray(observation, fov_deg=130.0)
+    check("the rover's own facing rides along, not only the camera's",
+          (drawn["heading_deg"], drawn["pan_deg"]), (0.0, 0.0))
+
+    place = {"x_m": 3.0, "y_m": 0.0, "uncertainty_m": 0.1,
+             "error_major_m": 0.1, "error_minor_m": 0.05,
+             "error_major_deg": 0.0, "extent_m": 0.2}
+    dead_on = view.relate(place, drawn)
+    check("a bearing straight at it misses by nothing",
+          (dead_on["range_m"], dead_on["off_deg"], dead_on["miss_m"]),
+          (3.0, 0.0, 0.0))
+    check("...and agrees", dead_on["agrees"], True)
+
+    # The same look, with the thing settled well off the bearing it measured.
+    away = view.relate({**place, "y_m": 3.0}, drawn)
+    check("a thing 45 degrees off this bearing is reported as that far off",
+          away["off_deg"], -45.0)
+    check("...and the miss is measured across the line of sight, in metres",
+          away["miss_m"], 4.24)
+    check("...which is far outside what the resolver allows", away["agrees"],
+          False)
+
+    check("an entity with no position has nothing to relate to",
+          view.relate(None, drawn), None)
+
+
+def test_the_rays_of_a_placed_thing_carry_the_relation() -> None:
+    """The page must not work this out for itself: whether a look points at the
+    thing is the resolver's decision, and a second copy of it can disagree."""
+    observations = [{"id": n, "pose": {"x_m": 0.0, "y_m": float(n),
+                                       "heading_deg": 0.0},
+                     "observer_pan_deg": 0.0, "bbox": None, "observed_at": n}
+                    for n in range(3)]
+    place = {"x_m": 4.0, "y_m": 0.0, "uncertainty_m": 0.1,
+             "error_major_m": 0.1, "error_minor_m": 0.1,
+             "error_major_deg": 0.0, "extent_m": 0.2}
+    plain = view.rays(observations, 130.0, limit=3)
+    check("without a placement a ray is a direction and nothing more",
+          [one["relation"] for one in plain], [None, None, None])
+    related = view.rays(observations, 130.0, limit=3, placement=place)
+    check("the look taken from where the thing lies agrees",
+          related[-1]["relation"]["agrees"], True)
+    check("...and the ones taken from further along the wall do not",
+          [one["relation"]["agrees"] for one in related[:-1]], [False, False])
+    check("each carries its observation, so a row can be joined to its sighting",
+          [one["id"] for one in related], [2, 1, 0])
+
+
 def _look(x_m, y_m, bearing_deg):
     return {"x_m": x_m, "y_m": y_m, "bearing_deg": bearing_deg}
 
@@ -283,6 +336,8 @@ def test_a_thing_may_not_claim_a_cone_the_geometry_never_earned() -> None:
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
+    test_a_look_is_related_to_the_position_the_thing_settled_on,
+    test_the_rays_of_a_placed_thing_carry_the_relation,
     test_two_bearings_from_two_places_locate_a_thing,
     test_turning_on_the_spot_locates_nothing,
     test_two_looks_along_the_same_line_are_one_look,
