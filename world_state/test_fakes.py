@@ -40,17 +40,42 @@ def a_store(directory):
     return WorldStore(directory)
 
 
-def a_capture(pan=0.0, tilt=0.0, ok=True, error="", live=False):
+def a_capture(pan=0.0, tilt=0.0, ok=True, error="", live=False,
+              taken_at=None, delay_s=0.0):
+    """A camera. `taken_at` is what the real one now says about when the shutter
+    opened, and `delay_s` is how long the grab takes, which is what makes the
+    two pose readings either side of it different."""
     def capture():
+        if delay_s:
+            time.sleep(delay_s)
         if not ok:
             return {"ok": False, "error": error}
-        return {"ok": True, "jpeg": JPEG, "pan": pan, "tilt": tilt, "live": live,
-                "width": 640, "height": 480}
+        frame = {"ok": True, "jpeg": JPEG, "pan": pan, "tilt": tilt,
+                 "live": live, "width": 640, "height": 480}
+        if taken_at is not None:
+            frame["taken_at"] = taken_at() if callable(taken_at) else taken_at
+        return frame
     return capture
 
 
 def a_pose(x=1.0, y=2.0, heading=90.0):
     return lambda: {"x_m": x, "y_m": y, "heading_deg": heading}
+
+
+def a_turning_pose(headings, x=1.0, y=2.0):
+    """A rover whose heading is different each time it is asked.
+
+    Which is the case that mattered and that no fixture could build: the pose is
+    read on both sides of the grab, and a rover turning between the two readings
+    is what cost the drive of 2026-09-03 two thirds of its bearings.
+    """
+    seen = []
+
+    def pose():
+        heading = headings[min(len(seen), len(headings) - 1)]
+        seen.append(heading)
+        return {"x_m": x, "y_m": y, "heading_deg": heading}
+    return pose
 
 
 # --- an inspection through the encoders --------------------------------------

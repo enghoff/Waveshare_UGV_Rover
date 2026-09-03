@@ -59,19 +59,64 @@ FRAME_MAX_AGE_S = 5.0
 #: the answer by `locate.fix`, so a look taken on the move places a thing less
 #: precisely instead of not at all.
 MOVED_WHILE_LOOKING_M = 0.30
-#: And how far it may turn, in degrees. Rotation is the term that actually hurts:
-#: it swings the whole bearing rather than shifting its origin. The midpoint
-#: halves it, so 3.0 leaves 1.5 -- exactly `locate.BEARING_SIGMA_DEG`, which is
-#: the error the geometry is already told to expect from the gimbal.
+#: And how far it may turn, in degrees, when nothing can say *when* the picture
+#: was taken. Rotation is the term that actually hurts: it swings the whole
+#: bearing rather than shifting its origin. The midpoint halves it, so 3.0 leaves
+#: 1.5 -- exactly `locate.BEARING_SIGMA_DEG`, which is the error the geometry is
+#: already told to expect from the gimbal.
 #:
-#: **Unchanged while the limit above was loosened, and the asymmetry is the
-#: point.** Travel moves where a ray starts, which shifts the crossing by about as
-#: much and is reported as uncertainty; a turn swings where the ray points, and a
-#: bearing wrong by ten degrees crosses another one somewhere there is nothing at
-#: all. That is how a phantom is made, so this one still refuses the look. It cost
-#: 100 of the 163 bearings lost on the run of 2026-09-03, and those are the ones
-#: worth losing.
+#: **This is the fallback now rather than the rule, and what replaced it is the
+#: frame's own timestamp.** It cost 71 of the 108 looks of the drive of
+#: 2026-09-03 their bearing -- two thirds of a run recording no direction for
+#: anything it saw -- and the reason was never that the turn made the bearing
+#: unknowable. It was that a bracket of two pose readings cannot say where in
+#: itself the shutter opened. The camera has always known: every frame it hands
+#: back carries the moment it was taken, and both paths through
+#: `rover_camera._whole_jpeg` were throwing it away. Given that instant the
+#: heading is interpolated to it, and what is left over is charged to the bearing
+#: rather than used to discard the look. A frame with no timestamp still meets
+#: this limit, because then there is nothing to interpolate to.
 TURNED_WHILE_LOOKING_DEG = 3.0
+
+#: How well the moment a frame was taken is known, in seconds.
+#:
+#: **Not measured, and it is the one number this fix rests on.** The timestamp is
+#: taken in userspace when the frame arrives, so it lags the exposure by the
+#: driver's own buffering; a constant lag would not matter, since it applies to
+#: every frame alike and washes out of a bearing, and what matters is the jitter
+#: around it. Estimated from the recording rather than measured on the sensor: at
+#: the 29 degrees a second this rover turns in the median, 30 ms is a degree of
+#: bearing, which is inside what the geometry already expects, and 100 ms is
+#: three degrees and would leave 52 of those 71 looks worse off than the constant
+#: promises.
+#:
+#: It is used to *widen* the answer and never to narrow it -- `locate.sigma_of`
+#: floors every bearing at `BEARING_SIGMA_DEG` -- so being wrong here optimistic
+#: understates a fast-turning look's cone and being wrong pessimistic only costs
+#: precision. **Measuring it properly means timestamping a frame against a
+#: known-rate turn**, which wants its own bench run and has not had one.
+FRAME_TIME_SIGMA_S = 0.03
+
+#: How wide a bearing may be before it is not a direction any more, in degrees.
+#: Past this the bearing is dropped and the picture, the regions and the vectors
+#: are kept, which is what this has always done with a look it could not aim.
+#:
+#: **Half of `locate.MIN_PARALLAX_DEG`, because that is what a bearing is for.**
+#: Two rays closer together than 12 degrees are refused as a crossing -- the
+#: intersection runs away down the line of sight and the answer is noise wearing
+#: a number -- so a ray whose own error approaches that angle cannot take part in
+#: a crossing whatever else is true of it. Half of it leaves the pair's combined
+#: error inside the angle the pair itself has to clear.
+#:
+#: **It has to be reachable to be worth having, and the first value chosen was
+#: not.** 15 degrees cannot happen: a turn wraps at 180 and the grab bracket runs
+#: about 0.4 to 0.5 s, so the widest bearing physically obtainable was 13.5
+#: degrees and the check was decoration. At 6 it takes about 200 degrees a second
+#: to trip, which is a rover spinning on the spot rather than driving. The drive
+#: of 2026-09-03 never reached it -- its worst was 52.3 degrees over 0.52 s, which
+#: is 100 a second and 3 degrees of cone -- so it costs that recording nothing and
+#: is there for the case that recording did not contain.
+MAX_BEARING_SIGMA_DEG = 6.0
 
 
 class Inspector:
@@ -199,8 +244,12 @@ class Inspector:
         # measured, so this buys almost nothing back -- but a bracket that
         # includes work done after the shutter is measuring the wrong thing, and
         # what it measures is charged to every bearing in the look.
+        # The bracket is timed as well as read, because where in it the shutter
+        # opened is the whole question. See `_where`.
+        before_at = time.time()
         before = self._pose()
         frame = self._frame()
+        after_at = time.time()
         after = self._pose()
         if not frame.get("ok"):
             return self._failed("no_frame", str(frame.get("error", "no picture")),
@@ -209,7 +258,9 @@ class Inspector:
         jpeg = frame["jpeg"]
         frame_id = self.store.save_frame(jpeg, frame.get("width"),
                                          frame.get("height"))
-        where, moved, turned = self._where(before, after)
+        where, moved, turned, sigma_deg = self._where(
+            before, after, before_at=before_at, after_at=after_at,
+            taken_at=frame.get("taken_at"))
         capture = {"frame_id": frame_id,
                    "frame_path": self.store.frame_path(frame_id),
                    "pan": frame.get("pan"), "tilt": frame.get("tilt"),
@@ -227,7 +278,13 @@ class Inspector:
                    # Kept with the observation rather than folded into the pose,
                    # because the pose is a measurement and this is how good it
                    # is; `locate.fix` charges it to the answer.
-                   "origin_sigma_m": None if where is None else round(moved / 2.0, 3)}
+                   "origin_sigma_m": None if where is None else round(moved / 2.0, 3),
+                   # And how well the bearing itself is known, which travel does
+                   # not answer: this is the turn the rover was still making,
+                   # multiplied by how well the moment of the picture is known.
+                   # None on a rover whose camera does not timestamp its frames,
+                   # and None means the constant. See `locate.sigma_of`.
+                   "bearing_sigma_deg": None if where is None else sigma_deg}
         inference_id = self.store.record_inference(
             started_at=began, status="running", backend=backend,
             frame_id=frame_id, frame_live=1 if frame.get("live") else 0,
@@ -258,7 +315,8 @@ class Inspector:
         # that history and from everything already in it, and a failure to form
         # one must leave the measurement untouched.
         settled = self._settle() if settle else {}
-        detail = self._measured_detail(look, stored, settled, moved, turned)
+        detail = self._measured_detail(look, stored, settled, moved, turned,
+                                       sigma_deg)
         self.store.update_inference(
             inference_id, duration_s=round(time.time() - began, 2), status="ok",
             detail=detail or None, model_id=look.backend,
@@ -301,7 +359,7 @@ class Inspector:
             return {"error": f"{type(error).__name__}: {error}"}
 
     def _measured_detail(self, look, stored, settled, moved=0.0,
-                         turned=0.0) -> str:
+                         turned=0.0, sigma_deg=None) -> str:
         """One sentence a person can act on, in the popup's own column.
 
         The numbers that matter are how many regions were kept, how many got a
@@ -324,12 +382,24 @@ class Inspector:
             missing = stored["stored"] - stored["placed"]
             if not (moved or turned):
                 why = "no pose, no gimbal angle, or no field of view"
-            elif turned > TURNED_WHILE_LOOKING_DEG:
+            elif moved > MOVED_WHILE_LOOKING_M:
+                why = (f"the rover moved {moved:.2f} m while the shutter was "
+                       f"open")
+            elif turned:
                 why = (f"the rover turned {turned:.1f} deg while the shutter was "
-                       f"open, which swings the bearing")
+                       f"open, which swings the bearing past "
+                       f"{MAX_BEARING_SIGMA_DEG:.0f} deg")
             else:
-                why = (f"the rover moved {moved:.2f} m while the shutter was open")
+                why = "no pose, no gimbal angle, or no field of view"
             parts.append(f"{missing} without a bearing ({why})")
+        elif sigma_deg:
+            # A bearing was kept and is worth less than one taken standing
+            # still. Said because it is what a person watching a driven run
+            # wants to see going by, and because it is the number the crossings
+            # below are made with.
+            parts.append(f"the bearing is good to {sigma_deg:.1f} deg, the rover "
+                         f"having turned {turned:.1f} deg while the shutter was "
+                         f"open")
         if not settled:
             parts.append("identity not settled yet")
             return "; ".join(parts)
@@ -350,42 +420,96 @@ class Inspector:
                      else "nothing to settle")
         return "; ".join(parts)
 
-    def _where(self, before, after):
-        """Where the picture was taken from, and how much the rover moved for it.
+    def _where(self, before, after, *, before_at=None, after_at=None,
+               taken_at=None):
+        """Where the picture was taken from, how much the rover moved for it, and
+        how well that leaves the bearing known.
 
-        The midpoint of the two readings, because the shutter opened somewhere
-        between them and the middle is the best a caller with two samples can do.
-        `None` where either reading is missing, or where the rover covered more
-        ground than `MOVED_WHILE_LOOKING_M` or `TURNED_WHILE_LOOKING_DEG` allow --
-        and `None` here is not a failure. The picture, the regions and the vectors
-        are all kept; what is dropped is the one thing that was not measured well
-        enough to keep, which is the direction.
+        **Interpolated to the moment the picture was taken, where the camera can
+        say when that was.** Taking a picture is not instant: the shutter opens
+        somewhere inside a grab that measures about a third of a second, and a
+        rover turning at the 29 degrees a second this one manages in the median
+        swings the whole bearing while it is open. The old answer was the midpoint
+        of the two readings, which is the best a caller with two samples and no
+        third fact can do -- and it cost 71 of the 108 looks of the drive of
+        2026-09-03 their bearing, two thirds of a run recording no direction for
+        anything it saw.
 
-        **How much movement is too much is a different question for the two
-        kinds, and treating them alike is what starved the run of 2026-09-03 of
-        bearings.** Travelling shifts where the ray starts, so the midpoint leaves
-        a residual the caller can measure and `locate.fix` can charge to the
-        answer; turning swings where the ray points, and there is nothing to
-        charge that to but a crossing in the wrong place. So the caller keeps the
-        travel as `origin_sigma_m` and only a turn still costs the look its
-        bearing.
+        The third fact was there all along. Every frame the camera hands back
+        carries the moment it was taken, both through the tracking loop and
+        through a one-shot grab, and both paths were dropping it. Given it, the
+        pose is interpolated to that instant instead of averaged across the
+        bracket, and what is left over -- the turn the rover was making,
+        multiplied by how well the instant is known -- is *carried* as
+        `bearing_sigma_deg` rather than being the reason to throw the look away.
+        A fast turn buys a wide answer instead of no answer, which is what
+        `MOVED_WHILE_LOOKING_M` already does for travel.
+
+        `None` for the pose where either reading is missing, or where the rover
+        covered more ground than `MOVED_WHILE_LOOKING_M` allows, or where the
+        bearing would come out wider than `MAX_BEARING_SIGMA_DEG` -- and `None`
+        here is not a failure. The picture, the regions and the vectors are all
+        kept; what is dropped is the one thing that was not measured well enough
+        to keep, which is the direction.
+
+        With no timestamp there is nothing to interpolate to, so the midpoint and
+        `TURNED_WHILE_LOOKING_DEG` are what remain, exactly as before.
         """
         if not isinstance(before, dict) or not isinstance(after, dict):
-            return (after if isinstance(after, dict) else before), 0.0, 0.0
+            return (after if isinstance(after, dict) else before), 0.0, 0.0, None
         moved = math.hypot(after["x_m"] - before["x_m"],
                            after["y_m"] - before["y_m"])
-        # Signed and wrapped, so that halving it is halving the turn the rover
-        # actually made rather than averaging 179 and -179 into zero.
+        # Signed and wrapped, so that a fraction of it is a fraction of the turn
+        # the rover actually made rather than averaging 179 and -179 into zero.
         swing = (after["heading_deg"] - before["heading_deg"] + 180.0) % 360.0 - 180.0
         turned = abs(swing)
-        if moved > MOVED_WHILE_LOOKING_M or turned > TURNED_WHILE_LOOKING_DEG:
-            return None, round(moved, 3), round(turned, 1)
-        return ({"x_m": round((before["x_m"] + after["x_m"]) / 2.0, 3),
-                 "y_m": round((before["y_m"] + after["y_m"]) / 2.0, 3),
+        if moved > MOVED_WHILE_LOOKING_M:
+            return None, round(moved, 3), round(turned, 1), None
+
+        share, sigma_deg = self._at_the_shutter(before_at, after_at, taken_at,
+                                                turned)
+        if share is None:
+            if turned > TURNED_WHILE_LOOKING_DEG:
+                return None, round(moved, 3), round(turned, 1), None
+            share, sigma_deg = 0.5, None
+        elif sigma_deg is not None and sigma_deg > MAX_BEARING_SIGMA_DEG:
+            return None, round(moved, 3), round(turned, 1), None
+        return ({"x_m": round(before["x_m"]
+                              + (after["x_m"] - before["x_m"]) * share, 3),
+                 "y_m": round(before["y_m"]
+                              + (after["y_m"] - before["y_m"]) * share, 3),
                  "heading_deg": round(
-                     (before["heading_deg"] + swing / 2.0 + 180.0) % 360.0 - 180.0,
-                     1)},
-                round(moved, 3), round(turned, 1))
+                     (before["heading_deg"] + swing * share + 180.0)
+                     % 360.0 - 180.0, 1)},
+                round(moved, 3), round(turned, 1),
+                None if sigma_deg is None else round(sigma_deg, 2))
+
+    @staticmethod
+    def _at_the_shutter(before_at, after_at, taken_at, turned_deg):
+        """Where in the bracket the picture falls, and what that leaves unknown.
+
+        `(None, None)` whenever the arithmetic would be a guess: no timestamp, a
+        bracket of no length, or an instant outside the bracket. That last one is
+        the real case rather than a defensive nicety -- the tracking loop hands
+        back the newest frame it has seen, which may predate the first pose
+        reading, and interpolating past the end of a bracket is extrapolation
+        dressed as a measurement.
+
+        What is left unknown is the turn rate multiplied by
+        `FRAME_TIME_SIGMA_S`: how far the bearing could have swung in the time
+        the instant itself is uncertain by.
+        """
+        if taken_at is None or before_at is None or after_at is None:
+            return None, None
+        try:
+            span = float(after_at) - float(before_at)
+            offset = float(taken_at) - float(before_at)
+        except (TypeError, ValueError):
+            return None, None
+        if span <= 0.0 or not 0.0 <= offset <= span:
+            return None, None
+        rate = float(turned_deg) / span
+        return offset / span, rate * FRAME_TIME_SIGMA_S
 
     def _frame(self) -> dict[str, Any]:
         try:

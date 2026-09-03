@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 from test_fakes import FakeLink
 from test_harness import SKIP, check
@@ -41,7 +42,10 @@ def test_the_world_state_calls_reach_the_store():
             # replaced, so what is exercised here is `_world_capture` reading the
             # same frame `camera_jpeg` would.
             jpeg = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
-            rover._whole_jpeg = lambda: (jpeg, "")
+            # `when=True` is what `_world_capture` asks, because a bearing is
+            # only as good as the heading at the instant the shutter opened.
+            rover._whole_jpeg = lambda when=False: (
+                (jpeg, "", time.time()) if when else (jpeg, ""))
             rover.pan, rover.tilt = 25.0, -8.0
 
             empty = rover.call("world_state_summary", {})
@@ -313,11 +317,13 @@ def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
             jpeg = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
             tries = []
 
-            def flaky():
+            def flaky(when=False):
                 tries.append(1)
                 if len(tries) == 1:
-                    return None, "the camera gave no whole picture"
-                return jpeg, ""
+                    return ((None, "the camera gave no whole picture", None)
+                            if when else
+                            (None, "the camera gave no whole picture"))
+                return (jpeg, "", time.time()) if when else (jpeg, "")
 
             rover._whole_jpeg = flaky
             frame = rover._world_capture()
@@ -325,9 +331,10 @@ def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
             check("...having asked exactly twice", len(tries), 2)
 
             tries.clear()
-            def never():
+            def never(when=False):
                 tries.append(1)
-                return None, "the camera gave no whole picture"
+                return ((None, "the camera gave no whole picture", None)
+                        if when else (None, "the camera gave no whole picture"))
 
             rover._whole_jpeg = never
             frame = rover._world_capture()

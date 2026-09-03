@@ -68,6 +68,41 @@ from typing import Any
 #: and not the error SLAM accumulates over a few metres of travel -- which is
 #: exactly the case a fix is taken in. That still wants measuring.
 BEARING_SIGMA_DEG = 1.5
+
+
+def sigma_of(ray: dict[str, object]) -> float:
+    """How well this particular bearing is known, in degrees.
+
+    **`BEARING_SIGMA_DEG` is what the gimbal and the heading are worth on a rover
+    standing still, and a look taken while turning is worth much less.** Taking
+    the picture is not instant: the shutter opens somewhere inside a grab that
+    measures about a third of a second, and a rover turning at the 29 degrees a
+    second this one manages in the median swings the whole bearing while it is
+    open. That used to cost the look its bearing outright -- 71 of the 108 looks
+    of the drive of 2026-09-03 stored no direction for anything they saw, every
+    one of them for this reason.
+
+    The frame carries its own timestamp, so the heading can be interpolated to
+    the instant it was taken rather than guessed at from the middle of a bracket.
+    What is left over is the turn rate multiplied by how well that instant is
+    known, and it is carried here rather than being the reason to throw the look
+    away. A fast turn now buys a wide answer instead of no answer, which is
+    exactly what `origin_sigma_m` did for travel.
+
+    Absent means the ray was measured on a rover this could not be asked of, and
+    the answer is the constant -- which is what every bearing recorded before
+    this existed was worked out as.
+    """
+    try:
+        got = ray.get("bearing_sigma_deg")           # type: ignore[union-attr]
+    except AttributeError:
+        return BEARING_SIGMA_DEG
+    if got is None:
+        return BEARING_SIGMA_DEG
+    try:
+        return max(BEARING_SIGMA_DEG, float(got))
+    except (TypeError, ValueError):
+        return BEARING_SIGMA_DEG
 #: Below this angle between two bearings the intersection runs away down the line
 #: of sight and the answer is noise wearing a number. Two rays this close are
 #: better treated as one look than as a fix.
@@ -258,9 +293,13 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         if beyond_reach(observer, point):
             return None
 
+    # Each bearing is nudged by its *own* error rather than by the constant, so
+    # a crossing made from a look taken while the rover was turning reports the
+    # width that look actually earned. See `sigma_of`.
+    first_sigma, second_sigma = sigma_of(first), sigma_of(second)
     moved = []
-    for da in (-BEARING_SIGMA_DEG, BEARING_SIGMA_DEG):
-        for db in (-BEARING_SIGMA_DEG, BEARING_SIGMA_DEG):
+    for da in (-first_sigma, first_sigma):
+        for db in (-second_sigma, second_sigma):
             nudged = _cross({**first,
                              "bearing_deg": float(first["bearing_deg"]) + da},
                             {**second,
@@ -422,7 +461,7 @@ def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
         span_deg = float(ray.get("span_deg") or 0.0)
         own = range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0))
     extent_m = min(MAX_EXTENT_M, max(0.0, float(own)))
-    return (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
+    return (range_m * math.tan(math.radians(sigma_of(ray)))
             + cross_track(point, ray) + extent_m
             # And where this ray started, which is a sideways error like the
             # bearing's own and belongs on the same side of the comparison. A
@@ -620,7 +659,7 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
         # `object:14` of 2026-09-02, both candidates fall to two agreeing rays
         # -- and a tie is broken on uncertainty, which is the wandering the
         # count was introduced to stop.
-        tolerance_m = (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
+        tolerance_m = (range_m * math.tan(math.radians(sigma_of(ray)))
                        + float(point.get("uncertainty_m", 0.0))
                        + float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M))
     off_deg = abs(_wrap(bearing_to(point, ray) - float(ray["bearing_deg"])))

@@ -400,10 +400,16 @@ class RoverWorld:
         """
         if self.device is None:
             return {"ok": False, "error": "this rover has no camera attached"}
-        jpeg, why = self._whole_jpeg()
+        # **The one caller that asks when the picture was taken.** A bearing is
+        # only as good as the heading at the instant the shutter opened, and
+        # `Inspector._where` interpolates to it rather than averaging across the
+        # grab -- which is what turns a look taken while turning from no bearing
+        # at all into a wide one. `camera_jpeg` and `look` want a picture and
+        # nothing else, so they do not ask.
+        jpeg, why, taken_at = self._whole_jpeg(when=True)
         if jpeg is None and not self._tracking.is_set():
             time.sleep(CAMERA_RETRY_S)
-            jpeg, again = self._whole_jpeg()
+            jpeg, again, taken_at = self._whole_jpeg(when=True)
             if jpeg is None:
                 why = f"{why} (and again {CAMERA_RETRY_S:.1f} s later: {again})"
         if jpeg is None:
@@ -413,7 +419,7 @@ class RoverWorld:
         width, height = self.size
         return {"ok": True, "jpeg": jpeg, "pan": round(pan, 1),
                 "tilt": round(tilt, 1), "live": self._tracking.is_set(),
-                "width": width, "height": height}
+                "width": width, "height": height, "taken_at": taken_at}
 
     def _world_pose(self) -> dict[str, Any] | None:
         """Where the rover is standing now, as SLAM has it, or None.

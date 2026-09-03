@@ -219,6 +219,14 @@ def ray_of(observation: dict[str, Any],
                  # ray takes part in. Absent on a row written before the rover
                  # measured it, and absent means nothing was moving.
                  "origin_sigma_m": float(observation.get("origin_sigma_m") or 0.0),
+                 # And how well the bearing itself is known, which is not the
+                 # same question: the origin says where the ray started, this
+                 # says which way it pointed. A look taken while the rover was
+                 # turning is worth less than one taken standing still, and
+                 # since the frame carries its own timestamp the difference is
+                 # measured rather than assumed. Absent means the constant --
+                 # see `locate.sigma_of`.
+                 "bearing_sigma_deg": observation.get("bearing_sigma_deg"),
                  "observation_id": observation.get("id"),
                  # Which look this ray came out of. Two rays from one look are
                  # two regions of one picture taken from one place, so they are

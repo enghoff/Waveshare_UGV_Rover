@@ -432,7 +432,7 @@ class RoverCamera:
         where = [_where(face, width, height) for face in faces]
         return {"ok": True, "count": len(faces), "faces": where}
 
-    def _whole_jpeg(self) -> tuple[bytes | None, str]:
+    def _whole_jpeg(self, when: bool = False):
         """One complete frame from the camera, or (None, why).
 
         Complete is checked rather than assumed, and it is still worth checking even
@@ -443,17 +443,44 @@ class RoverCamera:
 
         Newest of the three, because that is the frame the camera settled on -- see
         SNAPSHOT_FRAMES for why a cold camera's first frame is not the one to send.
+
+        **`when` asks for the moment it was taken, and that moment was always
+        here.** Both paths below already carry it -- the tracking loop stamps every
+        frame it sees, and a one-shot grab hands back `(jpeg, at)` per frame -- and
+        both were dropping it on the floor. It matters to exactly one caller: a
+        bearing is only as good as the heading at the instant the shutter opened,
+        and a rover turning at the 29 degrees a second this one manages swings the
+        whole bearing across a third-of-a-second grab. Without this, 71 of the 108
+        looks of the drive of 2026-09-03 recorded no direction for anything they
+        saw. See `world_state.Inspector._where`.
+
+        Off by default so that the two callers who only want a picture are
+        unchanged, and answered on the same clock the caller compares against --
+        `time.time()`, not the monotonic stamp the frames carry, because the pose
+        readings either side of the grab are wall-clock.
         """
+        def answer(jpeg, why, at=None):
+            """(jpeg, why) as every caller has always had it, plus the instant
+            if one was asked for. The monotonic stamp the frames carry is turned
+            into wall clock here, because that is the clock the caller's other
+            readings are on and converting it anywhere else would leave two."""
+            if not when:
+                return jpeg, why
+            taken_at = None if at is None else time.time() - (time.monotonic() - at)
+            return jpeg, why, taken_at
+
         if self._tracking.is_set():
             # The loop has the camera. Nothing else can open it, so the honest
             # answer is the newest frame the loop has seen -- which is also the
             # frame the camera is actually pointing at.
             frame = self._frame
             if frame is None:
-                return None, "tracking is running but has not seen a frame yet"
+                return answer(None, "tracking is running but has not seen a "
+                                    "frame yet")
             jpeg, at = frame
             if time.monotonic() - at > FRAME_STALE_S:
-                return None, "tracking is running but its last frame is stale"
+                return answer(None, "tracking is running but its last frame is "
+                                    "stale")
             # Every frame the loop holds is already a picture, because the camera
             # is opened in MJPEG. The encode stays as the path for a frame that is
             # not -- a detector taking raw pixels would leave one here -- and it is
@@ -462,16 +489,17 @@ class RoverCamera:
                 encoder = self._detector
                 jpeg = encoder.encode_jpeg(jpeg) if encoder is not None else None
                 if jpeg is None:
-                    return None, "the frame could not be turned into a picture"
-            return jpeg, ""
+                    return answer(None, "the frame could not be turned into a "
+                                        "picture")
+            return answer(jpeg, "", at)
         got, why = self._snapshot()
         if not got:
-            return None, f"the camera gave nothing: {why}"
-        for jpeg, _at in reversed(got):
+            return answer(None, f"the camera gave nothing: {why}")
+        for jpeg, at in reversed(got):
             if jpeg.startswith(b"\xff\xd8"):
-                return jpeg, ""
-        return None, (f"the camera gave {len(got)} frames running that were not "
-                      f"whole pictures")
+                return answer(jpeg, "", at)
+        return answer(None, f"the camera gave {len(got)} frames running that "
+                            f"were not whole pictures")
 
     def _tool_look(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.vision is None:

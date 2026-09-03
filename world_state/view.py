@@ -221,6 +221,12 @@ def ray(observation: dict[str, Any], fov_deg: float,
         # opinion: `relate` hands this dictionary to `locate.match_tolerance`,
         # which allows for it.
         "origin_sigma_m": float(observation.get("origin_sigma_m") or 0.0),
+        # How well the bearing itself is known, carried for the same reason as
+        # the line above: `relate` hands this dictionary to
+        # `locate.match_tolerance`, and a look taken while the rover was turning
+        # must be drawn against the width it actually earned rather than against
+        # the width a look from a standstill earns. See `locate.sigma_of`.
+        "bearing_sigma_deg": observation.get("bearing_sigma_deg"),
         # Where the rover's nose was, plus where the gimbal was turned to, plus
         # where in the picture the thing sat -- brought back into (-180, 180].
         # **The wrap is not cosmetic.** Three numbers added together run past

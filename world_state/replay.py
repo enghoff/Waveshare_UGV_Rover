@@ -67,7 +67,7 @@ from .store import WorldStore                       # noqa: E402
 COLUMNS = (
     "inference_id observed_at source frame_id frame_path bbox_json "
     "observer_pan_deg observer_tilt_deg observer_pose_json map_session "
-    "model_id raw_json bearing_deg span_deg origin_sigma_m "
+    "model_id raw_json bearing_deg span_deg origin_sigma_m bearing_sigma_deg "
     "region_source region_score "
     "dino_blob siglip_blob vectors_from"
 ).split()

@@ -700,9 +700,10 @@ class WorldStore:
                     " observer_tilt_deg, observer_pose_json, map_session, model_id,"
                     " raw_json,"
                     " bearing_deg, span_deg, origin_sigma_m,"
+                    " bearing_sigma_deg,"
                     " region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
@@ -710,6 +711,7 @@ class WorldStore:
                      None if pose is None else json.dumps(pose), session, model_id,
                      json.dumps(item.raw, sort_keys=True),
                      bearing, span, capture.get("origin_sigma_m"),
+                     capture.get("bearing_sigma_deg"),
                      region_source or None,
                      getattr(item, "region_score", None) or None,
                      getattr(item, "dino", b"") or None,
@@ -791,6 +793,11 @@ ADDED_COLUMNS = {
         # is a property of the rover at the moment of the look.
         "bearing_deg": "REAL",
         "span_deg": "REAL",
+        # How well this particular bearing is known, in degrees, where the
+        # constant in `locate` is what one is worth from a rover standing still.
+        # Null on every row written before the inspection measured it, and null
+        # means the constant -- see `locate.sigma_of`.
+        "bearing_sigma_deg": "REAL",
         # How far out the point the bearing starts from may be, in metres: half
         # of whatever the rover covered while the shutter was open. Null on every
         # row written before this was measured, and null is right for them --

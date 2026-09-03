@@ -10,8 +10,11 @@ import tempfile
 import time
 
 from test_harness import check
-from test_fakes import a_capture, a_pose, a_seeing_inspector, a_sighting, a_vector
+from test_fakes import (a_capture, a_pose, a_seeing_inspector, a_sighting,
+                        a_turning_pose, a_vector)
+from world_state import locate
 from world_state import view
+from world_state.inspector import FRAME_TIME_SIGMA_S, Inspector
 
 
 def test_an_inspection_through_the_encoders_keeps_what_it_measured() -> None:
@@ -350,7 +353,129 @@ def test_looking_and_settling_are_separately_paced() -> None:
         store.close()
 
 
+def test_the_heading_is_taken_at_the_shutter_rather_than_averaged() -> None:
+    """**The fault that cost the drive of 2026-09-03 two thirds of its bearings.**
+    71 of its 108 looks stored no direction for anything they saw, every one
+    because the rover was turning while the shutter was open. The reason was
+    never that a turn makes the bearing unknowable: it was that a bracket of two
+    pose readings cannot say where in itself the picture was taken. The camera
+    always knew -- every frame it hands back carries the moment -- and both paths
+    through it were dropping it.
+    """
+    inspector = Inspector.__new__(Inspector)
+    at_shutter = inspector._at_the_shutter
+
+    check("a picture taken at the start of the bracket is the first reading",
+          at_shutter(100.0, 100.4, 100.0, 20.0)[0], 0.0)
+    check("...at the end of it, the second", at_shutter(100.0, 100.4, 100.4,
+                                                        20.0)[0], 1.0)
+    check("...and halfway through, the midpoint the old code assumed",
+          at_shutter(100.0, 100.4, 100.2, 20.0)[0], 0.5)
+
+    # What is left over is the turn rate times how well the instant is known.
+    # 20 degrees over 0.4 s is 50 deg/s, and 30 ms of that is 1.5 degrees.
+    _share, sigma = at_shutter(100.0, 100.4, 100.2, 20.0)
+    check("what is left over is the turn rate times the timing error",
+          round(sigma, 2), round(50.0 * FRAME_TIME_SIGMA_S, 2))
+    check("a rover standing still leaves nothing over",
+          at_shutter(100.0, 100.4, 100.2, 0.0)[1], 0.0)
+
+    check("no timestamp cannot be interpolated to",
+          at_shutter(100.0, 100.4, None, 20.0), (None, None))
+    check("...nor an instant before the bracket",
+          at_shutter(100.0, 100.4, 99.9, 20.0), (None, None))
+    check("...nor one after it, which is the tracking loop's stale frame",
+          at_shutter(100.0, 100.4, 100.5, 20.0), (None, None))
+    check("...nor a bracket of no length at all",
+          at_shutter(100.0, 100.0, 100.0, 20.0), (None, None))
+
+
+def test_a_turning_look_keeps_a_wide_bearing_instead_of_none() -> None:
+    """Travel already bought a wider answer rather than no answer; turning does
+    now too, and by the same means -- the residual is carried on the observation
+    instead of being the reason to throw the look away."""
+    inspector = Inspector.__new__(Inspector)
+    before = {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}
+    after = {"x_m": 0.0, "y_m": 0.0, "heading_deg": 20.0}
+
+    where, moved, turned, sigma = inspector._where(
+        before, after, before_at=100.0, after_at=100.4, taken_at=100.1)
+    check("a look taken while turning keeps its bearing", where is not None, True)
+    check("...aimed a quarter of the way through the turn, not half",
+          where["heading_deg"], 5.0)
+    check("...and says how much the turn cost it", sigma, 1.5)
+    check("...while still reporting the turn itself", turned, 20.0)
+
+    check("the same look with no timestamp is refused, as it always was",
+          inspector._where(before, after, before_at=100.0, after_at=100.4,
+                           taken_at=None)[0], None)
+
+    # A rover spinning on the spot: 120 degrees in 0.4 s is 300 a second, which
+    # leaves 9 degrees of cone at 30 ms and is past MAX_BEARING_SIGMA_DEG. A
+    # driving rover does not reach this -- the drive of 2026-09-03 peaked at 100
+    # degrees a second -- and that is the point of where the limit sits.
+    fast = inspector._where({"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
+                            {"x_m": 0.0, "y_m": 0.0, "heading_deg": 120.0},
+                            before_at=100.0, after_at=100.4, taken_at=100.2)
+    check("a bearing too wide to cross another one is dropped, not kept",
+          fast[0], None)
+    check("...and the turn that cost it is still reported", fast[2], 120.0)
+
+    still = inspector._where(before, {**before}, before_at=100.0,
+                             after_at=100.4, taken_at=100.2)
+    check("a rover standing still claims no extra error", still[3], 0.0)
+
+
+def test_what_a_bearing_is_worth_reaches_the_row_and_the_geometry() -> None:
+    """The residual is no use on the observation alone: `locate` has to spend it,
+    the way it already spends `origin_sigma_m`."""
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]],
+            capture=a_capture(pan=0.0, tilt=0.0,
+                              taken_at=lambda: time.time(), delay_s=0.20),
+            pose=a_turning_pose([0.0, 12.0]))
+        answer = inspector.inspect()
+        check("the look was stored", answer["ok"], True)
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        check("it kept its bearing despite the turn",
+              row["bearing_deg"] is not None, True)
+        check("...and the row says what that bearing is worth",
+              row["bearing_sigma_deg"] is not None and
+              row["bearing_sigma_deg"] > 0, True)
+        check("...which the status line reports rather than hiding",
+              "the bearing is good to" in (answer["detail"] or ""), True)
+        store.close()
+
+    # And the geometry spends it. Same two rays, one of them measured while the
+    # rover was turning: the crossing has to come out wider.
+    left = {"x_m": 0.0, "y_m": 0.0, "bearing_deg": 45.0}
+    right = {"x_m": 6.0, "y_m": 0.0, "bearing_deg": 135.0}
+    steady = locate.fix(left, right)
+    turning = locate.fix({**left, "bearing_sigma_deg": 6.0}, right)
+    check("a crossing made with a turning look is the wider answer",
+          turning["uncertainty_m"] > steady["uncertainty_m"] * 2, True)
+    check("...and a bearing may only ever widen, never narrow",
+          locate.sigma_of({**left, "bearing_sigma_deg": 0.1}),
+          locate.BEARING_SIGMA_DEG)
+    check("...with silence meaning the constant, as every older row has",
+          locate.sigma_of(left), locate.BEARING_SIGMA_DEG)
+    check("a wider bearing is allowed to miss by more, at the same range",
+          locate.match_tolerance({"x_m": 3.0, "y_m": 3.0, "uncertainty_m": 0.1,
+                                  "error_major_m": 0.1, "error_minor_m": 0.1,
+                                  "error_major_deg": 0.0, "extent_m": 0.1},
+                                 {**left, "bearing_sigma_deg": 6.0})
+          > locate.match_tolerance({"x_m": 3.0, "y_m": 3.0,
+                                    "uncertainty_m": 0.1,
+                                    "error_major_m": 0.1, "error_minor_m": 0.1,
+                                    "error_major_deg": 0.0, "extent_m": 0.1},
+                                   left), True)
+
+
 TESTS = (
+    test_the_heading_is_taken_at_the_shutter_rather_than_averaged,
+    test_a_turning_look_keeps_a_wide_bearing_instead_of_none,
+    test_what_a_bearing_is_worth_reaches_the_row_and_the_geometry,
     test_an_inspection_through_the_encoders_keeps_what_it_measured,
     test_a_bearing_is_the_pose_the_gimbal_and_the_box_together,
     test_without_a_pose_nothing_pretends_to_know_a_direction,

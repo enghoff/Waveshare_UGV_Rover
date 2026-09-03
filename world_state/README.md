@@ -19,6 +19,20 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**Two thirds of a drive used to record no direction for anything it saw, and the
+missing fact was already in the frame.** 71 of the evening drive's 108 looks
+stored no bearing, every one because the rover was turning while the shutter was
+open — not because a turn makes the bearing unknowable, but because a bracket of
+two pose readings cannot say where in itself the picture was taken. The camera has
+been stamping every frame with that instant all along and both paths through it
+were dropping it. The pose is interpolated to it now, and what is left over — the
+turn rate times how well the instant is known — is carried on the observation as
+`bearing_sigma_deg` and spent by `locate`, instead of being the reason to throw
+the look away. On that recording's turn rates all 71 come back, 54 of them inside
+the accuracy the geometry already expects; **whether that places more things wants
+the next drive**, since the recording holds no timestamps to replay. The write-up
+is *The shutter has an instant, and the camera always knew it* below.
+
 **Two adjacent objects are no longer cut down the wrong seam, since
 2026-09-03.** The fault a person notices at the console is two markers sitting on
 top of one another, and on the evening drive that was a blue-topped bench and the
@@ -1605,6 +1619,83 @@ it". The whole of this run had seven places to look from.
    same way and no better (the real pairs at 0.851 and 0.906 against a same-frame
    95th percentile of 0.854), so there is nothing free there either.
 
+## The shutter has an instant, and the camera always knew it, 2026-09-03
+
+**Two thirds of the drive recorded no direction for anything it saw, and the
+missing fact was already in the frame.** 71 of that run's 108 looks stored no
+bearing, every one of them because the rover was turning while the shutter was
+open. That reads like physics and is not: what made the bearing unknowable was
+never the turn, it was that the pose is sampled on both sides of the grab and a
+bracket cannot say where in itself the picture was taken. Taking the midpoint
+leaves half the turn unaccounted for, and at the 29 degrees a second this rover
+manages in the median that is more than the geometry can be told to expect — so
+the look was refused.
+
+Every frame the camera hands back carries the moment it was taken. The tracking
+loop stamps each frame as it arrives; a one-shot grab returns `(jpeg, at)` per
+frame. **Both paths through `rover_camera._whole_jpeg` were dropping it on the
+floor**, the same way the gimbal's tilt was being dropped by `view.ray`. It is
+asked for now, by the one caller that needs it, and `Inspector._where`
+interpolates the pose to that instant instead of averaging across the bracket.
+
+### What is left over is carried, not used to refuse
+
+Interpolating to a measured instant does not make the bearing exact, because the
+instant itself is only known so well: the stamp is taken in userspace as the frame
+arrives, so it lags the exposure by the driver's own buffering. A constant lag
+washes out of a bearing; the jitter around it does not. What that leaves is the
+turn rate multiplied by `FRAME_TIME_SIGMA_S`, and it travels with the observation
+as `bearing_sigma_deg` rather than being the reason to throw the look away —
+exactly what `MOVED_WHILE_LOOKING_M` already does for travel.
+
+`locate.sigma_of` is where it is spent. Every bearing now nudges `fix` by its own
+error rather than by the constant, and `match_tolerance` and `agrees` allow what
+that particular bearing earned. It only ever widens: `BEARING_SIGMA_DEG` is the
+floor, because 1.5 degrees is what the gimbal and the heading are worth on a rover
+standing still and nothing measured here can beat that. **Null means the
+constant**, so every bearing recorded before this existed is treated exactly as it
+was.
+
+A look is still refused when the cone would be wider than
+`MAX_BEARING_SIGMA_DEG`, which is half of `locate.MIN_PARALLAX_DEG` — a ray whose
+own error approaches the angle two rays must differ by to cross cannot take part
+in a crossing. That limit is 6 degrees, and the first value chosen for it was 15,
+which **could not happen**: a turn wraps at 180 degrees and the bracket runs about
+half a second, so the widest bearing physically obtainable was 13.5 and the check
+was decoration. At 6 it takes about 200 degrees a second to trip, which is a rover
+spinning rather than driving.
+
+### What it should do, which is a prediction
+
+The recording cannot show this working, because it holds no frame timestamps —
+the column did not exist when it was written. Replayed, nothing moves at all: 16
+things, 74 looks attached, one stray bearing, identical to before the change,
+which is the right answer for a recording that cannot be asked. What can be
+computed from it is what the turn rates imply, and that is robust:
+
+| the moment known to | of the 71 looks, how many keep a bearing | its median width |
+|---|---:|---:|
+| 10 ms | 71 | 1.50 deg |
+| **30 ms** | **71** | **1.50 deg** |
+| 100 ms | 62 | 2.91 deg |
+| 200 ms | 39 | 5.81 deg |
+
+At the 30 ms `FRAME_TIME_SIGMA_S` assumes, every one of the 71 comes back and 54
+of them are inside the constant anyway; the worst is 2.84 degrees. The recovery
+survives being wrong about the timing by more than threefold, which is what makes
+it worth flying before that number has been measured on a bench.
+
+**It is an estimate and it is the one thing this rests on.** Measuring it properly
+means timestamping frames against a turn of known rate. What is cheap and worth
+doing first is the frame-to-frame interval spread on this camera, which bounds the
+jitter without a turntable.
+
+That the bearings come back is not the same as things being placed. Those 71 looks
+are the ones taken while the chassis was swinging, which is to say from directions
+the rover currently records nothing from at all — so the gain is not just 47%
+more bearings but bearings with parallax between them, which is what triangulation
+was short of. **Whether that places more things wants the next drive.**
+
 ## A look is decided all at once, 2026-09-03
 
 **The overlapping pair a person sees at the console is a fault in how entities are
@@ -1742,19 +1833,24 @@ and one that mixes a *person* with two framed pictures.
 person is the one object in a room guaranteed not to stay put, and it wants a
 deliberate answer rather than a threshold.
 
-### Turning is now the whole of what is lost
+### Turning was the whole of what was lost, and it is recovered
 
 The only remaining reason a look records no bearing is the rover turning while the
-shutter was open: 76 of 140 looks, median 10 degrees, 90th percentile 26.4, worst
-54.5. That is the loss worth taking -- a turning rover is also the blurred one --
-but it is worth knowing what it would take to recover, because it is half the run.
+shutter was open: 71 of the 108 looks that made it into the store, median 15.3
+degrees, worst 52.3. That looked like the loss worth taking — a turning rover is
+also the blurred one — and it is two thirds of the run, so it was worth knowing
+what recovering it would take.
 
 **Deferring a look until the rover stops turning would not do it.** Measured on
 this drive, the turning is continuous rather than occasional: 31 spells, a median
 of two looks long, with clear gaps a median of one look long. Deferring would save
-the wasted encoder time and gain almost no bearings. Recovering them properly
-means timestamping the frame and interpolating the heading to the instant the
-shutter opened, instead of taking the midpoint of two readings and refusing.
+the wasted encoder time and gain almost no bearings.
+
+**Recovering it properly is done, and the write-up is *The shutter has an instant,
+and the camera always knew it* below.** The turn was never what made the bearing
+unknowable; the bracket was. Two pose readings either side of a grab cannot say
+where in themselves the picture was taken, and the camera has been stamping every
+frame with that answer all along.
 
 ### How much stands behind a placement, and where exactly
 
