@@ -172,11 +172,11 @@ function wPlace(entity) {
   return line;
 }
 
-// The switch below face tracking, which is on whether or not the popup is open.
-// What it shows is what the rover last said, never what this console last asked
-// for: the voice session, another console or a script can turn it off, and a
-// panel showing its own past would be the one place a rover that had quietly
-// stopped recording still looked busy.
+// The reading below face tracking, which is drawn whether or not the popup is
+// open. There is nothing to press: the rover looks around for as long as it is
+// switched on, so all this says is how that is going -- how many looks it has
+// taken, what the last resolver pass decided, and what the loop last complained
+// about. "stopped" is a fault and not a setting, and nothing here can ask for it.
 function drawWorldBuilding(w) {
   const state = $("worldBuilding");
   if (w.available === false) {
@@ -198,11 +198,7 @@ function drawWorldBuilding(w) {
       : "";
   state.textContent = w.building
       ? `building — ${w.built_looks} look${w.built_looks === 1 ? "" : "s"}${decided}`
-      : "off";
-  for (const button of document.querySelectorAll("[data-world-build]")) {
-    button.classList.toggle("on",
-      (button.dataset.worldBuild === "on") === !!w.building);
-  }
+      : "stopped — the rover is not looking";
 }
 
 function drawWorldBody() {

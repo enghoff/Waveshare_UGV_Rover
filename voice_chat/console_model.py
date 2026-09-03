@@ -139,11 +139,11 @@ LIGHT_MAX = 255            # what the daemon calls full brightness
 # it is the slowest-moving number on the rover and the daemon caches it anyway: a
 # poll inside its cache window is answered without the board being read at all.
 BATTERY_POLL_S = 10.0
-# How often to ask whether the rover is building its world state. Slow, because
-# it changes only when somebody presses the button, and asked at all rather than
-# remembered for the reason the tracking panel is: the voice session, another
-# console or a script can turn it off, and a panel showing what this console last
-# set would be describing its own past rather than the rover.
+# How often to ask how the rover's own looking is going. Slow, because what comes
+# back is a look count and what the last resolver pass decided, and nobody needs
+# either of those to the second. Asked and not remembered because there is nothing
+# to remember: the console never set it, and the rover has been recording since it
+# booted.
 WORLD_BUILD_POLL_S = 10.0
 # How often to ask the rover for the world itself while the popup is on screen,
 # so that what a person is watching is what the rover has rather than what it had

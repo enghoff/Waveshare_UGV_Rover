@@ -426,9 +426,9 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.track_outstanding = True
             self.track_at = now
             self.watch.submit("tracking_status")
-        # Whether the rover is building its world state, on the status connection
-        # rather than the world one: it reads a flag and touches neither the store
-        # nor the camera, so it must not queue behind an inspection that takes a
+        # How the rover's own looking is going, on the status connection rather
+        # than the world one: it reads a counter and touches neither the store nor
+        # the camera, so it must not queue behind an inspection that takes a
         # minute. Stopped for good once a daemon turns out never to have heard of
         # it, which is the only thing its failing proves.
         if (self.watch is not None and self.world_build_offered
@@ -644,8 +644,8 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.can_drive = False
         self.world_outstanding = 0
         # A reconnect is how a daemon that came back *different* is
-        # noticed, and whether it offers the world-state switch is one of
-        # the things asked once and otherwise kept for the session.
+        # noticed, and whether it answers the world-building status call is
+        # one of the things asked once and otherwise kept for the session.
         self.world_build_offered = True
         self.busy_since = None
         # The move connection has just been thrown away, so the reply that would

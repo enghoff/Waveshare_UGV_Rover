@@ -163,16 +163,18 @@ class RoverWorld:
     def start_world_building(self) -> None:
         """Look around on a schedule, from the moment the daemon starts.
 
-        **On by default**, because a world state that only records when somebody
-        presses a button is a world state that is empty whenever it is wanted. The
-        rover drives across a building and learns nothing on the way unless
-        something asks it to look, and nothing did.
+        **Always, with nothing to switch it off**, because a world state that only
+        records when somebody presses a button is a world state that is empty
+        whenever it is wanted. The rover drives across a building and learns
+        nothing on the way unless something asks it to look, and nothing did --
+        and a rover that had been switched off looked exactly like one recording
+        steadily until somebody thought to check.
 
-        Its own thread, and it only ever makes the same call the console's button
-        makes. Nothing here reaches into the store or the resolver directly, so a
-        fault in this loop cannot corrupt anything -- at worst it stops looking.
+        Its own thread, and it only ever makes the same call an inspection from
+        the console makes. Nothing here reaches into the store or the resolver
+        directly, so a fault in this loop cannot corrupt anything -- at worst it
+        stops looking.
         """
-        self._world_build = True
         self._world_build_stop = threading.Event()
         self._world_build_at = 0.0
         self._world_settle_at = 0.0
@@ -186,7 +188,14 @@ class RoverWorld:
         thread.start()
 
     def world_building(self) -> bool:
-        return bool(getattr(self, "_world_build", False))
+        """Whether the looking loop is running, which it is until shutdown.
+
+        Reported and not controlled. The only answer other than yes is that the
+        thread has gone, and that is a fault the panel should say out loud rather
+        than a state anything can ask for.
+        """
+        thread = getattr(self, "_world_build_thread", None)
+        return thread is not None and thread.is_alive()
 
     def _world_worth_looking(self, now: float) -> bool:
         """Whether a look from where the rover stands now would tell it anything.
@@ -256,8 +265,6 @@ class RoverWorld:
         """
         while not self._world_build_stop.wait(0.2):
             try:
-                if not self._world_build:
-                    continue
                 now = time.monotonic()
                 if self._world_ready():
                     # No component, or no database. Wait out the long gap rather
@@ -307,21 +314,17 @@ class RoverWorld:
             except Exception as error:              # never past here: it is a loop
                 self._world_build_error = f"{type(error).__name__}: {error}"
 
-    def _tool_world_building(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Read or set whether the rover builds its world state. A control call.
+    def _tool_world_building(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """How the rover's own looking is going. A control call, and read-only.
 
-        Control rather than a model tool for the reason the rest of the world
-        state is: a model that could switch off the rover's own record of the room
-        could quietly stop it learning, and nobody would see a failure. See
-        "Authority boundaries" in docs/task-semantic-world-state.md.
+        **It used to take an `on`, and there is nothing to set here any more.**
+        The reason it was a control call rather than a model tool was that a model
+        able to switch off the rover's record of the room could quietly stop it
+        learning with nobody seeing a failure -- and that argument applies just as
+        well to the person at the console, who had the same switch and no reason
+        to want it. See "Authority boundaries" in
+        docs/task-semantic-world-state.md.
         """
-        if "on" in arguments and arguments["on"] is not None:
-            self._world_build = bool(arguments["on"])
-            if self._world_build:
-                # Look now rather than in fifteen seconds: somebody has just
-                # pressed a button and an empty panel is what they are watching.
-                self._world_build_at = 0.0
-                self._world_build_from = None
         return {"ok": True, "building": self.world_building(),
                 "looks": getattr(self, "_world_build_looks", 0),
                 "every_s": LOOK_EVERY_S, "settle_every_s": SETTLE_EVERY_S,
@@ -776,7 +779,6 @@ class RoverWorld:
     def close_world(self) -> None:
         # The loop first, and joined, so that nothing is part-way through an
         # inspection when the store underneath it closes.
-        self._world_build = False
         stop = getattr(self, "_world_build_stop", None)
         if stop is not None:
             stop.set()

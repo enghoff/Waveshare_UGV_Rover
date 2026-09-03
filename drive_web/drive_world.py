@@ -122,9 +122,9 @@ class SessionWorld:
         #: which is what keeps an open popup current.
         self.world_watched_at = 0.0
         self.world_watching = False
-        #: Whether this daemon has heard of the switch at all. A rover too old
-        #: to offer it is asked once rather than every ten seconds for the rest
-        #: of the session. Reset on reconnect, because a reconnect is how a
+        #: Whether this daemon has heard of the status call at all. A rover too
+        #: old to answer it is asked once rather than every ten seconds for the
+        #: rest of the session. Reset on reconnect, because a reconnect is how a
         #: daemon that came back different is noticed.
         self.world_build_offered = True
 
@@ -144,8 +144,6 @@ class SessionWorld:
             self.world_inspect()
         elif what == "search":
             self.world_search(str(action.get("query") or ""))
-        elif what == "build":
-            self.world_build(bool(action.get("on")))
 
     def world_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.world_link is None:
@@ -223,20 +221,6 @@ class SessionWorld:
         self.world_asked_at = time.monotonic()
         self.world_call("world_inspect")
 
-    def world_build(self, on: bool) -> None:
-        """Turn the rover's own looking on or off.
-
-        Sent on the status connection like the poll, so that pressing it while an
-        inspection is running does not wait for that inspection to finish. The
-        panel is not updated here: what it shows comes back from the rover, the
-        same way the tracking panel works, because this console is not the only
-        thing that can change it.
-        """
-        if self.watch is None:
-            self.world["error"] = "not connected"
-            return
-        self.watch.submit("world_building", {"on": on})
-
     def world_search(self, query: str) -> None:
         """Find me the thing I described.
 
@@ -296,7 +280,7 @@ class SessionWorld:
     # --- what comes back ------------------------------------------------------
 
     def world_switch(self, body: dict[str, Any]) -> None:
-        """Whether the rover is building its world state, and how much of it.
+        """How the rover's own looking is going, and how much of it there is.
 
         Kept out of `world_handle`'s bookkeeping because it is the only world
         call that does not go down the world channel -- it rides on the status

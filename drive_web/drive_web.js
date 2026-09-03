@@ -557,10 +557,6 @@ function wire() {
   for (const button of document.querySelectorAll("[data-track]")) {
     button.onclick = () => post({do: "track", name: button.dataset.track});
   }
-  for (const button of document.querySelectorAll("[data-world-build]")) {
-    button.onclick = () => post({do: "world", what: "build",
-                                 on: button.dataset.worldBuild === "on"});
-  }
   for (const button of document.querySelectorAll("[data-light]")) {
     button.onclick = () => post({do: "lights",
       level: button.dataset.light === "on" ? setup.light_max : 0});

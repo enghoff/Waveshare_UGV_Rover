@@ -269,18 +269,19 @@ def test_finding_a_thing_from_the_console() -> None:
     check("...and is shown", session.world_state()["error"], "no perception sidecar")
 
 
-def test_the_switch_for_building_the_world_state() -> None:
-    """On by default on the rover, and this panel never guesses at it.
+def test_the_reading_for_building_the_world_state() -> None:
+    """The rover always builds it, and this panel never guesses at that.
 
-    What it shows comes back from the rover rather than from what this console
-    last asked for, because the voice session, another console or a script can
-    turn it off -- and a panel showing its own past would leave a rover that had
-    quietly stopped recording still looking busy.
+    There is nothing to press -- the switch is gone, along with the daemon's
+    ability to be switched off -- so everything on this line comes back from the
+    rover. A panel showing what this console last believed would leave a rover
+    whose looking thread had died still looking busy, which is the one thing the
+    line is there to catch.
     """
     try:
         import drive_web
     except ImportError as exc:
-        SKIP.append(f"the world-building switch ({type(exc).__name__})")
+        SKIP.append(f"the world-building reading ({type(exc).__name__})")
         return
 
     session = drive_web.Session(None, 3.0, 480)
@@ -292,22 +293,21 @@ def test_the_switch_for_building_the_world_state() -> None:
     check("nothing is claimed before the rover has been asked",
           session.world_state()["building"], None)
 
+    # No action posts one: a console that could still ask to build would be a
+    # console that could still ask to stop.
     session.world_act({"what": "build", "on": False})
-    check("the switch is sent to the rover", sent[-1][0], "world_building")
-    check("...as what was asked for", sent[-1][1], {"on": False})
-    check("...and the panel still does not guess",
-          session.world_state()["building"], None)
+    check("there is nothing to send", sent, [])
 
     session.world_handle("world_building",
                          {"ok": True, "building": False, "looks": 7}, 0.0)
-    check("the panel shows what the rover said",
+    check("a loop that has stopped is shown as stopped",
           session.world_state()["building"], False)
-    check("...and how much it has recorded",
+    check("...and how much it recorded before it did",
           session.world_state()["built_looks"], 7)
 
     session.world_handle("world_building",
                          {"ok": True, "building": True, "looks": 8}, 0.0)
-    check("and again when it is turned back on",
+    check("and a rover that is looking says so",
           session.world_state()["building"], True)
 
     # The loop's own complaint is the only place a rover that has stopped
@@ -576,7 +576,7 @@ def test_the_world_urls() -> None:
 TESTS = (
     test_the_world_state_popup,
     test_finding_a_thing_from_the_console,
-    test_the_switch_for_building_the_world_state,
+    test_the_reading_for_building_the_world_state,
     test_an_open_popup_keeps_itself_current,
     test_the_world_urls,
 )

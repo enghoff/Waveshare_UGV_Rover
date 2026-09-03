@@ -254,8 +254,9 @@ good for was un-sticking a console that had decided this rover has no world stat
 — which happens on any refusal, including a store that was busy for a moment while
 the daemon restarted — and that is handled where it belongs: after a refusal the
 asking slows to `WORLD_RETRY_S` rather than stopping, so the panel comes back on
-its own. A rover too old to offer the world-building switch at all is still asked
-once and no more, since that call failing is the only thing that proves it.
+its own. A rover too old to answer the world-building status call at all is
+still asked once and no more, since that call failing is the only thing that
+proves it.
 
 The stored frames come from `/world_frame.jpg`, and that one goes to the rover on a
 connection of its own again, synchronously, on whichever thread is serving the
