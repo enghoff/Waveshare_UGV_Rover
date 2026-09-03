@@ -64,6 +64,16 @@ read the answer, because "the file was copied" and "a local unit test passes" pr
 nothing. A change touching no registered component needs no restart; a changed
 manifest or source set wants `deploy.py --plan`.
 
+## Another agent may be working here at the same time
+
+Expect to be one of several. Work in your own files and your own scratchpad and it
+will not come up. When it does — a tracked file changed underneath you, a deploy
+refused because somebody else's edit is dirty, a service restarted mid-verification
+— **do not fight it and do not work around it.** Finish everything that does not
+touch the contested ground, then stop and say where you got to, what is left, and
+exactly what blocked you. Reverting, stashing or overwriting another agent's work to
+get past it is never the answer, and neither is retrying in a loop until it clears.
+
 ## The repository is the source of truth
 
 Edit here and push; never edit a tracked file in place on the rover. The deployer

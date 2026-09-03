@@ -62,17 +62,37 @@ CAMERA_RETRY_S = 0.5
 ENV_FAKE = "UGV_WORLD_FAKE"
 
 
-#: The fastest the rover will ever look around by itself. A look is a fifth of a
-#: second of GPU and it is not the cost that sets this -- it is that the resolver
-#: reads the whole pending pool on every look, so a rover that records faster than
-#: it can place things gets slower at placing them.
-LOOK_EVERY_S = 15.0
-#: What counts as somewhere new: the same distance the geometry calls a baseline,
-#: because a look from here can pair with a look from there and one any closer
-#: cannot. **Recording from a place already looked from is not free.** It cannot be
-#: triangulated against the looks already there, and it enlarges the pool every
-#: later look has to scan.
-MOVED_ENOUGH_M = 0.4
+#: The fastest the rover will ever look around by itself. **It was 15 s, and 15 s
+#: is why a three-minute drive came back with four pictures.** What set it was the
+#: resolver reading the whole pending pool on every look -- so a rover recording
+#: faster than it could place things got slower and slower at placing them -- and
+#: that is no longer what happens: the pool is settled on its own schedule below,
+#: and one pass over it got 145 times cheaper when the geometry was allowed to
+#: throw a pair out before its appearance was compared.
+#:
+#: What sets it now is the camera and the lidar. A bounded capture is 0.29 s on
+#: the Orin and a look through the encoders 0.16 s, so a look a second is a 45%
+#: duty cycle; measured against the scan matcher on 2026-09-03, that costs it
+#: nothing -- 9.95 revolutions a second with a capture every second against 9.90
+#: with none, and no dropped scans in either. **That measurement is the Orin's
+#: and does not transfer.** The same experiment on the Pi's four cores, recorded
+#: in `uvc_camera.snapshot`, lost 22% of revolutions to a camera held open, and
+#: the scan matcher is the only odometer this rover has.
+LOOK_EVERY_S = 1.0
+#: How often identity is decided, in seconds. Separate from looking because the
+#: two cost wildly different amounts: a look is a near-constant 0.45 s, while one
+#: resolver pass is 1.4 s at 500 pending bearings and 8 s at 2000 -- it compares
+#: every pair, so it grows as the square of what is waiting. Settling after every
+#: look is what made looking often unaffordable.
+SETTLE_EVERY_S = 10.0
+#: What counts as somewhere new. **Deliberately shorter than the 0.4 m the
+#: geometry calls a baseline**, which is what this was: two looks this close
+#: cannot be triangulated against *each other*, but they can be against the look
+#: three back, and in the meantime each is a picture of the room from a place the
+#: rover has not photographed. At the 0.35 m/s it explores at this is a look every
+#: 0.4 s, so `LOOK_EVERY_S` above is the real governor while driving and this one
+#: takes over as the rover slows down.
+MOVED_ENOUGH_M = 0.15
 #: And what counts as a new direction. **Where the camera points, not where the
 #: chassis does**: heading minus pan, which is what a bearing is built from in the
 #: first place. Measured against the chassis alone, turning the gimbal through
@@ -129,6 +149,8 @@ class RoverWorld:
         self._world_build = True
         self._world_build_stop = threading.Event()
         self._world_build_at = 0.0
+        self._world_settle_at = 0.0
+        self._world_settled: dict[str, Any] = {}
         self._world_build_from = None
         self._world_build_looks = 0
         self._world_build_error = ""
@@ -178,40 +200,68 @@ class RoverWorld:
         return pose["heading_deg"] - float(getattr(self, "pan", 0.0) or 0.0)
 
     def _world_building_loop(self) -> None:
-        """Never raises, and never looks while the wheels are turning.
+        """Never raises, and looks while the rover drives.
 
-        A look taken mid-drive carries the pose it was given when the shutter
-        opened and a picture blurred by the move, and a bearing is only as good as
-        the pose behind it -- so the whole point of the measurement is lost. The
-        rover is stopped between one `drive` call and the next, which is when this
-        gets its chance.
+        **It used to refuse to look while the wheels were turning at all, and
+        that is why a several-minute drive came back with four pictures.** The
+        argument for refusing was sound as far as it went -- a look taken mid-
+        drive carries the pose the rover had reached rather than the pose the
+        shutter opened at, and a bearing is only as good as the pose behind it --
+        but the remedy was far too blunt. What replaced it is a measurement:
+        `Inspector` reads the pose on both sides of the capture, uses the
+        midpoint, and drops the bearing on the looks where the rover covered more
+        ground than that midpoint can account for. So a drive down a corridor now
+        records a picture a second, with a bearing on every one taken steadily
+        enough to support one, instead of recording nothing at all.
+
+        Two things had to be true before that was affordable, and both were
+        measured on 2026-09-03 rather than assumed. A capture every second costs
+        the scan matcher nothing on this host, and the resolver no longer runs
+        inside every look -- it runs on `SETTLE_EVERY_S` below, because a look is
+        a flat 0.45 s and a resolver pass grows as the square of the pool.
         """
-        while not self._world_build_stop.wait(1.0):
+        while not self._world_build_stop.wait(0.2):
             try:
                 if not self._world_build:
                     continue
-                navigator = getattr(self, "nav", None)
-                if navigator is not None and navigator.driving:
-                    continue
                 now = time.monotonic()
-                if not self._world_worth_looking(now):
-                    continue
                 if self._world_ready():
                     # No component, or no database. Wait out the long gap rather
-                    # than asking again every second for the life of the daemon.
+                    # than asking again every fifth of a second for the life of
+                    # the daemon.
                     self._world_build_at = now
+                    self._world_settle_at = now
                     continue
-                self._world_build_at = now
-                answer = self._tool_world_inspect({})
-                where = self._world_pose()
-                if where is not None:
-                    where["camera_deg"] = self._world_camera_deg(where)
-                self._world_build_from = where
-                if answer.get("ok"):
-                    self._world_build_looks += 1
-                    self._world_build_error = ""
-                else:
-                    self._world_build_error = str(answer.get("error") or "")
+                # **Settling comes first when it is due, and it takes the whole
+                # turn.** It is due ten times less often than a look, so the cost
+                # of that is one look's slot in ten; the other order starves it
+                # completely, because a driving rover has a look due every second
+                # and identity would then never be decided until it stopped.
+                if now - self._world_settle_at >= SETTLE_EVERY_S:
+                    self._world_settle_at = now
+                    outcome = self._world_inspector().settle()
+                    if outcome.get("ok"):
+                        self._world_settled = {
+                            "at": time.time(),
+                            "considered": outcome.get("considered", 0),
+                            "matched": outcome.get("matched", 0),
+                            "created": outcome.get("created", 0),
+                            "waiting": outcome.get("still_waiting", 0)}
+                    continue
+                if self._world_worth_looking(now):
+                    self._world_build_at = now
+                    # Recorded and not settled: identity is decided above, on its
+                    # own clock, so that looking often stays as cheap as one look.
+                    answer = self._tool_world_inspect({"settle": False})
+                    where = self._world_pose()
+                    if where is not None:
+                        where["camera_deg"] = self._world_camera_deg(where)
+                    self._world_build_from = where
+                    if answer.get("ok"):
+                        self._world_build_looks += 1
+                        self._world_build_error = ""
+                    else:
+                        self._world_build_error = str(answer.get("error") or "")
             except Exception as error:              # never past here: it is a loop
                 self._world_build_error = f"{type(error).__name__}: {error}"
 
@@ -232,7 +282,10 @@ class RoverWorld:
                 self._world_build_from = None
         return {"ok": True, "building": self.world_building(),
                 "looks": getattr(self, "_world_build_looks", 0),
-                "every_s": LOOK_EVERY_S,
+                "every_s": LOOK_EVERY_S, "settle_every_s": SETTLE_EVERY_S,
+                # What the last resolver pass did, which is the only place a
+                # rover recording steadily and placing nothing would say so.
+                "settled": getattr(self, "_world_settled", {}),
                 "error": getattr(self, "_world_build_error", "")}
 
     def _world_ready(self) -> str:
@@ -473,6 +526,7 @@ class RoverWorld:
                 "building": self.world_building(),
                 "built_looks": getattr(self, "_world_build_looks", 0),
                 "building_error": getattr(self, "_world_build_error", ""),
+                "settled": getattr(self, "_world_settled", {}),
                 "camera_fov_deg": self.camera_fov_deg,
                 "pose": self._world_pose()}
 
@@ -611,19 +665,29 @@ class RoverWorld:
             return {"ok": False, "error": why}
         return {"ok": True, "map_session": self._world_store().new_map_session()}
 
-    def _tool_world_inspect(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        """Take a picture, ask the model about it, and record what it said.
+    def _tool_world_inspect(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Take a picture, measure what is in it, and record that.
 
-        Slow -- tens of seconds on this board -- and therefore deliberately not on
-        the connection anything else uses. It runs on the caller's own thread, so
-        the daemon goes on answering STOP, status and the map throughout, and a
-        failure of any kind leaves the world state exactly as it was.
+        Half a second on this board -- 0.29 s of camera and 0.16 s of encoders --
+        and still on a connection of its own, because deciding identity from the
+        pool afterwards is what is slow and the button does both.
+
+        `settle` is how the rover's own looking loop asks for the cheap half
+        alone; the console's button leaves it out and gets an answer that says
+        what was matched and placed, which is what somebody who has just pressed
+        it is watching for.
+
+        It runs on the caller's own thread, so the daemon goes on answering STOP,
+        status and the map throughout, and a failure of any kind leaves the world
+        state exactly as it was.
         """
         why = self._world_ready()
         if why:
             return {"ok": False, "error": why}
         began = time.monotonic()
-        result = self._world_inspector().inspect()
+        settle = arguments.get("settle")
+        result = self._world_inspector().inspect(
+            settle=True if settle is None else bool(settle))
         result["took_s"] = round(time.monotonic() - began, 2)
         return result
 

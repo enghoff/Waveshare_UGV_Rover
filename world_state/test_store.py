@@ -13,7 +13,7 @@ import tempfile
 import time
 
 from test_harness import FAIL, check
-from test_fakes import JPEG, a_sighting, a_store
+from test_fakes import JPEG, a_sighting, a_store, observe
 
 
 # --- the store --------------------------------------------------------------
@@ -303,6 +303,30 @@ def test_a_reader_is_not_blocked_by_a_writer() -> None:
         store.close()
 
 
+def test_a_full_pending_pool_still_shows_what_just_arrived() -> None:
+    """The window is the newest bearings, not the oldest.
+
+    The fault this catches is silent and gets worse the faster the rover looks:
+    with the window taken from the front of the pool, a rover that had
+    accumulated `limit` bearings it could not place handed the resolver those
+    same rows for ever, and nothing recorded afterwards was ever looked at again.
+    The recording of 2026-09-03 left 60 of 71 unplaceable, so a rover looking
+    once a second reaches that state in minutes.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        for step in range(12):
+            observe(store, 0.0, 0.0, float(step), inference=step)
+        check("every bearing is pending", len(store.unplaced()), 12)
+        window = store.unplaced(limit=4)
+        check("...a window shows as many as it was asked for", len(window), 4)
+        check("...the newest of them, so a look is never wasted",
+              [round(one["bearing_deg"]) for one in window], [8, 9, 10, 11])
+        check("...oldest first within the window, for the longest baselines",
+              window[0]["id"] < window[-1]["id"], True)
+        store.close()
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -315,4 +339,5 @@ TESTS = (
     test_clearing_the_map_keeps_the_semantic_world,
     test_unreadable_stored_json_cannot_take_the_viewer_down,
     test_a_reader_is_not_blocked_by_a_writer,
+    test_a_full_pending_pool_still_shows_what_just_arrived,
 )

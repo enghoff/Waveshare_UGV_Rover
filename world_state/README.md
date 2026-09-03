@@ -518,15 +518,20 @@ that has an answer would be the wrong order.
 | `world_state_entity(id)` | one entity and its whole recent history |
 | `world_state_observations(entity_id?)` | the history on its own |
 | `world_state_frame(frame_id)` | the stored JPEG, base64, for the console |
-| `world_inspect` | take a picture, measure the regions in it, record them |
+| `world_inspect(settle?)` | take a picture, measure the regions in it, record them; `settle: false` records without deciding identity |
 | `world_state_clear` | empty the semantic world; the map is untouched |
 | `world_map_session` | the map was cleared, so start a new session |
 
-`world_inspect` is about a fifth of a second on this board, where it was a minute
-when a language model answered it. It still runs on the calling thread, so the
-daemon goes on answering STOP, status and the map throughout, and the console
-still gives it a connection of its own with a patience of its own — the same
-arrangement, for the same reason, as the wi-fi scan.
+`world_inspect` is 0.45 s on this board — 0.29 s of camera and 0.16 s of encoders
+— where it was a minute when a language model answered it. What is slow now is
+deciding identity from the pool afterwards, which grows as the square of what is
+waiting: 1.4 s at 500 pending bearings and 8 s at 2000. So the rover's own looking
+loop asks for the cheap half alone and settles on its own clock, and the console's
+button does both, because somebody who has just pressed it is watching for what
+was placed. It still runs on the calling thread, so the daemon goes on answering
+STOP, status and the map throughout, and the console still gives it a connection
+of its own with a patience of its own — the same arrangement, for the same reason,
+as the wi-fi scan.
 
 ## Tests
 
@@ -726,13 +731,14 @@ most — 33 pairs of crops that could be one object — was taken from two place
 start and the end of its loop. Everything else is 4 to 6 m apart, through
 doorways, with nothing in common.
 
-The reason is the cadence rather than the code. A look is taken when the rover has
-stopped, has moved 0.4 m, and 15 s have passed — and 0.4 m is `MOVED_ENOUGH_M`,
+The reason is the cadence rather than the code. A look was taken when the rover
+had stopped, had moved 0.4 m, and 15 s had passed — and 0.4 m is `MOVED_ENOUGH_M`,
 which is the *minimum* baseline the geometry can use. Driven in hops at a third of
-a metre a second, the fifteen seconds are what decide, and by the time they are up
-the rover is five metres on and in another room. The parked run has the same
+a metre a second, the fifteen seconds were what decided, and by the time they were
+up the rover was five metres on and in another room. The parked run has the same
 problem from the other end: 115 of its pairs shared something and almost all of
-them were taken from the same spot.
+them were taken from the same spot. **The cadence was rebuilt on 2026-09-03 and
+what it cost to measure is the next section.**
 
 **And the gimbal has never been panned. Not once, in any run.** Every observation
 the rover has ever stored has `observer_pan_deg` of 0. So a look is the hundred
@@ -825,6 +831,98 @@ this recording, **it vetoes all five**, including `object:8` and `object:10`,
 which sit 3 cm apart and are two halves of one sofa: 17 frames hold observations
 of both. The premise is false wherever the region finder splits one object into
 parts, which is the case merge exists to fix. Phase 5 needs a different veto.
+
+## The cadence was the fault, 2026-09-03
+
+A drive of about three minutes came back with **four looks**, which is the fault
+the previous section predicted, arriving. Twenty regions were measured across
+those four looks and not one thing was placed. Four pairs of bearings did cross
+cleanly — 5.3 m of baseline at 34 to 40 degrees of parallax — and all four were
+refused by the wall check, because they landed 8 to 9.4 m out where the map put
+the first obstacle at 1.3 m and 3.1 m. That part was the design working. The four
+looks were not.
+
+Three separate things held the rate down, and the first is most of it.
+
+**The loop refused to look while the wheels were turning, at all.** The argument
+was sound: a look taken mid-drive carries the pose the rover had reached rather
+than the pose the shutter opened at, and a bearing is only as good as the pose
+behind it. The remedy was far too blunt — it meant a rover crossing a building
+learned nothing on the way, and a look happened only in whatever gap fell between
+one `drive` call and the next. What replaced it is a measurement rather than a
+refusal: `Inspector` reads the pose on **both sides** of the capture, uses the
+midpoint, and drops the bearing — keeping the picture, the regions and the
+vectors — on the looks where the rover covered more ground than that midpoint can
+account for. See `MOVED_WHILE_LOOKING_M` and `TURNED_WHILE_LOOKING_DEG`, both
+derived from the 1.5 degrees of bearing error the geometry is already told to
+expect, so a look taken on the move is no worse than the accuracy the store
+already claims.
+
+**`LOOK_EVERY_S` was 15 s, and what set it was the resolver.** Identity was
+settled inside every inspection, and one pass compares every pair in the pending
+pool, so a rover that recorded faster than it could place things got slower and
+slower at placing them. Two changes take that away:
+
+  - **The resolver got 145 times cheaper**, and the fix was one line of ordering.
+    `_place_one` asked what two crops looked like *before* asking whether their
+    bearings crossed — a dot product over 384 floats in front of a dozen
+    multiplications, in a module whose own first paragraph says the gates run
+    cheapest first. On the recording, 97 of the 123 pairs that reach there have no
+    usable crossing, so almost all of that arithmetic was spent on pairs geometry
+    was about to throw out. Profiled at a 500-observation pool, it was **96% of
+    the resolver's entire running time.** With the geometry first, and with each
+    vector unpacked once per pass instead of once per comparison, one pass over
+    500 bearings went from **37 s to 1.45 s on the rover**.
+  - **Looking and settling are now separately paced.** A look is a flat 0.45 s;
+    a pass is 1.4 s at 500 pending bearings and 8 s at 2000, because it grows as
+    the square of what is waiting. So `inspect(settle=False)` records and decides
+    nothing, and the building loop settles on `SETTLE_EVERY_S`. Settling takes
+    priority when it is due, because a driving rover has a look due every second
+    and the other order starves it completely.
+
+**And the pending pool was jamming rather than filling.** `unplaced` took the
+*oldest* `limit` rows, so once that many bearings had accumulated with nowhere to
+go — and this recording left 60 of 71 with nowhere to go — the resolver was handed
+the same unplaceable rows for ever and nothing recorded afterwards was ever looked
+at again. Every look past that point was wasted, silently, and the faster the
+rover looks the sooner it happens. The window is the newest `limit` now. What that
+costs is a bearing older than the window pairing with one taken now, which is a
+rover that saw something, drove away and came back much later; what it buys is
+that a look is never wasted.
+
+### What the rate is bounded by now, measured on this host
+
+A bounded capture is **0.29 s** on the Orin and a look through the encoders
+**0.16 s**, so a look a second is a 45% duty cycle. The question that decides
+whether that is affordable is not the GPU but the lidar, because the scan matcher
+is the only odometer this rover has and `uvc_camera.snapshot` records a camera
+held open costing it 22% of its revolutions. Re-measured here against the nav
+bridge's own counters, twenty seconds per condition, rover parked:
+
+| | revolutions/s | dropped scans |
+|---|---:|---:|
+| no captures | 9.90 | 0 |
+| a capture every 2.0 s | 9.90 | 0 |
+| a capture every 1.0 s | 9.95 | 0 |
+| no captures again | 9.95 | 0 |
+
+**A capture a second costs the scan matcher nothing on the Orin.** That is a
+statement about six cores and not about the design: the 22% was the Pi's four,
+and the same experiment is owed to any host this moves to next.
+
+So the rate is set by `LOOK_EVERY_S = 1.0` while driving and by `MOVED_ENOUGH_M`
+as the rover slows. That constant went from 0.4 m to 0.15 m, deliberately *below*
+the minimum baseline: two looks that close cannot be triangulated against each
+other, but they can be against the look three back, and in the meantime each is a
+picture of the room from a place the rover has not photographed. At 0.35 m/s that
+is a look every 0.4 s, so `LOOK_EVERY_S` governs while driving — a picture a
+second, which is 40 to 80 times what the run of that morning managed.
+
+**What is not yet measured is whether it places more things.** Everything above is
+a rate and a cost. The recording of 2026-09-03 replays to exactly the entity the
+rover produced from it, which is what makes the change safe rather than useful,
+and only another drive says whether a picture a second is what triangulation was
+missing. The gimbal has still never been panned in any run.
 
 ## What was measured on the rover, 2026-09-02
 

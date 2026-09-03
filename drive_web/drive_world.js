@@ -109,8 +109,17 @@ function drawWorldBuilding(w) {
     state.textContent = "-";
     return;
   }
+  // The looks and the placing are on separate clocks, so both are on the line.
+  // A rover recording steadily and placing nothing is what sent somebody looking
+  // at this panel in the first place, and it has to be readable here.
+  const settled = w.settled || {};
+  const decided = settled.at
+      ? ` · settled ${wAgo(settled.at)}: ${settled.waiting || 0} waiting`
+        + (settled.created ? `, ${settled.created} placed` : "")
+        + (settled.matched ? `, ${settled.matched} recognised` : "")
+      : "";
   state.textContent = w.building
-      ? `building — ${w.built_looks} look${w.built_looks === 1 ? "" : "s"}`
+      ? `building — ${w.built_looks} look${w.built_looks === 1 ? "" : "s"}${decided}`
       : "off";
   for (const button of document.querySelectorAll("[data-world-build]")) {
     button.classList.toggle("on",
@@ -312,26 +321,21 @@ function drawWorldMap() {
 // whole popup exists for, and since nothing names a region any more it is the
 // only thing that can settle whether four observations are really one object.
 function wShot(observation) {
-  const held = (world.frames || []).includes(observation.frame_id);
   if (!observation.frame_id) {
     const none = document.createElement("div");
     none.className = "wmeta";
     none.textContent = "no frame stored";
     return none;
   }
-  if (!held) {
-    // The console fetches the newest few frames of the entity being looked at, so
-    // an older one is on the rover and simply has not been asked for. Said plainly
-    // rather than shown as a broken image.
-    const missing = document.createElement("div");
-    missing.className = "wmeta mono";
-    missing.textContent = `frame ${observation.frame_id} -- not fetched`;
-    return missing;
-  }
   const shot = document.createElement("div");
   shot.className = "wshot";
   const img = document.createElement("img");
   img.src = `/world_frame.jpg?id=${encodeURIComponent(observation.frame_id)}`;
+  // Every observation gets its picture, and the browser decides which of them to
+  // ask for: the console fetches a frame off the rover the first time it is
+  // wanted, so a stream of several hundred rows costs the ones on screen rather
+  // than all of them. Lazily rather than eagerly for that reason alone.
+  img.loading = "lazy";
   img.alt = "the picture this observation was read from";
   // A frame the rover no longer has: the row outlives the file, and the popup
   // that exists to show what went wrong must survive that.

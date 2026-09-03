@@ -84,18 +84,19 @@ def test_the_world_state_popup() -> None:
     check("...and the whole observation stream, so duplicates are visible",
           len(session.world_payload["recent"]), 1)
 
-    # The frame behind an observation. The console fetches the newest few and
-    # serves them at their own URL; one it has not fetched is a name, not a broken
-    # picture, and the page is told which by the list of frames it holds.
-    check("a frame that has not arrived is not offered to the page",
-          session.world_payload["frames"], [])
-    session.world_handle("world_state_frame", {
-        "ok": True, "frame_id": "20260901-120000-abc123",
-        "jpeg_base64": "/9j/4AAQSkZJRg=="}, 0.1)
-    check("one that has is", session.world_payload["frames"],
-          ["20260901-120000-abc123"])
-    check("...and is held where the URL can find it",
-          "20260901-120000-abc123" in session.world_frames, True)
+    # The frame behind an observation, which every row in the popup now draws.
+    # It is fetched off the rover the first time the page asks for it, so what
+    # has to hold is that a picture already held is answered without going back,
+    # and that a frame the rover has thrown away is a missing picture rather than
+    # an exception on the thread serving the page.
+    check("a frame nothing has asked for yet is not in memory",
+          session.world_frames, {})
+    held = bytes([0xFF, 0xD8]) + b"a stored picture"
+    session.world_frames["20260901-120000-abc123"] = held
+    check("one that is held is answered from memory",
+          session.world_frame("20260901-120000-abc123"), held)
+    check("...and a rover this console never connected to is a missing picture",
+          session.world_frame("20260901-120000-nothing"), None)
 
     # An inspection, and the one line the popup's header gets out of it.
     session.world_handle("world_inspect", {

@@ -245,6 +245,75 @@ def test_the_vectors_never_reach_the_wire_by_accident() -> None:
         store.close()
 
 
+def test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing() -> None:
+    """The pose is read either side of the shutter, and the gap is the verdict.
+
+    A capture is 0.29 s on the rover and the rover may be driving through all of
+    it, so a bearing drawn from one reading taken afterwards is drawn from where
+    the rover ended up. What has to hold is that a look taken while moving too
+    much still stores its picture, its regions and its vectors -- a rover
+    recording once a second is recording pictures -- and stores no direction it
+    cannot stand behind.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        walking = iter([{"x_m": 0.0, "y_m": 0.0, "heading_deg": 90.0},
+                        {"x_m": 0.0, "y_m": 0.6, "heading_deg": 90.0}])
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]], pose=lambda: next(walking))
+        result = inspector.inspect()
+        check("the look was recorded", result["stored"], 1)
+        check("...with no bearing, because the rover was moving",
+              result["placed"], 0)
+        check("...and says how far it moved for it", result["moved_m"], 0.6)
+        check("...in a sentence rather than a silence",
+              "while the shutter was open" in result["detail"], True)
+        row = store.db.execute("SELECT frame_id, bearing_deg, dino_blob"
+                               " FROM observations").fetchone()
+        check("...the picture is kept", bool(row["frame_id"]), True)
+        check("...and the vector with it", len(row["dino_blob"]), 32)
+        check("...and the direction is absent rather than guessed",
+              row["bearing_deg"], None)
+        store.close()
+
+    with tempfile.TemporaryDirectory() as directory:
+        creeping = iter([{"x_m": 0.0, "y_m": 0.0, "heading_deg": 90.0},
+                         {"x_m": 0.0, "y_m": 0.08, "heading_deg": 91.0}])
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()]], pose=lambda: next(creeping))
+        result = inspector.inspect()
+        check("a look taken at a walk still gets its bearing",
+              result["placed"], 1)
+        check("...from halfway through the shutter, not from either end",
+              store.unplaced()[0]["pose"]["y_m"], 0.04)
+        store.close()
+
+
+def test_looking_and_settling_are_separately_paced() -> None:
+    """A rover that looks once a second cannot settle once a second.
+
+    One resolver pass is 1.4 s at 500 pending bearings on the rover and 8 s at
+    2000, because it compares every pair; a look is a near-constant 0.45 s. So
+    the caller decides, and a look that did not settle has to say so rather than
+    reporting nothing found.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector = a_seeing_inspector(
+            directory, [[a_sighting()], [a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])]])
+        quick = inspector.inspect(settle=False)
+        check("a look that did not settle stored its regions anyway",
+              quick["stored"], 1)
+        check("...and says identity is not settled", quick["settled"], False)
+        check("...in the line the popup reads",
+              "identity not settled yet" in quick["detail"], True)
+        check("...leaving the bearing pending", len(store.unplaced()), 1)
+        inspector.inspect(settle=False)
+        settled = inspector.settle()
+        check("settling on its own is an ordinary call", settled["ok"], True)
+        check("...and considers everything that has piled up",
+              settled["considered"], 2)
+        store.close()
+
+
 TESTS = (
     test_an_inspection_through_the_encoders_keeps_what_it_measured,
     test_a_bearing_is_the_pose_the_gimbal_and_the_box_together,
@@ -257,4 +326,6 @@ TESTS = (
     test_a_bearing_never_runs_past_half_a_turn,
     test_the_pending_pool_holds_what_has_a_direction_but_no_home,
     test_the_vectors_never_reach_the_wire_by_accident,
+    test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing,
+    test_looking_and_settling_are_separately_paced,
 )

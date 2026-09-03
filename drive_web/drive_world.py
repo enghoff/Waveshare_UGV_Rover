@@ -13,21 +13,38 @@ pictures: it is tens of kilobytes, it changes when somebody presses a button, an
 the state on the event stream goes out many times a second. What rides in the state
 is a handful of counts and a generation tag; the body is served from `/world.json`
 when that tag moves.
+
+**The pictures do not go through that channel at all, and they used to.** The
+popup asked the rover ahead of time for the frames it thought would be wanted --
+one per entity, the newest four of whichever entity was open -- and told the page
+which ones it held, so an observation whose frame had not been asked for drew the
+words "not fetched" instead of a picture. Every observation in the stream read
+that way, which is every row a person opens the panel to look at, and the rover
+now records a look a second so there is no fixed handful to guess at any more.
+So `/world_frame.jpg` fetches on a miss instead: the page asks for the picture it
+is about to draw, the browser asks only for the ones on screen, and each is
+fetched once because a stored frame never changes under its name.
 """
 from __future__ import annotations
 
 import base64
+import threading
 import time
 from typing import Any
+
+import rover_tools
 
 #: How many stored frames the console keeps in memory for the popup to draw.
 #: Bounded because these are the rover's own JPEGs and this process is on the
 #: rover: a session that fetched every frame of a long experiment would hold the
-#: whole experiment in RAM beside SLAM.
-FRAME_CACHE = 24
-#: How many of a selected entity's frames to fetch. The newest few, because the
-#: question the popup is asked is "is this the same thing as last time".
-FRAMES_PER_ENTITY = 4
+#: whole experiment in RAM beside SLAM. At the 28 kB a frame averages, this is
+#: about 1.3 MB.
+FRAME_CACHE = 48
+#: How long to wait for the rover to hand over one stored frame. It is a file
+#: read on the same machine, so this is a bound on a fault rather than on the
+#: work: the browser is holding a connection open on the answer, and a frame that
+#: is not coming should become a missing picture rather than a hung tab.
+FRAME_TIMEOUT_S = 8.0
 
 
 class SessionWorld:
@@ -50,6 +67,11 @@ class SessionWorld:
             #: claiming the rover is doing something it may not be.
             "building": None,
             "built_looks": 0,
+            #: What the last resolver pass did. Looking and settling run on
+            #: separate clocks now, so a rover recording steadily and placing
+            #: nothing is a state the panel has to be able to show -- it is the
+            #: one this whole change came out of.
+            "settled": {},
             "gen": 0,
         }
         #: What `/world.json` serves: everything the popup draws.
@@ -57,6 +79,10 @@ class SessionWorld:
         #: Frames by identifier, so `/world_frame.jpg` can answer without going
         #: back to the rover for a picture it already has.
         self.world_frames: dict[str, bytes] = {}
+        #: One connection for pictures, and one fetch at a time over it. Its own
+        #: because the world channel carries the inspections.
+        self._frame_lock = threading.Lock()
+        self._frame_client = None
         self.world_selected = ""
         #: The phrase the search box last sent, kept so that an answer arriving
         #: after somebody has typed something else can be recognised as stale.
@@ -218,6 +244,7 @@ class SessionWorld:
             self.world_build_outstanding = False
             self.world["building"] = bool(body.get("building"))
             self.world["built_looks"] = body.get("looks") or 0
+            self.world["settled"] = body.get("settled") or {}
             # The loop's own last complaint, which is the only place a rover that
             # has quietly stopped recording would ever say so.
             if body.get("error"):
@@ -230,6 +257,7 @@ class SessionWorld:
             self.world_payload["camera_fov_deg"] = body.get("camera_fov_deg")
             self.world["backend"] = body.get("backend") or ""
             self.world["busy"] = bool(body.get("busy"))
+            self.world["settled"] = body.get("settled") or {}
             self.world_counts()
         elif name == "world_state_entities":
             self.world_payload["entities"] = body.get("entities") or []
@@ -237,13 +265,10 @@ class SessionWorld:
             self.world_payload["summary"] = body.get("summary") or {}
             self.world_payload["recent"] = body.get("recent") or []
             self.world_counts()
-            self.world_want_frames(self.world_payload["entities"])
         elif name == "world_state_entity":
             self.world_payload["selected"] = body.get("entity") or {}
             self.world_payload["selected_observations"] = body.get("observations") or []
             self.world_payload["selected_rays"] = body.get("rays") or []
-            self.world_want_frames_for(body.get("observations") or [],
-                                       FRAMES_PER_ENTITY)
         elif name == "world_state_search":
             self.world["searching"] = False
             # Stale if the box has moved on since this was asked. Dropped rather
@@ -251,10 +276,6 @@ class SessionWorld:
             # phrase reads as the search having got it wrong.
             if str(body.get("query") or "") == self.world_query:
                 self.world_payload["search"] = body
-                self.world_want_frames_for(body.get("matches") or [],
-                                           FRAMES_PER_ENTITY)
-        elif name == "world_state_frame":
-            self.world_keep_frame(body)
         elif name == "world_state_clear":
             self.world["note"] = (
                 f"cleared -- {body.get('entities', 0)} entities, "
@@ -276,40 +297,52 @@ class SessionWorld:
         self.world["entities"] = summary.get("entities", 0)
         self.world["observations"] = summary.get("observations", 0)
 
-    def world_want_frames(self, entities: list[dict[str, Any]]) -> None:
-        """One frame per entity is enough for a list; the detail asks for more."""
-        for entity in entities[:FRAME_CACHE]:
-            frame_id = entity.get("last_frame_id")
-            if frame_id and frame_id not in self.world_frames:
-                self.world_call("world_state_frame", {"frame_id": frame_id})
+    def world_frame(self, frame_id: str) -> bytes | None:
+        """The stored picture behind one observation, fetched if it is not held.
 
-    def world_want_frames_for(self, observations: list[dict[str, Any]],
-                              limit: int) -> None:
-        wanted = []
-        for observation in observations:
-            frame_id = observation.get("frame_id")
-            if (frame_id and frame_id not in self.world_frames
-                    and frame_id not in wanted):
-                wanted.append(frame_id)
-            if len(wanted) >= limit:
-                break
-        for frame_id in wanted:
-            self.world_call("world_state_frame", {"frame_id": frame_id})
+        Called from whichever thread is serving `/world_frame.jpg`, so it goes to
+        the rover on a connection of its own rather than through the world channel
+        the popup's other calls queue on: an inspection on that channel can be
+        half a minute, and a picture is a file read that must not wait behind one.
+        A `RoverClient` serialises its own calls, so several pictures at once
+        become several quick calls in a row rather than a race.
 
-    def world_keep_frame(self, body: dict[str, Any]) -> None:
-        try:
-            jpeg = base64.b64decode(body.get("jpeg_base64", ""))
-        except ValueError:
-            return
-        frame_id = str(body.get("frame_id") or "")
-        if not frame_id or not jpeg:
-            return
-        self.world_frames[frame_id] = jpeg
-        while len(self.world_frames) > FRAME_CACHE:
-            # Oldest first. A dict preserves insertion order, which is the order
-            # they were asked for, which is near enough to the order they will stop
-            # being looked at.
-            self.world_frames.pop(next(iter(self.world_frames)))
+        None where the rover has no such frame -- which is an ordinary answer, not
+        a fault: the row outlives the file whenever the world is cleared, and the
+        popup exists to show what happened rather than to fall over on it.
+        """
+        held = self.world_frames.get(frame_id)
+        if held is not None:
+            return held
+        if not frame_id or not self.address:
+            return None
+        with self._frame_lock:
+            held = self.world_frames.get(frame_id)
+            if held is not None:
+                return held
+            client = self._frame_client
+            if client is None or client.describe() != self.address:
+                if client is not None:
+                    client.close()
+                client = rover_tools.RoverClient(self.address,
+                                                 timeout=FRAME_TIMEOUT_S)
+                self._frame_client = client
+            body = client.call("world_state_frame", {"frame_id": frame_id})
+            if not body.get("ok"):
+                return None
+            try:
+                jpeg = base64.b64decode(body.get("jpeg_base64", ""))
+            except ValueError:
+                return None
+            if not jpeg:
+                return None
+            self.world_frames[frame_id] = jpeg
+            while len(self.world_frames) > FRAME_CACHE:
+                # Oldest first. A dict preserves insertion order, which is the
+                # order they were asked for, which is near enough to the order
+                # they will stop being looked at.
+                self.world_frames.pop(next(iter(self.world_frames)))
+            return jpeg
 
     def world_bump(self) -> None:
         """Say that `/world.json` has changed, so the page fetches it again.
@@ -318,7 +351,6 @@ class SessionWorld:
         this way: the payload is tens of kilobytes and the state it would ride in
         goes out ten times a second.
         """
-        self.world_payload["frames"] = sorted(self.world_frames)
         self.world["gen"] = self.world.get("gen", 0) + 1
 
     def world_state(self) -> dict[str, Any]:

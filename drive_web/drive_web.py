@@ -253,7 +253,10 @@ class Handler(BaseHTTPRequestHandler):
             # to tell a hallucinated entity from a real one somebody had forgotten
             # was in the room, which is most of what the popup is for.
             frame = parse_qs(urlparse(self.path).query).get("id", [""])[0]
-            jpeg = self.session.world_frames.get(frame)
+            # Fetched from the rover on a miss rather than answered "no": the
+            # popup asks for the picture it is about to draw, so a miss is the
+            # ordinary first request for a frame and not a mistake.
+            jpeg = self.session.world_frame(frame)
             if not jpeg:
                 self._missing("no such stored frame")
                 return

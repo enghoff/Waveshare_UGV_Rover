@@ -310,9 +310,21 @@ class WorldStore:
         direction to cross with a second one, and no later look can supply what
         was never measured.
 
-        Oldest first, because the first two looks at a thing are the pair most
-        likely to have the longest baseline between them, and because a pool
-        worked front to back cannot starve.
+        Oldest first within the window, because the first two looks at a thing
+        are the pair most likely to have the longest baseline between them.
+
+        **The window is the newest `limit`, and that is a correction rather than
+        a preference.** It used to be the *oldest* `limit`, which is a jam and not
+        a bound: once that many bearings had accumulated with nowhere to go -- and
+        on the recording of 2026-09-03, 60 of 71 had nowhere to go -- the pool
+        handed back the same unplaceable rows for ever and no observation taken
+        afterwards was ever considered again. Every look after that point was
+        wasted, silently, and the faster the rover looks the sooner it happens.
+
+        What the correction costs is a bearing older than the window pairing with
+        one taken now, which is a rover that saw something once, drove away and
+        came back much later. That is the rarer case and it is the one the person
+        at the console can see going by, because the pool's size is on the panel.
         """
         query = ("SELECT * FROM observations"
                  " WHERE entity_id IS NULL AND bearing_deg IS NOT NULL")
@@ -322,11 +334,11 @@ class WorldStore:
             # the coordinates it starts from moved.
             query += " AND map_session = ?"
             args.append(int(map_session))
-        query += " ORDER BY observed_at ASC, id ASC LIMIT ?"
+        query += " ORDER BY observed_at DESC, id DESC LIMIT ?"
         args.append(int(limit))
         with self._lock:
             rows = self.db.execute(query, args).fetchall()
-        return [_readable(dict(row), vectors=True) for row in rows]
+        return [_readable(dict(row), vectors=True) for row in reversed(rows)]
 
     def placed(self, map_session: int | None = None) -> list[dict[str, Any]]:
         """Entities that have a position, in the map they were positioned in.

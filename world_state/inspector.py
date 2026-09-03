@@ -22,6 +22,7 @@ the process that owns STOP.
 """
 from __future__ import annotations
 
+import math
 import sqlite3
 import threading
 import time
@@ -33,6 +34,25 @@ from .perception_client import describe_eyes
 #: reached through the tracking loop's frame, which is the one path here that hands
 #: back something it took for its own reasons rather than for this call.
 FRAME_MAX_AGE_S = 5.0
+
+#: How far the rover may travel while the shutter is open before its own position
+#: stops being good enough to draw a bearing from, in metres. **This exists
+#: because taking the picture is not instant**: a bounded capture is 0.29 s on the
+#: Orin, measured, and the rover covers 0.10 m of that at the 0.35 m/s it explores
+#: at. So the pose is read on both sides of the capture and the midpoint used,
+#: which leaves the origin of the ray wrong by half of whatever the rover
+#: travelled. 0.12 m admits an ordinary drive and leaves that residual at 0.06 m,
+#: which is under the 0.08 m of lateral error the 1.5 degrees of bearing noise
+#: already amounts to at three metres -- so a look taken on the move is no worse
+#: than the accuracy the store already claims. Past it the picture and the regions
+#: are kept and the bearing is not, which is a state this store already handles
+#: honestly.
+MOVED_WHILE_LOOKING_M = 0.12
+#: And how far it may turn, in degrees. Rotation is the term that actually hurts:
+#: it swings the whole bearing rather than shifting its origin. The midpoint
+#: halves it, so 3.0 leaves 1.5 -- exactly `locate.BEARING_SIGMA_DEG`, which is
+#: the error the geometry is already told to expect from the gimbal.
+TURNED_WHILE_LOOKING_DEG = 3.0
 
 
 class Inspector:
@@ -77,13 +97,23 @@ class Inspector:
     def busy(self) -> bool:
         return self._lock.locked()
 
-    def inspect(self) -> dict[str, Any]:
+    def inspect(self, settle: bool = True) -> dict[str, Any]:
         """Look once, and answer with what happened rather than with what was found.
 
         A second request while one is running is refused rather than queued. An
         inspection holds the camera and the sidecar's engines, and two at once on
         this board means both are slower than one and neither is looking at the
         picture anybody asked for.
+
+        **`settle=False` records the look and does not decide any identities**,
+        and it exists because the two halves cost wildly different amounts.
+        Measured on the rover: taking a look is 0.29 s of camera and 0.16 s of
+        GPU, near enough constant, while one resolver pass over the pending pool
+        is 1.4 s at 500 bearings and 8 s at 2000 -- it compares every pair, so it
+        grows as the square of what the rover has seen. Settling after every look
+        therefore makes a rover that looks often slower and slower at looking,
+        until the looking stops. Whoever is driving the looks decides how often it
+        is worth asking, and `settle` is that call.
         """
         if not self._lock.acquire(blocking=False):
             return {"ok": False, "status": "busy", "busy": True,
@@ -92,15 +122,31 @@ class Inspector:
                              f"this one was not started"}
         self.started_at = time.monotonic()
         try:
-            return self._inspect()
+            return self._inspect(settle=settle)
         except Exception as error:            # never past here: the daemon owns STOP
             return self._failed("error", f"{type(error).__name__}: {error}")
         finally:
             self._lock.release()
 
+    def settle(self) -> dict[str, Any]:
+        """Decide identities from everything now pending, and never raise.
+
+        Separate from `inspect` so that a rover looking once a second can settle
+        once every so often instead, and so that the console's button can settle
+        on its own without holding the camera. It takes the same lock, because a
+        pass that ran while a look was being recorded would read half of it.
+        """
+        if not self._lock.acquire(blocking=False):
+            return {"ok": False, "error": "an inspection is running"}
+        self.started_at = time.monotonic()
+        try:
+            return {"ok": True, **self._settle()}
+        finally:
+            self._lock.release()
+
     # --- the steps ------------------------------------------------------------
 
-    def _inspect(self) -> dict[str, Any]:
+    def _inspect(self, settle: bool = True) -> dict[str, Any]:
         """One inspection: a frame, the encoders, and what they measured.
 
         The failure discipline is the whole of the order here -- the sidecar is
@@ -120,6 +166,13 @@ class Inspector:
         if not ready:
             return self._failed("unavailable", why, began=began, backend=backend)
 
+        # **Read before the shutter as well as after it.** The capture is 0.29 s
+        # and the rover may be driving through all of it, so one reading taken
+        # afterwards is the pose the rover had arrived at rather than the pose the
+        # picture was taken from -- and a bearing is only as good as the pose
+        # behind it. Two readings bracket the picture, and how far apart they are
+        # is a measurement of how much this particular look can be trusted.
+        before = self._pose()
         frame = self._frame()
         if not frame.get("ok"):
             return self._failed("no_frame", str(frame.get("error", "no picture")),
@@ -128,10 +181,11 @@ class Inspector:
         jpeg = frame["jpeg"]
         frame_id = self.store.save_frame(jpeg, frame.get("width"),
                                          frame.get("height"))
+        where, moved, turned = self._where(before, self._pose())
         capture = {"frame_id": frame_id,
                    "frame_path": self.store.frame_path(frame_id),
                    "pan": frame.get("pan"), "tilt": frame.get("tilt"),
-                   "pose": self._pose()}
+                   "pose": where}
         inference_id = self.store.record_inference(
             started_at=began, status="running", backend=backend,
             frame_id=frame_id, frame_live=1 if frame.get("live") else 0,
@@ -161,8 +215,8 @@ class Inspector:
         # stored; which lasting thing it belongs to is an opinion formed from
         # that history and from everything already in it, and a failure to form
         # one must leave the measurement untouched.
-        settled = self._settle()
-        detail = self._measured_detail(look, stored, settled)
+        settled = self._settle() if settle else {}
+        detail = self._measured_detail(look, stored, settled, moved, turned)
         self.store.update_inference(
             inference_id, duration_s=round(time.time() - began, 2), status="ok",
             detail=detail or None, model_id=look.backend,
@@ -179,6 +233,9 @@ class Inspector:
                 "created": settled.get("created", 0),
                 "ambiguous": settled.get("ambiguous", 0),
                 "still_waiting": settled.get("still_waiting", 0),
+                "settled": bool(settled),
+                "moved_m": moved, "turned_deg": turned,
+                "pose": where,
                 "rejected": max(0, look.kept - stored["stored"]),
                 "entities": [], "detail": detail,
                 "decisions": settled.get("decisions", []),
@@ -201,7 +258,8 @@ class Inspector:
         except Exception as error:                 # never past here
             return {"error": f"{type(error).__name__}: {error}"}
 
-    def _measured_detail(self, look, stored, settled) -> str:
+    def _measured_detail(self, look, stored, settled, moved=0.0,
+                         turned=0.0) -> str:
         """One sentence a person can act on, in the popup's own column.
 
         The numbers that matter are how many regions were kept, how many got a
@@ -222,8 +280,14 @@ class Inspector:
                          f"(a blown-out window, a bare wall)")
         if stored["placed"] < stored["stored"]:
             missing = stored["stored"] - stored["placed"]
-            parts.append(f"{missing} without a bearing "
-                         f"(no pose, no gimbal angle, or no field of view)")
+            why = ("no pose, no gimbal angle, or no field of view"
+                   if not (moved or turned) else
+                   f"the rover moved {moved:.2f} m and turned {turned:.1f} deg "
+                   f"while the shutter was open")
+            parts.append(f"{missing} without a bearing ({why})")
+        if not settled:
+            parts.append("identity not settled yet")
+            return "; ".join(parts)
         if settled.get("error"):
             parts.append(f"identity was not settled: {settled['error']}")
             return ", ".join(parts)
@@ -240,6 +304,36 @@ class Inspector:
         parts.append(", ".join(settled_parts) if settled_parts
                      else "nothing to settle")
         return "; ".join(parts)
+
+    def _where(self, before, after):
+        """Where the picture was taken from, and how much the rover moved for it.
+
+        The midpoint of the two readings, because the shutter opened somewhere
+        between them and the middle is the best a caller with two samples can do.
+        `None` where either reading is missing, or where the rover covered more
+        ground than `MOVED_WHILE_LOOKING_M` or `TURNED_WHILE_LOOKING_DEG` allow --
+        and `None` here is not a failure. The picture, the regions and the vectors
+        are all kept; what is dropped is the one thing that was not measured well
+        enough to keep, which is the direction. A rover recording once a second
+        while it drives fills the store with pictures either way, and only the
+        bearings it can stand behind reach the geometry.
+        """
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            return (after if isinstance(after, dict) else before), 0.0, 0.0
+        moved = math.hypot(after["x_m"] - before["x_m"],
+                           after["y_m"] - before["y_m"])
+        # Signed and wrapped, so that halving it is halving the turn the rover
+        # actually made rather than averaging 179 and -179 into zero.
+        swing = (after["heading_deg"] - before["heading_deg"] + 180.0) % 360.0 - 180.0
+        turned = abs(swing)
+        if moved > MOVED_WHILE_LOOKING_M or turned > TURNED_WHILE_LOOKING_DEG:
+            return None, round(moved, 3), round(turned, 1)
+        return ({"x_m": round((before["x_m"] + after["x_m"]) / 2.0, 3),
+                 "y_m": round((before["y_m"] + after["y_m"]) / 2.0, 3),
+                 "heading_deg": round(
+                     (before["heading_deg"] + swing / 2.0 + 180.0) % 360.0 - 180.0,
+                     1)},
+                round(moved, 3), round(turned, 1))
 
     def _frame(self) -> dict[str, Any]:
         try:
