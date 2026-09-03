@@ -38,10 +38,18 @@ const wAgo = (t) => {
 };
 // A colour per entity, from its own name, so the same thing is the same colour on
 // the map and in the list without anything having to keep a palette in step.
+//
+// **The golden angle at the end is not decoration.** Identifiers here are
+// `object:1`, `object:2`, `object:3` and so on, which differ in one character by
+// one -- so the hash differed by one, and four things on the map came out four
+// shades of the same blue. Since the map draws every thing at once and colour is
+// the only thing separating them, that made it unreadable. 137 degrees apart is
+// the most two successive numbers can be, and it keeps the fifth and sixth apart
+// as well.
 const wHue = (id) => {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  return hash;
+  return (hash * 137) % 360;
 };
 
 function drawWorld(w) {
