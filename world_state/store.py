@@ -274,21 +274,38 @@ class WorldStore:
         return None if row is None else _shown(dict(row))
 
     def observations(self, entity_id: str | None = None, limit: int = 200,
-                     unmatched: bool = False) -> list[dict[str, Any]]:
+                     unmatched: bool = False,
+                     before: tuple[float, int] | None = None
+                     ) -> list[dict[str, Any]]:
         """Observation history, newest first.
 
         `entity_id` selects one entity's history; `unmatched` selects the
         observations no entity was allocated for, which is where everything
         starts and where a thing seen once from one place stays. The popup shows
         them so that a pool that is not draining is visible rather than lost.
+
+        `before` is where a caller that already holds part of the history wants
+        the next page to start: the `(observed_at, id)` of the oldest row it has,
+        and the answer begins with the one below it. **A place in the history
+        rather than a count of rows to skip**, because the rover goes on
+        recording while somebody reads: every look taken during the reading
+        pushes the whole history down by one, so an offset counted from the
+        newest row would hand back rows already on the screen and step over
+        others entirely. A place cannot move.
         """
         query = "SELECT * FROM observations"
+        where: list[str] = []
         args: list[Any] = []
         if entity_id is not None:
-            query += " WHERE entity_id = ?"
+            where.append("entity_id = ?")
             args.append(entity_id)
         elif unmatched:
-            query += " WHERE entity_id IS NULL"
+            where.append("entity_id IS NULL")
+        if before is not None:
+            where.append("(observed_at < ? OR (observed_at = ? AND id < ?))")
+            args += [float(before[0]), float(before[0]), int(before[1])]
+        if where:
+            query += " WHERE " + " AND ".join(where)
         query += " ORDER BY observed_at DESC, id DESC LIMIT ?"
         args.append(int(limit))
         with self._lock:
@@ -854,6 +871,12 @@ SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS observations_by_entity
         ON observations(entity_id, observed_at DESC);
+    -- The order the console reads the history in, which is the whole of it
+    -- newest first. Without this, every page of the stream sorts the entire
+    -- table again, and the store grows by a look a second for as long as the
+    -- rover is switched on.
+    CREATE INDEX IF NOT EXISTS observations_by_time
+        ON observations(observed_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS observations_by_inference
         ON observations(inference_id);
     CREATE TABLE IF NOT EXISTS inferences (

@@ -194,6 +194,50 @@ def test_the_frame_is_kept_and_every_observation_points_at_it() -> None:
         store.close()
 
 
+def test_the_history_is_read_a_page_at_a_time() -> None:
+    """The console shows the whole store, and no single reply carries it.
+
+    So the history comes back in pages, and a page starts at a *place* in it --
+    the oldest row the reader already holds -- rather than at a count of rows to
+    skip. The difference is the rover, which goes on recording while somebody
+    reads: every look taken during the reading pushes the whole history down by
+    one, so a count would hand back rows already on the screen and step over
+    others entirely. That is what the look recorded between pages below is for.
+
+    The other thing checked here is the tie: one inspection stores all its
+    regions under one timestamp, so a page boundary falling inside one of them
+    can only be resolved by the row identifier underneath it.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        for _ in range(5):
+            store.record([a_sighting(), a_sighting(bbox=[0.6, 0.2, 0.9, 0.7])],
+                         capture={"frame_id": "f"})
+        check("ten looks are in the store", store.summary()["observations"], 10)
+
+        walked = []
+        page = store.observations(limit=3)
+        while page:
+            walked += page
+            store.record([a_sighting()], capture={"frame_id": "later"})
+            oldest = page[-1]
+            page = store.observations(
+                limit=3, before=(oldest["observed_at"], oldest["id"]))
+        identifiers = [row["id"] for row in walked]
+        check("walking back through it reaches every one of them",
+              len(identifiers), 10)
+        check("...no row twice, though two share a timestamp at each boundary",
+              len(set(identifiers)), 10)
+        check("...in one order, newest first",
+              identifiers, sorted(identifiers, reverse=True))
+        check("...and what was recorded during the walk is above the walk, not in it",
+              max(identifiers), 10)
+        check("...while a page below the oldest row is empty rather than a repeat",
+              store.observations(limit=3, before=(walked[-1]["observed_at"],
+                                                  walked[-1]["id"])), [])
+        store.close()
+
+
 def test_a_missing_pose_is_recorded_as_missing() -> None:
     """SLAM not having settled is not a reason to refuse to look at the room."""
     with tempfile.TemporaryDirectory() as directory:
@@ -364,6 +408,7 @@ TESTS = (
     test_the_world_survives_the_process_that_wrote_it,
     test_a_database_from_an_older_build_still_opens,
     test_the_frame_is_kept_and_every_observation_points_at_it,
+    test_the_history_is_read_a_page_at_a_time,
     test_a_missing_pose_is_recorded_as_missing,
     test_clearing_the_semantic_world_takes_its_frames_with_it,
     test_clearing_the_map_keeps_the_semantic_world,

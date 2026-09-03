@@ -269,15 +269,15 @@ because a stored frame never changes under its name.
 
 ### The observation stream: thumbnails, and one at a time large
 
-The **observations** tab holds everything the rover has recorded lately, which is
-the forty looks `world_state_entities` answers with. It drew each of them as a full
-row until 2026-09-03: the picture at the width of the pane, its numbers above it and
-its raw measurement folded away below. Forty of those was six screens of scrolling
+The **observations** tab holds everything the rover has recorded, newest first. It
+drew each of them as a full row until 2026-09-03: the picture at the width of the
+pane, its numbers above it and its raw measurement folded away below. Forty of
+those was six screens of scrolling
 for one recording session, and it is the wrong shape for what a person does in this
 tab -- which is hunt for the one frame whose box is on the wrong thing, a question
 about pictures and not about numbers.
 
-So the stream is a grid of thumbnails: all forty on one screen at a laptop's width,
+So the stream is a grid of thumbnails: forty on one screen at a laptop's width,
 each with the measured box on it, the time it was taken, and the thing it was
 decided to be -- or `no entity` in amber, which is the failure this tab is watched
 for. The tile's left edge carries that thing's own colour, the same one the entity
@@ -285,6 +285,28 @@ list and the map use, so two things wrongly merged into one are two colours in o
 grid. Clicking a thumbnail puts that look over the grid at the size of the window,
 with everything the full row carried: the pose, how the bearing stands to the
 settled position, the box, and what was measured.
+
+**The tab is not capped at those forty, and the body it is drawn from is.** Only
+the newest forty looks ride in `/world.json`, because that body is re-sent every
+time the rover records anything; everything older is fetched a page of forty at a
+time from `/world_observations.json` as the tiles are scrolled, once each, and
+kept by the browser. So the stream ends where the store does -- a day of looking
+is something a person can reach the bottom of -- at the cost of the pages they
+actually asked for. A page is asked for by the oldest row already on screen rather
+than by how far down the history it is, since the rover goes on recording while
+somebody reads and a count of rows to skip would hand back looks already drawn and
+step over others entirely. The line above the grid says how much of the store is
+on the page: `160 of 851 shown, newest first`.
+
+Two things follow from a stream that long, both of them arithmetic rather than
+taste. The tiles are kept and moved when a new body arrives rather than rebuilt,
+or the redraw that happens every time the rover records would throw away both the
+place somebody had scrolled back to and every frame the browser had fetched. And a
+thumbnail is given its height in the stylesheet before its picture arrives: what
+asks for the next page is how much room the drawn tiles take, and a tile with no
+picture in it yet takes almost none, so without that height the tab pulls twice
+the history the moment it is opened -- 160 looks against 80, measured in chromium
+against a four-hundred-look store.
 
 Two details in it are load bearing rather than taste. The large view's **close** is
 at the top left, because the popup's own close is in the corner directly above and

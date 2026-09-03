@@ -223,7 +223,13 @@
     border: 1px solid var(--line); border-left: 4px solid var(--line);
     border-radius: 6px; background: var(--card);
   }
-  .wtile .wshot { display: block; }
+  /* The room a thumbnail is going to need, kept before the picture is there.
+     What asks for the next page of the stream is how much room the tiles drawn
+     so far take up, and a tile whose picture has not arrived takes almost none:
+     without this the tab pulls twice the history the moment it is opened, and
+     every frame in it -- 160 looks against 80, measured in chromium on a
+     four-hundred-look store. It also stops the grid jumping as they land. */
+  .wtile .wshot { display: block; min-height: 100px; }
   /* Which thing this look was decided to be, in the stripe the entity list and
      the full rows already use for it -- rather than round the whole tile, which
      would collide with the red box inside it. */

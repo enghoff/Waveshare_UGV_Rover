@@ -266,6 +266,25 @@ class Handler(BaseHTTPRequestHandler):
             # makes this the one picture here that is genuinely immutable.
             self._send(jpeg, "image/jpeg",
                        "public, max-age=31536000, immutable")
+        elif path == "/world_observations.json":
+            # A page of the observation stream, older than the row the query
+            # names. The payload carries the newest forty because it is re-sent
+            # every time the rover records; the rest of the history is walked
+            # back through here as somebody scrolls the tiles, so the stream ends
+            # where the store does rather than at the window.
+            query = parse_qs(urlparse(self.path).query)
+            at = query.get("before_at", [""])[0]
+            try:
+                before = (None if not at
+                          else (float(at), int(query.get("before_id", ["0"])[0])))
+            except ValueError:
+                self._missing("that is not a place in the observation stream")
+                return
+            # A rover that has gone away mid-scroll comes back as a refusal in
+            # the body rather than a failed request, because the stream draws it
+            # as a line under the tiles.
+            self._send(json.dumps(self.session.world_observations(before)).encode(),
+                       "application/json; charset=utf-8")
         elif path == "/wifi.json":
             # A list of networks, kept out of the state for the same reason the
             # pictures are: it is kilobytes, it changes a few times an hour, and the

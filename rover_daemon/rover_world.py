@@ -45,9 +45,15 @@ except Exception as _error:                     # deployed without the component
 else:
     WORLD_IMPORT_ERROR = ""
 
-#: How many observations one entity's detail carries. Enough to see whether the
-#: descriptions have drifted, bounded because this crosses a socket to a phone.
+#: How many observations one entity's detail carries, and how many the console's
+#: stream asks for at a time. Enough to see whether the descriptions have
+#: drifted, bounded because this crosses a socket to a phone.
 DETAIL_LIMIT = 40
+#: And the most one page of that stream may be asked for at once, whatever the
+#: caller says. The whole history is readable now -- the console pages back
+#: through it -- and a single reply carrying thousands of rows would be a
+#: minute of wi-fi and several megabytes of JSON on a phone.
+PAGE_MAX = 200
 #: How many of an entity's newest observations become rays on the map, in the
 #: list where every entity is drawn at once.
 RAY_LIMIT = 6
@@ -624,13 +630,15 @@ class RoverWorld:
                                              limit=RAY_LIMIT,
                                              placement=entity.get("placement"))
         return {"ok": True, "entities": entities,
-                # Everything the model has ever said, newest first, and the
-                # observations no entity was made for. Both are here so the popup
-                # can show repeated creation of the same thing under new
-                # identifiers, which is the failure this slice exists to measure
-                # and which an entity list alone makes look like a busy room.
+                # The newest looks, whatever they were decided to be, so the
+                # popup can show repeated creation of the same thing under new
+                # identifiers -- the failure this slice exists to measure, and
+                # one an entity list alone makes look like a busy room. Only the
+                # newest, because this reply is sent again every time the rover
+                # records: the stream walks back through the rest of the history
+                # by asking `world_state_observations` for a page at a time, and
+                # how many of them have no entity is a count in the summary.
                 "recent": store.observations(limit=DETAIL_LIMIT),
-                "unmatched": store.observations(unmatched=True, limit=DETAIL_LIMIT),
                 "summary": store.summary()}
 
     def _tool_world_state_entity(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -651,15 +659,31 @@ class RoverWorld:
 
     def _tool_world_state_observations(self,
                                        arguments: dict[str, Any]) -> dict[str, Any]:
+        """One page of the history, newest first, starting below a given row.
+
+        **This is how the console shows more than its newest handful.** What
+        rides in the popup's body is capped, because that body is re-sent every
+        time the rover records anything; the rest of the history is walked back
+        through here, a page at a time, as somebody scrolls. `before_at` and
+        `before_id` are the oldest row the caller already holds -- a place in the
+        history rather than a count of rows to skip, since the rover goes on
+        recording while it is being read.
+
+        `more` is whether the page came back full, which is the only cheap thing
+        that can be said about what is under it.
+        """
         why = self._world_ready()
         if why:
             return {"ok": False, "error": why}
         entity_id = arguments.get("entity_id")
-        store = self._world_store()
-        return {"ok": True, "observations": store.observations(
+        limit = max(1, min(int(arguments.get("limit") or DETAIL_LIMIT), PAGE_MAX))
+        before_at = arguments.get("before_at")
+        before = (None if before_at in (None, "")
+                  else (float(before_at), int(arguments.get("before_id") or 0)))
+        rows = self._world_store().observations(
             None if entity_id is None else str(entity_id),
-            limit=int(arguments.get("limit") or DETAIL_LIMIT),
-            unmatched=bool(arguments.get("unmatched")))}
+            limit=limit, unmatched=bool(arguments.get("unmatched")), before=before)
+        return {"ok": True, "observations": rows, "more": len(rows) == limit}
 
     def _tool_world_state_frame(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """The stored JPEG an observation was read from, as base64.

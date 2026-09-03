@@ -34,6 +34,14 @@ now records a look a second so there is no fixed handful to guess at any more.
 So `/world_frame.jpg` fetches on a miss instead: the page asks for the picture it
 is about to draw, the browser asks only for the ones on screen, and each is
 fetched once because a stored frame never changes under its name.
+
+**The observations older than the newest forty come the same way.** The body
+carries a window rather than the history because the body is re-sent every time
+the rover records; the stream in the popup is not capped at that window all the
+same. `/world_observations.json` hands back a page of whatever is below the
+oldest row the browser already has, so scrolling to the bottom of the tiles walks
+back through the store a page at a time, and a day of looking is something a
+person can reach the end of.
 """
 from __future__ import annotations
 
@@ -55,6 +63,9 @@ FRAME_CACHE = 48
 #: work: the browser is holding a connection open on the answer, and a frame that
 #: is not coming should become a missing picture rather than a hung tab.
 FRAME_TIMEOUT_S = 8.0
+#: How many observations one page of the stream carries. The same forty the
+#: payload's newest window holds, so that one scroll of the tiles is one ask.
+STREAM_PAGE = 40
 
 
 class SessionWorld:
@@ -89,10 +100,13 @@ class SessionWorld:
         #: Frames by identifier, so `/world_frame.jpg` can answer without going
         #: back to the rover for a picture it already has.
         self.world_frames: dict[str, bytes] = {}
-        #: One connection for pictures, and one fetch at a time over it. Its own
-        #: because the world channel carries the inspections.
-        self._frame_lock = threading.Lock()
-        self._frame_client = None
+        #: One connection for the two things the page fetches for itself -- the
+        #: pictures, and the older pages of the observation stream -- and one
+        #: fetch at a time over it. Its own because the world channel carries
+        #: the inspections, which a browser waiting on a picture must not queue
+        #: behind.
+        self._aside_lock = threading.Lock()
+        self._aside_client = None
         self.world_selected = ""
         #: The phrase the search box last sent, kept so that an answer arriving
         #: after somebody has typed something else can be recognised as stale.
@@ -366,7 +380,6 @@ class SessionWorld:
         elif name == "world_state_entities":
             moved = self.world_put(
                 entities=body.get("entities") or [],
-                unmatched=body.get("unmatched") or [],
                 summary=body.get("summary") or {},
                 recent=body.get("recent") or [])
             self.world_counts()
@@ -444,18 +457,11 @@ class SessionWorld:
             return held
         if not frame_id or not self.address:
             return None
-        with self._frame_lock:
+        with self._aside_lock:
             held = self.world_frames.get(frame_id)
             if held is not None:
                 return held
-            client = self._frame_client
-            if client is None or client.describe() != self.address:
-                if client is not None:
-                    client.close()
-                client = rover_tools.RoverClient(self.address,
-                                                 timeout=FRAME_TIMEOUT_S)
-                self._frame_client = client
-            body = client.call("world_state_frame", {"frame_id": frame_id})
+            body = self._aside_call("world_state_frame", {"frame_id": frame_id})
             if not body.get("ok"):
                 return None
             try:
@@ -471,6 +477,47 @@ class SessionWorld:
                 # they will stop being looked at.
                 self.world_frames.pop(next(iter(self.world_frames)))
             return jpeg
+
+    def world_observations(self, before: tuple[float, int] | None) -> dict[str, Any]:
+        """One page of the observation stream, older than the row the page names.
+
+        **The whole history is readable, and it does not ride in the payload.**
+        That payload is re-sent whenever the rover records anything, which while
+        it is looking is every second or so, so what goes in it is the newest
+        forty and nothing else; everything before that is fetched here as
+        somebody scrolls back, once each, and the browser keeps what it has been
+        given. A store holding a day of looking is therefore a stream a person
+        can reach the bottom of, at the cost of the pages they actually asked
+        for.
+
+        `before` is the oldest row the page already holds -- a place in the
+        history rather than a count of rows to skip, because the rover records
+        while it is being read. None starts at the newest.
+        """
+        if not self.address:
+            return {"ok": False, "error": "not connected"}
+        arguments: dict[str, Any] = {"limit": STREAM_PAGE}
+        if before is not None:
+            arguments["before_at"], arguments["before_id"] = before
+        with self._aside_lock:
+            return self._aside_call("world_state_observations", arguments)
+
+    def _aside_call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """One quick call to the rover, off the world channel. Lock held.
+
+        Both callers are serving a browser that is holding a connection open, and
+        both are a file read or an index lookup on the rover: neither may queue
+        behind the inspection the world channel exists to carry. A
+        `RoverClient` serialises its own calls anyway, so the lock here is what
+        keeps two page threads from building two connections at once.
+        """
+        client = self._aside_client
+        if client is None or client.describe() != self.address:
+            if client is not None:
+                client.close()
+            client = rover_tools.RoverClient(self.address, timeout=FRAME_TIMEOUT_S)
+            self._aside_client = client
+        return client.call(name, arguments)
 
     def world_bump(self) -> None:
         """Say that `/world.json` has changed, so the page fetches it again.

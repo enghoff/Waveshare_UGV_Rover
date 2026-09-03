@@ -46,7 +46,7 @@ def test_the_world_state_popup() -> None:
     # An empty world. The popup opens on a rover that has never inspected
     # anything, and that has to read as "press the button", not as an error.
     session.world_handle("world_state_entities", {
-        "ok": True, "entities": [], "recent": [], "unmatched": [],
+        "ok": True, "entities": [], "recent": [],
         "summary": {"entities": 0, "observations": 0, "inspections": 0,
                     "map_session": 1}}, 0.1)
     check("an empty world is available rather than broken",
@@ -86,7 +86,7 @@ def test_the_world_state_popup() -> None:
                                              "off_deg": 25.0, "miss_m": 1.32,
                                              "tolerance_m": 0.68,
                                              "agrees": False}}]}],
-        "recent": [observation], "unmatched": [],
+        "recent": [observation],
         "summary": {"entities": 1, "observations": 2, "inspections": 1,
                     "map_session": 1}}, 0.2)
     check("a populated world reaches the counts",
@@ -393,7 +393,7 @@ def test_an_open_popup_keeps_itself_current() -> None:
     check("...without sending the browser for the payload twice",
           session.world_state()["gen"], "")
     session.world_handle("world_state_entities",
-                         {"ok": True, "entities": [], "unmatched": [],
+                         {"ok": True, "entities": [],
                           "recent": [], "summary": counts}, 0.0)
     first = session.world_state()["gen"]
     check("...and the body that arrives is what says there is something new",
@@ -412,7 +412,7 @@ def test_an_open_popup_keeps_itself_current() -> None:
 
     # A body that arrives identical -- the entity list can be unchanged even when
     # an inspection has been recorded -- must not move the tag either.
-    body = {"ok": True, "entities": [], "unmatched": [], "recent": [],
+    body = {"ok": True, "entities": [], "recent": [],
             "summary": counts}
     session.world_handle("world_state_entities", body, 0.0)
     held = session.world_state()["gen"]
@@ -528,6 +528,38 @@ def test_the_world_urls() -> None:
         reply = connection.getresponse()
         reply.read()
         check("...and so does asking for no frame at all", reply.status, 404)
+
+        # The rest of the observation history, which the payload deliberately
+        # does not carry: it is re-sent every time the rover records, so it holds
+        # the newest forty and the stream fetches what is under them as it is
+        # scrolled. A page is asked for by the oldest row on the screen.
+        asked = []
+        session.address = "rover:8769"
+        session._aside_client = type("Client", (), {
+            "describe": lambda _self: "rover:8769",
+            "call": lambda _self, name, arguments: (
+                asked.append((name, arguments))
+                or {"ok": True, "observations": [{"id": 6}], "more": False}),
+        })()
+        connection.request("GET", "/world_observations.json"
+                                  "?before_at=1756900000.5&before_id=7")
+        reply = connection.getresponse()
+        page = json.loads(reply.read())
+        check("a page of the older history is served", reply.status, 200)
+        check("...off the rover, on the connection the pictures use",
+              asked[-1][0], "world_state_observations")
+        check("...starting at the row the browser named, not at a row count",
+              (asked[-1][1]["before_at"], asked[-1][1]["before_id"]),
+              (1756900000.5, 7))
+        check("...and the looks under it are what comes back",
+              [row["id"] for row in page["observations"]], [6])
+
+        # A cursor the page could not have sent. Answered plainly rather than by
+        # a traceback on the thread serving the browser.
+        connection.request("GET", "/world_observations.json?before_at=soon")
+        reply = connection.getresponse()
+        reply.read()
+        check("...while a place that is not a place is refused", reply.status, 404)
     finally:
         connection.close()
         server.shutdown()

@@ -140,6 +140,27 @@ def test_the_world_state_calls_reach_the_store():
                   rover.call("world_state_summary", {})["summary"]["observations"],
                   1)
 
+            # A store with more in it than one reply may carry, which is what
+            # the console's observation stream walks back through. The page
+            # starts below a row the caller names rather than at a count of rows
+            # to skip, because the rover goes on recording while it is read.
+            for _ in range(3):
+                store.record([world_state.Sighting(bbox=[0.2, 0.2, 0.4, 0.4],
+                                                   dino=b"", siglip=b"")],
+                             capture={"frame_id": "f"})
+            page = rover.call("world_state_observations", {"limit": 3})
+            check("the history answers a page at a time",
+                  len(page["observations"]), 3)
+            check("...and says there is more under it", page["more"], True)
+            oldest = page["observations"][-1]
+            under = rover.call("world_state_observations",
+                               {"limit": 3, "before_at": oldest["observed_at"],
+                                "before_id": oldest["id"]})
+            check("...the next page starting below the row it was given",
+                  [row["id"] for row in under["observations"]], [oldest["id"] - 1])
+            check("...and saying so when the store has run out",
+                  under["more"], False)
+
             cleared = rover.call("world_state_clear", {})
             check("clearing the semantic world empties it", cleared["ok"], True)
             check("...of observations",

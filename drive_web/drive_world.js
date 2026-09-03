@@ -36,6 +36,27 @@ let worldAsking = false;
 // no longer exists. Beside it, the row as it was last drawn, which is what stops
 // a redraw every two seconds from collapsing the details a person just opened.
 let worldZoom = null, worldZoomDrawn = "";
+// The observation stream, and it is the one thing in this popup that does not
+// come out of the fetched body. The body carries the newest forty looks and is
+// replaced whole every time the rover records; everything older than that is
+// fetched a page at a time as the stream is scrolled, and has to be kept here
+// because nothing sends it again. By the store's own row identifier, so that a
+// look arriving in the body and the same look in a page are one tile.
+let worldStream = new Map();
+// The tiles those rows are drawn as, by the same identifier, so that a body
+// arriving every second adds the new looks to the top of a grid of several
+// hundred rather than rebuilding it.
+let worldTiles = new Map();
+// The newest row the stream has been given, which is what says whether the next
+// body still joins onto what is held; whether the rover may have older ones
+// still; whether a page is in flight; and what the last one had to say for
+// itself. See `wObsTake` and `wObsFill`.
+let worldStreamTop = null, worldStreamMore = true, worldStreamBusy = false;
+let worldStreamNote = "";
+// How near the end of the drawn stream counts as having scrolled to the bottom
+// of it, in pixels. Enough that the next page is on its way before the tiles
+// run out, since it is a call to the rover and not a local one.
+const STREAM_REACH = 600;
 
 const wTime = (t) => t ? new Date(t * 1000).toLocaleTimeString() : "-";
 const wAgo = (t) => {
@@ -711,44 +732,142 @@ function drawWorldDetail() {
 function wTile(observation) {
   const tile = document.createElement("button");
   tile.type = "button";
-  tile.className = "wtile" + (observation.entity_id ? "" : " wfailed");
-  if (observation.entity_id) {
-    tile.style.borderLeftColor = `hsl(${wHue(observation.entity_id)} 70% 45%)`;
-  }
   tile.onclick = () => { worldZoom = observation.id; drawWorldZoom(); };
   tile.append(wShot(observation));
   const caption = document.createElement("div");
-  caption.className = "wmeta mono" + (observation.entity_id ? "" : " wdup");
-  caption.textContent = `${wTime(observation.observed_at)} `
-      + (observation.entity_id || "no entity");
   tile.append(caption);
+  wTileFace(tile, observation);
   return tile;
 }
 
+// The part of a tile that can still change after it is drawn: a look with no
+// entity gets one when the resolver next settles, and that is the change
+// somebody watching this tab is waiting for. Written into the tile that is
+// already on the page rather than by building a new one, because the picture
+// inside it has been fetched and a replacement would fetch it again.
+function wTileFace(tile, observation) {
+  tile.className = "wtile" + (observation.entity_id ? "" : " wfailed");
+  tile.style.borderLeftColor = observation.entity_id
+      ? `hsl(${wHue(observation.entity_id)} 70% 45%)` : "";
+  const caption = tile.lastChild;
+  caption.className = "wmeta mono" + (observation.entity_id ? "" : " wdup");
+  caption.textContent = `${wTime(observation.observed_at)} `
+      + (observation.entity_id || "no entity");
+}
+
+// The whole stream, newest first: the body's window and every page fetched under
+// it, in one order.
+function wObsRows() {
+  return [...worldStream.values()]
+      .sort((a, b) => (b.observed_at - a.observed_at) || (b.id - a.id));
+}
+
+// The body's newest looks, folded into the stream the tab is showing.
+//
+// **The check is whether the two still join up.** The body carries the newest
+// forty and arrives again every time the rover records; the pages below it were
+// fetched once and are never sent again, so they are kept here. That is only
+// sound while the newest row the browser had is still inside the new window: if
+// it has fallen out of it, forty or more looks were recorded while nothing was
+// drawing -- the popup was shut, or the browser was in the background -- and
+// what the browser holds is separated from what has just arrived by a hole it
+// cannot see. So the stream starts again from the body, which is also what
+// happens when the store is cleared and the window comes back empty.
+function wObsTake(recent) {
+  if (worldStreamTop !== null
+      && !recent.some((row) => row.id === worldStreamTop)) {
+    worldStream.clear();
+    worldStreamMore = true;
+    worldStreamNote = "";
+  }
+  for (const row of recent) worldStream.set(row.id, row);
+  worldStreamTop = recent.length ? recent[0].id : null;
+}
+
 function drawWorldObservations() {
-  const pane = $("wObsAll");
-  pane.replaceChildren();
-  const recent = world.recent || [];
-  const unmatched = world.unmatched || [];
-  const heading = document.createElement("p");
-  heading.className = "hint";
-  heading.textContent = `${recent.length} shown, newest first`
-                      + (unmatched.length
-                         ? `, ${unmatched.length} with no entity` : "");
-  pane.append(heading);
-  if (!recent.length) {
-    const empty = document.createElement("p");
-    empty.className = "hint";
-    empty.textContent = "nothing yet.";
-    pane.append(empty);
-    drawWorldZoom();
+  wObsTake(world.recent || []);
+  const rows = wObsRows(), summary = world.summary || {};
+  const total = summary.observations ?? rows.length;
+  $("wObsCount").textContent = !rows.length ? "nothing yet."
+      : `${rows.length} of ${total} shown, newest first`
+        + (summary.unmatched ? `, ${summary.unmatched} with no entity` : "");
+  // Tiles are kept and moved rather than rebuilt. The body arrives again every
+  // time the rover records something, which while it is looking is about every
+  // second, and rebuilding a grid of several hundred pictures that often threw
+  // away both the place somebody had scrolled back to and every frame the
+  // browser had already fetched.
+  const grid = $("wObsTiles"), kept = new Map();
+  let at = grid.firstChild;
+  for (const row of rows) {
+    let tile = worldTiles.get(row.id);
+    if (tile) wTileFace(tile, row);
+    else tile = wTile(row);
+    kept.set(row.id, tile);
+    if (tile === at) at = at.nextSibling;
+    else grid.insertBefore(tile, at);
+  }
+  // Whatever is left below them belongs to a store that has since been cleared.
+  while (at) { const next = at.nextSibling; at.remove(); at = next; }
+  worldTiles = kept;
+  wObsSay(worldStreamNote);
+  drawWorldZoom();
+  // A page that did not fill the pane leaves the bottom of the stream on screen,
+  // and nothing else would ask for the next one.
+  wObsFill();
+}
+
+// The line under the tiles: what the last page had to say for itself, or that
+// one is on its way.
+function wObsSay(line) {
+  $("wObsNote").textContent = line;
+  $("wObsNote").hidden = !line;
+}
+
+// The next page of the history, when the tiles have been scrolled near the end
+// of what is drawn.
+//
+// **Asked for by where the stream ends rather than by how far down it we are**,
+// so that looks recorded while somebody reads cannot make a page repeat rows
+// already on the screen or step over others. Nothing is asked for while the
+// stream already holds everything the rover says it has, which is the ordinary
+// case on a store smaller than one window.
+function wObsFill() {
+  const pane = $("wPaneObservations");
+  if (pane.hidden || worldStreamBusy || !worldStreamMore) return;
+  const rows = wObsRows();
+  if (!rows.length || rows.length >= ((world.summary || {}).observations ?? 0)) {
     return;
   }
-  const tiles = document.createElement("div");
-  tiles.className = "wtiles";
-  for (const observation of recent) tiles.append(wTile(observation));
-  pane.append(tiles);
-  drawWorldZoom();
+  if (pane.scrollHeight - pane.scrollTop - pane.clientHeight > STREAM_REACH) return;
+  const oldest = rows[rows.length - 1];
+  worldStreamBusy = true;
+  // Said at once and written straight onto the line rather than through a
+  // redraw, because the redraw is what called this. At the bottom of a long
+  // stream over the rover's wi-fi, a page is a second in which nothing moves,
+  // and nothing moving is what reaching the end of the store looks like.
+  wObsSay("fetching older looks...");
+  fetch(`/world_observations.json?before_at=${oldest.observed_at}`
+        + `&before_id=${oldest.id}`)
+    .then((reply) => reply.ok ? reply.json() : null)
+    .then((body) => {
+      worldStreamBusy = false;
+      if (!body || !body.ok) {
+        // Said under the tiles rather than swallowed: a stream that stops
+        // growing looks exactly like a stream that has reached the bottom.
+        worldStreamNote = (body && body.error) || "the rover did not answer";
+        drawWorldObservations();
+        return;
+      }
+      for (const row of body.observations || []) worldStream.set(row.id, row);
+      worldStreamMore = !!body.more;
+      worldStreamNote = "";
+      drawWorldObservations();
+    })
+    .catch(() => {
+      worldStreamBusy = false;
+      worldStreamNote = "the console did not answer";
+      drawWorldObservations();
+    });
 }
 
 // The clicked look at full size: the same row the stream used to draw, given the
@@ -759,12 +878,11 @@ function drawWorldObservations() {
 // opened `what was measured` open through a rover that is still recording.
 function drawWorldZoom() {
   const layer = $("wZoom"), body = $("wZoomBody");
-  const shown = worldZoom === null ? null
-      : (world.recent || []).find((o) => o.id === worldZoom);
+  const shown = worldZoom === null ? null : worldStream.get(worldZoom);
   if (!shown) {
-    // The row has gone: the store was cleared, or it has fallen off the end of
-    // the forty. Back to the stream rather than a frozen picture of a look the
-    // rover no longer has.
+    // The row has gone: the store was cleared, or the stream started again
+    // because what the browser held no longer joined onto the body. Back to the
+    // tiles rather than a frozen picture of a look the rover no longer has.
     worldZoom = null;
     worldZoomDrawn = "";
     layer.hidden = true;
@@ -941,6 +1059,10 @@ function wireWorld() {
   // button or by the room beside the picture -- the same two ways the popup
   // itself closes, and for the same reason.
   $("wZoomClose").onclick = () => { worldZoom = null; drawWorldZoom(); };
+  // Scrolling to the bottom of the tiles is what asks the rover for the looks
+  // below them, so the stream ends where the store does rather than at the
+  // window the body carries.
+  $("wPaneObservations").addEventListener("scroll", wObsFill, {passive: true});
   $("wZoom").onclick = (event) => {
     if (event.target === $("wZoom")) { worldZoom = null; drawWorldZoom(); }
   };

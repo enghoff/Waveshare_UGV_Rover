@@ -567,9 +567,9 @@ that has an answer would be the wrong order.
 | Call | What it does |
 |---|---|
 | `world_state_summary` | counts, the last inference, the last few outcomes |
-| `world_state_entities` | every entity, its rays, the observation stream, the unmatched — no entities exist yet, so this is the observation stream |
+| `world_state_entities` | every entity, its rays, and the newest looks — no entities exist yet, so those looks are the whole of what it has to say |
 | `world_state_entity(id)` | one entity and its whole recent history |
-| `world_state_observations(entity_id?)` | the history on its own |
+| `world_state_observations(entity_id?, before_at?, before_id?)` | one page of the history on its own, starting below the row named — which is how the console walks back through a store far larger than any one reply |
 | `world_state_frame(frame_id)` | the stored JPEG, base64, for the console |
 | `world_inspect(settle?)` | take a picture, measure the regions in it, record them; `settle: false` records without deciding identity |
 | `world_state_clear` | empty the semantic world; the map is untouched |
