@@ -2005,7 +2005,8 @@ It is Bowman's probabilistic data association SLAM, and the point of writing it
 was that the greedy pass commits early and every fault it has had is a fault of
 committing early.
 
-**It loses, and `resolve.DISCOVERY` names the greedy pass.** Not on the
+**It loses, and `resolve.DISCOVERY` names the greedy pass.** Ten things where
+the greedy pass places fifteen, and 32 seconds where it takes 1.9. Not on the
 arithmetic — the fit above *is* this module's estimator — but because
 discovery here is incremental. `_pair_up` sees the pool again after every look and
 offers every waiting ray to everything already placed, through the wide
@@ -2039,11 +2040,21 @@ this rover has served stereo depth on loopback 8770 since 2026-08-31 and nothing
 reads it. What stands in the way is extrinsics rather than arithmetic; see
 [oak_depth/README.md](../oak_depth/README.md), which lists what has to be settled.
 
-The other reason it is off is cost: one expectation step enumerates every
-feasible arrangement of every look, and pruning runs one of those per candidate
-dropped, which is minutes against the greedy pass's 1.6 seconds on the same
-recording. A range bounds that too, by collapsing each ray's candidate set from a
-handful to one.
+**The exact version of the expectation step is the worse one here, which is
+worth knowing.** Enumerating every feasible way a look could be shared out gives
+the true marginals; keeping only each look's single best arrangement is an
+approximation. On this recording the approximation places 10 things to the exact
+version's 7, with a worst bearing 26.4 degrees out against 35.5, in 32 seconds
+against 48 minutes — so it is the default. The reason exactness loses is the
+reason it is exact: spreading a ray's belief over every arrangement that could
+explain it leaves less of it anywhere, and a thing ends up with one bearing where
+it needed two. On clean synthetic geometry the ordering reverses, which is what
+`test_cluster.py` records.
+
+Cost is the other reason it is off at all. One expectation step runs over every
+look and the pruning runs one of those per candidate dropped, against a daemon
+that resolves after every look. A range bounds that too, by collapsing each ray's
+candidate set from a handful to one.
 
 ## What was measured on the rover, 2026-09-02
 

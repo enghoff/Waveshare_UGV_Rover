@@ -31,12 +31,17 @@ back and repair.
 | `_pair_up`, `refine` crossing a pair | 15 | 66 | 0 | 1 | 1.56 | 48.9 | 1.6 s |
 | **`_pair_up`, `refine` fitting** | **15** | **65** | **0** | **1** | **1.41** | **21.1** | **1.9 s** |
 | `_cluster_up`, one arrangement | 10 | 52 | 0 | 1 | 1.71 | 26.4 | 32 s |
-| `_cluster_up`, soft weights | — | — | — | — | — | — | >30 min |
+| `_cluster_up`, soft weights | 7 | 29 | 0 | 4 | 2.05 | 35.5 | 48 min |
 
-Misses are degrees. The soft-weight row is not filled in because it did not
-finish: enumerating every feasible arrangement of every look, once per candidate
-dropped, is not a thing that can run after every look on the rover. That is a
-result rather than a gap — see **Cost** below.
+Misses are degrees. **The soft weights are worse than the single arrangement on
+every count and take ninety times as long**, which is worth stating plainly
+because they are the more principled of the two: they are the exact marginals
+over every feasible way a look could be shared out, where the other keeps only
+the most likely way. The reason they lose is the reason they are exact. Spreading
+a ray's belief across every arrangement that could explain it leaves less of it
+anywhere, so fewer rays clear the lead a claim needs, and a thing ends up with
+one bearing where it wanted two. Exactness costs recall here rather than buying
+accuracy.
 
 Two conclusions, and they point opposite ways.
 
@@ -80,8 +85,8 @@ way is extrinsics rather than arithmetic, and
 **Cost, and it is the other reason.** One expectation step enumerates every
 feasible arrangement of every look, and the pruning runs one of those per
 candidate dropped. Taking the single best arrangement instead costs 32 seconds
-where the greedy pass takes 1.9; enumerating them all did not finish in half an
-hour. The rover resolves after every look, so neither is affordable as it stands.
+where the greedy pass takes 1.9; enumerating them all costs 48 minutes. The rover
+resolves after every look, so neither is affordable as it stands.
 Before this could run there the candidate set would have to be bounded — which
 a range also does, by collapsing each ray's candidates from a handful to one.
 """

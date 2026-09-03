@@ -347,7 +347,7 @@ def test_three_things_in_a_row_need_a_third_place_to_look_from() -> None:
                                   observation=index * 10 + which))
         return rays
 
-    from_two = cluster.discover(looks_from((0.0, 0.0), (0.0, 3.0)))
+    from_two = cluster.discover(looks_from((0.0, 0.0), (0.0, 3.0)), soft=True)
     check("from two places, three things in a row are not three things",
           len(from_two), 1)
     check("...and what it does place is not one of them",
@@ -355,11 +355,26 @@ def test_three_things_in_a_row_need_a_third_place_to_look_from() -> None:
           [(1.8, 1.2)])
 
     from_three = cluster.discover(
-        looks_from((0.0, 0.0), (0.0, 3.0), (1.5, -2.5)))
+        looks_from((0.0, 0.0), (0.0, 3.0), (1.5, -2.5)), soft=True)
     check("a third place to look from settles it",
           sorted((round(one["x_m"], 1), round(one["y_m"], 1))
                  for one in from_three),
           [(3.0, -2.0), (3.0, 0.0), (3.0, 2.0)])
+
+    # **And the cheaper expectation step does not settle it**, which is the cost
+    # of the default and is worth having written down. Keeping only each look's
+    # single best arrangement throws away exactly the spread of belief that lets
+    # a third viewpoint outvote a phantom, so it finds one of the three and waits
+    # for the rest. It is still the default because on the rover's own recording
+    # it places ten things to the exact version's seven, in 32 seconds against 48
+    # minutes -- see `discover`.
+    cheaply = cluster.discover(
+        looks_from((0.0, 0.0), (0.0, 3.0), (1.5, -2.5)), soft=False)
+    check("the single-arrangement step finds fewer of them",
+          len(cheaply) < len(from_three), True)
+    check("...but places nothing where no thing is",
+          all((round(one["x_m"], 1), round(one["y_m"], 1)) in row
+              for one in cheaply), True)
 
 
 def test_a_range_on_each_ray_settles_what_two_places_cannot() -> None:
@@ -382,6 +397,9 @@ def test_a_range_on_each_ray_settles_what_two_places_cannot() -> None:
             ray["range_m"] = math.hypot(at[0] - x_m, at[1] - y_m)
             rays.append(ray)
     got = cluster.discover(rays)
+    # Deliberately on the default expectation step, which without ranges finds
+    # one of these three from three places and none from two. A range does not
+    # merely help it; it removes the ambiguity that was costing it the other two.
     check("with a range on every ray, two places are enough for three things",
           sorted((round(one["x_m"], 1), round(one["y_m"], 1)) for one in got),
           [(3.0, -2.0), (3.0, 0.0), (3.0, 2.0)])
@@ -398,8 +416,9 @@ def test_a_pass_may_not_invent_everything_it_can_see() -> None:
                                             (1.5, -2.5))):
             rays.append(a_ray(x_m, y_m, at, look=which + 1,
                               observation=index * 10 + which))
-    check("three things are there to be found", len(cluster.discover(rays)), 3)
-    got = cluster.discover(rays, limit=2)
+    check("three things are there to be found",
+          len(cluster.discover(rays, soft=True)), 3)
+    got = cluster.discover(rays, soft=True, limit=2)
     check("...and a capped pass takes two of them", len(got), 2)
     check("...the best evidenced first",
           got[0]["viewpoints"] >= got[1]["viewpoints"], True)

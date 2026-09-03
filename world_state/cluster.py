@@ -583,7 +583,7 @@ def _survives(place: dict[str, Any], rays: list[dict[str, Any]],
 
 
 def discover(rays: list[dict[str, Any]], *, looks_like=None,
-             soft: bool = True, limit: int | None = None
+             soft: bool = False, limit: int | None = None
              ) -> list[dict[str, Any]]:
     """Everything these bearings place, fitted together.
 
@@ -605,6 +605,17 @@ def discover(rays: list[dict[str, Any]], *, looks_like=None,
     `limit` caps how many are returned, best-evidenced first, which is the same
     restraint `resolve.MAX_NEW_PER_PASS` applies: a pass that invents fifteen
     things at once has no way to be checked by the look that follows it.
+
+    **`soft` defaults off, and that is a measurement rather than a shortcut.**
+    Soft weights are the exact marginals over every feasible way a look could be
+    shared out; off, only the single most likely arrangement is kept, which is
+    the max-mixture approximation. The exact version is the more principled and
+    it is worse here on every count -- 7 things against 10, a worst bearing 35.5
+    degrees out against 26.4, in 48 minutes against 32 seconds
+    ([bench_cluster.py](bench_cluster.py)). The reason it loses is the reason it
+    is exact: spreading a ray's belief across every arrangement that could
+    explain it leaves less of it anywhere, so fewer rays clear `CLAIM_LEAD` and a
+    thing ends up with one bearing where it needed two.
     """
     usable = [ray for ray in rays if ray.get("bearing_deg") is not None]
     if len(usable) < 2:
