@@ -509,10 +509,15 @@ class Session(SessionActions, SessionShow, SessionWorld):
         as long as its own patience, which is four minutes. Driving off to a place
         somebody clicked four minutes ago is a rover acting on an intention that has
         expired, so the click is forgotten and the notice line says so.
+
+        A click that interrupted an exploring run is given longer -- see
+        EXPLORE_HANDOVER_S -- and is described by what is still true when the
+        patience runs out rather than by what was running when it was clicked.
         """
         if self.pending_target is not None and now > self.pending_until:
-            self.forget_target("the move it interrupted did not let go of the "
-                               "wheels")
+            self.forget_target("the exploring run did not stop" if self.exploring
+                               else "the move it interrupted did not let go of "
+                                    "the wheels")
 
     def mind_the_watchers(self, now: float) -> None:
         """Stop the rover once the last browser has been gone a couple of seconds.

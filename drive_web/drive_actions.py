@@ -26,6 +26,16 @@ from drive_show import _number
 # four minutes instead would be worse than giving up.
 TARGET_HANDOVER_S = 6.0
 
+# The same wait for a click that interrupted an *exploring* run, which is longer
+# because the thing being waited for is different. A commanded move drops its goal
+# within a control cycle of the stop landing. An exploring run between goals is
+# choosing the next one, and a stop is only acted on when that round is over: four
+# candidates, each costing a costmap query and a planner call at the planner's own
+# 1 Hz, and the run cannot answer until they have all been priced. Six seconds
+# would give up on the rover in the middle of that and drop the click. The place is
+# held in map coordinates, so arriving late costs accuracy nothing.
+EXPLORE_HANDOVER_S = 30.0
+
 
 class SessionActions:
     """The half of `Session` that a button press lands in."""
@@ -148,7 +158,7 @@ class SessionActions:
         speed = _number(action.get("speed_ms"), None)
         if speed is not None:
             arguments["speed_ms"] = speed
-        if self.busy_since is None:
+        if self.busy_since is None and not self.exploring:
             self.move("drive_to", arguments)
             return
         # Something is running. Stop it, and hold this until the wheels are free:
@@ -157,16 +167,30 @@ class SessionActions:
         # stop goes out on the connection that carries nothing else, and the move it
         # cancels answers within a control cycle of it landing, which is where the
         # waiting target is picked up. See `handle`.
+        #
+        # An exploring run is the same interruption with a different ending, and
+        # for the same reason: it holds the same mutex, so a `drive_to` sent while
+        # it runs is refused as busy. What differs is how the console learns the
+        # wheels are free. Nothing waits on an exploring run -- it was started with
+        # a call that answered at once -- so no reply ever arrives to hand the
+        # target over, and the handover is done from the rover's own `exploring`
+        # going false in `show_status` instead. A click here is also the only way
+        # to end a run and go somewhere in one gesture; the alternative was STOP,
+        # wait, then click the same pixel again.
+        exploring = self.busy_since is None
         replacing = self.pending_target is not None
         self.pending_target = arguments
-        self.pending_until = time.monotonic() + TARGET_HANDOVER_S
+        self.pending_until = time.monotonic() + (EXPLORE_HANDOVER_S if exploring
+                                                 else TARGET_HANDOVER_S)
         if replacing:
             # The stop from the first click is already in flight, so a second one
             # would only say the same thing again.
             self.say(f"{self.new_target()} instead", "note")
             return
-        self.say(f"{self.new_target()}, so the {self.busy_name} in flight is being "
-                 f"stopped first", "note")
+        running = ("the exploring run" if exploring
+                   else f"the {self.busy_name} in flight")
+        self.say(f"{self.new_target()}, so {running} is being stopped first",
+                 "note")
         self.stop(keep_target=True)
 
     def new_target(self) -> str:

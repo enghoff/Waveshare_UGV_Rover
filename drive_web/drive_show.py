@@ -92,7 +92,24 @@ class SessionShow:
         # then runs for ten minutes, and it can be started by the voice model or
         # by another browser -- so "is it exploring" is a fact about the rover,
         # and the only place that knows it is the rover.
+        was_exploring = self.exploring
         self.exploring = bool(body.get("exploring"))
+        # A click on the map while the rover was exploring stops the run and takes
+        # its place, and this is the only announcement there is that the wheels are
+        # free: an exploring run is started by a call that answers at once, so
+        # unlike a move it has no reply for the handover to hang off. Nothing
+        # happens here when no click is waiting, which is every other time an
+        # exploring run ends.
+        #
+        # The run stops saying it is exploring a fraction before it lets go of the
+        # wheels -- the flag is cleared on the ROS side and the mutex on the
+        # daemon's when the last line of the run reaches it -- so in principle a
+        # click could be handed over into a "busy". It has to cross two more
+        # sockets to get there and that window is a single loopback line wide, and
+        # the cost of losing is the notice line saying busy rather than anything
+        # the rover does, so it is not worth a retry ladder to close.
+        if was_exploring and not self.exploring and self.busy_since is None:
+            self.hand_over()
         self.show_lidar(body)
         self.show_move(body.get("move") or {})
 

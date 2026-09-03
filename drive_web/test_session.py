@@ -608,6 +608,111 @@ def test_a_second_click_takes_over() -> None:
           "ahead +1.00 m, left -0.40 m")
 
 
+def test_a_click_while_exploring_takes_over() -> None:
+    """Clicking the map while the rover is off exploring sends it there instead.
+
+    The same instruction as clicking during a move -- go to this place, stop
+    whatever you were doing -- and until now the only one the console got wrong.
+    Exploring holds the wheels through the same mutex a move does, so the click
+    went out as a `drive_to`, came back refused as busy, and the rover carried on
+    mapping the house; the way to do it by hand was STOP, wait, then find the same
+    pixel again.
+
+    What makes it a separate path is that nothing waits on an exploring run. It is
+    started by a call that answers in a moment and then runs for ten minutes, so
+    there is no reply for the handover to hang off the way a move's outcome is.
+    The console watches the rover's own `exploring` instead, and sends the waiting
+    click when it goes false.
+    """
+    try:
+        import drive_web
+        from console_model import tap_to_point
+        from drive_actions import EXPLORE_HANDOVER_S, TARGET_HANDOVER_S
+    except ImportError as exc:
+        SKIP.append(f"a click while exploring takes over ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append((name, arguments or {}))
+
+    # The same map as the test above: 3 m each way at 4 px per cell, the rover two
+    # metres out along x, so the pixel 80 rows up the page is a metre further on.
+    view = {"half_extent_m": 3.0, "scale": 4, "rover_up": False,
+            "pose": {"x_m": 2.0, "y_m": -1.0, "heading_deg": 90.0}}
+
+    def console(exploring: bool = True):
+        session = drive_web.Session(None, 3.0, 480)
+        session.moves, session.halt = Fake(), Fake()
+        session.tools = ["drive_to", "drive", "explore", "stop_driving"]
+        session.can_drive = True
+        session.map_view = dict(view)
+        # Read off the rover in the ordinary way, not set by any button here.
+        session.exploring = exploring
+        return session
+
+    if tap_to_point(240, 240, view) is None:
+        SKIP.append("a click while exploring takes over (no mapimg beside us)")
+        return
+
+    exploring = {"ok": True, "exploring": True, "lidar_live": True}
+    finished = {"ok": True, "exploring": False, "lidar_live": True}
+
+    session = console()
+    session.act({"do": "tap", "col": 240, "row": 160})
+    check("a click while exploring stops the run",
+          [name for name, _ in session.halt.sent], ["stop_driving"])
+    check("...rather than sending a drive the rover would refuse as busy",
+          session.moves.sent, [])
+    check("...and says which of the two it stopped",
+          "exploring run is being stopped" in session.notice["text"], True)
+    check("...and waits longer than it would for a move, because a run between "
+          "goals is pricing frontiers and cannot answer until it has",
+          EXPLORE_HANDOVER_S > TARGET_HANDOVER_S, True)
+
+    # The run has not stopped yet. Nothing may go out on the move connection while
+    # it holds the wheels, however many status polls arrive.
+    session.show_status(exploring)
+    session.show_status(exploring)
+    check("the click waits while the rover is still exploring",
+          (session.moves.sent, session.pending_target is not None), ([], True))
+
+    # And now it has. That is the only announcement there is that the wheels are
+    # free, and the click goes on it.
+    session.show_status(finished)
+    check("the waiting click goes as soon as the run says it has stopped",
+          [name for name, _ in session.moves.sent], ["drive_to"])
+    where = session.moves.sent[0][1]
+    check("...to the place under the cursor, in map coordinates",
+          (where["x_m"], where["y_m"]), (3.0, -1.0))
+    check("...and nothing is left waiting", session.pending_target, None)
+    check("...and the console counts itself busy with it",
+          session.busy_name, "drive_to")
+
+    # An exploring run that ends by itself is the ordinary case, and there is
+    # nothing waiting to send when it does.
+    session = console()
+    session.show_status(finished)
+    check("a run that ends with nothing clicked sends nothing",
+          session.moves.sent, [])
+
+    # A stop that never landed. The click is dropped rather than acted on minutes
+    # later, and the notice says which thing failed to let go.
+    session = console()
+    session.act({"do": "tap", "col": 240, "row": 160})
+    held = session.pending_until
+    session.mind_the_target(held - 0.1)
+    check("a click behind an exploring run is held while there is still hope",
+          session.pending_target is not None, True)
+    session.mind_the_target(held + 0.1)
+    check("...and dropped once there is not", session.pending_target, None)
+    check("...saying it was the exploring run that would not stop",
+          "exploring run did not stop" in session.notice["text"], True)
+
+
 def test_a_slow_browser_is_shown_the_newest_state() -> None:
     """A browser on a link that cannot keep up gets fewer states, all of them now.
 
@@ -735,5 +840,6 @@ TESTS = (
     test_a_browser_leaving,
     test_one_console_at_a_time,
     test_a_second_click_takes_over,
+    test_a_click_while_exploring_takes_over,
     test_a_slow_browser_is_shown_the_newest_state,
 )
