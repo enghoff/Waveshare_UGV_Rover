@@ -27,6 +27,9 @@
 // the entity list.
 
 let worldGen = "", world = {}, worldTab = "entities";
+// Whether the pane was drawn mid-search last time round, so that the answer
+// -- or the refusal, which brings no new body with it -- puts the pane back.
+let worldAsking = false;
 
 const wTime = (t) => t ? new Date(t * 1000).toLocaleTimeString() : "-";
 const wAgo = (t) => {
@@ -68,6 +71,7 @@ function drawWorld(w) {
   // enough that two people will.
   $("worldInspect").disabled = w.busy || !state.link.connected;
   $("worldInspect").textContent = w.busy ? "looking..." : "inspect world";
+  drawWorldAsking(w);
   if (!w.open || !w.gen || w.gen === worldGen) return;
   // Fetched rather than pushed, like the network list: tens of kilobytes against
   // a state that goes out ten times a second. While the popup is open the rover
@@ -712,14 +716,33 @@ function drawWorldObservations() {
   }
 }
 
+// A phrase on its way to the rover, drawn from the pushed state rather than from
+// the fetched body -- because the body arrives *with* the answer, and the answer
+// is several seconds away. Drawn only from the body, the pane sat on the last
+// phrase's count for the whole of that wait, so pressing enter changed nothing on
+// screen and the count that was there read as the answer to what had just been
+// typed. The seconds are the rover's own, so a second browser that joins during a
+// search sees how long it has really been running.
+function drawWorldAsking(w) {
+  const asking = !!w.searching;
+  $("wSearchBox").classList.toggle("wasking", asking);
+  if (asking) {
+    $("wSearchNote").textContent = `asking... ${w.searched_s || 0} s`;
+    // The count and the matches below it answer the phrase before this one.
+    if (!worldAsking) $("wSearchResults").replaceChildren();
+  } else if (worldAsking) {
+    // Whatever the rover left: the answer, or nothing at all if it refused --
+    // a refusal brings no new body, so no redraw would otherwise happen.
+    drawWorldSearch();
+  }
+  worldAsking = asking;
+}
+
 function drawWorldSearch() {
   const note = $("wSearchNote"), results = $("wSearchResults");
+  if (state.world.searching) return;   // `drawWorldAsking` has the pane
   results.replaceChildren();
   const answer = world.search;
-  if (state.world.searching) {
-    note.textContent = "asking...";
-    return;
-  }
   if (!answer) {
     note.textContent = "";
     return;
@@ -867,6 +890,16 @@ function wireWorld() {
   }
   $("wSearchForm").onsubmit = (event) => {
     event.preventDefault();
-    post({do: "world", what: "search", query: $("wSearchBox").value});
+    const query = $("wSearchBox").value;
+    post({do: "world", what: "search", query: query});
+    // Enter is answered here rather than a tenth of a second later, when the
+    // state carrying the rover's own flag arrives and takes this over. If the
+    // ask never got out, the next state puts the old answer back within a second.
+    if (query.trim()) {
+      $("wSearchResults").replaceChildren();
+      $("wSearchNote").textContent = "asking... 0 s";
+      $("wSearchBox").classList.add("wasking");
+      worldAsking = true;
+    }
   };
 }

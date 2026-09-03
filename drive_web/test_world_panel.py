@@ -219,6 +219,11 @@ def test_finding_a_thing_from_the_console() -> None:
     check("...as the rover's own argument", sent[-1][1]["query"], "a spray bottle")
     check("...and the box says it is working",
           session.world_state()["searching"], True)
+    # The pane counts the wait off, so the seconds are the rover's own rather
+    # than each browser's guess from when it first saw the flag.
+    session.world_search_since -= 3.2
+    check("...for as long as it has been working",
+          session.world_state()["searched_s"], 3)
 
     session.world_handle("world_state_search", {
         "ok": True, "query": "a spray bottle", "confident": True,
@@ -229,6 +234,8 @@ def test_finding_a_thing_from_the_console() -> None:
                      "placement": {"x_m": 2.0, "y_m": 1.0}}]}, 4.0)
     check("the answer stops the working state",
           session.world_state()["searching"], False)
+    check("...and stops the clock with it",
+          session.world_state()["searched_s"], 0)
     check("...and is kept for the popup to draw",
           session.world_payload["search"]["matches"][0]["observation_id"], 4)
 

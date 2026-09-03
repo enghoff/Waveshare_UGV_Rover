@@ -109,6 +109,13 @@
   }
   #wSearchForm { margin-bottom: 6px; }
   #wSearchBox { width: 100%; box-sizing: border-box; padding: 5px 8px; font: inherit; }
+  /* A phrase in flight. The pane below empties while the rover is thinking, so
+     the box itself has to show that something is happening; a search runs for
+     several seconds and a still, empty pane reads as a search that never went. */
+  #wSearchBox.wasking {
+    border-color: var(--accent); animation: wasking 1.1s ease-in-out infinite;
+  }
+  @keyframes wasking { 50% { opacity: .5; } }
   /* The verdict, which is the part of a search that matters: the rover saying it
      cannot find something has to look different from it saying where something
      is, not merely score lower. */

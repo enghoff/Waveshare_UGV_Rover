@@ -97,6 +97,10 @@ class SessionWorld:
         #: The phrase the search box last sent, kept so that an answer arriving
         #: after somebody has typed something else can be recognised as stale.
         self.world_query = ""
+        #: When that phrase went out, or None when nothing is in flight. The
+        #: search waits on the text tower, which is seconds rather than
+        #: milliseconds, so the pane counts them off rather than sitting still.
+        self.world_search_since: float | None = None
         self.world_outstanding = 0
         self.world_asked_at = 0.0
         #: When the counts were last asked for while the popup was open, and
@@ -240,6 +244,7 @@ class SessionWorld:
             return
         self.world_query = query
         self.world["searching"] = True
+        self.world_search_since = time.monotonic()
         self.world["error"] = ""
         self.world_call("world_state_search", {"query": query, "limit": 12})
 
@@ -322,6 +327,7 @@ class SessionWorld:
                 self.world["note"] = ""
             if name == "world_state_search":
                 self.world["searching"] = False
+                self.world_search_since = None
             # No bump: everything said here rides in the pushed state, which is
             # compared whole on every tick. Moving the tag would send the browser
             # back for 74 kB it already has, and a poll every two seconds means a
@@ -371,6 +377,7 @@ class SessionWorld:
                 selected_rays=body.get("rays") or [])
         elif name == "world_state_search":
             self.world["searching"] = False
+            self.world_search_since = None
             # Stale if the box has moved on since this was asked. Dropped rather
             # than drawn, because a five-second answer arriving under a different
             # phrase reads as the search having got it wrong.
@@ -476,8 +483,14 @@ class SessionWorld:
 
     def world_state(self) -> dict[str, Any]:
         """The part of the world that rides in every pushed state."""
+        # Whole seconds, for the reason the move stopwatch is whole seconds: a
+        # tenth would make this a new state ten times a second for as long as
+        # the model was thinking, and nobody can read it at that speed anyway.
+        asking = self.world_search_since
         return dict(self.world, gen=self.tag(self.world["gen"]),
-                    selected=self.world_selected)
+                    selected=self.world_selected,
+                    searched_s=(0 if asking is None
+                                else round(time.monotonic() - asking)))
 
 
 def _inspection_note(body: dict[str, Any], seconds: float) -> str:
