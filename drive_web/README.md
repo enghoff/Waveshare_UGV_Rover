@@ -197,8 +197,17 @@ The inspection has a connection of its own, for the reason the wi-fi scan does: 
 minute of model on the status connection would stall the lights, the tracking panel
 and the map behind it, and nothing may ever sit in front of STOP. The popup's
 contents are fetched from `/world.json` when a generation tag in the state moves,
-and the stored frames from `/world_frame.jpg`, for the reason the network list and
-the pictures are fetched rather than pushed.
+for the reason the network list and the pictures are fetched rather than pushed.
+
+The stored frames come from `/world_frame.jpg`, and that one goes to the rover on a
+connection of its own again, synchronously, on whichever thread is serving the
+page. **It used to guess ahead instead** — one frame per entity, the newest four of
+whoever was selected, pushed over the world channel — and every observation whose
+frame had not been guessed drew the words "not fetched" where its picture should
+be, which is every row in the observation stream. Now the page asks for the picture
+it is about to draw and the browser asks only for the ones on screen, which is what
+makes it bounded on a rover that records a look a second. Each is fetched once,
+because a stored frame never changes under its name.
 
 See [`../world_state/README.md`](../world_state/README.md).
 
