@@ -28,6 +28,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from . import locate
 from .perception_client import describe_eyes
 
 #: A picture older than this is not what the camera is looking at now. Only ever
@@ -392,14 +393,18 @@ class Inspector:
             else:
                 why = "no pose, no gimbal angle, or no field of view"
             parts.append(f"{missing} without a bearing ({why})")
-        elif sigma_deg:
-            # A bearing was kept and is worth less than one taken standing
-            # still. Said because it is what a person watching a driven run
-            # wants to see going by, and because it is the number the crossings
-            # below are made with.
-            parts.append(f"the bearing is good to {sigma_deg:.1f} deg, the rover "
-                         f"having turned {turned:.1f} deg while the shutter was "
-                         f"open")
+        elif sigma_deg and turned:
+            # A bearing was kept while the rover was turning. **Reported as the
+            # geometry will spend it and not as it was computed**: the residual
+            # is stored raw because it is the measurement, and `locate.sigma_of`
+            # floors it at `BEARING_SIGMA_DEG` because nothing here can beat what
+            # the gimbal and the heading are worth standing still. A line saying
+            # 0.7 deg for a bearing every crossing treats as 1.5 would be the
+            # console claiming a precision the rover does not act on.
+            spent = max(locate.BEARING_SIGMA_DEG, sigma_deg)
+            parts.append(f"the rover turned {turned:.1f} deg while the shutter "
+                         f"was open, leaving the bearing good to "
+                         f"{spent:.1f} deg")
         if not settled:
             parts.append("identity not settled yet")
             return "; ".join(parts)

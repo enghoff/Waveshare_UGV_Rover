@@ -678,11 +678,20 @@ python world_state/replay.py /tmp/run.db --frames /tmp/frames --map /tmp/map.jso
 ```
 
 A fifth runs at a desk against the same database and needs nothing else. It asks
-what the bearing model costs, by comparing the one multiplication `view.py` does
-with the swept lens in `face_tracking/lens.py`:
+what the bearing model cost, by comparing the multiplication `view.py` used to do
+with the swept lens in `face_tracking/lens.py` that it does now:
 
 ```bash
 python world_state/bench_bearing.py /tmp/run.db
+```
+
+A sixth runs on the rover and needs the camera to itself. It measures the one
+number the recovery of a turning look's bearing rests on — how well this camera
+says *when* it took a picture — and reports what that costs a bearing at the turn
+rates this rover actually reaches:
+
+```bash
+ssh orin 'cd ~/ugv/world_state && python3 bench_shutter.py'
 ```
 
 **`replay.py` replays a recording with the bearings it was recorded with**, unless

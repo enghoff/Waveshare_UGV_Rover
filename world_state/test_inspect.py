@@ -444,7 +444,11 @@ def test_what_a_bearing_is_worth_reaches_the_row_and_the_geometry() -> None:
               row["bearing_sigma_deg"] is not None and
               row["bearing_sigma_deg"] > 0, True)
         check("...which the status line reports rather than hiding",
-              "the bearing is good to" in (answer["detail"] or ""), True)
+              "leaving the bearing good to" in (answer["detail"] or ""), True)
+        check("...as the figure the geometry will spend, not the raw residual",
+              f"{locate.BEARING_SIGMA_DEG:.1f} deg" in (answer["detail"] or "")
+              or float(row["bearing_sigma_deg"]) > locate.BEARING_SIGMA_DEG,
+              True)
         store.close()
 
     # And the geometry spends it. Same two rays, one of them measured while the
