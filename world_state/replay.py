@@ -68,6 +68,7 @@ COLUMNS = (
     "inference_id observed_at source frame_id frame_path bbox_json "
     "observer_pan_deg observer_tilt_deg observer_pose_json map_session "
     "model_id raw_json bearing_deg span_deg origin_sigma_m bearing_sigma_deg "
+    "elevation_deg elevation_span_deg "
     "region_source region_score "
     "dino_blob siglip_blob vectors_from"
 ).split()
@@ -144,6 +145,13 @@ def remeasure(groups: list[list[dict]], size: tuple[int, int] | None = None
             was = row.get("bearing_deg")
             row["bearing_deg"] = drawn["bearing_deg"]
             row["span_deg"] = drawn["span_deg"]
+            # The vertical half of the same ray, and **the only way a recording
+            # taken before it was kept can be asked about it at all**: the
+            # column did not exist, so every row carries null and the geometry
+            # rightly abstains. Worked out here from the box, the tilt and the
+            # lens the rover actually had, which are all still on the row.
+            row["elevation_deg"] = drawn["elevation_deg"]
+            row["elevation_span_deg"] = drawn["elevation_span_deg"]
             if was is not None:
                 moved.append(abs(_wrap(float(was) - drawn["bearing_deg"])))
     moved.sort()
@@ -294,7 +302,7 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
         entities = [dict(row) for row in store.db.execute("SELECT * FROM entities")]
         observations = [dict(row) for row in store.db.execute(
             "SELECT id, entity_id, inference_id, bearing_deg, span_deg,"
-            " observer_pose_json, dino_blob FROM observations")]
+            " elevation_deg, observer_pose_json, dino_blob FROM observations")]
         store.close()
         return entities, observations
     finally:

@@ -19,6 +19,23 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**A thing has a height now, and the room is no longer flat, since
+2026-09-04.** The lens returns a direction in three dimensions and the bearing
+uses two of them, so the vertical half of the ray was computed and thrown away
+on every box the rover has ever drawn -- one line in `view.azimuth_deg`, whose
+own docstring said so. It is kept now, as `elevation_deg` beside the bearing, and
+what it buys is **an axis nothing else in this component can see**: appearance
+cannot separate two objects on this rover, and a crossing seen from above cannot
+separate a picture on the wall from the sideboard beneath it. Over the 12,299
+pairs of the drive of 2026-09-04 that clear every other gate, two crops that look
+like one object disagree about height by 0.16 m in the median and two that do not
+by 0.62 -- **four times the gap, at a cost of 2% of the pairs that were genuinely
+the same thing.** Replayed, the run goes from 41 things to 46 with more looks
+attached to them and fewer bearings straying, and the vertical tail is cut by two
+thirds: no entity spans more than 1.75 m of height where one spanned 3.81. The
+write-up is *A thing has a height, and the ray always carried it* below;
+[bench_height.py](bench_height.py) is the comparison.
+
 **A thing is placed by every bearing that agrees with it, since 2026-09-03.** It
 used to be placed by two of them crossing, with the rest only getting a vote on
 which two — and the nudge that followed minimised a *distance* across each ray,
@@ -320,6 +337,8 @@ Every observation carries where the camera was:
 
 ```text
 observer_pan_deg / observer_tilt_deg    the gimbal, from the capture call
+bearing_deg / span_deg                  which way, and how wide, off the lens
+elevation_deg / elevation_span_deg      how high, and how tall, off the same ray
 observer_pose_json                      x, y and heading from SLAM, or null
 frame_id / frame_path                   the JPEG the encoders were given
 map_session                             which SLAM map was live
@@ -711,7 +730,17 @@ with the swept lens in `face_tracking/lens.py` that it does now:
 python world_state/bench_bearing.py /tmp/run.db
 ```
 
-A sixth runs on the rover and needs the camera to itself. It measures the one
+A sixth runs at a desk too and asks what knowing how high a thing is buys, by
+replaying the same recording with the vertical test silenced and then as it
+ships. **It works the elevations out again for you**, because the column did not
+exist when the rover wrote these rows and every ray would otherwise abstain:
+
+```bash
+python world_state/bench_height.py /tmp/run.db --frames /tmp/frames \
+    --map /tmp/map.json
+```
+
+A seventh runs on the rover and needs the camera to itself. It measures the one
 number the recovery of a turning look's bearing rests on — how well this camera
 says *when* it took a picture — and reports what that costs a bearing at the turn
 rates this rover actually reaches:
@@ -1653,6 +1682,131 @@ it". The whole of this run had seven places to look from.
    never been tried for this -- measured on the same pairs they order them the
    same way and no better (the real pairs at 0.851 and 0.906 against a same-frame
    95th percentile of 0.854), so there is nothing free there either.
+
+## A thing has a height, and the ray always carried it, 2026-09-04
+
+Everything this component knew about the room was flat, and the missing fact was
+not missing. `lens.ray_at` turns a pixel into a direction in three dimensions;
+`view.azimuth_deg` rotates that direction back by the tilt the gimbal was holding
+and then keeps the horizontal part of it, under a docstring that says outright
+*only the component out of the lens survives that: how high the ray ends up does
+not change which way it points*. Which is true of a bearing and was taken as
+true of the component. The vertical component was computed on all 459 boxes of
+this drive and dropped on the floor, the same way the tilt itself was until
+2026-09-03 and the shutter's timestamp until the day before.
+
+It costs the rover nothing to keep. No new sensor, no second pass over the
+frame, no extra call to the sidecar: the same projection, the same tilt, the same
+box, one more `atan2`. It is stored as `elevation_deg` beside the bearing, for
+the same reason the bearing is stored -- it is what the camera saw at that
+moment, and a lens refitted afterwards must not rewrite it.
+
+### What it is for, and it is not a second way of placing things
+
+An elevation is an angle, and a height is an angle times a range. A bearing has
+no range, so **nothing here places anything vertically**: the elevation is spent
+*after* a crossing has said how far away the thing is. That makes it a check
+rather than an estimator, which is exactly what this component was short of.
+
+The check it makes is one nothing else could. Two bearings that cross beautifully
+in plan view can be pointing at things a metre apart in height -- a picture on a
+wall and the sideboard under it, a doorway and the floor in front of it -- and
+until now the resolver had two ways to tell things apart and neither could see
+it. Appearance is the weaker of the two and known to be: 13% of pairs known to be
+different things clear the 0.55 floor, and this rover measured a chair against its
+own twin at 0.735 against the same chair at 0.696. Geometry was the stronger and
+was two-dimensional.
+
+**And the camera's own height is not needed for it.** Both rays leave the same
+mount, so whatever height that mount is at cancels out of the difference between
+them. That is why this could ship today rather than after somebody had been round
+the rover with a tape measure -- which nobody has, and which is the one thing
+still missing: `base_link` is defined at the lidar, SLAM is two-dimensional, and
+no transform in this stack has a z in it. So every height here is **above the
+camera**, and says so on the console. `locate.CAMERA_HEIGHT_M` is where one
+measurement turns them all into heights above the floor.
+
+### Where it goes, which was the surprise
+
+Gating the founding pair is the obvious half and it turned out to be the smaller
+one. Put there alone, it refused 1,541 crossings, took the run from 41 things to
+36 -- and left the heights no more coherent than before, because **no look was
+lost, they were merely shuffled**. An entity on this rover is not usually built
+wrong. It is *joined* wrong afterwards, and every look that joins one comes
+through `locate.agrees`, which was pure plan view. So the test is in both places:
+`fix` for the pair that founds a thing and `agrees` for every look that comes
+later, which is where the value turned out to be.
+
+Two mistakes were made getting the tolerance right, and both are the same
+mistake -- a figure the gate spends as slack being fed by the thing the gate is
+supposed to catch.
+
+**The spread is not the doubt.** Reporting a placement's height uncertainty as
+how much its own looks disagree is the obvious choice and it is self-defeating:
+an entity that had admitted one look at the wrong height widened its own gate and
+admitted the next. It is the tightest measurement error behind any of its looks
+instead.
+
+**And the thing's own height is charged once, not twice.** A doorway is two
+metres tall, so two honest looks at it centre their boxes a metre apart -- that
+allowance belongs to the ray asking to join, exactly as `extent_m` does
+horizontally. Carried in the placement's doubt *as well*, anything founded on a
+box the frame had cut claimed a metre of slack and was then offered another metre
+by every ray that came near it. With both faults in, nine of thirty-eight things
+still spanned more than a metre of height with the gate switched on, and not one
+of them was a tall thing seen properly -- in every case the highest and lowest
+looks were of visibly different objects. `rise_noise_m` and `rise_extent_m` are
+the split that fixes it.
+
+### A box the frame cut says less, and says it often
+
+**A clipped box's middle is wherever the frame happened to cut**, which moves as
+the rover drives towards the thing. This is the one way an elevation misleads
+where a bearing does not: the camera stares level down the rover's nose at things
+taller than it, so a doorway or a wardrobe runs off the *top* of the picture far
+more often than either side of it runs off the edge. 77 of this drive's 459
+regions are cut that way -- one in six. Nothing is thrown away for it;
+`rise_extent_m` widens the allowance to the whole of what a thing that size could
+be, which is the honest answer. The elevation still says the thing is up there
+and stops saying exactly how far.
+
+### What it measured
+
+| | things | attached | still waiting | stray | a look against its entity | worst |
+|---|---:|---:|---:|---:|---:|---:|
+| flat | 41 | 373 | 75 | 29 | 0.11 | 3.42 |
+| **vertical** | **46** | **380** | **68** | **26** | **0.10** | **1.34** |
+
+Metres, on the drive of 2026-09-04, both arms replayed through the same resolver
+with `locate.rise_disagreement` silenced in one. More things, more looks attached
+to them, three fewer bearings straying, and the vertical tail cut by two thirds:
+the widest an entity spans top to bottom goes from 3.81 m to 1.75.
+
+Every one of those numbers is a replay and none of them is a drive. What the
+recording cannot show is whether the *rover* does better, and this one can be
+replayed honestly -- unlike the shutter fix, whose recording held no timestamps
+-- because the box, the pose, the tilt and the lens are all still on the row.
+
+### What is not measured, in the order it would hurt
+
+**The tilt servo has never been checked.** The pan servo lands about three
+degrees short at the ends of its travel with no feedback to correct it, and there
+is no reason to think its twin is better; three degrees at three metres is 16 cm
+of height. It matters less than it sounds *today*, because the gimbal has been
+held at its rest tilt of 10 degrees for every drive so far, so whatever the error
+is it is one constant shared by every observation -- it cancels out of the
+comparison between two looks, which is what the gate makes, and does not cancel
+out of a height above the floor, which nothing yet reports. The moment anything
+sweeps the tilt while building the world, this becomes the largest term in it.
+`usb_cameras/calibrate_fov.py` already sweeps the axis; what is missing is the
+same treatment `BEARING_SIGMA_DEG` got.
+
+**The rover's own pitch is recorded nowhere.** Flat floor, no term; a threshold or
+a cable, a real one. The driver board's `T:1001` telemetry already carries the
+inertial sensors and nothing reads them.
+
+**And the camera's height above the floor is a tape measure nobody has taken.**
+See `locate.CAMERA_HEIGHT_M`.
 
 ## The shutter has an instant, and the camera always knew it, 2026-09-03
 

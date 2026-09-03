@@ -163,6 +163,72 @@ MIN_RANGE_M = 0.75
 #: its picture and its bearing, and waits.
 SEE_PAST_M = 1.0
 
+#: How wrong an elevation is, in degrees, one standard deviation.
+#:
+#: **The bearing's own figure, because it is the same measurement.** An
+#: elevation and a bearing come off one ray through one swept lens on one
+#: gimbal, so the box term and the gimbal term behind `BEARING_SIGMA_DEG` apply
+#: unchanged to both. What differs is what each is spared and what neither has
+#: been asked:
+#:
+#:   the heading  belongs to the bearing alone. Which way the rover faces turns
+#:                a ray about the world's vertical, which cannot change how high
+#:                it points, so the 0.2 deg of heading drift is not in here --
+#:                and neither is `sigma_of`'s turn-rate term, which is the same
+#:                error taken while moving. An elevation measured on a rover
+#:                spinning at ninety degrees a second is as good as one taken
+#:                standing still, which is the one respect in which this is the
+#:                better half of the ray.
+#:   the tilt     is the pan servo's twin and has never been checked. The pan
+#:                lands about three degrees short at the ends of its travel with
+#:                no feedback to correct it, and there is no reason to think the
+#:                tilt servo is better. **On every drive so far the tilt has been
+#:                held at its rest position**, so whatever that error is, it is
+#:                one constant shared by every observation -- it cancels out of
+#:                any comparison between two of them, and does not cancel out of
+#:                a height above the floor.
+#:   the pitch    of the rover itself is not recorded anywhere. A flat floor
+#:                makes it nothing; a threshold does not. The driver board's
+#:                telemetry already carries it and nothing reads it.
+#:
+#: So the two terms that are measured are shared, one term is dropped in this
+#: half's favour, and two are unmeasured -- which is why this is the bearing's
+#: number rather than a smaller one. It is a separate name so that measuring the
+#: tilt servo has somewhere to land.
+ELEVATION_SIGMA_DEG = BEARING_SIGMA_DEG
+
+#: Past this, an elevation stops saying anything useful about a height at a
+#: horizontal range: the tangent runs away, and a ray pointing nearly at the
+#: ceiling puts the thing anywhere from here to the roof. Rays this steep keep
+#: their bearings and abstain from the vertical test.
+MAX_ELEVATION_DEG = 80.0
+
+#: The most an object's own height may forgive a rise, in metres, measured from
+#: its middle. **Half a door**, which is the tallest thing in a room a rover can
+#: see all of, and the vertical counterpart of `MAX_EXTENT_M` -- with the same
+#: job, which is to stop a region spanning most of the frame claiming the whole
+#: wall it was cut from.
+MAX_RISE_EXTENT_M = 1.0
+
+#: How high the camera sits above the floor, in metres, or None if nobody has
+#: measured it.
+#:
+#: **None, and that is a missing tape measure rather than a missing idea.**
+#: Nothing in this repository holds a height: `base_link` is defined at the
+#: lidar, SLAM is two-dimensional, and no transform in the stack has a z in it.
+#: So every height here is measured **from the camera** -- which is the quantity
+#: the geometry actually uses, since two rays leaving the same mount disagree
+#: vertically by the same amount whatever that mount's height is, and the
+#: unknown cancels.
+#:
+#: What it does not do is let a person read "0.4 m above the floor" off the
+#: console. Set this to the height of the gimbal's optical centre above the
+#: ground and every height becomes floor-referenced; leave it None and they stay
+#: camera-referenced and are labelled as such. The lever arm as the camera tilts
+#: is a few centimetres and is deliberately not modelled: it is far below what
+#: `ELEVATION_SIGMA_DEG` already allows.
+CAMERA_HEIGHT_M = None
+
 
 #: Where a bearing stops being evidence and starts being an outlier, in
 #: standard deviations of its own noise.
@@ -372,7 +438,7 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
     axis_deg = math.degrees(math.atan2(long_dy, long_dx))
     ux, uy = _unit(axis_deg)
     across = max(abs(-dx * uy + dy * ux) for dx, dy in moved) + origin_m
-    return {
+    placed = {
         "x_m": round(point[0], 3),
         "y_m": round(point[1], 3),
         "uncertainty_m": round(worst, 3),
@@ -390,6 +456,22 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         # asking to join it.
         "extent_m": round(extent_of(point, first, second), 3),
     }
+
+    # **And the two rays have to agree about how high it is, not only about
+    # where on the floor it is.** Everything above this line is a plan view, in
+    # which a bearing at a picture on the wall and a bearing at the sideboard
+    # under it cross as convincingly as two bearings at one thing. The elevation
+    # was measured off the same ray as the bearing and costs nothing to spend,
+    # and it is an axis nothing else in here can see: appearance cannot separate
+    # two objects on this rover, and a crossing cannot separate two heights.
+    # Rays that recorded no elevation abstain rather than refuse, which is every
+    # look the rover took before this was kept.
+    vertical = rise_disagreement(placed, first, second)
+    if vertical is not None:
+        if vertical[0] > vertical[1]:
+            return None
+        placed.update(height_fields(placed, [first, second]))
+    return placed
 
 
 def noise_deg(x_m: float, y_m: float, ray: dict[str, Any]) -> float:
@@ -670,6 +752,252 @@ def cross_track(point: dict[str, Any], ray: dict[str, Any]) -> float:
     return math.hypot(float(major) * math.sin(between), minor * math.cos(between))
 
 
+def along_track(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How uncertain this thing's position is *along* this particular bearing.
+
+    `cross_track`'s other half, and it is wanted for the same reason: the error
+    is a cigar rather than a disc, and a height read off an elevation is a range
+    multiplied by a tangent, so what it spends is the doubt running down the
+    sight line rather than the doubt across it.
+    """
+    major = point.get("error_major_m")
+    if major is None:
+        return float(point.get("uncertainty_m", 0.0))
+    minor = float(point.get("error_minor_m", major))
+    between = (math.radians(float(point.get("error_major_deg", 0.0)))
+               - math.atan2(float(point["y_m"]) - float(ray["y_m"]),
+                            float(point["x_m"]) - float(ray["x_m"])))
+    return math.hypot(float(major) * math.cos(between), minor * math.sin(between))
+
+
+def rise_m(point: dict[str, Any], ray: dict[str, Any]) -> float | None:
+    """How far above the camera this ray says the thing at `point` is, or None.
+
+    **A height needs a range, and a bearing has none** -- which is why this
+    takes a point rather than a ray alone, and why the elevation is a
+    measurement the resolver spends *after* something has been placed rather
+    than a second way of placing it. Once the crossing says how far away the
+    thing is, the angle the ray was pointing above the horizontal says how far
+    above the camera it is, and that is one tangent.
+
+    None whenever the answer would be dishonest: a look that recorded no
+    elevation, which is every look taken before the vertical half of the ray was
+    kept, and a ray steeper than `MAX_ELEVATION_DEG`, where the tangent runs
+    away faster than the range is known.
+
+    Above the *camera*, not above the floor. See `CAMERA_HEIGHT_M`.
+    """
+    elevation = ray.get("elevation_deg")
+    if elevation is None:
+        return None
+    try:
+        elevation = float(elevation)
+    except (TypeError, ValueError):
+        return None
+    if abs(elevation) > MAX_ELEVATION_DEG:
+        return None
+    range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
+                         float(point["y_m"]) - float(ray["y_m"]))
+    return range_m * math.tan(math.radians(elevation))
+
+
+def rise_tolerance_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How far off a rise may be and still be this thing, in metres.
+
+    Four terms, and they are the vertical mirror of `match_tolerance`'s three.
+    How wrong the elevation itself is, at the range the thing sits at. How
+    uncertain the range is -- which is `along_track`, turned into a height by
+    the same tangent, because being wrong about how far away a thing is moves
+    where a sloping ray says it is. Where the ray started, for the same reason.
+    And how tall the thing itself is, because two looks at either end of a
+    doorway centre on different parts of it, exactly as two looks at either end
+    of a sideboard do.
+
+    **A box the frame cut the top or bottom off gets the whole allowance**, and
+    that is the correction that keeps this honest. The camera stares level down
+    the rover's nose at things taller than it, so a doorway or a wardrobe runs
+    off the top of the picture routinely -- and a clipped box's middle is
+    wherever the frame happened to cut, which moves as the rover drives towards
+    it. Measuring a height off that centre and then believing it to a handspan
+    would throw away the very looks that see a thing best. See
+    `view.clipped_vertically`.
+    """
+    return rise_noise_m(point, ray) + rise_extent_m(point, ray)
+
+
+def rise_noise_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How wrong a rise could be, in metres, on measurement error alone.
+
+    Three of `rise_tolerance_m`'s four terms and deliberately not the fourth:
+    how wrong the elevation is at this range, how wrong the range itself is
+    turned into a height by the ray's own slope, and where the ray started. What
+    is left out is how tall the thing is, which is not an error in anything --
+    it is a miss the geometry forgives, and `rise_extent_m` is where it lives.
+
+    **The split is what stops the thing's height being charged twice.** It is
+    the vertical statement of the argument `match_tolerance` already makes
+    horizontally: the allowance for a wide thing belongs to the ray asking to
+    join it, once, and a placement's own doubt must not carry a copy of it. With
+    both, an entity founded on a box the frame had cut claimed a full metre of
+    slack in `height_sigma_m` and was then offered another metre by every ray
+    that came near it -- and on the drive of 2026-09-03 that is how nine of
+    thirty-eight things came to span more than a metre with the gate switched
+    on.
+    """
+    range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
+                         float(point["y_m"]) - float(ray["y_m"]))
+    slope = abs(math.tan(math.radians(
+        min(abs(float(ray.get("elevation_deg") or 0.0)), MAX_ELEVATION_DEG))))
+    return (range_m * math.tan(math.radians(ELEVATION_SIGMA_DEG))
+            + along_track(point, ray) * slope
+            + float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M) * slope)
+
+
+def rise_extent_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How much of a vertical miss this crop's own height forgives, in metres.
+
+    Half of how tall the thing looked, at the range it sits at -- the vertical
+    twin of the `extent_m` term in `match_tolerance`, and there for the same
+    reason: two looks at either end of a doorway centre their boxes on different
+    parts of it, and a bearing landing anywhere within a thing's silhouette is
+    pointing at the thing.
+
+    **A box the frame cut the top or bottom off gets the whole allowance.** The
+    camera stares level down the rover's nose at things taller than it, so a
+    doorway or a wardrobe runs off the top of the picture routinely, and a
+    clipped box's middle sits wherever the frame happened to cut -- which moves
+    as the rover drives towards it. Measuring a height off that centre and then
+    believing it to a handspan would throw away the very looks that see a thing
+    best. 77 of the 459 regions of the drive of 2026-09-03 are cut this way. See
+    `view.clipped_vertically`.
+    """
+    if ray.get("elevation_clipped"):
+        return MAX_RISE_EXTENT_M
+    range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
+                         float(point["y_m"]) - float(ray["y_m"]))
+    span_deg = float(ray.get("elevation_span_deg") or 0.0)
+    own = range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0))
+    return min(MAX_RISE_EXTENT_M, max(0.0, own))
+
+
+def rise_disagreement(point: dict[str, Any], first: dict[str, Any],
+                      second: dict[str, Any]) -> tuple[float, float] | None:
+    """How far apart two rays put a thing vertically, and how far apart they are
+    allowed to be. None when either of them measured no height.
+
+    **This is the test a plan-view crossing cannot make, and it is free.** Two
+    bearings that cross beautifully seen from above can be pointing at things a
+    metre apart in height -- a picture on the wall and the sideboard beneath it,
+    a doorway and the floor in front of it -- and until this existed nothing
+    looked. It costs the rover nothing further to answer, because the elevation
+    was measured off the same ray as the bearing and thrown away.
+
+    **The camera's own height is not needed and deliberately not used.** Both
+    rays leave the same mount, so whatever height that mount is at cancels out
+    of the difference between them. That is what makes this usable today rather
+    than after somebody has been round the rover with a tape measure.
+    """
+    here, there = rise_m(point, first), rise_m(point, second)
+    if here is None or there is None:
+        return None
+    return (abs(here - there),
+            rise_tolerance_m(point, first) + rise_tolerance_m(point, second))
+
+
+def height_over(point: dict[str, Any], rays: list[dict[str, Any]]
+                ) -> tuple[float, float] | None:
+    """How high the thing at `point` is above the camera, and how well that is
+    known, from every ray that measured it. None if none did.
+
+    The middle of what the rays say rather than a weighted fit: the spread
+    between them is dominated by where on the object each box happened to be
+    centred, which is not a Gaussian and is not independent between two looks at
+    the same face of a wardrobe. The median is also what keeps one badly cut box
+    from dragging the answer, which is the job `HUBER_K` does for the position.
+
+    **The doubt is measurement error on the best-placed look, and deliberately
+    neither the spread nor the thing's own height.** Both of the other two are
+    self-defeating, because `stands_as_high` spends this figure as slack. The
+    spread lets an entity that has admitted one look at the wrong height widen
+    its own gate and admit the next; the thing's height is already forgiven, per
+    ray, by `rise_extent_m`, so counting it again offers two metres of slack to
+    anything founded on a box the frame had cut. Measured on the drive of
+    2026-09-03, the two together left nine of thirty-eight things spanning more
+    than a metre with the gate switched on, every one of them a look at
+    something else rather than a tall thing seen properly.
+    """
+    seen = [(got, rise_noise_m(point, ray)) for got, ray in
+            ((rise_m(point, ray), ray) for ray in rays) if got is not None]
+    if not seen:
+        return None
+    heights = sorted(one for one, _ in seen)
+    middle = (heights[len(heights) // 2] if len(heights) % 2
+              else (heights[len(heights) // 2 - 1]
+                    + heights[len(heights) // 2]) / 2.0)
+    return middle, min(noise for _, noise in seen)
+
+
+def stands_as_high(point: dict[str, Any], ray: dict[str, Any]) -> bool:
+    """Whether this ray puts the thing at the height the placement claims.
+
+    True whenever the question cannot be asked -- a placement with no height, a
+    look that measured none, a ray too steep to read one off. **Silence is
+    agreement here and that is deliberate**: this is a removal-only gate, the
+    same shape as the appearance floor, and it must never be the reason a rover
+    that has just been upgraded refuses everything it knew yesterday.
+
+    What it is allowed to spend is `rise_tolerance_m` plus how well the
+    placement's own height is known, which is the same pairing of "how wrong
+    could this ray be" with "how wrong could the thing be" that
+    `match_tolerance` makes horizontally.
+    """
+    claimed = point.get("height_m")
+    if claimed is None:
+        return True
+    got = rise_m(point, ray)
+    if got is None:
+        return True
+    allowed = (rise_tolerance_m(point, ray)
+               + float(point.get("height_sigma_m") or 0.0))
+    return abs(got - float(claimed)) <= allowed
+
+
+def above_floor_m(height_m: float | None) -> float | None:
+    """A height above the camera as a height above the floor, or None.
+
+    None whenever `CAMERA_HEIGHT_M` has not been measured, which is what the
+    console reads to decide which of the two it is showing. Answering the
+    camera-referenced number under a floor-referenced label would be the one
+    way this could lie.
+    """
+    if height_m is None or CAMERA_HEIGHT_M is None:
+        return None
+    return float(height_m) + float(CAMERA_HEIGHT_M)
+
+
+def height_fields(point: dict[str, Any], rays: list[dict[str, Any]]) -> dict:
+    """The height part of a placement, from every ray that measured one.
+
+    Empty when none did, which is how a placement written from looks the rover
+    took before the vertical half of the ray was kept comes out exactly as it
+    always did -- and how `stands_as_high` knows to ask nothing of it.
+
+    Two numbers or three. `height_m` is always above the camera, because that is
+    the quantity the geometry has; `height_above_floor_m` appears only once
+    somebody has measured `CAMERA_HEIGHT_M`, and the console shows whichever it
+    is given under the label that is true of it.
+    """
+    found = height_over(point, rays)
+    if found is None:
+        return {}
+    fields = {"height_m": round(found[0], 3),
+              "height_sigma_m": round(found[1], 3)}
+    floor = above_floor_m(found[0])
+    if floor is not None:
+        fields["height_above_floor_m"] = round(floor, 3)
+    return fields
+
+
 def extent_of(point: tuple[float, float], *observers: dict[str, Any]) -> float:
     """Half the width of the thing at `point`, from the crops that saw it.
 
@@ -881,20 +1209,34 @@ def refine(point: dict[str, Any], rays: list[dict[str, Any]]) -> dict[str, Any]:
     when the evidence disagrees and never shrinks on a promise.
     """
     usable = [ray for ray in rays if agrees(point, ray)]
+
+    def with_height(where: dict[str, Any]) -> dict[str, Any]:
+        """The same placement, with its height taken from everything that now
+        agrees with it.
+
+        **A height has to improve as the evidence does, exactly as the position
+        does.** Left at whatever the founding pair said, it would be a claim from
+        two looks that a dozen later ones were then measured against -- and since
+        `stands_as_high` refuses a look that disagrees with it, a founding pair
+        that centred its boxes low would go on refusing every honest look at the
+        top of the thing for ever.
+        """
+        return {**where, **height_fields(where, usable or rays)}
+
     if len(usable) < 3:
-        return point
+        return with_height(point)
     fitted = fit_over(usable, [1.0] * len(usable),
                       (float(point["x_m"]), float(point["y_m"])),
                       float(point.get("extent_m") or 0.0))
     if fitted is None:
-        return point
+        return with_height(point)
     x_m, y_m = fitted["x_m"], fitted["y_m"]
     moved = math.hypot(x_m - float(point["x_m"]), y_m - float(point["y_m"]))
     if moved > float(point.get("uncertainty_m", 0.0)) + REFINE_LIMIT_M:
         # Further than the pair's own doubt plus a handspan is not a refinement,
         # it is a different answer, and this is not the function that chooses
         # between answers. Leave the pair's.
-        return point
+        return with_height(point)
     spread = math.sqrt(sum(
         cross_track_of(x_m, y_m, ray) ** 2 for ray in usable) / len(usable))
     major_m = max(point.get("error_major_m", point["uncertainty_m"]), spread)
@@ -905,13 +1247,14 @@ def refine(point: dict[str, Any], rays: list[dict[str, Any]]) -> dict[str, Any]:
     flatness = 1.0
     if fitted["error_major_m"] > 1e-9:
         flatness = min(1.0, fitted["error_minor_m"] / fitted["error_major_m"])
-    return {**point, "x_m": round(x_m, 3), "y_m": round(y_m, 3),
-            "uncertainty_m": round(max(point["uncertainty_m"], spread), 3),
-            "error_major_m": round(major_m, 3),
-            "error_minor_m": round(major_m * flatness, 3),
-            "error_major_deg": round(fitted["error_major_deg"], 1),
-            "refined_from": len(usable),
-            "spread_m": round(spread, 3)}
+    return with_height({
+        **point, "x_m": round(x_m, 3), "y_m": round(y_m, 3),
+        "uncertainty_m": round(max(point["uncertainty_m"], spread), 3),
+        "error_major_m": round(major_m, 3),
+        "error_minor_m": round(major_m * flatness, 3),
+        "error_major_deg": round(fitted["error_major_deg"], 1),
+        "refined_from": len(usable),
+        "spread_m": round(spread, 3)})
 
 
 def cross_track_of(x_m: float, y_m: float, ray: dict[str, Any]) -> float:
@@ -939,6 +1282,20 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
     a five-degree error matters much more at five metres than at one, and the
     resolver's question is "could this be the same object" rather than "is this
     the same angle".
+
+    **And in metres up and down as well, which is where the elevation earns its
+    keep.** Gating the founding pair on it is the obvious half and it turned out
+    to be the smaller one: measured over the drive of 2026-09-03, an entity is
+    not usually built wrong, it is *joined* wrong afterwards, and every look that
+    joins one comes through here. A bearing at a picture on a wall points at the
+    sideboard beneath it as convincingly as at the picture, and until this line
+    existed nothing in the resolver could say otherwise -- appearance cannot
+    separate two objects on this rover and a plan view cannot separate two
+    heights.
+
+    A placement with no height, or a ray that measured none, skips it: that is
+    every entity and every look the rover recorded before the vertical half of
+    the ray was kept, and the horizontal test is exactly what it always was.
     """
     range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
                          float(point["y_m"]) - float(ray["y_m"]))
@@ -949,6 +1306,8 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
     # decides whether a crossing places a thing, this decides whether a later
     # look joins one, and the run of 2026-09-02 had both kinds of error.
     if beyond_reach(ray, (float(point["x_m"]), float(point["y_m"]))):
+        return False
+    if not stands_as_high(point, ray):
         return False
     if tolerance_m is None:
         # What the bearing noise alone allows at this range, plus however

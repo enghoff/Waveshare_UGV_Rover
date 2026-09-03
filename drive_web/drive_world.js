@@ -162,6 +162,14 @@ function wPlace(entity) {
          : ` to within ${(+minor).toFixed(2)} m across `
            + `and ${(+major).toFixed(2)} m along the sight line`)
       + (place.extent_m ? ` · ${(+place.extent_m).toFixed(2)} m wide` : "")
+      // How high it stands. Above the floor once somebody has measured how high
+      // the camera is -- see locate.CAMERA_HEIGHT_M -- and above the camera
+      // until then, said as such rather than left to be read as the other one.
+      + (place.height_above_floor_m != null
+         ? ` · ${(+place.height_above_floor_m).toFixed(2)} m up`
+         : place.height_m != null
+         ? ` · ${(+place.height_m).toFixed(2)} m above the camera`
+         : "")
       + (place.baseline_m ? ` · from two looks ${(+place.baseline_m).toFixed(2)} m `
                             + `apart crossing at ${Math.round(place.parallax_deg)}°`
                           : "")

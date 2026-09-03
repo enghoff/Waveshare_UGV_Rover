@@ -536,6 +536,177 @@ def test_a_refined_thing_says_which_way_its_error_runs() -> None:
           got["uncertainty_m"] >= crossed["uncertainty_m"], True)
 
 
+
+# --- how high a thing is ----------------------------------------------------
+
+def _high(x_m, y_m, bearing_deg, elevation_deg=None, span_deg=0.0,
+          clipped=False):
+    """A bearing that also says how high above the horizontal it pointed.
+
+    `elevation_deg=None` is a look taken before the vertical half of the ray was
+    kept, which is every row in the deployed database, and the whole point of
+    the tests below is that such a look behaves exactly as it always did.
+    """
+    got = {"x_m": x_m, "y_m": y_m, "bearing_deg": bearing_deg, "span_deg": 0.0}
+    if elevation_deg is not None:
+        got.update({"elevation_deg": elevation_deg,
+                    "elevation_span_deg": span_deg,
+                    "elevation_clipped": clipped})
+    return got
+
+
+#: The sofa is at (3, 3), seen from (0, 0) and from (6, 0): 4.24 m from each. A
+#: thing a metre above the camera is 13.26 degrees up from either of them, and
+#: one two and a half metres up is 30.51.
+UP_1_M, UP_2_5_M = 13.26, 30.51
+
+
+def test_the_vertical_half_of_the_ray_is_measured_the_same_way() -> None:
+    """**The projection returns a direction in three dimensions and the bearing
+    uses two of them.** The third was computed and dropped on every box this
+    rover has ever drawn, which is why everything the component knows about the
+    room is flat."""
+    check("a point on the lens axis is exactly as high as the gimbal is tilted",
+          [round(view.elevation_deg(315.9 / 640, 227.4 / 480, tilt), 3)
+           for tilt in (0.0, 10.0, 30.0)], [0.0, 10.0, 30.0])
+    check("higher in the picture is higher in the room",
+          view.elevation_deg(0.5, 0.2, 0.0) > view.elevation_deg(0.5, 0.8, 0.0),
+          True)
+    check("and the middle of the frame is not the axis, by the same 13 pixels "
+          "the bearing already allows for",
+          round(view.elevation_deg(0.5, 0.5, 10.0), 2), 7.52)
+
+    observation = {"pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
+                   "observer_pan_deg": 0.0, "observer_tilt_deg": 10.0,
+                   "bbox": a_box()}
+    drawn = view.ray(observation, fov_deg=130.0)
+    check("a look carries how high the thing was", drawn["elevation_deg"], 10.0)
+    check("...and how tall it looked", drawn["elevation_span_deg"] > 0.0, True)
+    check("...and whether the frame cut it off", drawn["elevation_clipped"],
+          False)
+    check("a box running off the top of the picture says so",
+          view.ray(dict(observation, bbox=[0.4, 0.0, 0.6, 0.5]),
+                   130.0)["elevation_clipped"], True)
+
+
+def test_a_height_needs_a_range_and_a_bearing_has_none() -> None:
+    """Which is why the elevation is spent after a thing is placed rather than
+    being a second way of placing it."""
+    point = {"x_m": 3.0, "y_m": 3.0, "uncertainty_m": 0.2}
+    check("once the crossing says how far, the angle says how high",
+          round(locate.rise_m(point, _high(0.0, 0.0, 45.0, UP_1_M)), 2), 1.0)
+    check("a look that measured no elevation says nothing rather than level",
+          locate.rise_m(point, _high(0.0, 0.0, 45.0)), None)
+    check("and a ray pointing nearly at the ceiling says nothing either",
+          locate.rise_m(point, _high(0.0, 0.0, 45.0, 85.0)), None)
+    check("the height is above the camera, and stays there until somebody "
+          "measures how high that is",
+          (locate.CAMERA_HEIGHT_M, locate.above_floor_m(1.0)), (None, None))
+
+
+def test_two_rays_must_agree_about_the_height_as_well_as_the_place() -> None:
+    """**The test a plan view cannot make.** A bearing at a picture on the wall
+    crosses a bearing at the sideboard beneath it exactly as convincingly as two
+    bearings at one thing, and until this existed nothing in the resolver
+    looked."""
+    together = locate.fix(_high(0.0, 0.0, 45.0, UP_1_M),
+                          _high(6.0, 0.0, 135.0, UP_1_M))
+    check("two rays that agree about the height place the thing",
+          together is not None, True)
+    check("...and it comes out a metre above the camera",
+          round(together["height_m"], 2), 1.0)
+    check("...knowing that to a handspan", together["height_sigma_m"] < 0.2,
+          True)
+
+    check("two rays a metre and a half apart vertically place nothing",
+          locate.fix(_high(0.0, 0.0, 45.0, UP_1_M),
+                     _high(6.0, 0.0, 135.0, UP_2_5_M)), None)
+
+    check("the camera's own height is not needed for that and is not used",
+          locate.rise_disagreement(
+              {"x_m": 3.0, "y_m": 3.0, "uncertainty_m": 0.2},
+              _high(0.0, 0.0, 45.0, UP_1_M),
+              _high(6.0, 0.0, 135.0, UP_2_5_M))[0] > 1.4, True)
+
+    # The gate is removal-only, which is what lets a rover keep working through
+    # the change: every look and every entity it already holds measured no
+    # elevation at all.
+    check("a pair with no elevations is placed exactly as it always was",
+          locate.fix(_high(0.0, 0.0, 45.0),
+                     _high(6.0, 0.0, 135.0)) is not None, True)
+    check("...and claims no height it did not measure",
+          "height_m" in locate.fix(_high(0.0, 0.0, 45.0),
+                                   _high(6.0, 0.0, 135.0)), False)
+    check("one look measuring a height and the other not is not an answer",
+          locate.rise_disagreement({"x_m": 3.0, "y_m": 3.0},
+                                   _high(0.0, 0.0, 45.0, UP_1_M),
+                                   _high(6.0, 0.0, 135.0)), None)
+
+
+def test_a_look_joins_a_thing_only_at_the_height_it_stands() -> None:
+    """**Where the elevation actually earns its keep.** Measured on the drive of
+    2026-09-03, an entity is not usually built wrong -- it is joined wrong
+    afterwards, and every look that joins one comes through `agrees`."""
+    placed = {"x_m": 3.0, "y_m": 3.0, "uncertainty_m": 0.2,
+              "height_m": 1.0, "height_sigma_m": 0.15}
+    check("a bearing at the right height joins",
+          locate.agrees(placed, _high(0.0, 0.0, 45.0, UP_1_M)), True)
+    check("...and the same bearing at something a metre and a half higher "
+          "does not",
+          locate.agrees(placed, _high(0.0, 0.0, 45.0, UP_2_5_M)), False)
+    check("a thing with no height asks nothing of a look",
+          locate.agrees({"x_m": 3.0, "y_m": 3.0, "uncertainty_m": 0.2},
+                        _high(0.0, 0.0, 45.0, UP_2_5_M)), True)
+    check("and neither does a look with no elevation",
+          locate.agrees(placed, _high(0.0, 0.0, 45.0)), True)
+
+
+def test_a_thing_is_forgiven_its_own_height_once_and_not_twice() -> None:
+    """A doorway is two metres tall, so two looks at it centre their boxes a
+    metre apart and both are pointing at the doorway. That allowance belongs to
+    the ray asking to join, and a placement's own doubt must not carry a copy of
+    it -- with both, anything founded on a box the frame had cut claimed a metre
+    of slack and was then offered another metre by every ray that came near."""
+    point = {"x_m": 3.0, "y_m": 3.0, "uncertainty_m": 0.2}
+    tight = _high(0.0, 0.0, 45.0, UP_1_M)
+    tall = _high(0.0, 0.0, 45.0, UP_1_M, span_deg=20.0)
+    cut = _high(0.0, 0.0, 45.0, UP_1_M, clipped=True)
+    check("a small crop forgives nothing for its own size",
+          round(locate.rise_extent_m(point, tight), 3), 0.0)
+    check("a crop of something tall forgives half of how tall it looked",
+          round(locate.rise_extent_m(point, tall), 2), 0.75)
+    check("and a crop the frame cut is forgiven the whole allowance, because "
+          "its middle is wherever the frame happened to cut",
+          locate.rise_extent_m(point, cut), locate.MAX_RISE_EXTENT_M)
+    check("what a placement's own height is known to is measurement error and "
+          "not any of that",
+          locate.height_over(point, [tall, cut])[1],
+          min(locate.rise_noise_m(point, tall), locate.rise_noise_m(point, cut)))
+
+
+def test_the_height_improves_as_the_looks_do() -> None:
+    """Left at whatever the founding pair said, a height would be a claim from
+    two looks that every later one was then measured against -- and since
+    `stands_as_high` refuses a look that disagrees with it, a pair that centred
+    its boxes low would go on refusing every honest look at the top of the thing
+    for ever."""
+    rays = [_high(0.0, 0.0, 45.0, UP_1_M), _high(6.0, 0.0, 135.0, UP_1_M),
+            _high(0.0, 6.0, -45.0, UP_1_M), _high(6.0, 6.0, -135.0, UP_1_M)]
+    crossed = locate.fix(rays[0], rays[1])
+    refined = locate.refine(crossed, rays)
+    check("a refined placement still says how high the thing is",
+          round(refined["height_m"], 2), 1.0)
+    check("...taken from every ray that agrees, not from the founding two",
+          refined["refined_from"], 4)
+
+    # One badly cut box among four must not drag the answer, which is why the
+    # middle is taken rather than the mean.
+    astray = rays[:3] + [_high(6.0, 6.0, -135.0, UP_2_5_M, clipped=True)]
+    check("one look at the wrong height does not move it",
+          round(locate.height_over({"x_m": 3.0, "y_m": 3.0}, astray)[0], 2),
+          1.0)
+
+
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_bearing_comes_through_the_lens_the_gimbal_is_aimed_with,
@@ -558,4 +729,10 @@ TESTS = (
     test_the_looks_that_agree_say_where_exactly,
     test_a_far_look_no_longer_outvotes_a_near_one,
     test_a_refined_thing_says_which_way_its_error_runs,
+    test_the_vertical_half_of_the_ray_is_measured_the_same_way,
+    test_a_height_needs_a_range_and_a_bearing_has_none,
+    test_two_rays_must_agree_about_the_height_as_well_as_the_place,
+    test_a_look_joins_a_thing_only_at_the_height_it_stands,
+    test_a_thing_is_forgiven_its_own_height_once_and_not_twice,
+    test_the_height_improves_as_the_looks_do,
 )

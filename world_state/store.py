@@ -669,6 +669,7 @@ class WorldStore:
                 # at that moment, and a lens change should not silently rewrite
                 # every bearing the rover ever measured.
                 bearing = span = None
+                elevation = elevation_span = None
                 if fov_deg:
                     # The gimbal's tilt goes in with the pan, and it is not a
                     # decoration: the camera tilts about its own horizontal, so
@@ -687,6 +688,13 @@ class WorldStore:
                     if drawn is not None:
                         bearing = drawn["bearing_deg"]
                         span = drawn["span_deg"]
+                        # The vertical half of the same ray. It costs nothing
+                        # further to take -- the projection returns a direction
+                        # in three dimensions and the bearing uses two of them
+                        # -- and until it was written down every fact this
+                        # component held about the room was flat.
+                        elevation = drawn["elevation_deg"]
+                        elevation_span = drawn["elevation_span_deg"]
                         placed += 1
                 # A row carries no name, no scene sentence, no prompt version and
                 # no warning about any of them. Those four columns belonged to a
@@ -701,9 +709,10 @@ class WorldStore:
                     " raw_json,"
                     " bearing_deg, span_deg, origin_sigma_m,"
                     " bearing_sigma_deg,"
+                    " elevation_deg, elevation_span_deg,"
                     " region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
@@ -712,6 +721,7 @@ class WorldStore:
                      json.dumps(item.raw, sort_keys=True),
                      bearing, span, capture.get("origin_sigma_m"),
                      capture.get("bearing_sigma_deg"),
+                     elevation, elevation_span,
                      region_source or None,
                      getattr(item, "region_score", None) or None,
                      getattr(item, "dino", b"") or None,
@@ -793,6 +803,15 @@ ADDED_COLUMNS = {
         # is a property of the rover at the moment of the look.
         "bearing_deg": "REAL",
         "span_deg": "REAL",
+        # And how high it was, in degrees above the horizontal, with how tall it
+        # looked. Measured off the same ray as the bearing and stored for the
+        # same reason -- it is what the camera saw at that moment, not what
+        # today's lens would say about that box. Null on every row written
+        # before the vertical half of the ray was kept, and null there means
+        # "not measured" rather than "level": see `locate.rise_m`, which
+        # declines to answer at all rather than assume.
+        "elevation_deg": "REAL",
+        "elevation_span_deg": "REAL",
         # How well this particular bearing is known, in degrees, where the
         # constant in `locate` is what one is worth from a rover standing still.
         # Null on every row written before the inspection measured it, and null

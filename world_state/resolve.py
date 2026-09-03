@@ -51,7 +51,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import cluster, locate
+from . import cluster, locate, view
 
 MATCH = "match"
 NEW = "new"
@@ -227,6 +227,22 @@ def ray_of(observation: dict[str, Any],
                  # measured rather than assumed. Absent means the constant --
                  # see `locate.sigma_of`.
                  "bearing_sigma_deg": observation.get("bearing_sigma_deg"),
+                 # How high the thing sat, in degrees above the
+                 # horizontal, with how tall it looked. Absent on every row
+                 # written before the vertical half of the ray was kept, and
+                 # absent means the geometry does not get a vertical opinion
+                 # about this look rather than that the look was level. See
+                 # `locate.rise_m`.
+                 "elevation_deg": observation.get("elevation_deg"),
+                 "elevation_span_deg": observation.get("elevation_span_deg"),
+                 # Whether the frame cut the top or the bottom off the box,
+                 # which is worked out from the box rather than stored: it is a
+                 # property of where the region landed in the picture and no
+                 # later change of lens can alter it. See
+                 # `view.clipped_vertically` for why it matters more vertically
+                 # than horizontally.
+                 "elevation_clipped": view.clipped_vertically(
+                     observation.get("bbox")),
                  "observation_id": observation.get("id"),
                  # Which look this ray came out of. Two rays from one look are
                  # two regions of one picture taken from one place, so they are

@@ -119,8 +119,37 @@ def azimuth_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
     rotated back by the tilt the gimbal was holding, because the gimbal pans
     about the world's vertical and tilts about its own horizontal, so a ray's
     bearing cannot be read off until the tilt is undone. Only the component out
-    of the lens survives that: how high the ray ends up does not change which
-    way it points.
+    of the lens survives that, because how high the ray ends up does not change
+    which way it points -- **which is a fact about a bearing and was taken for a
+    fact about the component.** The height was computed here and dropped on the
+    floor until 2026-09-04; `elevation_deg` is where it goes now.
+    """
+    levelled = _levelled(cx_frac, cy_frac, tilt_deg, size)
+    if levelled is None:
+        return None
+    across, _up, forward = levelled
+    # Positive to the camera's left, which is the map's convention and the
+    # opposite of the gimbal's -- the same swap `ray` makes for the pan.
+    return math.degrees(math.atan2(-across, forward))
+
+
+def _levelled(cx_frac: float, cy_frac: float, tilt_deg: float,
+              size: tuple[int, int] | None = None
+              ) -> tuple[float, float, float] | None:
+    """A pixel as a direction with the gimbal's tilt taken out: across, up,
+    forward. None if the lens cannot be reached.
+
+    **One rotation serving both angles, because there is only one ray.** The
+    pixel becomes a direction through the fitted projection, and that direction
+    is then rotated back by the tilt the gimbal was holding -- the gimbal pans
+    about the world's vertical and tilts about its own horizontal, so neither
+    the bearing nor the elevation can be read off the picture until the tilt is
+    undone. What comes back is in the frame the pan turns within, which is level
+    with the world as long as the rover is.
+
+    `lens.ray_at` answers x right, y down, z out of the lens, and `up` is
+    negated here so that the caller reads a positive number as higher, which is
+    what every consumer of it means.
     """
     lens = _lens_for(size)
     if lens is None:
@@ -128,10 +157,44 @@ def azimuth_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
     width, height = tuple(size or FRAME_SIZE)
     x, y, z = _lens_module().ray_at(cx_frac * width, cy_frac * height, lens)
     tilt = math.radians(tilt_deg or 0.0)
-    z_level = y * math.sin(tilt) + z * math.cos(tilt)
-    # Positive to the camera's left, which is the map's convention and the
-    # opposite of the gimbal's -- the same swap `ray` makes for the pan.
-    return math.degrees(math.atan2(-x, z_level))
+    return x, -(y * math.cos(tilt) - z * math.sin(tilt)), \
+        y * math.sin(tilt) + z * math.cos(tilt)
+
+
+def elevation_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
+                  size: tuple[int, int] | None = None) -> float | None:
+    """How high a point in the picture lies, in degrees above the horizontal,
+    or None if the lens cannot be reached.
+
+    **The half of the ray `azimuth_deg` throws away.** The projection returns a
+    direction in three dimensions and the bearing needs two of them, so the
+    vertical component was computed and dropped on every box the rover has ever
+    drawn -- which is why every fact this component holds about the room is flat.
+    It is the same measurement, through the same swept lens, off the same tilt:
+    nothing new is asked of the rover to have it.
+
+    Positive is up, and it is measured from the horizontal rather than from
+    where the camera was aimed, so it is directly comparable between two looks
+    taken at different tilts. `locate.rise_m` turns it into a height once there
+    is a range to multiply it by, and a range only exists once the thing has
+    been placed -- so this is a measurement the resolver spends afterwards
+    rather than a second way of placing something.
+
+    **What it is worth is not measured and is assumed to be the bearing's own.**
+    The two share a lens, a gimbal and a box, so the terms behind
+    `locate.BEARING_SIGMA_DEG` apply to both; what has never been checked is
+    whether the tilt servo lands short of where it is sent the way the pan servo
+    does -- about three degrees at the ends of its travel, with no feedback to
+    correct it. On this rover the tilt has been held at its rest position for
+    every drive so far, so any such error is one constant offset shared by every
+    observation, which cancels out of a comparison between two of them and does
+    not cancel out of a height above the floor.
+    """
+    levelled = _levelled(cx_frac, cy_frac, tilt_deg, size)
+    if levelled is None:
+        return None
+    across, up, forward = levelled
+    return math.degrees(math.atan2(up, math.hypot(across, forward)))
 
 
 def _wrap(degrees: float) -> float:
@@ -203,6 +266,23 @@ def ray(observation: dict[str, Any], fov_deg: float,
         bearing_deg = _wrap(float(stored_bearing))
         span_deg = float(stored_span if stored_span is not None
                          else MIN_SPAN_DEG * 3)
+
+    # How high the thing sat, measured off the same ray and kept apart from the
+    # bearing in one respect: it is an angle from the horizontal rather than
+    # from anything the rover was pointing at, so it needs no pose to be read
+    # and nothing is added to it. A row that already carries one keeps it, for
+    # the same reason a stored bearing is kept -- it is a measurement taken at
+    # the moment of the look and a lens refitted afterwards must not rewrite it.
+    stored_elevation = observation.get("elevation_deg")
+    if stored_elevation is None:
+        risen = _rise_from_box(observation.get("bbox"),
+                               _tilt_of(observation), size)
+        elevation_deg_ = None if risen is None else risen[0]
+        elevation_span_deg = None if risen is None else risen[1]
+    else:
+        elevation_deg_ = float(stored_elevation)
+        elevation_span_deg = float(
+            observation.get("elevation_span_deg") or MIN_SPAN_DEG * 3)
     return {
         "id": observation.get("id"),
         "x_m": round(x_m, 3),
@@ -236,6 +316,18 @@ def ray(observation: dict[str, Any], fov_deg: float,
         # bearing that is written down or compared has to be canonical.
         "bearing_deg": round(bearing_deg, 1),
         "span_deg": round(span_deg, 1),
+        # How high the thing was, in degrees above the horizontal, and how tall
+        # it looked. Absent when the lens could not be reached, which is the
+        # same silence every other angle here keeps. A drawn ray on the map is
+        # still flat: what reads these is `locate`, which turns them into a
+        # height once a range exists to multiply them by.
+        "elevation_deg": (None if elevation_deg_ is None
+                          else round(elevation_deg_, 1)),
+        "elevation_span_deg": (None if elevation_span_deg is None
+                               else round(elevation_span_deg, 1)),
+        # Whether the frame cut the top or bottom off it, which decides how much
+        # of that height is believable. See `clipped_vertically`.
+        "elevation_clipped": clipped_vertically(observation.get("bbox")),
         "length_m": length_m,
     }
 
@@ -298,6 +390,76 @@ def _from_box(bbox: Any, tilt_deg: float = 0.0,
         return None
     return at_centre, max(MIN_SPAN_DEG,
                           min(MAX_SPAN_DEG, abs(at_left - at_right)))
+
+
+def _rise_from_box(bbox, tilt_deg: float = 0.0,
+                   size: tuple[int, int] | None = None
+                   ) -> tuple[float, float] | None:
+    """How high the thing was and how tall it looked, both in degrees, or None
+    if the lens cannot be reached.
+
+    The vertical twin of `_from_box`, measured the same way and for the same
+    reason: the elevation is taken at the box's own horizontal centre and the
+    height is the angle between its top and bottom edges taken there, rather
+    than a pixel height times a field of view. A box of a given pixel height
+    spans more angle at the top of a fisheye than across its middle, and this
+    number is about to be spent as an allowance, so it has to come from the same
+    optics as everything else.
+
+    (the aim's own elevation, a default cone) when there is no usable box, which
+    is the same silence `_from_box` keeps: the camera's direction is still
+    measured and only the refinement is missing.
+    """
+    default = MIN_SPAN_DEG * 3
+    if _lens_for(size) is None:
+        return None
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        middle = elevation_deg(0.5, 0.5, tilt_deg, size)
+        return None if middle is None else (middle, default)
+    try:
+        left, top, right, bottom = (float(value) for value in bbox)
+    except (TypeError, ValueError):
+        middle = elevation_deg(0.5, 0.5, tilt_deg, size)
+        return None if middle is None else (middle, default)
+    cx, cy = (left + right) / 2.0, (top + bottom) / 2.0
+    at_centre = elevation_deg(cx, cy, tilt_deg, size)
+    at_top = elevation_deg(cx, top, tilt_deg, size)
+    at_bottom = elevation_deg(cx, bottom, tilt_deg, size)
+    if at_centre is None or at_top is None or at_bottom is None:
+        return None
+    return at_centre, max(MIN_SPAN_DEG,
+                          min(MAX_SPAN_DEG, abs(at_top - at_bottom)))
+
+
+#: How close to an edge of the frame a box has to come before it is treated as
+#: running off it. Two rows of pixels: the region finder returns fractions of the
+#: frame and a box genuinely against the edge lands within rounding of 0 or 1,
+#: while a box that merely comes near it does not.
+EDGE_FRAC = 2.0 / 480.0
+
+
+def clipped_vertically(bbox) -> bool:
+    """Whether the frame cut the top or the bottom off this thing.
+
+    **A clipped box has a vertical centre that is not the object's centre**, and
+    that is the one way an elevation misleads where a bearing does not. The
+    camera stares level down the rover's nose at things taller than it, so the
+    top of a doorway or a wardrobe runs off the frame far more often than either
+    side of it does -- and when it does, the box's middle sits wherever the frame
+    happened to cut, which moves as the rover drives towards it.
+
+    Nothing is thrown away for it. `locate.rise_tolerance_m` widens the
+    allowance to the whole of what a thing that size could be instead, which is
+    the honest answer: the elevation still says the thing is up there, and stops
+    saying exactly how far.
+    """
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return False
+    try:
+        _left, top, _right, bottom = (float(value) for value in bbox)
+    except (TypeError, ValueError):
+        return False
+    return top <= EDGE_FRAC or bottom >= 1.0 - EDGE_FRAC
 
 
 def relate(placement: dict[str, Any] | None,
