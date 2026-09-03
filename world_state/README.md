@@ -18,8 +18,20 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
-**A second drive on the afternoon of 2026-09-03 placed nothing false and almost
-nothing at all: 866 regions over 214 looks, and one entity.** The cause is that
+**A four-minute drive on the evening of 2026-09-03 placed 23 things, thirteen of
+them cleanly one object, where the thirteen-minute drive before it had placed
+one.** The recovery is measured rather than hoped for: 178 looks kept a bearing the
+old limit would have thrown away, no look lost one to travel at all, and the
+standing places carrying a usable bearing went from 8 to 40. Six of the 23 are one
+thing with a stray crop in them, three are wrong, and **one is a person** — which
+wants a deliberate answer, since a person is the one thing in a room guaranteed not
+to stay put. A placement now records how many *places* it was seen from rather than
+how many times, and every look that agrees with it refines where it landed. The
+write-up is *The drive that proved it* below; what it cost and what it did not
+narrow are in there too.
+
+**The drive before it placed nothing false and almost nothing at all: 866 regions
+over 214 looks, and one entity.** The cause is that
 **163 of those 214 looks stored no direction for anything they saw**, because the
 limit on how far the rover may travel while the shutter is open was derived from a
 0.29 s capture at 0.35 m/s and the rover now takes 0.36 s and drives at 0.47 —
@@ -1511,6 +1523,95 @@ it". The whole of this run had seven places to look from.
    never been tried for this -- measured on the same pairs they order them the
    same way and no better (the real pairs at 0.851 and 0.906 against a same-frame
    95th percentile of 0.854), so there is nothing free there either.
+
+## The drive that proved it, 2026-09-03 (evening)
+
+Four minutes of driving, 118 looks, 530 regions -- and **23 things placed**,
+against one from the thirteen-minute drive before it.
+
+**The recovery is the mechanism and not luck.** 178 of those looks kept a bearing
+the old limit would have thrown away, with a median travel residual of 0.079 m and
+a worst of 0.126; **no look lost its bearing to travel at all**, so the 0.30 m
+limit was never reached. Standing places carrying a usable bearing went from 8 to
+**40**, and the share of regions carrying one from 11% to 36%.
+
+### What the 23 actually are
+
+Read off the crops, because the replay's mixing score says 0% and it is still not
+evidence -- it chains crops through single-link clustering at 0.55.
+
+**Thirteen are cleanly one object**: a slatted wooden chair from three sides, a
+dark sideboard from eight different distances, a gold-framed landscape, a radiator
+along a wall, a ceiling light fitting, an armchair, an office chair, a glass
+trolley, a lit doorway. **Six more are one thing with a single stray crop**, almost
+always a framed picture that wandered into a chair. **Three are wrong**: two dark
+unidentifiable blobs, one bundle of bright things (a window, a ceiling, a mirror),
+and one that mixes a *person* with two framed pictures.
+
+**A person became a lasting thing, twice.** Nothing in the pipeline knows that a
+person is the one object in a room guaranteed not to stay put, and it wants a
+deliberate answer rather than a threshold.
+
+### Turning is now the whole of what is lost
+
+The only remaining reason a look records no bearing is the rover turning while the
+shutter was open: 76 of 140 looks, median 10 degrees, 90th percentile 26.4, worst
+54.5. That is the loss worth taking -- a turning rover is also the blurred one --
+but it is worth knowing what it would take to recover, because it is half the run.
+
+**Deferring a look until the rover stops turning would not do it.** Measured on
+this drive, the turning is continuous rather than occasional: 31 spells, a median
+of two looks long, with clear gaps a median of one look long. Deferring would save
+the wasted encoder time and gain almost no bearings. Recovering them properly
+means timestamping the frame and interpolating the heading to the instant the
+shutter opened, instead of taking the midpoint of two readings and refusing.
+
+### How much stands behind a placement, and where exactly
+
+Twenty-three things and no way to tell which are solid is a worse problem than one
+thing, so two numbers now travel with a placement.
+
+**`viewpoints` is counted in places and not in looks**, which is the whole point of
+recording it. A count of observations says a thing was looked at a lot; what says
+whether its position was ever tested is how far apart the looks were, because rays
+from one standstill share an origin exactly and cross nowhere. Two rays closer
+together than `MIN_BASELINE_M` are one place, which is the line `fix` already
+draws. On this drive the spread is the useful part:
+
+| | places | rays agreeing | uncertainty | baseline |
+|---|---:|---:|---:|---:|
+| the sideboard | 8 | 8 | 0.24 m | 2.32 m |
+| a framed picture | 8 | 13 | 0.24 m | 3.10 m |
+| ... | | | | |
+| the thinnest | 2 | 10 | 0.33 m | 0.42 m |
+
+That last row is why the number is worth having. Ten agreeing rays made it the
+best-evidenced thing in the room by any count of looks; it is a thing photographed
+ten times from two places 42 cm apart, and its position has never been tested.
+
+**And a look that agrees now changes something.** `locate.refine` moves the
+placement to the least-squares point of closest approach to every ray that agrees
+with the chosen pair -- the pair still *chooses* the answer, and a bad bounding box
+has been excluded by the agreement test before the fit sees it, which is what
+`best_fix` was right to object to. Two rays give back their own crossing exactly,
+so an entity with one baseline is not moved at all, and a fit landing further away
+than the pair's own doubt plus a handspan is treated as a different answer rather
+than a better one.
+
+**The uncertainty is not narrowed for the extra rays**, and that is deliberate:
+shrinking it by the root of how many there are would assume their errors are
+independent, and on this rover they are mostly not -- a bearing is dominated by the
+gimbal not arriving where it was told and by the heading SLAM reports, which are
+one mistake per look rather than one per ray. What is recorded instead is the
+measured spread of the agreeing rays about the fitted point, floored by the pair's
+own figure, so the number can grow when the evidence disagrees and never shrinks on
+a promise.
+
+Measured on the recordings: bearings that miss their own entity's stated position
+fall from **13% to 10%** on this drive and from 13% to 7% on the morning run, and
+two more observations attach. It costs one entity on this drive, by merging two
+chair groups into one nine-crop chair -- which reads correctly off the crops --
+while moving one chair crop into a group of framed pictures, which does not.
 
 ## What was measured on the rover, 2026-09-02
 

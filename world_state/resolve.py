@@ -204,7 +204,13 @@ def ray_of(observation: dict[str, Any],
                  # ray takes part in. Absent on a row written before the rover
                  # measured it, and absent means nothing was moving.
                  "origin_sigma_m": float(observation.get("origin_sigma_m") or 0.0),
-                 "observation_id": observation.get("id")}
+                 "observation_id": observation.get("id"),
+                 # Which look this ray came out of. Two rays from one look are
+                 # two regions of one picture taken from one place, so they are
+                 # one viewpoint however much they agree -- which is the
+                 # difference between a thing seen from all round and a thing
+                 # photographed twice from the doorway.
+                 "inference_id": observation.get("inference_id")}
     except (KeyError, TypeError, ValueError):
         return None
     if reach is not None:
@@ -621,6 +627,13 @@ def _place_one(store, available, session, reach=None):
     if chosen is None:
         return None
     placement, first_observation, second_observation, support, strength = chosen
+    # How much stands behind it, recorded with it. A thing founded on two looks
+    # from two places and a thing agreed by eight are both "placed", and until
+    # this travelled with the placement nothing downstream could tell them apart.
+    placement = dict(placement, rays_agreeing=len(support),
+                     viewpoints=locate.standing_places(
+                         [ray for ray, one in rays
+                          if one["id"] in {o["id"] for o in support}]))
 
     entity_id = store.create_entity()
     store.place(entity_id, placement, session)
@@ -748,4 +761,8 @@ def _replace_placement(store, entity_id: str, session: int,
     rays = [ray for ray in (ray_of(one, reach) for one in observations) if ray]
     best = locate.best_fix(rays)
     if best is not None:
-        store.place(entity_id, best, session)
+        # The pair chooses the answer; every ray that agrees with it then says
+        # where exactly. See `locate.refine` -- this is what makes a look taken
+        # to confirm a thing worth taking, because until it existed a third
+        # agreeing bearing changed nothing at all.
+        store.place(entity_id, locate.refine(best, rays), session)

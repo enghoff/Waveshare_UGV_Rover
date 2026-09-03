@@ -360,6 +360,68 @@ def test_a_ray_that_started_somewhere_uncertain_says_so() -> None:
                 - locate.match_tolerance(placed, ray), 3), 0.12)
 
 
+def test_a_placement_says_how_much_stands_behind_it() -> None:
+    """Ten rays from one doorway and two from opposite sides of a room are not
+    the same evidence, and a count of observations cannot tell them apart."""
+    thing = (3.0, 3.0)
+
+    def toward(x_m, y_m, look):
+        return {"x_m": x_m, "y_m": y_m, "inference_id": look,
+                "bearing_deg": round(math.degrees(
+                    math.atan2(thing[1] - y_m, thing[0] - x_m)), 3)}
+
+    # Three looks from one standstill and one from across the room.
+    rays = [toward(0.0, 0.0, look) for look in (1, 2, 3)] + [toward(6.0, 0.0, 4)]
+    found = locate.best_fix(rays)
+    check("every ray that agrees is counted", found["rays_agreeing"], 4)
+    check("...but standing still and looking again is not a second place to "
+          "have looked from", found["viewpoints"], 2)
+
+    # Now the rover walks, and each look is somewhere else.
+    walked = [toward(x, 0.0, look) for look, x in enumerate((0.0, 2.0, 4.0, 6.0))]
+    found = locate.best_fix(walked)
+    check("driving between the looks is what makes them separate places",
+          (found["rays_agreeing"], found["viewpoints"]), (4, 4))
+    check("a shuffle of the same place is still one place",
+          locate.standing_places([toward(0.0, 0.0, 1), toward(0.2, 0.1, 2),
+                                  toward(0.1, 0.2, 3)]), 1)
+
+
+def test_the_looks_that_agree_say_where_exactly() -> None:
+    """A pair chooses the answer and everything agreeing with it refines where it
+    landed -- which is what makes a look taken to confirm a thing worth taking."""
+    thing = (3.0, 3.0)
+
+    def toward(x_m, y_m, look, off_deg=0.0):
+        return {"x_m": x_m, "y_m": y_m, "inference_id": look,
+                "bearing_deg": round(math.degrees(
+                    math.atan2(thing[1] - y_m, thing[0] - x_m)) + off_deg, 3)}
+
+    pair = [toward(0.0, 0.0, 1, +1.0), toward(6.0, 0.0, 2, -1.0)]
+    crossed = locate.fix(*pair)
+    check("two bearings a degree out put the thing off its real place",
+          round(math.hypot(crossed["x_m"] - 3.0, crossed["y_m"] - 3.0), 2) > 0.05,
+          True)
+    check("two rays are their own crossing and are not moved by this",
+          locate.refine(crossed, pair), crossed)
+
+    # Three more looks from elsewhere, each a degree out the other way.
+    more = pair + [toward(1.0, -2.0, 3, -1.0), toward(5.0, -2.0, 4, +1.0),
+                   toward(6.0, 3.0, 5, -1.0)]
+    better = locate.refine(crossed, more)
+    was = math.hypot(crossed["x_m"] - 3.0, crossed["y_m"] - 3.0)
+    now = math.hypot(better["x_m"] - 3.0, better["y_m"] - 3.0)
+    check("the looks that agree move it nearer where the thing really is",
+          now < was, True)
+    check("...and it says how many of them it used", better["refined_from"], 5)
+    check("...and reports the spread it measured rather than a narrower promise",
+          better["uncertainty_m"] >= crossed["uncertainty_m"], True)
+
+    far = dict(crossed, x_m=crossed["x_m"] + 4.0)
+    check("a fit that lands somewhere else entirely is a different answer, "
+          "not a better one", locate.refine(far, more), far)
+
+
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
@@ -376,4 +438,6 @@ TESTS = (
     test_a_shallow_crossing_is_uncertain_lengthways_and_not_sideways,
     test_a_thing_may_not_claim_a_cone_the_geometry_never_earned,
     test_a_ray_that_started_somewhere_uncertain_says_so,
+    test_a_placement_says_how_much_stands_behind_it,
+    test_the_looks_that_agree_say_where_exactly,
 )

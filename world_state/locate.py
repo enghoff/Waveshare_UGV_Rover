@@ -360,6 +360,14 @@ def extent_of(point: tuple[float, float], *observers: dict[str, Any]) -> float:
     return min(MAX_EXTENT_M, min(widths))
 
 
+#: How far past its own doubt a fit may move a placement before it is treated as a
+#: different answer rather than a better one, in metres. A handspan, which is the
+#: same statement about rooms `resolve.SAME_PLACE_M` makes and for the same
+#: reason: two positions this close name the same chair whichever is right, and
+#: further than this the rays being fitted are not all looking at one thing.
+#: Choosing between answers is the resolver's job and not this function's.
+REFINE_LIMIT_M = 0.5
+
 #: The most an object's own width may add to the tolerance for pointing at it.
 #: A region spanning most of the frame is a wall or a floor, and letting that
 #: claim three metres of slack would let it swallow the room.
@@ -453,6 +461,15 @@ def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
 
     Uncertainty still breaks the tie, so nothing changes for an entity with only
     two looks behind it.
+
+    **How much independent evidence stands behind the answer travels with it**, as
+    `rays_agreeing` and `viewpoints`. Until this was recorded there was no way to
+    tell a sideboard photographed from eight places apart from two dark blobs seen
+    from two -- the console showed a count of observations, which lumps six looks
+    taken from one standstill together with two from opposite sides of a room. The
+    two numbers are kept separate because they answer different questions: rays
+    are how much the thing was looked at, and viewpoints are from how many places,
+    which is the one that says whether the geometry was ever tested.
     """
     best = None
     for index, first in enumerate(rays):
@@ -460,11 +477,106 @@ def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
             found = fix(first, second)
             if found is None:
                 continue
-            agreed = sum(1 for ray in rays if agrees(found, ray))
-            rank = (-agreed, found["uncertainty_m"])
+            agreeing = [ray for ray in rays if agrees(found, ray)]
+            rank = (-len(agreeing), found["uncertainty_m"])
             if best is None or rank < best[0]:
+                found["rays_agreeing"] = len(agreeing)
+                found["viewpoints"] = standing_places(agreeing)
                 best = (rank, found)
     return None if best is None else best[1]
+
+
+def standing_places(rays: list[dict[str, Any]]) -> int:
+    """From how many genuinely different places these rays were taken.
+
+    **Counted in places and not in looks, and the difference is the whole point
+    of recording it.** A count of observations says a thing was looked at a lot;
+    what says whether its position was ever tested is how far apart the looks
+    were, because rays from one standstill share an origin exactly and cross
+    nowhere. On the drive of 2026-09-03 one entity carried ten agreeing rays from
+    two places 0.42 m apart, which by any count of looks was the best-evidenced
+    thing in the room and by this one is a thing seen twice from the doorway.
+
+    Two rays closer together than `MIN_BASELINE_M` are one place, which is the
+    same line `fix` already draws when it refuses to cross them.
+    """
+    places: list[tuple[float, float]] = []
+    for ray in rays:
+        x_m, y_m = float(ray["x_m"]), float(ray["y_m"])
+        if not any(math.hypot(x_m - px, y_m - py) < MIN_BASELINE_M
+                   for px, py in places):
+            places.append((x_m, y_m))
+    return len(places)
+
+
+def refine(point: dict[str, Any], rays: list[dict[str, Any]]) -> dict[str, Any]:
+    """Move a placement to the point every agreeing ray is nearest to.
+
+    **The pair stays what chose it and this only adjusts where it landed**, which
+    is the whole reason a fit is allowed here at all. `best_fix` argues against
+    fitting over every ray, and it is right: a fit whose errors are dominated by
+    one bad bounding box is worse than the best honest pair. What it is fitting
+    over here is only the rays that already agree with the pair's answer, so a bad
+    box has been excluded before this runs rather than being averaged in.
+
+    The arithmetic is the least-squares point of closest approach to a set of
+    lines: each ray contributes the part of the error square that is *across* it,
+    which for a unit direction `d` is `I - d dT`, and the sum is a two-by-two
+    solve. Two rays give back their own crossing exactly, so an entity with one
+    baseline behind it is not moved at all.
+
+    **The uncertainty is not narrowed for the extra rays, deliberately.** Shrinking
+    it by the root of how many there are would assume their errors are
+    independent, and on this rover they are mostly not: a bearing is dominated by
+    the gimbal not arriving where it was told and by the heading SLAM reports,
+    which are one mistake per look rather than one per ray. What is recorded
+    instead is the measured spread -- how far the agreeing rays actually fall from
+    the fitted point -- and the pair's own figure is kept as a floor, so the number
+    can grow when the evidence disagrees and never shrinks on a promise.
+    """
+    usable = [ray for ray in rays if agrees(point, ray)]
+    if len(usable) < 3:
+        return point
+    axx = axy = ayy = bx = by = 0.0
+    for ray in usable:
+        dx, dy = _unit(float(ray["bearing_deg"]))
+        # I - d dT, the part of a displacement that is across this ray.
+        wxx, wxy, wyy = 1.0 - dx * dx, -dx * dy, 1.0 - dy * dy
+        px, py = float(ray["x_m"]), float(ray["y_m"])
+        axx += wxx; axy += wxy; ayy += wyy
+        bx += wxx * px + wxy * py
+        by += wxy * px + wyy * py
+    determinant = axx * ayy - axy * axy
+    if abs(determinant) < 1e-9:
+        return point
+    x_m = (ayy * bx - axy * by) / determinant
+    y_m = (axx * by - axy * bx) / determinant
+    moved = math.hypot(x_m - float(point["x_m"]), y_m - float(point["y_m"]))
+    if moved > float(point.get("uncertainty_m", 0.0)) + REFINE_LIMIT_M:
+        # Further than the pair's own doubt plus a handspan is not a refinement,
+        # it is a different answer, and this is not the function that chooses
+        # between answers. Leave the pair's.
+        return point
+    spread = math.sqrt(sum(
+        cross_track_of(x_m, y_m, ray) ** 2 for ray in usable) / len(usable))
+    return {**point, "x_m": round(x_m, 3), "y_m": round(y_m, 3),
+            "uncertainty_m": round(max(point["uncertainty_m"], spread), 3),
+            "error_major_m": round(max(point.get("error_major_m",
+                                                 point["uncertainty_m"]),
+                                       spread), 3),
+            "refined_from": len(usable),
+            "spread_m": round(spread, 3)}
+
+
+def cross_track_of(x_m: float, y_m: float, ray: dict[str, Any]) -> float:
+    """How far a point lies to the side of where a ray was pointing, in metres."""
+    range_m = math.hypot(x_m - float(ray["x_m"]), y_m - float(ray["y_m"]))
+    off_deg = abs(_wrap(math.degrees(math.atan2(y_m - float(ray["y_m"]),
+                                                x_m - float(ray["x_m"])))
+                        - float(ray["bearing_deg"])))
+    if off_deg >= 90.0:
+        return range_m
+    return range_m * math.tan(math.radians(off_deg))
 
 
 def bearing_to(point: dict[str, Any], observation: dict[str, Any]) -> float:
