@@ -133,6 +133,11 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
         "considered": len(scored),
         "skipped": skipped,
         "confident": confident,
+        # The bar itself, so a caller showing the ranked list beside the verdict
+        # can mark which of those rows actually cleared it. Sent rather than
+        # copied into the console, because a second copy of a measured constant
+        # is a copy that can be left behind when the measurement is retaken.
+        "floor": MATCHES,
         # The numbers behind the verdict, because "is that really the spray
         # bottle" is the question a person will ask of this and the answer has to
         # be checkable without opening the database.

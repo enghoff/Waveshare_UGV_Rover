@@ -7,8 +7,9 @@ component owns the other kind of memory — that there is *something* at the far
 of the room, that it was seen three times from three places, and where the rover
 was standing each time. Not what it is called: nothing measures that, and the two
 attempts to are written up below. What a person gets instead is the picture each
-look was read from, with the box on it, and a search box that takes a description
-and compares it against what the rover actually saw. Nothing in here drives, plans
+look was read from, with the box on it, and a search box that takes a description,
+compares it against what the rover actually saw, and narrows every view of the
+store to what matched. Nothing in here drives, plans
 or refuses a move, and nothing in here is offered to a voice model.
 
 The plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md);
@@ -195,6 +196,14 @@ separate present from absent almost perfectly at a floor of 0.09 — four wrong
 out of forty, three of them the safe way round. So the vector is stored and
 [`search.py`](search.py) asks it what somebody actually wants to find. The
 picture was never the problem; naming it without being asked was.
+
+That answer is a filter rather than a view of its own. A phrase typed into the
+console narrows the entity list, the map and the observation stream to what
+matched it, best first and with each row's score on it; the floor travels with
+the answer so the page can draw the near misses dim rather than keeping its own
+copy of a measured constant. The daemon sends the whole of every matching look
+and not just the columns the ranking used, because a look found by a search is
+opened in that stream exactly as any other look is.
 
 Two things had to replace what the name was doing.
 
@@ -668,7 +677,10 @@ Two things are deliberately not covered. The popup's rendering is JavaScript in 
 browser and this repository has no browser in its test loop; what is checked instead
 is the payload it draws from, the two URLs it fetches, and -- since a tab whose pane
 is never unhidden is a tab that does nothing -- that every element the page's script
-reaches for by name exists in its markup. **Nobody has yet opened the page and looked
+reaches for by name exists in its markup. The search box added a check of the same
+kind: that the entity list and the map beside it are narrowed by one reading of the
+answer rather than two, since a list showing one thing next to a map showing
+everything is exactly the sort of disagreement this popup exists to reveal. **Nobody has yet opened the page and looked
 at it**, which is the gap that matters: until the validation drive there was nothing
 placed for it to draw.
 

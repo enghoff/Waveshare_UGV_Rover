@@ -275,8 +275,8 @@ class WorldStore:
 
     def observations(self, entity_id: str | None = None, limit: int = 200,
                      unmatched: bool = False,
-                     before: tuple[float, int] | None = None
-                     ) -> list[dict[str, Any]]:
+                     before: tuple[float, int] | None = None,
+                     ids: list[int] | None = None) -> list[dict[str, Any]]:
         """Observation history, newest first.
 
         `entity_id` selects one entity's history; `unmatched` selects the
@@ -292,6 +292,11 @@ class WorldStore:
         pushes the whole history down by one, so an offset counted from the
         newest row would hand back rows already on the screen and step over
         others entirely. A place cannot move.
+
+        `ids` names the rows wanted rather than describing a window of the
+        history. It is what a search needs: the ranking runs over the vector
+        columns alone, and the console draws the whole of every look it matched
+        whether or not the stream on screen had reached back that far.
         """
         query = "SELECT * FROM observations"
         where: list[str] = []
@@ -304,6 +309,11 @@ class WorldStore:
         if before is not None:
             where.append("(observed_at < ? OR (observed_at = ? AND id < ?))")
             args += [float(before[0]), float(before[0]), int(before[1])]
+        if ids is not None:
+            if not ids:
+                return []
+            where.append("id IN (" + ",".join("?" * len(ids)) + ")")
+            args += [int(one) for one in ids]
         if where:
             query += " WHERE " + " AND ".join(where)
         query += " ORDER BY observed_at DESC, id DESC LIMIT ?"

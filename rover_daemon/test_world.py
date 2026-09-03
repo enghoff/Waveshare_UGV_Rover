@@ -176,6 +176,90 @@ def test_the_world_state_calls_reach_the_store():
                     os.environ[name] = value
 
 
+def test_a_search_hands_back_the_whole_of_every_look_it_matched() -> None:
+    """A match has to be an observation, not just the columns that ranked it.
+
+    The console narrows its entity list, its map and its observation stream down
+    to what a search answered, so a match is opened in that stream exactly as an
+    ordinary look is. Ranked over the vector columns alone, those rows would come
+    back without a pose, a source or the measurement behind them -- and the same
+    look with the box emptied shows all three, which makes the filter look like
+    it lost them.
+    """
+    import struct
+    import tempfile
+
+    try:
+        import rover_daemon
+        import world_state
+    except ImportError as exc:
+        SKIP.append(f"the world-state search ({type(exc).__name__})")
+        return
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            eyes = rover._world_inspector().eyes
+            # The fake turns a phrase into a vector of its own, so storing the
+            # phrase's own vector is a region that matches it exactly. That
+            # proves the wiring and nothing whatever about SigLIP2.
+            wanted, error = eyes.embed(["a spray bottle"])
+            check("the stand-in sidecar embeds a phrase", error, "")
+            store = rover._world_store()
+            store.record([world_state.Sighting(bbox=[0.1, 0.2, 0.3, 0.4],
+                                               dino=b"", siglip=wanted[0]),
+                          world_state.Sighting(bbox=[0.5, 0.5, 0.6, 0.6],
+                                               dino=b"",
+                                               siglip=struct.pack("<8f", *([0.0] * 7 + [1.0])))],
+                         capture={"frame_id": "f1", "pan": 12.0, "tilt": -3.0,
+                                  "pose": {"x_m": 1.0, "y_m": 2.0,
+                                           "heading_deg": 90.0}},
+                         source="perception", fov_deg=66.0)
+
+            answer = rover.call("world_state_search", {"query": "a spray bottle"})
+            check("a phrase is compared with what the rover saw", answer["ok"], True)
+            check("...and the region that is it comes top",
+                  answer["matches"][0]["bbox"], [0.1, 0.2, 0.3, 0.4])
+            check("...believed, because the score clears the floor",
+                  answer["confident"], True)
+            check("...and the floor rides with the answer, so a page marking "
+                  "rows against it need not hold its own copy",
+                  answer["floor"], world_state.search.MATCHES)
+
+            match = answer["matches"][0]
+            check("a match carries the row identifier the stream keys on",
+                  match["id"], match["observation_id"])
+            check("...the pose the look was taken from",
+                  (match["pose"]["x_m"], match["pose"]["heading_deg"]), (1.0, 90.0))
+            check("...where the gimbal was pointing",
+                  (match["observer_pan_deg"], match["observer_tilt_deg"]),
+                  (12.0, -3.0))
+            check("...what took it", match["source"], "perception")
+            check("...and no raw vector, which would not go down the wire",
+                  "siglip_blob" in match, False)
+            try:
+                json.dumps(answer)
+                encoded = True
+            except TypeError as bad:
+                encoded = str(bad)
+            check("...so the whole answer travels as one line of JSON",
+                  encoded, True)
+
+            check("a phrase nothing was stored against is refused rather than "
+                  "answered", rover.call("world_state_search", {"query": " "})["ok"],
+                  False)
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_a_rover_without_a_camera_refuses_to_inspect():
     """Every one of these is reached from a page of live buttons, so a rover that
     cannot do it has to say so in a sentence."""
@@ -474,6 +558,7 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
 
 
 TESTS = (
+    test_a_search_hands_back_the_whole_of_every_look_it_matched,
     test_the_world_state_calls_reach_the_store,
     test_a_rover_without_a_camera_refuses_to_inspect,
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,

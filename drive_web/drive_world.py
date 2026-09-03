@@ -240,6 +240,11 @@ class SessionWorld:
     def world_search(self, query: str) -> None:
         """Find me the thing I described.
 
+        The answer is what the popup narrows its entity list, its map and its
+        observation stream down to, so the phrase is a filter and not a fourth
+        view of the store. An empty one takes the filter off, which is why it is
+        handled here rather than refused: nothing goes to the rover for it.
+
         Slower than it looks and worth saying so in the note: the phrase has to
         go through the same text tower that named every region, and on the rover
         that means loading a model for the call and giving it back afterwards,
@@ -260,7 +265,11 @@ class SessionWorld:
         self.world["searching"] = True
         self.world_search_since = time.monotonic()
         self.world["error"] = ""
-        self.world_call("world_state_search", {"query": query, "limit": 12})
+        # Enough looks that a thing the rover has seen a dozen times cannot fill
+        # the answer by itself and hide every other candidate, which matters
+        # more now that this list is the filtered view rather than a ranking
+        # read on its own. The rover's own ceiling is 50.
+        self.world_call("world_state_search", {"query": query, "limit": 24})
 
     def world_map_cleared(self) -> None:
         """The SLAM map was thrown away, so the world state goes with it.

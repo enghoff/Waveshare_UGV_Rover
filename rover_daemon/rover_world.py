@@ -606,10 +606,26 @@ class RoverWorld:
             vectors[0], rows,
             limit=max(1, min(int(arguments.get("limit") or 10), 50)),
             backend=str(arguments.get("backend") or ""))
+        matches = answer.get("matches", [])
+        # The whole of every matching look, and not only the handful of columns
+        # the ranking itself needed. **The console narrows its observation
+        # stream down to these rows**, so each one has to carry what an ordinary
+        # row in that stream carries -- the pose, the note, the raw measurement
+        # -- or opening a look the filter found would show less than opening the
+        # same look with the filter off. The ranking is over the vectors, which
+        # are the one thing not sent.
+        whole = {row["id"]: row for row in
+                 store.observations(ids=[match["observation_id"]
+                                         for match in matches],
+                                    limit=max(1, len(matches)))}
         # Where a match is, when it belongs to something the rover has placed.
         placements = {one["id"]: one.get("placement")
                       for one in store.entities()}
-        for match in answer.get("matches", []):
+        for match in matches:
+            for key, value in whole.get(match.get("observation_id"), {}).items():
+                # The scores win where the two disagree, which they do not: the
+                # shared columns are the same columns read twice.
+                match.setdefault(key, value)
             match["placement"] = placements.get(match.get("entity_id"))
         return {"ok": True, "query": query, **answer}
 

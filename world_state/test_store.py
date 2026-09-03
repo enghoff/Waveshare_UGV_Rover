@@ -238,6 +238,36 @@ def test_the_history_is_read_a_page_at_a_time() -> None:
         store.close()
 
 
+def test_the_rows_a_search_matched_can_be_asked_for_by_name() -> None:
+    """A search ranks over the vector columns and answers with whole looks.
+
+    The console narrows its observation stream to those, and a look it matched
+    may be far older than anything the stream has reached, so they are fetched by
+    identifier rather than as a window of the history. An empty set of names asks
+    the database nothing rather than becoming a query with no `WHERE` on it,
+    which would hand back the newest two hundred rows instead of none.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        for _ in range(4):
+            store.record([a_sighting()], capture={"frame_id": "f", "pan": 5.0,
+                                                  "pose": {"x_m": 1.0, "y_m": 0.0,
+                                                           "heading_deg": 0.0}})
+        every = [row["id"] for row in store.observations()]
+        wanted = [every[0], every[-1]]
+        named = store.observations(ids=wanted)
+        check("the rows asked for come back and no others",
+              sorted(row["id"] for row in named), sorted(wanted))
+        check("...whole, with the pose the look was taken from on them",
+              named[0]["pose"]["x_m"], 1.0)
+        check("...and asking for none asks for nothing",
+              store.observations(ids=[]), [])
+        check("a row that is not there is absent rather than an error",
+              store.observations(ids=[every[0], 9999]),
+              store.observations(ids=[every[0]]))
+        store.close()
+
+
 def test_a_missing_pose_is_recorded_as_missing() -> None:
     """SLAM not having settled is not a reason to refuse to look at the room."""
     with tempfile.TemporaryDirectory() as directory:
@@ -409,6 +439,7 @@ TESTS = (
     test_a_database_from_an_older_build_still_opens,
     test_the_frame_is_kept_and_every_observation_points_at_it,
     test_the_history_is_read_a_page_at_a_time,
+    test_the_rows_a_search_matched_can_be_asked_for_by_name,
     test_a_missing_pose_is_recorded_as_missing,
     test_clearing_the_semantic_world_takes_its_frames_with_it,
     test_clearing_the_map_keeps_the_semantic_world,

@@ -22,14 +22,30 @@
 // **Nothing here shows what a thing is called, because nothing measures that any
 // more.** The word list that used to supply a name scored every phrase between
 // 0.08 and 0.12 whatever the crop held, and it put "a computer monitor" on a
-// sofa. What replaced it is the search tab, where the phrase a person types is
-// compared with what the rover actually saw, and the pictures in the pane beside
-// the entity list.
+// sofa. What replaced it is the box above the views, where the phrase a person
+// types is compared with what the rover actually saw, and the pictures in the
+// pane beside the entity list.
 
 let worldGen = "", world = {}, worldTab = "entities";
-// Whether the pane was drawn mid-search last time round, so that the answer
-// -- or the refusal, which brings no new body with it -- puts the pane back.
+// Whether the line under the box was drawn mid-search last time round, so that
+// the answer -- or the refusal, which brings no new body with it -- puts it
+// back.
 let worldAsking = false;
+// What the box is narrowing the views by, or null while it is empty.
+//
+// **The search is a filter now and not a pane of its own.** A phrase used to be
+// answered in a fourth tab, as a ranked list of crops beside three other views
+// of the same store; what a person wanted from it was to find one thing in the
+// list, on the map and in the stream, and that meant reading an answer in one
+// place and then hunting for it in the others. So the answer narrows those three
+// instead, and this holds it in the shape they need: the matching looks by the
+// store's own row identifier, and the best score each entity managed.
+//
+// Everything below asks this rather than reading `world.search` for itself. A
+// filter applied to the list and not to the map beside it would be two views of
+// the store disagreeing on screen, which is the one thing this popup exists to
+// make visible and must therefore never invent.
+let worldFilter = null;
 // Which observation the tiled stream is showing at full size, by the store's own
 // row identifier rather than by the object -- the whole body is replaced every
 // time the rover records something, so a held object would be showing a row that
@@ -190,27 +206,91 @@ function drawWorldBuilding(w) {
 }
 
 function drawWorldBody() {
+  // First, because every view below is drawn through it.
+  wReadFilter();
+  drawWorldFilter();
   drawWorldList();
   drawWorldMap();
   drawWorldDetail();
   drawWorldObservations();
-  drawWorldSearch();
   drawWorldDiagnostics();
+}
+
+// The answer the rover last gave, folded into the two lookups the views need.
+// Rebuilt from the body rather than kept across arrivals: the body carries the
+// answer for as long as the box holds the phrase, so an emptied box or a cleared
+// store takes the filter with it and nothing has to remember to undo it.
+function wReadFilter() {
+  const answer = world.search;
+  if (!answer || !answer.query) { worldFilter = null; return; }
+  const looks = new Map(), things = new Map();
+  for (const match of answer.matches || []) {
+    // The rover sends the whole of a matching look, so a match is an
+    // observation row with a score on it and the tiles can draw it as one. The
+    // fallback is for a rover that still sends only the ranking's own columns:
+    // it filters correctly and the look opens thin, which is better than a
+    // filter that quietly matches nothing.
+    if (match.id == null) match.id = match.observation_id;
+    // Ranked already, so the first score an entity is seen with is its best.
+    if (match.id != null) looks.set(match.id, match);
+    if (match.entity_id && !things.has(match.entity_id)) {
+      things.set(match.entity_id, match.score);
+    }
+  }
+  worldFilter = {answer: answer, looks: looks, things: things,
+                 // The bar a match has to clear, measured on the rover and sent
+                 // with the answer rather than written down here, so that the
+                 // page cannot go on marking rows against a floor that has
+                 // since been re-measured.
+                 floor: answer.floor};
+}
+
+// The things the entity list and the map are showing: all of them, or the ones
+// the filter matched with the best-scoring first.
+function wShown() {
+  const entities = world.entities || [];
+  if (!worldFilter) return entities;
+  const best = worldFilter.things;
+  return entities.filter((one) => best.has(one.id))
+      .sort((a, b) => best.get(b.id) - best.get(a.id));
+}
+
+// What a row or a tile scored, as the line the two of them share. Dimmed below
+// the floor, because those rows are the nearest thing the rover has and are not
+// matches -- a list of scores always has a top, and that top meaning nothing is
+// the failure this whole feature is designed around.
+function wScore(value) {
+  const span = document.createElement("span");
+  const under = worldFilter.floor != null && value < worldFilter.floor;
+  span.className = "wscore mono" + (under ? " wunder" : "");
+  span.textContent = (+value).toFixed(3);
+  return span;
 }
 
 function drawWorldList() {
   const list = $("wList");
   list.replaceChildren();
-  const entities = world.entities || [];
+  const entities = wShown();
   const summary = world.summary || {};
   if (!entities.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = (summary.observations
-        ? `${summary.observations} observations, none placed`
-        : summary.inspections
-        ? `nothing recorded, after ${summary.inspections} inspections`
-        : "nothing recorded yet");
+    // Under a filter the list is empty for a different reason, and saying
+    // "nothing recorded yet" over a store of four hundred looks would be a lie.
+    // The two cases a person has to tell apart are the phrase matching nothing
+    // at all and it matching looks the rover has not yet made a thing of --
+    // which is the ordinary state of anything seen once, and sends them to the
+    // stream rather than to the inspect button.
+    empty.textContent = !worldFilter
+        ? (summary.observations
+           ? `${summary.observations} observations, none placed`
+           : summary.inspections
+           ? `nothing recorded, after ${summary.inspections} inspections`
+           : "nothing recorded yet")
+        : worldFilter.looks.size
+        ? `${worldFilter.looks.size} matching look`
+          + `${worldFilter.looks.size === 1 ? "" : "s"}, none of them a thing yet`
+        : "no match";
     list.append(empty);
     return;
   }
@@ -227,10 +307,14 @@ function drawWorldList() {
     // more, so a row says which thing it is, how often it has been seen and
     // where it is; what it looks like is one click away in the pane beside it.
     const head = document.createElement("div");
+    head.className = "whead";
     const id = document.createElement("span");
     id.className = "wid mono";
     id.textContent = entity.id;
     head.append(id);
+    // Under a filter, what its best look scored against the phrase -- which is
+    // why this row is one of the few left on screen, and the order they are in.
+    if (worldFilter) head.append(wScore(worldFilter.things.get(entity.id)));
     row.append(head);
 
     const meta = document.createElement("div");
@@ -332,8 +416,15 @@ function wObserverMark(svg, ray, view, hue, size, dim) {
 function drawWorldMap() {
   const wrap = $("wMapWrap"), note = $("wMapNote"), svg = $("wRays");
   const view = state.map.view;
-  const entities = world.entities || [];
-  const selected = state.world.selected;
+  // Whatever the list beside it is showing, and for the same reason: a map still
+  // covered in every thing the rover has seen, next to a list narrowed to one of
+  // them, is two answers to one question.
+  const entities = wShown();
+  // A thing chosen before a filter narrowed it away is still in the pane beside
+  // the list, but it is not on this map: nothing drawn here is the chosen one,
+  // and dimming every other thing against it would leave a map of nothing.
+  const selected = entities.some((one) => one.id === state.world.selected)
+      ? state.world.selected : "";
   // The chosen entity's own reply carries more of its looks than the list does,
   // and it is the one being examined, so it wins where both have the thing.
   const chosen = world.selected && world.selected.id === selected
@@ -574,6 +665,12 @@ function wObservation(observation, options) {
   }
   const head = document.createElement("div");
   head.innerHTML = "";
+  // What this look scored against the phrase, when it is one a filter found.
+  // The large view is reached from the filtered grid as well as the whole
+  // stream, and there the score is why the tile was on the screen at all.
+  if (worldFilter && observation.score != null) {
+    head.append(wScore(observation.score), document.createTextNode(" "));
+  }
   const when = document.createElement("span");
   when.className = "mono";
   when.textContent = wTime(observation.observed_at);
@@ -622,6 +719,13 @@ function wObservation(observation, options) {
   if (observation.location_hint) bits.push(`hint ${observation.location_hint}`);
   bits.push(`pan ${observation.observer_pan_deg ?? "-"}°`,
             `tilt ${observation.observer_tilt_deg ?? "-"}°`);
+  // Which way the thing itself lies from where the rover stood, worked out on
+  // the rover when the look was taken. For a look that belongs to no entity it
+  // is the only thing on the row that says where to go and find it, and that is
+  // the ordinary state of anything a search turns up that has been seen once.
+  if (observation.bearing_deg != null) {
+    bits.push(`bearing ${(+observation.bearing_deg).toFixed(1)}°`);
+  }
   bits.push(pose ? `at (${pose.x_m}, ${pose.y_m}) m facing ${pose.heading_deg}°`
                  : "no rover pose recorded");
   bits.push(`map ${observation.map_session ?? "?"}`);
@@ -689,6 +793,13 @@ function drawWorldDetail() {
                    + `last seen ${wTime(entity.last_seen_at)}`;
   head.append(meta);
   head.append(wPlace(entity));
+  if (worldFilter && !worldFilter.things.has(entity.id)) {
+    // Chosen before the box narrowed the list, and the list no longer has it.
+    const aside = document.createElement("div");
+    aside.className = "wmeta wold";
+    aside.textContent = "not one of the matches";
+    head.append(aside);
+  }
   if (entity.placement && entity.placement_map_session
       && (world.summary || {}).map_session
       && entity.placement_map_session !== world.summary.map_session) {
@@ -742,7 +853,12 @@ function wTile(observation) {
   tile.type = "button";
   tile.onclick = () => { worldZoom = observation.id; drawWorldZoom(); };
   tile.append(wShot(observation));
+  // Addressed by class rather than by position, because a filter puts a score
+  // line above this one and takes it away again, and a tile is reused across
+  // both -- the same tile that was a match a moment ago is an ordinary look in
+  // the stream once the box is emptied.
   const caption = document.createElement("div");
+  caption.className = "wcaption";
   tile.append(caption);
   wTileFace(tile, observation);
   return tile;
@@ -757,8 +873,13 @@ function wTileFace(tile, observation) {
   tile.className = "wtile" + (observation.entity_id ? "" : " wfailed");
   tile.style.borderLeftColor = observation.entity_id
       ? `hsl(${wHue(observation.entity_id)} 70% 45%)` : "";
-  const caption = tile.lastChild;
-  caption.className = "wmeta mono" + (observation.entity_id ? "" : " wdup");
+  const caption = tile.querySelector(".wcaption");
+  const scored = tile.querySelector(".wscore");
+  if (scored) scored.remove();
+  if (worldFilter && observation.score != null) {
+    tile.insertBefore(wScore(observation.score), caption);
+  }
+  caption.className = "wcaption wmeta mono" + (observation.entity_id ? "" : " wdup");
   caption.textContent = `${wTime(observation.observed_at)} `
       + (observation.entity_id || "no entity");
 }
@@ -794,11 +915,27 @@ function wObsTake(recent) {
 
 function drawWorldObservations() {
   wObsTake(world.recent || []);
-  const rows = wObsRows(), summary = world.summary || {};
+  const summary = world.summary || {};
+  // Under a filter the grid is the matches, best first, rather than a window on
+  // the stream. **The rover ranked every stored vector it has**, so a look it
+  // matched can be far older than anything the tiles had reached, and a grid
+  // narrowed to what the browser happened to hold would be missing exactly the
+  // look that was asked for. What the stream holds is left untouched while that
+  // is on screen, so emptying the box puts the tiles back rather than fetching
+  // the history again.
+  const rows = worldFilter ? [...worldFilter.looks.values()] : wObsRows();
   const total = summary.observations ?? rows.length;
-  $("wObsCount").textContent = !rows.length ? "nothing yet."
-      : `${rows.length} of ${total} shown, newest first`
-        + (summary.unmatched ? `, ${summary.unmatched} with no entity` : "");
+  if (worldFilter) {
+    const compared = worldFilter.answer.considered ?? total;
+    $("wObsCount").textContent = rows.length
+        ? `${rows.length} matching look${rows.length === 1 ? "" : "s"} `
+          + `of ${compared} compared, best first`
+        : "no match";
+  } else {
+    $("wObsCount").textContent = !rows.length ? "nothing yet."
+        : `${rows.length} of ${total} shown, newest first`
+          + (summary.unmatched ? `, ${summary.unmatched} with no entity` : "");
+  }
   // Tiles are kept and moved rather than rebuilt. The body arrives again every
   // time the rover records something, which while it is looking is about every
   // second, and rebuilding a grid of several hundred pictures that often threw
@@ -817,7 +954,8 @@ function drawWorldObservations() {
   // Whatever is left below them belongs to a store that has since been cleared.
   while (at) { const next = at.nextSibling; at.remove(); at = next; }
   worldTiles = kept;
-  wObsSay(worldStreamNote);
+  // Nothing to say about the stream while the grid is not showing it.
+  wObsSay(worldFilter ? "" : worldStreamNote);
   drawWorldZoom();
   // A page that did not fill the pane leaves the bottom of the stream on screen,
   // and nothing else would ask for the next one.
@@ -841,7 +979,10 @@ function wObsSay(line) {
 // case on a store smaller than one window.
 function wObsFill() {
   const pane = $("wPaneObservations");
-  if (pane.hidden || worldStreamBusy || !worldStreamMore) return;
+  // Not while a filter is showing: the grid is then the rover's own answer over
+  // the whole store, and scrolling to the end of it is not a request for the
+  // looks below the ones the stream happens to hold.
+  if (worldFilter || pane.hidden || worldStreamBusy || !worldStreamMore) return;
   const rows = wObsRows();
   if (!rows.length || rows.length >= ((world.summary || {}).observations ?? 0)) {
     return;
@@ -886,7 +1027,11 @@ function wObsFill() {
 // opened `what was measured` open through a rover that is still recording.
 function drawWorldZoom() {
   const layer = $("wZoom"), body = $("wZoomBody");
-  const shown = worldZoom === null ? null : worldStream.get(worldZoom);
+  // The filter's own rows first: a match is a whole observation with a score on
+  // it, and it may be a look the stream has never fetched.
+  const shown = worldZoom === null ? null
+      : (worldFilter && worldFilter.looks.get(worldZoom))
+        || worldStream.get(worldZoom) || null;
   if (!shown) {
     // The row has gone: the store was cleared, or the stream started again
     // because what the browser held no longer joined onto the body. Back to the
@@ -906,103 +1051,50 @@ function drawWorldZoom() {
 
 // A phrase on its way to the rover, drawn from the pushed state rather than from
 // the fetched body -- because the body arrives *with* the answer, and the answer
-// is several seconds away. Drawn only from the body, the pane sat on the last
-// phrase's count for the whole of that wait, so pressing enter changed nothing on
-// screen and the count that was there read as the answer to what had just been
-// typed. The seconds are the rover's own, so a second browser that joins during a
-// search sees how long it has really been running.
+// is several seconds away. Drawn only from the body, the line sat on the last
+// phrase's verdict for the whole of that wait, so pressing enter changed nothing
+// on screen and the verdict that was there read as the answer to what had just
+// been typed. The seconds are the rover's own, so a second browser that joins
+// during a search sees how long it has really been running.
+//
+// **The views below are left alone while a phrase is in flight.** They are still
+// showing the answer to the phrase before it, which is what they were showing a
+// moment ago and is true until this one lands; emptying them would take a
+// working screen away for five seconds and put a different one back.
 function drawWorldAsking(w) {
   const asking = !!w.searching;
   $("wSearchBox").classList.toggle("wasking", asking);
   if (asking) {
+    $("wSearchNote").className = "";
     $("wSearchNote").textContent = `asking... ${w.searched_s || 0} s`;
-    // The count and the matches below it answer the phrase before this one.
-    if (!worldAsking) $("wSearchResults").replaceChildren();
   } else if (worldAsking) {
     // Whatever the rover left: the answer, or nothing at all if it refused --
-    // a refusal brings no new body, so no redraw would otherwise happen.
-    drawWorldSearch();
+    // a refusal brings no new body, so no redraw would otherwise happen, and
+    // the filter that was on stays on because it is still what is drawn.
+    drawWorldFilter();
   }
   worldAsking = asking;
 }
 
-function drawWorldSearch() {
-  const note = $("wSearchNote"), results = $("wSearchResults");
-  if (state.world.searching) return;   // `drawWorldAsking` has the pane
-  results.replaceChildren();
-  const answer = world.search;
+// The line under the box: the verdict, which is the part of a search that
+// matters. The list of scores has moved into the views themselves, so this is
+// the only place left that can say whether the top of it means anything -- and
+// on a filtered screen, whether the things now listed are the thing that was
+// asked for or merely the nearest the rover has.
+function drawWorldFilter() {
+  const note = $("wSearchNote");
+  if (state.world.searching) return;   // `drawWorldAsking` has the line
+  const answer = worldFilter && worldFilter.answer;
   if (!answer) {
+    note.className = "";
     note.textContent = "";
     return;
   }
-  note.textContent = `${answer.considered} compared`
-      + (answer.skipped ? `, ${answer.skipped} skipped -- other backend` : "");
-
-  // The verdict before the list, because a ranked list always has a top and the
-  // question is whether that top means anything.
-  const verdict = document.createElement("div");
-  verdict.className = "wverdict " + (answer.confident ? "wfound" : "wmissing");
-  verdict.textContent = (answer.confident
-      ? `found it. ` : `nothing here matches \u201c${answer.query}\u201d. `)
-      + (answer.detail || "");
-  results.append(verdict);
-
-  const matches = answer.matches || [];
-  if (!matches.length) {
-    const empty = document.createElement("p");
-    empty.className = "hint";
-    empty.textContent = "nothing comparable stored";
-    results.append(empty);
-    return;
-  }
-  for (const match of matches) {
-    const block = document.createElement("div");
-    block.className = "wobs";
-    if (match.entity_id) {
-      block.style.borderLeftColor = `hsl(${wHue(match.entity_id)} 70% 45%)`;
-    }
-    const head = document.createElement("div");
-    const score = document.createElement("span");
-    score.className = "mono";
-    score.textContent = (+match.score).toFixed(4);
-    head.append(score);
-    if (match.entity_id) {
-      const owner = document.createElement("span");
-      owner.className = "mono";
-      owner.textContent = `  ${match.entity_id}`;
-      head.append(owner);
-    }
-    block.append(head);
-
-    const meta = document.createElement("div");
-    meta.className = "wmeta mono";
-    const bits = [`seen ${wTime(match.observed_at)}`];
-    if (match.bearing_deg != null) bits.push(`bearing ${match.bearing_deg}\u00b0`);
-    bits.push(`map ${match.map_session ?? "?"}`);
-    meta.textContent = bits.join(" \u00b7 ");
-    block.append(meta);
-
-    // Where it is, which is the answer a person wanted when they typed the
-    // phrase. A match on an observation of something never placed can only say
-    // which way to look, and says that rather than nothing.
-    const place = document.createElement("div");
-    place.className = "wmeta";
-    if (match.placement) {
-      place.classList.add("wplaced");
-      place.textContent = `at (${(+match.placement.x_m).toFixed(2)}, `
-          + `${(+match.placement.y_m).toFixed(2)}) m`;
-    } else {
-      place.classList.add("wunplaced");
-      place.textContent = match.bearing_deg == null
-          ? "no position — no pose recorded"
-          : `no position — bearing ${match.bearing_deg}\u00b0`;
-    }
-    block.append(place);
-    // With the box, so the answer points at the thing rather than at the room it
-    // was in. `wShot` draws one whenever the observation carries it.
-    block.append(wShot({frame_id: match.frame_id, bbox: match.bbox}));
-    results.append(block);
-  }
+  note.className = "wverdict " + (answer.confident ? "wfound" : "wmissing");
+  note.textContent = (answer.confident
+      ? "found it. " : `nothing here matches “${answer.query}”. `)
+      + (answer.detail || "")
+      + (answer.skipped ? ` -- ${answer.skipped} skipped, other backend` : "");
 }
 
 function drawWorldDiagnostics() {
@@ -1086,9 +1178,11 @@ function wireWorld() {
       }
       $("wPaneEntities").hidden = worldTab !== "entities";
       $("wPaneObservations").hidden = worldTab !== "observations";
-      $("wPaneSearch").hidden = worldTab !== "search";
       $("wPaneDiagnostics").hidden = worldTab !== "diagnostics";
-      if (worldTab === "search") $("wSearchBox").focus();
+      // The box narrows the two views of what the rover has seen. It narrows
+      // nothing in the diagnostics table, which is a log of inferences and not
+      // a view of the store, so it is not offered there.
+      $("wFilter").hidden = worldTab === "diagnostics";
     };
   }
   $("wSearchForm").onsubmit = (event) => {
@@ -1099,10 +1193,20 @@ function wireWorld() {
     // state carrying the rover's own flag arrives and takes this over. If the
     // ask never got out, the next state puts the old answer back within a second.
     if (query.trim()) {
-      $("wSearchResults").replaceChildren();
+      $("wSearchNote").className = "";
       $("wSearchNote").textContent = "asking... 0 s";
       $("wSearchBox").classList.add("wasking");
       worldAsking = true;
     }
   };
+  // The box's own clear -- the cross a browser puts in a search field. It takes
+  // the filter off at once rather than waiting for an empty phrase to be
+  // entered, because clearing a filter is a local thing and nothing has to go
+  // to the rover for it. **Not a key listener**: space and Escape stop the
+  // rover from anywhere on this page, and nothing in this popup may take them.
+  $("wSearchBox").addEventListener("search", () => {
+    if (!$("wSearchBox").value.trim()) {
+      post({do: "world", what: "search", query: ""});
+    }
+  });
 }

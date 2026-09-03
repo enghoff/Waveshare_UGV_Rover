@@ -210,8 +210,22 @@
     <div id="worldTabs">
       <button data-wtab="entities" class="on">entities</button>
       <button data-wtab="observations">observations</button>
-      <button data-wtab="search">search</button>
       <button data-wtab="diagnostics">diagnostics</button>
+    </div>
+    <!-- The phrase goes through the same text tower that produced every stored
+         region vector, so it lands in the same space and the comparison is a dot
+         product over a few hundred of them. What comes back narrows the two
+         views under this box rather than filling a pane of its own: the thing a
+         person is looking for is a thing in the list, on the map and in the
+         stream, and a separate answer beside those was a fourth place to look
+         at the same store. The slow part is the model, not the search. -->
+    <div id="wFilter">
+      <form id="wSearchForm">
+        <input id="wSearchBox" type="search" autocomplete="off"
+               placeholder="the spray bottle on the shelf"
+               aria-label="describe the thing to look for">
+      </form>
+      <p id="wSearchNote"></p>
     </div>
     <div id="worldBody">
       <div class="wpane" id="wPaneEntities">
@@ -240,21 +254,6 @@
           <p class="hint" id="wObsCount"></p>
           <div class="wtiles" id="wObsTiles"></div>
           <p class="hint" id="wObsNote"></p>
-        </div>
-      </div>
-      <div class="wpane" id="wPaneSearch" hidden>
-        <div class="wwide">
-          <!-- The phrase goes through the same text tower that named every
-               region, so it lands in the same space as the stored vectors and the
-               comparison is a dot product over a few hundred of them. The slow
-               part is the model, not the search. -->
-          <form id="wSearchForm">
-            <input id="wSearchBox" type="search" autocomplete="off"
-                   placeholder="the spray bottle on the shelf"
-                   aria-label="describe the thing to look for">
-          </form>
-          <p class="hint" id="wSearchNote"></p>
-          <div id="wSearchResults"></div>
         </div>
       </div>
       <div class="wpane" id="wPaneDiagnostics" hidden>

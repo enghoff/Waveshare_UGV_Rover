@@ -274,6 +274,36 @@ observations, and the evening drive of 2026-09-03 placed a thing with ten agreei
 rays from two places 42 cm apart. Where the position has been fitted over the looks
 that agree rather than left on its founding pair, it says that too.
 
+### The search box: one phrase, and every view answers it
+
+The box above the tabs takes a description — "the spray bottle on the shelf" —
+and narrows what is on screen to what matched it: the entity list keeps only the
+things one of the matching looks belongs to, best score first; the map beside it
+draws only those; and the observation stream becomes the matching looks, again
+best first, each thumbnail carrying its score. Emptying the box puts all three
+back, including the place the stream was scrolled to.
+
+**It used to be a fourth tab**, holding a ranked list of crops next to three other
+views of the same store. What a person wants from a search here is to find one
+thing *in* those views — where it is on the map, what else was decided to be it,
+which crops it was read from — and a separate answer meant reading it in one place
+and then hunting for it in the others. So the answer moved into the views and the
+tab went.
+
+Three details are load bearing. The verdict is on the line under the box and says
+"found it" or "nothing here matches" in so many words, because a ranked list
+always has a top and the whole difficulty of this feature is saying that the top
+means nothing; a match that scored below the floor a real match takes is drawn
+dim, so the near misses can be seen for what they are. The rover ranks every
+stored vector it has, not the window of history the stream happens to hold, so a
+filtered stream can show a look from an hour ago that the tiles had never reached
+— and it therefore stops paging while a filter is on, since scrolling to the end
+of an answer is not a request for older looks. And a search takes several seconds,
+because the phrase has to go through the text tower; while it is in flight the box
+pulses and the views go on showing the previous answer rather than emptying,
+since a screen that has gone blank for five seconds reads as a search that never
+went.
+
 ### The observation stream: thumbnails, and one at a time large
 
 The **observations** tab holds everything the rover has recorded, newest first. It

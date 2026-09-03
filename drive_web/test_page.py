@@ -44,7 +44,7 @@ def test_the_page_draws_every_pane_its_tabs_offer() -> None:
     # drive_world.js too: most of the `$("wXxx")` lookups are the popup's.
     html = _console("html", "js", "world.js")
     tabs = set(re.findall(r'data-wtab="([a-z]+)"', html))
-    check("the popup offers four tabs", len(tabs), 4)
+    check("the popup offers three tabs", len(tabs), 3)
     for tab in sorted(tabs):
         pane = f'id="wPane{tab.capitalize()}"'
         check(f"the {tab} tab has a pane", pane in html, True)
@@ -142,6 +142,40 @@ def test_the_observation_stream_is_tiled_and_opens_one_at_a_time() -> None:
           css.count("--box:") >= 2, True)
 
 
+def test_the_search_box_narrows_the_views_rather_than_owning_one() -> None:
+    """One phrase, and every view of the store answers it.
+
+    The search used to be a fourth tab holding a ranked list of crops beside
+    three other views of the same store, so finding something meant reading the
+    answer in one place and hunting for it in the others. It is a filter now, and
+    what has to hold is that all of it moves together: an entity list narrowed to
+    one thing beside a map still covered in everything is two answers to one
+    question, and this popup exists to make disagreements like that visible
+    rather than to produce them.
+    """
+    html = _console("html")
+    js = _console("world.js")
+    css = _console("css")
+
+    check("the box sits above the views rather than inside one",
+          html.index('id="wFilter"') < html.index('id="worldBody"'), True)
+    check("...so nothing is left of the pane it used to answer in",
+          "wPaneSearch" in html or "wSearchResults" in html, False)
+    check("the list and the map are narrowed by the same reading of the answer",
+          js.count("= wShown()"), 2)
+    check("...and the observation grid by the matches themselves",
+          "worldFilter.looks.values()" in js, True)
+    # Paging is by where the drawn stream ends, and under a filter the grid is
+    # not the stream -- so scrolling to the bottom of the matches must not go
+    # asking the rover for the looks below whatever the stream happens to hold.
+    check("scrolling the matches does not fetch more history",
+          "if (worldFilter || pane.hidden" in js, True)
+    check("the verdict is on the line under the box",
+          "#wSearchNote.wverdict" in css, True)
+    check("...and a refusal to find something does not merely score lower",
+          "#wSearchNote.wfound" in css and "#wSearchNote.wmissing" in css, True)
+
+
 def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
     """All four files, over a real socket, with the types a browser needs.
 
@@ -199,5 +233,6 @@ TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
+    test_the_search_box_narrows_the_views_rather_than_owning_one,
     test_the_page_brings_its_stylesheet_and_script_with_it,
 )
