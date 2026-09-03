@@ -254,9 +254,17 @@ good for was un-sticking a console that had decided this rover has no world stat
 — which happens on any refusal, including a store that was busy for a moment while
 the daemon restarted — and that is handled where it belongs: after a refusal the
 asking slows to `WORLD_RETRY_S` rather than stopping, so the panel comes back on
-its own. A rover too old to answer the world-building status call at all is
-still asked once and no more, since that call failing is the only thing that
-proves it.
+its own.
+
+**Nothing on this page reports the rover's own looking, and nothing switches it
+off.** There was a world-state entry in the side panel with an on/off pair and
+then a line of counts, and both are gone: the rover looks around for as long as
+it is switched on, so the switch only made it possible to leave a rover learning
+nothing, and the line that replaced it could only ever say the same thing. The one
+part worth keeping was the looking loop's own complaint -- a rover that has quietly
+stopped recording is the single thing about its looking a person cannot see for
+themselves -- and that arrives with the summary the popup already asks for, on the
+popup's error line.
 
 The stored frames come from `/world_frame.jpg`, and that one goes to the rover on a
 connection of its own again, synchronously, on whichever thread is serving the

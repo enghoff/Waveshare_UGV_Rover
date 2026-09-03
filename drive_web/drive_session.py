@@ -13,7 +13,7 @@ import rover_tools
 from console_model import (
     BATTERY_POLL_S, Channel, MAP_STALE_S, MOVE_TIMEOUT_S,
     PARKED_FRAME_GAP_S, PARKED_MAP_GAP_S, PARKED_POLL_S, PICTURE_GAP_S,
-    WORLD_BUILD_POLL_S, SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
+    SLOW_PICTURE_S, POLL_S, Reply, TRACK_POLL_S, WIFI_POLL_S,
     WIFI_SCAN_TIMEOUT_S, WORLD_OPEN_POLL_S, WORLD_RETRY_S, WORLD_TIMEOUT_S,
 )
 from drive_actions import SessionActions
@@ -198,8 +198,6 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.light_level: int | None = None
         self.battery_outstanding = False
         self.battery_at = 0.0
-        self.world_build_outstanding = False
-        self.world_build_at = 0.0
         self.battery: dict[str, Any] = {"text": "-", "state": "", "note": ""}
 
         # None until the rover has been asked once. The network calls are not in
@@ -426,17 +424,6 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.track_outstanding = True
             self.track_at = now
             self.watch.submit("tracking_status")
-        # How the rover's own looking is going, on the status connection rather
-        # than the world one: it reads a counter and touches neither the store nor
-        # the camera, so it must not queue behind an inspection that takes a
-        # minute. Stopped for good once a daemon turns out never to have heard of
-        # it, which is the only thing its failing proves.
-        if (self.watch is not None and self.world_build_offered
-                and not self.world_build_outstanding
-                and now - self.world_build_at > WORLD_BUILD_POLL_S):
-            self.world_build_outstanding = True
-            self.world_build_at = now
-            self.watch.submit("world_building")
         # And the world itself, but only while somebody has the popup open. The
         # rover records a look a second, so what a person is watching goes out of
         # date as they watch it, and there is no refresh button to press any more.
@@ -643,10 +630,6 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.tools = []
         self.can_drive = False
         self.world_outstanding = 0
-        # A reconnect is how a daemon that came back *different* is
-        # noticed, and whether it answers the world-building status call is
-        # one of the things asked once and otherwise kept for the session.
-        self.world_build_offered = True
         self.busy_since = None
         # The move connection has just been thrown away, so the reply that would
         # have handed the wheels over is never coming. Said out loud rather than

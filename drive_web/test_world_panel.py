@@ -269,19 +269,20 @@ def test_finding_a_thing_from_the_console() -> None:
     check("...and is shown", session.world_state()["error"], "no perception sidecar")
 
 
-def test_the_reading_for_building_the_world_state() -> None:
-    """The rover always builds it, and this panel never guesses at that.
+def test_a_looking_loop_that_has_failed_still_says_so() -> None:
+    """There is no world-state line on the page any more, and none is wanted.
 
-    There is nothing to press -- the switch is gone, along with the daemon's
-    ability to be switched off -- so everything on this line comes back from the
-    rover. A panel showing what this console last believed would leave a rover
-    whose looking thread had died still looking busy, which is the one thing the
-    line is there to catch.
+    The rover looks around for as long as it is switched on, so a panel reporting
+    that could only ever report the same thing. What had to survive the panel
+    going is the loop's own complaint: a rover that has quietly stopped recording
+    is the one thing about its looking that a person cannot see for themselves,
+    and it now lands on the error line of the popup that is showing the store it
+    has stopped filling.
     """
     try:
         import drive_web
     except ImportError as exc:
-        SKIP.append(f"the world-building reading ({type(exc).__name__})")
+        SKIP.append(f"the looking loop's complaint ({type(exc).__name__})")
         return
 
     session = drive_web.Session(None, 3.0, 480)
@@ -289,49 +290,31 @@ def test_the_reading_for_building_the_world_state() -> None:
     session.watch = type("Link", (), {
         "submit": lambda _self, name, arguments=None: sent.append((name, arguments)),
     })()
+    counts = {"entities": 2, "observations": 9}
 
     check("nothing is claimed before the rover has been asked",
-          session.world_state()["building"], None)
+          session.world_state()["available"], None)
 
-    # No action posts one: a console that could still ask to build would be a
-    # console that could still ask to stop.
+    # Nothing asks the rover to build, or to stop: a cached page still posting
+    # the switch that used to be here is ignored rather than obeyed.
     session.world_act({"what": "build", "on": False})
     check("there is nothing to send", sent, [])
 
-    session.world_handle("world_building",
-                         {"ok": True, "building": False, "looks": 7}, 0.0)
-    check("a loop that has stopped is shown as stopped",
-          session.world_state()["building"], False)
-    check("...and how much it recorded before it did",
-          session.world_state()["built_looks"], 7)
-
-    session.world_handle("world_building",
-                         {"ok": True, "building": True, "looks": 8}, 0.0)
-    check("and a rover that is looking says so",
-          session.world_state()["building"], True)
-
-    # The loop's own complaint is the only place a rover that has stopped
-    # recording would ever say so.
-    session.world_handle("world_building",
-                         {"ok": True, "building": True, "looks": 8,
-                          "error": "the perception sidecar is not running"}, 0.0)
+    session.world_handle("world_state_summary",
+                         {"ok": True, "summary": counts, "backend": "tensorrt",
+                          "building_error": "the perception sidecar is not "
+                                            "running"}, 0.0)
     check("a loop that is failing says why", session.world_state()["error"],
           "the perception sidecar is not running")
 
-    # A daemon too old to have heard of the switch is asked once, rather than
-    # every ten seconds for the rest of the session.
-    session.world_handle("world_building",
-                         {"ok": False, "error": "no such tool: world_building"}, 0.0)
-    check("a daemon that does not offer it stops being asked",
-          session.world_build_offered, False)
-    check("...and the poll is not left outstanding",
-          session.world_build_outstanding, False)
-    # It does not decide whether the rover has a world state, though, and it
-    # cannot: on a rover with no world-state component this call still answers
-    # ok, because it reads a flag rather than opening the store. Only the world
-    # channel's own calls can tell, and they are what says so.
-    check("...and it does not pronounce on whether there is a world state",
-          session.world_state()["available"], None)
+    session.world_handle("world_state_summary",
+                         {"ok": True, "summary": counts,
+                          "backend": "tensorrt"}, 0.0)
+    check("...and the line clears once it recovers",
+          session.world_state()["error"], "")
+
+    # It is still the world's own call that decides whether this rover has a
+    # world state at all, and the popup says so rather than showing an error.
     session.world_handle("world_state_summary",
                          {"ok": False,
                           "error": "this rover has no world_state component "
@@ -576,7 +559,7 @@ def test_the_world_urls() -> None:
 TESTS = (
     test_the_world_state_popup,
     test_finding_a_thing_from_the_console,
-    test_the_reading_for_building_the_world_state,
+    test_a_looking_loop_that_has_failed_still_says_so,
     test_an_open_popup_keeps_itself_current,
     test_the_world_urls,
 )

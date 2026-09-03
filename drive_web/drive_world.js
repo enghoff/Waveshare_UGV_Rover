@@ -99,7 +99,6 @@ const wHue = (id) => {
 };
 
 function drawWorld(w) {
-  drawWorldBuilding(w);
   $("worldBack").hidden = !w.open;
   $("world").classList.toggle("on", w.open);
   // Shutting the popup puts the observations tab back to its stream. Otherwise
@@ -170,35 +169,6 @@ function wPlace(entity) {
                           : "")
       + (place.refined_from ? `, fitted over ${place.refined_from} looks` : "");
   return line;
-}
-
-// The reading below face tracking, which is drawn whether or not the popup is
-// open. There is nothing to press: the rover looks around for as long as it is
-// switched on, so all this says is how that is going -- how many looks it has
-// taken, what the last resolver pass decided, and what the loop last complained
-// about. "stopped" is a fault and not a setting, and nothing here can ask for it.
-function drawWorldBuilding(w) {
-  const state = $("worldBuilding");
-  if (w.available === false) {
-    state.textContent = "not on this rover";
-    return;
-  }
-  if (w.building === null || w.building === undefined) {
-    state.textContent = "-";
-    return;
-  }
-  // The looks and the placing are on separate clocks, so both are on the line.
-  // A rover recording steadily and placing nothing is what sent somebody looking
-  // at this panel in the first place, and it has to be readable here.
-  const settled = w.settled || {};
-  const decided = settled.at
-      ? ` · settled ${wAgo(settled.at)}: ${settled.waiting || 0} waiting`
-        + (settled.created ? `, ${settled.created} placed` : "")
-        + (settled.matched ? `, ${settled.matched} recognised` : "")
-      : "";
-  state.textContent = w.building
-      ? `building — ${w.built_looks} look${w.built_looks === 1 ? "" : "s"}${decided}`
-      : "stopped — the rover is not looking";
 }
 
 function drawWorldBody() {

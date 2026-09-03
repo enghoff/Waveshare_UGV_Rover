@@ -84,15 +84,6 @@ class SessionWorld:
             "observations": 0,
             "backend": "",
             "searching": False,
-            #: None until the rover has been asked. The panel says "-" rather than
-            #: claiming the rover is doing something it may not be.
-            "building": None,
-            "built_looks": 0,
-            #: What the last resolver pass did. Looking and settling run on
-            #: separate clocks now, so a rover recording steadily and placing
-            #: nothing is a state the panel has to be able to show -- it is the
-            #: one this whole change came out of.
-            "settled": {},
             "gen": 0,
         }
         #: What `/world.json` serves: everything the popup draws.
@@ -122,11 +113,6 @@ class SessionWorld:
         #: which is what keeps an open popup current.
         self.world_watched_at = 0.0
         self.world_watching = False
-        #: Whether this daemon has heard of the status call at all. A rover too
-        #: old to answer it is asked once rather than every ten seconds for the
-        #: rest of the session. Reset on reconnect, because a reconnect is how a
-        #: daemon that came back different is noticed.
-        self.world_build_offered = True
 
     # --- what the buttons ask for --------------------------------------------
 
@@ -279,39 +265,7 @@ class SessionWorld:
 
     # --- what comes back ------------------------------------------------------
 
-    def world_switch(self, body: dict[str, Any]) -> None:
-        """How the rover's own looking is going, and how much of it there is.
-
-        Kept out of `world_handle`'s bookkeeping because it is the only world
-        call that does not go down the world channel -- it rides on the status
-        connection, so counting it there would let a poll landing every ten
-        seconds cancel a body fetch the open popup was waiting on.
-
-        It does not decide whether the rover has a world state either. On a rover
-        with no world-state component at all this call still answers "ok", since
-        it reads a flag on the daemon rather than opening the store; only the
-        world channel's own calls can tell. What its failing does mean is a
-        daemon too old to have heard of it, and then it is not asked again.
-        """
-        self.world_build_outstanding = False
-        if not body.get("ok"):
-            self.world_build_offered = False
-            self.world["error"] = str(body.get("error") or "no answer")
-            return
-        self.world["building"] = bool(body.get("building"))
-        self.world["built_looks"] = body.get("looks") or 0
-        self.world["settled"] = body.get("settled") or {}
-        # The loop's own last complaint, which is the only place a rover that
-        # has quietly stopped recording would ever say so. Set and not cleared:
-        # the world channel's calls own this line, and a switch poll landing
-        # between them must not wipe what they put there.
-        if body.get("error"):
-            self.world["error"] = str(body["error"])
-
     def world_handle(self, name: str, body: dict[str, Any], seconds: float) -> None:
-        if name == "world_building":
-            self.world_switch(body)
-            return
         self.world_outstanding = max(0, self.world_outstanding - 1)
         # `world_watch` only asks with nothing else in flight, so whatever comes
         # back next is its answer -- and cleared here whatever that answer is,
@@ -352,7 +306,12 @@ class SessionWorld:
                 camera_fov_deg=body.get("camera_fov_deg"))
             self.world["backend"] = body.get("backend") or ""
             self.world["busy"] = bool(body.get("busy"))
-            self.world["settled"] = body.get("settled") or {}
+            # The looking loop's own last complaint. There is no line for it on
+            # the page any more, so this is the only place a rover that has
+            # quietly stopped recording can say so, and it belongs on the error
+            # line of the popup that is showing the store it has stopped filling.
+            if body.get("building_error"):
+                self.world["error"] = str(body["building_error"])
             self.world_counts()
             # The counts are how an open popup finds out there is anything new to
             # draw: they are what `world_watch` asks for every couple of seconds,
