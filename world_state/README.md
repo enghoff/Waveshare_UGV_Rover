@@ -19,6 +19,23 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**Two adjacent objects are no longer cut down the wrong seam, since
+2026-09-03.** The fault a person notices at the console is two markers sitting on
+top of one another, and on the evening drive that was a blue-topped bench and the
+dark wardrobe beside it, 41 cm apart, each holding some crops of each with the
+assignment flipping from look to look. **The cause was that identity was decided
+one region at a time.** Two regions of one picture are two different things, so a
+look may give a thing one region and no more — which is a constraint on how a
+whole look is shared out, and was being enforced first-come. Asked region by
+region the question is genuinely unanswerable and the resolver rightly abstained,
+so the evidence was thrown away every look; asked of the look as a whole it is
+answerable, because there are two regions and two things and one arrangement is
+plainly better. `resolve._by_look` solves it as an assignment. Replayed over the
+evening drive that attaches three more looks and takes the bearings that miss
+their own entity's position to 1 of 75; on the five looks that built the twin, the
+bench, the wardrobe and a window come out as three clean tracks where they used to
+come out as two mixtures. The write-up is *A look is decided all at once* below.
+
 **A four-minute drive on the evening of 2026-09-03 placed 23 things, thirteen of
 them cleanly one object, where the thirteen-minute drive before it had placed
 one.** The recovery is measured rather than hoped for: 178 looks kept a bearing the
@@ -160,6 +177,9 @@ is deliberately blunt:
 1. every observation is stored exactly as it was measured, with the frame, the
    gimbal angles and the rover pose behind it;
 2. no observation is ever rewritten;
+2a. a look is offered to what is already placed as a whole, because its regions
+   are different things by construction and which of them is which is one
+   arrangement rather than several independent guesses;
 3. what a thing is *called* is not recorded at all, because nothing here can
    measure it — see below.
 
@@ -926,7 +946,11 @@ in one frame are different things. Tested against the five near-duplicate pairs 
 this recording, **it vetoes all five**, including `object:8` and `object:10`,
 which sit 3 cm apart and are two halves of one sofa: 17 frames hold observations
 of both. The premise is false wherever the region finder splits one object into
-parts, which is the case merge exists to fix. Phase 5 needs a different veto.
+parts, which is the case merge exists to fix. Phase 5 needs a different veto —
+one was measured on 2026-09-03 and is written up under *A look is decided all at
+once* above, along with the reason it is not being built yet: on that drive the
+overlapping pair was two adjacent objects cut down the wrong seam rather than one
+thing counted twice, and merging would have hidden it rather than fixed it.
 
 ## The cadence was the fault, 2026-09-03
 
@@ -1580,6 +1604,115 @@ it". The whole of this run had seven places to look from.
    never been tried for this -- measured on the same pairs they order them the
    same way and no better (the real pairs at 0.851 and 0.906 against a same-frame
    95th percentile of 0.854), so there is nothing free there either.
+
+## A look is decided all at once, 2026-09-03
+
+**The overlapping pair a person sees at the console is a fault in how entities are
+made, not a missing merge.** Two things 41 cm apart, both holding crops of both
+objects, is not one thing counted twice: it is one seam cut two ways, and no
+merge recovers the two objects from it. So the fix is upstream.
+
+### What the store actually held
+
+Fifteen things, and only one pair reads as one thing counted twice. The other
+pairs that overlap on the map are real neighbours and the resolver was right about
+every one of them: a dining chair and the rug it stands on 31 cm apart, four
+chairs of one set spread over a metre and a half, a rug against a painting, an
+armchair against a picture. **Appearance is what keeps those apart** — the chair
+against the rug scores 0.36, well under `DIFFERENT_THING`, so none of their looks
+can cross over. Any rule that merged on distance alone would collapse the chair
+into the rug.
+
+`object:12` and `object:15` were the exception, and reading the crops says why they
+are not duplicates either. Both were built out of the *same four looks*: each look
+put one box on the bench and one on the wardrobe, and which entity got the bench
+alternated every look. Each entity ended up half of each.
+
+### Why merging is the wrong answer here, measured
+
+The plan's Phase 5 test — same map session, positions within their combined
+uncertainty, appearance no further apart than `DIFFERENT_THING` — fires on
+`object:12`/`object:15` **and** on `object:1`/`object:2`, which are two different
+chairs of the dining set. Co-occurrence vetoes both, as this README already
+predicted it would. A veto that does work was found and is worth recording even
+though it is not being built: hold one shared look out, rebuild both placements
+from the looks that remain, and ask whether that look's two regions fit the two
+placements better as assigned or swapped. For every genuine pair the assignment
+wins by 2.8 to 16 times; for the bench and the wardrobe **the swap wins**, 0.76 m
+against 2.12 m. And the dangerous chair pairs cannot be asked at all, because with
+two looks each, holding one out leaves a single ray and places nothing — which
+is the right refusal for the right reason.
+
+That veto is not needed if generation stops making the pair, which is what this
+change does.
+
+### The fix, and what it is not
+
+The first pass now takes a look's regions and the things already placed and
+chooses the arrangement with the smallest total miss, subject to a thing taking
+at most one region from a look. `scipy.optimize.linear_sum_assignment` does the
+solving; the cost of a pairing is how much of `locate.match_tolerance` the bearing
+actually uses, which is a ratio rather than metres because half a metre of miss is
+nothing on a sideboard five metres off and hopeless on a light fitting a metre
+away.
+
+**Every gate is the one that was there before, and each still only removes.** A
+pairing the spatial gate refuses is forbidden, a pairing whose appearance falls
+under `DIFFERENT_THING` is forbidden, and a thing a frame has already given a
+region to in an earlier pass is not offered. What changed is only which admissible
+pairing is chosen.
+
+**Appearance still never overrules geometry.** The arrangement is chosen on
+geometry alone. Only where it turns out not to care — where forbidding a
+region's chosen pairing costs the whole look less than `SAME_ANSWER` — is
+appearance asked, and then by the same `APPEARANCE_LEAD` rule as before; if it
+cannot separate them either, the region is left unassigned. That is the old
+per-region abstain, asked of the look.
+
+### Reproduced first, on the looks that caused it
+
+The whole-run replay does **not** reproduce this recording exactly — 14 entities
+against the rover's 15, and 19 with no map at all — because `reach` is computed
+from the map as it stands now and the map has grown since the drive. So the fault
+was reproduced on the five looks that built the pair instead, fed through each
+build with the bearings the rover stored, which isolates the resolver exactly.
+
+| the five looks that built the twin | things | what they hold |
+|---|---:|---|
+| deciding a region at a time | 3 | four bench crops **and a wardrobe**; three wardrobes **and a bench**; the window |
+| deciding a look at a time | 3 | five bench crops; five wardrobe crops; the window |
+
+Read off the crops, which is the only evidence that settles it. Same count either
+way; the difference is that every crop is now in the right one.
+
+Constructed as a selftest it comes out sharper still, and it is the honest version
+of what the rover was doing: asked one region at a time, **both** regions of the
+third look are declared ambiguous and neither is used, because each bearing is
+consistent with both things and appearance cannot separate a dark wardrobe from a
+bench in shadow. Asked of the look, both attach, one each, whichever order the
+pool offers them in.
+
+### What it came to on the drive
+
+| | things | looks attached | bearings missing their own entity |
+|---|---:|---:|---:|
+| as the rover recorded it | 15 | 60 | — |
+| bearings through the lens | 16 | 71 | 2 (3%) |
+| and the look decided at once | 16 | 74 | **1 (1%)** |
+
+**It costs 7%**, timed on the Orin against the old build over the same pool with
+the same looks matched: 4.10 s a pass against 4.37 s at 500 pending bearings.
+Below a couple of hundred pending it is the faster of the two, because placements
+are now recomputed once per look rather than once per attachment. What dominates a
+pass at any pool size is still the pairing search that founds new things, which
+this did not touch.
+
+A word on measuring that, because the first attempt was misleading: a synthetic
+pool built by repeating one recording twelve times reported 37 s at a thousand
+pending and 128 s at two thousand. Those numbers are real and mean nothing —
+twelve identical copies of a look make every look matchable against everything,
+which no room does. The comparison worth having is the same data through both
+builds, which is the one above.
 
 ## The drive that proved it, 2026-09-03 (evening)
 

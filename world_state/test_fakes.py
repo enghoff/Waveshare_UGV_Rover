@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The package is imported as a package, so what goes on the path is its parent --
@@ -119,6 +120,39 @@ def a_box(width=0.10, height=0.60):
     """A box of this size in the frame, centred on the lens axis."""
     return [ON_AXIS[0] - width / 2.0, ON_AXIS[1] - height / 2.0,
             ON_AXIS[0] + width / 2.0, ON_AXIS[1] + height / 2.0]
+
+
+def a_look(store, x, y, bearings, vectors=None, inference=1):
+    """One look from one place, with a region on each of these bearings.
+
+    **The thing `observe` cannot build, and the fault it is needed for.** Two
+    regions of one picture share a pose and a gimbal angle, so their bearings
+    differ only by where in the frame they sat -- which means `observe`, which
+    takes a heading and puts the box on the lens axis, can only ever produce one
+    bearing per look. Two adjacent objects seen in one picture is exactly the
+    case that goes wrong, so the bearings are written here directly, the way
+    `replay` writes a recording back.
+
+    Nothing else is different: the rows are ordinary observations with a shared
+    `inference_id`, no entity, and a pose the resolver will read.
+    """
+    import json
+
+    vectors = vectors or [a_vector(1.0, 0.0)] * len(bearings)
+    pose = json.dumps({"x_m": x, "y_m": y, "heading_deg": 0.0})
+    with store._lock, store.db:
+        for bearing, vector in zip(bearings, vectors):
+            store.db.execute(
+                "INSERT INTO observations(entity_id, inference_id, observed_at,"
+                " source, frame_id, bbox_json, observer_pan_deg,"
+                " observer_tilt_deg, observer_pose_json, map_session,"
+                " bearing_deg, span_deg, region_source, dino_blob, siglip_blob,"
+                " vectors_from)"
+                " VALUES(NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (inference, time.time(), "perception", f"f{inference}",
+                 json.dumps(a_box()), 0.0, 0.0, pose, store.map_session(),
+                 float(bearing), 12.6, "yoloe", vector,
+                 a_vector(0.5, 0.5), "fake"))
 
 
 def observe(store, x, y, bearing, vector=None, inference=None, fov_deg=100.0):

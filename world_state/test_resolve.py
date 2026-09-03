@@ -10,7 +10,8 @@ import math
 import tempfile
 
 from test_harness import check
-from test_fakes import a_capture, a_pose, a_seeing_inspector, a_sighting, a_store, a_vector, observe
+from test_fakes import (a_capture, a_look, a_pose, a_seeing_inspector,
+                        a_sighting, a_store, a_vector, observe)
 from world_state import locate
 from world_state import resolve
 
@@ -751,8 +752,80 @@ def test_one_pass_places_a_few_things_and_leaves_the_rest_for_the_next() -> None
             store.close()
 
 
+def test_two_things_side_by_side_are_not_cut_down_the_wrong_seam() -> None:
+    """**The fault the drive of 2026-09-03 left behind, and it was throwing the
+    evidence away rather than filing it wrongly.** A blue-topped bench and the
+    dark wardrobe beside it, 41 cm apart on the map, came back as two things
+    each holding some crops of each, with which one got the bench flipping from
+    look to look.
+
+    Asked one region at a time the question really is unanswerable: each of the
+    two bearings is consistent with both things, and appearance cannot separate
+    a dark wardrobe from a bench in shadow -- so both regions are declared
+    ambiguous and neither is used, every look, for ever. Asked of the look as a
+    whole it *is* answerable, because there are two regions and two things and
+    one way of sharing them out is plainly better than the other.
+
+    Both orders are checked, because the order the pool happened to be in is
+    what used to decide.
+    """
+    for far_first in (True, False):
+        with tempfile.TemporaryDirectory() as directory:
+            store = a_store(directory)
+            bench, wardrobe = (3.0, 3.0), (3.4, 2.75)
+
+            def bearing(frm, to):
+                return round(math.degrees(math.atan2(to[1] - frm[1],
+                                                     to[0] - frm[0])), 2)
+
+            # Two looks from two places, each seeing both things. Neither look
+            # may give one thing two regions, so this is how the rover comes to
+            # hold two things a handspan apart in the first place.
+            for step, place in ((1, (0.0, 0.0)), (2, (6.0, 0.0))):
+                a_look(store, place[0], place[1],
+                       [bearing(place, bench), bearing(place, wardrobe)],
+                       inference=step)
+            for _ in range(3):
+                resolve.resolve(store)
+            placed = sorted(store.placed(),
+                            key=lambda one: one["placement"]["y_m"])
+            check("two things stand a handspan apart", len(placed), 2)
+            check("...and that is how far apart they are",
+                  round(math.hypot(
+                      placed[0]["placement"]["x_m"] - placed[1]["placement"]["x_m"],
+                      placed[0]["placement"]["y_m"] - placed[1]["placement"]["y_m"]),
+                      2), 0.46)
+
+            # A third look, from a third place, with a region on each of them.
+            third = (3.0, -2.0)
+            offered = [bearing(third, bench), bearing(third, wardrobe)]
+            if not far_first:
+                offered.reverse()
+            a_look(store, third[0], third[1], offered, inference=9)
+            result = resolve.resolve(store)
+
+            check("both regions of the look found a home", result["matched"], 2)
+            check("...none was left ambiguous", result["ambiguous"], 0)
+            check("...and no third copy was invented", len(store.placed()), 2)
+            went = {round(row["bearing_deg"], 2): row["entity_id"]
+                    for row in store.observations(limit=80)
+                    if row["entity_id"] and row["inference_id"] == 9}
+            nearer = placed[0]["id"] if placed[0]["placement"]["y_m"] < \
+                placed[1]["placement"]["y_m"] else placed[1]["id"]
+            further = [one["id"] for one in placed if one["id"] != nearer][0]
+            check("the bearing at the wardrobe went to the wardrobe",
+                  went.get(bearing(third, wardrobe)), nearer)
+            check("...and the bearing at the bench to the bench",
+                  went.get(bearing(third, bench)), further)
+            check("...and the reason says the whole look decided it",
+                  "regions in this look" in
+                  (store.observations(nearer, limit=1)[0]["note"] or ""), True)
+            store.close()
+
+
 TESTS = (
     test_two_looks_from_two_places_make_one_lasting_thing,
+    test_two_things_side_by_side_are_not_cut_down_the_wrong_seam,
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
     test_two_identical_chairs_are_not_guessed_at_from_two_places,
     test_one_television_seen_six_times_is_one_television,

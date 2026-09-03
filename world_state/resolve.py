@@ -127,6 +127,21 @@ RIVAL_FACTOR = 2.0
 #: the rover answers.
 SAME_PLACE_M = 0.5
 
+#: How much better one arrangement of a look's regions has to be than the next
+#: before the difference is a decision rather than a rounding, as a fraction of
+#: one bearing's whole allowance.
+#:
+#: **The geometric twin of `APPEARANCE_LEAD`, and it is asked of the look rather
+#: than of the region.** Two regions of one picture and two things placed a
+#: handspan apart have two arrangements between them, and where the total miss is
+#: the same either way the geometry has said nothing about which region is which
+#: -- so appearance is asked, and if that cannot separate them either, neither is
+#: assigned. That is the case `object:12` and `object:15` of the drive of
+#: 2026-09-03 are: over the four looks that saw both, the arrangement the rover
+#: chose explained 2.12 m of miss where swapping the two regions explained 0.76,
+#: so it had committed, look by look, to whichever it happened to consider first.
+SAME_ANSWER = 0.05
+
 #: How many new things one pairing pass may place before it stops and leaves the
 #: rest for the next one.
 #:
@@ -365,14 +380,20 @@ def resolve(store, *, map_session: int | None = None,
     # when it was the record a frame gave an entity one more region every pass;
     # see `WorldStore.entities_in_frame` for what that cost on 2026-09-03.
     taken_in: dict[Any, set] = {}
-    leftover = []
+    # Grouped by the look that took them, because a look is the unit the first
+    # pass decides: its regions are two different things by construction, so
+    # which of them is which thing is one arrangement rather than several
+    # independent choices. Order is preserved -- oldest look first, which is the
+    # order the pool came in.
+    looks: dict[Any, list] = {}
     for observation in pending:
-        decision = _against_known(store, observation, entities, session,
-                                  taken_in, reach)
-        if decision is None:
-            leftover.append(observation)
-            continue
-        decisions.append(decision)
+        looks.setdefault(observation.get("inference_id"), []).append(observation)
+    leftover = []
+    for group in looks.values():
+        settled = _by_look(store, group, entities, session, taken_in, reach)
+        spoken_for = {decision.observation_id for decision in settled}
+        decisions.extend(settled)
+        leftover.extend(one for one in group if one["id"] not in spoken_for)
 
     decisions.extend(_pair_up(store, leftover, session, entities, taken_in,
                               reach))
@@ -394,6 +415,238 @@ def resolve(store, *, map_session: int | None = None,
              "candidates": one.candidates}
             for one in decisions],
     }
+
+
+def _solver():
+    """`scipy.optimize.linear_sum_assignment`, or None if it cannot be reached.
+
+    **The daemon may import a third-party package**, which was not true of the
+    Pi this component was first written on and is the only reason the arithmetic
+    here was ever hand-rolled: `python3-numpy` and `python3-scipy` are apt
+    packages on this rover, in `/usr/lib/python3/dist-packages`, where no source
+    deploy can touch them.
+
+    None is answered rather than raised, and the caller then decides the look one
+    region at a time in pool order, which is what this did for its first month.
+    That is a real behaviour with its own tests rather than a second
+    implementation of an assignment, and the decision says which way it was
+    taken -- a rover that quietly stopped placing things because an import moved
+    would be a worse failure than a rover that goes back to being greedy.
+    """
+    global _SOLVER
+    if _SOLVER is None:
+        try:
+            from scipy.optimize import linear_sum_assignment  # noqa: PLC0415
+
+            _SOLVER = linear_sum_assignment
+        except Exception:                                     # noqa: BLE001
+            _SOLVER = False
+    return _SOLVER or None
+
+
+_SOLVER: Any = None
+
+#: What a forbidden pairing costs. Anything above the whole of one bearing's
+#: allowance would do; this is far above it, so that the solver prefers every
+#: feasible pairing it can make to any forbidden one and therefore arranges as
+#: many regions as the gates allow before it minimises the miss.
+_FORBIDDEN = 1e6
+
+
+def _allowance_used(placement: dict[str, Any],
+                    ray: dict[str, Any]) -> float | None:
+    """How much of what this bearing is allowed to be off by it actually uses,
+    or None if it is not pointing at this thing at all.
+
+    A ratio rather than metres, because the costs of different pairings have to
+    be comparable and metres are not: half a metre of miss is nothing on a
+    sideboard five metres away and hopeless on a light fitting one metre off. The
+    denominator is `locate.match_tolerance`, which is the same number
+    `_against_known` has always compared against, so a ratio of 1.0 is exactly
+    the edge of what would attach -- this reorders candidates the gate already
+    admitted and never admits one it did not.
+    """
+    tolerance_m = locate.match_tolerance(placement, ray)
+    if not locate.agrees(placement, ray, tolerance_m) or tolerance_m <= 0.0:
+        return None
+    miss_m = locate.cross_track_of(float(placement["x_m"]),
+                                   float(placement["y_m"]), ray)
+    return miss_m / tolerance_m
+
+
+def _arrange(costs: list[list[float]], solve) -> tuple[list[int], float]:
+    """Which entity each region should go to, and what the whole thing costs.
+
+    A list as long as the regions, holding an index into the entities or -1, and
+    the total of the pairings that were actually made. `solve` is
+    `linear_sum_assignment`: it takes the rectangular matrix whole and returns
+    the arrangement with the smallest total, which is the point of asking it
+    rather than taking each region's own best in turn.
+    """
+    import numpy as np                                         # noqa: PLC0415
+
+    matrix = np.array(costs, dtype="float64")
+    rows, columns = solve(matrix)
+    chosen = [-1] * len(costs)
+    total = 0.0
+    for row, column in zip(rows.tolist(), columns.tolist()):
+        if matrix[row][column] >= _FORBIDDEN:
+            continue
+        chosen[row] = column
+        total += float(matrix[row][column])
+    return chosen, total
+
+
+def _by_look(store, group, entities, session, taken_in,
+             reach=None) -> list[Decision]:
+    """Offer one look's regions to the things already placed, all at once.
+
+    **The unit of decision is the look and not the region, and that is the fix
+    for two adjacent objects being cut down the wrong seam.** Two regions of one
+    picture are two different things -- the region finder's own suppression saw
+    to that -- so a look may give an entity one region and no more. That rule was
+    always here and was enforced first-come: whichever region was considered
+    first claimed the entity, the second was pushed out to the pairing pass, and
+    a twin was founded. It is a constraint on an arrangement, so it is solved as
+    one now.
+
+    What that buys is measured. On the drive of 2026-09-03, `object:12` and
+    `object:15` sat 0.41 m apart, each holding some crops of a blue-topped bench
+    and some of the dark cabinet beside it, with which entity got which flipping
+    from look to look; all four of the later entity's looks would have joined the
+    earlier one on geometry and appearance both, and all four were refused
+    because their frame had already given it a region.
+
+    Placements are read as they stood when the look began and rewritten once
+    afterwards, rather than moving under the regions still being decided.
+    """
+    solve = _solver()
+    rays: list[tuple[dict[str, Any], Any]] = []
+    for observation in group:
+        ray = ray_of(observation, reach)
+        if ray is not None:
+            rays.append((ray, observation))
+    if not rays:
+        return []
+    frame = group[0].get("inference_id")
+    if frame not in taken_in:
+        taken_in[frame] = store.entities_in_frame(frame)
+    already = taken_in[frame]
+    open_to = [entity for entity in entities if entity["id"] not in already]
+    if not open_to or solve is None:
+        return [decision for decision in
+                (_against_known(store, observation, entities, session, taken_in,
+                                reach) for _ray, observation in rays)
+                if decision is not None]
+
+    # What each region would cost each thing, and what it looks like. Both are
+    # wanted for every admissible pair: the geometry arranges the look and
+    # appearance is asked only where the arrangement turns out not to care.
+    costs: list[list[float]] = []
+    looks: list[list[float | None]] = []
+    for ray, observation in rays:
+        vector = observation.get("dino_blob") or b""
+        row_costs, row_looks = [], []
+        for entity in open_to:
+            placement = entity.get("placement") or {}
+            used = _allowance_used(placement, ray)
+            seen = None if used is None else appearance(store, entity["id"],
+                                                        vector)
+            if used is None or (seen is not None and seen < DIFFERENT_THING):
+                row_costs.append(_FORBIDDEN)
+                row_looks.append(None)
+                continue
+            row_costs.append(used)
+            row_looks.append(seen)
+        costs.append(row_costs)
+        looks.append(row_looks)
+
+    chosen, total = _arrange(costs, solve)
+    decisions: list[Decision] = []
+    touched: list[str] = []
+    for index, (ray, observation) in enumerate(rays):
+        column = chosen[index]
+        if column < 0:
+            continue
+        # Would the look be arranged as well with this region somewhere else? If
+        # so the geometry has not chosen, and the old per-region question is
+        # asked of the alternatives it is indifferent between.
+        spare = [row[:] for row in costs]
+        spare[index][column] = _FORBIDDEN
+        _other, without = _arrange(spare, solve)
+        rivals = [other for other in range(len(open_to))
+                  if other != column and costs[index][other] < _FORBIDDEN]
+        if rivals and without - total <= SAME_ANSWER:
+            settled = _by_appearance(index, column, rivals, looks, open_to)
+            if settled is None:
+                decisions.append(Decision(
+                    observation["id"], AMBIGUOUS, None,
+                    why=(f"{len(rivals) + 1} placed things are equally "
+                         f"consistent with this look however its {len(rays)} "
+                         f"regions are shared out, and appearance cannot "
+                         f"separate them ({_reads(looks[index][column])} against "
+                         f"{_reads(max((looks[index][one] or 0.0) for one in rivals))}); "
+                         f"left unassigned rather than guessed"),
+                    candidates=_shortlist(index, [column, *rivals], costs,
+                                          looks, open_to)))
+                continue
+            column = settled
+        entity_id = open_to[column]["id"]
+        already.add(entity_id)
+        placement = open_to[column].get("placement") or {}
+        away_m = math.hypot(float(placement.get("x_m", 0.0)) - ray["x_m"],
+                            float(placement.get("y_m", 0.0)) - ray["y_m"])
+        why = (f"the bearing points at {entity_id} {away_m:.2f} m away, "
+               f"appearance {_reads(looks[index][column])}, and of the "
+               f"{len(rays)} regions in this look it is the one that fits it "
+               f"best, using {costs[index][column]:.0%} of what its bearing is "
+               f"allowed to be off by")
+        store.attach(entity_id, [observation["id"]], why)
+        if observation.get("dino_blob"):
+            store.add_exemplar(entity_id, observation["dino_blob"])
+        if entity_id not in touched:
+            touched.append(entity_id)
+        decisions.append(Decision(observation["id"], MATCH, entity_id, why=why,
+                                  candidates=_shortlist(index, [column], costs,
+                                                        looks, open_to)))
+    for entity_id in touched:
+        _replace_placement(store, entity_id, session, reach)
+    return decisions
+
+
+def _by_appearance(index: int, column: int, rivals: list[int],
+                   looks: list[list[float | None]],
+                   open_to: list[dict[str, Any]]) -> int | None:
+    """Which of the things the geometry is indifferent between this crop looks
+    most like, or None if appearance cannot separate them either.
+
+    The rule `_against_known` has always applied, asked at the point it is now
+    reached: appearance chooses only among candidates geometry has accepted, and
+    only when one is clearly ahead by `APPEARANCE_LEAD`. Silence sorts last, so a
+    candidate nothing could be compared against never wins on nothing.
+    """
+    ranked = sorted([column, *rivals],
+                    key=lambda one: (-(looks[index][one] or 0.0),
+                                     -(open_to[one].get("observation_count") or 0)))
+    best, next_best = ranked[0], ranked[1]
+    lead = (looks[index][best] or 0.0) - (looks[index][next_best] or 0.0)
+    return best if lead >= APPEARANCE_LEAD else None
+
+
+def _reads(value: float | None) -> str:
+    """An appearance score for a person to read, or the fact that there is none."""
+    return "not comparable" if value is None else f"{float(value):.2f}"
+
+
+def _shortlist(index: int, columns: list[int], costs, looks,
+               open_to) -> list[dict[str, Any]]:
+    """The candidates behind one decision, for the console to show."""
+    return [{"entity_id": open_to[one]["id"],
+             "allowance_used": round(costs[index][one], 3),
+             "appearance": (None if looks[index][one] is None
+                            else round(looks[index][one], 3)),
+             "seen": open_to[one].get("observation_count", 0)}
+            for one in columns if costs[index][one] < _FORBIDDEN]
 
 
 def _against_known(store, observation, entities, session,

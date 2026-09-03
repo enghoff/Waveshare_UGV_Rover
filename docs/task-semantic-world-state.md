@@ -728,12 +728,32 @@ and a bad match can be explained from the popup without reading the database.
 
 ---
 
-### Phase 5 — merge — **not built**
+### Phase 5 — merge — **not built, and the case for it is weaker than it was**
 
 Every fix so far prevents duplicates at the moment of creation: a minimum range,
 a match tolerance that knows how wide the thing is, offering each new thing to
 whatever is still waiting. Once two entities exist for one television, nothing
 reconciles them, and the validation drive left nine such pairs.
+
+**Read this next part before building any of it.** The overlapping pair that was
+actually on the rover on 2026-09-03 was not one thing counted twice, and merging
+it would have hidden a fault rather than fixed one. Its store held fifteen things,
+of which exactly one pair overlapped in a way a person would call a duplicate —
+and reading the crops showed both entities were built from the *same four looks*,
+each look putting one box on a blue-topped bench and one on the dark wardrobe
+beside it, with which entity got the bench alternating look to look. Each was half
+of each. There is no merge of those two that recovers a bench and a wardrobe.
+
+Every other overlapping pair on that map was a real neighbour and the resolver was
+right about all of them: a dining chair and the rug it stands on 31 cm apart, four
+chairs of one set over a metre and a half, a rug against a painting. **Appearance
+is what keeps those apart**, at 0.36 for the chair against the rug, and any rule
+merging on distance alone collapses them.
+
+So the fix went upstream, into how a look is decided at all — see *A look is
+decided all at once* in `world_state/README.md`. What is written below stands as
+the design for a merge if one is still wanted afterwards, with one gap now
+filled.
 
 **The argument for merge existing at all is that placement improves.** Two things
 placed from a 0.7 m baseline at plus or minus 0.30 m are distinguishable; the same
@@ -767,6 +787,23 @@ parts and those parts appear together in every frame that sees the object at all
 -- which the plan already knew, two sections up, and did not carry through to
 here. Phase 5 needs a different veto before it is worth building.
 
+**A veto that does work was measured on 2026-09-03.** Hold one look that saw both
+entities out, rebuild both placements from the looks that remain, and ask whether
+that look's two regions fit the two placements better as they were assigned or
+swapped. If the split carries information, the assignment wins comfortably; if it
+does not, the pair is one seam cut two ways rather than two things. Measured
+across the 105 pairs of that store, the arrangement beat the swap by between 2.8
+and 16 times for every genuine pair, and **lost** for the bench and the wardrobe,
+0.76 m against 2.12 m. The dangerous case protects itself for the right reason:
+two entities with two looks each cannot be asked at all, because holding a look
+out leaves one ray and one ray places nothing, so an untested split is never
+merged. Put together with the plan's positive test below and the appearance floor,
+it fired exactly once on that store and on nothing else.
+
+It is measured on a single positive example and wants a second drive before it is
+trusted, and it is worth noting that on that store the pair it would have merged
+was one it should not have: the honest answer there was to stop making the pair.
+
 **The positive test mirrors the rival test that already exists.** Same map session,
 appearance no further apart than `DIFFERENT_THING` (the synonym gate this
 originally named is gone), and separation within
@@ -789,8 +826,9 @@ wrong merge looks like nothing at all.
   words, so the console can explain it and the summary can count it.
 - At most one pair per pass, re-checking the veto afterwards, so that a row of
   chairs cannot be collapsed one pair at a time by transitivity.
-- Never across map sessions, never on appearance, and never where a single frame
-  has seen both.
+- Never across map sessions, never on appearance, and never where the split
+  between the two still explains the looks that saw both (the co-occurrence rule
+  this originally said is measured not to work; see above).
 - Drop `'a floor'` and `'a wall'` from the vocabulary. They are surfaces rather
   than things, they accounted for two of the nine duplicates, and no useful
   question is asked of where the floor is.
@@ -800,10 +838,15 @@ from three positions ends with one television and two armchairs -- and when
 forcing the two armchairs to overlap does *not* merge them, because a frame has
 seen them together.
 
-**Blocked on evidence.** The drive's 206 observations were cleared, so there is
-nothing left to build this against. The empirical question that decides whether
-the veto works -- whether the two windows and the two armchairs really do differ on
-co-occurrence -- needs the recording back, which means another drive.
+**No longer blocked on evidence, and no longer the next thing to do.** The drive
+of 2026-09-03 supplied a recording with a real overlapping pair in it, and what it
+showed was that the pair belonged upstream: co-occurrence does not veto, the
+held-out swap test does, and the one merge the whole rule would have made was of
+two entities that should never have been created separately. Fixing generation was
+the cheaper and safer half and is done. What a merge is still for is the case the
+argument above opens with -- two things placed when the rover knew least, both
+genuinely of one object, which more looks later prove to be one -- and no recording
+of that case exists yet.
 
 ---
 
