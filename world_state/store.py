@@ -340,6 +340,32 @@ class WorldStore:
             rows = self.db.execute(query, args).fetchall()
         return [_readable(dict(row), vectors=True) for row in reversed(rows)]
 
+    def entities_in_frame(self, inference_id: Any) -> set:
+        """Which lasting things this one look has already given a region to.
+
+        **Two regions of one frame are two different things** -- the region
+        finder's own overlap suppression saw to that -- so a look may give an
+        entity one region and no more, ever.
+
+        The resolver has always had that rule and kept it in a dictionary it
+        built at the top of each pass, which is a memory that lasts exactly as
+        long as the pass does. The pending pool does not: an observation with no
+        partner waits indefinitely, by design. So a frame donated one more region
+        every time round, and on the run of 2026-09-03 that is how a single
+        entity came to hold four disjoint regions of one picture -- traced
+        joining on three consecutive passes -- and twenty-six crops of at least
+        six different objects. Asked of the store instead, the rule holds across
+        passes and across restarts.
+        """
+        if inference_id is None:
+            return set()
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT DISTINCT entity_id FROM observations"
+                " WHERE inference_id = ? AND entity_id IS NOT NULL",
+                (inference_id,)).fetchall()
+        return {row["entity_id"] for row in rows}
+
     def placed(self, map_session: int | None = None) -> list[dict[str, Any]]:
         """Entities that have a position, in the map they were positioned in.
 
@@ -820,6 +846,8 @@ SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS observations_by_entity
         ON observations(entity_id, observed_at DESC);
+    CREATE INDEX IF NOT EXISTS observations_by_inference
+        ON observations(inference_id);
     CREATE TABLE IF NOT EXISTS inferences (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         started_at     REAL NOT NULL,

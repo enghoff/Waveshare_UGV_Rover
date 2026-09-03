@@ -218,6 +218,16 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
     is the furthest the point moved. That captures the geometry that matters here,
     which is that error along the line of sight grows with range and shrinks with
     baseline, without pretending to a covariance nobody calibrated.
+
+    **The shape of that error is reported as well as its size, and the difference
+    between the two is what stopped one entity swallowing a room.** The four
+    nudged points are not scattered evenly around the answer: a crossing taken at
+    a shallow angle is uncertain a long way down the line of sight and precise
+    across it, so the cloud is a cigar rather than a disc. `uncertainty_m` is the
+    length of that cigar, and adding it to a tolerance measured *across* a later
+    bearing charges the whole of a lengthways error to a sideways question. So
+    the long axis, the width across it and the direction it points are recorded
+    too, and `cross_track` is what reads them.
     """
     if baseline_m(first, second) < MIN_BASELINE_M:
         return None
@@ -242,7 +252,7 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         if beyond_reach(observer, point):
             return None
 
-    worst = 0.0
+    moved = []
     for da in (-BEARING_SIGMA_DEG, BEARING_SIGMA_DEG):
         for db in (-BEARING_SIGMA_DEG, BEARING_SIGMA_DEG):
             nudged = _cross({**first,
@@ -252,12 +262,26 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
             if nudged is None:
                 # A nudge that destroys the fix means the fix was marginal.
                 return None
-            worst = max(worst, math.hypot(nudged[0] - point[0],
-                                          nudged[1] - point[1]))
+            moved.append((nudged[0] - point[0], nudged[1] - point[1]))
+    worst = max(math.hypot(dx, dy) for dx, dy in moved)
+    # The direction the error runs in is the furthest the point moved, and the
+    # width is how far the cloud reaches either side of that. Four points is a
+    # bounding box rather than a covariance, which is the honest amount of shape
+    # to claim from four samples and errs towards the generous.
+    long_dx, long_dy = max(moved, key=lambda one: math.hypot(*one))
+    axis_deg = math.degrees(math.atan2(long_dy, long_dx))
+    ux, uy = _unit(axis_deg)
+    across = max(abs(-dx * uy + dy * ux) for dx, dy in moved)
     return {
         "x_m": round(point[0], 3),
         "y_m": round(point[1], 3),
         "uncertainty_m": round(worst, 3),
+        # The same error as a shape rather than a radius. `cross_track` reads
+        # these; `uncertainty_m` stays because it is what the console shows and
+        # what a person means by "to within".
+        "error_major_m": round(worst, 3),
+        "error_minor_m": round(across, 3),
+        "error_major_deg": round(axis_deg, 1),
         "baseline_m": round(baseline_m(first, second), 3),
         "parallax_deg": round(parallax_deg(first, second), 1),
         # How wide the thing itself is, measured rather than assumed. See
@@ -266,6 +290,34 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         # asking to join it.
         "extent_m": round(extent_of(point, first, second), 3),
     }
+
+
+def cross_track(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How uncertain this thing's position is *across* this particular bearing.
+
+    **The term this replaces was the largest in every match decision the rover
+    made, and it was the wrong number.** A crossing taken at a shallow angle is
+    uncertain a long way down its own line of sight and precise across it, and
+    `uncertainty_m` reports the long way. Charged to a tolerance measured across
+    a later bearing it buys slack the geometry never claimed: on the run of
+    2026-09-03 an entity placed at 13.9 degrees of parallax carried 0.46 m of it,
+    which at two metres is a cone 46 degrees wide against a bearing the geometry
+    believes to a degree and a half. That cone is what collected a cabinet, two
+    framed pictures, a doorway, a table and a person's head into one thing.
+
+    A placement written before the shape was recorded has only the radius, and
+    gets it -- the old behaviour, for rows the rover already holds.
+    """
+    major = point.get("error_major_m")
+    if major is None:
+        return float(point.get("uncertainty_m", 0.0))
+    minor = float(point.get("error_minor_m", major))
+    # The angle between the error's long axis and the line this ray looks along.
+    # Side on, the ray sees the whole length of it; end on, only its width.
+    between = (math.radians(float(point.get("error_major_deg", 0.0)))
+               - math.atan2(float(point["y_m"]) - float(ray["y_m"]),
+                            float(point["x_m"]) - float(ray["x_m"])))
+    return math.hypot(float(major) * math.sin(between), minor * math.cos(between))
 
 
 def extent_of(point: tuple[float, float], *observers: dict[str, Any]) -> float:
@@ -332,6 +384,11 @@ def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
     So `extent_m` is measured when the thing is placed and travels with the
     placement, and the candidate's own span is only a fallback for a placement
     written before this existed.
+
+    **And the second term is the placement's error across this ray rather than
+    its whole length**, which is `cross_track` and which is the fix for the run
+    of 2026-09-03. Measured there, the tolerance was 0.82 m at two metres, of
+    which the bearing -- the only term that is about this ray at all -- was 6%.
     """
     range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
                          float(point["y_m"]) - float(ray["y_m"]))
@@ -341,7 +398,7 @@ def match_tolerance(point: dict[str, Any], ray: dict[str, Any]) -> float:
         own = range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0))
     extent_m = min(MAX_EXTENT_M, max(0.0, float(own)))
     return (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
-            + float(point.get("uncertainty_m", 0.0)) + extent_m)
+            + cross_track(point, ray) + extent_m)
 
 
 def best_fix(rays: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -416,6 +473,19 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
     if tolerance_m is None:
         # What the bearing noise alone allows at this range, plus however
         # uncertain the point already was.
+        #
+        # **The whole radius here, and only the cross-track half in
+        # `match_tolerance`, and the difference is deliberate.** The two look
+        # like the same question and are not. There, one bearing is asked
+        # whether it could be pointing at a thing already placed, and charging
+        # it for error running down someone else's line of sight is what let an
+        # entity claim a 46-degree cone. Here, several placements built from the
+        # same rays are being *ranked* by how many of those rays agree, and the
+        # ranking is what stops an entity moving out from under its own
+        # evidence. Narrowing it collapses the counts to a tie -- measured on
+        # `object:14` of 2026-09-02, both candidates fall to two agreeing rays
+        # -- and a tie is broken on uncertainty, which is the wandering the
+        # count was introduced to stop.
         tolerance_m = (range_m * math.tan(math.radians(BEARING_SIGMA_DEG))
                        + float(point.get("uncertainty_m", 0.0)))
     off_deg = abs(_wrap(bearing_to(point, ray) - float(ray["bearing_deg"])))

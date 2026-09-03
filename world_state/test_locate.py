@@ -204,6 +204,82 @@ def test_the_best_pair_places_the_thing() -> None:
     check("one look alone places nothing", locate.best_fix(looks[:1]), None)
 
 
+def test_a_shallow_crossing_is_uncertain_lengthways_and_not_sideways() -> None:
+    """**The error is a cigar, and it used to be charged as a disc.**
+
+    Two bearings meeting at a shallow angle put a thing somewhere along their
+    common line of sight and pin it well across that line. `uncertainty_m` is the
+    length of the cigar, which is the right thing to tell a person and the wrong
+    thing to add to a tolerance measured *across* a later bearing: a ray looking
+    down the length of the error was being charged for all of it.
+    """
+    # Both looking at (6, 5), from two places 2.2 m apart along one wall.
+    first = {"x_m": 0.0, "y_m": 0.0, "span_deg": 10.0,
+             "bearing_deg": math.degrees(math.atan2(5.0, 6.0))}
+    second = {"x_m": 2.2, "y_m": 0.0, "span_deg": 10.0,
+              "bearing_deg": math.degrees(math.atan2(5.0, 3.8))}
+    found = locate.fix(first, second)
+    check("a shallow pair still places something", found is not None, True)
+    check("...at a parallax barely over the floor",
+          found["parallax_deg"] < locate.MIN_PARALLAX_DEG + 3.0, True)
+    check("...and the error is far longer than it is wide",
+          found["error_major_m"] > found["error_minor_m"] * 3.0, True)
+    check("...with the long axis reported as a direction",
+          -180.0 < found["error_major_deg"] <= 180.0, True)
+
+    # A ray arriving from where the two founders stood looks along the length of
+    # the error; one from the side looks across it.
+    lengthways = {"x_m": 1.1, "y_m": 0.0,
+                  "bearing_deg": math.degrees(math.atan2(5.0, 4.9))}
+    sideways = {"x_m": found["x_m"] + 4.0, "y_m": found["y_m"] - 4.0,
+                "bearing_deg": 135.0}
+    check("looking along the error, only its width counts",
+          locate.cross_track(found, lengthways) < found["uncertainty_m"] / 5.0,
+          True)
+    check("...and looking across it, close to all of it",
+          locate.cross_track(found, sideways)
+          > found["uncertainty_m"] * 0.9, True)
+
+    check("a placement written before the shape was recorded keeps the radius",
+          locate.cross_track({"x_m": 0.0, "y_m": 0.0, "uncertainty_m": 0.4},
+                             {"x_m": 1.0, "y_m": 0.0}), 0.4)
+
+
+def test_a_thing_may_not_claim_a_cone_the_geometry_never_earned() -> None:
+    """**The fault of 2026-09-03, in the one number that caused it.**
+
+    `object:1` was founded on a crossing at 13.9 degrees of parallax and carried
+    0.464 m of uncertainty. Charged whole, that let a bearing two metres away sit
+    22 degrees off and still count as pointing at it -- a cone 46 degrees wide
+    against a bearing the geometry believes to a degree and a half. Twenty-six
+    crops of a cabinet, two framed pictures, a doorway, a table and a person's
+    head went into one thing through it.
+    """
+    placed = locate.fix({"x_m": 0.733, "y_m": -0.113, "bearing_deg": 46.1,
+                         "span_deg": 24.0},
+                        {"x_m": 0.060, "y_m": -0.096, "bearing_deg": 34.0,
+                         "span_deg": 18.2})
+    check("the rover's own founding pair still places the thing",
+          placed is not None, True)
+    check("...at the shallow parallax it was taken at",
+          placed["parallax_deg"] < 15.0, True)
+
+    ray = {"x_m": 0.075, "y_m": -0.123, "bearing_deg": 20.0, "span_deg": 8.0}
+    range_m = math.dist((placed["x_m"], placed["y_m"]),
+                        (ray["x_m"], ray["y_m"]))
+    cone_deg = math.degrees(math.atan(
+        locate.match_tolerance(placed, ray) / range_m))
+    check("the cone a later bearing is allowed is not tens of degrees",
+          cone_deg < 15.0, True)
+
+    whole = (range_m * math.tan(math.radians(locate.BEARING_SIGMA_DEG))
+             + placed["uncertainty_m"]
+             + min(locate.MAX_EXTENT_M, placed["extent_m"]))
+    was_deg = math.degrees(math.atan(whole / range_m))
+    check("...where charging the whole radius allowed more than twice that",
+          was_deg > cone_deg * 2.0, True)
+
+
 TESTS = (
     test_an_observation_becomes_a_bearing_from_a_measured_pose,
     test_the_rays_of_one_entity_are_bounded_and_oldest_first,
@@ -215,4 +291,6 @@ TESTS = (
     test_a_fix_on_top_of_the_camera_is_not_a_thing_in_the_room,
     test_a_bearing_at_the_edge_of_a_television_still_points_at_it,
     test_the_best_pair_places_the_thing,
+    test_a_shallow_crossing_is_uncertain_lengthways_and_not_sideways,
+    test_a_thing_may_not_claim_a_cone_the_geometry_never_earned,
 )

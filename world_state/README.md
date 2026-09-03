@@ -844,13 +844,15 @@ along the same line, so a repeat look confirms nothing — and it is still allow
 to add an exemplar and to move the placement. That is exactly how a lampshade
 becomes a picture on the wall, one 0.97-scoring step at a time.
 
-**The appearance gate is not a gate.** `best_appearance` takes the best of five
-exemplars, and the five are a sliding window of whatever last attached. Measured
-on this recording: an unrelated crop clears the 0.5 floor against one exemplar
-12% of the time and against five **45%** of the time. And 46% of later
-attachments would fail that floor against the look that founded the entity, where
-only 8% fail against the rolling window — the gate is measuring against a set the
-drift itself wrote.
+**The appearance gate is not a gate.** It took the best of five exemplars, and
+the five are a sliding window of whatever last attached. Measured on this
+recording: an unrelated crop clears the 0.5 floor against one exemplar 12% of the
+time and against five **45%** of the time. And 46% of later attachments would
+fail that floor against the look that founded the entity, where only 8% fail
+against the rolling window — the gate is measuring against a set the drift itself
+wrote. Fixed on 2026-09-03: `resolve.appearance` scores against the middle of the
+exemplars rather than the best, which is measured further down along with why no
+value of `DIFFERENT_THING` rescues the gate on the vectors the GPU produces.
 
 ### The merge veto does not work, and Phase 5 is built on it
 
@@ -1044,6 +1046,71 @@ a rate and a cost. The recording of 2026-09-03 replays to exactly the entity the
 rover produced from it, which is what makes the change safe rather than useful,
 and only another drive says whether a picture a second is what triangulation was
 missing. The gimbal has still never been panned in any run.
+
+### One entity, twenty-six crops, six objects
+
+The run of 2026-09-03 finished with **416 observations and one entity**, and that
+entity held twenty-six crops of a dark cabinet, two different framed pictures, a
+doorway, a table with a bottle on it and the head of the person standing beside
+the rover. Fifty-eight per cent of its own bearings missed its own stated
+position. Three causes, and they compound; all three are fixed, and `replay.py`
+turns that recording into **three entities of twenty-two crops, no known-wrong
+attachments, and 5% stray bearings**, which by eye are the cabinet and the two
+pictures.
+
+**More than half of it was wrong without anybody having to identify anything.**
+Fourteen of the twenty-six crops were a second-or-later region of a frame that
+had already given one, and two regions of one frame are two different things by
+the region finder's own overlap suppression -- their boxes here barely touch, the
+worst pair overlapping by 0.05. The resolver has always had that rule. It kept it
+in a dictionary rebuilt at the top of every pass, and the pending pool outlives
+the pass by design, so a frame donated one more region every time round: traced
+on this recording, frame 429 joined on three consecutive passes and frame 446 on
+four. `WorldStore.entities_in_frame` asks the store instead, so the rule now
+holds across passes and across restarts. **A look a second makes this much
+worse rather than better**, which is why it surfaced now: the donation rate is
+one region per pass, and passes used to be fifteen seconds apart.
+
+**A badly placed thing was given a wide net, and the net is what made it worse.**
+`object:1` was founded on a crossing at 13.9 degrees of parallax, which bought it
+0.464 m of uncertainty, and that went whole into how far a later bearing could be
+off and still count: 0.82 m at two metres, a cone 46 degrees wide, of which the
+bearing -- the only term about the new ray at all -- was 6%. But a shallow
+crossing is not uncertain in every direction. It is uncertain a long way *down*
+its own line of sight and precise across it, and charging a lengthways error to a
+sideways question is the mistake. `locate.fix` now records the shape of the error
+as well as its size and `locate.cross_track` reads it: on the test case a fix
+2.1 m uncertain along the sight line is 0.19 m uncertain across it, an eleven-fold
+difference. **This is not a narrowed cone and the distinction matters** -- capping
+the match angle was swept on the previous recording and helped at no cap, and with
+this in place the result is the same whether the angle is capped at 10 degrees or
+not capped at all.
+
+**And the appearance gate got looser every time it was wrong.** A crop that joins
+an entity becomes one of its exemplars, and the score was the best of them, so an
+entity that had swallowed something unrelated accepted the next unrelated thing
+more readily for it. Measured on this recording: an entity holding one exemplar
+admitted 10% of the pending pool at `DIFFERENT_THING`, holding twenty-one it
+admitted 64%, monotonically the whole way. `resolve.appearance` takes the middle
+of the exemplars instead of the best. Pinning the founding vectors instead, which
+was the previous attempt, is measured again here and still buys nothing.
+
+**What is not fixed, and cannot be fixed by a threshold.** DINOv2 on this rover's
+own frames does not separate identity from coincidence. Over the 157 crops of this
+run: two regions of one frame -- different objects by construction -- score a
+median cosine of 0.354 and a 95th percentile of **0.740**, while the one genuine
+cross-viewpoint match in the whole run, the pair of looks that founded
+`object:1`, scored **0.674**. The real match sits below the noise. Raising
+`DIFFERENT_THING` to 0.70 makes the run place nothing at all, and the sweep
+between is not even monotone. The numbers in `resolve.py` that put 0.5 between a
+chair-versus-spray-bottle at 0.122 and a chair across a viewpoint change at 0.696
+were measured on the CPU int8 graphs; the rover has been running the TensorRT
+engines, whose vectors are not the same and were never re-measured against them.
+So appearance is a tiebreak here and the geometry has to carry identity, which is
+what the three fixes above assume. Mean-centring the vectors was tried and does
+not rescue DINOv2 (10.9% of unrelated pairs beat the founding pair, 10.7% after
+centring); it does help SigLIP2 markedly, from 6.1% to 1.9%, which is worth a
+proper measurement on a run with more than one true cross-viewpoint pair in it.
 
 ## What was measured on the rover, 2026-09-02
 

@@ -572,6 +572,104 @@ def test_an_inspection_settles_identity_as_well_as_measuring() -> None:
         store.close()
 
 
+def test_one_look_gives_a_thing_one_region_however_many_passes_it_takes() -> None:
+    """**The fault of 2026-09-03, and it is a fault of memory rather than of rule.**
+
+    Two regions of one frame are two different things -- the region finder's
+    overlap suppression saw to that -- and the resolver has always refused the
+    second. It refused it *within a pass*, out of a dictionary rebuilt every time
+    `resolve` is called, while an observation with no partner waits in the
+    pending pool indefinitely by design. So the frame simply came back next pass
+    and gave another.
+
+    On the rover this was not subtle. One entity took four disjoint regions of a
+    single picture -- traced joining on three consecutive passes -- and finished
+    holding twenty-six crops of a cabinet, two framed pictures, a doorway, a
+    table and a person's head.
+
+    Here one look sees three things within a few degrees of each other, a second
+    look from across the room places one of them, and the pool is then resolved
+    several times over. The other two point straight at the thing that was
+    placed -- that is the whole difficulty, and refusing them is the rule -- so
+    what is checked is that they are still being refused on the fourth pass.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            # Three regions of one standstill, close enough together that every
+            # one of them points at where the first is placed.
+            for bearing in (43.0, 45.0, 47.0):
+                observe(store, 0.0, 0.0, bearing, inference=1)
+            observe(store, 6.0, 0.0, 135.0, inference=2)
+            resolve.resolve(store)
+            placed = store.placed()
+            check("the crossing places one thing", len(placed), 1)
+            check("...taking exactly one region of the look that saw three",
+                  len(store.entities_in_frame(1)), 1)
+            counted = placed[0]["observation_count"]
+            check("...which is that region and the one from across the room",
+                  counted, 2)
+
+            # The other two regions of frame 1 do point at it: this is the
+            # refusal being tested, not a bearing that happens to miss.
+            entity = placed[0]
+            waiting = store.unplaced()
+            check("...while the two left over aim at it well within tolerance",
+                  all(locate.agrees(entity["placement"],
+                                    resolve.ray_of(one),
+                                    locate.match_tolerance(entity["placement"],
+                                                           resolve.ray_of(one)))
+                      for one in waiting), True)
+
+            for _ in range(3):
+                resolve.resolve(store)
+            check("...and no later pass gives it another",
+                  store.placed()[0]["observation_count"], counted)
+            check("...so the leftovers are still waiting rather than swallowed",
+                  len(store.unplaced()), 2)
+        finally:
+            store.close()
+
+
+def test_a_wrong_exemplar_does_not_make_the_next_one_easier() -> None:
+    """**The appearance gate got looser every time it was wrong.**
+
+    A crop that joins an entity becomes one of its exemplars, and the score was
+    the best of them -- so a thing that had swallowed something unrelated would
+    accept the next unrelated thing more readily for it. Measured on the run of
+    2026-09-03: one exemplar admitted 10% of the pending pool, twenty-one
+    admitted 64%, monotonically the whole way.
+
+    Here an entity holds four exemplars of one thing and one of something else.
+    A crop of that something else must not clear the gate on the strength of the
+    single wrong exemplar.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            entity = store.create_entity()
+            looks_like = a_vector(1.0, 0.0)
+            unrelated = a_vector(0.0, 1.0)
+            for _ in range(4):
+                store.add_exemplar(entity, looks_like)
+            store.add_exemplar(entity, unrelated)
+
+            check("a crop of what the thing mostly is still scores well",
+                  resolve.appearance(store, entity, looks_like) > 0.9, True)
+            # Scored against the best of the exemplars this is 1.0 -- a perfect
+            # match to the one crop that should never have been there.
+            check("...and one of the odd exemplar does not inherit its score",
+                  resolve.appearance(store, entity, unrelated)
+                  < resolve.DIFFERENT_THING, True)
+            check("the question cannot be asked of a thing with no exemplars",
+                  resolve.appearance(store, store.create_entity(), looks_like),
+                  None)
+            check("...nor of a look that produced no vector",
+                  resolve.appearance(store, entity, b""), None)
+        finally:
+            store.close()
+
+
 TESTS = (
     test_two_looks_from_two_places_make_one_lasting_thing,
     test_a_rover_that_only_turned_on_the_spot_places_nothing,
@@ -590,4 +688,6 @@ TESTS = (
     test_one_entity_can_be_sent_to_a_console_like_the_list_can,
     test_a_placement_belongs_to_the_map_it_was_measured_in,
     test_an_inspection_settles_identity_as_well_as_measuring,
+    test_one_look_gives_a_thing_one_region_however_many_passes_it_takes,
+    test_a_wrong_exemplar_does_not_make_the_next_one_easier,
 )

@@ -69,6 +69,19 @@ AMBIGUOUS = "ambiguous"
 #: It applies only where there is something to compare. An entity with no stored
 #: exemplar, or an observation whose look produced no appearance vector, is
 #: passed through to the spatial gate rather than rejected for silence.
+#:
+#: **Both of those numbers were measured on the CPU int8 graphs and neither
+#: describes what the rover now produces, so read this as a floor that removes
+#: very little rather than as a calibrated gate.** Re-measured on the 157 crops
+#: of 2026-09-03, all from the TensorRT engines: two regions of one frame, which
+#: are different objects by construction, score a median of 0.354 and a 95th
+#: percentile of 0.740, while the one genuine cross-viewpoint match in that whole
+#: run -- the pair of looks that founded its only entity -- scored 0.674. The
+#: real match is *below* the noise, so no value separates them: at 0.70 the run
+#: places nothing at all, and the sweep between is not monotone. **Do not try to
+#: fix identity by moving this number.** Geometry carries identity here, and the
+#: three faults that let one entity swallow six objects were all geometric or
+#: structural; the component README has the sweep.
 DIFFERENT_THING = 0.5
 
 #: How alike two DINOv2 vectors have to be before appearance is allowed to break
@@ -210,12 +223,24 @@ def similarity(left: bytes, right: bytes) -> float:
     return sum(x * y for x, y in zip(a, b))
 
 
-def best_appearance(store, entity_id: str, vector: bytes) -> float | None:
-    """How much this crop looks like the best of what the entity has shown.
+def appearance(store, entity_id: str, vector: bytes) -> float | None:
+    """How much this crop looks like what the entity has typically shown.
 
-    The best rather than the average, for the reason the exemplars are kept
-    separately at all: a chair seen from the front and the same chair from the
-    side average to a picture of neither.
+    The middle of the exemplars rather than the best of them, and **that is the
+    fix for a gate that got looser every time it was wrong**. Scoring against the
+    best is a ratchet: every crop that joins an entity becomes an exemplar, so an
+    entity that has swallowed something it should not have will accept the next
+    thing more readily for it. Measured on the run of 2026-09-03, an entity
+    holding one exemplar admitted 10% of the pending pool at `DIFFERENT_THING`
+    and the same entity holding twenty-one admitted 64%, monotonically the whole
+    way. The exemplar window slides as well, so the crops the thing was founded
+    on had been evicted and what it was being compared against was the last five
+    things it took by mistake.
+
+    The middle rather than the average for the reason the exemplars are kept
+    apart at all: a chair seen from the front and the same chair from the side
+    average to a picture of neither, and a single odd exemplar should move the
+    answer no further than one place along.
 
     **None means the question could not be asked**, and that is not the same as a
     low score: an observation whose look produced no appearance vector, or an
@@ -226,11 +251,11 @@ def best_appearance(store, entity_id: str, vector: bytes) -> float | None:
     """
     if not vector:
         return None
-    best = None
-    for exemplar in store.exemplars(entity_id, width=len(vector)):
-        seen = similarity(exemplar, vector)
-        best = seen if best is None else max(best, seen)
-    return best
+    seen = sorted(similarity(exemplar, vector)
+                  for exemplar in store.exemplars(entity_id, width=len(vector)))
+    if not seen:
+        return None
+    return seen[len(seen) // 2]
 
 
 def resolve(store, *, map_session: int | None = None,
@@ -266,6 +291,11 @@ def resolve(store, *, map_session: int | None = None,
     # frame are two different things -- the region finder's own suppression saw
     # to that -- so once a frame has matched an entity, its other regions may
     # not match the same one however well they line up.
+    #
+    # **A cache of what the store says, and not the record itself.** This
+    # dictionary lives for one pass and the pending pool lives indefinitely, so
+    # when it was the record a frame gave an entity one more region every pass;
+    # see `WorldStore.entities_in_frame` for what that cost on 2026-09-03.
     taken_in: dict[Any, set] = {}
     leftover = []
     for observation in pending:
@@ -313,7 +343,9 @@ def _against_known(store, observation, entities, session,
     vector = observation.get("dino_blob") or b""
 
     frame = observation.get("inference_id")
-    already = taken_in.setdefault(frame, set())
+    if frame not in taken_in:
+        taken_in[frame] = store.entities_in_frame(frame)
+    already = taken_in[frame]
     surviving = []
     for entity in entities:
         if entity["id"] in already:
@@ -326,7 +358,7 @@ def _against_known(store, observation, entities, session,
         if not locate.agrees(placement, ray,
                              locate.match_tolerance(placement, ray)):
             continue
-        looks = best_appearance(store, entity["id"], vector)
+        looks = appearance(store, entity["id"], vector)
         # The only gate left that can rule a candidate out on what it is rather
         # than on where it is, and it removes only the plainly unrelated: this
         # rover measured a chair against a spray bottle at 0.122 and the same
@@ -421,6 +453,16 @@ def _pair_up(store, leftover, session, entities, taken_in,
         decision, taken = placed
         used.update(taken)
         decisions.append(decision)
+        # A thing this pass has just made is a thing its founding frames have
+        # already given a region to, and the rest of the pass has to know that
+        # before it offers them another. Recorded here rather than re-read from
+        # the store on every candidate, which is the same answer for the price
+        # of one dictionary update.
+        frame_of = {one["id"]: one.get("inference_id") for one in available}
+        for observation_id in taken:
+            frame = frame_of.get(observation_id)
+            if frame in taken_in:
+                taken_in[frame].add(decision.entity_id)
         # Re-read rather than appended to, so the new thing arrives in the
         # same shape as every other and carries the placement the store
         # actually holds.

@@ -327,6 +327,36 @@ def test_a_full_pending_pool_still_shows_what_just_arrived() -> None:
         store.close()
 
 
+def test_a_look_remembers_which_things_it_has_already_named() -> None:
+    """**A memory that outlives the pass, which is the fault of 2026-09-03.**
+
+    The resolver has always known that two regions of one frame are two
+    different things, and kept the knowledge in a dictionary it threw away at
+    the end of each pass. The pending pool is not thrown away, so a frame gave
+    an entity one more region every pass, for as long as it had regions left.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            observe(store, 0.0, 0.0, 40.0, inference=7)
+            observe(store, 0.0, 0.0, 70.0, inference=7)
+            observe(store, 6.0, 0.0, 135.0, inference=8)
+            check("a look that has named nothing yet says so",
+                  store.entities_in_frame(7), set())
+
+            first = store.unplaced()[0]["id"]
+            entity = store.create_entity()
+            store.attach(entity, [first], "for the test")
+            check("once a region of that look is attached, the look remembers",
+                  store.entities_in_frame(7), {entity})
+            check("...and another look is not implicated by it",
+                  store.entities_in_frame(8), set())
+            check("a look that never happened names nothing rather than failing",
+                  store.entities_in_frame(None), set())
+        finally:
+            store.close()
+
+
 TESTS = (
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
@@ -340,4 +370,5 @@ TESTS = (
     test_unreadable_stored_json_cannot_take_the_viewer_down,
     test_a_reader_is_not_blocked_by_a_writer,
     test_a_full_pending_pool_still_shows_what_just_arrived,
+    test_a_look_remembers_which_things_it_has_already_named,
 )
