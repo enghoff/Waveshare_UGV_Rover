@@ -13,6 +13,7 @@
     --bg: #eef0f3; --card: #ffffff; --ink: #1b1e22; --dim: #6b7280;
     --line: #dde1e7; --accent: #0a4f9c; --good: #136b13; --warn: #9a5510;
     --bad: #a01010; --note: #8a5a00; --stop: #b02020; --sunken: #f7f8fa;
+    --box: #e01b1b;
     --shadow: 0 1px 2px rgba(16, 20, 26, .06), 0 1px 8px rgba(16, 20, 26, .04);
   }
   @media (prefers-color-scheme: dark) {
@@ -20,6 +21,7 @@
       --bg: #131619; --card: #1b2026; --ink: #e5e8ec; --dim: #98a2ad;
       --line: #2a313a; --accent: #79b3f0; --good: #5cba5c; --warn: #d79a45;
       --bad: #f07070; --note: #d0a45a; --stop: #c0392b; --sunken: #161a1f;
+      --box: #ff4d4d;
       --shadow: none;
     }
   }
@@ -105,7 +107,7 @@
      inside it. */
   #worldBody {
     flex: 1 1 auto; min-height: 0; overflow: hidden;
-    padding: 10px 12px 14px;
+    padding: 10px 12px 14px; position: relative;
   }
   #wSearchForm { margin-bottom: 6px; }
   #wSearchBox { width: 100%; box-sizing: border-box; padding: 5px 8px; font: inherit; }
@@ -181,8 +183,13 @@
   .wmeta { color: var(--dim); font-size: 12px; }
   .wshot { position: relative; display: inline-block; max-width: 100%; }
   .wshot img { display: block; width: 100%; border-radius: 6px; }
+  /* The measured box, in red because it is the one thing on a frame that was
+     not in the room: everything else in the picture is the rover's own view, and
+     a box in the console's accent blue read as part of the furniture. The white
+     line inside it is what keeps it visible over a dark cupboard as well as over
+     a white wall. */
   .wbox {
-    position: absolute; border: 2px solid var(--accent); border-radius: 2px;
+    position: absolute; border: 2px solid var(--box); border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .5) inset;
   }
   .wobs {
@@ -197,6 +204,59 @@
      on. Dashed rather than red: it is attached and it is evidence, and the row
      has to be findable in a scroller of forty without reading as a failure. */
   .wobs.woff { border-left-style: dashed; }
+  /* --- the observation stream, tiled ------------------------------------- */
+  /* Forty rows of full-width picture and numbers was two screens of scrolling
+     per handful of looks, and what a person does in this tab is hunt for the one
+     frame whose box is on the wrong thing. So the stream is thumbnails: the whole
+     of a recording session at once, where a wrong box is visible without reading
+     anything. The numbers are not gone, they are one click away in the large
+     view, which is the only place they are worth the room they take. */
+  .wtiles {
+    display: grid; gap: 8px; align-items: start;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  /* A button, so the grid is reachable from the keyboard as well as the mouse,
+     and reset back to looking like the card it draws. */
+  .wtile {
+    display: block; width: 100%; padding: 4px 4px 4px 6px; text-align: left;
+    cursor: pointer; font: inherit; color: inherit; overflow: hidden;
+    border: 1px solid var(--line); border-left: 4px solid var(--line);
+    border-radius: 6px; background: var(--card);
+  }
+  .wtile .wshot { display: block; }
+  /* Which thing this look was decided to be, in the stripe the entity list and
+     the full rows already use for it -- rather than round the whole tile, which
+     would collide with the red box inside it. */
+  .wtile.wfailed { border-left-color: var(--warn); }
+  /* An identifier is longer than a thumbnail is wide, and a caption that wrapped
+     to three lines made the tiles different heights for no gain. */
+  .wtile .wmeta {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* `.wmeta` is declared after `.wdup` and would otherwise dim the one word on
+     a tile that is a warning. */
+  .wtile .wmeta.wdup { color: var(--warn); }
+  /* One look, given the whole reading area. A layer over the body rather than a
+     popup of its own: the counts and the tabs stay on screen, and the stream
+     underneath keeps the place it was scrolled to. */
+  #wZoom {
+    position: absolute; inset: 0; z-index: 2; background: var(--bg);
+    display: flex; flex-direction: column; padding: 10px 12px;
+  }
+  /* The way back, on the left. The popup's own close is in the top right corner
+     directly above, and two buttons of the same name in the same corner is one
+     mis-click between reading a frame and shutting the whole popup. */
+  #wZoomBar { display: flex; align-items: center; flex: 0 0 auto; }
+  #wZoomBody {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    overscroll-behavior: contain; padding: 4px 6px 0 0;
+  }
+  /* As large as the window allows in whichever direction runs out first. The
+     picture keeps its own shape and the wrapper shrinks to it, which is what
+     keeps the box on the thing it was measured around: the box is placed in
+     percentages of the wrapper, so a wrapper wider than the picture inside it
+     would put the box beside the object rather than round it. */
+  #wZoomBody .wshot img { width: auto; max-width: 100%; max-height: 68vh; }
   .wraw {
     white-space: pre-wrap; word-break: break-word; background: var(--sunken);
     border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;

@@ -267,6 +267,35 @@ it is about to draw and the browser asks only for the ones on screen, which is w
 makes it bounded on a rover that records a look a second. Each is fetched once,
 because a stored frame never changes under its name.
 
+### The observation stream: thumbnails, and one at a time large
+
+The **observations** tab holds everything the rover has recorded lately, which is
+the forty looks `world_state_entities` answers with. It drew each of them as a full
+row until 2026-09-03: the picture at the width of the pane, its numbers above it and
+its raw measurement folded away below. Forty of those was six screens of scrolling
+for one recording session, and it is the wrong shape for what a person does in this
+tab -- which is hunt for the one frame whose box is on the wrong thing, a question
+about pictures and not about numbers.
+
+So the stream is a grid of thumbnails: all forty on one screen at a laptop's width,
+each with the measured box on it, the time it was taken, and the thing it was
+decided to be -- or `no entity` in amber, which is the failure this tab is watched
+for. The tile's left edge carries that thing's own colour, the same one the entity
+list and the map use, so two things wrongly merged into one are two colours in one
+grid. Clicking a thumbnail puts that look over the grid at the size of the window,
+with everything the full row carried: the pose, how the bearing stands to the
+settled position, the box, and what was measured.
+
+Two details in it are load bearing rather than taste. The large view's **close** is
+at the top left, because the popup's own close is in the corner directly above and
+two buttons of the same name in one corner is a single mis-click between reading a
+frame and shutting the popup. And **nothing in the popup listens for a key**: space
+and Escape stop the rover from anywhere on this page, so the large view closes on
+that button or on a click in the room beside the picture, never on Escape.
+
+The box is drawn red rather than in the console's accent blue. It is the one mark on
+a frame that was not in the room, and in blue it read as part of the furniture.
+
 See [`../world_state/README.md`](../world_state/README.md).
 
 ## Microphone: Alibaba Qwen Omni

@@ -30,6 +30,12 @@ let worldGen = "", world = {}, worldTab = "entities";
 // Whether the pane was drawn mid-search last time round, so that the answer
 // -- or the refusal, which brings no new body with it -- puts the pane back.
 let worldAsking = false;
+// Which observation the tiled stream is showing at full size, by the store's own
+// row identifier rather than by the object -- the whole body is replaced every
+// time the rover records something, so a held object would be showing a row that
+// no longer exists. Beside it, the row as it was last drawn, which is what stops
+// a redraw every two seconds from collapsing the details a person just opened.
+let worldZoom = null, worldZoomDrawn = "";
 
 const wTime = (t) => t ? new Date(t * 1000).toLocaleTimeString() : "-";
 const wAgo = (t) => {
@@ -59,6 +65,10 @@ function drawWorld(w) {
   drawWorldBuilding(w);
   $("worldBack").hidden = !w.open;
   $("world").classList.toggle("on", w.open);
+  // Shutting the popup puts the observations tab back to its stream. Otherwise
+  // opening it again a day later lands on one frame at full size with no memory
+  // of having asked for it.
+  if (!w.open && worldZoom !== null) { worldZoom = null; drawWorldZoom(); }
   $("worldCounts").textContent =
       `${w.entities} entit${w.entities === 1 ? "y" : "ies"}, `
       + `${w.observations} observation${w.observations === 1 ? "" : "s"}`
@@ -693,6 +703,28 @@ function drawWorldDetail() {
   pane.append(scroller);
 }
 
+// One look in the tiled stream: the frame with its box on it, and the two things
+// that tell one tile from another -- when it was taken, and which thing the
+// rover decided it was. Everything else a row used to carry is in the large view
+// this opens, because at this size it would not be legible and forty copies of
+// it were what made the stream unreadable in the first place.
+function wTile(observation) {
+  const tile = document.createElement("button");
+  tile.type = "button";
+  tile.className = "wtile" + (observation.entity_id ? "" : " wfailed");
+  if (observation.entity_id) {
+    tile.style.borderLeftColor = `hsl(${wHue(observation.entity_id)} 70% 45%)`;
+  }
+  tile.onclick = () => { worldZoom = observation.id; drawWorldZoom(); };
+  tile.append(wShot(observation));
+  const caption = document.createElement("div");
+  caption.className = "wmeta mono" + (observation.entity_id ? "" : " wdup");
+  caption.textContent = `${wTime(observation.observed_at)} `
+      + (observation.entity_id || "no entity");
+  tile.append(caption);
+  return tile;
+}
+
 function drawWorldObservations() {
   const pane = $("wObsAll");
   pane.replaceChildren();
@@ -709,11 +741,41 @@ function drawWorldObservations() {
     empty.className = "hint";
     empty.textContent = "nothing yet.";
     pane.append(empty);
+    drawWorldZoom();
     return;
   }
-  for (const observation of recent) {
-    pane.append(wObservation(observation, {showEntity: true}));
+  const tiles = document.createElement("div");
+  tiles.className = "wtiles";
+  for (const observation of recent) tiles.append(wTile(observation));
+  pane.append(tiles);
+  drawWorldZoom();
+}
+
+// The clicked look at full size: the same row the stream used to draw, given the
+// whole pane. The row it is showing may still be changing under it -- a look with
+// no entity gets one when the resolver next settles, and that is exactly the
+// change somebody watching this frame is waiting for -- so it is rebuilt when the
+// row really differs and left alone when it does not, which is what keeps an
+// opened `what was measured` open through a rover that is still recording.
+function drawWorldZoom() {
+  const layer = $("wZoom"), body = $("wZoomBody");
+  const shown = worldZoom === null ? null
+      : (world.recent || []).find((o) => o.id === worldZoom);
+  if (!shown) {
+    // The row has gone: the store was cleared, or it has fallen off the end of
+    // the forty. Back to the stream rather than a frozen picture of a look the
+    // rover no longer has.
+    worldZoom = null;
+    worldZoomDrawn = "";
+    layer.hidden = true;
+    body.replaceChildren();
+    return;
   }
+  layer.hidden = false;
+  const drawn = JSON.stringify(shown);
+  if (drawn === worldZoomDrawn) return;
+  worldZoomDrawn = drawn;
+  body.replaceChildren(wObservation(shown, {showEntity: true}));
 }
 
 // A phrase on its way to the rover, drawn from the pushed state rather than from
@@ -875,9 +937,20 @@ function wireWorld() {
   $("worldBack").onclick = (event) => {
     if (event.target === $("worldBack")) post({do: "world", what: "close"});
   };
+  // Space and Escape are the rover's stop, so the large view is closed by the
+  // button or by the room beside the picture -- the same two ways the popup
+  // itself closes, and for the same reason.
+  $("wZoomClose").onclick = () => { worldZoom = null; drawWorldZoom(); };
+  $("wZoom").onclick = (event) => {
+    if (event.target === $("wZoom")) { worldZoom = null; drawWorldZoom(); }
+  };
   for (const button of $("worldTabs").querySelectorAll("[data-wtab]")) {
     button.onclick = () => {
       worldTab = button.dataset.wtab;
+      // The layer covers the whole body, so it would sit over whichever tab was
+      // moved to next.
+      worldZoom = null;
+      drawWorldZoom();
       for (const other of $("worldTabs").querySelectorAll("[data-wtab]")) {
         other.classList.toggle("on", other === button);
       }

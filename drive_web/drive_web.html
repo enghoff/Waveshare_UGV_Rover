@@ -256,6 +256,16 @@
       <div class="wpane" id="wPaneDiagnostics" hidden>
         <div class="wwide" id="wDiag"></div>
       </div>
+      <!-- One observation at full size, over the tiled stream that was clicked.
+           It sits inside the body rather than over the whole popup so that the
+           counts, the tabs and the stop key are all still where they were; the
+           stream behind it keeps its scroll position for the same reason. -->
+      <div id="wZoom" hidden>
+        <div id="wZoomBar">
+          <button id="wZoomClose">close</button>
+        </div>
+        <div id="wZoomBody"></div>
+      </div>
     </div>
   </div>
 </div>

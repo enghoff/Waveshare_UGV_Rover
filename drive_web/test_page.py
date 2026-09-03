@@ -91,6 +91,57 @@ def test_the_world_popup_scrolls_its_lists_not_its_body() -> None:
           and "max-height: none" in observation_list, True)
 
 
+def test_the_observation_stream_is_tiled_and_opens_one_at_a_time() -> None:
+    """Thumbnails in a grid, and the one look a click puts over them.
+
+    Layout again rather than decoration, and the same kind of fault: a grid whose
+    tiles are the tallest of their row, or a large view the popup body cannot
+    position, are both things only a browser would show. The last check here is
+    the one that matters most -- space and Escape stop the rover, and a large
+    picture that took the keyboard to close itself would take the stop key with
+    it.
+    """
+    css = _console("css")
+    js = _console("world.js")
+
+    def rule(selector: str) -> str:
+        match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        return re.sub(r"\s+", " ", match.group(1)) if match else ""
+
+    tiles, tile = rule(".wtiles"), rule(".wtile")
+    check("the stream is a grid of thumbnails",
+          "display: grid" in tiles and "auto-fill" in tiles, True)
+    check("...whose tiles pack to their own height rather than their row's",
+          "align-items: start" in tiles, True)
+    check("...and are drawn by the script as tiles",
+          'className = "wtile"' in js or '"wtile"' in js, True)
+    check("a tile is a button, so the grid is reachable by keyboard",
+          'createElement("button")' in js and "wtile" in js, True)
+    check("...reset out of looking like one", "font: inherit" in tile, True)
+
+    body, zoom, zoomed = rule("#worldBody"), rule("#wZoom"), rule("#wZoomBody")
+    check("the popup body can position the large view",
+          "position: relative" in body, True)
+    check("the large view covers it", "position: absolute" in zoom
+          and "inset: 0" in zoom, True)
+    check("...and scrolls itself rather than the body it covers",
+          "overflow-y: auto" in zoomed and "min-height: 0" in zoomed, True)
+    check("clicking a tile opens it", "worldZoom = observation.id" in js, True)
+    check("...and the close button shuts it",
+          '$("wZoomClose").onclick' in js, True)
+    check("...as does moving to another tab",
+          js.count("worldZoom = null") >= 3, True)
+    # The one thing that must not have happened. Stop is space and Escape, held
+    # by drive_web.js, and nothing in the popup may listen for a key.
+    check("nothing in the popup listens for a key", "keydown" in js, False)
+
+    box = rule(".wbox")
+    check("the measured box is red rather than the console's accent",
+          "var(--box)" in box, True)
+    check("...and that red is declared for both themes",
+          css.count("--box:") >= 2, True)
+
+
 def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
     """All four files, over a real socket, with the types a browser needs.
 
@@ -147,5 +198,6 @@ def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
 TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
     test_the_world_popup_scrolls_its_lists_not_its_body,
+    test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
     test_the_page_brings_its_stylesheet_and_script_with_it,
 )
