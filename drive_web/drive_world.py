@@ -311,7 +311,14 @@ class SessionWorld:
             # draw: they are what `world_watch` asks for every couple of seconds,
             # and they move whenever the store does. So the body is fetched here,
             # once, on the strength of them, rather than on a timer of its own.
+            #
+            # And the tag is left alone while that is in flight, or every change
+            # in the store would fetch the payload twice: once for these counts
+            # and again half a second later for the body they sent for. What the
+            # header shows does not wait on it -- the counts ride in the pushed
+            # state, which is compared and sent on its own.
             if moved and watching and self.world["open"]:
+                moved = False
                 self.world_call("world_state_entities")
                 if self.world_selected:
                     self.world_call("world_state_entity",

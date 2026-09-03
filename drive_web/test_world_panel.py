@@ -336,8 +336,17 @@ def test_an_open_popup_keeps_itself_current() -> None:
     check("counts that have moved fetch the body they describe",
           asked(), ["world_state_entities"])
 
+    # ...and do not move the tag themselves. The body they sent for is a moment
+    # away and moves it, and bumping here as well would send the browser back
+    # for 74 kB twice on every change in the store.
+    check("...without sending the browser for the payload twice",
+          session.world_state()["gen"], "")
+    session.world_handle("world_state_entities",
+                         {"ok": True, "entities": [], "unmatched": [],
+                          "recent": [], "summary": counts}, 0.0)
     first = session.world_state()["gen"]
-    check("...and the browser is told there is something new", bool(first), True)
+    check("...and the body that arrives is what says there is something new",
+          bool(first), True)
 
     # The same counts again, which is what a rover recording nothing looks like.
     session.world_outstanding = 0
