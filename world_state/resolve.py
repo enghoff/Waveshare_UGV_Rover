@@ -72,17 +72,30 @@ AMBIGUOUS = "ambiguous"
 #:
 #: **Both of those numbers were measured on the CPU int8 graphs and neither
 #: describes what the rover now produces, so read this as a floor that removes
-#: very little rather than as a calibrated gate.** Re-measured on the 157 crops
-#: of 2026-09-03, all from the TensorRT engines: two regions of one frame, which
-#: are different objects by construction, score a median of 0.354 and a 95th
-#: percentile of 0.740, while the one genuine cross-viewpoint match in that whole
-#: run -- the pair of looks that founded its only entity -- scored 0.674. The
-#: real match is *below* the noise, so no value separates them: at 0.70 the run
-#: places nothing at all, and the sweep between is not monotone. **Do not try to
-#: fix identity by moving this number.** Geometry carries identity here, and the
-#: three faults that let one entity swallow six objects were all geometric or
-#: structural; the component README has the sweep.
-DIFFERENT_THING = 0.5
+#: very little rather than as a calibrated gate.** Re-measured on the TensorRT
+#: engines over both drives of 2026-09-03 -- 3,741 pairs of regions taken from one
+#: frame, which are different objects by construction -- the noise band is stable
+#: between runs and tighter than the 157-crop sample it used to be quoted from:
+#:
+#:     morning    1,138 pairs   median 0.349   p90 0.623   p95 0.715
+#:     afternoon  2,603 pairs   median 0.336   p90 0.594   p95 0.677
+#:
+#: **0.5 let a fifth of those through, and it showed.** With the pairing pass no
+#: longer stopping at the first standoff, the afternoon run placed five things of
+#: which three were plainly two objects each -- a door with a blown-out ceiling
+#: panel at 0.542, a framed picture with a bright doorway at 0.525, a landscape
+#: with a doorway at 0.538. At 0.55 all three go and both of the run's genuine
+#: entities stay, while the morning run replays unchanged at four entities with
+#: nothing mixed. It removes about a third of the pairs 0.5 admitted: 13-15% of
+#: known-different pairs still pass.
+#:
+#: **It is a better place for a floor and it is still not a separation, and the
+#: margin is thin enough to say out loud.** The chair the afternoon run genuinely
+#: saw twice scores 0.648; the pair of looks that founds its framed picture scores
+#: **0.557**, seven thousandths above this line. Geometry carries identity here.
+#: **Do not try to fix identity by moving this number** -- what it can do is stop
+#: the plainly unrelated founding a thing, and that is all this move claims.
+DIFFERENT_THING = 0.55
 
 #: How alike two DINOv2 vectors have to be before appearance is allowed to break
 #: a tie. **Deliberately not a matching threshold.** Measured on this rover: the

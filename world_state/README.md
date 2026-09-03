@@ -26,11 +26,15 @@ limit on how far the rover may travel while the shutter is open was derived from
 so an ordinary look taken while driving straight was refused by a hair. That left
 94 bearings from eight standing places out of a thirteen-minute drive. Travel now
 buys a wider answer instead of no answer, turning still costs the look its
-bearing, and a standoff between two crossings no longer ends the whole pairing
-pass — which on that recording takes it from one entity to three. **The size of
-the recovery is a prediction and wants the next drive**: the looks that lost their
-bearing recorded no pose either, so it cannot be replayed. The write-up is *One
-entity out of a thirteen-minute drive* below.
+bearing, a standoff between two crossings no longer ends the whole pairing pass,
+and the appearance floor is 0.55 rather than 0.5 — measured over 3,741 pairs of
+regions taken from one frame, which are different things by construction, and
+where 0.5 was admitting a fifth of them. On that recording the three together take
+the run from one entity to two, both of which are things a person can point at in
+the crops, where the standoff fix on its own placed five of which three were two
+objects each. **The size of the recovery is a prediction and wants the next
+drive**: the looks that lost their bearing recorded no pose either, so it cannot be
+replayed. The write-up is *One entity out of a thirteen-minute drive* below.
 
 **The run of that morning placed four things and three of them are where nothing
 is.** One entity is right: `object:3` is three crops of one framed picture. The
@@ -1142,7 +1146,12 @@ median cosine of 0.354 and a 95th percentile of **0.740**, while the one genuine
 cross-viewpoint match in the whole run, the pair of looks that founded
 `object:1`, scored **0.674**. The real match sits below the noise. Raising
 `DIFFERENT_THING` to 0.70 makes the run place nothing at all, and the sweep
-between is not even monotone. The numbers in `resolve.py` that put 0.5 between a
+between is not even monotone. (**The 0.740 is a 157-crop sample and it was
+pessimistic.** Measured again over both drives of that day, 3,741 same-frame
+pairs, the 95th percentile is 0.715 in the morning and 0.677 in the afternoon and
+the band is stable between them — which is what later made 0.55 a better place for
+the floor than 0.5. It is still not a separation: see *One entity out of a
+thirteen-minute drive*.) The numbers in `resolve.py` that put 0.5 between a
 chair-versus-spray-bottle at 0.122 and a chair across a viewpoint change at 0.696
 were measured on the CPU int8 graphs; the rover has been running the TensorRT
 engines, whose vectors are not the same and were never re-measured against them.
@@ -1264,6 +1273,12 @@ construction — reach a 95th percentile of 0.740 while a genuine cross-viewpoin
 match scored 0.674. **There is no threshold that separates them**, which is the
 same conclusion the section above this one reached, arrived at from the other end.
 
+The floor is 0.55 now rather than 0.5, which does not change that: it refuses the
+0.542 and 0.538 pairs the afternoon drive would otherwise have built things out of
+and it would not have refused either of these two. What it does is stop the
+*plainly* unrelated founding a thing, and the pair that founds this run's own
+framed picture clears it by seven thousandths.
+
 ### One gate was missing, and it is fixed
 
 Every way into an entity applies `DIFFERENT_THING` except one, and that one was
@@ -1384,17 +1399,49 @@ The rival test is now asked of each candidate in turn (`_contested`), and the
 first crossing nothing contradicts is placed. A candidate sharing a ray with a
 standoff is refused along with it, because that ray is spoken for either way.
 
-**On this recording it takes the run from one entity to three.** One is the framed
-picture it already had; one is an office chair, seen from 15.34,1.15 and from
-13.13,-0.42 -- a 2.71 m baseline at 79 degrees of parallax, placed to within
-0.072 m, appearance 0.648 -- which the old code refused because a third ray
-crossed one of its two somewhere 0.64 m away. That is a genuine thing the rover
-saw twice and could not keep.
+**What it recovers is real.** Deployed to the rover, standing still, on the pool
+it already had, it placed an office chair -- seen from 15.34,1.15 and from
+13.13,-0.42, a 2.71 m baseline at 79 degrees of parallax, to within 0.072 m --
+which the old code had refused because a third ray crossed one of its two
+somewhere 0.64 m away. That is a genuine thing the rover saw twice and could not
+keep.
 
-The third is wrong: a door seen up close and a blown-out ceiling panel, which
-DINOv2 scores above the 0.5 floor because two washed-out pictures resemble each
-other. That is the known weakness of appearance on this rover rather than a new
-one -- the old code did not refuse it, it simply stopped before reaching it.
+**And it exposed what the early exit had been hiding.** It placed five things, not
+two: the chair, the framed picture it already had, and three that are plainly two
+objects each. The early exit was never refusing those -- it simply stopped before
+reaching them.
+
+### The appearance floor was letting a fifth of the noise through
+
+Read off the crops of the five, the three wrong ones are a door with a blown-out
+ceiling panel, a framed picture with a bright doorway, and a landscape with a
+doorway. None of them is a bad crop: only one is blown out at all. What joined
+each pair is DINOv2 scoring it above `DIFFERENT_THING`, which was 0.5.
+
+Measured the same way on both drives of that day -- every pair of regions taken
+from **one frame**, which are different objects by construction, so 3,741 labelled
+negatives rather than the 157-crop sample the constant was last argued from:
+
+| | pairs | median | p90 | p95 | over 0.50 | over 0.55 |
+|---|---:|---:|---:|---:|---:|---:|
+| morning | 1,138 | 0.349 | 0.623 | 0.715 | 20.2% | 15.5% |
+| afternoon | 2,603 | 0.336 | 0.594 | 0.677 | 19.1% | 13.4% |
+
+**The band is stable between runs and tighter than 0.740**, which is what makes
+0.5 identifiably the wrong place for the floor rather than merely a guess. The
+three wrong pairs score 0.542, 0.525 and 0.538; the chair scores 0.648.
+
+So the floor is **0.55**. On the afternoon recording that leaves exactly the two
+entities a person can point at in the crops and none of the three that are two
+things, and the morning recording replays unchanged at four entities with nothing
+mixed. Against what the rover actually did -- one entity -- that is one more valid
+thing and no false ones.
+
+**It is not a separation and the margin is thin.** 13-15% of known-different pairs
+still clear 0.55, and the pair of looks that founds the afternoon run's framed
+picture scores **0.557** -- seven thousandths above the line. A floor of 0.56 would
+lose it. Appearance still cannot tell this rover what it is looking at; what has
+changed is only that the plainly unrelated can no longer found a thing.
 
 ### Recovering the bearings walks into a cost cliff, so it is bounded
 
@@ -1432,11 +1479,15 @@ again -- a trap the small pool was hiding.
 
 Worth stating plainly, because it explains why nothing here is settled by tuning:
 with 94 bearings and seven viewpoints, **which entities appear is decided by which
-two rays happen to be in the pool.** Tightening the blown-out-crop filter from 0.6
-to 0.5 -- every one of the run's 24 most blown-out crops is a window or a light
-panel, so the cut is defensible on its own -- removes the false door, and removes
-the office chair with it, by changing which crossing wins a ranking three passes
-later. The constant was left alone for that reason.
+two rays happen to be in the pool.** Two things were tried and left alone for it.
+Tightening the blown-out-crop filter from 0.6 to 0.5 -- every one of the run's 24
+most blown-out crops is a window or a light panel, so the cut is defensible on its
+own -- removes one false entity and removes the office chair with it, by changing
+which crossing wins a ranking three passes later. And requiring a third viewpoint
+before a thing may be invented, which is the design's own answer to a standoff,
+loses the chair outright: the rover only ever saw it from two places, and one of
+the phantoms had three rays agreeing with it because agreement is cheap when the
+thing is close and its tolerance covers its own width.
 
 The design's own answer to a standoff is "a third look from somewhere else settles
 it". The whole of this run had seven places to look from.
@@ -1453,8 +1504,13 @@ it". The whole of this run had seven places to look from.
    down the rover's nose for a whole drive. Whatever is beside the route is seen
    once, in passing, at the edge of the frame. A sweep while driving is the
    obvious next multiplier and it is a behaviour change, not a constant.
-4. **Appearance still cannot separate what the rover sees.** A door and a
-   blown-out ceiling score above the floor, and no threshold rescues that.
+4. **Appearance still cannot separate what the rover sees.** 0.55 is a better
+   floor than 0.5 and it is not a threshold that separates: 13% of pairs known to
+   be different things clear it, and this run's own framed picture clears it by
+   seven thousandths. SigLIP2's vectors are stored on every observation and have
+   never been tried for this -- measured on the same pairs they order them the
+   same way and no better (the real pairs at 0.851 and 0.906 against a same-frame
+   95th percentile of 0.854), so there is nothing free there either.
 
 ## What was measured on the rover, 2026-09-02
 
