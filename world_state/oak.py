@@ -72,22 +72,50 @@ class Mount:
     up_m: float = 0.0
 
 
-#: Where this rover's OAK is. **Not measured yet, and that is why nothing here
-#: writes a bearing.**
+#: Where this rover's OAK is, **measured on 2026-09-04 by `bench_oak.py`** and
+#: the first extrinsics between any two things on this rover.
 #:
-#: There are no extrinsics between the OAK, the lidar and the tracks anywhere in
-#: this repository, which both this component's README and `oak_depth/README.md`
-#: have said for as long as the camera has been on the rover. A yaw taken from
-#: the mounting bracket by eye would be worth about five degrees, and a bearing is
-#: believed to one and a half -- so a guess here is not a small error, it is a
-#: systematic swing on every observation this camera ever records, in the one
-#: direction nothing downstream can detect.
+#: The rover was parked facing a dining table, and each figure is the median of
+#: two runs of five solves each at pan 0, every solve its own RANSAC PnP over
+#: about seventy points matched between the two cameras and ranged by the depth
+#: camera. What it is worth:
 #:
-#: `bench_oak.py` measures it, against the gimbal camera and with no target: both
-#: cameras look at the same room, the perception sidecar finds regions in both,
-#: the regions are matched by appearance, and the angle between the two lenses'
-#: answers is the mount. Run it and write what it prints in here, with the date.
-MOUNT = Mount()
+#:   repeatable  Within one run: 0.4 deg on the angles, 1 to 2 cm on the offset.
+#:               Between the two runs: 0.8 deg and 5 cm.
+#:   fitted      The points that survived missed by 0.35 to 0.41 deg in the
+#:               median, against the 1.5 deg `locate.BEARING_SIGMA_DEG` allows a
+#:               bearing on this rover.
+#:   real        Refitting the same points with the two lenses taken as
+#:               co-located costs 2.0 deg instead of 0.4 -- five times worse -- so
+#:               the offset is something the data contained rather than something
+#:               the solver was free to choose. That test is in the report.
+#:
+#: **Taken at pan 0 rather than averaged over several pans, deliberately.** Solved
+#: at -10, 0 and +10 the yaw comes out 3 degrees apart, and it is the *gimbal*
+#: that moved: the pan servo is already known to arrive about three degrees short
+#: at the ends of its travel with no feedback to correct it, and arriving at 0
+#: from -10 leaves it about 2 degrees from where five solves in a row at 0 put it.
+#: That error is in every bearing this component records anyway -- it is the
+#: largest term in `BEARING_SIGMA_DEG` -- so folding it in here would count it
+#: twice. The mount is what it is with the gimbal at rest.
+#:
+#: **The roll came out -0.5 deg** and `Mount` does not carry one, on the argument
+#: that a bracket bolted to a flat plate has none. Half a degree is inside the
+#: noise on the rotation, so that argument survives; `bench_oak.py` prints the
+#: roll and says so when it does not.
+#:
+#: **What has not been checked is the offset against a ruler.** Half a metre
+#: forward is a long way on a small rover, and while the fit is self-consistent
+#: and repeatable, nothing here has compared it with the thing itself. The
+#: falsifiable claim is: the OAK's lens sits about 57 cm ahead of the gimbal
+#: camera's, 18 cm to its right, and 8 cm above it.
+MOUNT = Mount(
+    yaw_deg=-0.70,
+    pitch_deg=2.71,
+    forward_m=0.571,
+    left_m=-0.181,
+    up_m=0.077,
+)
 
 #: Whether `MOUNT` above holds measurements. **Everything this module can do is
 #: gated on it**, in both directions: the OAK cannot draw a bearing without it,
@@ -98,7 +126,7 @@ MOUNT = Mount()
 #: A flag rather than a check for zeros, because zero is a perfectly possible
 #: measurement -- a camera mounted straight ahead has a yaw of zero, and the
 #: difference between "measured as zero" and "never measured" is the whole point.
-MEASURED = False
+MEASURED = True
 
 #: How far off the OAK's own axis a direction may lie before it is not in its
 #: picture at all, as a fraction of the frame beyond the edge. A box mapped from

@@ -65,6 +65,26 @@ def _mounted(**fields):
     return _Held()
 
 
+def _unmeasured():
+    """And run something as a rover whose mount nobody has measured.
+
+    The state this component shipped in and the one it has to be safe in: the
+    checks below are about what happens *before* somebody runs the bench, so they
+    force it rather than relying on the module still being in it.
+    """
+    class _Held:
+        def __enter__(self):
+            self.mount, self.measured = oak.MOUNT, oak.MEASURED
+            oak.MOUNT, oak.MEASURED = oak.Mount(), False
+            return oak.MOUNT
+
+        def __exit__(self, *_gone):
+            oak.MOUNT, oak.MEASURED = self.mount, self.measured
+            return False
+
+    return _Held()
+
+
 # --- the lens ----------------------------------------------------------------
 
 def test_a_pixel_on_the_oak_becomes_a_direction() -> None:
@@ -147,7 +167,8 @@ def test_a_ray_from_the_oak_starts_where_the_oak_is() -> None:
     metres, which is twice what the geometry is told to expect -- so the pose an
     OAK look is stored against is the OAK's own, not the rover's."""
     pose = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0}
-    check("an unmeasured mount moves nothing", oak.pose_at(pose), pose)
+    with _unmeasured():
+        check("an unmeasured mount moves nothing", oak.pose_at(pose), pose)
 
     with _mounted(forward_m=0.12, left_m=-0.03):
         moved = oak.pose_at(pose)
@@ -206,11 +227,14 @@ def test_an_unmeasured_mount_finds_nothing_rather_than_guessing() -> None:
     bracket is worth about five degrees against a bearing believed to one and a
     half, and nothing downstream could detect it -- so an unmeasured mount does
     nothing at all rather than something approximate."""
-    check("no box without a mount", oak.box_for([(1.0, 0.0, 0.0)] * 4,
-                                                OAK_LENS, 2.0), None)
-    check("no range correction either",
-          oak.range_from_gimbal([(1.0, 0.0, 0.0)] * 4, 2.0), None)
-    check("and it says so out loud", "unmeasured" in oak.describe(), True)
+    with _unmeasured():
+        check("no box without a mount",
+              oak.box_for([(1.0, 0.02, 0.02), (1.0, -0.02, 0.02),
+                           (1.0, 0.02, -0.02), (1.0, -0.02, -0.02)],
+                          OAK_LENS, 2.0), None)
+        check("no range correction either",
+              oak.range_from_gimbal([(1.0, 0.0, 0.0)] * 4, 2.0), None)
+        check("and it says so out loud", "unmeasured" in oak.describe(), True)
 
 
 def test_a_range_measured_from_one_lens_becomes_a_length_along_the_other() -> None:

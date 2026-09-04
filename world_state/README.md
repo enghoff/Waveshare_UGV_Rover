@@ -51,14 +51,22 @@ two in code, with nothing on the console -- two cameras writing into one world
 through a switch a person could flip mid-drive would leave the store holding two
 halves nobody could tell apart.
 
-**The mount has not been measured, and until it is, none of this does anything.**
-A yaw taken off a bracket by eye is worth about five degrees against a bearing
-believed to one and a half, and it would swing every observation the same way with
-nothing downstream able to see it -- so `oak.MEASURED` gates all of it, in both
-directions: the OAK cannot draw a bearing without it, and a gimbal look cannot be
-given a range without it either. [bench_oak.py](bench_oak.py) measures it with no
-target and no tape measure; *What the two cameras have to agree about* below is
-what it does and what the rover has to be pointed at for it to work.
+**The mount is measured, since 2026-09-04, and it is the first extrinsics between
+any two things on this rover.** [bench_oak.py](bench_oak.py) does it with no
+target: the OAK's picture is warped into the fisheye's own geometry, ORB matches
+the two, the depth camera says how far away each match is, and a RANSAC PnP finds
+the pose that reconciles them. Ten solves at pan 0 agree to 0.8 degrees and 5 cm,
+the points that survive miss by 0.4 degrees against the 1.5 a bearing is allowed,
+and refitting with the two lenses taken as co-located costs 2.0 degrees instead of
+0.4 -- so the offset is in the data rather than free. `oak.MEASURED` is the gate,
+and it gates everything in both directions: the OAK cannot draw a bearing without
+it, and a gimbal look cannot be given a range without it either.
+
+**What has not been checked is the offset against a ruler.** The falsifiable
+claim is that the OAK's lens sits about 57 cm ahead of the gimbal camera's, 18 cm
+to its right and 8 cm above; half a metre is a long way on a small rover, and
+while the fit is self-consistent and repeatable, nothing has yet compared it with
+the thing itself.
 
 **The same picture is not recorded twice, since 2026-09-04.** A rover standing
 still in a room that is not changing used to go on recording it — the same wall,
@@ -289,9 +297,8 @@ gone. A person who wants prose about what the camera can see asks the daemon's
 
 ## What the two cameras have to agree about, 2026-09-04
 
-**Not measured yet.** What follows is what is built and what it will take to
-switch on, written down because the gate is a one-line constant and somebody
-will otherwise be tempted to fill it in by eye.
+**Measured.** What follows is what was built, what it took to get a number out of
+the rover, and the two things that are still open.
 
 ### Why a range is the thing the geometry was missing
 
@@ -345,46 +352,87 @@ would never show up as an error:
   `Inspector._aged_sigma` charges the rover's own speed over the shutter bracket
   to the reading, in quadrature. It only ever widens.
 
-### What the calibration does, and what the rover has to be pointed at
+### Matching by appearance was tried first, and it does not work in a real room
 
-`bench_oak.py` needs no target. Both cameras look at whatever room the rover is
-in, the perception sidecar finds regions in both pictures, and the regions are
-matched across the two by the same DINO vectors the resolver uses -- at a higher
-floor than `resolve.DIFFERENT_THING`, because a wrong match here is a bad pair in
-a calibration everything else is built on and there are usually more honest pairs
-available than are needed. Each matched pair is then one thing seen down two known
-lenses from two unknown but fixed places, and:
+The obvious way to get the two cameras into one frame is to find regions in both
+pictures and match them by the encoder vectors the resolver already uses. It was
+built that way and it failed on the rover, for the reason this whole component
+exists: **appearance cannot tell two things apart here.** Pointed at a dining
+table on 2026-09-04 it produced two usable pairs out of ten regions, because
+within a *single* frame six different chairs scored up to 0.913 against each
+other -- higher than the same chair scored across the two lenses. A calibration
+that only works in rooms without repeated furniture is not one.
 
-* the **rotation** that makes the two agree is the mount's yaw and pitch, solved
-  as Wahba's problem by singular value decomposition. The spread left over is what
-  the answer is worth, and `locate.BEARING_SIGMA_DEG` -- 1.5 degrees -- is what it
-  has to beat to be worth adopting. The roll is reported and not carried, on the
-  assumption that a bracket bolted to a flat plate has none; above a degree that
-  assumption wants revisiting rather than ignoring.
-* the **offset** between the two lenses comes out of what is left, because
-  parallax is the only thing in two pictures that knows about distance: a thing
-  three metres away should appear in the same direction down both lenses and does
-  not, by the offset over the range. With the ranges the OAK reports for those same
-  regions, that is a linear least-squares problem, and its condition number is
-  printed because a scene where everything is at one distance cannot tell an offset
-  from a rotation at all.
+### So it matches on texture and geometry, which needs no vocabulary at all
 
-**What it needs is a room with furniture at a spread of distances**, two to four
-metres off, and it says so rather than fitting whatever it was given. The rover
-was parked nose-to-wall when this was written, which is the one scene it cannot
-work from: a blank wall a metre away yields nothing to match.
+Four steps, and the first is what makes the rest easy:
 
-    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan -20 -10 0 10 20'
+1. **The OAK's picture is warped into the fisheye's own geometry.** That
+   direction needs no inverse of the fitted lens -- `lens.ray_at` answers "which
+   way does this pixel look" and the OAK is a pinhole, so every fisheye pixel can
+   be projected into it forwards. The two images then differ by a few degrees of
+   mount rather than by a lens, at the same scale, which is the easy case for a
+   feature matcher. It is built on every eighth pixel and interpolated up, so the
+   optics stay described in one place.
+2. **ORB matches them**, with a ratio test against the second-best because a
+   tiled floor repeats, and a mutual check because a corner that resembles every
+   other corner is otherwise somebody's best match in one direction only.
+3. **The depth camera ranges every match**, in one batched call to `/ranges`.
+4. **A RANSAC PnP solves the pose** that takes the OAK's 3-D points to the gimbal
+   camera's directions -- rotation and offset together, out of one fit, with the
+   correspondences that do not agree thrown out rather than averaged in. The
+   image points are directions rather than pixels, which is what lets a fisheye be
+   handed to a pinhole solver at all.
 
-Read the spread; if it beats a degree and a half, paste the block it prints into
-`oak.MOUNT` and set `MEASURED = True`. It is deliberately not written back
-automatically: a calibration that rewrites the constant the whole component
-depends on, from whatever the rover happened to be looking at, is a calibration
-nobody can review.
+About seventy points survive per solve in an ordinary room, and what they miss by
+is 0.35 to 0.41 degrees against the 1.5 a bearing on this rover is allowed.
+
+### Two things the calibration measured that were not what it was for
+
+**The offset is real, and the report proves it rather than asserting it.** Two
+lenses a few centimetres apart looking at things metres away see them in almost
+the same direction, so the offset is the weakly observable half of this pose and
+a solver will put it wherever best trades against the rotation. So the same
+points are refitted with the two lenses taken as co-located: that costs 2.0
+degrees where the full fit costs 0.4, five times worse, which is the evidence that
+the data contained an offset at all. Without that test a printed number would have
+been indistinguishable from a free parameter.
+
+**The gimbal's own pan is worth about two degrees, and this is the first thing to
+measure it in the middle of its travel.** Solved at -10, 0 and +10 the mount's yaw
+comes out three degrees apart -- and the mount cannot move, so it is the gimbal
+that did. Five solves in a row at pan 0 agree to 0.4 degrees; arriving at pan 0
+from -10 lands about 2 degrees away from that. The pan servo was already known to
+arrive three degrees short at the ends of its travel with no feedback to correct
+it, and it is the largest term in `locate.BEARING_SIGMA_DEG`; this says the middle
+of the travel is not much better, and that it has hysteresis. **That is why the
+mount is taken at pan 0 rather than averaged over several pans**: the error is in
+every bearing this component records anyway, and folding it in here would count it
+twice.
+
+### Running it
+
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan 0 0 0 0 0'
+
+Several positions is a check on the answer rather than more of it -- each is
+solved on its own and the report prints them side by side. It needs a **textured
+room with things at a spread of distances**, and it says so rather than fitting
+whatever it was given: a blank wall has nothing to match, and a plain floor
+matches itself everywhere. The rover was parked nose-to-wall the first time this
+was run, which is the one scene it cannot work from at all.
+
+What it prints goes into `oak.MOUNT` **by hand**, with the date. It is
+deliberately not written back automatically: a calibration that rewrites the
+constant the whole component depends on, from whatever the rover happened to be
+looking at, is a calibration nobody can review.
 
 ### What is still open
 
-* **The mount, which is the whole of it.** Nothing above is switched on.
+* **The offset has not been checked against a ruler.** The claim is 57 cm forward,
+  18 cm right, 8 cm up, and half a metre is a long way on a small rover. The fit is
+  self-consistent, repeatable to a centimetre and demonstrably not free -- but it
+  has never been compared with the thing itself, and that is a two-minute check
+  somebody standing next to the rover can do and nothing here can.
 * **The disparity term behind every `range_sigma_m` is assumed**, not measured
   (`oak_depth.DISPARITY_SIGMA_PX`). The stereo
   error model is `z^2 * 0.2 px / (focal * baseline)`, and the focal length and the
@@ -399,7 +447,9 @@ nobody can review.
   was in before *The shutter has an instant* below. The fix is a short history of
   poses in the daemon rather than a bracket of two, and it is not built.
 * **Whether any of it places more things is unmeasured**, because no recording
-  holds a range to replay. That wants a drive after the mount is measured.
+  holds a range to replay and the rover has not driven since the mount was
+  measured. That is the next drive, and the thing to watch is whether the phantom
+  the range was wanted for stops appearing.
 
 ## The one rule
 
