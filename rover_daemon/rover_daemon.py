@@ -188,8 +188,13 @@ def main() -> int | str:
     # bench script that makes a Rover to read the battery should not quietly begin
     # opening a database and taking pictures. The navigator is attached below and
     # the loop reads it through `getattr`, so starting first costs nothing but a
-    # look or two without a pose, which are refused rather than stored.
-    rover.start_world_building()
+    # look or two without a pose, which are refused rather than stored. It also
+    # empties the world state when the host has rebooted since it was recorded,
+    # because the map those positions were measured in did not survive the
+    # reboot, and it says so here when it did.
+    note = rover.start_world_building()
+    if note:
+        print(note, flush=True)
 
     if args.ros_nav:
         try:

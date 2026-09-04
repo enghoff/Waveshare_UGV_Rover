@@ -329,6 +329,50 @@ def test_clearing_the_map_keeps_the_semantic_world() -> None:
         store.close()
 
 
+def test_a_reboot_empties_the_world_and_an_unknown_boot_does_not() -> None:
+    """The map does not survive a reboot, so neither may the things placed in it.
+
+    The dangerous state is not the stale row, it is the stale row wearing the
+    current map's session number: that is what the console draws on the map, so
+    a world kept across a reboot put the last room's furniture on this room's
+    map. Deleting on an *unknown* boot would be the opposite mistake -- a desk
+    replaying a recording has no boot identifier to offer, and losing the
+    recording to that would be losing the experiment.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        store.record([a_sighting()], capture={"frame_id": store.save_frame(JPEG)})
+        first = store.clear_if_rebooted("boot-one")
+        check("a world that does not say which boot wrote it is kept",
+              first["cleared"], False)
+        check("...and the observation is still there",
+              store.summary()["observations"], 1)
+        check("the same boot again changes nothing",
+              store.clear_if_rebooted("boot-one")["cleared"], False)
+        check("...and still changes nothing",
+              store.summary()["observations"], 1)
+        store.close()
+
+        # A reboot: the same database, opened again under a different boot.
+        store = a_store(directory)
+        check("a host with no boot identifier deletes nothing either",
+              store.clear_if_rebooted("")["cleared"], False)
+        check("...so the world is intact until something knows better",
+              store.summary()["observations"], 1)
+        gone = store.clear_if_rebooted("boot-two")
+        check("a new boot empties the world", gone["cleared"], True)
+        check("...saying what went with it", gone["observations"], 1)
+        check("...and taking the pictures too", gone["frames_removed"], 1)
+        check("...leaving nothing to draw", store.summary()["observations"], 0)
+        check("...on a map session of its own, so anything that survived a "
+              "half-done clear is not comparable with what comes next",
+              store.summary()["map_session"], 2)
+        check("and the boot it happened on is remembered, so a daemon that "
+              "restarts twice under one boot only clears once",
+              store.clear_if_rebooted("boot-two")["cleared"], False)
+        store.close()
+
+
 def test_unreadable_stored_json_cannot_take_the_viewer_down() -> None:
     """The popup exists to show what went wrong, so it must survive a row that is
     itself what went wrong."""
@@ -443,6 +487,7 @@ TESTS = (
     test_a_missing_pose_is_recorded_as_missing,
     test_clearing_the_semantic_world_takes_its_frames_with_it,
     test_clearing_the_map_keeps_the_semantic_world,
+    test_a_reboot_empties_the_world_and_an_unknown_boot_does_not,
     test_unreadable_stored_json_cannot_take_the_viewer_down,
     test_a_reader_is_not_blocked_by_a_writer,
     test_a_full_pending_pool_still_shows_what_just_arrived,

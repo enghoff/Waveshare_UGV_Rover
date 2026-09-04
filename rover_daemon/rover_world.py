@@ -160,7 +160,43 @@ class RoverWorld:
 
     # --- building it without being asked --------------------------------------
 
-    def start_world_building(self) -> None:
+    def _world_forget_after_reboot(self) -> str:
+        """Empty the world state if the host has rebooted since it was recorded.
+
+        The reason is the map. Nothing saves the SLAM map, so the rover comes up
+        with an empty one, while every position and every bearing in the store
+        was measured in the map that has just gone -- and the store carried on
+        stamping the new map with the old map's session number, so the console
+        drew things from the last room on the map of this one.
+
+        Here rather than in the store's constructor because it is a decision
+        about this rover rather than a property of the database, and a bench
+        script or a replay that opens the same store must not lose its rows to
+        it. Done before the looking thread starts, and before the daemon serves
+        anything, so nothing can be holding the frame or the inference row that
+        is about to be deleted -- which is the state a clear from the console has
+        to refuse, and the reason one pressed at the wrong moment does nothing.
+
+        Answers with the line to log, or with nothing when nothing went. Never
+        raises: a world state that could not be cleared is worth a daemon that
+        starts anyway.
+        """
+        if self._world_ready():
+            return ""
+        try:
+            gone = self._world_store().clear_if_rebooted()
+        except Exception as error:
+            return (f"[rover] world state kept: it could not be cleared for this "
+                    f"boot: {type(error).__name__}: {error}")
+        if not gone.get("cleared"):
+            return ""
+        return (f"[rover] world state cleared for a new boot -- "
+                f"{gone.get('entities', 0)} entities, "
+                f"{gone.get('observations', 0)} observations, "
+                f"{gone.get('frames_removed', 0)} frames; now on map session "
+                f"{gone.get('map_session')}")
+
+    def start_world_building(self) -> str:
         """Look around on a schedule, from the moment the daemon starts.
 
         **Always, with nothing to switch it off**, because a world state that only
@@ -174,7 +210,11 @@ class RoverWorld:
         the console makes. Nothing here reaches into the store or the resolver
         directly, so a fault in this loop cannot corrupt anything -- at worst it
         stops looking.
+
+        Answers with the one line the caller should log, which at the moment is
+        what a reboot threw away and usually nothing at all.
         """
+        note = self._world_forget_after_reboot()
         self._world_build_stop = threading.Event()
         self._world_build_at = 0.0
         self._world_settle_at = 0.0
@@ -186,6 +226,7 @@ class RoverWorld:
                                   name="world-building", daemon=True)
         self._world_build_thread = thread
         thread.start()
+        return note
 
     def world_building(self) -> bool:
         """Whether the looking loop is running, which it is until shutdown.

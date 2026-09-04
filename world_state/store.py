@@ -49,8 +49,27 @@ INFERENCE_LIMIT = 12
 EXEMPLARS = 5
 
 
+#: Where Linux publishes an identifier that is fixed for the life of one boot and
+#: different on the next. Read in preference to the clock or the uptime because
+#: this rover has no battery-backed clock: its wall time starts at whatever the
+#: last write left behind and jumps again the moment it reaches the network, so
+#: "was this row written before the machine came up" is not a question the
+#: timestamps on the rows can answer. Absent off Linux, and the empty string that
+#: comes back then means "which boot this is cannot be told" rather than any
+#: particular boot.
+BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
+
+
 def world_dir() -> str:
     return os.environ.get(ENV_DIR) or os.path.expanduser("~/.ugv/world")
+
+
+def host_boot_id() -> str:
+    try:
+        with open(BOOT_ID_PATH) as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
 
 
 class WorldStore:
@@ -773,6 +792,55 @@ class WorldStore:
                     pass
         return {"ok": True, "frames_removed": removed, **counts,
                 "map_session": self.map_session()}
+
+    def clear_if_rebooted(self, boot_id: str = "") -> dict[str, Any]:
+        """Throw the world away when the host has rebooted since it was written.
+
+        Everything in here is measured against the SLAM map: a bearing means
+        something only from the pose it was taken at, and a position only in the
+        frame the bearings crossed in. Nothing saves that map, so every boot
+        starts an empty one -- and the store used to come back holding the old
+        map's positions stamped with the *same* map session as the new map, which
+        is precisely the comparison `new_map_session` exists to prevent. The
+        console draws exactly those rows: a thing is on the map when its
+        placement session matches the store's, so two chairs measured in a room
+        the rover has since been carried out of appeared on the fresh map as
+        though they had just been seen.
+
+        Bumping the session and keeping the rows is the other answer, and it is
+        the one the console's map button gave until it stopped: what survives
+        that is a list of things with nowhere to be.
+
+        An unknown boot deletes nothing. That is either a host with no `/proc` to
+        read -- a desk, a replay -- or a database written before this was
+        recorded, and "I cannot tell whether this machine has rebooted" must not
+        be a reason to destroy an experiment somebody is halfway through. The
+        identifier is remembered either way, so the next boot is knowable.
+        """
+        boot_id = boot_id or host_boot_id()
+        was = self._meta("boot_id")
+        if not boot_id:
+            return {"cleared": False, "boot_id": was,
+                    "reason": "this host does not say which boot it is on"}
+        if was == boot_id:
+            return {"cleared": False, "boot_id": boot_id,
+                    "reason": "the world was recorded under this boot"}
+        with self._lock, self.db:
+            self.db.execute("REPLACE INTO meta(key, value) VALUES('boot_id', ?)",
+                            (boot_id,))
+        if not was:
+            return {"cleared": False, "boot_id": boot_id,
+                    "reason": "the world does not say which boot recorded it"}
+        gone = self.clear()
+        # The session moves as well as the rows going, for the same reason the
+        # console moves it: a clear that half failed must not leave old
+        # coordinates comparable with new ones.
+        return {"cleared": True, "boot_id": boot_id,
+                "reason": f"recorded under boot {was}",
+                "entities": gone["entities"],
+                "observations": gone["observations"],
+                "frames_removed": gone["frames_removed"],
+                "map_session": self.new_map_session()}
 
     def close(self) -> None:
         with self._lock:
