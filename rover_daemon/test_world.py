@@ -510,6 +510,7 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
     import zlib
 
     import rover_daemon
+    import world_state
 
     # Six metres square at 10 cm cells, open floor, with the rover at one end and
     # a thing three metres away at the other.
@@ -566,6 +567,32 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
                 encoded = str(error)
             check("...and the answer goes down the wire as one line of JSON",
                   encoded, True)
+            check("...off the ring, there being no look to read a line from",
+                  found["along"], "the nearest floor it can be seen from")
+
+            # And now the thing has been looked at, twice, from the north of it.
+            # Both looks are attached to it and both agree with where it was
+            # placed, so the north side is a line the rover has actually seen it
+            # along -- which is what it is sent to, in preference to the near side
+            # it was sent to a moment ago.
+            for pan in (89.0, 91.0):
+                store.record([world_state.Sighting(bbox=[0.45, 0.45, 0.55, 0.55],
+                                                   dino=b"", siglip=b"")],
+                             capture={"frame_id": "north", "pan": pan, "tilt": 0.0,
+                                      "pose": {"x_m": 4.0, "y_m": 5.0,
+                                               "heading_deg": 0.0}},
+                             source="perception", fov_deg=66.0)
+            store.attach(thing, [row["id"] for row
+                                 in store.observations(limit=2)], why="the test")
+            seen = rover.call("world_state_viewpoint", {"id": thing})
+            check("a thing that has been seen from somewhere is approached from "
+                  "there", seen["along"],
+                  "the line it has most often been seen along")
+            check("...which is the north side of it", seen["y_m"] > 3.0, True)
+            check("...on the line rather than beside it", round(seen["x_m"], 1),
+                  4.0)
+            check("...facing it", round(seen["heading_deg"]), -90.0)
+            check("...reading both of the looks behind it", seen["sight_lines"], 2)
 
             # Clearing the map does not delete the entity, and that is exactly
             # the trap: its coordinates are still there and they now name a place
@@ -576,6 +603,19 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
                   stale["ok"], False)
             check("...saying which map it was measured in",
                   "was placed under map 1" in stale["error"], True)
+
+            # Placed again under the new map, the thing is approachable again --
+            # and the looks behind it are not. Where the rover was standing is a
+            # position in the map of the day, so a pose recorded before the clear
+            # names a place in this map by coincidence, and the north side has to
+            # be earned again rather than remembered.
+            store.place(thing, {"x_m": 4.0, "y_m": 3.0, "uncertainty_m": 0.2},
+                        store.map_session())
+            afresh = rover.call("world_state_viewpoint", {"id": thing})
+            check("a look taken under the old map is not a line on this one",
+                  afresh["sight_lines"], 0)
+            check("...so the ring answers instead", afresh["along"],
+                  "the nearest floor it can be seen from")
 
             rover.nav = Nav(None)
             store.place(thing, {"x_m": 4.0, "y_m": 3.0}, store.map_session())

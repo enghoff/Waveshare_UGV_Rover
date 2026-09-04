@@ -10,7 +10,10 @@ attempts to are written up below. What a person gets instead is the picture each
 look was read from, with the box on it, and a search box that takes a description,
 compares it against what the rover actually saw, and narrows every view of the
 store to what matched. Nothing in here drives, plans
-or refuses a move, and nothing in here is offered to a voice model.
+or refuses a move. Since 2026-09-04 a voice model may *read* it and be sent to
+what it read — "can you find the bed", "move to the desk", "how far is the bed
+from the desk" — through three tools that live in the daemon and answer in metres
+and words; nothing in here is writable by a model.
 
 The plan it belongs to is [`docs/task-semantic-world-state.md`](../docs/task-semantic-world-state.md);
 the earlier design it was first built to, [`docs/cosmos-reason2-integration.md`](../docs/cosmos-reason2-integration.md),
@@ -35,8 +38,12 @@ at the distance it measured (`stands_at_range`, in `agrees`), and the range is a
 second residual in the fit -- where it pins the one axis every bearing leaves
 open, because a bearing constrains direction and says nothing at all about how
 far. All three **abstain** when a look has no range, which is every look taken
-before this and every look since taken somewhere the depth camera was not
-pointed, so a rover refuses nothing it knew yesterday.
+before this, every look since taken somewhere the depth camera was not pointed,
+and every look taken while somebody has switched that camera off from the console
+to save what it draws -- so a rover refuses nothing it knew yesterday. A
+switched-off camera is not a special case here: it comes back as the same "no
+range" a camera that was never fitted gives, and the only trace of it is the
+sentence in the diagnostics line.
 
 **The rover has two cameras and they are nothing alike**, so which one a look came
 through is a column and a lens rather than an assumption. `view._levelled` takes
@@ -959,9 +966,14 @@ longer exists on the rover.
 ## The calls
 
 All of these are control calls on the daemon's TCP 8769, and none of them is in
-`list_tools`. This slice exists to find out whether the world state is worth
-trusting; giving a model the authority to write to it, or to throw it away, before
-that has an answer would be the wrong order.
+`list_tools`. Giving a model the authority to write to this store, or to throw it
+away, before the question of whether it is worth trusting has an answer would be
+the wrong order — and these read it in the console's vocabulary besides:
+identifiers, map coordinates and cosines, none of which a model can say out loud
+or invent an argument for. What a model gets instead is the same store in metres
+and words, through the three tools in
+[rover_daemon/rover_recall.py](../rover_daemon/rover_recall.py): `find_thing`,
+`go_to_thing` and `distance_between`.
 
 | Call | What it does |
 |---|---|
@@ -993,6 +1005,32 @@ and the thing is settled by standing closer. A refusal names which of the three
 walls it hit, because they are acted on differently: nothing has placed the
 thing, the floor around it is unmapped, or it is solid on every side.
 
+**Before any of that, it tries the directions the thing has actually been seen
+from.** A placement is the crossing of bearings, and each of those bearings was
+taken from a point where the rover was standing with the thing in its picture —
+which is a demonstration that the thing is visible from there, and no question
+put to the grid is. Grey cells are see-through to the sight-line test, on purpose
+and for good reasons set out in `can_see`, so a line the map calls clear can be a
+line nobody has ever looked along. So the looks behind a placement are read for
+the direction each was taken from, and the median of those is tried first, then
+the rest of them, and only then the ring above. The median is chosen as the
+observed direction whose total angle to all the others is least, which makes it
+one of the samples rather than an average of them: two directions forty degrees
+apart average to a third that nothing was ever seen along, and around furniture
+that third line is usually the wall between them. Looks the resolver would no
+longer attach are left out — `relation.agrees`, its own decision, already made —
+and so are looks taken under a map that has since been cleared, whose poses name
+a place in this map by coincidence. `along` in the answer says which of the three
+it used, in words, because "why did it go round the far side" is the question
+this gets asked and the counts cannot answer it.
+
+That is a preference for evidence over distance and it is not free: a thing seen
+five times from the north and once from the east is approached from the north
+even when the rover is standing to the east of it. The trade is deliberate — the
+north side is where the thing is known to be visible from — and the ring is still
+there underneath, so a sight line that is blocked now is a fallback rather than a
+refusal.
+
 **Tried against the rover's own room, 2026-09-04.** The live grid and all 60
 placed things were pulled off the rover read-only and put through the chooser at
 a desk: a 304x249 map at 5 cm with 24,158 free cells against 48,475 unmapped,
@@ -1009,6 +1047,22 @@ re-checks all 60 answers clean. **What this does not settle is whether the rover
 gets there** -- no route has been planned to one of these points and nothing has
 driven to one.
 
+**What the sight lines cost, on the same 60 things.** That replay is kept now as
+[`bench_approach.py`](bench_approach.py), and re-run over the recording of
+2026-09-04 with the sight-line preference in: every one of the 60 has at least
+one usable line and every one is answered from its median line, so the ring is
+never reached. The standing point moves by a median of 0.66 m against what the
+plain ring chose and by 1.72 m at worst, for a median of 0.34 m of extra driving
+and 1.70 m at worst -- which is the price of the preference, and it is small. The
+looks behind a thing spread much more widely around their own median than one
+might guess: 59 degrees at the median and 178 at worst, with only 10 of the 60
+inside 20 degrees, which is a rover that records a look a second while it turns
+and drives rather than a rover that studies things from one spot. **What this
+replay cannot say is whether the chosen line is clear**, because the map that
+recording was made under has since been cleared and a recording does not carry
+its own grid; that half is answered by the hand-drawn rooms in
+[`test_approach.py`](test_approach.py) and, in the end, by driving.
+
 The clearance it holds is the 15 cm a click on the console's map is held to, so
 a point this offers and a point a person taps are judged by the same rule. Nav2
 is stricter -- it lays the whole footprint over an inflated costmap -- so a
@@ -1022,7 +1076,10 @@ answers in a millisecond or two, and the console sends the point to `drive_to`
 itself — under the same STOP, and the same rule that a new destination outranks
 whatever is running, as a click on the map. What it adds to that click is the
 heading to arrive on, which is the difference between a place the thing *can* be
-seen from and a rover that is actually looking at it.
+seen from and a rover that is actually looking at it. The voice model reaches the
+same arithmetic through `go_to_thing`, which does start the drive — on a thread,
+so that the one connection it holds is not blocked for the minute the trip takes.
+See [rover_daemon/rover_recall.py](../rover_daemon/rover_recall.py).
 
 `world_inspect` is 0.45 s on this board — 0.29 s of camera and 0.16 s of encoders
 — where it was a minute when a language model answered it. What is slow now is
@@ -1107,6 +1164,20 @@ replays a real drive both ways:
 ssh orin 'cd ~/ugv/world_state && python3 bench_still.py --burst 40 --gap 1'
 python world_state/bench_still.py /tmp/run.db --frames /tmp/frames
 ```
+
+A ninth replays the viewpoint chooser over a recording and says what the sight
+lines cost, which is the one thing about "go to" that hand-drawn rooms cannot
+answer:
+
+```bash
+python world_state/bench_approach.py /tmp/run.db --detail
+```
+
+Give it `--grid` and it uses the rover's own occupancy map, and refuses when the
+recording's map session is not the one on the rover — those coordinates would be
+tested against somebody else's walls. Without it the floor is open and invented,
+and what is being measured is then the *direction* chosen rather than whether that
+direction is clear.
 
 **`replay.py` replays a recording with the bearings it was recorded with**, unless
 it is told otherwise, and that is deliberate: `resolve.ray_of` reads the bearing

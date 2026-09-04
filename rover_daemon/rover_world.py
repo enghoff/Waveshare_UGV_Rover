@@ -64,6 +64,13 @@ RAY_LIMIT = 6
 #: than more clutter. Bounded all the same -- the rover records a look a second,
 #: and this crosses a socket to a phone.
 SELECTED_RAY_LIMIT = 24
+#: How many of a thing's newest looks are read for the directions it has been
+#: seen from, when working out where to stand to see it. Higher than the map's
+#: limits because nothing is being drawn: what these decide is a median, and a
+#: median over six looks taken in six seconds from one spot is a median over one
+#: place. Bounded because the rover records a look a second and one thing can
+#: have hundreds, and because every one of them is a ray to work out.
+SIGHT_LIMIT = 60
 #: How long to wait before asking the camera a second time. Long enough for the
 #: previous v4l2-ctl to be well out of the way, short enough to be nothing beside
 #: the minute of model that follows. See :meth:`RoverWorld._world_capture`.
@@ -407,6 +414,18 @@ class RoverWorld:
                 # rover recording steadily and placing nothing would say so.
                 "settled": getattr(self, "_world_settled", {}),
                 "error": getattr(self, "_world_build_error", "")}
+
+    @property
+    def world_installed(self) -> bool:
+        """Whether this rover has the world_state component deployed at all.
+
+        The cheap half of `_world_ready`, and the half that decides which tools
+        exist: it is a property of the deployment rather than of the moment, so it
+        can be asked on every `list_tools` without opening a database. Whether the
+        store opens *now* is a fault to be reported in a sentence when somebody
+        calls the tool, not a reason to have hidden the tool.
+        """
+        return world_state is not None
 
     def _world_ready(self) -> str:
         """Empty if the world state can be used, otherwise why not, in a sentence."""
@@ -888,13 +907,37 @@ class RoverWorld:
                     "error": "the rover has no map yet, so it cannot tell floor "
                              "it could stand on from the middle of a wall"}
         found = world_state.approach.viewpoint(
-            place, world_state.approach.Grid(*grid), (pose["x_m"], pose["y_m"]))
+            place, world_state.approach.Grid(*grid), (pose["x_m"], pose["y_m"]),
+            self._world_sight_lines(entity_id, place, session))
         if not found.get("ok"):
             return {"ok": False, "error": found.pop("why"), "id": entity_id,
                     "placement": place, "pose": pose, **found}
         turn = found["heading_deg"] - pose["heading_deg"]
         return {"ok": True, "id": entity_id, "placement": place, "pose": pose,
                 "turn_deg": round((turn + 180.0) % 360.0 - 180.0, 1), **found}
+
+    def _world_sight_lines(self, entity_id: str, place: dict[str, Any],
+                           session: int) -> list[dict[str, Any]]:
+        """The looks a thing was seen in, as the rays `approach` reads directions
+        from.
+
+        **Only the looks taken under the map the rover is on now.** Where the
+        rover was standing is a position in the map of the day, and a pose
+        recorded before the map was cleared names a place in this one by
+        coincidence -- the same rule the placement itself is held to a few lines
+        above, applied to the looks behind it. Without it a thing placed in this
+        map would be approached from a standing point measured in the last one.
+
+        The rays are asked for with the placement, which is what puts
+        `relation.agrees` on each of them: `approach.seen_from` leaves out the
+        looks the resolver would no longer attach, and that decision is the
+        resolver's own rather than a second opinion formed here.
+        """
+        observations = self._world_store().observations(entity_id,
+                                                        limit=SIGHT_LIMIT)
+        drawn = world_view.rays(observations, self.camera_fov_deg,
+                                limit=SIGHT_LIMIT, placement=place)
+        return [one for one in drawn if one.get("map_session") == session]
 
     def _tool_world_state_observations(self,
                                        arguments: dict[str, Any]) -> dict[str, Any]:

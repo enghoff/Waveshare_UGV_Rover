@@ -13,22 +13,48 @@ This module answers the question the map can actually answer: of the points
 around the thing that are **mapped floor the rover fits on**, and that have
 **nothing solid between them and the thing**, which one is best to send it to.
 
-**The choice is the shortest way there and back to the thing.** Every candidate
-is scored by how far the rover must travel to it plus how far it would then be
-from the thing, and the smallest wins. That single number does what two rules
-would have argued about: it prefers the near side of an object to the far side,
-it prefers standing close over standing at the edge of the band, and it will
-spend a metre of driving to end up a metre closer. It is a straight line and not
-a route -- there is a planner for that, and it is on the other side of a socket
--- so it is a preference, not a promise: what the rover ends up driving is
-whatever Nav2 plans to the point this picks.
+**The first place to look is where the rover has already seen it from.** A
+placement is the crossing of bearings, and each of those bearings was taken from
+a standing point that demonstrably had a clear view of the thing: the rover was
+there, the camera was pointed that way, and the thing was in the picture. No
+question put to the grid establishes that -- grey cells are see-through here (see
+`can_see`), so a sight line the map calls clear may be a line the rover has never
+actually looked along. So the directions a thing has been seen from are tried
+first, and the median of them before the rest.
+
+**A median rather than a mean, and it is one of the samples.** The middle
+direction is chosen as the observed direction whose total angle to all the others
+is least, so the line it names is a line the rover has really stood on. An
+average of two directions forty degrees apart names a third one that nothing was
+ever seen along, and around furniture that third line is often the wall between
+the two.
+
+That is a preference for evidence over distance and it costs something: a thing
+seen five times from the north and once from the east is approached from the
+north even when the rover is standing to the east of it. The trade is deliberate
+-- the north side is where the thing is known to be visible from -- and it is
+bounded by the fallback, so a sight line that is blocked now, or that belongs to
+floor this map no longer has, is a fallback rather than a refusal.
+
+**Where there is no such line, the choice is the shortest way there and back to
+the thing.** Every candidate is scored by how far the rover must travel to it
+plus how far it would then be from the thing, and the smallest wins. That single
+number does what two rules would have argued about: it prefers the near side of
+an object to the far side, it prefers standing close over standing at the edge of
+the band, and it will spend a metre of driving to end up a metre closer. It is a
+straight line and not a route -- there is a planner for that, and it is on the
+other side of a socket -- so it is a preference, not a promise: what the rover
+ends up driving is whatever Nav2 plans to the point this picks. The same score
+orders the candidates along a sight line, so how far out along one to stand is
+decided by the one rule here rather than by a second.
 
 Nothing here reads the store, and nothing here drives. It takes a placement, an
-occupancy grid and where the rover is standing, and returns a point; the daemon's
-`world_state_viewpoint` supplies all three and the drive console does the driving.
-That is what makes it testable at a desk against grids drawn by hand, which is
-the only place the awkward cases -- a thing in a doorway, a thing against a wall,
-a thing with mapped floor on the far side only -- can be set up on purpose.
+occupancy grid, where the rover is standing and the looks the thing was seen in,
+and returns a point; the daemon's `world_state_viewpoint` supplies all four and
+the drive console does the driving. That is what makes it testable at a desk
+against grids drawn by hand, which is the only place the awkward cases -- a thing
+in a doorway, a thing against a wall, a thing with mapped floor on the far side
+only -- can be set up on purpose.
 """
 from __future__ import annotations
 
@@ -76,6 +102,17 @@ SEE_UP_TO_M = 0.35
 #: about this much anyway -- and coarser starts to miss a doorway-sized gap.
 RING_M = 0.15
 ARC_M = 0.15
+#: How far apart two of a thing's own sight lines have to be before they are
+#: worth trying separately. At the far end of the band three degrees is about
+#: `ARC_M` across, so two lines closer than this offer the same standing point
+#: twice -- and the rover records a look a second, so a minute spent watching one
+#: thing from one place is sixty copies of one line.
+SIGHT_APART_DEG = 3.0
+#: How far from the thing a look has to have been taken before the direction it
+#: was taken from means anything. A bearing measured from 20 cm away points
+#: somewhere; the *direction of that point from the thing* is dominated by the
+#: placement's own doubt, which on this rover is tens of centimetres.
+SIGHT_BASELINE_M = 0.5
 
 
 class Grid(NamedTuple):
@@ -180,6 +217,120 @@ def band(place: dict[str, Any], near_m: float = NEAR_M,
     return near, max(float(far_m), near + RING_M)
 
 
+def _turn(degrees: float) -> float:
+    """An angle brought back into (-180, 180], so two of them can be subtracted."""
+    return (float(degrees) + 180.0) % 360.0 - 180.0
+
+
+def seen_from(place: dict[str, Any],
+              looks: list[dict[str, Any]]) -> list[float]:
+    """Which directions the thing has actually been looked at from, in degrees.
+
+    One per look, measured **from the thing towards where the rover was
+    standing**, which is the reverse of the bearing the camera recorded. Taken
+    from the pose rather than by turning the bearing round, because the pose is
+    the surveyed half of a look: the bearing carries a few degrees of the gimbal's
+    own error -- see `gimbal pan under-travel` in the rover's notes -- while where
+    the rover was standing is what SLAM said, and it is the standing point that is
+    being looked for here.
+
+    `looks` are ray dictionaries as `view.rays` builds them, and a look the
+    resolver would not attach today is left out: `relation.agrees` is that
+    decision, already made, and a mis-attached crop points at something else in
+    the room rather than at a place the thing was seen from. A look with no
+    relation abstains rather than being refused, which is every look of a thing
+    the rover has not placed -- and those never get here, since there is nothing
+    to approach.
+    """
+    try:
+        px, py = float(place["x_m"]), float(place["y_m"])
+    except (KeyError, TypeError, ValueError):
+        return []
+    found = []
+    for look in looks:
+        relation = look.get("relation")
+        if isinstance(relation, dict) and relation.get("agrees") is False:
+            continue
+        try:
+            dx = float(look["x_m"]) - px
+            dy = float(look["y_m"]) - py
+        except (KeyError, TypeError, ValueError):
+            continue
+        if math.hypot(dx, dy) < SIGHT_BASELINE_M:
+            continue
+        found.append(round(math.degrees(math.atan2(dy, dx)), 1))
+    return found
+
+
+def middle_of(bearings: list[float]) -> float | None:
+    """The median of a set of directions, or None if there are none.
+
+    **One of them rather than an average of them**, for the reason the module
+    docstring gives: the direction whose total angle to all the others is least.
+    That is the sample median under the only distance a circle has, it cannot
+    land between two clusters the way a mean does, and it is stable against the
+    one look taken from the far side of the room.
+
+    Ties go to the smaller bearing, so that a thing seen from exactly two
+    directions has one answer rather than whichever came out of the store first.
+    """
+    if not bearings:
+        return None
+    return min(bearings, key=lambda one: (
+        round(sum(abs(_turn(one - other)) for other in bearings), 3), one))
+
+
+def _apart(bearings: list[float], apart_deg: float = SIGHT_APART_DEG,
+           *, without: float | None = None) -> list[float]:
+    """The distinct ones, in the order given, dropping any within `apart_deg`.
+
+    Order is kept rather than sorted, because the caller has already put the ones
+    it prefers first and this must not reorder a preference into an angle sweep.
+    """
+    kept: list[float] = []
+    for one in bearings:
+        if without is not None and abs(_turn(one - without)) < apart_deg:
+            continue
+        if any(abs(_turn(one - other)) < apart_deg for other in kept):
+            continue
+        kept.append(one)
+    return kept
+
+
+def _along(place: dict[str, Any], from_xy: tuple[float, float],
+           bearings: list[float], near_m: float,
+           far_m: float) -> Iterator[tuple[float, float, float, float, float]]:
+    """Candidate standing points on the given lines, in the shape `_ring` yields.
+
+    The same rings at the same spacing, but only in the directions given, and
+    scored by the same cost -- so which point along a sight line is offered is
+    decided by the rule the module already has, and the tie that a straight run at
+    the thing leaves is settled by standing closer, exactly as it is on the ring.
+    """
+    px, py = float(place["x_m"]), float(place["y_m"])
+    fx, fy = float(from_xy[0]), float(from_xy[1])
+    found = []
+    rings = max(1, int(round((far_m - near_m) / RING_M)) + 1)
+    for bearing_deg in bearings:
+        angle = math.radians(bearing_deg)
+        for step in range(rings):
+            range_m = near_m + step * RING_M
+            if range_m > far_m + 1e-9:
+                break
+            # Rounded here and scored to the centimetre, for the two reasons
+            # `_ring` sets out at length: the point that goes to the navigator has
+            # to be the point whose sight line was walked, and the ties along the
+            # line between the rover and the thing are the whole of how far out to
+            # stand gets decided.
+            x_m = round(px + range_m * math.cos(angle), 3)
+            y_m = round(py + range_m * math.sin(angle), 3)
+            travel = math.hypot(x_m - fx, y_m - fy)
+            found.append((round(travel + range_m, 2), round(range_m, 3),
+                          travel, x_m, y_m))
+    found.sort()
+    return iter(found)
+
+
 def _ring(place: dict[str, Any], from_xy: tuple[float, float], near_m: float,
           far_m: float) -> Iterator[tuple[float, float, float, float, float]]:
     """Candidate standing points as `(cost, range, travel, x, y)`, cheapest first.
@@ -232,6 +383,7 @@ def _ring(place: dict[str, Any], from_xy: tuple[float, float], near_m: float,
 
 
 def viewpoint(place: dict[str, Any], grid: Grid, from_xy: tuple[float, float],
+              looks: list[dict[str, Any]] | None = None,
               near_m: float = NEAR_M, far_m: float = FAR_M,
               clear_m: float = CLEAR_M) -> dict[str, Any]:
     """The place to send the rover so that it ends up looking at this thing.
@@ -241,42 +393,75 @@ def viewpoint(place: dict[str, Any], grid: Grid, from_xy: tuple[float, float],
     "somewhere it can be seen from" into "seen": the map's own convention, so it
     goes to the navigator as the goal's yaw unchanged.
 
-    When there is not, `why` is a sentence for the console to show and the counts
-    beside it are what it was worked out from -- how many candidates were off the
-    map or unmapped, how many were solid, and how many were fine to stand on but
-    had something between them and the thing. Those three are different faults
-    with different answers: drive around a bit more, this thing is buried, and
-    this thing is behind a wall from every side that has been mapped.
+    `looks` are the rays of the looks this thing was seen in, and they are what
+    makes the answer a line the rover has stood on rather than a patch of floor
+    the grid had no objection to. Left out -- which is what a test drawing a room
+    by hand does, and what a caller with no history to hand does -- this falls
+    straight through to the ring, which is what it has always done. `along` says
+    which of the three it was, in words, because "it went round the far side" is
+    the question a person asks of a move like this and the counts cannot answer
+    it.
+
+    When there is nowhere, `why` is a sentence for the console to show and the
+    counts beside it are what it was worked out from -- how many candidates were
+    off the map or unmapped, how many were solid, and how many were fine to stand
+    on but had something between them and the thing. Those three are different
+    faults with different answers: drive around a bit more, this thing is buried,
+    and this thing is behind a wall from every side that has been mapped.
     """
     near, far = band(place, near_m, far_m)
     target = (float(place["x_m"]), float(place["y_m"]))
     counts = {"tried": 0, "unmapped": 0, "solid": 0, "blind": 0}
-    for _cost, range_m, travel, x_m, y_m in _ring(place, from_xy, near, far):
-        counts["tried"] += 1
-        why = why_not_stand(grid, x_m, y_m, clear_m)
-        if why:
-            counts["solid" if why == "solid" else "unmapped"] += 1
-            continue
-        if not can_see(grid, (x_m, y_m), target):
-            counts["blind"] += 1
-            continue
-        return {
-            "ok": True,
-            # As tested, to the millimetre, and not rounded again on the way out.
-            "x_m": x_m,
-            "y_m": y_m,
-            # Facing the thing, which is the whole of what makes this a viewpoint
-            # rather than a nearby patch of floor.
-            "heading_deg": round(math.degrees(
-                math.atan2(target[1] - y_m, target[0] - x_m)), 1),
-            "range_m": round(range_m, 2),
-            "travel_m": round(travel, 2),
-            "near_m": round(near, 2),
-            "far_m": round(far, 2),
-            **counts,
-        }
+    seen = seen_from(place, looks or [])
+    middle = middle_of(seen)
+    # In order of what stands behind them: the line it has most often been seen
+    # along, then the other lines it has been seen along, then the whole ring.
+    # `None` is the ring, and it is last because it is the only one of the three
+    # that is an inference from the map rather than something the rover did.
+    tries: list[tuple[str, list[float] | None]] = []
+    if middle is not None:
+        tries.append(("the line it has most often been seen along", [middle]))
+        others = _apart(seen, without=middle)
+        if others:
+            tries.append(("a line it has been seen along", others))
+    tries.append(("the nearest floor it can be seen from", None))
+
+    for along, bearings in tries:
+        candidates = (_ring(place, from_xy, near, far) if bearings is None
+                      else _along(place, from_xy, bearings, near, far))
+        for _cost, range_m, travel, x_m, y_m in candidates:
+            counts["tried"] += 1
+            why = why_not_stand(grid, x_m, y_m, clear_m)
+            if why:
+                counts["solid" if why == "solid" else "unmapped"] += 1
+                continue
+            if not can_see(grid, (x_m, y_m), target):
+                counts["blind"] += 1
+                continue
+            return {
+                "ok": True,
+                # As tested, to the millimetre, and not rounded again on the way
+                # out.
+                "x_m": x_m,
+                "y_m": y_m,
+                # Facing the thing, which is the whole of what makes this a
+                # viewpoint rather than a nearby patch of floor.
+                "heading_deg": round(math.degrees(
+                    math.atan2(target[1] - y_m, target[0] - x_m)), 1),
+                "range_m": round(range_m, 2),
+                "travel_m": round(travel, 2),
+                "near_m": round(near, 2),
+                "far_m": round(far, 2),
+                "along": along,
+                # How many of the thing's own looks were usable as a direction,
+                # so that "it went round the far side" can be told from "it has
+                # only ever been seen from over there".
+                "sight_lines": len(seen),
+                **counts,
+            }
     return {"ok": False, "why": _nowhere(counts, near, far),
-            "near_m": round(near, 2), "far_m": round(far, 2), **counts}
+            "near_m": round(near, 2), "far_m": round(far, 2),
+            "sight_lines": len(seen), **counts}
 
 
 def _nowhere(counts: dict[str, int], near: float, far: float) -> str:

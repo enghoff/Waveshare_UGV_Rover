@@ -45,6 +45,16 @@ def _bearing(from_xy, to_xy) -> float:
     return math.degrees(math.atan2(to_xy[1] - from_xy[1], to_xy[0] - from_xy[0]))
 
 
+def a_look(x_m: float, y_m: float, agrees: bool = True) -> dict:
+    """One look of the thing, in the shape `view.rays` hands them over.
+
+    Only where the rover was standing and whether the resolver still stands by
+    the attachment are read here; the rest of a ray is for the map to draw.
+    """
+    return {"x_m": x_m, "y_m": y_m,
+            "relation": {"agrees": agrees, "range_m": 1.0}}
+
+
 # --- the ordinary case ------------------------------------------------------
 
 def test_the_viewpoint_is_on_the_way_to_the_thing_and_faces_it() -> None:
@@ -200,6 +210,117 @@ def test_a_sight_line_stops_short_of_the_thing_it_is_drawn_to() -> None:
           True)
 
 
+# --- the lines the thing has been seen along --------------------------------
+
+def test_a_known_sight_line_is_preferred_to_the_nearest_floor() -> None:
+    """The whole of what `looks` changes. An open room, the thing in the middle
+    of it and the rover to the east; every side is mapped floor and the map has no
+    reason to prefer one. The one look of it was taken from the north, so that is
+    where the rover is sent, even though the east side is a metre closer."""
+    grid = a_room()
+    place = {"x_m": 4.0, "y_m": 4.0}
+    looks = [a_look(4.0, 6.5)]
+    plain = approach.viewpoint(place, grid, (6.0, 4.0))
+    known = approach.viewpoint(place, grid, (6.0, 4.0), looks)
+    check("with no history the rover stops on the side it came from",
+          plain["x_m"] > place["x_m"], True)
+    check("...and says so", plain["along"],
+          "the nearest floor it can be seen from")
+    check("a thing seen from the north is approached from the north",
+          known["y_m"] > place["y_m"], True)
+    check("...on the line, not beside it", round(known["x_m"], 1), 4.0)
+    check("...at the near end of the band", known["range_m"], approach.NEAR_M)
+    check("...facing the thing", round(known["heading_deg"]), -90.0)
+    check("...and says which line it chose", known["along"],
+          "the line it has most often been seen along")
+    check("...counting the looks that gave one", known["sight_lines"], 1)
+    check("...and it really is the longer drive",
+          known["travel_m"] > plain["travel_m"], True)
+
+
+def test_the_median_line_is_one_the_rover_has_stood_on() -> None:
+    """Seen twice from the north and once from the east, the median is north --
+    not the north-east that an average of the three would name, which is a
+    direction nothing was ever seen along."""
+    check("the median of a cluster and an outlier is in the cluster",
+          approach.middle_of([90.0, 88.0, 0.0]), 88.0)
+    check("...and of two directions it is the lower of the two, not between them",
+          approach.middle_of([90.0, 0.0]), 0.0)
+    check("it wraps rather than averaging across the back",
+          approach.middle_of([170.0, -170.0, 175.0]), 175.0)
+    check("nothing seen has no median", approach.middle_of([]), None)
+
+
+def test_a_blocked_sight_line_falls_through_to_the_ring() -> None:
+    """A room the rover has seen the thing from the north of, with a partition
+    since put across that side. The line is still where it was seen from and it is
+    no longer a line to stand on, so the answer comes off the ring instead -- and
+    says so, which is the difference between a rover that ignored the history and
+    one whose history no longer holds."""
+    grid = paint(a_room(), 0.0, 4.6, 8.0, 4.8, 100)
+    place = {"x_m": 4.0, "y_m": 4.0}
+    found = approach.viewpoint(place, grid, (6.0, 4.0), [a_look(4.0, 6.5)])
+    check("a thing whose sight line is blocked still has a viewpoint",
+          found["ok"], True)
+    check("...off the ring rather than the line", found["along"],
+          "the nearest floor it can be seen from")
+    check("...which is the side the rover is on", found["x_m"] > place["x_m"],
+          True)
+    check("...and the line it could not use is still counted",
+          found["sight_lines"], 1)
+
+
+def test_the_second_line_is_tried_when_the_median_will_not_do() -> None:
+    """Seen from the north twice and from the south once, with the north side
+    walled off since. The south look is a line the rover has stood on and the ring
+    is not, so it is preferred to the ring even though both would answer."""
+    grid = paint(a_room(), 0.0, 4.6, 8.0, 4.8, 100)
+    place = {"x_m": 4.0, "y_m": 4.0}
+    found = approach.viewpoint(place, grid, (6.0, 4.0),
+                               [a_look(4.0, 6.5), a_look(4.1, 6.4),
+                                a_look(4.0, 1.5)])
+    check("the other line it has been seen along is used", found["along"],
+          "a line it has been seen along")
+    check("...which is the south side", found["y_m"] < place["y_m"], True)
+    check("...on the line", round(found["x_m"], 1), 4.0)
+
+
+def test_a_look_the_resolver_disowns_is_not_a_sight_line() -> None:
+    """A crop attached to the wrong thing points somewhere else in the room, so
+    the place it was taken from is not a place this thing was seen from. The
+    decision is the resolver's own, already made and carried on the ray."""
+    place = {"x_m": 4.0, "y_m": 4.0}
+    check("a look that agrees gives a direction",
+          approach.seen_from(place, [a_look(4.0, 6.5)]), [90.0])
+    check("...and one that does not gives none",
+          approach.seen_from(place, [a_look(4.0, 6.5, agrees=False)]), [])
+    check("a look with no pose is not a direction either",
+          approach.seen_from(place, [{"relation": None}]), [])
+
+
+def test_a_look_taken_from_on_top_of_the_thing_says_nothing() -> None:
+    """Where a thing is, to within tens of centimetres, is what the placement
+    already claims. A look from 20 cm away is inside that doubt, so the direction
+    of that standing point from the thing is noise and is left out."""
+    place = {"x_m": 4.0, "y_m": 4.0}
+    check("a look from arm's length is not a bearing to stand on",
+          approach.seen_from(place, [a_look(4.2, 4.0)]), [])
+    check("...and one from beyond the baseline is",
+          approach.seen_from(place, [a_look(4.0 + approach.SIGHT_BASELINE_M
+                                            + 0.01, 4.0)]), [0.0])
+
+
+def test_a_thing_never_placed_where_it_was_seen_is_still_approached() -> None:
+    """No looks at all is the ordinary case for every caller that has none to
+    hand -- a test drawing a room, and the console before this was kept. It is the
+    behaviour the module had before sight lines existed, unchanged."""
+    grid = a_room()
+    found = approach.viewpoint({"x_m": 6.0, "y_m": 4.0}, grid, (2.0, 4.0), [])
+    check("no history is not a refusal", found["ok"], True)
+    check("...and it is the ring's answer", found["range_m"], approach.NEAR_M)
+    check("...with nothing claimed about sight lines", found["sight_lines"], 0)
+
+
 TESTS = (
     test_the_viewpoint_is_on_the_way_to_the_thing_and_faces_it,
     test_a_rover_already_in_front_of_it_barely_moves,
@@ -211,4 +332,11 @@ TESTS = (
     test_a_thing_boxed_in_by_a_wall_is_visible_from_nowhere,
     test_the_rover_is_kept_its_own_width_from_anything_solid,
     test_a_sight_line_stops_short_of_the_thing_it_is_drawn_to,
+    test_a_known_sight_line_is_preferred_to_the_nearest_floor,
+    test_the_median_line_is_one_the_rover_has_stood_on,
+    test_a_blocked_sight_line_falls_through_to_the_ring,
+    test_the_second_line_is_tried_when_the_median_will_not_do,
+    test_a_look_the_resolver_disowns_is_not_a_sight_line,
+    test_a_look_taken_from_on_top_of_the_thing_says_nothing,
+    test_a_thing_never_placed_where_it_was_seen_is_still_approached,
 )
