@@ -137,6 +137,120 @@ FRAME_TIME_SIGMA_S = 0.03
 #: is there for the case that recording did not contain.
 MAX_BEARING_SIGMA_DEG = 6.0
 
+#: How much of the picture has to be different from the last one recorded before
+#: this look is worth recording at all, as a share of the frame.
+#:
+#: **A rover standing still in a still room recorded the same picture over and
+#: over.** Parked overnight on 2026-09-04 it took one of those every five
+#: minutes, and each one cost a frame on disk, a pass through three encoders and
+#: two to four observations that can never be triangulated with anything -- two
+#: rays from the same place do not cross, and the resolver compares every pair,
+#: so the pool they join makes every later look slower for as long as the rover
+#: is switched on.
+#:
+#: **The test is on the picture and not on the pose, because the pose is what
+#: was wrong.** `rover_world._world_worth_looking` already refuses a look from a
+#: place the rover has looked from, and a parked rover gets past it two ways:
+#: `LOOK_ANYWAY_S`, which is deliberate, and a scan matcher whose position
+#: wanders far enough to look like a move while the wheels are stopped, which is
+#: not. Only the frame can tell those apart from a rover that really went
+#: somewhere.
+#:
+#: Measured on this rover's own camera on 2026-09-04, parked in front of a wall,
+#: a sofa and a cable, as the share of the grid below whose cells moved by more
+#: than `PICTURE_CELL_CHANGE`:
+#:
+#:     40 frames a second apart, parked         0.000 between neighbours, and
+#:                                              0.004 for the worst pair of any
+#:                                              two in the burst
+#:     40 frames fifteen seconds apart, parked  0.039 between neighbours at
+#:                                              worst, and 0.199 for the worst
+#:                                              pair across the whole ten minutes
+#:     consecutive looks, the rover moved       0.152 at worst, 0.277 at the
+#:                                              fifth percentile, 0.55 median
+#:
+#: **The room was the same picture to the eye throughout both bursts**, so the
+#: ten-minute figure is the camera rather than the room: auto-exposure hunts by
+#: several grey levels and does not hunt evenly, which is a change of contrast
+#: that removing the mean cannot remove. **So this cannot judge two looks taken
+#: minutes apart, and it is not asked to.** What it judges reliably is two looks
+#: taken close together, which is the whole of what this was costing: a rover
+#: whose pose jitters looks once a second, and 40 such looks come back as one
+#: recorded and 39 discarded at any setting between 0.02 and 0.30.
+#:
+#: 0.05 is twelve times the worst pair of a second-apart burst and three times
+#: below the smallest change a real move produced. It is deliberately nearer the
+#: still end than the middle, because the two mistakes do not cost the same: a
+#: look wrongly discarded is a picture of the room that no longer exists, and a
+#: look wrongly kept is half a second of GPU.
+SAME_PICTURE_SHARE = 0.05
+#: The grid two pictures are compared on. **A cell is 1/256 of the frame, which
+#: is near enough `perceive.MIN_AREA`** -- the smallest box a look would keep. So
+#: a change too small to move one cell is a change too small to have become an
+#: observation, and this is blind to exactly what the pipeline behind it is
+#: blind to.
+PICTURE_GRID = 16
+#: And how far one cell has to move to count, in grey levels out of 255. Two
+#: frames a second apart from a parked rover move their worst cell by under 2;
+#: a real change of viewpoint moves the cells it touches by 50 and more.
+PICTURE_CELL_CHANGE = 15.0
+
+
+def picture(jpeg: bytes):
+    """The frame reduced to the grid two looks are compared on, or None.
+
+    Grey, because a change of colour with no change of shape is a change of
+    light rather than a change of room. Averaged down rather than sampled down,
+    so that a rover rocking a pixel on its springs does not read as a room that
+    moved.
+
+    None whenever the picture cannot be reduced -- a frame that will not decode,
+    or a host without numpy and OpenCV. **Nothing above may treat that as a
+    fault.** A look that cannot be compared is a look that gets recorded, which
+    is exactly what this rover did before the comparison existed.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except Exception:                       # noqa: BLE001 -- not this rover's job
+        return None
+    try:
+        image = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8),
+                             cv2.IMREAD_GRAYSCALE)
+        if image is None or not image.size:
+            return None
+        return cv2.resize(image, (PICTURE_GRID, PICTURE_GRID),
+                          interpolation=cv2.INTER_AREA).astype("float32")
+    except Exception:                       # noqa: BLE001
+        return None
+
+
+def picture_changed(before, after) -> float | None:
+    """How much of the picture is different, as a share of its cells.
+
+    **Each frame's own mean brightness is taken off first**, so that the whole
+    picture getting brighter is not a change. Auto-exposure walks the mean by
+    several grey levels over five minutes of a parked rover, and by six in one
+    step when it stops driving, and none of that is anything happening in the
+    room.
+
+    **A share of the picture rather than an average over it**, because an
+    average is carried by whatever is brightest and a room does not change
+    evenly. Over the same frames the average separates a still rover from a
+    moving one by a factor of five -- 1.8 grey levels at worst standing still
+    against 9.0 for the smallest real move -- while the share separates them by
+    twenty. It also says what it means, which is how much of this picture is not
+    the picture the rover already has.
+    """
+    try:
+        import numpy as np
+    except Exception:                       # noqa: BLE001
+        return None
+    if before is None or after is None or before.shape != after.shape:
+        return None
+    moved = np.abs((after - after.mean()) - (before - before.mean()))
+    return float((moved > PICTURE_CELL_CHANGE).mean())
+
 
 class Inspector:
     """The one place an inspection happens, and the lock that makes it one.
@@ -175,6 +289,27 @@ class Inspector:
         self.source = source
         self._lock = threading.Lock()
         self.started_at = 0.0
+        #: The last picture that was actually recorded, reduced to its grid.
+        #: **The last one kept and not the last one seen**, because the point of
+        #: comparing at all is that a room may drift: against the last frame seen
+        #: a slow change is never big enough to notice and the rover records
+        #: nothing for ever, while against the last frame kept the same drift
+        #: accumulates until it crosses the line and is recorded once.
+        self._kept_picture = None
+        #: The run of unchanged looks the diagnostics log is currently showing as
+        #: one line: `(inference_id, how many)`. See `_unchanged`.
+        self._unchanged_run = None
+
+    def forget_picture(self) -> None:
+        """Take the next look whatever it looks like.
+
+        Emptying the store leaves the rover holding a picture whose observations
+        have all been deleted, and comparing against that would refuse to record
+        the room again until something in it moved. Whoever clears the store
+        calls this.
+        """
+        self._kept_picture = None
+        self._unchanged_run = None
 
     @property
     def busy(self) -> bool:
@@ -244,6 +379,11 @@ class Inspector:
         """
         began = time.time()
         backend = describe_eyes(self.eyes)
+        # The run of unchanged looks ends here and is picked up again only by the
+        # one path below that continues it, so every other outcome -- a look
+        # recorded, a camera that failed, a model that failed -- starts a fresh
+        # line in the diagnostics log without having to say so.
+        run, self._unchanged_run = self._unchanged_run, None
 
         ready, why = self.eyes.available()
         if not ready:
@@ -275,6 +415,16 @@ class Inspector:
                                 began=began, backend=backend)
 
         jpeg = frame["jpeg"]
+        # **Before the frame is written down and before the encoders are asked.**
+        # A look the rover already has is worth nothing at all, so the cheapest
+        # possible test comes first: the frame is not saved, the sidecar is not
+        # called, and nothing joins the pool the resolver has to compare. See
+        # SAME_PICTURE_SHARE.
+        seen = picture(jpeg)
+        share = picture_changed(self._kept_picture, seen)
+        if share is not None and share < SAME_PICTURE_SHARE:
+            return self._unchanged(share, run, began=began, backend=backend)
+
         frame_id = self.store.save_frame(jpeg, frame.get("width"),
                                          frame.get("height"))
         where, moved, turned, sigma_deg = self._where(
@@ -328,6 +478,12 @@ class Inspector:
                                 inference_id=inference_id, frame_id=frame_id,
                                 duration_s=look.duration_s, model_id=look.backend)
 
+        # **Remembered only now that it is written down.** A picture kept after a
+        # model or a store that failed would be compared against on the next
+        # look, and a still room would then answer "nothing has changed" for as
+        # long as the fault lasted, which is the fault hiding itself.
+        self._kept_picture = seen
+
         # Identity is settled here rather than in `record`, and after the write
         # rather than during it. What was measured is history the moment it is
         # stored; which lasting thing it belongs to is an opinion formed from
@@ -361,6 +517,49 @@ class Inspector:
                 "map_session": stored["map_session"], "model_id": look.backend,
                 "found": look.found, "timings": look.timings,
                 "look_s": look.took_s}
+
+    def _unchanged(self, share: float, run, *, began: float,
+                   backend: str) -> dict[str, Any]:
+        """The room had not changed, so record that and nothing else.
+
+        **Not a failure.** The rover looked, the picture was the one it already
+        has, and the right thing to do with it is nothing -- so the row says `ok`
+        with nothing offered and nothing stored, which is what happened, rather
+        than a status of its own that the console would paint as a warning.
+
+        **A run of them is one line rather than a line each**, because the log
+        the console shows is twelve rows deep and a rover parked for an hour
+        would otherwise push every real look out of it. The row is restamped as
+        it grows, so a person watching a parked rover sees a look that is seconds
+        old rather than one that appears to have stopped an hour ago.
+        """
+        detail = f"the same picture as the last look -- {share:.1%} of it differed"
+        row = {"status": "ok", "backend": backend, "detail": detail,
+               "started_at": began, "duration_s": round(time.time() - began, 2),
+               "returned": 0, "stored": 0, "matched": 0, "created": 0,
+               "rejected": 0}
+        running = 1 if run is None else run[1] + 1
+        if running > 1:
+            row["detail"] = f"{detail}, {running} looks running"
+        try:
+            if run is None:
+                inference_id = self.store.record_inference(
+                    map_session=self.store.map_session(), **row)
+            else:
+                inference_id = run[0]
+                self.store.update_inference(inference_id, **row)
+        except sqlite3.Error:
+            # The same rule the failure path keeps: the diagnostics line is a
+            # nicety, and not having recorded anything is already true.
+            inference_id, running = None, 1
+        self._unchanged_run = None if inference_id is None else (inference_id,
+                                                                 running)
+        return {"ok": True, "status": "unchanged", "unchanged": True,
+                "inference_id": inference_id, "changed_share": round(share, 4),
+                "duration_s": row["duration_s"], "detail": row["detail"],
+                "returned": 0, "stored": 0, "placed": 0, "matched": 0,
+                "created": 0, "ambiguous": 0, "rejected": 0, "settled": False,
+                "entities": [], "decisions": []}
 
     def _settle(self) -> dict[str, Any]:
         """Run the resolver over the pending pool, and never let it break a look.

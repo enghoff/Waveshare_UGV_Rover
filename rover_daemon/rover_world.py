@@ -782,7 +782,13 @@ class RoverWorld:
         if self._world_inspector().busy:
             return {"ok": False,
                     "error": "an inspection is running; nothing was cleared"}
-        return self._world_store().clear()
+        cleared = self._world_store().clear()
+        # A look is skipped when its picture is the one already recorded, and
+        # every one of those recordings has just been deleted -- so the rover
+        # must record the room again rather than recognise it. See
+        # `inspector.SAME_PICTURE_SHARE`.
+        self._world_inspector().forget_picture()
+        return cleared
 
     def _tool_world_map_session(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """The SLAM map was cleared, so start a new map session. A control call.

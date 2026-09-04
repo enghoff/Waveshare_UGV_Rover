@@ -686,8 +686,58 @@ that has an answer would be the wrong order.
 | `world_state_observations(entity_id?, before_at?, before_id?)` | one page of the history on its own, starting below the row named — which is how the console walks back through a store far larger than any one reply |
 | `world_state_frame(frame_id)` | the stored JPEG, base64, for the console |
 | `world_inspect(settle?)` | take a picture, measure the regions in it, record them; `settle: false` records without deciding identity |
+| `world_state_search(query, limit?)` | a typed phrase against every stored region vector, ranked |
+| `world_state_viewpoint(id)` | where the rover would have to stand to look at one thing, as a place on the map and a way to face |
 | `world_state_clear` | empty the semantic world; the map is untouched |
 | `world_map_session` | the map was cleared, so start a new session |
+
+`world_state_viewpoint` is the one call here that answers a question about
+*driving*, and it exists because the obvious answer is wrong. A placement names
+the middle of a thing, which is inside the furniture; the wall behind it is
+solid, and much of the floor around it is grey — never seen rather than empty. So
+a "go and look at that" button that drove at the coordinates in the row would
+drive into the sofa, and Nav2 would refuse most of the presses it did not.
+[`approach.py`](approach.py) instead scores the mapped floor around the thing:
+every candidate standing point has to be somewhere the rover fits, with nothing
+solid between it and the thing, between 0.8 m and 2.5 m from it, and the one that
+wins is the one with the shortest way there and back — how far to drive to it
+plus how far it would then be from the thing. That single number prefers the near
+side of an object to the far side and prefers standing close over hovering at the
+edge of the band, and the tie it leaves along the straight line between the rover
+and the thing is settled by standing closer. A refusal names which of the three
+walls it hit, because they are acted on differently: nothing has placed the
+thing, the floor around it is unmapped, or it is solid on every side.
+
+**Tried against the rover's own room, 2026-09-04.** The live grid and all 60
+placed things were pulled off the rover read-only and put through the chooser at
+a desk: a 304x249 map at 5 cm with 24,158 free cells against 48,475 unmapped,
+the rover standing in the middle of it. Every one of the 60 has somewhere to be
+seen from, two thirds of them at the near bound of 0.80 m and none further out
+than 2.0 m, for a median drive of 2.9 m; the search costs at most 8 ms, and in
+the ordinary case it tests one candidate and stops. That replay is also what
+found the one real bug in it: the point was rounded to the millimetre on the way
+out, *after* the sight line had been walked from the unrounded one, and three of
+the sixty came back with a standing point that could no longer see the thing when
+the check was repeated at the coordinates that would actually have been sent.
+Rounding the candidates before they are tested fixes it, and the same replay now
+re-checks all 60 answers clean. **What this does not settle is whether the rover
+gets there** -- no route has been planned to one of these points and nothing has
+driven to one.
+
+The clearance it holds is the 15 cm a click on the console's map is held to, so
+a point this offers and a point a person taps are judged by the same rule. Nav2
+is stricter -- it lays the whole footprint over an inflated costmap -- so a
+viewpoint tight against furniture can still be moved by `fit_goal` on the way in,
+by up to half a metre and with a sentence saying so. The heading survives that:
+the fit tries the yaw it was given first, and the body is a circle, so it is the
+position that moves and not where the rover ends up looking.
+
+The call does not drive. It reads the live pose and the live occupancy grid,
+answers in a millisecond or two, and the console sends the point to `drive_to`
+itself — under the same STOP, and the same rule that a new destination outranks
+whatever is running, as a click on the map. What it adds to that click is the
+heading to arrive on, which is the difference between a place the thing *can* be
+seen from and a rover that is actually looking at it.
 
 `world_inspect` is 0.45 s on this board — 0.29 s of camera and 0.16 s of encoders
 — where it was a minute when a language model answered it. What is slow now is

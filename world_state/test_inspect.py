@@ -9,9 +9,11 @@ from __future__ import annotations
 import tempfile
 import time
 
-from test_harness import check
-from test_fakes import (a_capture, a_pose, a_seeing_inspector, a_sighting,
-                        a_turning_pose, a_vector)
+from test_harness import SKIP, check
+from test_fakes import (a_camera_showing, a_capture, a_pose,
+                        a_seeing_inspector, a_sighting, a_turning_pose,
+                        a_vector)
+from world_state import inspector
 from world_state import locate
 from world_state import view
 from world_state.inspector import FRAME_TIME_SIGMA_S, Inspector
@@ -476,6 +478,198 @@ def test_what_a_bearing_is_worth_reaches_the_row_and_the_geometry() -> None:
                                    left), True)
 
 
+# --- a look at a room that has not changed -----------------------------------
+#
+# The rover records a picture a second while it drives, and used to go on
+# recording them while it stood still: the same room, from the same place, into
+# a pool the resolver compares pair by pair. What decides is the picture rather
+# than the pose, so these are built out of real frames.
+
+
+def _room(changed_cells: int = 0, seed: int = 7):
+    """A picture of nothing in particular, as a real JPEG, with this many of its
+    cells repainted.
+
+    256 pixels square, so **one cell of the picture is exactly one cell of the
+    grid `inspector.picture` reduces it to** and `changed_cells` is the count
+    that grid will report. Flat blocks rather than a photograph, because a JPEG
+    has to survive the round trip through the encoder unchanged for the count to
+    mean anything.
+
+    `None` where numpy and OpenCV are missing, which is the caller's cue to skip:
+    they are what the rover compares two pictures with, and there is nothing to
+    stand in for them.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    grid = inspector.PICTURE_GRID
+    cells = (np.arange(grid * grid) * 61 + seed * 13) % 160 + 48
+    cells = cells.astype("float32")
+    for index in range(min(changed_cells, cells.size)):
+        cells[index] = 255.0 - cells[index]
+    side = 256 // grid
+    image = np.repeat(np.repeat(cells.reshape(grid, grid), side, axis=0),
+                      side, axis=1)
+    ok, encoded = cv2.imencode(".jpg", image.astype("uint8"))
+    return encoded.tobytes() if ok else None
+
+
+def test_a_room_that_has_not_changed_is_recorded_once() -> None:
+    """**The fault: a parked rover recording the same picture for ever.**
+
+    Every one of those looks costs a frame on disk, a pass through three
+    encoders and a handful of observations that can never be triangulated with
+    anything -- two rays from one place do not cross -- and the resolver
+    compares every pair in the pool they join, so they make every later look
+    slower for as long as the rover is switched on.
+    """
+    same = _room()
+    if same is None:
+        SKIP.append("recording a room that has not changed only once "
+                    "(no numpy or OpenCV)")
+        return
+    with tempfile.TemporaryDirectory() as directory:
+        store, eyes, inspector_ = a_seeing_inspector(
+            directory, [[a_sighting()], [a_sighting()], [a_sighting()]],
+            capture=a_camera_showing([same]))
+        first = inspector_.inspect()
+        check("the first look is recorded", first["stored"], 1)
+
+        again = inspector_.inspect()
+        check("the second look is not a failure", again["ok"], True)
+        check("...it says the picture had not changed", again["unchanged"], True)
+        check("...and stores nothing", again["stored"], 0)
+        check("...having never asked the encoders", len(eyes.calls), 1)
+        check("...nor kept the frame", store.summary()["observations"], 1)
+
+        inspector_.inspect()
+        rows = store.inferences()
+        check("a run of them is one line in the log rather than a line each",
+              len(rows), 2)
+        check("...which says how many of them it stands for",
+              "2 looks running" in (rows[0]["detail"] or ""), True)
+        check("...as an ordinary success, because that is what it is",
+              rows[0]["status"], "ok")
+        check("...and is restamped, so a parked rover does not look stopped",
+              rows[0]["started_at"] > rows[1]["started_at"], True)
+        store.close()
+
+
+def test_a_room_that_has_changed_is_recorded() -> None:
+    changed = _room(changed_cells=60)
+    if changed is None:
+        SKIP.append("recording a room that has changed (no numpy or OpenCV)")
+        return
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector_ = a_seeing_inspector(
+            directory, [[a_sighting()], [a_sighting()]],
+            capture=a_camera_showing([_room(), changed]))
+        inspector_.inspect()
+        second = inspector_.inspect()
+        check("a quarter of the picture is a different room",
+              second.get("unchanged"), None)
+        check("...so it is measured and stored", second["stored"], 1)
+        store.close()
+
+
+def test_a_drift_is_measured_against_the_last_look_kept() -> None:
+    """**Against the last picture *kept*, never the last one seen.**
+
+    A room that changes slowly -- the light going round it over an afternoon,
+    somebody tidying one shelf at a time -- moves less between two looks than
+    the limit, every time. Compared against the last frame seen, that is a rover
+    that records nothing for the rest of the day. Compared against the last
+    frame it actually wrote down, the same drift piles up until it crosses the
+    limit and is recorded once, which is the answer that keeps both properties.
+    """
+    steps = [_room(changed_cells=n) for n in (0, 6, 12, 18)]
+    if steps[0] is None:
+        SKIP.append("measuring a drift against the last look kept "
+                    "(no numpy or OpenCV)")
+        return
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector_ = a_seeing_inspector(
+            directory, [[a_sighting()] for _ in steps],
+            capture=a_camera_showing(steps))
+        kept = [inspector_.inspect().get("unchanged") is not True
+                for _ in steps]
+        check("the first look is recorded", kept[0], True)
+        check("...a step of six cells in 256 is not a changed room", kept[1],
+              False)
+        check("...nor is twelve, which is still under the limit", kept[2],
+              False)
+        check("...but eighteen against the first is over it, so it is recorded",
+              kept[3], True)
+        check("...leaving two of the four looks in the store",
+              store.summary()["observations"], 2)
+        store.close()
+
+
+def test_a_look_that_failed_is_not_a_picture_the_rover_has() -> None:
+    """A model that failed must not make the next identical look unnecessary,
+    or the fault would quietly stop the rover looking at all."""
+    from world_state.perception_client import Look
+
+    same = _room()
+    if same is None:
+        SKIP.append("a failed look is not a picture the rover has "
+                    "(no numpy or OpenCV)")
+        return
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector_ = a_seeing_inspector(
+            directory, [Look(ok=False, error="the sidecar fell over"),
+                        [a_sighting()]],
+            capture=a_camera_showing([same]))
+        first = inspector_.inspect()
+        check("the look failed", first["ok"], False)
+        second = inspector_.inspect()
+        check("...so the same picture is looked at again rather than skipped",
+              second["stored"], 1)
+        store.close()
+
+
+def test_clearing_the_store_makes_the_rover_record_the_room_again() -> None:
+    """Everything the remembered picture stood for has just been deleted."""
+    same = _room()
+    if same is None:
+        SKIP.append("recording the room again after a clear "
+                    "(no numpy or OpenCV)")
+        return
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector_ = a_seeing_inspector(
+            directory, [[a_sighting()], [a_sighting()]],
+            capture=a_camera_showing([same]))
+        inspector_.inspect()
+        store.clear()
+        inspector_.forget_picture()
+        again = inspector_.inspect()
+        check("the room is recorded again rather than recognised",
+              again["stored"], 1)
+        store.close()
+
+
+def test_a_picture_that_cannot_be_compared_is_recorded() -> None:
+    """The degradation that matters: no numpy, no OpenCV, or a frame that will
+    not decode. A look that cannot be compared is a look that gets recorded."""
+    from test_fakes import JPEG
+
+    check("a frame that will not decode reduces to nothing",
+          inspector.picture(JPEG), None)
+    check("...and nothing is not the same picture as anything",
+          inspector.picture_changed(None, None), None)
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector_ = a_seeing_inspector(
+            directory, [[a_sighting()], [a_sighting()]])
+        inspector_.inspect()
+        second = inspector_.inspect()
+        check("so both looks are recorded, as they were before this existed",
+              second["stored"], 1)
+        store.close()
+
+
 TESTS = (
     test_the_heading_is_taken_at_the_shutter_rather_than_averaged,
     test_a_turning_look_keeps_a_wide_bearing_instead_of_none,
@@ -493,4 +687,10 @@ TESTS = (
     test_the_vectors_never_reach_the_wire_by_accident,
     test_a_look_taken_on_the_move_keeps_the_picture_and_drops_the_bearing,
     test_looking_and_settling_are_separately_paced,
+    test_a_room_that_has_not_changed_is_recorded_once,
+    test_a_room_that_has_changed_is_recorded,
+    test_a_drift_is_measured_against_the_last_look_kept,
+    test_a_look_that_failed_is_not_a_picture_the_rover_has,
+    test_clearing_the_store_makes_the_rover_record_the_room_again,
+    test_a_picture_that_cannot_be_compared_is_recorded,
 )

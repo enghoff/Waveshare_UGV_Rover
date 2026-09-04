@@ -59,6 +59,25 @@ def a_capture(pan=0.0, tilt=0.0, ok=True, error="", live=False,
     return capture
 
 
+def a_camera_showing(pictures):
+    """A camera handing these pictures back in turn, and the last one for ever.
+
+    `a_capture` above hands back the same hand-made JPEG every time, and that
+    JPEG is a single white pixel which OpenCV declines to decode -- so it is
+    exactly the wrong fixture for the one question that is about what the
+    picture *looks* like, which is whether this look shows the same room as the
+    last one. These are real encoded frames, made by whoever is asking.
+    """
+    seen = []
+
+    def capture():
+        jpeg = pictures[min(len(seen), len(pictures) - 1)]
+        seen.append(jpeg)
+        return {"ok": True, "jpeg": jpeg, "pan": 0.0, "tilt": 0.0,
+                "live": False, "width": 256, "height": 256}
+    return capture
+
+
 def a_pose(x=1.0, y=2.0, heading=90.0):
     return lambda: {"x_m": x, "y_m": y, "heading_deg": heading}
 

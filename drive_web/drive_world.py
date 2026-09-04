@@ -495,12 +495,17 @@ class SessionWorld:
 def _inspection_note(body: dict[str, Any], seconds: float) -> str:
     """What one inspection did, in a line, for the popup's header.
 
-    Written so that the three outcomes a person has to tell apart read
+    Written so that the four outcomes a person has to tell apart read
     differently: the model found new things, the model recognised things it had
-    seen, and the model answered but nothing came of it.
+    seen, the model answered but nothing came of it, and the picture was the one
+    the rover already had -- which is not the same as an empty room, and would
+    otherwise read as one.
     """
     if not body.get("ok"):
         return f"the inspection failed: {body.get('error', 'no answer')}"
+    if body.get("unchanged"):
+        return f"{body.get('detail', 'the same picture as the last look')}" \
+               f" -- {seconds:.0f} s"
     parts = []
     created, matched = body.get("created", 0), body.get("matched", 0)
     if created:
