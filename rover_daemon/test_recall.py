@@ -1,10 +1,14 @@
 """What a voice model may ask of the room the rover has already looked at.
 
-Three tools, and what is checked is the part that is easy to get silently wrong:
+Two tools, and what is checked is the part that is easy to get silently wrong:
 that a phrase reaches the same ranking the console uses, that the answer comes
-back in metres and words with no identifier or map coordinate in it, and that
-"go to the desk" starts a drive and comes straight back rather than holding the
-one connection a model has for the whole trip.
+back in metres and words with none of the console's own vocabulary in it, and
+that "go to the desk" starts a drive and comes straight back rather than holding
+the one connection a model has for the whole trip.
+
+The position a found thing carries is the exception to that and is checked as
+one: it is what lets two answers be compared, which is how a question about two
+things gets answered now that no tool measures between them.
 
 The deterministic fake sidecar stands in for SigLIP2, which is exactly what it is
 for and exactly what it does not settle: whether a phrase really finds a bed is a
@@ -127,8 +131,12 @@ def _remember(rover, phrase, at=None, from_xy=(1.0, 1.0)):
     entity = store.create_entity()
     store.attach(entity, [store.observations(limit=1)[0]["id"]], why="the test")
     if at is not None:
+        # Shaped as the resolver writes one: where, how well known, how wide the
+        # crossing measured it (a half-width -- see `locate.extent_of`), and how
+        # many separate places agreed.
         store.place(entity, {"x_m": at[0], "y_m": at[1], "uncertainty_m": 0.2,
-                             "extent_m": 0.3}, store.map_session())
+                             "extent_m": 0.3, "viewpoints": 2,
+                             "rays_agreeing": 4}, store.map_session())
     return entity
 
 
@@ -354,44 +362,58 @@ def test_a_thing_with_nowhere_to_see_it_from_is_refused_in_words() -> None:
         done(rover)
 
 
-# --- one thing against another ----------------------------------------------
+# --- what a found thing says about itself -----------------------------------
 
-def test_measuring_between_two_things() -> None:
-    """How far the bed is from the desk, which is a question about the store
-    rather than about the rover, and is therefore answered whether or not the
-    rover knows where it is itself."""
+def test_a_found_thing_carries_what_was_measured_about_it() -> None:
+    """The metadata beside the distance, and the one piece of it that is a
+    coordinate.
+
+    A position means nothing on its own and everything against another position,
+    which is exactly what it is for: two of these are how "how far is the bed
+    from the desk" is answered, no tool having measured it since. So what is
+    checked is that the pair is the store's own, that two things come back in one
+    frame, and that the distance between the pairs is the distance between the
+    placements.
+    """
     try:
         import numpy  # noqa: F401
         import rover_daemon  # noqa: F401
     except ImportError as error:
-        SKIP.append(f"measuring between two things ({error})")
+        SKIP.append(f"what a found thing says about itself ({error})")
         return
 
     rover, done = _in_a_world()
     try:
         _remember(rover, "the bed", at=(1.0, 1.0), from_xy=(1.0, 3.0))
+        bed = rover.call("find_thing", {"description": "the bed"})
+        check("a found thing says where it is on the map",
+              (bed["map_x_m"], bed["map_y_m"]), (1.0, 1.0))
+        check("...and how far out that may be", bed["known_to_m"], 0.2)
+        check("...how wide it is, which is twice the half-width the store keeps",
+              bed["width_m"], 0.6)
+        check("...how many separate places agreed about it",
+              bed["seen_from_places"], 2)
+        check("...and when it was first seen as well as last",
+              (bed["first_seen"], bed["last_seen"]), ("just now", "just now"))
+        check("nothing it says is an identifier or the console's own vocabulary",
+              _leaks(bed), [])
+
+        # The point of the position: two of them, one frame, one subtraction.
         _remember(rover, "the desk", at=(4.0, 5.0), from_xy=(1.0, 3.0))
-        apart = rover.call("distance_between", {"first": "the bed",
-                                                "second": "the desk"})
-        check("two placed things are measured between", apart["apart_m"], 5.0)
-        check("...with how well the two positions are known",
-              apart["give_or_take_m"], 0.4)
-        check("nothing the model is shown is an identifier or a map coordinate",
-              _leaks(apart), [])
+        desk = rover.call("find_thing", {"description": "the desk"})
+        apart = math.hypot(desk["map_x_m"] - bed["map_x_m"],
+                           desk["map_y_m"] - bed["map_y_m"])
+        check("two things are in the same frame, so they can be compared",
+              round(apart, 1), 5.0)
 
-        _remember(rover, "the chair", from_xy=(1.0, 3.0))
-        unplaced = rover.call("distance_between", {"first": "the bed",
-                                                   "second": "the chair"})
-        check("a thing with no position cannot be measured to",
-              unplaced["ok"], False)
-        check("...and the refusal names which of the two it was",
-              "'the chair'" in unplaced["error"], True)
-
-        same = rover.call("distance_between", {"first": "the bed",
-                                               "second": "the bed"})
-        check("a thing is no distance from itself", same["apart_m"], 0.0)
-        missing = rover.call("distance_between", {"first": "the bed"})
-        check("naming one thing is not a measurement", missing["ok"], False)
+        # And a position measured under a map that has been cleared is not a
+        # position in this one, so none of the above is offered for it.
+        rover.call("world_map_session", {})
+        stale = rover.call("find_thing", {"description": "the bed"})
+        check("a thing placed under a map that is gone has no position now",
+              stale["placed"], False)
+        check("...and offers no coordinates at all", "map_x_m" in stale, False)
+        check("...but is still a thing the rover has seen", stale["found"], True)
     finally:
         done(rover)
 
@@ -426,16 +448,20 @@ def _placed_id(rover) -> str:
 
 
 def _leaks(answer: dict) -> list:
-    """Anything in a model-facing result that a model could not have said.
+    """The console's own vocabulary, where a model-facing result should have none.
 
-    An entity identifier or a coordinate in the map's frame: the first is
-    vocabulary from the console and the second is the argument `_tool_drive_to`
-    makes at length -- a model handed map coordinates can only invent them, and an
-    invented pair is a drive to a place nobody chose.
+    An entity identifier, a raw cosine, a map session, the placement as the store
+    writes it: all of them are things a model would either read out loud or reason
+    about wrongly, and none of them says anything a distance and a direction do
+    not. **`map_x_m` and `map_y_m` are deliberately not on this list.** A position
+    coming back is what lets one thing be compared with another; what is refused
+    is a position going *in*, which is `_tool_drive_to`'s argument and is enforced
+    by there being no such parameter on any schema here.
     """
     text = json.dumps(answer)
-    return [bad for bad in ("object:", "x_m", "y_m", "entity_id", "placement",
-                            "map_session", "score") if bad in text]
+    return [bad for bad in ("object:", "entity_id", "placement", "map_session",
+                            "score", "uncertainty_m", "extent_m")
+            if bad in text]
 
 
 TESTS = (
@@ -443,6 +469,6 @@ TESTS = (
     test_a_thing_the_rover_has_never_seen_is_not_invented,
     test_going_to_a_thing_sets_off_and_answers_at_once,
     test_a_thing_with_nowhere_to_see_it_from_is_refused_in_words,
-    test_measuring_between_two_things,
+    test_a_found_thing_carries_what_was_measured_about_it,
     test_which_way_something_is_in_words,
 )

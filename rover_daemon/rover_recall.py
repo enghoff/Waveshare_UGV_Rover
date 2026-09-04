@@ -8,18 +8,27 @@ holding a map and wants `object:12` at (4.31, 2.09) with a cosine of 0.137
 beside it; a person in the room is asking "can you find the bed", and the answer
 is two metres away, ahead and to your left, seen a minute ago.
 
-So nothing here hands a model an identifier or a coordinate, and that is a rule
-rather than a tidiness. The argument is `_tool_drive_to`'s, in rover_nav.py: a
-model has no way to arrive at a number in the map's frame except by inventing
-one, and an invented pair is a drive to a place nobody chose. A phrase is the
-one handle a model genuinely holds, so a phrase is what these three tools take
--- the same phrase every time, answered by the same ranking, so "find the desk"
-and "go to the desk" a minute later are about the same desk without anything
-being carried between them.
+So nothing here takes an identifier or a coordinate as an *argument*, and that is
+a rule rather than a tidiness. The argument is `_tool_drive_to`'s, in
+rover_nav.py: a model has no way to arrive at a number in the map's frame except
+by inventing one, and an invented pair is a drive to a place nobody chose. A
+phrase is the one handle a model genuinely holds, so a phrase is what both of
+these tools take -- the same phrase every time, answered by the same ranking, so
+"find the desk" and "go to the desk" a minute later are about the same desk
+without anything being carried between them.
 
-    find_thing        has the rover seen this, and where is it now
-    go_to_thing       drive to somewhere it can be seen from, and say so at once
-    distance_between  how far one thing is from another
+    find_thing   has the rover seen this, where is it, and what does it know
+                 about it
+    go_to_thing  drive to somewhere it can be seen from, and say so at once
+
+**A coordinate coming back is a different thing from a coordinate going in.** A
+found thing answers with its position on the map, and that is deliberate: it is
+what lets one thing be compared with another. "How far is the bed from the desk"
+is two calls and the distance between two pairs of numbers, which is a better
+tool than a third one that measured it, because the same two pairs also answer
+"which of them is nearer the door" and everything else nobody thought to write a
+tool for. What the model must not do with them is read them out loud or try to
+drive to them, and the schema says so.
 
 **Read-only, except for the wheels.** rover_world.py says the model is shown
 none of the world state because the question of whether the world state is worth
@@ -97,7 +106,7 @@ def how_long_ago(when: float | None) -> str:
 
 
 class RoverRecall:
-    """The three world-state tools a model is shown. Mixed into Rover."""
+    """The two world-state tools a model is shown. Mixed into Rover."""
 
     # --- finding one thing ----------------------------------------------------
 
@@ -172,14 +181,60 @@ class RoverRecall:
         return {"distance_m": round(math.hypot(dx, dy), 1),
                 "direction": which_way(turn % 360.0 - 180.0)}
 
+    def _measured(self, place: dict[str, Any]) -> dict[str, Any]:
+        """What the rover has measured about a placed thing, besides where it is.
+
+        **The position is in the map's own frame and that is the point of it.**
+        Everything else here is a distance or a count, which mean the same thing
+        wherever they are read; a coordinate only means something against other
+        coordinates, and that is exactly what it is for -- two of these, from two
+        calls, are what "how far is the bed from the desk" is the distance
+        between. They are always in the map the rover is on now, because
+        `_placed_now` refuses a placement measured under any other, so two
+        answers in one conversation are comparable unless somebody clears the map
+        between them.
+
+        `known_to_m` is how far out the position may be, and it belongs beside
+        the position rather than in a footnote: on this rover it is tens of
+        centimetres, so a distance worked out from two of these is worth saying
+        as "about three metres" and not as 3.14.
+
+        `width_m` is the thing's own width, and it saturates. `locate.MAX_EXTENT_M`
+        caps the stored half-width at 0.75 m so that a region spanning most of a
+        frame cannot claim the room, which means anything from a sofa upwards
+        comes back as a metre and a half. Reported anyway, because "about a metre
+        and a half" is the right answer for a sofa and only wrong for a wall.
+        """
+        found = {
+            "map_x_m": round(float(place["x_m"]), 2),
+            "map_y_m": round(float(place["y_m"]), 2),
+            "known_to_m": round(float(place.get("uncertainty_m") or 0.0), 1),
+            # How many separate places agreed about it, which is different
+            # evidence from how many looks did: seven looks from one doorway are
+            # one opinion. `seen_times` beside it is the raw count.
+            "seen_from_places": place.get("viewpoints"),
+        }
+        # Doubled because `locate.extent_of` measures the half-width -- the
+        # angular span at the range the crossing put it, which is the distance
+        # from the middle to the edge.
+        extent = place.get("extent_m")
+        if extent:
+            found["width_m"] = round(2.0 * float(extent), 1)
+        # Only ever present once somebody has measured how high the camera is;
+        # until then the store's height is above the lens, which is not a thing
+        # to say to a person. See `locate.above_floor_m`.
+        if place.get("height_above_floor_m") is not None:
+            found["height_m"] = round(float(place["height_above_floor_m"]), 1)
+        return {name: value for name, value in found.items() if value is not None}
+
     def _tool_find_thing(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Has the rover seen this, and where is it now.
+        """Has the rover seen this, where is it, and what does it know about it.
 
         Four answers, and telling them apart is most of the value: it has never
         seen anything like that; it has seen one but has only ever looked at it
         from one place, so it has no position for it; it has a position but does
-        not know where it is itself; and it knows both, which is a distance and a
-        direction.
+        not know where it is itself; and it knows both, which is a distance, a
+        direction and the rest of what was measured.
         """
         described = str(arguments.get("description") or "").strip()
         if not described:
@@ -195,7 +250,8 @@ class RoverRecall:
         entity = recalled["entity"]
         answer = {"ok": True, "found": True, "description": described,
                   "seen_times": entity.get("observation_count") or 0,
-                  "last_seen": how_long_ago(recalled.get("last_seen_at"))}
+                  "last_seen": how_long_ago(recalled.get("last_seen_at")),
+                  "first_seen": how_long_ago(entity.get("created_at"))}
         place = self._placed_now(entity)
         if place is None:
             return {**answer, "placed": False,
@@ -203,13 +259,14 @@ class RoverRecall:
                             "from one place, so it cannot say where it is; "
                             "driving somewhere else and looking again is what "
                             "gives it a position"}
+        answer = {**answer, "placed": True, **self._measured(place)}
         here = self._from_here(place)
         if not here:
-            return {**answer, "placed": True,
-                    "note": "the rover knows where it is but not where the "
-                            "rover itself is, so it cannot say how far away it "
-                            "is from here"}
-        return {**answer, "placed": True, **here}
+            return {**answer,
+                    "note": "the rover knows where it is on the map but not "
+                            "where the rover itself is, so it cannot say how "
+                            "far away it is from here"}
+        return {**answer, **here}
 
     # --- going to one thing ---------------------------------------------------
 
@@ -305,53 +362,3 @@ class RoverRecall:
                     "let go of the wheels yet, so it has not set off")
         return ""
 
-    # --- one thing against another --------------------------------------------
-
-    def _tool_distance_between(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """How far apart two things the rover has placed are, in metres.
-
-        Both have to have been crossed from two places, because that is what a
-        position is here. A thing seen once has no coordinates to measure to and
-        the refusal says which of the two it was, since "I have not seen a desk"
-        and "I have seen the desk but only from one spot" are answered by
-        completely different things being done next.
-        """
-        first = str(arguments.get("first") or "").strip()
-        second = str(arguments.get("second") or "").strip()
-        if not first or not second:
-            return {"ok": False, "error": "name both things to measure between"}
-        places = {}
-        for described in (first, second):
-            if described in places:
-                continue
-            recalled = self._recall(described)
-            if not recalled.get("ok"):
-                return recalled
-            if not recalled["found"]:
-                return {"ok": False,
-                        "error": "the rover has not seen anything matching '%s', "
-                                 "so it cannot measure to it: %s"
-                                 % (described, recalled["detail"])}
-            place = self._placed_now(recalled["entity"])
-            if place is None:
-                return {"ok": False,
-                        "error": "the rover has seen '%s' but has only looked at "
-                                 "it from one place, so it does not know where it "
-                                 "is and cannot measure to it" % described}
-            places[described] = place
-        if first == second:
-            return {"ok": True, "first": first, "second": second, "apart_m": 0.0,
-                    "note": "those are the same thing"}
-        one, other = places[first], places[second]
-        apart = math.hypot(float(other["x_m"]) - float(one["x_m"]),
-                           float(other["y_m"]) - float(one["y_m"]))
-        # How well the two are known, added rather than combined in quadrature:
-        # this is read out loud as "give or take", and the pessimistic sum is the
-        # right direction to be wrong in when somebody is about to act on it.
-        doubt = (float(one.get("uncertainty_m") or 0.0)
-                 + float(other.get("uncertainty_m") or 0.0))
-        return {"ok": True, "first": first, "second": second,
-                "apart_m": round(apart, 1),
-                "give_or_take_m": round(doubt, 1),
-                "note": "measured between where the rover has placed them, each "
-                        "of which it knows to within a few tens of centimetres"}

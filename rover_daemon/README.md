@@ -131,31 +131,43 @@ which chooses the spot.
 
 ### The room the rover has already looked at
 
-Three more tools appear when this rover has the `world_state` component and a
-lidar under it. They are the semantic world state — what the rover recorded as it
-drove around — asked in the only vocabulary a model has:
+Two more tools appear when this rover has the `world_state` component and a lidar
+under it. They are the semantic world state — what the rover recorded as it drove
+around — asked in the only vocabulary a model has:
 
 | Tool | Purpose |
 |---|---|
-| `find_thing(description)` | has the rover seen this, and how far away and which way is it now |
+| `find_thing(description)` | has the rover seen this, where is it, and what does it know about it |
 | `go_to_thing(description)` | drive to somewhere it can be seen from, and answer at once |
-| `distance_between(first, second)` | how far apart two things it has placed are |
 
 They live in [`rover_recall.py`](rover_recall.py), away from
 [`rover_world.py`](rover_world.py), because the two have different audiences and
 that is the whole of the difference between them. A person at the console holds a
-map and wants `object:12` at (4.31, 2.09) with a cosine beside it; a person in the
-room asks "can you find the bed" and wants two metres away, ahead and to your
-left, seen a minute ago. So **nothing here hands a model an identifier or a map
-coordinate** — the same rule, for the same reason, that keeps `x_m`/`y_m` out of
-`drive_to`'s schema.
+map and wants `object:12` with a cosine of 0.137 beside it; a person in the room
+asks "can you find the bed" and wants two metres away, ahead and to your left,
+seen a minute ago. So **no identifier, score or map session reaches a model** —
+none of them says anything a distance and a direction do not, and all of them are
+things a model would read out loud.
 
-A phrase is the handle a model actually holds, so all three take one, and the same
+A phrase is the handle a model actually holds, so both take one, and the same
 phrase goes through the same ranking every time: "find the desk" and "go to the
 desk" a minute later are about the same desk without anything being carried
 between the calls. The ranking, its floor and the choice of where to stand all
 belong to [`../world_state/`](../world_state/README.md); what this file adds is
 which row of the ranking to answer about, and how to say it.
+
+**A found thing carries what was measured about it**, which is the position on
+the rover's own map, how far out that may be, how wide it is, how many separate
+places agreed about it, and when it was first and last seen. The position is the
+one number here that is in the map's frame, and it is deliberate: a coordinate
+means nothing alone and everything against another coordinate. "How far is the
+bed from the desk" is two calls and the distance between two pairs — a better
+answer than a tool that measured it, because the same two pairs also settle which
+of them is nearer the door and everything else nobody wrote a tool for. What the
+schema tells the model not to do with them is read them out loud or drive to
+them: **a coordinate coming back is a different thing from one going in**, and
+there is no parameter on any schema here that takes one, for the reason
+`drive_to` has none.
 
 `go_to_thing` answers at once and the rover keeps driving, for `explore`'s reason
 and through the same machinery — a trip that blocked the one connection a model
@@ -165,7 +177,7 @@ somebody changing their mind rather than a call that did not land, and is the
 drive console's own rule. `ok` is false for everything that did not end in the
 rover moving, because the model reads that field and says out loud what it did.
 
-None of the three writes to the world state, and no model tool does.
+Neither of them writes to the world state, and no model tool does.
 
 A tool is offered only when its backend exists. In particular, `look` is withheld
 when no current voice/image destination has been registered. An advertised tool
@@ -278,9 +290,9 @@ The world-state calls are off it for a further reason. They are a proof of conce
 asking whether the rover builds a description of the room that stays coherent
 across views, and until that has an answer no model should have the authority to
 write to that description or to throw it away. They also answer in the console's
-vocabulary -- identifiers, map coordinates, cosines -- which a model can neither
-say out loud nor invent an argument for. A model reads the same store through
-`find_thing`, `go_to_thing` and `distance_between` instead, and writes to it
+vocabulary -- identifiers, cosines, the placement as the store writes it --
+which a model can neither say out loud nor reason about correctly. A model reads
+the same store through `find_thing` and `go_to_thing` instead, and writes to it
 through nothing. The store, the model boundary and the sidecar are
 [`../world_state/`](../world_state/README.md); what lives in this daemon is
 [`rover_world.py`](rover_world.py), which takes the picture through the same

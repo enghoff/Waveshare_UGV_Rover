@@ -118,19 +118,30 @@ request is considered performed only after the corresponding rover call actually
 returns; the model is explicitly instructed not to narrate an intention as though
 an action happened.
 
-Since 2026-09-04 the list includes three tools that answer from the room the rover
-mapped earlier rather than from what is in front of it — `find_thing`,
-`go_to_thing` and `distance_between`, so that "can you find the bed" and "move to
-the desk" are things this rover can be asked. The line each of them has to draw is
-against `look`: "can you find the bed" and "what can you see" are one sentence to
-a model holding a camera tool, and the difference is the point — `look` is a
-photograph of what is in front of the rover now, and these are the whole place,
-most of which is behind it. Each description says in so many words that it takes
-no picture, which is the shape of fix that `count_faces` needed for the same
-collision — naming what a tool is *not* for is what took "how many people can you
-see" from 0/6 to 6/6 there. **Whether it is enough here has not been measured**:
-these three have no sampled numbers of their own, and until they do, a report that
-the model reaches for the wrong one is a wording change waiting to be made in
+Since 2026-09-04 the list includes two tools that answer from the room the rover
+mapped earlier rather than from what is in front of it — `find_thing` and
+`go_to_thing`, so that "can you find the bed" and "move to the desk" are things
+this rover can be asked. The line both have to draw is against `look`: "can you
+find the bed" and "what can you see" are one sentence to a model holding a camera
+tool, and the difference is the point — `look` is a photograph of what is in front
+of the rover now, and these are the whole place, most of which is behind it. Each
+description says in so many words that it takes no picture, which is the shape of
+fix that `count_faces` needed for the same collision — naming what a tool is *not*
+for is what took "how many people can you see" from 0/6 to 6/6 there.
+
+`find_thing` also hands back where the thing is on the map, and its description
+spends three sentences on what that is for: comparing one thing with another, so
+that "how far is the bed from the desk" is two calls and a subtraction. **That is
+arithmetic done by the model**, which is the thing this repository otherwise
+avoids asking of one — `_where` in rover_camera.py describes a face in words for
+exactly that reason. It is two coordinates and a Pythagoras rather than a bearing
+model, and a wrong answer is a wrong number said out loud rather than a rover
+driving somewhere; but it is unmeasured, and if it turns out to be beyond the
+model the fix is a tool that does the subtraction.
+
+**Whether any of this reaches the right tool has not been measured**: these two
+have no sampled numbers of their own, and until they do, a report that the model
+reaches for the wrong one is a wording change waiting to be made in
 `rover_daemon/tool_schemas.py` rather than a bug in the rover.
 
 ## Seeing through the gimbal camera

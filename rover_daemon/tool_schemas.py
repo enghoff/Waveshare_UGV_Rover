@@ -586,10 +586,18 @@ WORLD_TOOLS: list[dict[str, Any]] = [
                 "drove around, so it covers the whole place rather than what is "
                 "in front of it. To see what is in front of the rover now, take "
                 "a picture instead. It answers with how far away the thing is "
-                "in metres and which way it is from the rover -- ahead, behind, "
-                "to your left or right -- and how long ago it was last seen. It "
-                "says plainly when it has seen nothing like that, and that "
-                "answer is worth saying out loud rather than guessing round."
+                "in metres, which way it is from the rover -- ahead, behind, to "
+                "your left or right -- how wide it is, how many times and how "
+                "long ago it was seen, and where it is on the rover's own map. "
+                "Those map numbers are metres and they are for comparing one "
+                "thing with another: to say how far the bed is from the desk, "
+                "find each of them and work out the distance between the two "
+                "pairs, and say it roughly, allowing for the give-or-take that "
+                "comes with each. Never read the map numbers out loud, and "
+                "never use them to drive anywhere -- go_to_thing is how the "
+                "rover is sent to something. It says plainly when it has seen "
+                "nothing like that, and that answer is worth saying out loud "
+                "rather than guessing round."
             ),
             "parameters": {
                 "type": "object",
@@ -636,38 +644,6 @@ WORLD_TOOLS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["description"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "distance_between",
-            "description": (
-                "Say how far apart two things the rover has seen are, in metres. "
-                "Use this for questions comparing two things in the place, such "
-                "as 'how far is the bed from the desk' or 'are the two chairs "
-                "near each other'. Describe each one in a few plain words. This "
-                "measures between where the rover has worked out that they are, "
-                "not between the rover and either of them -- for how far away "
-                "one thing is from the rover, use find_thing. It refuses when "
-                "the rover has not seen one of them, or has seen it but does not "
-                "know where it is yet, and says which."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "first": {
-                        "type": "string",
-                        "description": "One of the two things, in a few plain "
-                                       "words.",
-                    },
-                    "second": {
-                        "type": "string",
-                        "description": "The other thing, in a few plain words.",
-                    },
-                },
-                "required": ["first", "second"],
             },
         },
     },

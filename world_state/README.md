@@ -969,11 +969,12 @@ All of these are control calls on the daemon's TCP 8769, and none of them is in
 `list_tools`. Giving a model the authority to write to this store, or to throw it
 away, before the question of whether it is worth trusting has an answer would be
 the wrong order — and these read it in the console's vocabulary besides:
-identifiers, map coordinates and cosines, none of which a model can say out loud
-or invent an argument for. What a model gets instead is the same store in metres
-and words, through the three tools in
+identifiers, cosines and the placement as the store writes it, none of which a
+model can say out loud or reason about correctly. What a model gets instead is
+the same store in metres and words, through the two tools in
 [rover_daemon/rover_recall.py](../rover_daemon/rover_recall.py): `find_thing`,
-`go_to_thing` and `distance_between`.
+which also hands back where the thing is so that two answers can be compared, and
+`go_to_thing`.
 
 | Call | What it does |
 |---|---|
