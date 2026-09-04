@@ -72,49 +72,51 @@ class Mount:
     up_m: float = 0.0
 
 
-#: Where this rover's OAK is, **measured on 2026-09-04 by `bench_oak.py`** and
-#: the first extrinsics between any two things on this rover.
+#: Where this rover's OAK is. **Which way it points was measured on 2026-09-04
+#: by `bench_oak.py`; where it sits was not, and the two have very different
+#: standing.**
 #:
-#: The rover was parked facing a dining table, and each figure is the median of
-#: two runs of five solves each at pan 0, every solve its own RANSAC PnP over
-#: about seventy points matched between the two cameras and ranged by the depth
-#: camera. What it is worth:
+#: The rotation is what this bench is for and it is solid. Both cameras looked at
+#: a dining table, the OAK's picture was warped into the fisheye's geometry, ORB
+#: matched them, the depth camera ranged every match, and the rotation lining the
+#: two sets of directions up was solved with its own inliers re-selected as it
+#: went. What survives misses by 0.3 to 0.9 degrees against the 1.5
+#: `locate.BEARING_SIGMA_DEG` allows a bearing, and -- the part that matters --
+#: **it comes out the same whatever offset it is given**, within about half a
+#: degree across everything from nothing to half a metre.
 #:
-#:   repeatable  Within one run: 0.4 deg on the angles, 1 to 2 cm on the offset.
-#:               Between the two runs: 0.8 deg and 5 cm.
-#:   fitted      The points that survived missed by 0.35 to 0.41 deg in the
-#:               median, against the 1.5 deg `locate.BEARING_SIGMA_DEG` allows a
-#:               bearing on this rover.
-#:   real        Refitting the same points with the two lenses taken as
-#:               co-located costs 2.0 deg instead of 0.4 -- five times worse -- so
-#:               the offset is something the data contained rather than something
-#:               the solver was free to choose. That test is in the report.
+#: **The offset is not measured and is deliberately left at nothing.** Two lenses
+#: a few centimetres apart looking at a room metres away see it in almost the
+#: same direction: five centimetres at three metres is one degree of parallax,
+#: which is the size of what the fit leaves over anyway. So a solver handed both
+#: at once spends the offset absorbing whatever else is systematic, and on this
+#: rover it did exactly that -- it claimed 0.571 m forward and 0.181 m to the
+#: right, fitted the data four times better for it, and was wrong: the rover's
+#: owner reports the two lenses are a few centimetres apart with both on the
+#: **centre axis**, so the lateral offset is zero by construction. That figure
+#: was briefly adopted here on the strength of its own repeatability, which is
+#: the trap this note exists to stop somebody walking into again.
 #:
-#: **Taken at pan 0 rather than averaged over several pans, deliberately.** Solved
-#: at -10, 0 and +10 the yaw comes out 3 degrees apart, and it is the *gimbal*
-#: that moved: the pan servo is already known to arrive about three degrees short
-#: at the ends of its travel with no feedback to correct it, and arriving at 0
-#: from -10 leaves it about 2 degrees from where five solves in a row at 0 put it.
-#: That error is in every bearing this component records anyway -- it is the
-#: largest term in `BEARING_SIGMA_DEG` -- so folding it in here would count it
-#: twice. The mount is what it is with the gimbal at rest.
+#: Nothing is the honest placeholder rather than a guess at "a few": it is what
+#: every bearing before this was worked out as, and being out by a few
+#: centimetres costs about a degree of bearing at two metres, which is inside the
+#: 1.5 the geometry already expects. Being out by half a metre costs sixteen.
 #:
-#: **The roll came out -0.5 deg** and `Mount` does not carry one, on the argument
-#: that a bracket bolted to a flat plate has none. Half a degree is inside the
-#: noise on the rotation, so that argument survives; `bench_oak.py` prints the
-#: roll and says so when it does not.
+#: **A ruler settles it, and nothing here can.** Measure how far ahead of the
+#: gimbal camera's lens the OAK's sits and how far above it, and pass them to
+#: `bench_oak.py --offset FORWARD LEFT UP` -- which then solves the rotation with
+#: them held, and prints a block to paste back in here.
 #:
-#: **What has not been checked is the offset against a ruler.** Half a metre
-#: forward is a long way on a small rover, and while the fit is self-consistent
-#: and repeatable, nothing here has compared it with the thing itself. The
-#: falsifiable claim is: the OAK's lens sits about 57 cm ahead of the gimbal
-#: camera's, 18 cm to its right, and 8 cm above it.
+#: The roll came out -0.5 degrees and `Mount` carries none, on the argument that
+#: a bracket bolted to a flat plate has none. Half a degree is inside the noise,
+#: so that argument survives; the bench prints the roll and says so when it does
+#: not.
 MOUNT = Mount(
     yaw_deg=-0.70,
     pitch_deg=2.71,
-    forward_m=0.571,
-    left_m=-0.181,
-    up_m=0.077,
+    forward_m=0.0,
+    left_m=0.0,
+    up_m=0.0,
 )
 
 #: Whether `MOUNT` above holds measurements. **Everything this module can do is
@@ -126,6 +128,9 @@ MOUNT = Mount(
 #: A flag rather than a check for zeros, because zero is a perfectly possible
 #: measurement -- a camera mounted straight ahead has a yaw of zero, and the
 #: difference between "measured as zero" and "never measured" is the whole point.
+#: It is on because the rotation is measured, which is the half that swings every
+#: bearing; the offset sitting at nothing costs about a degree at two metres and
+#: is a known, bounded, written-down gap rather than an unknown one.
 MEASURED = True
 
 #: How far off the OAK's own axis a direction may lie before it is not in its

@@ -1,48 +1,49 @@
 #!/usr/bin/env python3
-"""Where the OAK is bolted, measured against the camera the rover already trusts.
+"""Which way the OAK points, measured against the camera the rover already trusts.
 
     ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py'
-    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan -15 0 15'
-    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --save /tmp/oak-align'
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --offset 0.05 0 0.04'
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan 0 0 0 --save /tmp/oak'
 
-The rover has two cameras that see the room and they have never been in the same
+The rover has two cameras that see the room and they had never been in the same
 frame. The gimbal camera's optics were swept and fitted on this rover and every
-bearing the world state holds was drawn through them; the OAK has sat on the
-front measuring millimetres with nothing reading it, and **there are no
-extrinsics between it and anything** -- which is the one thing standing between a
-range and the world state that wants one. This measures them.
+bearing the world state holds was drawn through them; the OAK is bolted to the
+chassis and is the only thing that knows how far away anything is. Before either
+could check the other's work, somebody had to say **which way the OAK points**
+relative to the gimbal camera. That is what this measures.
 
-**No target and no tape measure.** Both cameras look at whatever room the rover
-is in, and the answer comes out of the one thing they genuinely share: the same
-physical points, seen down two known lenses from two places a few centimetres
-apart. The OAK says how far away each point is, the gimbal camera says which
-direction it lies in, and the pose that reconciles the two **is** the mount --
-rotation and offset together, out of one solve, with the points that do not fit
-thrown out rather than averaged in.
+**It measures the rotation and it does not measure the offset**, and that
+division is the whole design rather than a shortcoming admitted afterwards. Two
+lenses a few centimetres apart, looking at a room metres away, see it in almost
+the same direction: five centimetres at three metres is one degree of parallax,
+which is the size of what the fit leaves over anyway. So a solver handed both at
+once will spend the offset absorbing anything else that is systematic -- and on
+this rover it did, claiming half a metre between two cameras that are a few
+centimetres apart, and fitting the data *better* for it. **A ruler measures the
+offset far better than this can; this measures the rotation far better than a
+ruler can.** Give it the offset with `--offset` and it solves the rest.
 
-**Appearance was tried first and it does not work here, measured.** Matching the
-two pictures' *regions* by the encoder vectors the resolver uses reads well and
-falls apart in a real room: on 2026-09-04 the rover was pointed at a dining
-table, and within a single frame six different chairs scored up to 0.913 against
-each other -- higher than the same chair scored across the two lenses. Identity
-by appearance is exactly what this component gave up on, for exactly this reason,
-and a calibration that only works in rooms without repeated furniture is not one.
+**No target and no vocabulary.** Both cameras look at whatever room the rover is
+in, the OAK's picture is warped into the fisheye's own geometry so that the two
+differ by a few degrees of mount rather than by a lens, ORB matches them, the
+depth camera ranges every match, and the rotation is the one that lines the two
+sets of directions up -- re-selecting its own inliers as it goes, because a room
+of repeated chair slats produces plenty of matches that are simply wrong.
 
-So the matching is on texture and geometry instead. The OAK's picture is warped
-into the fisheye's own geometry first, so that the two images differ by a few
-degrees of mount rather than by a lens; ORB matches them; and the solve is a
-RANSAC PnP, which is the standard way to get a pose out of points whose
-correspondences are partly wrong.
+**Matching by appearance was tried first and does not work here, measured.**
+Matching the two pictures' *regions* by the encoder vectors the resolver uses
+gave two usable pairs out of ten on 2026-09-04, because within a single frame six
+different dining chairs scored up to 0.913 against each other -- higher than the
+same chair scored across the two lenses. Identity by appearance is what this
+component gave up on, for this reason.
 
-**What it prints goes into `oak.MOUNT` by hand, with the date.** It is not
-written back automatically and should not be: a calibration that rewrites the
-constant the whole component depends on, from whatever the rover happened to be
-looking at, is a calibration nobody can review.
+**What it prints goes into `oak.MOUNT` by hand, with the date.** A calibration
+that rewrites the constant the whole component depends on, from whatever the
+rover happened to be looking at, is a calibration nobody can review.
 
-**It wants a textured room with things at a spread of distances.** Pointed at a
-blank wall it finds nothing to match and says so. The report says which of the
-rotation and the offset it could determine rather than printing a number for both
-regardless.
+**It wants a textured room with things in it.** A blank wall has nothing to
+match and a plain floor matches itself everywhere; it says so rather than
+fitting whatever it was given.
 """
 from __future__ import annotations
 
@@ -79,46 +80,32 @@ DAEMON_TIMEOUT_S = 30.0
 #: script with nothing to hurry for.
 SETTLE_S = 5.0
 
-#: How many ORB features to look for in each picture. Generous: most will be on
-#: the floor and the walls, most of those will be thrown out by the solve, and
-#: what is wanted is enough left over on the furniture.
+#: How many ORB features to look for in each picture. Generous: most land on the
+#: floor and the walls, most of those are thrown out, and what is wanted is
+#: enough left over on the furniture.
 FEATURES = 2000
 #: Lowe's ratio. A match whose second-best is nearly as good is a match on a
 #: texture that repeats, which is most of a tiled floor.
 RATIO = 0.75
-#: How far a point may miss and still be counted, as a tangent -- the image
-#: points here are directions rather than pixels, so this is an angle. Two
-#: degrees, which is comfortably wider than the degree and a half a bearing on
-#: this rover is believed to, and tight enough to exclude a mismatch.
-INLIER_TAN = 0.035
-#: The fewest inliers worth believing a solve from. Four points determine a pose;
-#: below about this the answer is describing the noise on two of them.
+#: How far a point may miss the fit and still be counted, in degrees.
+#:
+#: **This is doing outlier rejection, not error budgeting.** On the dining-table
+#: scene of 2026-09-04 only 46 to 70 of 220 matched points landed inside it, and
+#: the rest are matches that are simply wrong -- one chair slat taken for the
+#: next. Two degrees is comfortably wider than what a right match misses by
+#: (0.3 to 0.9) and far tighter than what a wrong one does.
+INLIER_DEG = 2.0
+#: The fewest inliers worth believing a fit from.
 MIN_INLIERS = 12
 #: How big a patch of the depth map a feature's range is taken over, in colour
 #: pixels either side. Small enough to be the thing the feature sits on, wide
 #: enough to clear the twelve valid pixels the service needs to answer at all --
 #: the depth map is half the colour frame's size, so this is a 12x12 box there.
 DEPTH_PATCH_PX = 12
-#: And how much range spread the fitted points need before the *offset* between
-#: the two lenses is determined at all, as a ratio of furthest to nearest.
-#: Everything at one distance is a single parallax reading, and any combination
-#: of offset and rotation explains one of those.
-MIN_RANGE_RATIO = 1.6
-#: How much worse the fit has to get when the two lenses are taken as co-located
-#: before the offset it found counts as having been measured.
-#:
-#: **Two lenses a few centimetres apart looking at things metres away see them in
-#: almost the same direction**, so the offset is the weakly observable half of
-#: this pose and a solver will put it wherever best trades against the rotation.
-#: Five centimetres at two metres is 1.4 degrees, at six metres 0.5 -- the same
-#: size as what the fit leaves over -- so "the residual got worse without it" is
-#: the only honest evidence that the data contained one. 1.5 is a fit half again
-#: as bad, which no amount of noise produces by accident.
-OFFSET_EARNS_ITS_KEEP = 1.5
 #: How coarse a grid the fisheye warp is built on before it is interpolated up.
-#: The lens is smooth, so sampling every eighth pixel and resizing is well under
-#: a pixel out -- and it means the map is built from `lens.ray_at` itself rather
-#: than from a second copy of this camera's optics written out here in numpy.
+#: The lens is smooth, so sampling every eighth pixel is well under a pixel out --
+#: and it means the map is built from `lens.ray_at` itself rather than from a
+#: second copy of this camera's optics written out here in numpy.
 WARP_STEP = 8
 
 
@@ -139,10 +126,9 @@ def gimbal_frame(pan_deg: float) -> dict:
     """Park the gimbal and take one picture through it.
 
     The pan and tilt come back from the daemon rather than being assumed. What is
-    read back is what it was *told*, so this rover's pan servo arriving about
-    three degrees short at the ends of its travel is still in here -- which is
-    why the report says which pans it used, and why staying inside +/-20 is worth
-    doing.
+    read back is what it was *told*, so the pan servo's own error is still in
+    here -- which is why the mount is taken at pan 0 and why the report says
+    which pans it used.
     """
     aimed = call("look_at", {"pan": pan_deg, "tilt": 0})
     if not aimed.get("ok"):
@@ -160,46 +146,57 @@ def gimbal_frame(pan_deg: float) -> dict:
 # --- putting the two pictures in one geometry --------------------------------
 
 
-def warp_maps(cv2, numpy, size, lens_oak):
+def warp_maps(numpy, size, lens_oak):
     """Where each pixel of the fisheye's picture falls in the OAK's, as cv2 maps.
 
     **Warping the OAK into the fisheye and not the other way round, because that
     direction needs no inverse.** `lens.ray_at` answers "which way does this pixel
-    look", which is exactly what is wanted here: for every pixel of the fisheye
-    frame, take its direction and project it into the OAK's pinhole. Going the
-    other way would mean inverting the fitted fisheye, which is a cubic and a
-    second description of optics this repository deliberately keeps in one place.
+    look", which is exactly what is wanted: for every pixel of the fisheye frame,
+    take its direction and project it into the OAK's pinhole. Going the other way
+    would mean inverting the fitted fisheye, which is a cubic and a second
+    description of optics this repository keeps in one place.
 
     The mount is taken as zero while the map is built, which is the point: the two
     images then differ by *only* the few degrees of mount, at the same scale and
-    in the same geometry, which is the easy case for a feature matcher. What the
-    solve afterwards recovers is that difference.
+    in the same geometry, which is the easy case for a feature matcher.
 
-    Built on every eighth pixel and interpolated up. The lens is smooth and the
-    saving is real -- 4,800 calls into `lens.ray_at` rather than 307,200.
+    Built on every eighth pixel and interpolated up -- 4,800 calls into
+    `lens.ray_at` rather than 307,200. **Interpolated by hand rather than with
+    `cv2.resize`, which was a bug**: resize maps cell *centres*, so a coarse grid
+    sampled every eighth pixel comes back shifted by about three pixels and
+    scaled by a percent. Three pixels is 0.4 degrees at this focal length, which
+    is the same size as what the fit leaves over.
     """
     import lens as fitted                                         # noqa: PLC0415
 
     width, height = size
     optics = fitted.lens_for(width, height)
-    xs = list(range(0, width, WARP_STEP)) + [width - 1]
-    ys = list(range(0, height, WARP_STEP)) + [height - 1]
-    coarse_x = numpy.zeros((len(ys), len(xs)), numpy.float32)
-    coarse_y = numpy.zeros((len(ys), len(xs)), numpy.float32)
+    xs = numpy.arange(0, width, WARP_STEP, dtype=numpy.float64)
+    if xs[-1] != width - 1:
+        xs = numpy.append(xs, width - 1)
+    ys = numpy.arange(0, height, WARP_STEP, dtype=numpy.float64)
+    if ys[-1] != height - 1:
+        ys = numpy.append(ys, height - 1)
+    coarse = [numpy.zeros((len(ys), len(xs))), numpy.zeros((len(ys), len(xs)))]
     for row, y in enumerate(ys):
         for column, x in enumerate(xs):
-            dx, dy, dz = fitted.ray_at(x, y, optics)
+            dx, dy, dz = fitted.ray_at(float(x), float(y), optics)
             if dz <= 1e-6:
                 # Behind the OAK's lens. Sent off the edge of its picture so
                 # `cv2.remap` leaves it blank rather than wrapping it round.
-                coarse_x[row, column] = -1.0
-                coarse_y[row, column] = -1.0
+                coarse[0][row, column] = coarse[1][row, column] = -1.0
                 continue
-            coarse_x[row, column] = lens_oak.cx + lens_oak.fx * dx / dz
-            coarse_y[row, column] = lens_oak.cy + lens_oak.fy * dy / dz
-    map_x = cv2.resize(coarse_x, (width, height), interpolation=cv2.INTER_LINEAR)
-    map_y = cv2.resize(coarse_y, (width, height), interpolation=cv2.INTER_LINEAR)
-    return map_x, map_y
+            coarse[0][row, column] = lens_oak.cx + lens_oak.fx * dx / dz
+            coarse[1][row, column] = lens_oak.cy + lens_oak.fy * dy / dz
+    full_x = numpy.arange(width, dtype=numpy.float64)
+    full_y = numpy.arange(height, dtype=numpy.float64)
+    maps = []
+    for grid in coarse:
+        along = numpy.vstack([numpy.interp(full_x, xs, row) for row in grid])
+        both = numpy.vstack([numpy.interp(full_y, ys, along[:, one])
+                             for one in range(width)]).T
+        maps.append(both.astype(numpy.float32))
+    return maps
 
 
 def matched_points(cv2, gimbal_grey, warped_grey):
@@ -208,8 +205,9 @@ def matched_points(cv2, gimbal_grey, warped_grey):
     `[(gimbal_xy, warped_xy)]`. ORB rather than anything licensed, a ratio test
     against the second-best match because a tiled floor repeats, and a mutual
     check because a corner that resembles every other corner will otherwise be
-    somebody's best match in one direction only. Whatever is left wrong after
-    that is what the RANSAC in the solve is for.
+    somebody's best match in one direction only. Plenty of what survives that is
+    still wrong -- one chair slat taken for the next -- which is what the fit's
+    own inlier selection is for.
     """
     orb = cv2.ORB_create(nfeatures=FEATURES)
     here_kp, here_desc = orb.detectAndCompute(gimbal_grey, None)
@@ -252,74 +250,7 @@ def ranges_at(ranger, points, lens_oak):
     return [one.range_m if one is not None else None for one in answers], ""
 
 
-# --- the solve ----------------------------------------------------------------
-
-
-def solve_pose(cv2, numpy, object_points, image_points):
-    """Where the gimbal camera is, relative to the OAK, from points and rays.
-
-    `solvePnPRansac` with the identity for a camera matrix and no distortion,
-    because the image points handed to it are already directions rather than
-    pixels: the fisheye is not a pinhole and cannot be given to a solver as one,
-    but a pixel turned into a unit ray and divided through by its own forward
-    component is exactly what a pinhole solver wants.
-
-    What comes back is the pose of the *object* frame -- the OAK's -- in the
-    camera's, which is the gimbal's. That is the mount, the right way round, with
-    the offset in it rather than fitted separately afterwards.
-
-    RANSAC first and then a refit on the inliers alone, because the pose RANSAC
-    returns is the one the best random four points implied; the answer wanted is
-    the one all of them agree on.
-    """
-    if len(object_points) < MIN_INLIERS:
-        return None
-    objects = numpy.array(object_points, numpy.float64).reshape(-1, 1, 3)
-    images = numpy.array(image_points, numpy.float64).reshape(-1, 1, 2)
-    identity, none = numpy.eye(3), numpy.zeros(5)
-    ok, rvec, tvec, inliers = cv2.solvePnPRansac(
-        objects, images, identity, none, reprojectionError=INLIER_TAN,
-        iterationsCount=2000, confidence=0.999, flags=cv2.SOLVEPNP_EPNP)
-    if not ok or inliers is None or len(inliers) < MIN_INLIERS:
-        return None
-    kept = [int(one) for one in inliers.ravel()]
-    ok, rvec, tvec = cv2.solvePnP(
-        objects[kept], images[kept], identity, none, rvec, tvec,
-        useExtrinsicGuess=True, flags=cv2.SOLVEPNP_ITERATIVE)
-    if not ok:
-        return None
-    rotation, _ = cv2.Rodrigues(rvec)
-    projected, _ = cv2.projectPoints(objects[kept], rvec, tvec, identity, none)
-    residual = []
-    for slot, index in enumerate(kept):
-        dx = float(projected[slot][0][0]) - image_points[index][0]
-        dy = float(projected[slot][0][1]) - image_points[index][1]
-        residual.append(math.degrees(math.atan(math.hypot(dx, dy))))
-    return rotation, tvec.reshape(3), kept, residual
-
-
-def _residual_without_offset(cv2, numpy, rotation, object_points, image_points,
-                             kept):
-    """What the same points miss by if the two lenses are taken to be co-located.
-
-    The comparison that says whether the offset the solver found was in the data
-    or was free. If putting the two cameras in the same place costs nothing, then
-    nothing here measured how far apart they are, and the number to print is a
-    warning rather than a distance.
-    """
-    identity = numpy.eye(3)
-    zero = numpy.zeros(3)
-    rvec, _ = cv2.Rodrigues(rotation)
-    objects = numpy.array([object_points[i] for i in kept],
-                          numpy.float64).reshape(-1, 1, 3)
-    projected, _ = cv2.projectPoints(objects, rvec, zero, identity,
-                                     numpy.zeros(5))
-    apart = []
-    for slot, index in enumerate(kept):
-        dx = float(projected[slot][0][0]) - image_points[index][0]
-        dy = float(projected[slot][0][1]) - image_points[index][1]
-        apart.append(math.degrees(math.atan(math.hypot(dx, dy))))
-    return apart
+# --- the fit ------------------------------------------------------------------
 
 
 def chassis_from_optical(numpy, pan_deg: float, tilt_deg: float):
@@ -343,30 +274,97 @@ def chassis_from_optical(numpy, pan_deg: float, tilt_deg: float):
     return turn @ levelled
 
 
-def mount_from(numpy, rotation, translation, pan_deg, tilt_deg):
-    """One solve, as the numbers `oak.Mount` holds.
+def rotation_for(numpy, objects, images, offset, rounds=8):
+    """The rotation between the two cameras, with the offset taken as known.
 
-    `rotation` and `translation` put a point in the OAK's optical frame into the
-    gimbal camera's. The mount wants both in the rover's frame instead, and wants
-    the rotation the other way round -- `oak._in_oak` turns chassis directions
-    into the OAK's, so what it needs is the transpose.
+    Wahba's problem each round -- the rotation lining up two sets of unit
+    directions is the singular value decomposition of their outer product -- and
+    then the points within `INLIER_DEG` of that answer are kept and it is done
+    again. Starting from everything and tightening rather than starting from a
+    random four: the rotation is well enough determined that it does not need a
+    random start, and what has to be excluded is a third of the matches rather
+    than a few.
+
+    The offset enters by moving each of the gimbal camera's rays to where the OAK
+    stands, at the range the OAK measured, which is what makes the two sets of
+    directions comparable at all. With the offset at nothing this is the plain
+    two-set alignment; with it at a few centimetres it is the same thing done
+    honestly.
     """
-    to_chassis = chassis_from_optical(numpy, pan_deg, tilt_deg)
-    into_oak = (to_chassis @ rotation).T
+    into_optical = chassis_from_optical(numpy, 0.0, 0.0).T
+    shift = into_optical @ numpy.array(offset, dtype=numpy.float64)
+    from_oak = numpy.array(objects, dtype=numpy.float64)
+    unit_oak = from_oak / numpy.linalg.norm(from_oak, axis=1, keepdims=True)
+    rays = numpy.array([[x, y, 1.0] for x, y in images], dtype=numpy.float64)
+    rays /= numpy.linalg.norm(rays, axis=1, keepdims=True)
+
+    rotation = numpy.eye(3)
+    keep = numpy.ones(len(objects), dtype=bool)
+    miss = numpy.zeros(len(objects))
+    for _round in range(rounds):
+        if int(keep.sum()) < MIN_INLIERS:
+            return None
+        reach = numpy.linalg.norm((rotation @ from_oak.T).T + shift,
+                                  axis=1, keepdims=True)
+        moved = rays * reach - shift
+        moved /= numpy.linalg.norm(moved, axis=1, keepdims=True)
+        u, _s, vt = numpy.linalg.svd(moved[keep].T @ unit_oak[keep])
+        middle = numpy.eye(3)
+        middle[2, 2] = numpy.sign(numpy.linalg.det(u @ vt))
+        rotation = u @ middle @ vt
+        predicted = (rotation @ from_oak.T).T + shift
+        predicted /= numpy.linalg.norm(predicted, axis=1, keepdims=True)
+        miss = numpy.degrees(numpy.arccos(numpy.clip(
+            numpy.sum(predicted * rays, axis=1), -1.0, 1.0)))
+        keep = miss <= INLIER_DEG
+    if int(keep.sum()) < MIN_INLIERS:
+        return None
+    return rotation, miss, keep
+
+
+def angles_of(numpy, rotation, pan_deg, tilt_deg):
+    """A rotation as the mount's yaw, pitch and roll, in degrees.
+
+    `rotation` takes a direction in the OAK's optical frame to the gimbal
+    camera's. `oak._in_oak` goes the other way and works in the rover's frame, so
+    what it needs is the transpose of the two put together.
+    """
+    into_oak = (chassis_from_optical(numpy, pan_deg, tilt_deg) @ rotation).T
     pitch = math.asin(max(-1.0, min(1.0, float(into_oak[2][2]))))
     yaw = math.atan2(float(into_oak[2][1]), float(into_oak[2][0]))
     roll = math.atan2(float(into_oak[0][2]), -float(into_oak[1][2]))
-    offset = to_chassis @ numpy.asarray(translation)
     return {"yaw_deg": -math.degrees(yaw), "pitch_deg": math.degrees(pitch),
-            "roll_deg": math.degrees(roll), "forward_m": float(offset[0]),
-            "left_m": float(offset[1]), "up_m": float(offset[2])}
+            "roll_deg": math.degrees(roll)}
+
+
+def free_offset(cv2, numpy, objects, images):
+    """What a solver claims the offset is when nobody tells it. A warning, not a
+    measurement -- see the module docstring.
+
+    Kept because it is the evidence for the docstring's claim rather than a
+    restatement of it: on this rover it comes back with half a metre between two
+    cameras a few centimetres apart, and the report prints that so nobody has to
+    take the warning on trust.
+    """
+    if len(objects) < MIN_INLIERS:
+        return None
+    got = cv2.solvePnPRansac(
+        numpy.array(objects, numpy.float64).reshape(-1, 1, 3),
+        numpy.array(images, numpy.float64).reshape(-1, 1, 2),
+        numpy.eye(3), numpy.zeros(5),
+        reprojectionError=math.tan(math.radians(INLIER_DEG)),
+        iterationsCount=2000, confidence=0.999, flags=cv2.SOLVEPNP_EPNP)
+    ok, _rvec, tvec, inliers = got
+    if not ok or inliers is None or len(inliers) < MIN_INLIERS:
+        return None
+    return chassis_from_optical(numpy, 0.0, 0.0) @ tvec.reshape(3)
 
 
 # --- one position, end to end -------------------------------------------------
 
 
-def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, save):
-    """One gimbal position, as a solved mount or as a sentence saying why not."""
+def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, offset, save):
+    """One gimbal position, as a solved rotation or a sentence saying why not."""
     import lens as fitted                                         # noqa: PLC0415
 
     frame = gimbal_frame(pan)
@@ -417,49 +415,39 @@ def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, save):
     if measured is None:
         return None, f"pan {pan:+.0f}: no ranges ({error})"
 
-    object_points, image_points, ranged = [], [], []
+    objects, images, ranged = [], [], []
     for (ox, oy), ray, range_m in zip(in_oak, rays, measured):
         if not range_m:
             continue
         direction = oak.ray_at(ox / lens_oak.width, oy / lens_oak.height, lens_oak)
-        object_points.append([one * range_m for one in direction])
-        image_points.append(list(ray))
+        objects.append([one * range_m for one in direction])
+        images.append(list(ray))
         ranged.append(range_m)
-    if len(object_points) < MIN_INLIERS:
+    if len(objects) < MIN_INLIERS:
         return None, (f"pan {pan:+.0f}: {len(pairs)} matched, only "
-                      f"{len(object_points)} had a range")
+                      f"{len(objects)} had a range")
 
-    solved = solve_pose(cv2, numpy, object_points, image_points)
+    solved = rotation_for(numpy, objects, images, offset)
     if solved is None:
-        return None, (f"pan {pan:+.0f}: {len(object_points)} ranged points, "
-                      f"no pose survived them")
-    rotation, translation, kept, residual = solved
-    found = mount_from(numpy, rotation, translation, frame["pan"], frame["tilt"])
-    # **And what the offset is actually worth, which is the question this data
-    # answers worst.** Two lenses a few centimetres apart, looking at things
-    # metres away, see them in almost the same direction: five centimetres at two
-    # metres is 1.4 degrees and at six is 0.5, which is the same size as what the
-    # fit leaves over. So the offset is weakly observable and a solver will
-    # happily put it anywhere that trades against the rotation. Comparing the
-    # residual against the residual with the offset taken out is the honest test
-    # of whether the data asked for one at all.
-    flat = [float(one) for one in _residual_without_offset(
-        cv2, numpy, rotation, object_points, image_points, kept)]
-    found.update(inliers=len(kept), points=len(object_points),
-                 pan_deg=frame["pan"], tilt_deg=frame["tilt"],
-                 residual_deg=statistics.median(residual),
-                 worst_deg=max(residual),
-                 flat_residual_deg=statistics.median(flat),
-                 ranges=[ranged[i] for i in kept])
+        return None, (f"pan {pan:+.0f}: {len(objects)} ranged points, "
+                      f"no rotation survived them")
+    rotation, miss, keep = solved
+    found = angles_of(numpy, rotation, frame["pan"], frame["tilt"])
+    found.update(inliers=int(keep.sum()), points=len(objects),
+                 pan_deg=frame["pan"],
+                 miss_deg=float(numpy.median(miss[keep])),
+                 worst_deg=float(numpy.max(miss[keep])),
+                 free=free_offset(cv2, numpy, objects, images),
+                 ranges=[r for r, k in zip(ranged, keep) if k])
     return found, (f"pan {pan:+.0f}: {counts[0]}/{counts[1]} features, "
-                   f"{len(pairs)} matched, {len(object_points)} ranged, "
-                   f"{len(kept)} fitted")
+                   f"{len(pairs)} matched, {len(objects)} ranged, "
+                   f"{int(keep.sum())} fitted")
 
 
 # --- what it all came to ------------------------------------------------------
 
 
-def report(found: list, notes: list) -> int:
+def report(numpy, found: list, notes: list, offset) -> int:
     for line in notes:
         print("  " + line)
     print()
@@ -476,56 +464,53 @@ def report(found: list, notes: list) -> int:
                 (max(values) - min(values)) if len(values) > 1 else 0.0)
 
     print(f"{len(found)} position(s) solved, "
-          f"{sum(one['inliers'] for one in found)} points fitted in all")
+          f"{sum(one['inliers'] for one in found)} points fitted of "
+          f"{sum(one['points'] for one in found)} ranged")
+    print(f"offset taken as given: {offset[0]:+.3f} forward, {offset[1]:+.3f} "
+          f"left, {offset[2]:+.3f} up")
     print()
     print("what each position said on its own")
-    print("    pan     yaw    pitch     roll   forward     left       up   "
-          "pts   miss  flat")
+    print("    pan     yaw    pitch     roll   pts   miss  worst")
     for one in found:
         print(f"  {one['pan_deg']:+5.0f}  {one['yaw_deg']:+6.2f}  "
               f"{one['pitch_deg']:+6.2f}  {one['roll_deg']:+6.2f}  "
-              f"{one['forward_m']:+8.3f} {one['left_m']:+8.3f} "
-              f"{one['up_m']:+8.3f}  {one['inliers']:4d}  "
-              f"{one['residual_deg']:5.2f} {one['flat_residual_deg']:5.2f}")
+              f"{one['inliers']:4d}  {one['miss_deg']:5.2f}  "
+              f"{one['worst_deg']:5.2f}")
     print()
-    print("                     median    spread over the positions")
-    for key, label, unit in (("yaw_deg", "yaw", "deg"),
-                             ("pitch_deg", "pitch", "deg"),
-                             ("roll_deg", "roll", "deg"),
-                             ("forward_m", "forward", "m"),
-                             ("left_m", "left", "m"),
-                             ("up_m", "up", "m")):
+    for key, label in (("yaw_deg", "yaw"), ("pitch_deg", "pitch"),
+                       ("roll_deg", "roll")):
         middle, apart = spread(key)
-        print(f"  {label:<8s} {middle:+10.3f} {unit:<4s} {apart:9.3f}")
-    print()
-    residuals = [one["residual_deg"] for one in found]
-    print(f"  what is left over: median {statistics.median(residuals):.2f} deg, "
+        print(f"  {label:<6s} {middle:+7.2f} deg   spread {apart:5.2f}")
+    misses = [one["miss_deg"] for one in found]
+    print(f"  what is left over: median {statistics.median(misses):.2f} deg, "
           f"worst {max(one['worst_deg'] for one in found):.2f}")
     print(f"  (a bearing on this rover is believed to {_bearing_sigma():.1f} deg, "
           f"which is what that has to beat)")
     ranged = [one for solved in found for one in solved["ranges"]]
     if ranged:
-        apart = max(ranged) / max(min(ranged), 0.01)
-        print(f"  fitted points {min(ranged):.2f} to {max(ranged):.2f} m out, "
-              f"a spread of {apart:.1f}x")
-        if apart < MIN_RANGE_RATIO:
-            print("  **the offset is not determined**: everything fitted was at "
-                  "much the same distance, so the parallax cannot tell an offset "
-                  "from a rotation.")
-    flat = statistics.median(one["flat_residual_deg"] for one in found)
-    fitted = statistics.median(residuals)
-    print(f"  with the two lenses taken as co-located, the same points miss by "
-          f"{flat:.2f} deg")
-    if flat < fitted * OFFSET_EARNS_ITS_KEEP:
-        print("  **so the offset above is not a measurement**: putting the two "
-              "cameras in the same place costs the fit nothing, which means the "
-              "data never asked for an offset and the solver was free to choose "
-              "one. Take the rotation, and measure the offset with a ruler -- two "
-              "brackets on one chassis, and a ruler is an honest instrument "
-              "there.")
+        print(f"  fitted points {min(ranged):.2f} to {max(ranged):.2f} m out")
     print()
-    _leftover(spread)
+    _about_the_offset(numpy, found)
+    _leftover(spread, offset)
     return 0
+
+
+def _about_the_offset(numpy, found) -> None:
+    """What a solver says the offset is, and why it is not in the answer."""
+    claims = [one["free"] for one in found if one["free"] is not None]
+    if not claims:
+        return
+    middle = numpy.median(numpy.vstack(claims), axis=0)
+    print(f"  a solver left to choose the offset for itself says "
+          f"{middle[0]:+.3f} forward, {middle[1]:+.3f} left, {middle[2]:+.3f} up")
+    print("  -- which is printed as a warning and not used. Two lenses a few")
+    print("  centimetres apart looking at a room metres away see it in almost the")
+    print("  same direction, so the offset is the part of this pose the data")
+    print("  barely constrains, and a solver will spend it absorbing anything")
+    print("  else that is systematic. On this rover it claimed half a metre")
+    print("  between two cameras that are a few centimetres apart. Measure the")
+    print("  offset with a ruler and pass it in with --offset.")
+    print()
 
 
 def _bearing_sigma() -> float:
@@ -537,16 +522,16 @@ def _bearing_sigma() -> float:
         return 1.5
 
 
-def _leftover(spread) -> None:
+def _leftover(spread, offset) -> None:
     """The block to paste into `oak.py`, so nobody retypes a number."""
     print("to adopt this, put it in oak.py and set MEASURED = True:")
     print()
     print("    MOUNT = Mount(")
     print(f"        yaw_deg={spread('yaw_deg')[0]:.2f},")
     print(f"        pitch_deg={spread('pitch_deg')[0]:.2f},")
-    print(f"        forward_m={spread('forward_m')[0]:.3f},")
-    print(f"        left_m={spread('left_m')[0]:.3f},")
-    print(f"        up_m={spread('up_m')[0]:.3f},")
+    print(f"        forward_m={offset[0]:.3f},")
+    print(f"        left_m={offset[1]:.3f},")
+    print(f"        up_m={offset[2]:.3f},")
     print("    )")
     print("    MEASURED = True")
     print()
@@ -560,16 +545,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--pan", type=float, nargs="+", default=[0.0],
                         help="gimbal pan positions to solve at (default: just "
-                             "0). Several is a check on the answer rather than "
-                             "more of it -- each is solved on its own, and the "
-                             "report prints how far apart they came out")
+                             "0, which is where the mount is defined). Several "
+                             "is a check on the answer rather than more of it")
+    parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0],
+                        metavar=("FORWARD", "LEFT", "UP"),
+                        help="where the OAK's lens sits relative to the gimbal "
+                             "camera's, in metres. **Measure this with a ruler**: "
+                             "this bench cannot, and says why. Default is nothing, "
+                             "which for two cameras a few centimetres apart costs "
+                             "about a degree of bearing at two metres")
     parser.add_argument("--save", metavar="PREFIX",
                         help="write both pictures per position, the OAK's warped "
                              "into the fisheye's geometry, so a person can see "
                              "what was matched")
     args = parser.parse_args()
 
-    print("bench_oak -- where the OAK is, against the camera the rover trusts")
+    print("bench_oak -- which way the OAK points, against the camera the rover "
+          "trusts")
     print()
     try:
         import cv2
@@ -589,15 +581,16 @@ def main() -> int:
     if not first["ok"]:
         print(f"the gimbal camera would not answer: {first['error']}")
         return 1
-    maps = warp_maps(cv2, numpy, first["size"], lens_oak)
+    maps = warp_maps(numpy, first["size"], lens_oak)
 
     found, notes = [], []
     for pan in args.pan:
-        one, note = at_pan(cv2, numpy, pan, ranger, lens_oak, maps, args.save)
+        one, note = at_pan(cv2, numpy, pan, ranger, lens_oak, maps,
+                           args.offset, args.save)
         notes.append(note)
         if one is not None:
             found.append(one)
-    return report(found, notes)
+    return report(numpy, found, notes, args.offset)
 
 
 if __name__ == "__main__":
