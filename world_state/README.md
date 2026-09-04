@@ -810,15 +810,20 @@ searches never carries it. It used to be opened and given back for every search,
 which was most of what a search cost — 2.6 s to deserialise, 0.2 s to hand back,
 and a look's own three engines to open again afterwards, around a forward pass
 of ten milliseconds. That arrangement was forced by the local language model
-holding 3.2 GB of the board's 7.4; with that gone, all four engines measured
-2.7 GB in one process and left 1.3 GB spare, ran a look and a search either side
-of each other, and the sidecar's resident memory went from 1.5 GB to 2.7. The
-thing that makes it safe rather than merely measured is that a look which cannot
-find room puts the tower down and tries again, so what is given up is the search
-nobody is waiting for.
+holding 3.2 GB of the board's 7.4, and that model is gone. **What it costs is
+1.8 GB held for good**: the sidecar was 1.5 GB resident and is 3.3 GB, and the
+board's free memory went from 3.6 GB to 2.7 -- the engine file is 1.1 GB of that
+and TensorRT's activation arena the rest. The thing that makes it safe rather
+than merely affordable is that a look which cannot find room puts the tower down
+and tries again, so what is given up is the search nobody is waiting for.
 
 The other half of what a search cost was the tokenizer, rebuilt from its 34 MB of
 JSON on every call at 2.3 s a time. It is built once now and kept.
+
+Measured on the rover afterwards: the first search after a restart takes 3.5 s
+and every one after it 0.08 s, looks and searches alternate with the look still
+at 0.56 s, and the ranking that was 0.29 s of a Python loop over 1,130 vectors is
+now a numpy multiply inside that 0.08.
 
 ```bash
 ssh orin 'cd ~/ugv/world_state && python3 bench_perceive.py'   # what a look costs

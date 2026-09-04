@@ -393,8 +393,9 @@ class _GpuModels:
         saying it has run out of room, and once it got the sidecar killed
         outright. That model has not been on the rover since it moved to the
         Orin, and measured again with it gone all four engines open in one
-        process, come to 2.7 GB, run a look and a search either side of each
-        other, and leave 1.3 GB spare.
+        process and run a look and a search either side of each other. It costs
+        1.8 GB held for good -- the sidecar goes from 1.5 GB resident to 3.3,
+        leaving the board 2.7 GB free.
 
         What it was costing was the whole of a search: 2.6 s to deserialise
         1.1 GB, 0.2 s to give it back, and a look's three engines to open again

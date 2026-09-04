@@ -703,11 +703,13 @@ look's own three engines to open again afterwards; 0.29 s was scoring a thousand
 stored vectors in a Python loop; and the forward pass everything else was in
 service of was ten milliseconds. The tokenizer is built once and kept, the
 scoring is one numpy matrix multiply, and the third bullet above no longer holds
--- with the local language model gone from this rover all four engines open in
-one process, come to 2.7 GB and leave 1.3 GB spare, so the text tower is opened
-by the first search and kept. A look that cannot find room puts it down and tries
-again, which is what makes that safe rather than merely measured. A search after
-the first now costs a fraction of a second.
+-- with the local language model gone from this rover all four engines open in one
+process, at the price of 1.8 GB held for good, so the text tower is opened by the
+first search and kept. A look that cannot find room puts it down and tries again,
+which is what makes that safe rather than merely affordable. Measured on the
+rover afterwards: the first search after a restart takes 3.5 s and every one
+after it 0.08 s, and a look alternating with searches still takes 0.56 s. The
+sidecar is 3.3 GB resident where it was 1.5, leaving the board 2.7 GB free.
 
 A fourth was in the deployer rather than the rover: `rover_daemon` holds the
 world-state modules in memory, so deploying `world_state` alone put a new search

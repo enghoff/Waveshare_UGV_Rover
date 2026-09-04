@@ -102,9 +102,10 @@ def test_the_text_tower_is_kept_until_a_look_needs_the_room() -> None:
     The tower is 1.1 GB and was opened and given back for every single search,
     which was 2.8 s of a four-second answer. It is kept now. What makes that
     safe is not that it fits -- measured, it does, with the language model that
-    used to crowd it gone from this rover -- but that a look which cannot find
-    room puts it down and tries again, so the thing given up is the search
-    nobody is waiting for rather than the rover's eyes.
+    used to crowd it gone from this rover, at 1.8 GB held for good out of the
+    3.6 that were free -- but that a look which cannot find room puts it down
+    and tries again, so the thing given up is the search nobody is waiting for
+    rather than the rover's eyes.
     """
     from world_state import engines as engines_module
     from world_state.perceive import _GpuModels

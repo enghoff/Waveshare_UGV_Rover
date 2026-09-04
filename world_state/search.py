@@ -188,10 +188,11 @@ def _scored(query: bytes, wanted: tuple[float, ...],
                 for row in keep], skipped
 
     # One buffer out of the blobs and one multiply over the lot. Double
-    # precision because the pure-Python path above is the reference for what a
-    # score means, and float32 accumulation over 768 terms would disagree with
-    # it in the fourth decimal -- which is the decimal the answer is rounded to
-    # and the floor is read against.
+    # precision because the loop above is the reference for what a score means
+    # and it accumulates in double: the two answers then agree to the last digit
+    # either of them prints, which is what the test beside this checks. It costs
+    # 7 MB of working memory at the size the store has reached, and the multiply
+    # is three milliseconds either way.
     stored = np.frombuffer(
         b"".join(bytes(row["siglip_blob"]) for row in keep),
         dtype="<f4").reshape(len(keep), width // 4).astype(np.float64)
