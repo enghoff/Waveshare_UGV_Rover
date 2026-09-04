@@ -104,6 +104,17 @@ DEPTH_PATCH_PX = 12
 #: Everything at one distance is a single parallax reading, and any combination
 #: of offset and rotation explains one of those.
 MIN_RANGE_RATIO = 1.6
+#: How much worse the fit has to get when the two lenses are taken as co-located
+#: before the offset it found counts as having been measured.
+#:
+#: **Two lenses a few centimetres apart looking at things metres away see them in
+#: almost the same direction**, so the offset is the weakly observable half of
+#: this pose and a solver will put it wherever best trades against the rotation.
+#: Five centimetres at two metres is 1.4 degrees, at six metres 0.5 -- the same
+#: size as what the fit leaves over -- so "the residual got worse without it" is
+#: the only honest evidence that the data contained one. 1.5 is a fit half again
+#: as bad, which no amount of noise produces by accident.
+OFFSET_EARNS_ITS_KEEP = 1.5
 #: How coarse a grid the fisheye warp is built on before it is interpolated up.
 #: The lens is smooth, so sampling every eighth pixel and resizing is well under
 #: a pixel out -- and it means the map is built from `lens.ray_at` itself rather
@@ -287,6 +298,30 @@ def solve_pose(cv2, numpy, object_points, image_points):
     return rotation, tvec.reshape(3), kept, residual
 
 
+def _residual_without_offset(cv2, numpy, rotation, object_points, image_points,
+                             kept):
+    """What the same points miss by if the two lenses are taken to be co-located.
+
+    The comparison that says whether the offset the solver found was in the data
+    or was free. If putting the two cameras in the same place costs nothing, then
+    nothing here measured how far apart they are, and the number to print is a
+    warning rather than a distance.
+    """
+    identity = numpy.eye(3)
+    zero = numpy.zeros(3)
+    rvec, _ = cv2.Rodrigues(rotation)
+    objects = numpy.array([object_points[i] for i in kept],
+                          numpy.float64).reshape(-1, 1, 3)
+    projected, _ = cv2.projectPoints(objects, rvec, zero, identity,
+                                     numpy.zeros(5))
+    apart = []
+    for slot, index in enumerate(kept):
+        dx = float(projected[slot][0][0]) - image_points[index][0]
+        dy = float(projected[slot][0][1]) - image_points[index][1]
+        apart.append(math.degrees(math.atan(math.hypot(dx, dy))))
+    return apart
+
+
 def chassis_from_optical(numpy, pan_deg: float, tilt_deg: float):
     """The matrix taking a direction in the gimbal camera's optical frame to the
     rover's own: x forward, y left, z up.
@@ -400,9 +435,21 @@ def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, save):
                       f"no pose survived them")
     rotation, translation, kept, residual = solved
     found = mount_from(numpy, rotation, translation, frame["pan"], frame["tilt"])
+    # **And what the offset is actually worth, which is the question this data
+    # answers worst.** Two lenses a few centimetres apart, looking at things
+    # metres away, see them in almost the same direction: five centimetres at two
+    # metres is 1.4 degrees and at six is 0.5, which is the same size as what the
+    # fit leaves over. So the offset is weakly observable and a solver will
+    # happily put it anywhere that trades against the rotation. Comparing the
+    # residual against the residual with the offset taken out is the honest test
+    # of whether the data asked for one at all.
+    flat = [float(one) for one in _residual_without_offset(
+        cv2, numpy, rotation, object_points, image_points, kept)]
     found.update(inliers=len(kept), points=len(object_points),
+                 pan_deg=frame["pan"], tilt_deg=frame["tilt"],
                  residual_deg=statistics.median(residual),
                  worst_deg=max(residual),
+                 flat_residual_deg=statistics.median(flat),
                  ranges=[ranged[i] for i in kept])
     return found, (f"pan {pan:+.0f}: {counts[0]}/{counts[1]} features, "
                    f"{len(pairs)} matched, {len(object_points)} ranged, "
@@ -431,6 +478,16 @@ def report(found: list, notes: list) -> int:
     print(f"{len(found)} position(s) solved, "
           f"{sum(one['inliers'] for one in found)} points fitted in all")
     print()
+    print("what each position said on its own")
+    print("    pan     yaw    pitch     roll   forward     left       up   "
+          "pts   miss  flat")
+    for one in found:
+        print(f"  {one['pan_deg']:+5.0f}  {one['yaw_deg']:+6.2f}  "
+              f"{one['pitch_deg']:+6.2f}  {one['roll_deg']:+6.2f}  "
+              f"{one['forward_m']:+8.3f} {one['left_m']:+8.3f} "
+              f"{one['up_m']:+8.3f}  {one['inliers']:4d}  "
+              f"{one['residual_deg']:5.2f} {one['flat_residual_deg']:5.2f}")
+    print()
     print("                     median    spread over the positions")
     for key, label, unit in (("yaw_deg", "yaw", "deg"),
                              ("pitch_deg", "pitch", "deg"),
@@ -454,10 +511,18 @@ def report(found: list, notes: list) -> int:
         if apart < MIN_RANGE_RATIO:
             print("  **the offset is not determined**: everything fitted was at "
                   "much the same distance, so the parallax cannot tell an offset "
-                  "from a rotation. Take the rotation, and either find a scene "
-                  "with near and far things in it or measure the offset with a "
-                  "ruler -- two brackets on one chassis, and a ruler is an honest "
-                  "instrument there.")
+                  "from a rotation.")
+    flat = statistics.median(one["flat_residual_deg"] for one in found)
+    fitted = statistics.median(residuals)
+    print(f"  with the two lenses taken as co-located, the same points miss by "
+          f"{flat:.2f} deg")
+    if flat < fitted * OFFSET_EARNS_ITS_KEEP:
+        print("  **so the offset above is not a measurement**: putting the two "
+              "cameras in the same place costs the fit nothing, which means the "
+              "data never asked for an offset and the solver was free to choose "
+              "one. Take the rotation, and measure the offset with a ruler -- two "
+              "brackets on one chassis, and a ruler is an honest instrument "
+              "there.")
     print()
     _leftover(spread)
     return 0
