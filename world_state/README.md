@@ -1063,6 +1063,17 @@ recording was made under has since been cleared and a recording does not carry
 its own grid; that half is answered by the hand-drawn rooms in
 [`test_approach.py`](test_approach.py) and, in the end, by driving.
 
+**And against the rover's live room and its live walls, an hour later.** Eight
+things placed under map session 46, replayed with the grid that session was
+measured in — 130x231 at 5 cm — and the rover standing where it actually stood.
+All eight have somewhere to be seen from; seven are answered from their median
+line, and the eighth is the fallback doing its job: both of the two directions
+that thing has been seen from are now solid at the near bound and blind beyond
+it, so the ring answers instead. The standing point moves a median of 0.25 m for
+0.21 m of extra driving. That is the half the open-floor replay could not reach —
+a sight line refused by real walls — and it behaves as designed. Still nothing has
+driven to one of these points.
+
 The clearance it holds is the 15 cm a click on the console's map is held to, so
 a point this offers and a point a person taps are judged by the same rule. Nav2
 is stricter -- it lays the whole footprint over an inflated costmap -- so a
@@ -1173,11 +1184,19 @@ answer:
 python world_state/bench_approach.py /tmp/run.db --detail
 ```
 
-Give it `--grid` and it uses the rover's own occupancy map, and refuses when the
-recording's map session is not the one on the rover — those coordinates would be
-tested against somebody else's walls. Without it the floor is open and invented,
-and what is being measured is then the *direction* chosen rather than whether that
-direction is clear.
+Give it `--grid` and it uses the rover's own occupancy map, which
+[`collect_world.py`](collect_world.py) fetches read-only from the rover:
+
+```bash
+ssh orin 'python3 ~/ugv/world_state/collect_world.py'
+scp orin:/tmp/world_replay.json /tmp/world_replay.json
+python world_state/bench_approach.py /tmp/run.db --grid /tmp/world_replay.json
+```
+
+It refuses when the recording's map session is not the one that grid belongs to,
+because those coordinates would be tested against somebody else's walls. Without
+`--grid` the floor is open and invented, and what is being measured is then the
+*direction* chosen rather than whether that direction is clear.
 
 **`replay.py` replays a recording with the bearings it was recorded with**, unless
 it is told otherwise, and that is deliberate: `resolve.ray_of` reads the bearing

@@ -24,8 +24,9 @@ recording whose map has since been cleared has no walls to test against. Without
 `--grid` this uses open floor over the whole scene and says so: what it then
 measures is the *choice of direction*, which is the whole of what sight lines
 change, and not whether that direction is clear on any particular day's map.
-`--grid` takes the JSON that `collect_world.py` writes, and is only meaningful
-when the recording's map session is the one still on the rover.
+`--grid` takes the JSON that [`collect_world.py`](collect_world.py) writes on the
+rover, and refuses when the recording's map session is not the one that grid
+belongs to.
 
 Nothing here touches the rover.
 """
@@ -145,8 +146,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("database", help="a world.db the rover wrote")
     parser.add_argument("--grid", metavar="JSON",
-                        help="a collect_world.py file, for the real occupancy "
-                             "grid and the rover's pose")
+                        help="a file collect_world.py wrote on the rover, for "
+                             "the real occupancy grid and the rover's pose")
     parser.add_argument("--from", dest="stand", metavar="X,Y",
                         help="where the rover is standing, in metres; the "
                              "default is where it took its newest look")
