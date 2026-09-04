@@ -265,6 +265,13 @@ class RosNavigator:
         #: begin by driving to somewhere the caller ahead of it has since made
         #: wrong. The bridge holds one of these too, against a second client.
         self._move_mutex = threading.Lock()
+        #: When a move last let the wheels go, as `time.monotonic`. Stamped
+        #: rather than left to be sampled off `driving`, because a short move is
+        #: over between two samples: the depth camera's rule watched at half a
+        #: second and missed an eleven-degree turn entirely, which on the rover
+        #: read as a camera that had stopped waking up. Starts at now, so a
+        #: daemon that has never driven counts from when it came up.
+        self._wheels_at = time.monotonic()
         #: The running commentary, which is the only account of a move that
         #: arrives before the move is over. See MoveReport.
         self.report = MoveReport()
@@ -329,6 +336,19 @@ class RosNavigator:
         stale answer from a move that ended while it was busy.
         """
         return self._move_mutex.locked()
+
+    @property
+    def wheels_at(self) -> float:
+        """When a move last had the wheels, as `time.monotonic` -- now, if one has.
+
+        `driving` answers whether the rover is moving *at this instant*, which is
+        the wrong question for anything watching on a clock: a move can begin and
+        end between two looks and leave no trace in it. This is the same fact with
+        the instant remembered, so a watcher a second apart still sees that the
+        rover moved. What reads it is the depth camera's rule in
+        [rover_depth.py](rover_depth.py).
+        """
+        return time.monotonic() if self._move_mutex.locked() else self._wheels_at
 
     @property
     def away(self) -> str:
@@ -774,10 +794,15 @@ class RosNavigator:
         """
         if not self._move_mutex.acquire(blocking=False):
             return Outcome("busy", 0.0, 0.0, "a move is already running")
+        self._wheels_at = time.monotonic()
         try:
             self.report.begin(kind, asked, phase)
             return self.stream(request, phase)
         finally:
+            # Stamped before the release, so that a reader which finds the mutex
+            # free is reading the moment the move ended rather than the moment it
+            # began -- and so that no reader can find it free with a stale stamp.
+            self._wheels_at = time.monotonic()
             self._move_mutex.release()
 
     def stream(self, request: dict[str, Any], phase: str) -> Outcome:

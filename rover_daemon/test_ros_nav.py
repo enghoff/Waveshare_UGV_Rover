@@ -419,6 +419,36 @@ def test_two_moves_at_once_is_refused_rather_than_queued():
     check("...and says why in words", "already running" in second.detail, True)
 
 
+def test_a_move_leaves_the_moment_it_ended_behind_it():
+    """`driving` is gone the instant a move ends; `wheels_at` is what remains.
+
+    **A watcher on a clock cannot use `driving`.** The depth camera's rule looks
+    twice a second, and on the rover an eleven-degree turn began and ended
+    between two of those looks -- so the camera never woke, which is exactly the
+    nudge somebody at the console makes. The stamp is the same fact with the
+    instant remembered.
+    """
+    import ros_navigator
+
+    class Instant(ros_navigator.RosNavigator):
+        def stream(self, request, phase):
+            from nav_types import Outcome
+            return Outcome("arrived", 0.2, 11.1)
+
+    nav = Instant(port=_closed_port())
+    made = nav.wheels_at
+    check("a navigator that has never moved still answers a time",
+          isinstance(made, float), True)
+
+    nav._wheels_at -= 60.0              # an hour of standing still, near enough
+    before = nav.wheels_at
+    outcome = nav.turn_in_place(11.1)
+    check("the turn arrived", outcome.reason, "arrived")
+    check("...and the wheels are free again the moment it did", nav.driving, False)
+    check("...but the move it just made is still on the clock",
+          nav.wheels_at > before, True)
+
+
 def test_a_bridge_that_is_not_there_is_a_sentence_not_a_traceback():
     """Every one of these results goes either into a model's context or onto a
     console panel, and both need words. An exception reaching the daemon's
@@ -659,6 +689,7 @@ TESTS = (
     test_a_move_narrates_itself_while_it_runs,
     test_the_move_report_says_what_was_asked_for,
     test_two_moves_at_once_is_refused_rather_than_queued,
+    test_a_move_leaves_the_moment_it_ended_behind_it,
     test_a_bridge_that_is_not_there_is_a_sentence_not_a_traceback,
     test_a_stop_is_never_reported_as_a_failure,
     test_a_bridge_that_dies_mid_move_stops_the_rover,

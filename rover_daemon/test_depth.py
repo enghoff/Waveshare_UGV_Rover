@@ -9,22 +9,36 @@ stops, without ever raising at the thread it runs on.
 """
 from __future__ import annotations
 
+import threading
+import time
+
 from test_fakes import FakeLink
 from test_harness import SKIP, check
 
 
-def _parked_rover():
-    """A rover that can drive, with a fake depth camera and nothing moving.
+class _Wheels:
+    """A navigator that only remembers when it last had the wheels.
 
-    `driving` reads the navigator's move mutex on the real thing; here it is a
-    plain attribute on a stand-in, which is what lets a test drive the rule
-    without a ROS graph behind it.
+    `wheels_at` is a property on the real one that answers now while a move is
+    running and the moment it let go otherwise; a plain number is the same thing
+    from the rule's side, and it lets a test move the clock about without a ROS
+    graph behind it.
     """
+
+    def __init__(self) -> None:
+        self.wheels_at = time.monotonic()
+
+    def moved(self) -> None:
+        self.wheels_at = time.monotonic()
+
+
+def _parked_rover():
+    """A rover that can drive, with a fake depth camera and nothing moving."""
     import rover_daemon
     from world_state import depth_client
 
     rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
-    rover.nav = type("Wheels", (), {"driving": False})()
+    rover.nav = _Wheels()
     fake = depth_client.FakeRanger()
     rover._world_ranger = lambda: fake
     return rover, fake
@@ -79,7 +93,7 @@ def test_the_camera_follows_the_wheels():
     """On while it drives, off half a minute after it stops, and nothing between.
 
     The clock is the tick's own `time.monotonic`, so the half minute is moved by
-    winding `_depth_moved_at` back rather than by sleeping through it.
+    winding the navigator's stamp back rather than by sleeping through it.
     """
     try:
         import rover_daemon                                 # noqa: F401
@@ -100,7 +114,7 @@ def test_the_camera_follows_the_wheels():
           fake.switches, [True])
 
     # Half a minute of standing still.
-    rover._depth_moved_at -= rover_depth.DEPTH_IDLE_OFF_S + 1.0
+    rover.nav.wheels_at -= rover_depth.DEPTH_IDLE_OFF_S + 1.0
     rover.depth_tick()
     check("a rover that has stood still switches the camera off",
           fake.switches, [True, False])
@@ -109,37 +123,43 @@ def test_the_camera_follows_the_wheels():
     check("...and is not switched off again every half second",
           fake.switches, [True, False])
 
-    # And it drives.
-    rover.nav.driving = True
+    # And it drives. **This is the case the rule got wrong on the rover.** It
+    # used to ask the navigator whether the wheels were turning *now*, and an
+    # eleven-degree turn began and ended between two ticks -- so the camera never
+    # woke, which is exactly the nudge somebody at the console makes. What is
+    # read instead is when the wheels last moved, and a move over before the next
+    # tick still leaves that behind.
+    rover.nav.moved()
     rover.depth_tick()
-    check("the wheels turning switch it back on", fake.switches, [True, False, True])
+    check("a move already over by the next tick still switches it on",
+          fake.switches, [True, False, True])
     check("...and it answers waking rather than on", fake.power().state, "waking")
 
-    # Still driving half an hour later: the idle clock is held at now for as long
-    # as the wheels are turning, so nothing switches off mid-drive.
-    rover._depth_moved_at -= 1800.0
+    # Still going half an hour later. The real navigator answers `now` for as
+    # long as the move mutex is held, so nothing switches off mid-drive.
+    rover.nav.moved()
     rover.depth_tick()
     check("a long drive never switches the camera off",
           fake.switches, [True, False, True])
 
-    # It stops, and the half minute starts again from the stop rather than from
-    # the last time anything was switched.
-    rover.nav.driving = False
+    # And the half minute is counted from the last movement rather than from the
+    # last time anything was switched.
+    rover.nav.wheels_at -= rover_depth.DEPTH_IDLE_OFF_S - 1.0
     rover.depth_tick()
-    check("stopping does not switch it off there and then",
+    check("twenty-nine seconds after the last move it is still on",
           fake.switches, [True, False, True])
-    rover._depth_moved_at -= rover_depth.DEPTH_IDLE_OFF_S + 1.0
+    rover.nav.wheels_at -= 2.0
     rover.depth_tick()
-    check("...but half a minute after the stop does",
+    check("...and half a minute after it does go off",
           fake.switches, [True, False, True, False])
 
 
 def test_a_rover_that_cannot_drive_keeps_its_camera():
     """No navigator, no rule -- and no camera quietly switched off for ever.
 
-    `driving` is false for the whole life of such a daemon, so a rule that ran
-    anyway would switch the camera off thirty seconds after boot and never have
-    a reason to switch it on again.
+    Such a daemon never moves at all, so a rule that ran anyway would switch the
+    camera off thirty seconds after boot and never have a reason to switch it on
+    again.
     """
     try:
         import rover_daemon                                 # noqa: F401
@@ -150,7 +170,6 @@ def test_a_rover_that_cannot_drive_keeps_its_camera():
 
     rover, fake = _parked_rover()
     rover.nav = None
-    rover._depth_moved_at = None
 
     rover.depth_tick()
     check("a rover that cannot drive does not touch the switch", fake.switches, [])
@@ -187,7 +206,7 @@ def test_the_rule_never_raises_at_its_own_thread():
           answer["ok"], False)
     check("...and says what threw", "fell off the bus" in answer["error"], True)
 
-    rover._depth_stop = __import__("threading").Event()
+    rover._depth_stop = threading.Event()
     rover._depth_stop.set()          # so the loop runs its body no times over
     rover._depth_rule_loop()         # and returning at all is the check
     try:

@@ -20,9 +20,17 @@ its next tick.
 **Why the daemon owns the rule**, when the depth service runs on the same
 machine and could watch a clock itself: only the daemon knows whether the wheels
 are turning. The move mutex in `ros_navigator.py` is the fact -- every drive,
-turn, tap on the map and explore run holds it -- so `driving` cannot drift out
-of step with what the rover is actually doing, and a rover with no navigator at
-all is left alone rather than guessed at.
+turn, tap on the map and explore run holds it -- so this cannot drift out of
+step with what the rover is actually doing, and a rover with no navigator at all
+is left alone rather than guessed at.
+
+**What is read is when the wheels last moved, not whether they are moving.**
+This watched `driving` at first and it was measurably wrong on the rover: an
+eleven-degree turn began and ended between two half-second looks, so the camera
+never woke at all, while a longer turn a moment later woke it as expected. A
+short move is exactly the case somebody nudging the rover from the console
+makes, so the navigator stamps `wheels_at` when it lets go and this reads the
+stamp.
 
 The client is `world_state.depth_client`, reached through the ranger the world
 state already keeps, so there is one place in this daemon that knows where the
@@ -43,9 +51,11 @@ from typing import Any
 #: being chosen -- and switching off across those gaps would spend the whole of
 #: the following leg in a four-to-six second firmware upload with no ranges.
 DEPTH_IDLE_OFF_S = 30.0
-#: How often the rule looks at the wheels. It reads a mutex and nothing else
+#: How often the rule looks at the wheels. It reads one number and nothing else
 #: unless the switch has to move, so this is paced by how late the camera may
-#: start waking rather than by what asking costs.
+#: start waking rather than by what asking costs. Nothing is missed by looking
+#: this slowly: what it reads is a stamp of when the wheels last moved, so a move
+#: shorter than a tick still shows up on the tick after it.
 DEPTH_TICK_S = 0.5
 #: And how long to leave a depth service that would not answer before trying it
 #: again, so a stopped service is not connected to twice a second for the life
@@ -56,10 +66,9 @@ DEPTH_RETRY_S = 30.0
 class RoverDepth:
     """Switching the depth camera off while the rover stands still, and on again."""
 
-    #: When the wheels were last turning, and what the switch was last set to.
-    #: Class attributes so that a bench `Rover` which never started the rule can
-    #: still have `depth_tick` called at it -- the first tick starts the clock.
-    _depth_moved_at: float | None = None
+    #: What the switch was last set to, when it was last attempted, and how that
+    #: went. Class attributes so that a bench `Rover` which never started the rule
+    #: can still have `depth_tick` called at it.
     _depth_on: bool | None = None
     _depth_tried_at: float = 0.0
     _depth_error: str = ""
@@ -77,11 +86,11 @@ class RoverDepth:
     def start_depth_rule(self) -> str:
         """Put the camera's switch on the wheels, and answer with the line to log.
 
-        Nothing on a rover that cannot drive. `driving` is false for the whole
-        life of such a daemon, so the rule would switch the camera off half a
-        minute after boot and never switch it on again -- which is a sensor
-        quietly lost rather than a saving, and the honest answer to "is this
-        rover moving?" from something with no navigator is that it does not know.
+        Nothing on a rover that cannot drive. Such a daemon never moves at all,
+        so the rule would switch the camera off half a minute after boot and
+        never switch it on again -- which is a sensor quietly lost rather than a
+        saving, and the honest answer to "when did this rover last move?" from
+        something with no navigator is that it does not know.
         """
         if getattr(self, "nav", None) is None:
             return ""
@@ -105,7 +114,7 @@ class RoverDepth:
         """One look at the wheels, and the switch if they have changed their mind.
 
         The switch is only touched when the answer differs from what was last
-        asked for, so a parked rover costs one mutex read twice a second and a
+        asked for, so a parked rover costs one clock read twice a second and a
         driving one the same. The first tick of all does send a switch-on, which
         is a no-op at the service and is worth the round trip: it is how this
         finds out what state the camera is actually in rather than assuming the
@@ -116,16 +125,11 @@ class RoverDepth:
         spaced out, because a depth service that has been stopped for the evening
         should not be connected to twice a second until morning.
         """
-        if getattr(self, "nav", None) is None:
+        wheels = getattr(getattr(self, "nav", None), "wheels_at", None)
+        if wheels is None:
             return
         now = time.monotonic()
-        if self._depth_moved_at is None:
-            self._depth_moved_at = now
-        if self.driving:
-            self._depth_moved_at = now
-            want = True
-        else:
-            want = now - self._depth_moved_at < DEPTH_IDLE_OFF_S
+        want = now - wheels < DEPTH_IDLE_OFF_S
         if want is self._depth_on:
             return
         if self._depth_error and now - self._depth_tried_at < DEPTH_RETRY_S:
