@@ -64,23 +64,19 @@ LENS_CACHE_S = 60.0
 FRAME_MAX_AGE_S = 2.0
 #: And how far apart the picture and the depth map behind it may have been taken.
 #:
-#: **Measured on the rover on 2026-09-04 over sixty reads a second apart: median
-#: 0.197 s, worst 0.217 -- with the camera running at 2 fps.** The colour sensor
-#: and the mono pair free-run on their own clocks, this camera has no hardware
-#: sync between them, and the colour frame additionally waits on the MJPEG
-#: encoder. The service pairs on the device's own timestamps and never picked a
-#: frame further out than that.
+#: **This stopped being the binding constraint when the camera went to 15 fps on
+#: 2026-09-04.** Measured on the rover that day: at the old 2 fps the gap ran
+#: 0.041 to 0.069 s and *climbed steadily* through a 40-second sample, about
+#: 0.7 ms/s -- the two streams' frame boundaries sliding relative to each other,
+#: bounded by the half frame interval at which the pairing picks the adjacent
+#: frame instead. At 15 fps that bound is 33 ms and the measurement is **0.000 to
+#: 0.001 s, stable over a minute**: the two halves are now exposed together.
 #:
-#: **Left at 0.30 when the rate went to 15 on 2026-09-04, and what that costs is
-#: honest ignorance.** At 2 fps this threshold sat above the worst honest pairing
-#: and below the 0.500 s an off-by-one-frame mispairing gave, so it told the two
-#: apart. At 15 fps a whole frame is 67 ms, so no threshold can make that
-#: distinction any more -- and whether the honest phase error itself falls with
-#: the interval depends on how much of the 0.197 s was free-running phase, which
-#: does fall, against fixed encoder latency, which does not. That split has never
-#: been measured. So this stays a loose sanity bound on a pair that is obviously
-#: not one measurement, the number to re-measure once the rover is up, and the
-#: phase is charged rather than relied on being small.
+#: So 0.30 is left where it is and has become a stall guard rather than a pairing
+#: check. It cannot be the latter any more -- a whole-frame mispairing is 67 ms at
+#: this rate, well under the threshold -- but nothing has been seen within two
+#: orders of magnitude of it, and the phase is charged to the answer anyway rather
+#: than relied upon being small.
 #:
 #: **The phase is charged rather than merely tolerated.** A fifth of a second is
 #: 9 cm at the speed this rover explores at, and the box was drawn on one frame
@@ -108,12 +104,12 @@ class Ranged:
     #: a range is only true of where the camera was when it was taken**: the
     #: depth camera holds each frame back until the picture it belongs with has
     #: arrived, so a reading is always somewhat older than the moment it is read
-    #: at -- and on a rover exploring at 0.47 m/s that age is distance. It was
-    #: about two thirds of a second when the camera ran at 2 fps, or thirty
-    #: centimetres; the rate went to 15 on 2026-09-04 and most of that age went
-    #: with it, but this is read off the reply rather than assumed so that
-    #: neither figure has to be remembered here. The caller knows how fast the
-    #: rover was going and is the only one that can charge it to the answer; see
+    #: at -- and on a rover exploring at 0.47 m/s that age is distance. Measured
+    #: on the rover on 2026-09-04: a median of 0.768 s when the camera ran at
+    #: 2 fps, which is 36 cm, and **0.102 s at the 15 it runs at now, which is 5**.
+    #: Read off the reply rather than assumed, which is what let the rate change
+    #: without touching any of this. The caller knows how fast the rover was going
+    #: and is the only one that can charge it to the answer; see
     #: `Inspector._aged_sigma`.
     age_s: float = 0.0
     #: And how far apart the picture the box was drawn on and the depth map the

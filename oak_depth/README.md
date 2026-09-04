@@ -258,23 +258,40 @@ a range taken from the other are not one measurement. So each depth frame is hel
 back until the picture it belongs with has arrived, and the two are published
 together.
 
-**The age a reader sees is two things, and only one of them is the pairing.** The
-hold-back is exactly one frame interval — a depth frame goes out when the next one
-arrives — and then the reader waits, on average, another half interval for its
-turn. That was about 0.65 s in total at 2 fps and is **roughly a tenth of a second
-at 15**, which is what raising the rate was for.
+**The age a reader sees is the hold-back plus its own wait, and both are frame
+intervals.** A depth frame goes out when the next one arrives, and then the reader
+waits on average another half interval for its turn — so the age is roughly one
+and a half intervals whatever the rate, and shrinking the interval is the whole
+lever.
 
-The remainder is the two sensors being out of phase with each other, and **how
-much of that falls with the rate is not known.** Measured at 2 fps on 2026-09-04
-over sixty reads a second apart, `depth_apart_s` had a **median of 0.197 s and a
-worst of 0.217**. Part of that is the colour sensor and the mono pair free-running
-on their own clocks with no hardware sync between them, which is proportional to
-the interval and does shrink; part is the encoder's own fixed latency, which does
-not. Nothing has separated the two, so **the honest expectation at 15 fps is
-somewhere between 0.013 s and 0.197 s, and it has to be re-measured on the rover.**
-`world_state` still refuses a pair more than `MAX_APART_S` (0.30 s) apart, but be
-aware that at this rate a whole-frame mispairing is 67 ms and no time threshold
-can spot one any more.
+**Measured on the rover on 2026-09-04, before and after the change**, sampling the
+reply headers once a second with the rest of the rover running:
+
+| | at 2 fps, n=40 | at 15 fps, n=60 |
+|---|---|---|
+| `X-Frame-Age` | median **0.768 s**, 0.507–0.991 | median **0.102 s**, 0.069–0.132 |
+| that age at 0.47 m/s | 36 cm of rover | **5 cm** |
+| `X-Depth-Apart` | median 0.056 s, 0.041–0.069 | **0.000–0.001 s** |
+
+So the age came down 7.5-fold, which is what the change was for and is the number
+that matters: it is the distance between where the rover was when the picture was
+taken and where it is when a range is read off it.
+
+**The gap between the two halves turned out not to be a floor at all.** The README
+used to record a median of 0.197 s as a property of two sensors free-running with
+no hardware sync, and called it a fault not worth chasing. It is not a constant: at
+2 fps it climbed steadily through the sample, 0.041 to 0.069 over forty seconds, a
+drift of about **0.7 ms/s**. That is the two streams' frame boundaries sliding
+relative to each other, and how far they can slide before the pairing picks the
+adjacent frame instead is half a frame interval — 250 ms at 2 fps, 33 at 15. At 15
+the measurement is **a millisecond, stable over a minute**, so the two halves of a
+reading are now to all intents exposed together and the old figure was mostly an
+artefact of having only two colour frames a second to choose between.
+
+One consequence worth knowing: `world_state` refuses a pair more than
+`MAX_APART_S` (0.30 s) apart, and at this rate a whole-frame mispairing is 67 ms,
+so that threshold can no longer tell a mispairing from an honest pair. It is a
+stall guard now rather than a pairing check. Nothing has been seen near it.
 
 Both numbers ride on the reply — `X-Frame-Age` and `X-Depth-Apart` — because both
 are time the rover was moving through, and the consumer is the only thing that

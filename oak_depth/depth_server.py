@@ -91,11 +91,14 @@ DEFAULT_BIND = "127.0.0.1"
 # **Fifteen frames a second, raised from two on 2026-09-04**, because how *old*
 # the answer is turned out to matter more than what the link costs. Two a second
 # was chosen when nothing read this; `world_state` now stitches a range from here
-# onto a box drawn on the gimbal camera, and at two the pair it reads is about
-# two thirds of a second old -- one frame interval of that is the hold-back that
-# pairs the two streams, and the rest is waiting for the next frame. That age is
-# rover movement between the two pictures a single measurement is made of, so
-# the interval is the thing worth shrinking and fifteen shrinks it sevenfold.
+# onto a box drawn on the gimbal camera, and there what matters is how old the
+# pair it reads is, because that age is rover movement between the two pictures a
+# single measurement is assembled from. The age is one frame interval of hold-back
+# plus about half a frame of waiting for a turn, so the interval is the whole
+# lever. Measured on the rover on 2026-09-04, one read a second: a median age of
+# **0.768 s at 2 fps against 0.102 at 15**, which at the speed this rover explores
+# at is 36 cm of error against 5. The gap between the two halves of a pair fell
+# with it, from a drifting 0.041-0.069 s to a stable 0.001.
 #
 # The link stays inside its budget, which is what two fps was protecting: the
 # arithmetic is 1.7 MB/s of depth plus 0.3 of colour against the 40 MB/s where

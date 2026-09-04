@@ -363,10 +363,13 @@ would never show up as an error:
   centimetres at three metres, a quarter of the answer at half of one.
 * **A range is only true of where the camera was when the frame was taken.** The
   depth service holds each frame until the picture it belongs with has arrived, so
-  a reading is about two thirds of a second old -- thirty centimetres at the 0.47
-  m/s this rover explores at, against a stereo error of two to seven centimetres.
-  `Inspector._aged_sigma` charges the rover's own speed over the shutter bracket
-  to the reading, in quadrature. It only ever widens.
+  a reading is always a little old -- measured on the rover on 2026-09-04, a
+  median of 0.102 s, which is 5 cm at the 0.47 m/s this rover explores at against
+  a stereo error of two to seven centimetres. It was 0.768 s and 36 cm until the
+  depth camera's rate went from 2 fps to 15 that day, which is what that change
+  was for. `Inspector._aged_sigma` charges the rover's own speed over the shutter
+  bracket to the reading, in quadrature, reading the age off each reply rather
+  than assuming any of these figures. It only ever widens.
 
 ### Matching by appearance was tried first, and it does not work in a real room
 
