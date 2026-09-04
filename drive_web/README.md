@@ -196,8 +196,10 @@ row of the entity list, drives the rover to a place it can see that thing from.
 **Where it goes is the rover's answer, not the position in the row.** A placement
 names the middle of a thing, which is inside the furniture, so the console asks
 `world_state_viewpoint` for a patch of mapped floor the rover fits on with a clear
-line to the thing — the rules are in
-[`world_state/README.md`](../world_state/README.md) — and drives to that. The
+line to the thing — and, before that, for one of the directions the thing has
+actually been seen from, since a place the rover has already looked at it from is
+a demonstration that it is visible from there and no question put to the map is.
+The rules are in [`world_state/README.md`](../world_state/README.md). The
 point then reaches the wheels by exactly the path a click on the map takes: it
 stops whatever is running rather than being refused, waits for the wheels, and is
 dropped with a notice if they never come free. The one thing it carries that a
@@ -386,6 +388,19 @@ pulses and the views go on showing the previous answer rather than emptying,
 since a screen that has gone blank for five seconds reads as a search that never
 went.
 
+**The answer chooses its own best thing**, since 2026-09-04. A search is somebody
+asking where one thing is, so the top of the narrowed list is selected as the
+answer arrives: its sightings are drawn on the map, its looks are in the pane, and
+**go to** has something to send the rover to without a click that had no decision
+in it. It is the first match with a *thing* behind it, which is not always the
+first match — a look belonging to nothing yet is the ordinary state of anything
+seen once, and stopping at one of those would leave the real, placed thing under
+it unselected. A phrase that matched only such looks clears the selection rather
+than leaving the pane describing something the list no longer shows. The verdict
+is not consulted: below the floor the answer is still "nothing here matches", said
+on the line and on every row, and what is selected is the nearest thing the rover
+has, which is what somebody asking that question wants to see.
+
 ### The observation stream: thumbnails, and one at a time large
 
 The **observations** tab holds everything the rover has recorded, newest first. It
@@ -432,7 +447,10 @@ at the top left, because the popup's own close is in the corner directly above a
 two buttons of the same name in one corner is a single mis-click between reading a
 frame and shutting the popup. And **nothing in the popup listens for a key**: space
 and Escape stop the rover from anywhere on this page, so the large view closes on
-that button or on a click in the room beside the picture, never on Escape.
+that button or on a click in the room beside the picture, never on Escape. The
+search box is the single exception, and only for space: what is typed there is a
+phrase, so a space goes into the box rather than to the motors, while Escape stops
+the rover from inside it like everywhere else.
 
 The box is drawn red rather than in the console's accent blue. It is the one mark on
 a frame that was not in the room, and in blue it read as part of the furniture.

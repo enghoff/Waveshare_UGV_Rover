@@ -269,6 +269,69 @@ def test_finding_a_thing_from_the_console() -> None:
     check("...and is shown", session.world_state()["error"], "no perception sidecar")
 
 
+def test_the_best_thing_a_search_found_is_chosen_without_a_click() -> None:
+    """A search asks where one thing is, so the answer is one thing.
+
+    Three cases decide the rule: the top of the ranking is a look belonging to a
+    thing, the top of it is a look belonging to nothing yet, and none of it
+    belongs to anything. The second is the one worth having -- a thing seen once
+    has no entity behind its look, and stopping at that row would leave the real,
+    placed thing under it unselected on a screen that had just narrowed to it.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the search's own choice ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    sent = []
+    session.world_link = type("Link", (), {
+        "submit": lambda _self, name, arguments=None: sent.append((name, arguments)),
+    })()
+
+    session.world_act({"what": "search", "query": "the sofa"})
+    session.world_handle("world_state_search", {
+        "ok": True, "query": "the sofa", "confident": True, "floor": 0.09,
+        "matches": [{"score": 0.14, "observation_id": 4, "entity_id": "object:2"},
+                    {"score": 0.11, "observation_id": 5, "entity_id": "object:7"}],
+    }, 4.0)
+    check("the best-scoring thing is chosen", session.world_selected, "object:2")
+    check("...and its own history asked for", sent[-1],
+          ("world_state_entity", {"id": "object:2"}))
+
+    # The best *look* belongs to nothing, which is the ordinary state of anything
+    # seen once. The choice falls through to the best one that does.
+    session.world_act({"what": "search", "query": "the lamp"})
+    session.world_handle("world_state_search", {
+        "ok": True, "query": "the lamp", "confident": True, "floor": 0.09,
+        "matches": [{"score": 0.16, "observation_id": 8, "entity_id": None},
+                    {"score": 0.12, "observation_id": 9, "entity_id": "object:7"}],
+    }, 4.0)
+    check("a look with nothing behind it is passed over",
+          session.world_selected, "object:7")
+
+    # Below the floor the answer is "nothing here matches", and the nearest thing
+    # the rover has is still what it settled for. Hiding it would leave the person
+    # who wanted to see that with nothing on the screen.
+    session.world_act({"what": "search", "query": "a jet engine"})
+    session.world_handle("world_state_search", {
+        "ok": True, "query": "a jet engine", "confident": False, "floor": 0.09,
+        "matches": [{"score": 0.05, "observation_id": 11, "entity_id": "object:3"}],
+    }, 4.0)
+    check("what the rover settled for is shown even when it is not a match",
+          session.world_selected, "object:3")
+
+    # And a phrase that matched only looks nothing has been made of leaves the
+    # detail pane describing something the narrowed list no longer shows.
+    session.world_act({"what": "search", "query": "a kite"})
+    session.world_handle("world_state_search", {
+        "ok": True, "query": "a kite", "confident": True, "floor": 0.09,
+        "matches": [{"score": 0.13, "observation_id": 12, "entity_id": None}],
+    }, 4.0)
+    check("nothing placed means nothing chosen", session.world_selected, "")
+
+
 def test_a_looking_loop_that_has_failed_still_says_so() -> None:
     """There is no world-state line on the page any more, and none is wanted.
 
@@ -701,6 +764,7 @@ TESTS = (
     test_the_world_state_popup,
     test_going_to_look_at_a_thing,
     test_finding_a_thing_from_the_console,
+    test_the_best_thing_a_search_found_is_chosen_without_a_click,
     test_a_looking_loop_that_has_failed_still_says_so,
     test_an_open_popup_keeps_itself_current,
     test_the_world_urls,

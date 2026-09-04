@@ -360,6 +360,40 @@ class SessionWorld:
         # read on its own. The rover's own ceiling is 50.
         self.world_call("world_state_search", {"query": query, "limit": 24})
 
+    def world_found(self, body: dict[str, Any]) -> None:
+        """The best-scoring thing the search turned up, chosen without a click.
+
+        A search is somebody asking where one thing is, and the answer to that is
+        one thing. Left unselected, the phrase narrowed three views and then made
+        the person pick the top row out of them by hand before the map would draw
+        its sightings or "go to" would have anything to send the rover to -- a
+        click that had no decision in it, since the list is already in the rover's
+        own order and the top of it is the answer.
+
+        **The first match with a thing behind it, which is not always the first
+        match.** The ranking is over looks and a look need not belong to anything
+        yet: the ordinary state of something seen once is a row with no entity,
+        and choosing nothing because the best look was one of those would leave
+        the second-best -- a real, placed thing -- unselected on screen.
+
+        The verdict is deliberately not consulted. Below the floor the answer is
+        "nothing here matches", the list says so on every row and the line under
+        the box says it in words; what is selected is still the nearest thing the
+        rover has, and hiding it would leave a person who wanted to see what it
+        settled for with nothing to look at.
+        """
+        for match in body.get("matches") or []:
+            entity_id = str(match.get("entity_id") or "")
+            if entity_id:
+                if entity_id != self.world_selected:
+                    self.world_select(entity_id)
+                return
+        # Nothing the phrase matched has been made a thing of. Whatever was
+        # chosen before is not in the narrowed list, so leaving it selected would
+        # be a detail pane describing something the list beside it no longer
+        # shows.
+        self.world_select("")
+
     def world_map_cleared(self) -> None:
         """The SLAM map was thrown away, so the world state goes with it.
 
@@ -475,6 +509,7 @@ class SessionWorld:
             # phrase reads as the search having got it wrong.
             if str(body.get("query") or "") == self.world_query:
                 moved = self.world_put(search=body)
+                self.world_found(body)
         elif name == "world_state_viewpoint":
             # Where to stand has come back, so this becomes a destination on the
             # move connection -- through the same path a click on the map takes,
