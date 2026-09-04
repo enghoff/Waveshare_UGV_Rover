@@ -87,6 +87,41 @@ def _unmeasured():
 
 # --- the lens ----------------------------------------------------------------
 
+def test_a_pixel_survives_the_round_trip_through_the_mount() -> None:
+    """The invariant that keeps three sign conventions honest at once.
+
+    A direction in the rover's own frame goes into the OAK's picture as a pixel
+    and comes back out as a bearing and an elevation, through `_in_oak`, the
+    projection, `ray_at` and `view.chassis_direction` -- four pieces with a yaw, a
+    pitch and a roll between them, each of which has a sign that can be wrong on
+    its own. Checked end to end rather than piece by piece, because a pair of
+    compensating sign errors passes every test that looks at one of them.
+
+    Deliberately with a mount that is crooked in every axis at once: with any of
+    the three at zero, two of the ways to get this wrong stop being visible.
+    """
+    with _mounted(yaw_deg=-1.53, pitch_deg=3.11, roll_deg=-2.12):
+        for direction in ((1.0, 0.0, 0.0), (1.0, 0.25, 0.12),
+                          (1.0, -0.30, -0.15), (1.0, 0.10, -0.20)):
+            length = math.sqrt(sum(one * one for one in direction))
+            unit = tuple(one / length for one in direction)
+            placed = oak._in_oak(unit, 3.0)
+            x_frac, y_frac = oak._project(placed, OAK_LENS)
+            back = view.chassis_direction(x_frac, y_frac, oak.pan_deg(),
+                                          oak.tilt_deg(), lens=OAK_LENS)
+            apart = math.degrees(math.acos(min(1.0, max(-1.0, sum(
+                a * b for a, b in zip(unit, back))))))
+            check(f"a direction {tuple(round(one, 2) for one in unit)} comes "
+                  f"back where it went in", round(apart, 3), 0.0)
+
+    # And the roll on its own is invertible, which is the one pair of signs the
+    # round trip above could hide by cancelling.
+    with _mounted(roll_deg=-2.12):
+        x, y = oak._rolled(0.3, -0.2)
+        check("rolling and unrolling is the identity",
+              tuple(round(one, 9) for one in oak._unrolled(x, y)), (0.3, -0.2))
+
+
 def test_a_pixel_on_the_oak_becomes_a_direction() -> None:
     """A pinhole, so the centre of the picture is straight ahead and the edge is
     half the field of view off it. Checked against the field the device reports
@@ -101,16 +136,21 @@ def test_a_pixel_on_the_oak_becomes_a_direction() -> None:
         return (math.degrees(math.atan2(right, forward)),
                 math.degrees(math.atan2(-down, forward)))
 
-    middle_y = OAK_LENS.cy / OAK_LENS.height
-    left_edge = across(0.0, middle_y)[0]
-    right_edge = across(1.0, middle_y)[0]
-    check("the two side edges span the field of view the device reports",
-          round(right_edge - left_edge, 1), OAK_LENS.hfov_deg)
+    # With the mount's twist taken out, because this is about the lens rather
+    # than about how it is bolted on: `ray_at` applies the roll, so on a rover
+    # whose camera is two degrees out of true the frame's horizontal edges are
+    # not horizontal and its field would not measure across them.
+    with _unmeasured():
+        middle_y = OAK_LENS.cy / OAK_LENS.height
+        left_edge = across(0.0, middle_y)[0]
+        right_edge = across(1.0, middle_y)[0]
+        check("the two side edges span the field of view the device reports",
+              round(right_edge - left_edge, 1), OAK_LENS.hfov_deg)
 
-    middle_x = OAK_LENS.cx / OAK_LENS.width
-    check("...and the top and bottom edges span the vertical one",
-          round(across(middle_x, 0.0)[1] - across(middle_x, 1.0)[1], 1),
-          OAK_LENS.vfov_deg)
+        middle_x = OAK_LENS.cx / OAK_LENS.width
+        check("...and the top and bottom edges span the vertical one",
+              round(across(middle_x, 0.0)[1] - across(middle_x, 1.0)[1], 1),
+              OAK_LENS.vfov_deg)
 
     # **Not half each side, and that is the calibration rather than a slip.** The
     # device puts the principal point at (321.1, 189.8) on a 640x360 frame, which
@@ -118,9 +158,9 @@ def test_a_pixel_on_the_oak_becomes_a_direction() -> None:
     # degrees above the axis and 20.4 below. Reading either half as half the field
     # of view is the error a `hfov/2` model makes, and it is why nothing here uses
     # one.
-    check("the lens axis is not the middle of the picture",
-          round(across(middle_x, 0.0)[1], 1) == round(OAK_LENS.vfov_deg / 2, 1),
-          False)
+        check("the lens axis is not the middle of the picture",
+              round(across(middle_x, 0.0)[1], 1)
+              == round(OAK_LENS.vfov_deg / 2, 1), False)
 
 
 def test_the_oak_draws_a_bearing_through_its_own_lens() -> None:
@@ -449,6 +489,7 @@ def test_the_frame_header_says_how_far_apart_the_two_halves_were() -> None:
 
 
 TESTS = (
+    test_a_pixel_survives_the_round_trip_through_the_mount,
     test_a_pixel_on_the_oak_becomes_a_direction,
     test_the_oak_draws_a_bearing_through_its_own_lens,
     test_the_mount_is_where_an_oak_bearing_comes_from,

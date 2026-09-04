@@ -67,6 +67,15 @@ class Mount:
 
     yaw_deg: float = 0.0
     pitch_deg: float = 0.0
+    #: And how far the camera is twisted about its own optical axis, positive
+    #: the way a rotation from its x axis towards its y axis goes -- clockwise
+    #: in the picture. **Carried because this rover's is two degrees**, which is
+    #: past where it can be waved away: a roll mixes a ray's bearing into its
+    #: elevation and back, by the roll times how far off the axis the ray is, so
+    #: at the edge of this camera's field two degrees is more than a degree of
+    #: elevation. It was left out of the first version on the argument that a
+    #: bracket bolted to a flat plate has none, and the bracket disagreed.
+    roll_deg: float = 0.0
     forward_m: float = 0.0
     left_m: float = 0.0
     up_m: float = 0.0
@@ -107,13 +116,17 @@ class Mount:
 #: `bench_oak.py --offset FORWARD LEFT UP` -- which then solves the rotation with
 #: them held, and prints a block to paste back in here.
 #:
-#: The roll came out -0.5 degrees and `Mount` carries none, on the argument that
-#: a bracket bolted to a flat plate has none. Half a degree is inside the noise,
-#: so that argument survives; the bench prints the roll and says so when it does
-#: not.
+#: **The roll is carried, because it turned out to be two degrees.** It was left
+#: out at first on the argument that a bracket bolted to a flat plate has none,
+#: and it read as half a degree -- but that reading came from the fit that was
+#: also inventing half a metre of offset, and with the offset held at nothing it
+#: is -2.1. Two degrees mixes a ray's bearing into its elevation by the roll
+#: times how far off the axis the ray is, so at the edge of this camera's field
+#: it is worth more than a degree.
 MOUNT = Mount(
-    yaw_deg=-0.70,
-    pitch_deg=2.71,
+    yaw_deg=-1.53,
+    pitch_deg=3.11,
+    roll_deg=-2.12,
     forward_m=0.0,
     left_m=0.0,
     up_m=0.0,
@@ -158,7 +171,10 @@ def ray_at(x_frac: float, y_frac: float, lens: Any) -> tuple[float, float, float
     """Where a point in the OAK's picture looks: x right, y down, z out of the lens.
 
     The same convention `face_tracking/lens.ray_at` answers in, so `view` can
-    rotate either camera's answer with one piece of code.
+    rotate either camera's answer with one piece of code -- and **with the
+    mount's roll already taken out**, so that what comes back is in the frame the
+    yaw and the pitch are defined in and the caller can go on treating this
+    camera as a gimbal that never moves.
 
     A pinhole, and honestly one rather than for convenience -- see
     `depth_client.Lens`, where the measured reason is written down: this lens's
@@ -167,8 +183,25 @@ def ray_at(x_frac: float, y_frac: float, lens: Any) -> tuple[float, float, float
     """
     x = (x_frac * lens.width - lens.cx) / lens.fx
     y = (y_frac * lens.height - lens.cy) / lens.fy
+    x, y = _unrolled(x, y)
     length = math.sqrt(x * x + y * y + 1.0)
     return x / length, y / length, 1.0 / length
+
+
+def _rolled(x: float, y: float) -> tuple[float, float]:
+    """Turn a direction from the frame the yaw and pitch live in into the
+    sensor's own, which is the one a pixel is measured in."""
+    roll = math.radians(MOUNT.roll_deg)
+    return (x * math.cos(roll) - y * math.sin(roll),
+            x * math.sin(roll) + y * math.cos(roll))
+
+
+def _unrolled(x: float, y: float) -> tuple[float, float]:
+    """And back the other way. The inverse of `_rolled` by construction, which is
+    what `test_oak` checks rather than trusting the two signs to stay in step."""
+    roll = math.radians(MOUNT.roll_deg)
+    return (x * math.cos(roll) + y * math.sin(roll),
+            -x * math.sin(roll) + y * math.cos(roll))
 
 
 def pan_deg() -> float:
@@ -344,8 +377,11 @@ def _in_oak(direction: tuple[float, float, float],
     up = -forward * math.sin(pitch) + z * math.cos(pitch)
     if along <= 1e-6:
         return None
-    # Into the lens's own axes: x right, y down, z out.
-    return -left, -up, along
+    # Into the lens's own axes: x right, y down, z out -- and twisted by the
+    # mount's roll, because that is the frame a pixel is measured in and
+    # `_project` is a plain pinhole.
+    right, down = _rolled(-left, -up)
+    return right, down, along
 
 
 def _project(direction: tuple[float, float, float],
