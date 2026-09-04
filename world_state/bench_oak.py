@@ -363,8 +363,14 @@ def free_offset(cv2, numpy, objects, images):
 # --- one position, end to end -------------------------------------------------
 
 
-def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, offset, save):
-    """One gimbal position, as a solved rotation or a sentence saying why not."""
+def collect_at(cv2, numpy, pan, ranger, lens_oak, maps, save):
+    """One gimbal position, as points to solve from, or a sentence saying why not.
+
+    Kept apart from the solve because the offset the solve needs is measured with
+    a ruler rather than from these pictures, and by the time somebody has held one
+    up the rover has usually been moved. What comes back is plain lists, so it
+    survives being written to a file and read again.
+    """
     import lens as fitted                                         # noqa: PLC0415
 
     frame = gimbal_frame(pan)
@@ -433,21 +439,26 @@ def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, offset, save):
         return None, (f"pan {pan:+.0f}: {len(pairs)} matched, only "
                       f"{len(objects)} had a range")
 
-    solved = rotation_for(numpy, objects, images, offset)
+    return ({"objects": objects, "images": images, "ranges": ranged,
+             "pan_deg": frame["pan"], "tilt_deg": frame["tilt"]},
+            f"pan {pan:+.0f}: {counts[0]}/{counts[1]} features, "
+            f"{len(pairs)} matched, {len(objects)} ranged")
+
+
+def solve_at(numpy, kept, offset):
+    """The rotation for one collected position, at this offset, or None."""
+    solved = rotation_for(numpy, kept["objects"], kept["images"], offset)
     if solved is None:
-        return None, (f"pan {pan:+.0f}: {len(objects)} ranged points, "
-                      f"no rotation survived them")
+        return None
     rotation, miss, keep = solved
-    found = angles_of(numpy, rotation, frame["pan"], frame["tilt"])
-    found.update(inliers=int(keep.sum()), points=len(objects),
-                 pan_deg=frame["pan"],
+    found = angles_of(numpy, rotation, kept["pan_deg"], kept["tilt_deg"])
+    found.update(inliers=int(keep.sum()), points=len(kept["objects"]),
+                 pan_deg=kept["pan_deg"],
                  miss_deg=float(numpy.median(miss[keep])),
                  worst_deg=float(numpy.max(miss[keep])),
-                 free=free_offset(cv2, numpy, objects, images),
-                 ranges=[r for r, k in zip(ranged, keep) if k])
-    return found, (f"pan {pan:+.0f}: {counts[0]}/{counts[1]} features, "
-                   f"{len(pairs)} matched, {len(objects)} ranged, "
-                   f"{int(keep.sum())} fitted")
+                 free=None,
+                 ranges=[r for r, k in zip(kept["ranges"], keep) if k])
+    return found
 
 
 # --- what it all came to ------------------------------------------------------
@@ -560,6 +571,12 @@ def main() -> int:
                              "this bench cannot, and says why. Default is nothing, "
                              "which for two cameras a few centimetres apart costs "
                              "about a degree of bearing at two metres")
+    parser.add_argument("--points", metavar="FILE",
+                        help="where to keep the matched points. Written after a "
+                             "run and read instead of the cameras if the file "
+                             "is already there -- so the offset can be measured "
+                             "with a ruler afterwards and the rotation re-solved "
+                             "without needing the rover back in the same room")
     parser.add_argument("--save", metavar="PREFIX",
                         help="write both pictures per position, the OAK's warped "
                              "into the fisheye's geometry, so a person can see "
@@ -583,20 +600,68 @@ def main() -> int:
               "running, and is it a build that serves the colour half?")
         return 1
 
-    first = gimbal_frame(args.pan[0])
-    if not first["ok"]:
-        print(f"the gimbal camera would not answer: {first['error']}")
-        return 1
-    maps = warp_maps(numpy, first["size"], lens_oak)
+    kept = _read_points(args.points)
+    if kept is None:
+        first = gimbal_frame(args.pan[0])
+        if not first["ok"]:
+            print(f"the gimbal camera would not answer: {first['error']}")
+            return 1
+        maps = warp_maps(numpy, first["size"], lens_oak)
+        kept, notes = [], []
+        for pan in args.pan:
+            one, note = collect_at(cv2, numpy, pan, ranger, lens_oak, maps,
+                                   args.save)
+            notes.append(note)
+            if one is not None:
+                kept.append(one)
+        _write_points(args.points, kept)
+    else:
+        notes = [f"{len(kept)} position(s) read back from {args.points}, "
+                 f"the cameras untouched"]
 
-    found, notes = [], []
-    for pan in args.pan:
-        one, note = at_pan(cv2, numpy, pan, ranger, lens_oak, maps,
-                           args.offset, args.save)
-        notes.append(note)
-        if one is not None:
-            found.append(one)
+    found = []
+    for one in kept:
+        solved = solve_at(numpy, one, args.offset)
+        if solved is None:
+            notes.append(f"pan {one['pan_deg']:+.0f}: no rotation survived "
+                         f"its {len(one['objects'])} points")
+            continue
+        # What a solver claims the offset is, from this position's own points.
+        # Paired here rather than inside the solve because it is a warning about
+        # the method rather than part of the answer -- see `free_offset`.
+        solved["free"] = free_offset(cv2, numpy, one["objects"], one["images"])
+        found.append(solved)
     return report(numpy, found, notes, args.offset)
+
+
+def _read_points(path):
+    """The points a previous run collected, or None to go and collect some.
+
+    **This is what lets a ruler come afterwards.** The offset cannot be measured
+    from these pictures and has to be given, and by the time somebody has held a
+    ruler up to the rover it has usually been moved -- so what was matched is
+    kept, and the rotation can be solved again at a different offset without the
+    room having to be the same room.
+    """
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)["positions"]
+    except (KeyError, OSError, ValueError) as error:
+        print(f"  {path} would not read ({error}); collecting afresh")
+        return None
+
+
+def _write_points(path, kept) -> None:
+    if not path or not kept:
+        return
+    try:
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"positions": kept}, handle)
+        print(f"  matched points kept in {path}")
+    except OSError as error:
+        print(f"  {path} would not be written ({error})")
 
 
 if __name__ == "__main__":
