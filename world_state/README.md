@@ -474,13 +474,15 @@ looking at, is a calibration nobody can review.
 
 ### What is still open
 
-* **The offset is nothing until somebody holds a ruler up to it.** The rover's
-  owner reports a few centimetres forward and a few up with both lenses on the
-  centre axis; the two figures wanted are how far ahead of and above the gimbal
-  camera's lens the OAK's sits, and `bench_oak.py --offset` takes them. Until
-  then every bearing through this camera is out by the parallax that offset would
-  have caused, which is about a degree at two metres and less further out --
-  inside `BEARING_SIGMA_DEG`, and worth closing anyway.
+* **The offset is known and not yet adopted, and it is one run away.** A ruler
+  puts the OAK's lens 40 mm in front of the gimbal camera's and 110 mm below it,
+  both on the centre axis. `bench_oak.py --offset 0.040 0 -0.110` in a textured
+  room finishes it -- and until that run happens the offset stays at nothing,
+  because the rotation above absorbed the parallax those 110 mm cause and half of
+  a consistent pair is worse than neither: the pair as it stands is out by 1.25
+  degrees at two metres and 0.85 at six, where the mixture would be out by 1.9
+  everywhere. The prediction to check that run against is in `oak.MOUNT`: yaw and
+  roll unchanged, pitch down about 1.9 degrees.
 * **The disparity term behind every `range_sigma_m` is assumed**, not measured
   (`oak_depth.DISPARITY_SIGMA_PX`). The stereo
   error model is `z^2 * 0.2 px / (focal * baseline)`, and the focal length and the

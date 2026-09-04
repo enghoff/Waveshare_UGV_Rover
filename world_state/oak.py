@@ -94,27 +94,40 @@ class Mount:
 #: **it comes out the same whatever offset it is given**, within about half a
 #: degree across everything from nothing to half a metre.
 #:
-#: **The offset is not measured and is deliberately left at nothing.** Two lenses
-#: a few centimetres apart looking at a room metres away see it in almost the
-#: same direction: five centimetres at three metres is one degree of parallax,
-#: which is the size of what the fit leaves over anyway. So a solver handed both
-#: at once spends the offset absorbing whatever else is systematic, and on this
-#: rover it did exactly that -- it claimed 0.571 m forward and 0.181 m to the
-#: right, fitted the data four times better for it, and was wrong: the rover's
-#: owner reports the two lenses are a few centimetres apart with both on the
-#: **centre axis**, so the lateral offset is zero by construction. That figure
-#: was briefly adopted here on the strength of its own repeatability, which is
-#: the trap this note exists to stop somebody walking into again.
+#: **The offset is known and is deliberately still at nothing, which wants
+#: explaining.** The rover's owner has held a ruler to it: the OAK's lens sits
+#: **40 mm in front of the gimbal camera's and 110 mm below it**, with both on the
+#: rover's centre axis, so
 #:
-#: Nothing is the honest placeholder rather than a guess at "a few": it is what
-#: every bearing before this was worked out as, and being out by a few
-#: centimetres costs about a degree of bearing at two metres, which is inside the
-#: 1.5 the geometry already expects. Being out by half a metre costs sixteen.
+#:     bench_oak.py --offset 0.040 0 -0.110
 #:
-#: **A ruler settles it, and nothing here can.** Measure how far ahead of the
-#: gimbal camera's lens the OAK's sits and how far above it, and pass them to
-#: `bench_oak.py --offset FORWARD LEFT UP` -- which then solves the rotation with
-#: them held, and prints a block to paste back in here.
+#: is the run that finishes this. It has not been made yet because the rotation
+#: above was solved with the offset taken as nothing, and **half of a consistent
+#: pair is worse than neither half**: the fitted pitch is absorbing the vertical
+#: parallax those 110 mm cause, so putting the offset in beside it would count the
+#: same effect twice. Measured against the working range, the consistent pair is
+#: out by 1.25 degrees at two metres and 0.85 at six; the mixture would be out by
+#: 1.9 everywhere.
+#:
+#: **What that run should find, which is a prediction rather than a hope**: the
+#: yaw and the roll unchanged, since a purely vertical offset moves neither, and
+#: the pitch down by roughly the parallax the fit was absorbing -- about 1.9
+#: degrees at the median range of the points it used, so near +1.2 rather than
+#: +3.1. A pitch that comes back near +3.1 would mean the offset is not what is
+#: being absorbed and something else is wrong.
+#:
+#: It needs the rover pointed at a textured room, which is the one thing nothing
+#: here can arrange: the scene that produced the rotation above was a dining
+#: table, and by the time the ruler had been found the rover was nose-up against
+#: an air purifier at 36 cm with nothing to match at all. `bench_oak.py --points`
+#: exists because of that -- it keeps what it matched, so the offset and the
+#: scene no longer have to be right at the same moment.
+#:
+#: Until then nothing is the honest placeholder rather than a part-measurement:
+#: it is what every bearing before this was worked out as. The earlier claim of
+#: 0.571 m forward and 0.181 m to the right -- fitted, repeatable to a
+#: centimetre, four times better than co-locating the lenses, and wrong -- is
+#: what this note exists to stop somebody walking into again.
 #:
 #: **The roll is carried, because it turned out to be two degrees.** It was left
 #: out at first on the argument that a bracket bolted to a flat plate has none,
