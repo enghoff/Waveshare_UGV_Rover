@@ -48,6 +48,13 @@ C_SCALE = (24, 24, 28)              # the one-metre bar
 C_BORDER = (150, 150, 156)          # the edge of the crop
 C_CAMERA = (150, 80, 210)           # where the camera is looking, and how wide
 
+# The step between two poses in the track that is too far to have been driven, so
+# the line is broken rather than drawn through it. The poses are half a second
+# apart and this chassis does 0.35 m/s flat out, which is 18 cm; a metre is well
+# clear of that and well under the metres a frame moves by when a cleared map
+# re-anchors or a loop closure bends the graph.
+TRACK_BREAK_M = 1.0
+
 # How much of the crop the camera's cone reaches across, and how finely its far edge
 # is drawn. Reaching the edge rather than a fixed number of metres means the cone
 # says the same thing at every zoom -- it is a direction and a width, not a range,
@@ -251,25 +258,39 @@ class Canvas:
         return _png(self.rows, 2 if self.chan == 3 else 0)
 
 
-def _draw_track(image, np, points, scale):
+def _draw_track(image, np, points, scale, break_px=None):
     """Paint the rover's path into an (h, w, 3) numpy image, in one vectorised pass.
 
     `points` is the whole trail already in pixel coordinates. It is split into runs
-    at the edges of the picture -- a rover that left the view and came back must not
-    have the two visits joined by a line straight across the middle -- and each run
-    is resampled at half-pixel spacing along its own arc length, which is what makes
-    the cost depend on how much path is on screen and not on how many poses the
-    trail happens to hold.
+    and each run is resampled at half-pixel spacing along its own arc length, which
+    is what makes the cost depend on how much path is on screen and not on how many
+    poses the trail happens to hold.
+
+    Two things end a run. The edges of the picture: a rover that left the view and
+    came back must not have the two visits joined by a line straight across the
+    middle. And `break_px`, a step no drive could have made -- because the poses
+    are half a second apart on a chassis that does 0.35 m/s, so anything past a
+    metre is the coordinates having moved rather than the rover. That happens: a
+    cleared map re-anchors the frame, and a loop closure bends it. Drawn through,
+    it reads as a drive the rover never made, which on 2026-09-04 was a 5.37 m line
+    out of the room and across open grey. Left as a gap, it reads as what it is.
     """
     height, width = image.shape[:2]
     margin = 4 * scale
     runs, current = [], []
     for col, row in points:
-        if -margin <= col <= width + margin and -margin <= row <= height + margin:
-            current.append((col, row))
-        elif current:
+        if not (-margin <= col <= width + margin
+                and -margin <= row <= height + margin):
+            if current:
+                runs.append(current)
+                current = []
+            continue
+        if (current and break_px is not None
+                and math.hypot(col - current[-1][0],
+                               row - current[-1][1]) > break_px):
             runs.append(current)
             current = []
+        current.append((col, row))
     if current:
         runs.append(current)
 
@@ -527,7 +548,8 @@ def render(slam, half_extent_m=3.0, scale=3, trail=(), rover_up=False, camera=No
     # and measured, it bought 20%. Resampling each run along its own arc length and
     # writing the pixels in one indexed assignment costs tens of milliseconds, and
     # stops depending on how long the rover has been driving at all.
-    _draw_track(big, np, [to_px(*point) for point in trail], scale)
+    _draw_track(big, np, [to_px(*point) for point in trail], scale,
+                break_px=TRACK_BREAK_M * scale / res)
 
     # From here on the drawing is small and irregular -- an arrow, a bar, a border --
     # which is what the canvas is for.

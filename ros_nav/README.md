@@ -233,6 +233,38 @@ ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGrap
     "{filename: /home/jetson/ugv/maps/house}"
 ```
 
+## Clearing it, and where the rover ends up when you do
+
+`clear_map` resets the pose graph, and it is worth knowing what that does to the
+rover's coordinates, because two things about it are surprising and both have
+cost an afternoon.
+
+**The new map does not start where the rover is standing.** A fresh graph is
+anchored on raw odometry, so the map frame becomes the odom frame — whose origin
+is where `base_node` started, which is wherever the rover happened to be when the
+ROS stack was last launched. Over the 46 clears in the rover's own log the rover
+stood between 0 m and 23.7 m from the origin of the map it had just made: 0 m
+right after a restart, and metres out for every hour of driving since. That is
+why the drawn grid has to follow the map rather than being a fixed square around
+the origin — see `_square_holding` in `rover_daemon/ros_navigator.py`, and the
+straight edge it used to cut across the room 20 m out.
+
+**And the rover's coordinates jump at the moment it takes effect.** `map -> odom`
+is the correction the graph had built up, and clearing discards all of it in one
+step: measured on 2026-09-04, the rover's position moved 5.37 m without a wheel
+turning, and a few hours later the correction stood at 11.4 m and 35 degrees. The
+jump does not land when the reset returns, either. slam_toolbox only folds a scan
+into the graph once the rover has travelled `minimum_travel_distance`, so a parked
+rover re-anchors nothing — `map -> odom` was bit-for-bit identical over 35 seconds
+of standing still — and until the wheels turn, every pose read out of the
+transform tree is still in the frame that was thrown away.
+
+Two things allow for that. [`trail.py`](trail.py) holds the drawn track back until
+the mapper has published a correction belonging to the new graph, so the track no
+longer starts with a 5 m line out of the room; and the renderer breaks the track
+at any step longer than `TRACK_BREAK_M`, because a loop closure moves the frame
+too and nothing can hold that back.
+
 ## Sending it somewhere
 
 The ordinary way is the drive console at `https://<rover>:8771/` — tap the map — or

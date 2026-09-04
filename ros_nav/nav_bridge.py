@@ -93,11 +93,15 @@ import frontier
 # two have to be one function.
 
 from nav_limits import (
-    EXPLORE_BUDGET_S, GRID_CELLS, SCAN_STALE_S, TRAIL_MAX, TRAIL_STEP_M,
-    TRANSFORM_STALE_S, duration, wrap, yaw_of,
+    EXPLORE_BUDGET_S, GRID_CELLS, SCAN_STALE_S, TRANSFORM_STALE_S, duration,
+    wrap, yaw_of,
 )
 from nav_explore import NavExplore
 from nav_moves import NavMoves
+# And likewise: where the rover has been is a list and a rule about when the
+# coordinates in it mean anything, neither of which needs ROS -- see trail.py for
+# the clear that put a straight 5 m line through the middle of the map.
+from trail import Trail
 
 # Loopback, for the same reason board_bridge.py is: this hands out the wheels,
 # and nothing on it authenticates. 8769 is the daemon, 8770 the depth camera,
@@ -202,7 +206,7 @@ class NavBridge(NavMoves, NavExplore, Node):
         self.plan = None
         self.surroundings = None
         self.base_state = None
-        self.trail = []
+        self.trail = Trail()
 
         # --- what a move is doing
         self.move_mutex = threading.Lock()
@@ -312,6 +316,23 @@ class NavBridge(NavMoves, NavExplore, Node):
         t = at.transform.translation
         return t.x, t.y, yaw_of(at.transform.rotation)
 
+    def correction(self):
+        """`map -> odom` as `(x, y, yaw)`: the pose graph's opinion, on its own.
+
+        The other two poses here are places the rover has been. This one is not a
+        place at all -- it is how far out dead reckoning is, and the only thing
+        that reads it is `trail.py`, which uses a change in it as the signal that
+        slam_toolbox has re-anchored on a graph it did not have before.
+        """
+        try:
+            at = self.tf_buffer.lookup_transform(
+                self.args.map_frame, self.args.odom_frame,
+                rclpy.time.Time(), rclpy.duration.Duration(seconds=0.2))
+        except Exception:
+            return None
+        t = at.transform.translation
+        return t.x, t.y, yaw_of(at.transform.rotation)
+
     def transform_age(self):
         """How long ago `map -> base_link` was last published, or None.
 
@@ -337,19 +358,18 @@ class NavBridge(NavMoves, NavExplore, Node):
         frame: a `clear_map` throws the graph away and the trail with it, and the
         two have to happen together or the next picture draws a history of a room
         that no longer exists in those coordinates.
+
+        The three readings go to `trail.py` together because the third decides
+        whether the first means anything: for a few samples after a clear the
+        pose is still in the frame that was thrown away, and the correction is
+        how the trail can tell. See that file for the 5 m line it drew.
         """
         where = self.pose()
         if where is None:
             return
-        x, y, _ = where
+        correction, odom = self.correction(), self.dead_reckoned()
         with self._lock:
-            if self.trail:
-                last = self.trail[-1]
-                if math.hypot(x - last[0], y - last[1]) < TRAIL_STEP_M:
-                    return
-            self.trail.append((round(x, 3), round(y, 3)))
-            if len(self.trail) > TRAIL_MAX:
-                del self.trail[:len(self.trail) - TRAIL_MAX]
+            self.trail.offer(where, correction, odom)
 
     # --- reads ----------------------------------------------------------------
     def status(self):
@@ -488,7 +508,7 @@ class NavBridge(NavMoves, NavExplore, Node):
         """
         with self._lock:
             msg = self.map_msg
-            trail = list(self.trail)
+            trail = list(self.trail.points)
         if msg is None:
             return {"ok": False,
                     "error": "slam_toolbox has not published a map yet"}
@@ -551,6 +571,14 @@ class NavBridge(NavMoves, NavExplore, Node):
 
         The trail goes with it. A track drawn in coordinates that have just been
         redefined is an invented history laid over an empty room.
+
+        **And the new trail does not start until the new coordinates do.** The
+        reset returns before slam_toolbox has published a correction belonging to
+        the graph that replaces the one thrown away -- on a parked rover it does
+        not publish one at all until the wheels turn -- so the pose read in the
+        meantime is still the old frame's, several metres from where the new map
+        puts the rover. That is what `Trail.cleared` is told the old correction
+        for; see trail.py.
         """
         if not self.move_mutex.acquire(blocking=False):
             return {"cleared": False,
@@ -567,13 +595,16 @@ class NavBridge(NavMoves, NavExplore, Node):
                 return {"cleared": False,
                         "reason": "slam_toolbox did not answer the reset in ten "
                                   "seconds"}
+            discarded, odom = self.correction(), self.dead_reckoned()
             with self._lock:
-                self.trail = []
+                self.trail.cleared(discarded, odom)
                 self.map_msg = None
                 self.map_at = None
-            return {"cleared": True,
-                    "reason": "the pose graph is empty and the rover is at its "
-                              "origin"}
+            # Not "and the rover is at its origin", which this used to say and
+            # which is only true just after a restart: the new map keeps
+            # odometry's origin, and over the 46 clears in the rover's own log
+            # the rover stood between 0 and 23.7 m from it.
+            return {"cleared": True, "reason": "the pose graph is empty"}
         finally:
             self.move_mutex.release()
 
@@ -679,6 +710,17 @@ class Handler(socketserver.StreamRequestHandler):
             node.move_mutex.release()
         outcome["travelled_m"] = round(float(outcome.get("travelled_m", 0.0)), 3)
         outcome["turned_deg"] = round(float(outcome.get("turned_deg", 0.0)), 1)
+        # Said out loud as well as answered, because the answer goes down a
+        # socket to whoever asked and is gone. Nav2 logs every goal it is given,
+        # so a `drive_to` leaves a trail in this file whatever happens; an
+        # `explore` is a run of goals with the deciding in between, and *why it
+        # ended* -- out of frontiers, refused a route, stopped -- was the one
+        # thing about it nothing recorded anywhere. A run that stopped after one
+        # short goal therefore could not be told from a run that finished the
+        # house, an afternoon later or at all.
+        node.get_logger().info(
+            "%s: %s -- %s" % (op, outcome.get("reason"),
+                              outcome.get("detail") or "no detail"))
         self.write({"kind": "outcome", **outcome})
 
 

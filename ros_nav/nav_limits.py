@@ -32,12 +32,9 @@ TRANSFORM_STALE_S = 1.0
 # reads, slower would be a poll that finds nothing new.
 PROGRESS_S = 0.33
 
-# Where the rover has been, for drawing on the map. Same shape as the figures the
-# old navigator kept: a pose every five centimetres, four thousand of them, which
-# is two hundred metres of pottering about.
-TRAIL_STEP_M = 0.05
-
-TRAIL_MAX = 4000
+# Where the rover has been, for drawing on the map, is in `trail.py` -- both how
+# often a pose is kept and how many are, because they sit beside the rule about
+# when a pose means anything at all and that rule is the interesting one.
 
 # The square grid the map is presented on, so that the daemon's existing renderer
 # can draw it unchanged. 800 cells at 5 cm is 40 m across with the rover's

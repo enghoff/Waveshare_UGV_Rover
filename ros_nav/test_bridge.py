@@ -111,6 +111,83 @@ def test_bridge_protocol():
         bridge.close()
 
 
+# --- where the rover has been -------------------------------------------------
+def test_a_cleared_map_does_not_start_the_track_in_the_old_frame():
+    """**The fault, as the rover had it on 2026-09-04.**
+
+    The map was cleared and the console drew a straight 5.37 m line at the head
+    of the track, out of the mapped room and across open grey, from
+    (2.267, -18.303) to (4.186, -23.318). The rover had not moved: every other
+    step in that track was 0.34 m or less, half a second of driving, and there
+    was nothing in between. Clearing the map re-anchors the frame on raw
+    odometry, so the correction the session had built up is discarded in one
+    step -- and slam_toolbox goes on publishing the old one until it folds a scan
+    into the new graph, which a parked rover never gives it.
+
+    So the numbers below are the rover's own, and the check is that the point
+    from the discarded frame is not written down at all.
+    """
+    section("the track after a cleared map")
+    import trail
+
+    old_frame = (2.267, -18.303)
+    new_frame = (4.186, -23.318)
+    # The correction as it stood before the clear, and as slam_toolbox published
+    # it once the new graph existed: a fresh graph is anchored on odometry, so
+    # its correction is nothing at all.
+    was = (-10.706, -3.895, math.radians(34.97))
+    now = (0.0, 0.0, 0.0)
+    odom = (4.186, -23.318, 0.0)
+
+    track = trail.Trail()
+    track.offer(old_frame, was, odom)
+    check("before the clear the track is being recorded", len(track), 1)
+
+    track.cleared(was, odom)
+    check("clearing empties it", len(track), 0)
+    check("a pose read in the frame that was just thrown away is not kept",
+          track.offer(old_frame, was, odom), False)
+    check("...however many times it is offered",
+          any(track.offer(old_frame, was, odom) for _ in range(20)), False)
+
+    check("the first pose in the new frame is kept",
+          track.offer(new_frame, now, odom), True)
+    check("...and it is the first point there is, so there is no 5.37 m step",
+          track.points, [(4.186, -23.318)])
+
+    # Everything after that is ordinary: thinned at 5 cm, and nothing waiting.
+    check("a pose 2 cm on is too near to be worth keeping",
+          track.offer((4.206, -23.318), now, odom), False)
+    check("...and one 20 cm on is kept", track.offer((4.386, -23.318), now, odom),
+          True)
+
+    # A correction that was already nothing has no jump in it to wait out, and a
+    # rover restarted a minute ago is exactly that case. Waiting there would be
+    # waiting for a change that is never coming.
+    fresh = trail.Trail()
+    fresh.cleared((0.0, 0.0, 0.0), odom)
+    check("clearing a map whose correction was already nothing holds nothing back",
+          fresh.offer((0.5, 0.5), (0.0, 0.0, 0.0), odom), True)
+
+    # And the backstop: a mapper that never re-anchors must not cost the whole
+    # track. slam_toolbox takes its first scan after 0.2 m, so a metre of dead
+    # reckoning with the correction unmoved is a mapper that is not going to move
+    # it, and a track with one false step beats no track at all.
+    stuck = trail.Trail()
+    stuck.cleared(was, (0.0, 0.0, 0.0))
+    check("half a metre driven with the correction unmoved still waits",
+          stuck.offer((0.5, 0.0), was, (0.5, 0.0, 0.0)), False)
+    check("...and a metre and a half gives up waiting and records",
+          stuck.offer((1.5, 0.0), was, (1.5, 0.0, 0.0)), True)
+
+    # A transform tree that has not said anything yet is not evidence of
+    # anything, and must not be read as the correction having changed.
+    quiet = trail.Trail()
+    quiet.cleared(was, odom)
+    check("no correction published at all is not a re-anchoring",
+          quiet.offer(old_frame, None, None), False)
+
+
 # --- calibration --------------------------------------------------------------
 def test_calibration_store():
     section("the calibration store")
@@ -441,6 +518,7 @@ def test_discovery_stays_on_this_board():
 
 TESTS = (
     test_bridge_protocol,
+    test_a_cleared_map_does_not_start_the_track_in_the_old_frame,
     test_calibration_store,
     test_the_two_halves_agree_on_the_port,
     test_discovery_stays_on_this_board,

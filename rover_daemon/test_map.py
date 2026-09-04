@@ -470,10 +470,87 @@ def test_map_view():
         check(f"...and {half:g} m is not silently narrowed", got_half, half)
 
 
+def test_the_track_is_broken_where_the_rover_cannot_have_driven():
+    """A step no drive could have made is a gap in the line, not a line.
+
+    **The picture this is about was drawn on 2026-09-04.** The map had been
+    cleared, which re-anchors the frame on raw odometry and moves the rover's
+    coordinates by however far the pose graph had been correcting them -- 5.37 m
+    that afternoon -- and the one pose recorded in the frame that was thrown away
+    was joined to the next by a straight blue line running out of the room and
+    across open grey. `trail.py` on the ROS side keeps that pose out of the track
+    now; this is the other half, because the frame also moves under a loop
+    closure, which nothing can hold back.
+
+    Read off the drawn pixels rather than out of the arithmetic, for the reason
+    every other check in this file is: the failure is a picture that looks like a
+    room the rover drove round.
+    """
+    import contextlib
+
+    import mapimg
+    import numpy as np
+
+    resolution, cells, scale = 0.05, 400, 3
+
+    class Empty:
+        """A blank grid, so the only coloured thing is what is drawn over it."""
+
+        class config:
+            resolution_m = resolution
+            grid_cells = cells
+            occupied_at = 50
+
+        lock = contextlib.nullcontext()
+        pose = (0.0, 0.0, 0.0)
+
+        def grid(self):
+            return np.zeros((cells, cells), dtype=np.int8)
+
+    def drawn(trail):
+        png, _caption = mapimg.render(Empty(), half_extent_m=3.0, scale=scale,
+                                      trail=trail)
+        return mapimg._decode(png)
+
+    def at(picture, x, y):
+        """Is the track drawn at this place in the room?"""
+        half = int(round(3.0 / resolution))
+        # The inverse of render's sampling, with no rotation: forward is up the
+        # page and left is to the left.
+        col = int((half - y / resolution) * scale) + scale // 2
+        row = int((half - x / resolution) * scale) + scale // 2
+        patch = picture[max(0, row - 2):row + 3, max(0, col - 2):col + 3]
+        return bool(np.any(np.all(patch == np.array(mapimg.C_TRACK, dtype=np.uint8),
+                                  axis=-1)))
+
+    # Two short runs a metre behind the rover, one to its left and one to its
+    # right, with nothing in between: 3 m of jump, which is a third of a minute
+    # of driving at this chassis's top speed and happened in one 0.5 s sample.
+    def run(left):
+        return [(-2.5 + step * 0.05, left) for step in range(11)]
+
+    jumped = drawn(run(1.5) + run(-1.5))
+    check("both halves of a jumped track are still drawn",
+          at(jumped, -2.2, 1.5) and at(jumped, -2.2, -1.5), True)
+    check("...and the jump between them is not drawn as a drive",
+          at(jumped, -2.0, 0.0), False)
+    check("...at neither end of it", at(jumped, -2.0, 1.0)
+          or at(jumped, -2.0, -1.0), False)
+
+    # The control, and it is the half that matters: a real step must still join
+    # up. The step here is 0.78 m, more than the rover can drive between two
+    # samples, and it is drawn anyway -- the break is for coordinates moving, not
+    # for a sampler that missed a tick.
+    joined = drawn(run(1.5) + run(0.9))
+    check("a gap the rover could plausibly have driven is still one line",
+          at(joined, -2.25, 1.2), True)
+
+
 TESTS = (
     test_map_png_names_the_clock,
     test_show_map_takes_across_and_size,
     test_drive_to_takes_a_place_on_the_map,
     test_a_point_on_the_map_picture_is_the_place_it_looks_like,
+    test_the_track_is_broken_where_the_rover_cannot_have_driven,
     test_map_view,
 )
