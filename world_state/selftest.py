@@ -18,8 +18,9 @@ real encoders see.
 This file is the runner. The checks live beside it, one module per part of the
 component, and each exports a `TESTS` tuple: the database, the geometry that
 turns a look into a place, the fit that places several things out of many
-bearings at once, perception, one inspection end to end, identity, search, and
-the standing point the rover would have to drive to to see a thing.
+bearings at once, perception, one inspection end to end, identity, search, the
+standing point the rover would have to drive to to see a thing, and the second
+camera -- the one that can say how far away things are.
 `test_fakes.py` holds the store, camera, pose and sighting they share.
 """
 from __future__ import annotations
@@ -31,13 +32,15 @@ from test_approach import TESTS as APPROACH_TESTS
 from test_cluster import TESTS as CLUSTER_TESTS
 from test_inspect import TESTS as INSPECT_TESTS
 from test_locate import TESTS as LOCATE_TESTS
+from test_oak import TESTS as OAK_TESTS
 from test_perceive import TESTS as PERCEIVE_TESTS
 from test_resolve import TESTS as RESOLVE_TESTS
 from test_search import TESTS as SEARCH_TESTS
 from test_store import TESTS as STORE_TESTS
 
 TESTS = (*STORE_TESTS, *LOCATE_TESTS, *CLUSTER_TESTS, *PERCEIVE_TESTS,
-         *INSPECT_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS)
+         *INSPECT_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS,
+         *OAK_TESTS)
 
 
 def main() -> int:

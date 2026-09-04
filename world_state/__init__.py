@@ -22,6 +22,8 @@ to cross it. Nothing here asks a model anything.
     view.py              an observation's measured provenance as a bearing to draw
     locate.py            two bearings from two places as a point on the map
     approach.py          where the rover would have to stand to look at one
+    oak.py               the second camera: where it is, and what its pixels see
+    depth_client.py      asking it how far away the things in a picture are
     replay.py            a recorded run back through the resolver, at a desk
 
 The rover deploys this to ``~/ugv/world_state`` and the daemon imports it from
@@ -32,9 +34,14 @@ from __future__ import annotations
 
 from .inspector import Inspector
 from . import approach
+from . import depth_client
+from . import oak
 from . import resolve
 from . import search
 from .locate import agrees, best_fix, fix
+from .depth_client import (
+    FakeRanger, Ranged, Ranger, SidecarRanger, describe_ranger,
+)
 from .perception_client import (
     Eyes, FakeEyes, Look, SidecarEyes, Sighting, describe_eyes,
 )
@@ -42,7 +49,8 @@ from .store import WorldStore, world_dir
 from .view import ray, rays
 
 __all__ = [
-    "Eyes", "FakeEyes", "Inspector", "Look", "SidecarEyes", "Sighting",
-    "WorldStore", "agrees", "approach", "best_fix", "describe_eyes", "fix",
-    "ray", "rays", "resolve", "search", "world_dir",
+    "Eyes", "FakeEyes", "FakeRanger", "Inspector", "Look", "Ranged", "Ranger",
+    "SidecarEyes", "SidecarRanger", "Sighting", "WorldStore", "agrees",
+    "approach", "best_fix", "depth_client", "describe_eyes", "describe_ranger",
+    "fix", "oak", "ray", "rays", "resolve", "search", "world_dir",
 ]
