@@ -88,16 +88,8 @@ The DashScope key lives on the rover:
 Keep it mode 600. It is deliberately outside `~/ugv`, so source deployment cannot
 overwrite it or carry it back into Git.
 
-Starting a billable/quota-consuming microphone session is additionally gated by:
-
-```text
-~/.ugv/console.token
-```
-
-The browser stores the entered token locally after the user supplies it. Ordinary
-driving controls remain separate from this token.
-
-Neither credential belongs in the repository.
+The browser never receives this credential. Starting a conversation has the same
+trusted-home-LAN boundary as the console's ordinary driving controls.
 
 ## Prompts and tools
 

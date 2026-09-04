@@ -180,7 +180,6 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     session: Session = None          # type: ignore[assignment]
     omni: Any = None                 # an omni_bridge.Omni, or None
-    token: str = ""                  # what /audio wants; see omni_bridge.token
     verbose = False
 
     def log_message(self, fmt: str, *args) -> None:
@@ -332,15 +331,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- the microphone -------------------------------------------------------
     def _omni(self, action: dict) -> None:
-        """Turn the conversation on or off. The token is checked here and at
-        /audio, because these are two different doors to the same account."""
+        """Turn the conversation on or off."""
         if Handler.omni is None:
             self._send(json.dumps({"ok": False, "error":
                                    f"this console has no microphone: {OMNI_MISSING}"}
-                                  ).encode(), "application/json; charset=utf-8")
-            return
-        if not self._allowed(str(action.get("token") or "")):
-            self._send(json.dumps({"ok": False, "error": "wrong or missing token"}
                                   ).encode(), "application/json; charset=utf-8")
             return
         if action.get("omni"):
@@ -352,13 +346,6 @@ class Handler(BaseHTTPRequestHandler):
         self.session.publish_soon()
         self._send(json.dumps(body).encode(), "application/json; charset=utf-8")
 
-    def _allowed(self, given: str) -> bool:
-        """Constant-time, because the alternative leaks the token one character at
-        a time to anything patient enough to time the answers."""
-        import hmac
-
-        return bool(Handler.token) and hmac.compare_digest(given, Handler.token)
-
     def _audio(self) -> None:
         """One browser's microphone and speaker, as a WebSocket on this port.
 
@@ -369,23 +356,8 @@ class Handler(BaseHTTPRequestHandler):
         canceller -- and everything else is a JSON line, of which there is
         currently one: where the browser's playback has actually got to.
         """
-        query = self.path.split("?", 1)[1] if "?" in self.path else ""
-        given = ""
-        for part in query.split("&"):
-            if part.startswith("k="):
-                from urllib.parse import unquote
-
-                given = unquote(part[2:])
         if Handler.omni is None:
             return self._missing(f"no microphone here: {OMNI_MISSING}")
-        if not self._allowed(given):
-            body = b"wrong or missing token"
-            self.send_response(403)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
         key = self.headers.get("Sec-WebSocket-Key", "")
         if "websocket" not in self.headers.get("Upgrade", "").lower() or not key:
             return self._missing("/audio is a WebSocket")
@@ -859,7 +831,6 @@ def main(argv=None) -> int | str:
     session = Session(args.rover, args.half_extent, args.map_size, idle=args.idle)
     Handler.session = session
     if omni_bridge is not None and not args.no_omni:
-        Handler.token = omni_bridge.token()
         Handler.omni = omni_bridge.Omni(
             args.rover, lambda text, err=False: session.say(text + "\n",
                                                             "bad" if err else "quiet"))
@@ -892,7 +863,7 @@ def main(argv=None) -> int | str:
         print("    plain http on the same port is redirected here, and the "
               "warning about the certificate is expected")
     if Handler.omni is not None:
-        print(f"    microphone: on demand, token in {omni_bridge.TOKEN_PATH}")
+        print("    microphone: on demand")
         if context is None:
             print("    ...but no certificate, so no browser will open one")
     try:

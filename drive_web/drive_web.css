@@ -504,8 +504,7 @@
   .keys { font-size: 12px; color: var(--dim); }
   .keys div { margin-top: 3px; }
 
-  /* Folded away by default, for the one thing on the page that has to be shown
-     but should not sit open: the console's own access token. */
+  /* Compact raw observation metadata in the world popup. */
   details { margin-top: 6px; font-size: 12px; color: var(--dim); }
   summary { cursor: pointer; }
   details p { margin: 4px 0 0; }

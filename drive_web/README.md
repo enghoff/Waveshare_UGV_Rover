@@ -483,21 +483,11 @@ The DashScope API key is read from:
 ~/.ugv/alibaba.key
 ```
 
-Starting a cloud conversation is separately gated by:
-
-```text
-~/.ugv/console.token
-```
-
-Only the microphone/session creation is token-gated; the existing LAN driving
-controls remain separate. The browser remembers a supplied token in local
-storage.
-
 A session is created on demand and closed when the user ends it, when the tab
 goes, or when no browser has been attached for `IDLE_STOP_S` (120 s). One
 browser owns the microphone at a time so two people cannot feed one model
-context. The account behind the session is metered, which is why the microphone
-is the one control here with a token on it.
+context. The browser never receives the DashScope key. Like the driving controls,
+starting a conversation relies on the console being on a trusted home LAN.
 
 What crosses the Wi-Fi is audio in both directions and nothing else: the
 conversation, the tool calls it makes and the pictures it takes are all held on

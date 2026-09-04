@@ -124,7 +124,6 @@ Source deploys land under `~/ugv/`. Runtime state that must not be overwritten b
 source lives elsewhere:
 
 - `~/.ugv/alibaba.key` — Alibaba DashScope key for Qwen Omni;
-- `~/.ugv/console.token` — browser microphone token;
 - `~/.ugv/tls/` — console CA/leaf certificate material;
 - `~/.ugv/deploy-state.json` — per-component deployment state;
 - `~/.ugv/world/` — the semantic world state: `world.db` and one JPEG per
@@ -163,8 +162,8 @@ an `odom` -> `base_link` transform. The tell is in `ros_nav.log`, one line,
 `ros_nav/calibrate_chassis.py` measures it again by driving the rover.
 
 Everything else describes the computer and is redone on the new one. The key
-is copied from `secrets/`; the console token and the TLS material regenerate
-themselves on first run, **and the new CA then has to be trusted on the
+is copied from `secrets/`; the TLS material regenerates on first run, **and the
+new CA then has to be trusted on the
 workstation**, because it is a different CA rather than the old one moved. The
 deployment state is written by `--full` or `--adopt`. The installed
 dependencies — the ROS environment, the unpacked wheels, `v4l-utils`, the

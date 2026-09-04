@@ -476,14 +476,12 @@ sentence was read here as a security property while what it actually described
 was where a microphone happened to be plugged in, which is a poor thing to have
 been relying on either way.
 
-So the exposure to weigh now is not the LAN, it is the microphone. Whoever can
-talk to the rover can have it run a program on itself, and what stands between a
-stranger and that is the console's own token — `~/.ugv/console.token`, which
-gates the microphone button and nothing else — plus the fact that the driving
-controls beside it were never gated at all. Somebody who can reach the console
-page can already drive the rover into a wall. What they can now also do is spend
-fifteen seconds of its CPU and read a file as the rover's own account, which is a
-real widening,
+So the exposure to weigh now is the same trusted home LAN as the rest of the
+console. Whoever can reach it can talk to the rover and have it run a program on
+itself; the microphone is no longer separately token-gated. Somebody who can
+reach the console page can already drive the rover into a wall. What they can
+also do through voice is spend fifteen seconds of its CPU and read a file as the
+rover's own account, which is a real widening,
 and it is the reason the four remaining calls stay where they are: a fifteen-
 second blocking run that reports what it printed is a much smaller thing to hand
 out than a behaviour that outlives the conversation.

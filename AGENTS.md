@@ -87,6 +87,6 @@ Deployment credentials are one-line gitignored files under `secrets/`; `jetson-o
 is the `jetson` account's login password on the rover and therefore also its sudo
 password. The old Banana Pi and Raspberry Pi keys are still there and all three are
 different. The secrets the rover itself holds live in `~/.ugv/`, outside the deploy
-tree: the DashScope key, the console token, the TLS material and deploy state. Never
+tree: the DashScope key, the TLS material and deploy state. Never
 put a credential in a commit, transcript, command line, or a path deployment can copy
 back; [docs/deploy.md](docs/deploy.md) has the `sudo -S` mechanics.

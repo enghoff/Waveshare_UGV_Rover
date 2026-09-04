@@ -176,8 +176,7 @@ browser mic/speaker
 ```
 
 The DashScope key lives on the rover at `~/.ugv/alibaba.key`, outside the deploy
-tree. The browser microphone is separately gated by `~/.ugv/console.token`.
-Neither belongs in Git.
+tree, and does not reach the browser. It does not belong in Git.
 
 ## Documentation
 

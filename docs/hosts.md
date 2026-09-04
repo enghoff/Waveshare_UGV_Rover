@@ -390,14 +390,12 @@ Unchanged in shape, and still outside `~/ugv`:
 ```text
 ~/.ugv/alibaba.key     DashScope API key, mode 600
 ~/.ugv/wifi.key        the one passphrase all three house networks share, mode 600
-~/.ugv/console.token   token gating microphone/session creation
 ~/.ugv/tls/            console certificate/CA
 ~/.ugv/deploy-state.json
 ```
 
-`console.token` and the TLS material were generated on this host on first run;
-the DashScope key was copied from `secrets/`. These are runtime state and must
-never be copied into Git.
+The TLS material was generated on this host on first run; the DashScope key was
+copied from `secrets/`. These are runtime state and must never be copied into Git.
 
 ## What is still missing
 

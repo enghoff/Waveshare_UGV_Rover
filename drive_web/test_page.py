@@ -296,11 +296,20 @@ def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
         drive_web.Handler.session = was
 
 
+def test_the_page_has_no_voice_token_control() -> None:
+    """Starting Qwen is a direct button action, with no stored browser secret."""
+    html = _console("html", "js")
+    check("the talk control has no token field", "voiceToken" in html, False)
+    check("the browser stores no Qwen token", "omniToken" in html, False)
+    check("the audio socket carries no token query", "/audio?k=" in html, False)
+
+
 TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
     test_the_search_box_narrows_the_views_rather_than_owning_one,
     test_the_popup_can_be_read_while_the_rover_is_filling_it,
+    test_the_page_has_no_voice_token_control,
     test_the_page_brings_its_stylesheet_and_script_with_it,
 )

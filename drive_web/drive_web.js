@@ -185,10 +185,7 @@ function drawVoice(omni) {
   $("voiceHeard").textContent = omni.heard ? `you: ${omni.heard}` : "";
   $("voiceSaid").textContent = omni.said ? `rover: ${omni.said}` : "";
   // **Only what the rover said.** This runs on every state push, which is ten
-  // times a second, and it used to write into the box the page also used for its
-  // own errors -- so "you have not entered a token" appeared and was overwritten
-  // within a tenth of a second, which reads as a button that flashes something
-  // and does nothing. The page's own messages go to #voiceNote and stay there
+  // times a second. The page's own messages go to #voiceNote and stay there
   // until the next thing the person does.
   $("voiceError").textContent = omni.error || "";
 }
@@ -237,7 +234,6 @@ registerProcessor("capture", Capture);
 const voice = {
   socket: null, capture: null, play: null, media: null, node: null,
   gen: 0, queued: 0, nextStart: 0, sources: [], ticker: null,
-  token: localStorage.getItem("omniToken") || "",
 
   wanted() { return !!this.socket; },
 
@@ -246,14 +242,6 @@ const voice = {
   async toggle() {
     this.note("");
     if (this.wanted()) { this.stop(true); return; }
-    if (!this.token) {
-      // Open the box rather than pointing at it. A message about a field that is
-      // folded away is a message about something invisible.
-      $("voiceTokenBox").open = true;
-      $("voiceToken").focus();
-      this.note("paste the token from ~/.ugv/console.token below");
-      return;
-    }
     this.note("opening the microphone...");
     try {
       await this.listen();
@@ -263,7 +251,7 @@ const voice = {
       return;
     }
     this.note("");
-    post({omni: true, token: this.token});
+    post({omni: true});
   },
 
   explain(error) {
@@ -311,8 +299,7 @@ const voice = {
     // setter with rules about which schemes may replace which and no way to
     // find out that it declined.
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(
-      `${scheme}//${location.host}/audio?k=${encodeURIComponent(this.token)}`);
+    const socket = new WebSocket(`${scheme}//${location.host}/audio`);
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     await new Promise((ready, failed) => {
@@ -322,7 +309,7 @@ const voice = {
       // A socket that is closed before it opens never fires onerror in some
       // browsers, so the close is a failure too until the open has happened.
       socket.onclose = () => failed(new Error(
-        "the rover closed the audio socket at once -- probably a wrong token"));
+        "the rover closed the audio socket at once"));
     });
     socket.onclose = () => this.stop(false);
     socket.onmessage = (event) => this.heard(event.data);
@@ -417,7 +404,7 @@ const voice = {
     }
     this.capture = this.play = null;
     this.sources = [];
-    if (tell) post({omni: false, token: this.token});
+    if (tell) post({omni: false});
   },
 };
 
@@ -662,12 +649,6 @@ async function start() {
     item.append(swatch, document.createTextNode(label));
     legend.append(item);
   }
-  $("voiceToken").value = voice.token;
-  $("voiceTokenSave").onclick = () => {
-    voice.token = $("voiceToken").value.trim();
-    localStorage.setItem("omniToken", voice.token);
-    voice.note(voice.token ? "token remembered" : "the token is empty");
-  };
   $("micButton").onclick = () => voice.toggle();
   // A tab that goes away takes the microphone with it, the same rule the rest of
   // this console follows: the session on the rover is closed rather than left

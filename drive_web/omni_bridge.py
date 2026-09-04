@@ -45,7 +45,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import secrets
 import threading
 import time
 from typing import Any
@@ -71,7 +70,6 @@ PLAY_RATE = OUT_RATE
 #: same reason.
 UGV = os.path.join(os.path.expanduser("~"), ".ugv")
 KEY_PATH = os.path.join(UGV, "alibaba.key")
-TOKEN_PATH = os.path.join(UGV, "console.token")
 
 #: The frame server, loopback only. 8769 is the daemon, 8770 the depth camera,
 #: 8771 this console, 8772 the board bridge and 8773 the nav bridge.
@@ -94,36 +92,6 @@ IDLE_STOP_S = 120.0
 #: treated as stale. It is reported roughly five times a second, so this is
 #: several reports missed rather than one.
 PLAYED_STALE_S = 2.0
-
-
-def token() -> str:
-    """The shared secret that gates the microphone, made once and kept.
-
-    **This gates the microphone and nothing else.** The console has never had a
-    password and still does not: anyone on the LAN who can load the page can
-    drive the rover, which is a decision this repository made deliberately and
-    documents. What is new is that the page can now spend money -- the key behind
-    it has a free tier and no pay-as-you-go under it -- and "anyone who can reach
-    the rover can also exhaust its quota" is a different bargain from "anyone who
-    can reach the rover can drive it". So the token is on the one door that leads
-    to the account, and the driving controls stay as open as they were.
-    """
-    try:
-        with open(TOKEN_PATH, encoding="utf-8") as handle:
-            existing = handle.read().strip()
-        if existing:
-            return existing
-    except OSError:
-        pass
-    made = secrets.token_urlsafe(18)
-    os.makedirs(UGV, exist_ok=True)
-    old = os.umask(0o077)
-    try:
-        with open(TOKEN_PATH, "w", encoding="utf-8") as handle:
-            handle.write(made + "\n")
-    finally:
-        os.umask(old)
-    return made
 
 
 def api_key() -> str:

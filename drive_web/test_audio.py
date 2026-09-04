@@ -72,6 +72,87 @@ def test_the_audio_socket() -> None:
           len(payload) <= 125, True)
 
 
+def test_talking_needs_no_console_token() -> None:
+    """Both doors into one conversation are open to the console's LAN."""
+    try:
+        import http.client
+        import json
+        import socket
+        import threading
+
+        import drive_web
+        import wsframe
+    except Exception as error:                         # noqa: BLE001
+        SKIP.append(f"the microphone endpoints ({type(error).__name__}: {error})")
+        return
+
+    class FakeOmni:
+        def __init__(self) -> None:
+            self.started = 0
+            self.attached = threading.Event()
+            self.detached = threading.Event()
+
+        def turn_on(self) -> str:
+            self.started += 1
+            return ""
+
+        def attach(self, wire) -> None:
+            self.attached.set()
+
+        def detach(self, wire) -> None:
+            self.detached.set()
+
+        def on_audio(self, data: bytes) -> None:
+            pass
+
+    previous = drive_web.Handler.session, drive_web.Handler.omni
+    session = drive_web.Session(None, 3.0, 480)
+    model = FakeOmni()
+    drive_web.Handler.session = session
+    drive_web.Handler.omni = model
+    server = drive_web.Console(("127.0.0.1", 0), drive_web.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+
+    control = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    audio = None
+    try:
+        body = json.dumps({"omni": True})
+        control.request("POST", "/do", body=body,
+                        headers={"Content-Type": "application/json",
+                                 "Content-Length": str(len(body))})
+        reply = control.getresponse()
+        answer = json.loads(reply.read())
+        check("talking starts without a console token", answer.get("ok"), True)
+        check("...and reaches the hosted session", model.started, 1)
+
+        audio = socket.create_connection(("127.0.0.1", port), timeout=5)
+        audio.sendall(
+            b"GET /audio HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Upgrade: websocket\r\n"
+            b"Connection: Upgrade\r\n"
+            b"Sec-WebSocket-Version: 13\r\n"
+            b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n")
+        headers = b""
+        while b"\r\n\r\n" not in headers:
+            headers += audio.recv(4096)
+        check("the audio socket opens without a token query",
+              headers.startswith(b"HTTP/1.1 101"), True)
+        check("...and is attached to the hosted session",
+              model.attached.wait(1), True)
+        audio.sendall(wsframe.frame(wsframe.CLOSE, b"", mask=True))
+        check("closing it detaches the microphone", model.detached.wait(1), True)
+    finally:
+        control.close()
+        if audio is not None:
+            audio.close()
+        server.shutdown()
+        server.server_close()
+        session.close()
+        drive_web.Handler.session, drive_web.Handler.omni = previous
+
+
 def test_what_the_browser_heard() -> None:
     """The playback accounting an interruption depends on.
 
@@ -225,6 +306,7 @@ def test_a_second_conversation_starts_at_once() -> None:
 
 TESTS = (
     test_the_audio_socket,
+    test_talking_needs_no_console_token,
     test_what_the_browser_heard,
     test_a_second_conversation_starts_at_once,
 )
