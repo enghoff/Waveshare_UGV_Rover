@@ -138,6 +138,13 @@ LOOK_EVERY_S = 1.0
 #: now. The clock below is also read after the pass rather than before it, because
 #: a pass longer than this was otherwise due again the instant it returned.
 SETTLE_EVERY_S = 10.0
+
+#: How long `world_state_clear` waits for the look or the resolver pass in flight
+#: before answering that it could not empty the store. Generous on purpose: the
+#: longest thing it can be queued behind is one resolver pass, which is seconds
+#: rather than minutes even on a store far larger than this rover has held, and
+#: the console gives a world call seventy seconds to answer.
+CLEAR_WAIT_S = 20.0
 #: What counts as somewhere new. **Deliberately shorter than the 0.4 m the
 #: geometry calls a baseline**, which is what this was: two looks this close
 #: cannot be triangulated against *each other*, but they can be against the look
@@ -987,23 +994,28 @@ class RoverWorld:
     def _tool_world_state_clear(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """Empty the semantic world. The SLAM map is not touched.
 
-        Refused while an inspection is running, rather than racing it: the
-        inspection is holding a frame identifier and an inference row that this
-        would delete underneath it, and the answer to "clear during an inspection"
-        should be a sentence rather than a half-cleared database.
+        Never run beside an inspection, because the inspection is holding a frame
+        identifier and an inference row that this would delete underneath it. It
+        waits for the look in flight rather than refusing it, and only a look
+        that outlasts `CLEAR_WAIT_S` comes back as a sentence -- see
+        `inspector.not_looking`, which has the measurement that decided that.
         """
         why = self._world_ready()
         if why:
             return {"ok": False, "error": why}
-        if self._world_inspector().busy:
-            return {"ok": False,
-                    "error": "an inspection is running; nothing was cleared"}
-        cleared = self._world_store().clear()
-        # A look is skipped when its picture is the one already recorded, and
-        # every one of those recordings has just been deleted -- so the rover
-        # must record the room again rather than recognise it. See
-        # `inspector.SAME_PICTURE_SHARE`.
-        self._world_inspector().forget_picture()
+        inspector = self._world_inspector()
+        with inspector.not_looking(CLEAR_WAIT_S) as idle:
+            if not idle:
+                return {"ok": False,
+                        "error": f"an inspection has been running for longer "
+                                 f"than {CLEAR_WAIT_S:.0f} s; nothing was "
+                                 f"cleared"}
+            cleared = self._world_store().clear()
+            # A look is skipped when its picture is the one already recorded, and
+            # every one of those recordings has just been deleted -- so the rover
+            # must record the room again rather than recognise it. See
+            # `inspector.SAME_PICTURE_SHARE`.
+            inspector.forget_picture()
         return cleared
 
     def _tool_world_map_session(self, _arguments: dict[str, Any]) -> dict[str, Any]:

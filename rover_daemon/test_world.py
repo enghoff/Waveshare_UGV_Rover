@@ -295,6 +295,105 @@ def test_a_rover_without_a_camera_refuses_to_inspect():
                 os.environ["UGV_WORLD_DIR"] = was
 
 
+def test_a_clear_waits_for_the_look_in_flight_instead_of_refusing():
+    """Pressing clear while the rover is looking clears, a moment later.
+
+    The refusal this replaced was right about the danger and wrong about the
+    remedy. A resolver pass compares every pending bearing against every other,
+    so it grows as the square of what the rover has seen -- measured on the
+    rover, 0.9 s in every ten at 400 observations and 8 s in every ten at 2000 --
+    and the store being big is exactly the reason somebody reaches for the
+    button. So the likelihood of the press landing during a pass rose with the
+    only thing that makes the press worth making, and there is no retry anywhere
+    behind it: one unlucky press cleared the map and left the world state whole.
+
+    Waiting protects the pass just as well, because the pass still finishes
+    before anything is deleted, and it costs the person one look.
+    """
+    import tempfile
+    import threading
+
+    import rover_daemon
+    import rover_world
+    import world_state
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            store = rover._world_store()
+            inspector = rover._world_inspector()
+            for _ in range(3):
+                store.record([world_state.Sighting(bbox=[0.2, 0.2, 0.4, 0.4],
+                                                   dino=b"", siglip=b"")],
+                             capture={"frame_id": "f"})
+
+            # The looking loop, holding what a settle holds and for about as long.
+            release = threading.Event()
+            looking = threading.Event()
+
+            def look():
+                with inspector.not_looking(5.0) as idle:
+                    assert idle
+                    looking.set()
+                    release.wait(5.0)
+
+            threading.Thread(target=look, daemon=True).start()
+            looking.wait(5.0)
+            check("a look is running", inspector.busy, True)
+            threading.Timer(0.3, release.set).start()
+
+            began = time.monotonic()
+            cleared = rover.call("world_state_clear", {})
+            waited = time.monotonic() - began
+            check("clearing during a look still clears", cleared["ok"], True)
+            check("...emptying the store",
+                  rover.call("world_state_summary", {})["summary"]["observations"],
+                  0)
+            check("...having waited for the look rather than refused it",
+                  0.2 < waited < 4.0, True)
+
+            # And a look that never ends is still a sentence rather than a store
+            # half emptied underneath it.
+            store.record([world_state.Sighting(bbox=[0.2, 0.2, 0.4, 0.4],
+                                               dino=b"", siglip=b"")],
+                         capture={"frame_id": "f"})
+            stuck = threading.Event()
+            held = threading.Event()
+
+            def wedged():
+                with inspector.not_looking(5.0) as idle:
+                    assert idle
+                    held.set()
+                    stuck.wait(10.0)
+
+            threading.Thread(target=wedged, daemon=True).start()
+            held.wait(5.0)
+            waiting = rover_world.CLEAR_WAIT_S
+            rover_world.CLEAR_WAIT_S = 0.2
+            try:
+                refused = rover.call("world_state_clear", {})
+                check("a look that will not end refuses the clear",
+                      refused["ok"], False)
+                check("...saying what is holding it up",
+                      "inspection" in refused["error"], True)
+                check("...and deletes nothing",
+                      rover.call("world_state_summary",
+                                 {})["summary"]["observations"], 1)
+            finally:
+                rover_world.CLEAR_WAIT_S = waiting
+                stuck.set()
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_the_camera_is_asked_twice_before_an_inspection_is_lost():
     """An empty grab in front of a look is retried rather than recorded as a loss.
 
@@ -815,6 +914,7 @@ TESTS = (
     test_the_world_state_calls_reach_the_store,
     test_a_rover_without_a_camera_refuses_to_inspect,
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,
+    test_a_clear_waits_for_the_look_in_flight_instead_of_refusing,
     test_a_world_observation_takes_the_live_pose_and_no_other,
     test_how_far_the_rover_could_see_comes_off_its_own_map,
     test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map,

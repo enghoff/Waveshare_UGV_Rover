@@ -22,6 +22,7 @@ the process that owns STOP.
 """
 from __future__ import annotations
 
+import contextlib
 import math
 import sqlite3
 import threading
@@ -356,6 +357,31 @@ class Inspector:
     @property
     def busy(self) -> bool:
         return self._lock.locked()
+
+    @contextlib.contextmanager
+    def not_looking(self, wait_s: float):
+        """Hold the next look off, so a caller may change the store underneath it.
+
+        Yields whether the wait succeeded. It never raises and it never releases
+        a lock it did not take, so a caller handed False has changed nothing and
+        can say so.
+
+        **Waiting rather than refusing, because refusing had the odds exactly
+        backwards.** A resolver pass compares every pending bearing with every
+        other, so it grows as the square of what the rover has seen -- 0.9 s in
+        every ten at 400 observations on this rover, 8 s in every ten at 2000 --
+        and a full store is the only reason anybody empties one. So the chance of
+        a press landing mid-pass climbed with the very thing that makes the press
+        worth making. The pass finishes before a row is deleted either way; all
+        that changes is who waits, and one look is cheaper than a button that
+        works four times in five.
+        """
+        got = self._lock.acquire(timeout=wait_s)
+        try:
+            yield got
+        finally:
+            if got:
+                self._lock.release()
 
     def inspect(self, settle: bool = True) -> dict[str, Any]:
         """Look once, and answer with what happened rather than with what was found.
