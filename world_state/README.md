@@ -390,6 +390,20 @@ Only one direction is obvious.
   new session afterwards, so a clear that half fails cannot leave old coordinates
   comparable with new ones. The console owns that button, so it tells the store;
   nothing polls for it.
+- **A reboot clears it too, because a reboot clears the map.** Nothing saves the
+  SLAM map, so the rover always comes up with an empty one — and the store used
+  to come back holding the old map's positions stamped with the *same* session
+  number the new map was about to use, which is the one comparison the session
+  exists to prevent. The console draws exactly those rows, so the last room's
+  furniture appeared on the map of this one. The store therefore records which
+  boot wrote it, from `/proc/sys/kernel/random/boot_id` rather than from the
+  clock — this rover has no battery-backed clock and its timestamps cannot say
+  whether a row predates the machine coming up — and the daemon asks once at
+  startup, before the looking thread starts and before it serves anything, so
+  nothing can be holding a frame or an inference row that is about to go. An
+  unknown boot deletes nothing: a desk, a replay or a database written by an
+  older build has no identifier to compare, and that must not cost somebody an
+  experiment they are halfway through.
 
 ## Where things are
 
