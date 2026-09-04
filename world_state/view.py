@@ -32,6 +32,7 @@ import sys
 from typing import Any
 
 from . import locate
+from . import oak
 
 #: How long a drawn ray is, in metres. A drawing convention, not a measurement:
 #: far enough to cross a room, short enough not to imply the far wall.
@@ -99,7 +100,8 @@ def _lens_for(size: tuple[int, int] | None):
 
 
 def azimuth_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
-                size: tuple[int, int] | None = None) -> float | None:
+                size: tuple[int, int] | None = None,
+                lens: Any = None) -> float | None:
     """Where a point in the picture lies, in degrees left of where the camera
     was aimed, or None if the lens cannot be reached.
 
@@ -124,7 +126,7 @@ def azimuth_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
     fact about the component.** The height was computed here and dropped on the
     floor until 2026-09-04; `elevation_deg` is where it goes now.
     """
-    levelled = _levelled(cx_frac, cy_frac, tilt_deg, size)
+    levelled = _levelled(cx_frac, cy_frac, tilt_deg, size, lens)
     if levelled is None:
         return None
     across, _up, forward = levelled
@@ -134,8 +136,8 @@ def azimuth_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
 
 
 def _levelled(cx_frac: float, cy_frac: float, tilt_deg: float,
-              size: tuple[int, int] | None = None
-              ) -> tuple[float, float, float] | None:
+              size: tuple[int, int] | None = None,
+              lens: Any = None) -> tuple[float, float, float] | None:
     """A pixel as a direction with the gimbal's tilt taken out: across, up,
     forward. None if the lens cannot be reached.
 
@@ -147,22 +149,63 @@ def _levelled(cx_frac: float, cy_frac: float, tilt_deg: float,
     undone. What comes back is in the frame the pan turns within, which is level
     with the world as long as the rover is.
 
-    `lens.ray_at` answers x right, y down, z out of the lens, and `up` is
-    negated here so that the caller reads a positive number as higher, which is
-    what every consumer of it means.
+    **And one rotation serving both cameras, which is why `lens` is an argument.**
+    The rover has two things that look at the room -- a 130-degree fisheye on the
+    gimbal and the OAK bolted to the chassis -- and the only thing that differs
+    between them here is how a pixel becomes a direction. Given one, that is
+    `oak.ray_at` through the intrinsics the device reports; given none, it is the
+    swept fit in `face_tracking/lens.py`, which is what every bearing this
+    component has ever recorded was drawn through. The OAK is modelled as a
+    gimbal that never moves, so the tilt below is its mounting pitch and
+    everything from here on is shared.
+
+    Both `ray_at` functions answer x right, y down, z out of the lens, and `up`
+    is negated here so that the caller reads a positive number as higher, which
+    is what every consumer of it means.
     """
-    lens = _lens_for(size)
-    if lens is None:
-        return None
-    width, height = tuple(size or FRAME_SIZE)
-    x, y, z = _lens_module().ray_at(cx_frac * width, cy_frac * height, lens)
+    if lens is not None:
+        x, y, z = oak.ray_at(cx_frac, cy_frac, lens)
+    else:
+        fitted = _lens_for(size)
+        if fitted is None:
+            return None
+        width, height = tuple(size or FRAME_SIZE)
+        x, y, z = _lens_module().ray_at(cx_frac * width, cy_frac * height, fitted)
     tilt = math.radians(tilt_deg or 0.0)
     return x, -(y * math.cos(tilt) - z * math.sin(tilt)), \
         y * math.sin(tilt) + z * math.cos(tilt)
 
 
+def chassis_direction(x_frac: float, y_frac: float, pan_deg: float,
+                      tilt_deg: float, size: tuple[int, int] | None = None,
+                      lens: Any = None) -> tuple[float, float, float] | None:
+    """Where a point in the picture looks, in the rover's own frame: forward,
+    left, up. None if the lens cannot be reached.
+
+    **The one frame both cameras can be compared in.** A fisheye pixel and a
+    pinhole pixel are not comparable and neither are two cameras' angles, but the
+    direction each of them describes is one thing pointing one way from the
+    rover. That is what `oak.box_for` needs to find a gimbal camera's box in the
+    OAK's picture, and it is the only reason this exists as a function of its own.
+
+    x forward along the nose, y to the left, z up, which is what `ros_nav` and
+    the map already mean by the chassis frame. The camera's own axis sits at
+    chassis yaw `-pan_deg` because the gimbal takes pan positive to the right and
+    everything on the map is positive to the left -- the same swap `ray` makes.
+    """
+    levelled = _levelled(x_frac, y_frac, tilt_deg, size, lens)
+    if levelled is None:
+        return None
+    across, up, forward = levelled
+    azimuth = math.radians(math.degrees(math.atan2(-across, forward))
+                           - (pan_deg or 0.0))
+    flat = math.hypot(across, forward)
+    return (flat * math.cos(azimuth), flat * math.sin(azimuth), up)
+
+
 def elevation_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
-                  size: tuple[int, int] | None = None) -> float | None:
+                  size: tuple[int, int] | None = None,
+                  lens: Any = None) -> float | None:
     """How high a point in the picture lies, in degrees above the horizontal,
     or None if the lens cannot be reached.
 
@@ -190,7 +233,7 @@ def elevation_deg(cx_frac: float, cy_frac: float, tilt_deg: float,
     observation, which cancels out of a comparison between two of them and does
     not cancel out of a height above the floor.
     """
-    levelled = _levelled(cx_frac, cy_frac, tilt_deg, size)
+    levelled = _levelled(cx_frac, cy_frac, tilt_deg, size, lens)
     if levelled is None:
         return None
     across, up, forward = levelled
@@ -235,7 +278,16 @@ def ray(observation: dict[str, Any], fov_deg: float,
     draws the same one `resolve.ray_of` reads -- until this was so, the page was
     quietly redrawing old looks through today's model while the resolver went on
     matching them through yesterday's.
+
+    **Which camera took the look is carried on the observation, as `lens`.** The
+    rover has two, and the OAK's pixels do not mean what the gimbal camera's mean.
+    Only the inspection that took the picture is in a position to say which -- and
+    only it needs to, because from then on the bearing is stored and everything
+    afterwards reads it back rather than working it out again. So `lens` is
+    present exactly once, on the dictionary `store.record` builds while the look
+    is still in hand, and absent everywhere else.
     """
+    lens = observation.get("lens")
     pose = observation.get("pose")
     if not isinstance(pose, dict):
         return None
@@ -257,7 +309,7 @@ def ray(observation: dict[str, Any], fov_deg: float,
     stored_span = observation.get("span_deg")
     if stored_bearing is None:
         measured = _from_box(observation.get("bbox"),
-                             _tilt_of(observation), size)
+                             _tilt_of(observation), size, lens)
         if measured is None:
             return None
         offset_deg, span_deg = measured
@@ -276,7 +328,7 @@ def ray(observation: dict[str, Any], fov_deg: float,
     stored_elevation = observation.get("elevation_deg")
     if stored_elevation is None:
         risen = _rise_from_box(observation.get("bbox"),
-                               _tilt_of(observation), size)
+                               _tilt_of(observation), size, lens)
         elevation_deg_ = None if risen is None else risen[0]
         elevation_span_deg = None if risen is None else risen[1]
     else:
@@ -328,6 +380,13 @@ def ray(observation: dict[str, Any], fov_deg: float,
         # Whether the frame cut the top or bottom off it, which decides how much
         # of that height is believable. See `clipped_vertically`.
         "elevation_clipped": clipped_vertically(observation.get("bbox")),
+        # How far away the depth camera said it was, carried through so that the
+        # console's agreement test stays the resolver's own: `relate` hands this
+        # dictionary to `locate.agrees`, which asks the range the same question
+        # it asks the height. None on every look taken where the depth camera was
+        # not looking, which is most of them on a gimbal that can turn round.
+        "range_m": observation.get("range_m"),
+        "range_sigma_m": observation.get("range_sigma_m"),
         "length_m": length_m,
     }
 
@@ -347,8 +406,8 @@ def _tilt_of(observation: dict[str, Any]) -> float:
         return 0.0
 
 def _from_box(bbox: Any, tilt_deg: float = 0.0,
-              size: tuple[int, int] | None = None
-              ) -> tuple[float, float] | None:
+              size: tuple[int, int] | None = None,
+              lens: Any = None) -> tuple[float, float] | None:
     """How far off the camera's aim the thing was, and how wide it was, both in
     degrees, or None if the lens cannot be reached.
 
@@ -374,7 +433,7 @@ def _from_box(bbox: Any, tilt_deg: float = 0.0,
     else.
     """
     default = MIN_SPAN_DEG * 3
-    if _lens_for(size) is None:
+    if lens is None and _lens_for(size) is None:
         return None
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         return 0.0, default
@@ -383,9 +442,9 @@ def _from_box(bbox: Any, tilt_deg: float = 0.0,
     except (TypeError, ValueError):
         return 0.0, default
     cx, cy = (left + right) / 2.0, (top + bottom) / 2.0
-    at_centre = azimuth_deg(cx, cy, tilt_deg, size)
-    at_left = azimuth_deg(left, cy, tilt_deg, size)
-    at_right = azimuth_deg(right, cy, tilt_deg, size)
+    at_centre = azimuth_deg(cx, cy, tilt_deg, size, lens)
+    at_left = azimuth_deg(left, cy, tilt_deg, size, lens)
+    at_right = azimuth_deg(right, cy, tilt_deg, size, lens)
     if at_centre is None or at_left is None or at_right is None:
         return None
     return at_centre, max(MIN_SPAN_DEG,
@@ -393,8 +452,8 @@ def _from_box(bbox: Any, tilt_deg: float = 0.0,
 
 
 def _rise_from_box(bbox, tilt_deg: float = 0.0,
-                   size: tuple[int, int] | None = None
-                   ) -> tuple[float, float] | None:
+                   size: tuple[int, int] | None = None,
+                   lens: Any = None) -> tuple[float, float] | None:
     """How high the thing was and how tall it looked, both in degrees, or None
     if the lens cannot be reached.
 
@@ -411,20 +470,20 @@ def _rise_from_box(bbox, tilt_deg: float = 0.0,
     measured and only the refinement is missing.
     """
     default = MIN_SPAN_DEG * 3
-    if _lens_for(size) is None:
+    if lens is None and _lens_for(size) is None:
         return None
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-        middle = elevation_deg(0.5, 0.5, tilt_deg, size)
+        middle = elevation_deg(0.5, 0.5, tilt_deg, size, lens)
         return None if middle is None else (middle, default)
     try:
         left, top, right, bottom = (float(value) for value in bbox)
     except (TypeError, ValueError):
-        middle = elevation_deg(0.5, 0.5, tilt_deg, size)
+        middle = elevation_deg(0.5, 0.5, tilt_deg, size, lens)
         return None if middle is None else (middle, default)
     cx, cy = (left + right) / 2.0, (top + bottom) / 2.0
-    at_centre = elevation_deg(cx, cy, tilt_deg, size)
-    at_top = elevation_deg(cx, top, tilt_deg, size)
-    at_bottom = elevation_deg(cx, bottom, tilt_deg, size)
+    at_centre = elevation_deg(cx, cy, tilt_deg, size, lens)
+    at_top = elevation_deg(cx, top, tilt_deg, size, lens)
+    at_bottom = elevation_deg(cx, bottom, tilt_deg, size, lens)
     if at_centre is None or at_top is None or at_bottom is None:
         return None
     return at_centre, max(MIN_SPAN_DEG,

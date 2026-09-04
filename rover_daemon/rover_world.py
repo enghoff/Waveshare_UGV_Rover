@@ -75,6 +75,32 @@ CAMERA_RETRY_S = 0.5
 #: like one that is really measuring anything.
 ENV_FAKE = "UGV_WORLD_FAKE"
 
+#: Which of the rover's two cameras the world state looks through.
+#:
+#: **An in-code flag with no way to set it from the console, deliberately.** The
+#: two cameras produce bearings into one shared world, and a switch a person could
+#: flip mid-drive would leave the store holding two halves measured through
+#: different optics from different places with nothing recording which was which.
+#: The `camera` column does record it, so the question is answerable afterwards;
+#: what must not happen is the answer changing under a running experiment. This is
+#: a line to edit and redeploy, which is exactly as often as it should change.
+#:
+#: `"gimbal"` is the default and is what every bearing this component has ever
+#: recorded was drawn through: a 130-degree fisheye on two servos, swept and
+#: fitted on this rover, that can look anywhere. It gets a *range* on the regions
+#: that happen to fall inside the OAK's own narrow view, which is about half of a
+#: centred frame and none of a look taken over the rover's shoulder.
+#:
+#: `"oak"` looks through the depth camera instead: 70 degrees, bolted to the
+#: chassis, cannot turn -- and a range on **everything** it sees, because the box
+#: and the depth are the same picture. What it costs is the ability to look
+#: around at all, and a frame two thirds of a second old rather than fresh.
+#:
+#: Either way it needs `world_state.oak.MOUNT` measured. Until then the OAK
+#: cannot draw a bearing and the gimbal path gets no ranges -- see
+#: `world_state/bench_oak.py`.
+WORLD_CAMERA = "gimbal"
+
 
 #: The fastest the rover will ever look around by itself. **It was 15 s, and 15 s
 #: is why a three-minute drive came back with four pictures.** What set it was the
@@ -273,14 +299,22 @@ class RoverWorld:
         return moved >= MOVED_ENOUGH_M or turned >= TURNED_ENOUGH_DEG
 
     def _world_camera_deg(self, pose: dict[str, Any]) -> float:
-        """Where the camera is looking: the chassis, less the gimbal's pan.
+        """Where the camera is looking: the chassis, less the camera's own pan.
 
         The gimbal takes pan positive to the right and the map takes bearings
         positive to the left, which is the same conversion `view.ray` makes when
         it turns a look into a bearing. Using the chassis alone would mean a rover
         that swung its camera across the whole room counted as having seen
         nothing new.
+
+        **Whose pan depends on which camera is looking.** The OAK is bolted to
+        the chassis, so turning the gimbal changes nothing it can see and only
+        the rover turning does -- and reading the gimbal's pan here would have a
+        parked rover think it had found a new direction every time the tracking
+        loop moved a servo.
         """
+        if WORLD_CAMERA == world_state.oak.OAK:
+            return pose["heading_deg"] - world_state.oak.pan_deg()
         return pose["heading_deg"] - float(getattr(self, "pan", 0.0) or 0.0)
 
     def _world_building_loop(self) -> None:
@@ -411,14 +445,84 @@ class RoverWorld:
             # the conversation's own model.
             eyes = (world_state.FakeEyes() if os.environ.get(ENV_FAKE) == "1"
                     else world_state.SidecarEyes())
+            # Which camera takes the picture is `WORLD_CAMERA`, and it is chosen
+            # here rather than inside the inspection because the camera has one
+            # owner and it is this class. The depth camera goes in either way:
+            # through it, every region has a range; through the gimbal, the
+            # regions that happen to fall inside its view do. Neither can happen
+            # until the mount is measured, which `world_state.oak` refuses
+            # silently rather than approximately.
+            through_oak = WORLD_CAMERA == world_state.oak.OAK
             inspector = world_state.Inspector(
-                self._world_store(), eyes, self._world_capture,
+                self._world_store(), eyes,
+                self._world_capture_oak if through_oak else self._world_capture,
                 self._world_pose, fov_deg=self.camera_fov_deg,
-                reach=self._world_reach)
+                reach=self._world_reach, ranger=self._world_ranger())
             self._world_inspector_cache = inspector
         return inspector
 
+    def _world_ranger(self):
+        """The depth camera, opened once and kept, or None on a rover with none.
+
+        None rather than a failure at every look: the OAK is a second camera on a
+        loopback port, and a rover whose depth service is not running records
+        exactly what this component recorded before ranges existed. The client
+        itself never raises, so the only thing that lands here is the component
+        not being installed at all.
+        """
+        ranger = getattr(self, "_world_ranger_cache", None)
+        if ranger is None:
+            try:
+                ranger = world_state.depth_client.SidecarRanger()
+            except Exception:                       # never past here
+                return None
+            self._world_ranger_cache = ranger
+        return ranger
+
     # --- what the rover measures ----------------------------------------------
+
+    def _world_capture_oak(self) -> dict[str, Any]:
+        """One frame from the depth camera, with the range behind every pixel.
+
+        **The other camera, and the reason it is worth having one.** The gimbal
+        camera can look anywhere and cannot say how far away anything is; this one
+        cannot look anywhere at all and says how far away everything is, because
+        the depth is warped into this very picture's geometry on the device. A box
+        found here indexes the ranges directly.
+
+        It opens no device: the depth service already holds the OAK, for the
+        reason its own README gives -- a booted Myriad with no host dies in 1500
+        ms, so being awake *is* a process holding it -- and this is an HTTP call to
+        that process.
+
+        The pan and tilt recorded are the mount's own, which is what makes this
+        camera a gimbal that never moves as far as everything downstream is
+        concerned. The picture is about two thirds of a second old, because the
+        service holds each depth frame until the colour frame exposed with it has
+        arrived; `taken_at` says so and the bearing arithmetic reads it.
+        """
+        ranger = self._world_ranger()
+        if ranger is None:
+            return {"ok": False, "error": "this rover has no depth camera "
+                                          "component installed"}
+        if not world_state.oak.MEASURED:
+            # Refused rather than recorded without a bearing, because unlike a
+            # missing pose this is not a passing condition: *every* look through
+            # this camera would be bearingless until somebody runs the bench, and
+            # a rover quietly filling its store with directionless pictures looks
+            # exactly like one that is working.
+            return {"ok": False,
+                    "error": "the OAK's mount has never been measured, so a "
+                             "bearing through it would be a guess -- run "
+                             "world_state/bench_oak.py"}
+        frame = ranger.frame()
+        if not frame.ok:
+            return {"ok": False, "error": frame.error}
+        return {"ok": True, "jpeg": frame.jpeg, "camera": world_state.oak.OAK,
+                "pan": round(world_state.oak.pan_deg(), 1),
+                "tilt": round(world_state.oak.tilt_deg(), 1),
+                "live": True, "width": frame.width, "height": frame.height,
+                "age_s": frame.age_s, "taken_at": frame.taken_at}
 
     def _world_capture(self) -> dict[str, Any]:
         """One frame, through the path that already owns the camera.
@@ -458,7 +562,8 @@ class RoverWorld:
         with self._lock:
             pan, tilt = self.pan, self.tilt
         width, height = self.size
-        return {"ok": True, "jpeg": jpeg, "pan": round(pan, 1),
+        return {"ok": True, "jpeg": jpeg, "camera": world_state.oak.GIMBAL,
+                "pan": round(pan, 1),
                 "tilt": round(tilt, 1), "live": self._tracking.is_set(),
                 "width": width, "height": height, "taken_at": taken_at}
 

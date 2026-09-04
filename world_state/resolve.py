@@ -235,6 +235,14 @@ def ray_of(observation: dict[str, Any],
                  # `locate.rise_m`.
                  "elevation_deg": observation.get("elevation_deg"),
                  "elevation_span_deg": observation.get("elevation_span_deg"),
+                 # And how far away the depth camera said it was, with what that
+                 # reading is worth. Absent on every look the rover took before
+                 # it read the depth camera, and on every look since taken
+                 # somewhere the depth camera's picture does not cover -- absent
+                 # means the geometry gets no opinion about the distance rather
+                 # than that the distance was nothing. See `locate.stands_at_range`.
+                 "range_m": observation.get("range_m"),
+                 "range_sigma_m": observation.get("range_sigma_m"),
                  # Whether the frame cut the top or the bottom off the box,
                  # which is worked out from the box rather than stored: it is a
                  # property of where the region landed in the picture and no

@@ -652,7 +652,8 @@ class WorldStore:
                inference_id: int | None = None,
                fov_deg: float | None = None,
                region_source: str = "",
-               vectors_from: str = "") -> dict[str, Any]:
+               vectors_from: str = "",
+               ranges: list | None = None) -> dict[str, Any]:
         """Store one inspection's observations. No identity is decided here.
 
         Every row goes in with a null `entity_id`, and that is the honest state of
@@ -675,10 +676,18 @@ class WorldStore:
         now = time.time()
         session = self.map_session()
         pose = capture.get("pose")
+        # Which camera took the picture, and the lens to read its pixels through.
+        # Both come off the capture because only the inspection that took the
+        # frame is in a position to say; from here on the bearing is stored and
+        # nothing works it out again. A `lens` of None means the gimbal camera's
+        # own swept fit, which is what `view` falls back to.
+        camera = capture.get("camera") or "gimbal"
+        lens = capture.get("lens")
+        ranged = list(ranges or [])
         stored = 0
         placed = 0
         with self._lock, self.db:
-            for item in seen:
+            for index, item in enumerate(seen):
                 bbox = getattr(item, "bbox", None)
                 # The bearing is worked out here, once, from what the rover
                 # measured at the moment of the look: where it was standing,
@@ -701,7 +710,8 @@ class WorldStore:
                     # pixel count. See `view.azimuth_deg`.
                     drawn = view.ray({"pose": pose, "bbox": bbox,
                                       "observer_pan_deg": capture.get("pan"),
-                                      "observer_tilt_deg": capture.get("tilt")},
+                                      "observer_tilt_deg": capture.get("tilt"),
+                                      "lens": lens},
                                      float(fov_deg),
                                      size=capture.get("frame_size"))
                     if drawn is not None:
@@ -715,6 +725,15 @@ class WorldStore:
                         elevation = drawn["elevation_deg"]
                         elevation_span = drawn["elevation_span_deg"]
                         placed += 1
+                # And how far away it was, where the depth camera could see it.
+                # Stored beside the bearing and not folded into it: a bearing
+                # without a range is what this component has always recorded and
+                # goes on recording, and a range is a second measurement that
+                # some looks have and most do not.
+                range_m = range_sigma_m = None
+                if index < len(ranged) and ranged[index] is not None:
+                    range_m = getattr(ranged[index], "range_m", None)
+                    range_sigma_m = getattr(ranged[index], "sigma_m", None)
                 # A row carries no name, no scene sentence, no prompt version and
                 # no warning about any of them. Those four columns belonged to a
                 # language model describing the picture in words; nothing writes
@@ -729,9 +748,10 @@ class WorldStore:
                     " bearing_deg, span_deg, origin_sigma_m,"
                     " bearing_sigma_deg,"
                     " elevation_deg, elevation_span_deg,"
+                    " range_m, range_sigma_m, camera,"
                     " region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
@@ -741,6 +761,7 @@ class WorldStore:
                      bearing, span, capture.get("origin_sigma_m"),
                      capture.get("bearing_sigma_deg"),
                      elevation, elevation_span,
+                     range_m, range_sigma_m, camera,
                      region_source or None,
                      getattr(item, "region_score", None) or None,
                      getattr(item, "dino", b"") or None,
@@ -891,6 +912,23 @@ ADDED_COLUMNS = {
         # Null on every row written before the inspection measured it, and null
         # means the constant -- see `locate.sigma_of`.
         "bearing_sigma_deg": "REAL",
+        # How far away the depth camera said this thing was, in metres, and what
+        # that reading is worth. **The one measurement no bearing can make**: two
+        # bearings pointed at two different chairs cross at a point that is on
+        # neither of them, and only a range says so. Null on every row written
+        # before the OAK was read, and on every row since whose box the OAK was
+        # not pointing at -- the gimbal turns and this camera does not. Null means
+        # the geometry gets no opinion about the distance rather than that the
+        # distance was nothing; see `locate.stands_at_range`.
+        "range_m": "REAL",
+        "range_sigma_m": "REAL",
+        # And which of the rover's two cameras took the picture, because a pixel
+        # does not mean the same thing in both. The bearing is worked out once,
+        # when the look is taken, through whichever lens that camera has -- so
+        # nothing downstream needs this to read a bearing back. It is here because
+        # a row that cannot say which camera it came from cannot be re-examined
+        # when one of the two turns out to have been mounted crooked.
+        "camera": "TEXT",
         # How far out the point the bearing starts from may be, in metres: half
         # of whatever the rover covered while the shutter was open. Null on every
         # row written before this was measured, and null is right for them --

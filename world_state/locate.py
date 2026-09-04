@@ -253,13 +253,17 @@ CAMERA_HEIGHT_M = None
 #: is an ordinary bearing rather than a suspect one.
 HUBER_K = 2.0
 
-#: How well a range measurement would be known, in metres, if a ray carried one.
+#: How well a range is known when the ray does not say, in metres.
 #:
-#: **Nothing produces one yet**, so this is unused and is here to be the shape of
-#: the answer rather than a measurement. The figure is what the OAK-D-Lite's own
-#: README implies for stereo at a few metres off a 7.5 cm baseline and should be
-#: re-measured against the ground before it is believed. `_residuals` is the only
-#: place it is read.
+#: **The fallback rather than the figure.** The depth camera reports a sigma with
+#: every reading it gives -- the stereo model's own error at that distance, which
+#: grows with the square of it, plus the spread of the surface that produced the
+#: reading -- so this is what is used for a row written before that was carried,
+#: and for a range from somewhere that does not say what it is worth. 0.15 m is
+#: roughly what the OAK-D-Lite's 7.5 cm baseline gives at five metres, so it is
+#: pessimistic for the near readings that make up most of them.
+#:
+#: `residuals`, `range_noise_m` and `stands_at_range` are where it is read.
 RANGE_SIGMA_M = 0.15
 
 
@@ -471,6 +475,19 @@ def fix(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any] | None:
         if vertical[0] > vertical[1]:
             return None
         placed.update(height_fields(placed, [first, second]))
+
+    # **And both rays have to agree about how far away it is.** Everything above
+    # is made of angles, and angles have one blind spot: a crossing where nothing
+    # is lies exactly on the rays belonging to the real things either side of it.
+    # Two bearings at two different chairs meet at a point that is on neither of
+    # them, at a healthy parallax off a healthy baseline, and every guard above
+    # accepts it -- while both rays say in millimetres that what they were
+    # looking at was somewhere else. Rays that carry no range abstain rather than
+    # refuse, which is every look taken through a camera the depth map does not
+    # cover and every look this rover recorded before it had one.
+    ranged = range_disagreement(placed, first, second)
+    if ranged is not None and ranged[0] > ranged[1]:
+        return None
     return placed
 
 
@@ -552,14 +569,19 @@ def residuals(x_m: float, y_m: float, ray: dict[str, Any]
     squares is a chi-square and the normal matrix built from them inverts to a
     covariance without further scaling.
 
-    **One term today and two when the depth camera is read.** The bearing term is
-    the angle between where the thing would be and where the ray pointed. The
-    range term -- how far the thing is against how far the ray said it was -- is
-    written out below and is skipped whenever a ray carries no `range_m`, which
-    is every ray this rover has ever recorded. It is here rather than in a plan
-    because the whole argument for fitting positions this way instead of crossing
-    pairs is that a range costs one residual, and an argument like that should be
-    checked against the code.
+    **Two terms where the ray carries a range and one where it does not.** The
+    bearing term is the angle between where the thing would be and where the ray
+    pointed. The range term is how far the thing is against how far the ray said
+    it was, and it is skipped whenever a ray has no `range_m` -- which is every
+    look taken before the depth camera was read, and every look since taken
+    somewhere its picture does not cover.
+
+    **The range term is worth more than its count suggests**, because of where it
+    lands rather than because there are now two. A bearing constrains the
+    direction and says nothing at all about the distance, so a fit over bearings
+    alone is precise across the line of sight and loose along it -- which is what
+    `cross_track` and `along_track` exist to keep apart. One range constrains
+    exactly the axis all the bearings leave open.
     """
     dx = x_m - float(ray["x_m"])
     dy = y_m - float(ray["y_m"])
@@ -577,8 +599,9 @@ def residuals(x_m: float, y_m: float, ray: dict[str, Any]
                   (-dy * scale) / sigma,
                   (dx * scale) / sigma))
 
-    # How far the thing is, against how far the ray said. Nothing writes
-    # `range_m` yet; see the module docstring and `RANGE_SIGMA_M`.
+    # How far the thing is, against how far the ray said. `world_state/oak.py`
+    # is what puts one there; see `RANGE_SIGMA_M` for what it is worth when the
+    # ray does not say.
     measured = ray.get("range_m")
     if measured is not None:
         range_m = math.sqrt(squared)
@@ -980,6 +1003,145 @@ def stands_as_high(point: dict[str, Any], ray: dict[str, Any]) -> bool:
     return abs(got - float(claimed)) <= allowed
 
 
+# --- how far away it said it was ---------------------------------------------
+#
+# **The one thing a bearing cannot say, and the rover has been measuring it for
+# months with nothing reading it.** Everything above this line works from angles,
+# and angles have one blind spot that no amount of care removes: a crossing where
+# nothing is lies exactly on the rays belonging to the real things either side of
+# it and fits them exactly as well. Three objects in a row seen from two places
+# come back as one phantom, and the honest answer from two viewpoints is that it
+# is not knowable.
+#
+# A range makes it knowable from one. The depth camera on the front of this rover
+# has served millimetres on loopback 8770 since 2026-08-31, and `world_state/oak.py`
+# is what puts one on a ray; what follows is the same three-part shape the
+# elevation already has -- what a range is worth (`range_noise_m`), how much of a
+# miss the thing's own size forgives (`range_extent_m`), whether two rays agree
+# about it (`range_disagreement`, spent by `fix`), and whether a later look agrees
+# with a thing already placed (`stands_at_range`, spent by `agrees`).
+#
+# It is a gate and a residual and deliberately **not** a third way of placing
+# something. One ranged ray is a point in the room and it would be easy to let it
+# found an entity, but everything this component knows about what identity costs
+# was learnt from crossings, and a rule that lets one look place a thing is a
+# different application from the one that was measured. `residuals` spends the
+# range in the fit, where it pins the position along the sight line -- exactly
+# where two bearings are weakest -- and that is the whole of the change.
+
+
+def range_noise_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How wrong a range comparison could be, in metres, on measurement error
+    alone.
+
+    Three terms and deliberately not a fourth, the same split `rise_noise_m`
+    makes and for the same reason. How wrong the range reading itself is, which
+    the depth camera reports per box because stereo error grows with the square
+    of the distance and with how flat the surface was. How uncertain the
+    placement is *along* this line of sight, which is `along_track` -- the error
+    is a cigar and a range is a question about its long axis, which is the
+    opposite of what `match_tolerance` asks and the reason both exist. And where
+    the ray started, because a ray that began somewhere else is a range measured
+    from somewhere else.
+
+    What is left out is how big the thing is, which is not an error in anything.
+    It is a miss the geometry forgives, and `range_extent_m` is where it lives.
+    """
+    sigma = ray.get("range_sigma_m")
+    try:
+        sigma = RANGE_SIGMA_M if sigma is None else max(0.0, float(sigma))
+    except (TypeError, ValueError):
+        sigma = RANGE_SIGMA_M
+    return (sigma + along_track(point, ray)
+            + float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M))
+
+
+def range_extent_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How much of a range miss the thing's own size forgives, in metres.
+
+    **A depth camera measures the front of a thing and a placement is its
+    middle**, so the two differ by half its depth before anything has gone wrong
+    at all -- and that difference is systematic rather than random, which makes
+    leaving it out worse than merely tight. A sideboard half a metre deep reads
+    a quarter of a metre nearer than where the crossing puts it, every single
+    time, from every angle.
+
+    Half the width is what stands in for half the depth, because nothing here
+    measures depth: `extent_m` is half a thing's width at the range it sits at,
+    it travels with the placement, and a thing is roughly as deep as it is wide.
+    Where that is wrong it is wrong generously for wide flat things seen face on,
+    which is the safe direction -- the alternative is refusing honest looks at
+    sideboards.
+    """
+    own = point.get("extent_m")
+    if own is None:
+        span_deg = float(ray.get("span_deg") or 0.0)
+        range_m = _range_to(float(point["x_m"]), float(point["y_m"]), ray)
+        own = range_m * math.tan(math.radians(min(span_deg, 90.0) / 2.0))
+    return min(MAX_EXTENT_M, max(0.0, float(own)))
+
+
+def range_tolerance_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
+    """How far off a measured range may be and still be this thing, in metres."""
+    return range_noise_m(point, ray) + range_extent_m(point, ray)
+
+
+def range_disagreement(point: dict[str, Any], first: dict[str, Any],
+                       second: dict[str, Any]) -> tuple[float, float] | None:
+    """How far apart two rays' own ranges put this crossing, and how far apart
+    they are allowed to be. None when either of them measured no range.
+
+    **This is the test that separates a phantom from a thing, and it is the one
+    angles cannot make.** Two bearings pointed at two different chairs cross at a
+    point that is on neither of them, at a perfectly healthy parallax off a
+    perfectly healthy baseline -- and both rays then say, in millimetres, that
+    what they were looking at was somewhere else. `beyond_reach` catches the
+    version of this that would have needed seeing through a wall; this catches
+    the version in open floor, which nothing did.
+
+    Measured as each ray's own miss rather than as the gap between the two, so
+    that a pair where one range is right and the other wrong is refused rather
+    than being averaged into agreement.
+    """
+    misses = []
+    allowed = []
+    for ray in (first, second):
+        measured = ray.get("range_m")
+        if measured is None:
+            return None
+        try:
+            measured = float(measured)
+        except (TypeError, ValueError):
+            return None
+        misses.append(abs(_range_to(float(point["x_m"]), float(point["y_m"]),
+                                    ray) - measured))
+        allowed.append(range_tolerance_m(point, ray))
+    return max(misses), min(allowed)
+
+
+def stands_at_range(point: dict[str, Any], ray: dict[str, Any]) -> bool:
+    """Whether this ray's own range agrees that the thing is where it is placed.
+
+    True whenever the question cannot be asked -- a look the depth camera could
+    not see into, a look taken through the gimbal with the OAK pointed elsewhere,
+    every look this rover recorded before it had a range at all. **Silence is
+    agreement**, the same removal-only shape as `stands_as_high` and the
+    appearance floor, so a rover that has just been upgraded refuses nothing it
+    knew yesterday.
+    """
+    measured = ray.get("range_m")
+    if measured is None:
+        return True
+    try:
+        measured = float(measured)
+    except (TypeError, ValueError):
+        return True
+    if measured <= 0.0:
+        return True
+    got = _range_to(float(point["x_m"]), float(point["y_m"]), ray)
+    return abs(got - measured) <= range_tolerance_m(point, ray)
+
+
 def above_floor_m(height_m: float | None) -> float | None:
     """A height above the camera as a height above the floor, or None.
 
@@ -1326,6 +1488,11 @@ def agrees(point: dict[str, Any], ray: dict[str, Any],
     if beyond_reach(ray, (float(point["x_m"]), float(point["y_m"]))):
         return False
     if not stands_as_high(point, ray):
+        return False
+    # And not at a distance this ray measured for itself and disagrees with. The
+    # same removal-only gate as the height above it, spent in the one direction
+    # a bearing has nothing to say about.
+    if not stands_at_range(point, ray):
         return False
     if tolerance_m is None:
         # What the bearing noise alone allows at this range, plus however

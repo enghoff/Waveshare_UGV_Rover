@@ -1,0 +1,390 @@
+"""Asking the depth camera how far away things are, and what comes back.
+
+The same shape as [perception_client.py](perception_client.py) next door, for the
+same reason: the caller is an inspection running inside the process that owns
+STOP, so nothing here may raise at it, and a camera that is not running is an
+ordinary answer rather than an exception. A rover whose OAK has been unplugged
+records exactly what it recorded before ranges existed.
+
+**Three things come back and they are one measurement.** The colour picture, the
+ranges inside boxes drawn on it, and the lens those boxes are read through. They
+are one measurement because the depth is warped into the colour camera's geometry
+on the device -- see `oak_depth/depth_server.py` -- so the same fraction of the
+picture and of the depth map is the same ray, with no remapping here and no
+second lens model to drift.
+
+**The lens is fetched and never written down.** `face_tracking/lens.py` holds the
+gimbal camera's optics because a sweep on this rover fitted them and the gimbal is
+driven through them; the OAK's are stored on the OAK, and the service reads them
+off the device for the exact frame size it emits. A copy here could only ever
+disagree with the camera, so there is none: no lens, no bearings, which is the
+same silence `view._lens_for` keeps.
+"""
+from __future__ import annotations
+
+import http.client
+import json
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Any
+from urllib.parse import urlparse
+
+#: Where the depth camera listens. 8769 is the daemon, 8770 this, 8771 the
+#: console, 8772 and 8773 the ROS bridges, 8774 the frame service and 8776
+#: perception.
+DEFAULT_URL = "http://127.0.0.1:8770"
+ENV_URL = "UGV_DEPTH_URL"
+
+#: The wall clock on one call. Short, deliberately: this sits inside a look, the
+#: service answers out of a frame it already holds, and a range that arrives late
+#: is worth less than a look taken on time. An inspection that gets no range
+#: stores everything else exactly as it did before.
+TIMEOUT_S = 3.0
+#: How long the lens is kept before it is asked for again. It cannot change while
+#: the service is running -- it is read off the device when the pipeline opens --
+#: so this is only about noticing a restart, and a minute is far finer than a
+#: camera gets replaced.
+LENS_CACHE_S = 60.0
+#: A picture older than this is not what the camera is looking at now. The
+#: service runs at two frames a second, so half a second is one frame; this
+#: allows for several and still refuses a stream that has stalled.
+FRAME_MAX_AGE_S = 2.0
+#: And how far apart the picture and the depth map behind it may have been taken.
+#:
+#: **Measured on the rover on 2026-09-04: 3 to 10 milliseconds.** The two are
+#: exposed together and the service holds each depth frame back until the picture
+#: it belongs with has come through the encoder, so what is left is jitter rather
+#: than lag. What this catches is that pairing breaking: taking whatever was
+#: newest of each -- which is what the service did before it matched them on the
+#: device's own timestamps -- put them 0.49 s apart, a whole frame interval, and
+#: 23 cm of rover at the speed it explores at. 0.10 is far above the measured
+#: jitter and far below a mispairing, so it separates the two cleanly.
+MAX_APART_S = 0.10
+
+
+@dataclass
+class Ranged:
+    """How far away one box is, as measured.
+
+    `range_m` is None when there was nothing in the box to measure -- a dark or
+    textureless surface returns no disparity at all -- and `valid` beside it is
+    what tells that apart from a box the camera could not see into. The two are
+    kept separate rather than collapsed to None because the resolver treats "not
+    measured" as abstention and would treat "measured as nothing" as a fault.
+    """
+
+    range_m: float | None = None
+    sigma_m: float | None = None
+    valid: float = 0.0
+    pixels: int = 0
+    #: How old the depth frame this came from was, in seconds. **Carried because
+    #: a range is only true of where the camera was when it was taken**: the
+    #: depth camera runs at two frames a second and holds each one back until the
+    #: picture it belongs with has arrived, so a reading is about two thirds of a
+    #: second old by the time it is read -- which on a rover exploring at 0.47 m/s
+    #: is thirty centimetres. The caller knows how fast the rover was going and is
+    #: the only one that can charge that to the answer; see
+    #: `Inspector._aged_sigma`.
+    age_s: float = 0.0
+
+
+@dataclass
+class Frame:
+    """One colour picture from the depth camera, with what it is worth.
+
+    `apart_s` is how far the depth map behind it was taken from it, and it is the
+    reason this is one object rather than a picture and a separate call: a
+    picture and a set of ranges half a second apart on a moving rover are two
+    different rooms, and the caller has to be able to see that.
+    """
+
+    ok: bool = False
+    error: str = ""
+    jpeg: bytes = b""
+    width: int = 0
+    height: int = 0
+    taken_at: float | None = None
+    age_s: float = 0.0
+    apart_s: float = 0.0
+
+
+@dataclass
+class Lens:
+    """The colour camera's optics, as the device stores them.
+
+    A pinhole, and it is one honestly rather than for convenience: the OAK's
+    rational distortion model has its numerator and denominator terms within a
+    tenth of each other -- k1 -3.478 against k4 -3.574, k2 3.165 against k5
+    3.554, k3 15.88 against k6 15.25 -- so they very nearly cancel and what is
+    left is a lens that puts angle in proportion to the tangent of the pixel
+    offset. That is measured on this unit and stated so that anybody who finds a
+    residual at the edge of the frame knows where to look first.
+    """
+
+    fx: float = 0.0
+    fy: float = 0.0
+    cx: float = 0.0
+    cy: float = 0.0
+    width: int = 0
+    height: int = 0
+    hfov_deg: float = 0.0
+    vfov_deg: float = 0.0
+
+
+class Ranger:
+    """A camera that answers how far away the things in its picture are."""
+
+    name = "depth"
+
+    def available(self) -> tuple[bool, str]:
+        return True, ""
+
+    def frame(self) -> Frame:
+        raise NotImplementedError
+
+    def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
+        raise NotImplementedError
+
+    def lens(self) -> Lens | None:
+        return None
+
+    def describe(self) -> str:
+        return self.name
+
+
+class FakeRanger(Ranger):
+    """A depth camera that answers from a script, for tests and for a desk.
+
+    Enough to exercise the wiring, the geometry and the store without a Myriad X
+    on the bus. It proves nothing about stereo and an experiment about whether
+    the rover measures a real chair at two metres cannot be run against it.
+    """
+
+    name = "fake-depth"
+
+    def __init__(self, frames: list[Frame] | None = None,
+                 answers: list[list[Ranged]] | None = None,
+                 lens: Lens | None = None, fail: str = "") -> None:
+        self.frames = list(frames or [])
+        self.answers = list(answers or [])
+        self.fail = fail
+        self._lens = lens or Lens(fx=456.5, fy=456.4, cx=321.1, cy=189.8,
+                                  width=640, height=360,
+                                  hfov_deg=70.1, vfov_deg=43.0)
+        self.asked: list[list[list[float]]] = []
+
+    def available(self) -> tuple[bool, str]:
+        return (False, self.fail) if self.fail else (True, "")
+
+    def frame(self) -> Frame:
+        if self.fail:
+            return Frame(ok=False, error=self.fail)
+        if self.frames:
+            return self.frames.pop(0)
+        return Frame(ok=True, jpeg=b"\xff\xd8fake", width=640, height=360,
+                     taken_at=time.time())
+
+    def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
+        self.asked.append([list(box) for box in boxes])
+        if self.fail:
+            return [], self.fail
+        if self.answers:
+            answer = self.answers.pop(0)
+            # Short scripts are padded rather than raising: a test that cares
+            # about the first two regions should not have to spell out the rest.
+            return [answer[index] if index < len(answer) else Ranged()
+                    for index in range(len(boxes))], ""
+        return [Ranged() for _ in boxes], ""
+
+    def lens(self) -> Lens | None:
+        return None if self.fail else self._lens
+
+
+class SidecarRanger(Ranger):
+    """The depth service on loopback, over HTTP.
+
+    No exception escapes any call here. A service that is not running, a device
+    still uploading its firmware, a connection dropped mid-answer and a reply
+    that is not JSON all come back as an empty answer and a sentence saying
+    which.
+    """
+
+    name = "oak-depth"
+
+    def __init__(self, url: str | None = None,
+                 timeout_s: float = TIMEOUT_S) -> None:
+        self.url = (url or os.environ.get(ENV_URL) or DEFAULT_URL).rstrip("/")
+        parsed = urlparse(self.url)
+        self.host = parsed.hostname or "127.0.0.1"
+        self.port = parsed.port or 80
+        self.timeout_s = timeout_s
+        self._lens: Lens | None = None
+        self._lens_at = 0.0
+
+    def describe(self) -> str:
+        return f"{self.name} at {self.url}"
+
+    def available(self) -> tuple[bool, str]:
+        return (True, "") if self.lens() is not None else (
+            False, f"the depth camera at {self.url} is not answering, or its "
+                   f"stored calibration would not read")
+
+    def lens(self) -> Lens | None:
+        """The colour camera's optics, cached, or None if they cannot be had.
+
+        None rather than a raise and rather than a constant: a host that cannot
+        reach the camera has no business drawing bearings through it, and the
+        store already knows what to do with an observation that has none.
+        """
+        now = time.monotonic()
+        if self._lens is not None and now - self._lens_at < LENS_CACHE_S:
+            return self._lens
+        payload, error = self._json("GET", "/health", None)
+        if error:
+            return None
+        colour = payload.get("colour") or {}
+        got = colour.get("intrinsics") or {}
+        try:
+            lens = Lens(fx=float(got["fx"]), fy=float(got["fy"]),
+                        cx=float(got["cx"]), cy=float(got["cy"]),
+                        width=int(got["width"]), height=int(got["height"]),
+                        hfov_deg=float(payload.get("hfov_deg") or 0.0),
+                        vfov_deg=float(payload.get("vfov_deg") or 0.0))
+        except (KeyError, TypeError, ValueError):
+            return None
+        self._lens, self._lens_at = lens, now
+        return lens
+
+    def frame(self) -> Frame:
+        """The newest colour picture, or a sentence saying why not.
+
+        The age and the gap to the depth map ride on the reply's own headers
+        rather than in a second call, because a second call would be asking
+        about a different frame.
+        """
+        connection = None
+        try:
+            connection = http.client.HTTPConnection(self.host, self.port,
+                                                    timeout=self.timeout_s)
+            connection.request("GET", "/frame")
+            reply = connection.getresponse()
+            body = reply.read()
+            headers = reply.headers
+            status = reply.status
+        except OSError as error:
+            return Frame(ok=False, error=f"{type(error).__name__}: {error}")
+        except Exception as error:                     # never past here
+            return Frame(ok=False, error=f"{type(error).__name__}: {error}")
+        finally:
+            if connection is not None:
+                connection.close()
+        if status != 200 or not body:
+            return Frame(ok=False, error=_why(status, body))
+        age = _number(headers.get("X-Frame-Age"), 0.0)
+        apart = _number(headers.get("X-Depth-Apart"), 0.0)
+        width, height = _size_of(headers.get("X-Frame-Size"))
+        if age > FRAME_MAX_AGE_S:
+            return Frame(ok=False, age_s=age, apart_s=apart,
+                         error=f"the depth camera's newest picture is {age:.1f} s "
+                               f"old, which is not what it is looking at now")
+        if apart > MAX_APART_S:
+            return Frame(ok=False, age_s=age, apart_s=apart,
+                         error=f"the picture and the depth behind it were taken "
+                               f"{apart:.1f} s apart, which is not one look")
+        return Frame(ok=True, jpeg=body, width=width, height=height,
+                     age_s=age, apart_s=apart, taken_at=time.time() - age)
+
+    def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
+        """(one answer per box, error). Never raises, and never short.
+
+        A caller lines these up with the regions it asked about, so a reply that
+        is short or long is turned into one that is not: the answers it did give
+        are kept in order and the rest abstain. Getting no range is a state every
+        consumer already handles, and a misaligned list is one nothing would
+        notice.
+        """
+        if not boxes:
+            return [], ""
+        body = json.dumps({"boxes": [list(box) for box in boxes]}).encode()
+        payload, error = self._json("POST", "/ranges", body)
+        if error:
+            return [], error
+        if not payload.get("ok"):
+            return [], str(payload.get("error") or "the depth camera refused")
+        answers = []
+        given = payload.get("ranges") or []
+        for index in range(len(boxes)):
+            one = given[index] if index < len(given) else None
+            if not isinstance(one, dict):
+                answers.append(Ranged())
+                continue
+            answers.append(Ranged(
+                range_m=_number(one.get("range_m"), None),
+                sigma_m=_number(one.get("sigma_m"), None),
+                valid=_number(one.get("valid"), 0.0) or 0.0,
+                pixels=int(one.get("pixels") or 0),
+                age_s=_number(payload.get("age_s"), 0.0) or 0.0))
+        return answers, ""
+
+    # --- the wire -------------------------------------------------------------
+
+    def _json(self, method: str, path: str,
+              body: bytes | None) -> tuple[dict[str, Any], str]:
+        """(payload, error). Never raises."""
+        connection = None
+        try:
+            connection = http.client.HTTPConnection(self.host, self.port,
+                                                    timeout=self.timeout_s)
+            headers = {"Content-Type": "application/json"} if body else {}
+            connection.request(method, path, body=body, headers=headers)
+            reply = connection.getresponse()
+            raw = reply.read()
+            status = reply.status
+        except OSError as error:
+            return {}, f"{type(error).__name__}: {error}"
+        except Exception as error:                     # never past here
+            return {}, f"{type(error).__name__}: {error}"
+        finally:
+            if connection is not None:
+                connection.close()
+        try:
+            return json.loads(raw.decode("utf-8", "replace")), ""
+        except ValueError:
+            return {}, (f"the depth camera answered {status} with {len(raw)} "
+                        f"bytes that were not JSON")
+
+
+def _why(status: int, body: bytes) -> str:
+    """What a non-200 from the depth service was about, in a sentence."""
+    try:
+        payload = json.loads(body.decode("utf-8", "replace"))
+        if isinstance(payload, dict) and payload.get("error"):
+            return str(payload["error"])
+    except ValueError:
+        pass
+    return f"the depth camera answered {status}"
+
+
+def _number(value: Any, fallback: float | None) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _size_of(header: Any) -> tuple[int, int]:
+    """`640x360` as two integers, or zeros if the header was not sent."""
+    try:
+        width, _, height = str(header).partition("x")
+        return int(width), int(height)
+    except (AttributeError, TypeError, ValueError):
+        return 0, 0
+
+
+def describe_ranger(ranger: Ranger | None) -> str:
+    """What to write in the diagnostics row for this depth backend."""
+    if ranger is None:
+        return "none"
+    describe = getattr(ranger, "describe", None)
+    return describe() if callable(describe) else getattr(ranger, "name", "unknown")
