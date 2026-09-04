@@ -14,6 +14,7 @@ import time
 
 from test_harness import FAIL, check
 from test_fakes import JPEG, a_sighting, a_store, observe
+from world_state.store import host_boot_id
 
 
 # --- the store --------------------------------------------------------------
@@ -355,7 +356,7 @@ def test_a_reboot_empties_the_world_and_an_unknown_boot_does_not() -> None:
 
         # A reboot: the same database, opened again under a different boot.
         store = a_store(directory)
-        check("a host with no boot identifier deletes nothing either",
+        check("a host that cannot say which boot it is on deletes nothing either",
               store.clear_if_rebooted("")["cleared"], False)
         check("...so the world is intact until something knows better",
               store.summary()["observations"], 1)
@@ -370,6 +371,13 @@ def test_a_reboot_empties_the_world_and_an_unknown_boot_does_not() -> None:
         check("and the boot it happened on is remembered, so a daemon that "
               "restarts twice under one boot only clears once",
               store.clear_if_rebooted("boot-two")["cleared"], False)
+        # Asking with nothing reads the host, which is what the daemon does and
+        # is why the empty string above has to mean something else: a falsy
+        # default would have made "this host cannot say" quietly become "ask
+        # /proc", and the check above would then pass on a desk and clear a
+        # rover. Which answer is right here depends on the machine running this.
+        check("asking with nothing reads the host's own identifier",
+              store.clear_if_rebooted()["cleared"], bool(host_boot_id()))
         store.close()
 
 

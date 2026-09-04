@@ -793,7 +793,7 @@ class WorldStore:
         return {"ok": True, "frames_removed": removed, **counts,
                 "map_session": self.map_session()}
 
-    def clear_if_rebooted(self, boot_id: str = "") -> dict[str, Any]:
+    def clear_if_rebooted(self, boot_id: str | None = None) -> dict[str, Any]:
         """Throw the world away when the host has rebooted since it was written.
 
         Everything in here is measured against the SLAM map: a bearing means
@@ -816,8 +816,14 @@ class WorldStore:
         recorded, and "I cannot tell whether this machine has rebooted" must not
         be a reason to destroy an experiment somebody is halfway through. The
         identifier is remembered either way, so the next boot is knowable.
+
+        `boot_id` is the host's own by default. Passing one names the boot
+        instead, and passing the empty string is a host that cannot say which
+        boot it is on -- which is a different thing from not asking, and the
+        distinction is the whole of the caution above, so it is in the argument
+        rather than in a falsy default that would quietly read `/proc`.
         """
-        boot_id = boot_id or host_boot_id()
+        boot_id = host_boot_id() if boot_id is None else boot_id
         was = self._meta("boot_id")
         if not boot_id:
             return {"cleared": False, "boot_id": was,
