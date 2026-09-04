@@ -129,6 +129,44 @@ spot the thing can be seen from and a rover that is actually looking at it. See
 `world_state_viewpoint` in [world_state/README.md](../world_state/README.md),
 which chooses the spot.
 
+### The room the rover has already looked at
+
+Three more tools appear when this rover has the `world_state` component and a
+lidar under it. They are the semantic world state — what the rover recorded as it
+drove around — asked in the only vocabulary a model has:
+
+| Tool | Purpose |
+|---|---|
+| `find_thing(description)` | has the rover seen this, and how far away and which way is it now |
+| `go_to_thing(description)` | drive to somewhere it can be seen from, and answer at once |
+| `distance_between(first, second)` | how far apart two things it has placed are |
+
+They live in [`rover_recall.py`](rover_recall.py), away from
+[`rover_world.py`](rover_world.py), because the two have different audiences and
+that is the whole of the difference between them. A person at the console holds a
+map and wants `object:12` at (4.31, 2.09) with a cosine beside it; a person in the
+room asks "can you find the bed" and wants two metres away, ahead and to your
+left, seen a minute ago. So **nothing here hands a model an identifier or a map
+coordinate** — the same rule, for the same reason, that keeps `x_m`/`y_m` out of
+`drive_to`'s schema.
+
+A phrase is the handle a model actually holds, so all three take one, and the same
+phrase goes through the same ranking every time: "find the desk" and "go to the
+desk" a minute later are about the same desk without anything being carried
+between the calls. The ranking, its floor and the choice of where to stand all
+belong to [`../world_state/`](../world_state/README.md); what this file adds is
+which row of the ranking to answer about, and how to say it.
+
+`go_to_thing` answers at once and the rover keeps driving, for `explore`'s reason
+and through the same machinery — a trip that blocked the one connection a model
+holds would block `stop_driving` with it. Asked again for the same thing it
+reports; asked for a different one it stops what is running and sets off, which is
+somebody changing their mind rather than a call that did not land, and is the
+drive console's own rule. `ok` is false for everything that did not end in the
+rover moving, because the model reads that field and says out loud what it did.
+
+None of the three writes to the world state, and no model tool does.
+
 A tool is offered only when its backend exists. In particular, `look` is withheld
 when no current voice/image destination has been registered. An advertised tool
 that can only fail encourages a model to claim it performed something that never
@@ -237,13 +275,18 @@ Keeping them off the model schema avoids giving the model destructive or
 implementation-detail controls simply because the human console needs them.
 
 The world-state calls are off it for a further reason. They are a proof of concept
-asking whether a local physical-reasoning model builds a description of the room
-that stays coherent across views, and until that has an answer no model should have
-the authority to write to that description or to throw it away. The store, the
-model boundary and the sidecar are [`../world_state/`](../world_state/README.md);
-what lives in this daemon is [`rover_world.py`](rover_world.py), which takes the
-picture through the same `_whole_jpeg` that answers `camera_jpeg` -- the camera has
-one owner, and an inspection is not a reason for a second process to open it.
+asking whether the rover builds a description of the room that stays coherent
+across views, and until that has an answer no model should have the authority to
+write to that description or to throw it away. They also answer in the console's
+vocabulary -- identifiers, map coordinates, cosines -- which a model can neither
+say out loud nor invent an argument for. A model reads the same store through
+`find_thing`, `go_to_thing` and `distance_between` instead, and writes to it
+through nothing. The store, the model boundary and the sidecar are
+[`../world_state/`](../world_state/README.md); what lives in this daemon is
+[`rover_world.py`](rover_world.py), which takes the picture through the same
+`_whole_jpeg` that answers `camera_jpeg` -- the camera has one owner, and an
+inspection is not a reason for a second process to open it -- and
+[`rover_recall.py`](rover_recall.py), which is the model's half.
 
 ## Face tracking does not identify people
 

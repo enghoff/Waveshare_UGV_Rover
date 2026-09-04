@@ -555,6 +555,124 @@ MAP_POINT_TOOL: dict[str, Any] = {
     },
 }
 
+
+# The room the rover has already looked at, as a model may ask about it. Offered
+# only where there is both a world_state component to read and a lidar under it:
+# a thing gets a position by having two bearings crossed from two places the rover
+# was *measured* to be standing in, so without SLAM nothing is ever placed and all
+# three of these would answer "I have seen it but I do not know where it is".
+#
+# **The line every one of these has to draw is against `look`.** "Can you find the
+# bed" and "what can you see" are the same sentence to a model with a camera tool,
+# and the difference is the whole point of this family: `look` is a photograph of
+# what is in front of the rover now, and these are the room it drove around
+# earlier, most of which is behind it or in another room. So each description says
+# it takes no picture, and says what it is *for* rather than what it is -- the
+# lesson count_faces cost, written down in voice_chat/README.md.
+WORLD_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "find_thing",
+            "description": (
+                "Find something the rover has seen before, anywhere in the "
+                "place, and say where it is. Use this whenever you are asked to "
+                "find something, where something is, whether there is one, "
+                "whether you have seen one, or how far away one is -- 'can you "
+                "find the bed', 'where is the desk', 'is there a chair in "
+                "here'. Describe the thing in a few plain words, the way it "
+                "would be said out loud. This does not take a picture and does "
+                "not move the camera: it searches what the rover recorded as it "
+                "drove around, so it covers the whole place rather than what is "
+                "in front of it. To see what is in front of the rover now, take "
+                "a picture instead. It answers with how far away the thing is "
+                "in metres and which way it is from the rover -- ahead, behind, "
+                "to your left or right -- and how long ago it was last seen. It "
+                "says plainly when it has seen nothing like that, and that "
+                "answer is worth saying out loud rather than guessing round."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "The thing, in a few plain words, such as "
+                                       "'a bed', 'the wooden desk' or 'a "
+                                       "houseplant'.",
+                    },
+                },
+                "required": ["description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "go_to_thing",
+            "description": (
+                "Drive the rover to something it has seen before and stop where "
+                "it can see it. Use this when asked to go to, move to, drive to, "
+                "or go and look at a thing -- 'move to the desk', 'go to the "
+                "sofa'. It finds the thing the way find_thing does, works out "
+                "somewhere to stand that has a clear view of it, and sets off, "
+                "going around whatever is in the way. This answers straight away "
+                "and the rover keeps driving in the background for a minute or "
+                "so, so say out loud that it has set off rather than that it has "
+                "arrived. Use stop_driving to stop it. Asking again for the same "
+                "thing is safe and simply says how it is getting on; asking for "
+                "something else stops the trip and sets off for the new one. It "
+                "cannot see steps, drops or table tops. If the rover has never "
+                "seen the thing, or has seen it but does not know where it is, "
+                "this refuses and says which -- do not drive somewhere at random "
+                "instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "The thing to go to, in a few plain words, "
+                                       "such as 'the desk' or 'the sofa'.",
+                    },
+                },
+                "required": ["description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "distance_between",
+            "description": (
+                "Say how far apart two things the rover has seen are, in metres. "
+                "Use this for questions comparing two things in the place, such "
+                "as 'how far is the bed from the desk' or 'are the two chairs "
+                "near each other'. Describe each one in a few plain words. This "
+                "measures between where the rover has worked out that they are, "
+                "not between the rover and either of them -- for how far away "
+                "one thing is from the rover, use find_thing. It refuses when "
+                "the rover has not seen one of them, or has seen it but does not "
+                "know where it is yet, and says which."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "first": {
+                        "type": "string",
+                        "description": "One of the two things, in a few plain "
+                                       "words.",
+                    },
+                    "second": {
+                        "type": "string",
+                        "description": "The other thing, in a few plain words.",
+                    },
+                },
+                "required": ["first", "second"],
+            },
+        },
+    },
+]
+
 # Offered only to a client on the loopback interface, which is the condition the
 # three tools below share and the only one here that is about the caller rather
 # than about the hardware. The rest of that argument is in `LOCAL_ONLY` in

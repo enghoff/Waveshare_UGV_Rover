@@ -518,6 +518,69 @@ def test_exploring_does_not_wedge_every_other_tool():
               "stop" in [r["op"] for r in bridge.seen], True)
 
 
+def test_a_trip_to_one_place_is_not_waited_for_either():
+    """`go_to_thing` starts a drive that lasts a minute over the one connection a
+    voice model has, so it goes through the same machinery exploring does.
+
+    What has to hold on top of that is that the two are told apart: an errand is
+    not an exploring run, `explore` must refuse while one is in flight rather
+    than starting a second move, and what the trip was *for* has to survive it so
+    that asking again is answered about the sofa rather than about a coordinate.
+    """
+    import ros_navigator
+
+    with FakeBridge({
+        # A goto that says it is planning and then says nothing more, which is a
+        # trip in progress as far as this end can tell.
+        "goto": [{"kind": "progress", "phase": "planning"}],
+        "stop": {"kind": "reply", "ok": True, "stopped": True, "latched": False},
+        "status": {"kind": "reply", "ok": True, "pose": None},
+    }) as bridge:
+        nav = ros_navigator.RosNavigator(port=bridge.port)
+
+        began = time.monotonic()
+        started = nav.drive_to_in_background(3.2, 3.0, heading_deg=0.0,
+                                             for_what={"said": "the sofa"})
+        check("setting off answers at once rather than in a minute",
+              time.monotonic() - began < 2.0, True)
+        check("...and says it started", started.get("started"), True)
+
+        deadline = time.monotonic() + 3.0
+        while nav.away != "errand" and time.monotonic() < deadline:
+            time.sleep(0.02)
+        check("...and the navigator says it is on an errand", nav.away, "errand")
+        check("...which is not an exploring run", nav.exploring, False)
+        check("...but is driving, so an ordinary move is refused as busy",
+              nav.driving, True)
+        check("...and remembers what the trip is for",
+              nav.errand.get("said"), "the sofa")
+        check("...and where it is going, so a console can draw it",
+              (nav.errand.get("x_m"), nav.errand.get("y_m")), (3.2, 3.0))
+        # The thread is running by the time `away` says so, which is a moment
+        # before its socket has carried the request. Waited for rather than
+        # assumed: this is the one check that the trip actually left the daemon.
+        deadline = time.monotonic() + 3.0
+        goto = [r for r in bridge.seen if r["op"] == "goto"]
+        while not goto and time.monotonic() < deadline:
+            time.sleep(0.02)
+            goto = [r for r in bridge.seen if r["op"] == "goto"]
+        check("...having asked the bridge to go there",
+              (goto[0]["x_m"], goto[0]["yaw_deg"]) if goto else None, (3.2, 0.0))
+
+        exploring = nav.explore_in_background(budget_s=600.0)
+        check("exploring will not start on top of it",
+              (exploring.get("started"), exploring.get("busy")), (False, True))
+        check("...and does not claim the rover is exploring",
+              exploring.get("exploring"), False)
+
+        began = time.monotonic()
+        stopped = nav.stop()
+        check("a stop gets through while the trip is in flight",
+              stopped.get("stopped"), True)
+        check("...promptly, because it is not queued behind it",
+              time.monotonic() - began < 2.0, True)
+
+
 def test_the_map_is_refused_in_words_when_there_is_none():
     """`ValueError` on purpose: the daemon's dispatcher reports those as the
     sentence alone, and everything else with the exception class in front."""
@@ -570,6 +633,7 @@ TESTS = (
     test_a_stop_is_never_reported_as_a_failure,
     test_a_bridge_that_dies_mid_move_stops_the_rover,
     test_exploring_does_not_wedge_every_other_tool,
+    test_a_trip_to_one_place_is_not_waited_for_either,
     test_the_map_is_refused_in_words_when_there_is_none,
     test_resolution_is_readable_before_any_map_has_arrived,
 )

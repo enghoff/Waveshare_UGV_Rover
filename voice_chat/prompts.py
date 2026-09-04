@@ -136,6 +136,11 @@ def tools(*, vision: bool = True, nav: bool = False) -> list[dict]:
         if vision:
             found.append(_literal(DAEMON, "MAP_TOOL"))
             found.append(_literal(DAEMON, "MAP_POINT_TOOL"))
+        # Under `nav` rather than beside it, on the daemon's own condition: a
+        # thing is placed by crossing bearings taken from two measured poses, so
+        # a rover with no SLAM never places anything and these would only ever
+        # answer that it does not know where it is.
+        found += list(_literal(DAEMON, "WORLD_TOOLS"))
     return found
 
 

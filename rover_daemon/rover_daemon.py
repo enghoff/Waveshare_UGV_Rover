@@ -45,7 +45,7 @@ from rover_nav import (
 from rover_wifi import _terse_fields, _wifi_networks
 from tool_schemas import (
     LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
-    STOP_SCRIPT_TOOL, TOOLS,
+    STOP_SCRIPT_TOOL, TOOLS, WORLD_TOOLS,
 )
 
 DEFAULT_BOARD_HOST = "192.168.1.22"

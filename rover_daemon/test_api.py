@@ -23,6 +23,7 @@ def test_schemas():
     every = (rover_daemon.TOOLS + [rover_daemon.LOOK_TOOL]
              + rover_daemon.NAV_TOOLS
              + [rover_daemon.MAP_TOOL, rover_daemon.MAP_POINT_TOOL]
+             + rover_daemon.WORLD_TOOLS
              + [rover_daemon.SCRIPT_TOOL, rover_daemon.START_SCRIPT_TOOL,
                 rover_daemon.STOP_SCRIPT_TOOL])
     # The schemas cross a network and go into a prompt, so they have to be JSON.
@@ -64,11 +65,17 @@ def test_schemas():
                # cutting the wire its own conversation arrives on, and no wording
                # of a description makes that a good idea.
                "wifi_status", "wifi_join",
-               # The semantic world state, all of it. This slice exists to find
-               # out whether that world is worth trusting, and handing a model the
-               # authority to write to it -- or to throw it away -- before that
-               # question has an answer would be the wrong order. See
-               # docs/task-semantic-world-state.md, "Authority boundaries".
+               # The semantic world state, every call that writes to it and every
+               # call that answers in the console's vocabulary. Handing a model
+               # the authority to record, to attach or to throw the world away is
+               # still the wrong order -- that question has not been answered --
+               # and the reading calls are kept out for a second reason: they
+               # answer with identifiers, map coordinates and cosines, none of
+               # which a model can say out loud or invent an argument for. What a
+               # model is offered instead is `find_thing`, `go_to_thing` and
+               # `distance_between`, which are the same store in metres and
+               # words. See rover_recall.py, and docs/task-semantic-world-state.md
+               # under "Authority boundaries".
                "world_building", "world_inspect", "world_map_session",
                "world_state_clear",
                "world_state_entities", "world_state_entity", "world_state_frame",

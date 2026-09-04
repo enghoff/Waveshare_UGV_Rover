@@ -233,13 +233,17 @@ class RosNavigator:
         self._resets = 0
         self._reset_note = ""
         self._reachable = False
-        #: The exploring run in flight, if there is one, and what the last one
-        #: came to. Exploring is the only move here that is started and left to
-        #: get on with it rather than waited for -- see `explore_in_background`.
-        self._explore_thread: threading.Thread | None = None
-        self._explore_since: float | None = None
-        self._explore_last: Outcome | None = None
-        self._explore_lock = threading.Lock()
+        #: The move in flight that nobody is waiting for, if there is one, what
+        #: it was asked for, and what the last one of each kind came to. Two
+        #: kinds get here -- an exploring run, and an errand to a viewpoint the
+        #: world state chose -- and for one reason between them, which
+        #: `in_background` sets out.
+        self._away_thread: threading.Thread | None = None
+        self._away_kind = ""
+        self._away_since: float | None = None
+        self._away_asked: dict[str, Any] = {}
+        self._away_last: dict[str, tuple[dict[str, Any], Outcome]] = {}
+        self._away_lock = threading.Lock()
 
     # --- lifecycle ------------------------------------------------------------
     def start(self) -> None:
@@ -281,26 +285,58 @@ class RosNavigator:
         return self._move_mutex.locked()
 
     @property
-    def exploring(self) -> bool:
-        """True while a run started by `explore_in_background` is still going.
+    def away(self) -> str:
+        """Which unwaited-for move is running: "explore", "errand" or nothing.
 
-        Narrower than `driving`, which is true for any move including this one.
+        Narrower than `driving`, which is true for any move including these.
         Anything that has to tell "the rover is going somewhere somebody chose"
         from "the rover is off mapping the place by itself" wants this one.
         """
-        thread = self._explore_thread
-        return thread is not None and thread.is_alive()
+        thread = self._away_thread
+        return self._away_kind if thread is not None and thread.is_alive() else ""
+
+    @property
+    def away_for(self) -> float:
+        """Seconds the unwaited-for move in flight has been going, or 0.0."""
+        since = self._away_since
+        return 0.0 if since is None else time.monotonic() - since
+
+    @property
+    def exploring(self) -> bool:
+        """True while a run started by `explore_in_background` is still going."""
+        return self.away == "explore"
 
     @property
     def explored(self) -> Outcome | None:
         """How the last exploring run ended, or None if none has finished."""
-        return self._explore_last
+        ended = self._away_last.get("explore")
+        return None if ended is None else ended[1]
 
     @property
     def exploring_for(self) -> float:
-        """Seconds the run in flight has been going, or 0.0."""
-        since = self._explore_since
-        return 0.0 if since is None else time.monotonic() - since
+        """Seconds the exploring run in flight has been going, or 0.0."""
+        return self.away_for if self.exploring else 0.0
+
+    @property
+    def errand(self) -> dict[str, Any]:
+        """What the rover is on its way to look at, or nothing.
+
+        Whatever `drive_to_in_background` was told the trip was for, so that a
+        caller asking a second time is answered about the thing it named rather
+        than about a pair of coordinates.
+        """
+        return dict(self._away_asked) if self.away == "errand" else {}
+
+    @property
+    def ran_errand(self) -> tuple[dict[str, Any], Outcome] | None:
+        """The last errand and how it ended, or None if none has finished.
+
+        The pair rather than the outcome alone: nothing waits for one of these,
+        so the only moment anybody hears how a trip ended is when they ask about
+        the next one, and by then "it stopped against a doorway" is no use
+        without the thing it was going to.
+        """
+        return self._away_last.get("errand")
 
     @property
     def reachable(self) -> bool:
@@ -572,18 +608,18 @@ class RosNavigator:
         return self.move("explore", asked, {"op": "explore", **asked},
                          phase="choosing")
 
-    def explore_in_background(self, budget_s: float | None = None,
-                              min_frontier_m: float | None = None) -> dict[str, Any]:
-        """Start exploring, and answer before the first goal rather than after the last.
+    def in_background(self, kind: str, run, asked: dict[str, Any] | None = None,
+                      ) -> dict[str, Any]:
+        """Start a move and answer before it, rather than after it.
 
-        **The only move here that is not waited for, and the reason is the voice
-        model.** Every client of this daemon shares one connection with one lock
-        on it -- see `RoverClient` in voice_chat/rover_tools.py -- so a tool call
-        that blocks for ten minutes blocks *every other tool call* for ten
-        minutes, `stop_driving` included. A model that started an explore that
-        way could not stop it, and neither could the person in the room asking it
-        to. So this hands the run to a thread and comes straight back, and
-        stopping is the ordinary stop it always was.
+        **The moves that are not waited for, and the reason is the voice model.**
+        Every client of this daemon shares one connection with one lock on it --
+        see `RoverClient` in voice_chat/rover_tools.py -- so a tool call that
+        blocks for ten minutes blocks *every other tool call* for ten minutes,
+        `stop_driving` included. A model that set the rover off that way could
+        not stop it, and neither could the person in the room asking it to. So
+        this hands the run to a thread and comes straight back, and stopping is
+        the ordinary stop it always was.
 
         Nothing else changes: the thread goes through `move` like any other move,
         so it holds the same mutex, `driving` is true throughout, a `drive_to`
@@ -596,38 +632,80 @@ class RosNavigator:
         and a toggle would answer that by stopping the rover -- the opposite of
         what was asked, at the moment it is hardest to notice. Asking twice
         reports; stopping is `stop`.
+
+        `kind` separates the two of these, because "the rover is off mapping the
+        place by itself" and "the rover is on its way to look at the sofa" are
+        not the same news and are not answered the same way.
         """
-        with self._explore_lock:
-            if self.exploring:
-                return {"started": False, "exploring": True,
-                        "running_s": round(self.exploring_for, 1)}
+        with self._away_lock:
+            running = self.away
+            if running:
+                return {"started": False, "running": running,
+                        "running_s": round(self.away_for, 1),
+                        "asked": dict(self._away_asked)}
             if self.driving:
-                return {"started": False, "exploring": False, "busy": True}
+                return {"started": False, "running": "", "busy": True}
             # The previous run's outcome is deliberately *not* cleared here.
             # Nothing waits for one of these, so the only way anybody learns how
             # a run ended is by asking afterwards -- and the natural moment to
             # ask is when setting the next one off.
-            self._explore_since = time.monotonic()
-            self._explore_thread = threading.Thread(
-                target=self._explore_run, args=(budget_s, min_frontier_m),
-                name="rover-explore", daemon=True)
-            self._explore_thread.start()
-        return {"started": True, "exploring": True, "running_s": 0.0}
+            self._away_kind = kind
+            self._away_since = time.monotonic()
+            self._away_asked = dict(asked or {})
+            self._away_thread = threading.Thread(
+                target=self._away_run, args=(kind, run), name=f"rover-{kind}",
+                daemon=True)
+            self._away_thread.start()
+        return {"started": True, "running": kind, "running_s": 0.0}
 
-    def _explore_run(self, budget_s: float | None,
-                     min_frontier_m: float | None) -> None:
+    def _away_run(self, kind: str, run) -> None:
         """The run itself, on its own thread. Never raises: a thread that dies
-        with an exception leaves `exploring` false and no reason anywhere."""
+        with an exception leaves `away` empty and no reason anywhere."""
         try:
-            outcome = self.explore(budget_s=budget_s,
-                                   min_frontier_m=min_frontier_m)
+            outcome = run()
         except Exception as error:                  # pragma: no cover
             outcome = Outcome("failed", 0.0, 0.0,
-                              "the exploring run stopped with an error: "
-                              "%s: %s" % (type(error).__name__, error))
-        with self._explore_lock:
-            self._explore_last = outcome
-            self._explore_since = None
+                              "the %s stopped with an error: %s: %s"
+                              % (kind, type(error).__name__, error))
+        with self._away_lock:
+            self._away_last[kind] = (dict(self._away_asked), outcome)
+            self._away_since = None
+
+    def explore_in_background(self, budget_s: float | None = None,
+                              min_frontier_m: float | None = None) -> dict[str, Any]:
+        """Set the rover mapping the rest of the place, answering at once.
+
+        `exploring` and `busy` are what the daemon's tool reads, and they are the
+        two questions it has: is one of these running, and is the rover doing
+        something else instead. An errand counts as something else -- the wheels
+        have one owner -- so it lands in `busy` beside an ordinary move.
+        """
+        started = self.in_background(
+            "explore",
+            lambda: self.explore(budget_s=budget_s, min_frontier_m=min_frontier_m))
+        return {**started, "exploring": started.get("running") == "explore",
+                "busy": bool(started.get("busy"))
+                        or started.get("running") == "errand"}
+
+    def drive_to_in_background(self, x_m: float, y_m: float,
+                               heading_deg: float | None = None,
+                               speed_ms: float | None = None,
+                               for_what: dict[str, Any] | None = None,
+                               ) -> dict[str, Any]:
+        """Set the rover off to one place on the map, answering at once.
+
+        The trip a voice model starts when it is asked to go and look at
+        something: minutes long, and therefore not something to hold a tool call
+        open for. `for_what` is whatever the caller needs to recognise its own
+        trip again -- carried and not read here, because by the time anybody asks
+        how it went, a pair of map coordinates is not an answer to "did you get
+        to the sofa".
+        """
+        return self.in_background(
+            "errand",
+            lambda: self.drive_to(x_m=x_m, y_m=y_m, heading_deg=heading_deg,
+                                  speed_ms=speed_ms),
+            asked={**(for_what or {}), "x_m": float(x_m), "y_m": float(y_m)})
 
     def pose_now(self) -> tuple[float, float, float] | None:
         """Where the rover is, in the map frame, for converting an offset."""

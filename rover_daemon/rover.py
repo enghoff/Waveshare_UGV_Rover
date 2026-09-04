@@ -12,16 +12,17 @@ from board_link import (
 )
 from rover_camera import RoverCamera, VisionLink
 from rover_nav import CAMERA_FOV_DEG, RoverNav
+from rover_recall import RoverRecall
 from rover_util import _level      # noqa: F401
 from rover_wifi import RoverWifi
 from rover_world import RoverWorld
 from tool_schemas import (
     LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
-    STOP_SCRIPT_TOOL, TOOLS,
+    STOP_SCRIPT_TOOL, TOOLS, WORLD_TOOLS,
 )
 
 
-class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld):
+class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The
@@ -155,6 +156,15 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld):
                 # picture would be offering a model a way to point at nothing.
                 tools.append(MAP_TOOL)
                 tools.append(MAP_POINT_TOOL)
+            # Finding a thing the rover has already seen, going to it, and
+            # measuring between two of them. Under the lidar for the reason the
+            # map is: a thing is placed by crossing bearings taken from two
+            # measured poses, so without SLAM nothing ever gets a position and
+            # all three would answer "I have seen it but I do not know where".
+            # They need no picture on its way to the model -- what comes back is
+            # metres and words.
+            if self.world_installed:
+                tools += WORLD_TOOLS
         if local and self.scripts is not None:
             tools += self.script_tools()
         return tools
