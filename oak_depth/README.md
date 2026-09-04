@@ -72,8 +72,25 @@ whole of being off. So `POST /power {"on": false}` closes the device and **keeps
 the process**: the Myriad falls back to ROM bootloader inside its 1500 ms
 watchdog and waits there, and the port goes on answering rather than going
 silent, which is the only way a camera somebody switched off can be told from a
-service that has died. The console's tick box under the battery is this call,
-and it reads the same way round: ticked is the camera on.
+service that has died.
+
+**Nobody presses it. The wheels do, since 2026-09-04.** `rover_daemon`
+([rover_depth.py](../rover_daemon/rover_depth.py)) watches the navigator's move
+mutex twice a second and posts here: on the moment the rover drives, off thirty
+seconds after it stops. The console had a tick box for this and no longer does,
+because the question it asked — is this rover doing anything that needs a depth
+camera? — is one the rover can answer for itself and a person at a screen usually
+cannot. What is left on the console is a lamp beside the battery heading, red
+for off, green for on and amber for waking, which reports and does not set.
+
+Two consequences worth knowing before reading a recording. **The first four to
+six seconds of every drive have no ranges in them**, because that is the
+firmware upload, and a look taken during it stores its regions with no distance
+— which is the same abstention `world_state` already records for a box the OAK
+cannot see into. And **a parked rover measures nothing**, which is the saving
+rather than a fault: the looks it takes while standing still are of a room it has
+already ranged from that spot. Forcing it awake by hand is the `curl` below, and
+the rule will switch it back at its next tick.
 
 Three states, not two, and the third is the reason anything about this is
 visible on a screen:
@@ -149,7 +166,9 @@ The switch is not remembered. A reboot, a crashed process, or a deploy that
 restarts this service all bring the camera back on, because the process starts
 awake — the only state there is is the running process, deliberately, and a
 switched-off camera that stayed off across a restart nobody was watching would be
-a rover that had quietly lost a sensor.
+a rover that had quietly lost a sensor. The daemon's rule then takes it off again
+half a minute later if the rover is standing still, which is the same answer
+arrived at by the same route rather than a state carried across the restart.
 
 ```bash
 ssh orin 'curl -s http://127.0.0.1:8770/power'

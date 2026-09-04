@@ -221,6 +221,13 @@ def main() -> int | str:
             bridge = None
             print(f"[rover] board not shared: {error}", file=sys.stderr, flush=True)
 
+    # And the depth camera starts following the wheels. After the navigator,
+    # because the wheels are what it follows: on a daemon with no driving there
+    # is nothing to follow and this starts nothing and says nothing.
+    note = rover.start_depth_rule()
+    if note:
+        print(note, flush=True)
+
     rover.scripts = scripting.Runner(
         f"127.0.0.1:{args.port}",
         on_start=rover.stop_tracking,

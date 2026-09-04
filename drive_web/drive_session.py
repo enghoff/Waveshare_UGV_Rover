@@ -201,22 +201,17 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.battery_at = 0.0
         self.battery: dict[str, Any] = {"text": "-", "state": "", "note": ""}
 
-        # The depth camera's switch. `supported` is None until the rover has been
-        # asked, False for a rover that has no depth camera at all -- which hides
-        # the control rather than showing a dead one -- and True otherwise, on the
-        # same reasoning as the network calls above.
-        #
-        # `asked` is this console's own switch press waiting to be answered, and
-        # it is the only thing on this panel drawn from what was clicked rather
-        # than from what the rover said. Without it the box under the pointer
-        # snaps back to where it was for the fraction of a second before the reply
-        # lands, which reads as a switch refusing to move. It is cleared by the
-        # answer, whatever the answer is.
+        # Whether the depth camera is awake, which the lamp on the battery
+        # heading is coloured from. `supported` is None until the rover has been
+        # asked, False for a rover that has no depth camera at all -- which takes
+        # the lamp off the heading rather than leaving a colour with nothing
+        # behind it -- and True otherwise, on the same reasoning as the network
+        # calls above. Nothing here is a control: the rover works that switch
+        # itself now, off half a minute after it stops driving and on again when
+        # it moves, so this panel only ever reports.
         self.depth_outstanding = False
         self.depth_at = 0.0
-        self.depth_asked: bool | None = None
-        self.depth: dict[str, Any] = {"supported": None, "power": "",
-                                      "text": "-", "since_s": 0.0, "note": ""}
+        self.depth: dict[str, Any] = {"supported": None, "power": "", "note": ""}
 
         # None until the rover has been asked once. The network calls are not in
         # `list_tools` -- no model is offered them, since one that switched networks
@@ -334,10 +329,8 @@ class Session(SessionActions, SessionShow, SessionWorld):
                                f"({self.light_level})"},
             "battery": self.battery,
             # Beside the battery because that is the question it answers: what
-            # this rover is spending, and the one load on it a person can shed
-            # from here. `asked` is a press this console has not had an answer to
-            # yet -- see where it is set.
-            "depth": dict(self.depth, asked=self.depth_asked),
+            # this rover is spending.
+            "depth": dict(self.depth),
             # The list of networks is fetched rather than pushed, like the pictures
             # and for the same reason: it is three and a half kilobytes, it changes
             # a few times an hour, and it was riding in every state.
@@ -360,10 +353,8 @@ class Session(SessionActions, SessionShow, SessionWorld):
 
     def depth_gap(self) -> float:
         """How long to leave it before asking about the depth camera again."""
-        if self.depth["supported"] is None or self.depth_asked is not None:
-            # Not yet asked once, or a press this console is waiting on: both
-            # want the answer now rather than in five seconds.
-            return 0.0
+        if self.depth["supported"] is None:
+            return 0.0                  # not yet asked once
         if self.depth["power"] == "waking":
             return DEPTH_WAKING_POLL_S
         if not self.depth["power"]:
@@ -485,11 +476,11 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.battery_outstanding = True
             self.battery_at = now
             self.watch.submit("battery")
-        # The depth camera's switch, on the same connection and at three speeds.
-        # A camera that is waking is the only thing on this panel that is going
-        # somewhere, and it gets there in four to six seconds, so it is watched at a
-        # second; one that has refused is left alone for half a minute; and a
-        # rover that has no depth camera at all is never asked again.
+        # The depth camera, on the same connection and at three speeds. A camera
+        # that is waking is the only thing on this panel that is going somewhere,
+        # and it gets there in four to six seconds, so it is watched at a second;
+        # one that has refused is left alone for half a minute; and a rover that
+        # has no depth camera at all is never asked again.
         if (self.watch is not None and self.depth["supported"] is not False
                 and not self.depth_outstanding
                 and now - self.depth_at > self.depth_gap()):
@@ -651,10 +642,6 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.track_outstanding = False
         self.battery_outstanding = False
         self.depth_outstanding = False
-        # A press whose answer is never coming, because the connection carrying it
-        # has just been thrown away. Left set, the switch would sit under the
-        # pointer showing what was asked for rather than what the rover has.
-        self.depth_asked = None
 
     def rest(self) -> None:
         """Stop being a client. `--idle` calls this once nobody is watching."""
@@ -796,13 +783,8 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.battery_outstanding = False
             self.show_battery(body)
             return
-        if name in ("get_depth_power", "set_depth_power"):
-            # One renderer for both, because the daemon answers a switch with the
-            # state it left the camera in rather than with an acknowledgement --
-            # so a press updates the panel as fast as a poll would, and the
-            # `waking` a press comes back with is the same word the poll uses.
+        if name == "get_depth_power":
             self.depth_outstanding = False
-            self.depth_asked = None
             self.show_depth(body)
             return
         if name == "wifi_status":

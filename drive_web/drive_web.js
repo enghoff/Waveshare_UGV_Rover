@@ -459,26 +459,20 @@ function drawPicture(img, empty, url, gen, get, set, error) {
   }
 }
 
-// The depth camera's switch, under the battery. Off the page entirely on a rover
-// that has no depth camera or a daemon too old to have the calls -- this is the
-// only panel here whose hardware is optional, and a switch that cannot switch
-// anything is worse than no switch.
+// The depth camera as a lamp on the battery heading: green on, red off, amber
+// for the four to six seconds it spends waking. Nothing here is a control -- the
+// wheels work that switch on the rover now -- so all this does is colour.
+//
+// Off the heading entirely on a rover that has no depth camera or a daemon too
+// old to have the call, and off it as well when the service will not say: a lamp
+// with no state behind it is a colour somebody would read as a state, and the
+// sentence under the battery is where that goes instead.
 function drawDepth(depth) {
   if (!depth) return;                     // a console older than this panel
-  $("depthRow").hidden = depth.supported !== true;
-  // Drawn from the rover, with one exception: `asked` is a press this console
-  // has sent and not yet had an answer to. Without it the box under the pointer
-  // flicks back to where it was for the fraction of a second before the reply
-  // lands and then settles forward again, which reads as a switch refusing.
-  //
-  // Checked is the camera on, and a camera that is waking is on its way to on,
-  // so the box is already forward for the seconds it takes to get there.
-  $("depthSwitch").checked = depth.asked ?? depth.power !== "off";
-  $("depthPower").textContent = depth.text;
-  // Coloured only while it is waking, which is the one state that is going
-  // somewhere: the firmware upload this camera needs every time it is switched
-  // on is four to six seconds, and the seconds beside the word are counting.
-  $("depthPower").classList.toggle("waking", depth.power === "waking");
+  const lamp = $("depthLamp");
+  lamp.hidden = depth.supported !== true || !depth.power;
+  lamp.classList.toggle("on", depth.power === "on");
+  lamp.classList.toggle("waking", depth.power === "waking");
   $("depthNote").textContent = depth.note || "";
 }
 
@@ -585,10 +579,6 @@ function wire() {
     button.onclick = () => post({do: "lights",
       level: button.dataset.light === "on" ? setup.light_max : 0});
   }
-  // Checked is the camera on, which is the sense the daemon's own call takes as
-  // well, so nothing between this box and it turns anything round.
-  $("depthSwitch").onchange = () => post({do: "depth_power",
-                                          on: $("depthSwitch").checked});
   $("refreshMap").onclick = () => post({do: "map"});
   $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
   $("resetLidar").onclick = () => post({do: "reset_lidar"});

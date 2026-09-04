@@ -281,7 +281,8 @@ model choice, for example:
 - `camera_jpeg`;
 - map/reset/diagnostic controls;
 - detector diagnostics such as running YuNet over a supplied known image;
-- the semantic world state -- `world_inspect`, `world_state_summary` and the rest.
+- the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
+- `get_depth_power`, which reports whether the OAK is awake and cannot set it.
 
 Keeping them off the model schema avoids giving the model destructive or
 implementation-detail controls simply because the human console needs them.
@@ -299,6 +300,27 @@ through nothing. The store, the model boundary and the sidecar are
 `_whole_jpeg` that answers `camera_jpeg` -- the camera has one owner, and an
 inspection is not a reason for a second process to open it -- and
 [`rover_recall.py`](rover_recall.py), which is the model's half.
+
+## The depth camera follows the wheels
+
+Nothing on this rover switches the OAK by hand. `rover_depth.py` runs a thread
+that reads the navigator's move mutex twice a second and posts to the depth
+service on loopback 8770: **on the moment the rover drives, off thirty seconds
+after it stops**. The console's tick box for it is gone; what is there now is a
+lamp beside the battery heading, coloured from `get_depth_power`.
+
+The move mutex is the signal because it is the fact rather than a flag beside
+one -- every drive, turn, tap on the map and explore run holds it -- so this
+cannot drift out of step with what the rover is doing. A daemon started without
+`--ros-nav` has no navigator and therefore no honest answer to "is it moving?",
+so it starts no rule at all and leaves the camera alone; anything else would
+switch a sensor off half a minute after boot and never switch it on again.
+
+What it costs is the four to six seconds of firmware upload at the start of every
+drive, during which a look records its regions with no distances --
+[`../oak_depth/README.md`](../oak_depth/README.md) has why that upload is
+unavoidable on a VPU with no flash, and what the switch is and is not known to
+save.
 
 ## Face tracking does not identify people
 

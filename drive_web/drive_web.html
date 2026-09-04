@@ -163,18 +163,20 @@
       <button data-light="off">off</button>
       <span id="lights" class="mono">-</span>
     </div>
-    <h2 style="margin-top:14px">battery</h2>
+    <!-- The lamp is the depth camera, beside the battery because that is the
+         question it answers: what this rover is spending. Nobody works that
+         switch any more -- the wheels do, in rover_daemon/rover_depth.py -- so
+         what is left on screen is which way it went. Hidden until the rover says
+         it has a depth camera and has said what it is doing. -->
+    <h2 style="margin-top:14px">battery<span id="depthLamp" class="lamp" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9.2 4.3 8.2 6.4H4.2a1.7 1.7 0 0 0-1.7 1.7v9.6a1.7 1.7 0
+                 0 0 1.7 1.7h15.6a1.7 1.7 0 0 0 1.7-1.7V8.1a1.7 1.7 0 0
+                 0-1.7-1.7h-4l-1-2.1z"/>
+        <circle cx="12" cy="12.8" r="3.7"/>
+      </svg></span></h2>
     <div id="battery" class="reading">-</div>
     <p id="batteryNote" class="hint"></p>
-    <!-- The one load on this rover a person can shed from here: the depth camera
-         holds its own VPU awake over USB, and it is the only thing aboard that
-         can be switched off without stopping the rover doing anything it is
-         doing. Beside the battery because that is the question it answers.
-         Hidden until the rover says it has one. -->
-    <div class="row" id="depthRow" hidden>
-      <input type="checkbox" id="depthSwitch">
-      <span id="depthPower" class="mono">-</span>
-    </div>
     <p id="depthNote" class="hint"></p>
   </section>
 

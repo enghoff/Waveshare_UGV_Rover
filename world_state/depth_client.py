@@ -13,12 +13,15 @@ on the device -- see `oak_depth/depth_server.py` -- so the same fraction of the
 picture and of the depth map is the same ray, with no remapping here and no
 second lens model to drift.
 
-**The camera can be switched off, and this is where that is asked for.** A
-console has a low-power toggle that closes the device to stop it drawing what it
-draws, and `power` and `set_power` are the two calls behind it. Nothing in a look
-changes: a switched-off camera returns the same "no range" every consumer here
-already treats as abstention, so the only difference between an OAK that is off
-and an OAK that was never fitted is the sentence in the diagnostics line.
+**The camera can be switched off, and this is where that is asked for.** The
+rover switches it off after half a minute of standing still and on again when it
+drives -- the rule is `rover_daemon/rover_depth.py` and it calls `set_power`
+here. Nothing in a look changes: a switched-off camera returns the same "no
+range" every consumer here already treats as abstention, so the only difference
+between an OAK that is off and an OAK that was never fitted is the sentence in
+the diagnostics line. What that costs a recording is that a parked rover's looks
+carry no distances, and neither do the first few seconds of a drive, which is the
+firmware upload the camera needs every time it wakes.
 
 **The lens is fetched and never written down.** `face_tracking/lens.py` holds the
 gimbal camera's optics because a sweep on this rover fitted them and the gimbal is

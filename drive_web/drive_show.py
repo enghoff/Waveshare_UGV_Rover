@@ -257,44 +257,31 @@ class SessionShow:
         self.battery = {"text": text, "state": state, "note": note}
 
     def show_depth(self, body: dict[str, Any]) -> None:
-        """What the depth camera is doing, in the two or three words beside the box.
+        """What the depth camera is doing, as the three states the lamp has.
 
-        The line is the camera's state and nothing else -- `depth camera on`,
-        `depth camera off`, `depth camera waking, 6 s`, or the sentence the rover
-        gave for why it cannot say. What
-        it never does is explain what the switch is for: that is written down
-        once in `oak_depth/README.md`, and a console that repeated it would be
-        repeating it every time anybody looked at the battery.
+        A colour and nothing else, because there is nothing to decide any more:
+        the rover switches this camera itself -- off half a minute after the
+        wheels stop, on again when they turn -- so what a person wants off the
+        screen is which way it went, and `oak_depth/README.md` is where the rule
+        is written down.
 
-        **The subject is named because the box beside it has no label of its
-        own.** Every other control on this card has a heading directly above it
-        -- headlights, face tracking -- so "off" beneath one is unambiguous. This
-        box sits under `battery`, where "off" on its own would read as the
-        battery being flat, so this line says which thing it is talking about and
-        the box goes bare rather than carry a second copy of the same name.
-
-        The elapsed seconds are only shown while it is waking, which is the one
-        state where they are news. "On for four hours" is not.
+        The exception is a service that will not answer, which is not a state of
+        the camera and gets a sentence under the battery instead. A lamp coloured
+        for that would be this console inventing a reading.
         """
         if not body.get("ok"):
             error = str(body.get("error", "no answer"))
             if body.get("supported") is False or "no such tool" in error:
                 # Either a rover with no depth camera or a daemon too old to have
-                # the calls. Both are permanent for this connection, and both are
-                # answered by taking the switch off the page rather than by
-                # showing one that cannot work.
-                self.depth.update({"supported": False, "power": "", "text": "-",
-                                   "since_s": 0.0, "note": ""})
+                # the call. Both are permanent for this connection, and both are
+                # answered by taking the lamp off the heading rather than by
+                # leaving a colour standing for nothing.
+                self.depth.update({"supported": False, "power": "", "note": ""})
                 return
-            self.depth.update({"supported": True, "power": "", "text": "-",
-                               "since_s": 0.0, "note": error})
+            self.depth.update({"supported": True, "power": "", "note": error})
             return
-        power = str(body.get("power") or "")
-        since = float(body.get("since_s") or 0.0)
-        said = f"waking, {since:.0f} s" if power == "waking" else power
-        text = f"depth camera {said}" if said else "-"
-        self.depth.update({"supported": True, "power": power, "text": text,
-                           "since_s": since, "note": ""})
+        self.depth.update({"supported": True,
+                           "power": str(body.get("power") or ""), "note": ""})
 
     def show_wifi(self, body: dict[str, Any]) -> None:
         """The access point, its strength, and what else was last heard.

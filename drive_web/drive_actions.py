@@ -84,8 +84,6 @@ class SessionActions:
         elif what == "lights":
             self.watch_call("set_lights",
                             {"level": int(_number(action.get("level"), 0))})
-        elif what == "depth_power":
-            self.depth_power(bool(action.get("on")))
         elif what == "reset_lidar":
             self.reset_lidar()
         elif what == "clear_map":
@@ -96,34 +94,6 @@ class SessionActions:
             self.wifi_join(str(action.get("ssid") or ""))
         elif what == "world":
             self.world_act(action)
-
-    def depth_power(self, on: bool) -> None:
-        """Switch the depth camera on, or off to save what it draws.
-
-        `on` is the camera's sense the whole way through -- the box on the page,
-        this call and the daemon's `set_depth_power` all mean the same thing by
-        it -- so there is nowhere along the way for the two to get out of step.
-
-        The press is remembered until the rover answers it, which is the one
-        place this console draws a control from a click rather than from the
-        rover. A switch is a control the pointer is resting on: without this it
-        would flick back to where it was on the next state push and settle
-        forward again when the reply landed, which reads as a switch that refused
-        and then changed its mind.
-        """
-        if self.watch is None:
-            # Checked here rather than left to `watch_call`, because the two
-            # flags below are cleared by a reply, and a call that was never sent
-            # has none coming: the switch would sit showing the press for ever.
-            self.say("not connected, so the depth camera was not switched", "bad")
-            return
-        self.depth_asked = on
-        # A call about the camera is now in flight, so the poll must not send a
-        # second one behind it; and once it lands, ask again straight away rather
-        # than in five seconds, because switching on lands on `waking`.
-        self.depth_outstanding = True
-        self.depth_at = 0.0
-        self.watch_call("set_depth_power", {"on": on})
 
     def watch_call(self, name: str, arguments: dict[str, Any] | None = None) -> None:
         if self.watch is None:
