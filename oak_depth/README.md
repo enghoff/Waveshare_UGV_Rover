@@ -143,9 +143,12 @@ noise, and an earlier reading of "about 50 mW" from forty samples was noise too.
 The reason is that the instrument is looking in the wrong place. `VDD_IN` is the
 **Jetson module's** input, and the OAK hangs off the carrier board's USB 5 V,
 which is upstream of it — so the camera's own draw never crosses that shunt, and
-what the table can show is only the host-side cost of no longer carrying 300 kB/s
-over USB. The driver board reports pack voltage and no current at all, so there
-is no second instrument to ask.
+what the table can show is only the host-side cost of no longer carrying the
+stream over USB. That was 270 kB/s when these three rows were taken; the default
+is 15 fps and about 2.0 MB/s since 2026-09-04, so the switch is worth a little
+more now than this table could see, and still nothing it *can* see. The driver
+board reports pack voltage and no current at all, so there is no second
+instrument to ask.
 
 What is left is a manufacturer's figure and an inference: Luxonis quote about
 2.5 W for an OAK-D-Lite under load, and a Myriad in ROM bootloader with three
@@ -227,46 +230,72 @@ a *vertical* crop rather than a horizontal one — 70.1° across either way, and
 vertical field and saves the ISP eleven megapixels a frame. The 4:3 route is
 `THE_12_MP` with an ISP downscale, if that third ever turns out to matter.
 
-**The default is two frames a second**, lowered from ten on 2026-08-31 and
-unchanged when the colour camera was added beside the depth. What reads this asks
-about once a second at most and a parked rover is not looking at anything new, so
-the job is to have a picture and a range ready when somebody asks rather than to
-stream either. Raising it is `--fps`, and because the rate is baked into the
-pipeline when it is built, changing it is a restart and a fresh firmware upload
-rather than a live retune.
+**The default is fifteen frames a second**, raised from two on 2026-09-04. It had
+been two since 2026-08-31 on the reasoning that nothing read this at rate: what
+asked did so about once a second, a parked rover is not looking at anything new,
+and the job was to have a picture and a range ready rather than to stream either.
+
+What changed that is who reads it. `world_state` now stitches a range from this
+camera onto a box drawn on the *gimbal* camera, and there the number that matters
+is not how often a frame arrives but **how old the one you get is**. At two a
+second a read came back about two thirds of a second stale, and on a rover that
+is not a latency figure but a distance — the two pictures a single measurement is
+assembled from were taken from different places. Fifteen cuts the largest part of
+that by seven; see [what the age is made of](#the-two-halves-and-the-age) below.
+
+Lowering it again is `--fps`, and because the rate is baked into the pipeline when
+it is built, changing it is a restart and a fresh firmware upload rather than a
+live retune.
+
+### The two halves, and the age
 
 **The two halves are paired on the device's own timestamps, and that was worth
 doing.** The colour frame goes through the MJPEG encoder before it crosses the
-link, so it arrives a whole exposure behind its own depth frame: pairing whatever
-was newest of each put them **0.49 s apart at 2 fps -- one full frame interval,
+link, so it arrives behind its own depth frame: pairing whatever was newest of
+each put them **0.49 s apart when this ran at 2 fps -- one full frame interval,
 and 23 cm of rover** at the speed it explores at. A box drawn on one of those and
 a range taken from the other are not one measurement. So each depth frame is held
 back until the picture it belongs with has arrived, and the two are published
 together.
 
-**What that leaves is a fifth of a second, and it is the sensors rather than the
-pairing.** Measured on the rover on 2026-09-04 over sixty reads a second apart:
-`depth_apart_s` has a **median of 0.197 s and a worst of 0.217**, never anywhere
-near the 0.5 s a mispairing would give. The colour sensor and the mono pair
-free-run on their own clocks -- this camera has no hardware sync between them --
-so a correctly matched pair still sits about that far out of phase, and that is a
-floor rather than a fault to chase. Raising `--fps` shrinks it proportionally,
-which is the only lever there is.
+**The age a reader sees is two things, and only one of them is the pairing.** The
+hold-back is exactly one frame interval — a depth frame goes out when the next one
+arrives — and then the reader waits, on average, another half interval for its
+turn. That was about 0.65 s in total at 2 fps and is **roughly a tenth of a second
+at 15**, which is what raising the rate was for.
 
-The other cost is that the pair is about **0.65 s old** when it is read rather
-than 0.03. Both numbers ride on the reply -- `X-Frame-Age` and `X-Depth-Apart` --
-because both are time the rover was moving through, and the consumer is the only
-thing that knows how fast: `world_state`'s inspection charges the pair of them to
-every range it stores.
+The remainder is the two sensors being out of phase with each other, and **how
+much of that falls with the rate is not known.** Measured at 2 fps on 2026-09-04
+over sixty reads a second apart, `depth_apart_s` had a **median of 0.197 s and a
+worst of 0.217**. Part of that is the colour sensor and the mono pair free-running
+on their own clocks with no hardware sync between them, which is proportional to
+the interval and does shrink; part is the encoder's own fixed latency, which does
+not. Nothing has separated the two, so **the honest expectation at 15 fps is
+somewhere between 0.013 s and 0.197 s, and it has to be re-measured on the rover.**
+`world_state` still refuses a pair more than `MAX_APART_S` (0.30 s) apart, but be
+aware that at this rate a whole-frame mispairing is 67 ms and no time threshold
+can spot one any more.
 
-**What the drop to 2 fps actually bought, measured the same day:** the Orin's
-`VDD_IN` rail fell from 6.49 W to 6.32 W, each averaged over forty one-second
-samples with the rest of the rover running, and this service's own CPU from 1.5%
-of a core to 0.5%. So about 180 mW, or 3% of the board — real, but small enough
-to sit inside the rail's own 300 mW sample-to-sample spread, and it should be
-read as "a little" rather than as a figure to plan around. Note also that
-`VDD_IN` is the *Orin's* input, so how much of the camera's own USB draw it sees
-is unproven. The link is the honest saving: 1.5 MB/s down to roughly 300 kB/s.
+Both numbers ride on the reply — `X-Frame-Age` and `X-Depth-Apart` — because both
+are time the rover was moving through, and the consumer is the only thing that
+knows how fast: `world_state`'s inspection charges the pair of them to every range
+it stores. Nothing downstream has a rate written into it, which is why this change
+was a constant and not a refactor.
+
+**What the drop to 2 fps had bought, measured on 2026-09-04:** the Orin's `VDD_IN`
+rail fell from 6.49 W to 6.32 W, each averaged over forty one-second samples with
+the rest of the rover running, and this service's own CPU from 1.5% of a core to
+0.5%. So about 180 mW, or 3% of the board — real, but inside the rail's own 300 mW
+sample-to-sample spread, and `VDD_IN` is the *Orin's* input so how much of the
+camera's own USB draw it sees is unproven. That is the bill for going back up, and
+it is why going back up was cheap: the saving was never large enough to plan
+around, and the staleness it cost turned out to matter more.
+
+The link is the real cost and it is arithmetic rather than a measurement: **about
+2.0 MB/s at 15 fps** — 1.7 of aligned depth plus 0.3 of MJPEG — against roughly
+270 kB/s at two. Still a twentieth of the 40 MB/s this camera has been measured
+saturating at, on a port it shares with the wifi dongle. That is the number to
+watch if the radio ever starts misbehaving.
 
 The table below was measured at the old 10 fps default, with the service running
 and the rover otherwise doing its usual work. The rates and the link cost scale
@@ -283,24 +312,27 @@ with `--fps`; the rest does not:
 
 That table predates the colour camera and the alignment, so read its depth row as
 the mono pair's own output rather than as what `/depth` returns today. What the
-addition cost, measured on 2026-09-04 with the same board doing its usual work:
-the aligned map is 320×180 at 2 fps, which is 230 kB/s where the unaligned 320×240
-was 307, and the colour stream adds about 40 — so **the whole service moves less
-over the link than the depth alone used to**, and the valid share was 33–59% in a
-room the rover was parked a metre from.
+addition cost, measured on 2026-09-04 with the same board doing its usual work
+and the service then running at 2 fps: the aligned map is 320×180, which came to
+230 kB/s where the unaligned 320×240 was 307, and the colour stream added about
+40. The valid share was 33–59% in a room the rover was parked a metre from. Those
+per-frame sizes are what the 15 fps arithmetic above is built from; **the CPU and
+power rows have not been re-measured since the rate went up** and the 1.5% figure
+was taken at 10 fps, so it is the closest thing to a current number.
 
 The two valid-pixel figures are different rooms rather than different hardware:
 the fraction of the frame stereo can range is a property of what the camera is
 looking at, and a near, textureless wall returns no disparity at all.
 
 The link cost is the number the pipeline was designed around rather than a
-by-product — 1.5 MB/s at the 10 fps this was measured at, and about 300 kB/s at
-today's default of 2. Everything on this rover shares one 480 Mbps root port — the
-wifi dongle, the tracking camera, the lidar's serial adapter and this — and the
-OAK alone has been measured saturating near 40 MB/s when colour and aligned depth
-are paired. Losing the wifi adapter to USB
-contention means losing the way to say "stop". `--fps` and `--decimation` are the
-two knobs; raising either raises that number.
+by-product — about 2.0 MB/s at today's default of 15, 1.5 at the 10 fps the table
+was measured at, and 270 kB/s at the 2 it briefly ran at. Everything on this rover
+shares one 480 Mbps root port — the wifi dongle, the tracking camera, the lidar's
+serial adapter and this — and the OAK alone has been measured saturating near
+40 MB/s when colour and aligned depth are paired. Losing the wifi adapter to USB
+contention means losing the way to say "stop", so this is the budget to check
+first if the radio starts dropping. `--fps` and `--decimation` are the two knobs;
+raising either raises that number.
 
 ## What `/depth` says
 

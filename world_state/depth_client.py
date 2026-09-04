@@ -57,22 +57,30 @@ TIMEOUT_S = 3.0
 #: camera gets replaced.
 LENS_CACHE_S = 60.0
 #: A picture older than this is not what the camera is looking at now. The
-#: service runs at two frames a second, so half a second is one frame; this
-#: allows for several and still refuses a stream that has stalled.
+#: service runs at fifteen frames a second, so this is many tens of frames; it is
+#: deliberately loose because all it has to catch is a stream that has stalled,
+#: and how stale a frame is gets *charged* to the answer rather than refused --
+#: see `Observation.age_s`.
 FRAME_MAX_AGE_S = 2.0
 #: And how far apart the picture and the depth map behind it may have been taken.
 #:
 #: **Measured on the rover on 2026-09-04 over sixty reads a second apart: median
-#: 0.197 s, worst 0.217.** The colour sensor and the mono pair free-run on their
-#: own clocks -- this camera has no hardware sync between them -- so a pair that
-#: is correctly matched still sits about a fifth of a second out of phase, and
-#: that is the floor rather than a fault to chase. The service pairs on the
-#: device's own timestamps and never picked a frame further out than that.
+#: 0.197 s, worst 0.217 -- with the camera running at 2 fps.** The colour sensor
+#: and the mono pair free-run on their own clocks, this camera has no hardware
+#: sync between them, and the colour frame additionally waits on the MJPEG
+#: encoder. The service pairs on the device's own timestamps and never picked a
+#: frame further out than that.
 #:
-#: So this separates *out of phase* from *off by a whole frame*, which is 0.500 s
-#: at the default rate and is what taking whatever was newest of each used to give
-#: -- 0.49 s measured, and 23 cm of rover at the speed it explores at. 0.30 is
-#: comfortably above the worst honest pairing and comfortably below a mispairing.
+#: **Left at 0.30 when the rate went to 15 on 2026-09-04, and what that costs is
+#: honest ignorance.** At 2 fps this threshold sat above the worst honest pairing
+#: and below the 0.500 s an off-by-one-frame mispairing gave, so it told the two
+#: apart. At 15 fps a whole frame is 67 ms, so no threshold can make that
+#: distinction any more -- and whether the honest phase error itself falls with
+#: the interval depends on how much of the 0.197 s was free-running phase, which
+#: does fall, against fixed encoder latency, which does not. That split has never
+#: been measured. So this stays a loose sanity bound on a pair that is obviously
+#: not one measurement, the number to re-measure once the rover is up, and the
+#: phase is charged rather than relied on being small.
 #:
 #: **The phase is charged rather than merely tolerated.** A fifth of a second is
 #: 9 cm at the speed this rover explores at, and the box was drawn on one frame
@@ -98,11 +106,14 @@ class Ranged:
     pixels: int = 0
     #: How old the depth frame this came from was, in seconds. **Carried because
     #: a range is only true of where the camera was when it was taken**: the
-    #: depth camera runs at two frames a second and holds each one back until the
-    #: picture it belongs with has arrived, so a reading is about two thirds of a
-    #: second old by the time it is read -- which on a rover exploring at 0.47 m/s
-    #: is thirty centimetres. The caller knows how fast the rover was going and is
-    #: the only one that can charge that to the answer; see
+    #: depth camera holds each frame back until the picture it belongs with has
+    #: arrived, so a reading is always somewhat older than the moment it is read
+    #: at -- and on a rover exploring at 0.47 m/s that age is distance. It was
+    #: about two thirds of a second when the camera ran at 2 fps, or thirty
+    #: centimetres; the rate went to 15 on 2026-09-04 and most of that age went
+    #: with it, but this is read off the reply rather than assumed so that
+    #: neither figure has to be remembered here. The caller knows how fast the
+    #: rover was going and is the only one that can charge it to the answer; see
     #: `Inspector._aged_sigma`.
     age_s: float = 0.0
     #: And how far apart the picture the box was drawn on and the depth map the

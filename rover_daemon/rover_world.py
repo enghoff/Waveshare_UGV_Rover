@@ -101,7 +101,8 @@ ENV_FAKE = "UGV_WORLD_FAKE"
 #: `"oak"` looks through the depth camera instead: 70 degrees, bolted to the
 #: chassis, cannot turn -- and a range on **everything** it sees, because the box
 #: and the depth are the same picture. What it costs is the ability to look
-#: around at all, and a frame two thirds of a second old rather than fresh.
+#: around at all, and a frame that is not quite of this instant -- the service
+#: holds each depth frame for the picture it belongs with.
 #:
 #: Either way it needs `world_state.oak.MOUNT` measured. Until then the OAK
 #: cannot draw a bearing and the gimbal path gets no ranges -- see
@@ -523,9 +524,10 @@ class RoverWorld:
 
         The pan and tilt recorded are the mount's own, which is what makes this
         camera a gimbal that never moves as far as everything downstream is
-        concerned. The picture is about two thirds of a second old, because the
+        concerned. The picture is a little older than this instant, because the
         service holds each depth frame until the colour frame exposed with it has
-        arrived; `taken_at` says so and the bearing arithmetic reads it.
+        arrived; `taken_at` says how much and the bearing arithmetic reads it
+        rather than assuming a figure that changes with the camera's rate.
         """
         ranger = self._world_ranger()
         if ranger is None:

@@ -1,9 +1,9 @@
 """The OAK as a camera with a range on every pixel, on the rover, kept alive from
 boot. A colour picture, and millimetres out.
 
-    python3 depth_server.py                 # loopback 8770, at 2 fps
+    python3 depth_server.py                 # loopback 8770, at 15 fps
     python3 depth_server.py --bind 0.0.0.0  # ...reachable from the LAN as well
-    python3 depth_server.py --fps 10        # video rate, and five times the USB traffic
+    python3 depth_server.py --fps 2         # a still every half second, and a fifth of the link
 
     GET  /health     is the device up, what is it, and how is the depth
     GET  /depth      the newest frame as a coarse grid and per-sector ranges
@@ -88,21 +88,27 @@ DEFAULT_BIND = "127.0.0.1"
 # Mono at 480p because the OV7251 sensors are native there and 400p is a crop, and
 # the disparity decimated 2x on the device before it is warped.
 #
-# **Two frames a second, not ten**, and it survived the colour camera being added
-# beside the depth. What reads this asks about once a second at most and a parked
-# rover is not looking at anything new, so the job is to have a picture and a
-# range ready when somebody asks rather than to stream either; two a second means
-# neither answer is ever more than half a second old. The link is the thing worth
-# spending carefully -- 40 MB/s is where it saturates, everything on this rover
-# shares one 480 Mbps root port, and losing the wifi adapter means losing the way
-# to say "stop" -- and the arithmetic is 230 kB/s of depth plus 40 kB/s of
-# colour, which is *less* than the 307 kB/s the unaligned depth alone cost before,
-# because the aligned map is 320x180 where the old one was 320x240.
+# **Fifteen frames a second, raised from two on 2026-09-04**, because how *old*
+# the answer is turned out to matter more than what the link costs. Two a second
+# was chosen when nothing read this; `world_state` now stitches a range from here
+# onto a box drawn on the gimbal camera, and at two the pair it reads is about
+# two thirds of a second old -- one frame interval of that is the hold-back that
+# pairs the two streams, and the rest is waiting for the next frame. That age is
+# rover movement between the two pictures a single measurement is made of, so
+# the interval is the thing worth shrinking and fifteen shrinks it sevenfold.
 #
-# Raise it with --fps when something actually reads this at rate. The rate is
-# fixed when the pipeline is built, so changing it is a restart and a fresh
-# firmware upload -- there is no way to retune a running device.
-DEFAULT_FPS = 2
+# The link stays inside its budget, which is what two fps was protecting: the
+# arithmetic is 1.7 MB/s of depth plus 0.3 of colour against the 40 MB/s where
+# this camera has been measured saturating, on a 480 Mbps root port shared with
+# the wifi dongle. Ten was this service's own default until 2026-08-31 and ran on
+# a slower board than this one, and dropping to two bought about 180 mW -- inside
+# the power rail's own sample-to-sample spread. So the cost of going back up is
+# small and measured; see the README for both figures.
+#
+# Lower it with --fps if the link ever does become the binding constraint. The
+# rate is fixed when the pipeline is built, so changing it is a restart and a
+# fresh firmware upload -- there is no way to retune a running device.
+DEFAULT_FPS = 15
 DECIMATION = 2
 #: What the colour camera emits, and what the depth is warped to match.
 #:
@@ -123,27 +129,40 @@ COLOUR_SIZE = (640, 360)
 COLOUR_ISP_SCALE = (1, 3)
 #: MJPEG on the device's own encoder rather than on the host: this board has no
 #: OpenCV in this process, the VPU has an encoder sitting idle, and a 22 kB JPEG
-#: at 2 fps is 40 kB/s against the 460 kB a raw frame would be.
+#: at 15 fps is 330 kB/s against the 3.5 MB/s a raw frame would be.
 JPEG_QUALITY = 90
 #: And what size the aligned depth comes off the device at -- half the colour
 #: frame in each direction, so `depth[y, x]` is the colour frame's `(2x, 2y)` and
 #: the same *fraction* of both is the same ray.
 #:
 #: Half rather than full because the link is the thing worth spending carefully:
-#: 320x180 of uint16 at 2 fps is 230 kB/s, which is less than the 307 kB/s the
-#: unaligned 320x240 map cost before the colour camera was added at all. The
-#: stereo pair still runs at 640x480 and is still decimated on the device; this is
-#: only how much of the result is worth sending.
+#: 320x180 of uint16 at 15 fps is 1.7 MB/s where the full colour frame's size
+#: would be 6.9, and it is this halving that keeps the rate affordable at all.
+#: The stereo pair still runs at 640x480 and is still decimated on the device;
+#: this is only how much of the result is worth sending.
 DEPTH_SIZE = (320, 180)
-#: How many colour frames to keep while waiting for the depth frame they belong
-#: with. Four is two seconds at the default rate, which is far longer than the
-#: stereo pipeline's own lag and short enough that the buffer is never the reason
-#: this process holds memory.
-COLOUR_HISTORY = 4
+#: How long a window of colour frames to keep while waiting for the depth frame
+#: they belong with, in seconds.
+#:
+#: **A duration and not a count, because the lag this has to reach back across
+#: is a duration.** The colour frame arrives behind its own depth frame by the
+#: time the MJPEG encoder takes, and nothing measured says that time falls when
+#: the frame rate rises. A fixed four frames was two seconds at the old 2 fps and
+#: would be a quarter of a second at 15 -- so the buffer would have been shorter
+#: than the lag, `_nearest` would have found only frames that had already aged
+#: out of the window it wanted, and the pairing would have quietly started
+#: matching the wrong picture or none at all.
+#:
+#: Two seconds is what the pairing has had since it was written, and it is far
+#: longer than the encoder lag needs. The cost is the frames held: 22 kB apiece,
+#: so 30 of them at 15 fps is under a megabyte.
+COLOUR_HISTORY_S = 2.0
 # How long a frame may be missing before this process gives up and lets the
 # supervisor open the device again from scratch. Nothing else recovers a Myriad
 # that has been browned out or unplugged, so exiting *is* the repair. Generous
-# enough not to fire on a slow moment: at the default 2 fps this is ten frames.
+# enough not to fire on a slow moment: at the default 15 fps this is 75 frames,
+# and it stays a duration rather than a frame count because what it is really
+# waiting for is a device that has gone, which takes the same time either way.
 FRAME_TIMEOUT_S = 5.0
 # And how long the first frame after a switch-on may take before that counts as a
 # fault rather than as a camera waking up. Waking is not a process start: the host
@@ -265,6 +284,9 @@ class Depth:
         self.dai = _import_depthai()
         self.fps = fps
         self.decimation = decimation
+        # How many colour frames that window of seconds is at this rate. At least
+        # two, so that --fps 1 still has something to pair against.
+        self.colour_history = max(2, math.ceil(COLOUR_HISTORY_S * max(1, fps)))
         self.frame = None            # newest depth frame, uint16 millimetres
         self.frame_at = 0.0          # time.monotonic() when it arrived
         self.frame_stamp = 0.0       # the device's own clock, for pairing
@@ -411,15 +433,22 @@ class Depth:
                 # same device, but the colour frame goes through the MJPEG
                 # encoder before it crosses the link, and measured on this
                 # camera that puts it a whole exposure behind its own depth
-                # frame -- pairing whatever was newest of each gave 0.49 s at 2
-                # fps, which is 23 cm of rover at the speed it explores at, and
-                # a box drawn on one of those and a range taken from the other
-                # are not one measurement.
+                # frame -- pairing whatever was newest of each gave 0.49 s when
+                # this ran at 2 fps, which is 23 cm of rover at the speed it
+                # explores at, and a box drawn on one of those and a range taken
+                # from the other are not one measurement.
                 #
                 # So a depth frame is *held* rather than published on arrival,
                 # and goes out once the colour frame exposed with it has turned
                 # up. `recent` is the colour frames waiting to be claimed and
                 # `pending` is the depth frame waiting for one.
+                #
+                # **The hold is one frame interval, so the rate sets what it
+                # costs**: a depth frame goes out when the next one arrives,
+                # which was half a second of added age at 2 fps and is 67 ms at
+                # 15. That is most of what raising the rate bought, and it is
+                # why `COLOUR_HISTORY_S` is a duration -- the window the colour
+                # frame has to be found in did not shrink with the interval.
                 recent: list[tuple[float, bytes]] = []
                 pending = None
                 while not self._stop.is_set():
@@ -436,7 +465,7 @@ class Depth:
                         recent.append((_stamp_of(picture),
                                        bytes(picture.getData())))
                         self.jpegs += 1
-                        del recent[:-COLOUR_HISTORY]
+                        del recent[:-self.colour_history]
                     if pending is not None:
                         self._publish(pending, recent, now)
                     pending = (packet.getFrame(), _stamp_of(packet), now)

@@ -512,7 +512,7 @@ class Inspector:
                    # How fast the rover was going, from the bracket that already
                    # measures it. Not stored -- `store.record` ignores what it
                    # does not have a column for -- and here because a range read
-                   # from a frame two thirds of a second old is only true of
+                   # from a frame that is not of this instant is only true of
                    # where the camera was then. See `_aged_sigma`.
                    "speed_mps": _speed(moved, before_at, after_at),
                    # The lens to read this picture's pixels through, which is the
@@ -727,12 +727,17 @@ class Inspector:
         """What a range is worth once its own staleness is charged to it.
 
         **A range is true of where the camera was when the frame was taken.** The
-        depth camera runs at two frames a second and holds each frame back until
-        the picture it belongs with has come through the encoder, so a reading is
-        about two thirds of a second old when it is read -- and on a rover
-        exploring at 0.47 m/s that is thirty centimetres, against a stereo error
-        of two to seven at these distances. Ignoring it would make the world state
-        trust a stale range far more than a fresh one deserves.
+        depth camera holds each frame back until the picture it belongs with has
+        come through the encoder, so a reading is always older than the moment it
+        is read at, and on a rover exploring at 0.47 m/s that age is distance
+        against a stereo error of two to seven centimetres at these ranges.
+        Ignoring it would make the world state trust a stale range far more than
+        a fresh one deserves.
+
+        The age itself is read off the reply and never assumed here, which is
+        what let the camera's rate go from 2 fps to 15 on 2026-09-04 without
+        touching this: the hold-back was half a second of it at the old rate and
+        is 67 ms at the new one, and this arithmetic did not need to know.
 
         Added in quadrature with what the camera said the reading was worth, the
         same way `Inspector._where` adds the turn to the bearing: the two are

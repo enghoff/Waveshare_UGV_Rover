@@ -445,9 +445,11 @@ def test_a_range_pins_the_axis_the_bearings_leave_open() -> None:
 def test_a_stale_range_is_worth_less_on_a_moving_rover() -> None:
     """**A range is true of where the camera was when the frame was taken.** The
     depth camera holds each frame until the picture it belongs with has come
-    through the encoder, so a reading is about two thirds of a second old when it
-    is read -- thirty centimetres at the speed the rover explores at, against a
-    stereo error of two to seven. Standing still it costs nothing."""
+    through the encoder, so a reading is older than the moment it is read at --
+    and whatever that age is, it is distance at the speed the rover explores at,
+    against a stereo error of two to seven centimetres. The 0.65 s below is the
+    age the camera gave at its old 2 fps, kept as the fixture because it is the
+    case worth charging; standing still it costs nothing either way."""
     from world_state.inspector import Inspector, _speed
 
     fresh = Ranged(range_m=2.0, sigma_m=0.04, age_s=0.65)
