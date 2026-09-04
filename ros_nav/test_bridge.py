@@ -464,13 +464,21 @@ def test_discovery_stays_on_this_board():
     check("...and the circular footprint EscapeSpin's soundness rests on is "
           "still a circle", "robot_radius:" in nav2_settings
           and "footprint:" not in nav2_settings, True)
-    with open(os.path.join(os.path.dirname(HERE), "deploy", "manifest.json"),
-              encoding="utf-8") as fh:
-        deploy_cfg = json.load(fh)
-    ros_nav_cmds = next((c.get("commands") or [] for c in deploy_cfg["components"]
-                         if c.get("name") == "ros_nav"), [])
-    check("a deploy rebuilds the plugin, or the rover runs last week's .so",
-          any("behaviors/build.sh" in cmd for cmd in ros_nav_cmds), True)
+    # Guarded, like the other read of it below. The rover's ~/ugv is flat and has
+    # no deploy/ in it, so this raised there rather than skipping -- and it took
+    # the whole run down with it, which is why nothing in this file had been
+    # checked on the rover for as long as the check has existed.
+    deploy_path = os.path.join(os.path.dirname(HERE), "deploy", "manifest.json")
+    if os.path.isfile(deploy_path):
+        with open(deploy_path, encoding="utf-8") as fh:
+            deploy_cfg = json.load(fh)
+        ros_nav_cmds = next((c.get("commands") or []
+                             for c in deploy_cfg["components"]
+                             if c.get("name") == "ros_nav"), [])
+        check("a deploy rebuilds the plugin, or the rover runs last week's .so",
+              any("behaviors/build.sh" in cmd for cmd in ros_nav_cmds), True)
+    else:
+        print("  .... skipped, no deploy/manifest.json")
     # deploy.py packs every file with mtime = 0 so rsync can skip an unchanged
     # one, which leaves every source on the rover older than every object file.
     # An incremental build then finds nothing to do, for ever -- watched here,
