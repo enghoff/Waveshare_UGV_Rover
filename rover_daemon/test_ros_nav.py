@@ -184,27 +184,57 @@ def test_the_three_occupancy_states_survive_the_trip():
           <= ros_navigator.GRID_OCCUPIED, True)
 
 
-def test_a_map_bigger_than_the_grid_is_clipped_not_fatal():
-    """A room mapped past 40 m across is a real thing, and drawing it must not
-    raise in the middle of a picture somebody asked for."""
+def test_the_grid_follows_the_map_rather_than_walling_it_off():
+    """A room mapped 20 m from where the rover started is drawn, not dropped.
+
+    **This is the fault, as the rover had it on 2026-09-04.** It stood at 18.6 m
+    from its origin, the room came back cut flat off at exactly -20.00 m -- a
+    straight edge across the whole picture that no wall had put there -- and
+    clicking past that line was refused as "off the edge of the map the rover
+    keeps". slam_toolbox had every one of those cells. They were thrown away
+    here, in the step between the map arriving and the picture being drawn,
+    because the square they were pasted into was a fixed 40 m centred on where
+    the rover happened to be switched on.
+
+    So the square is sized to hold the map now. The renderer's own assumption is
+    the reason it must stay a square with the origin at the middle, and the
+    reason a room walked 30 m into costs a 60 m one.
+    """
     try:
         import numpy  # noqa: F401
     except ImportError:
-        SKIP.append("the clipping check needs numpy")
+        SKIP.append("the grid-sizing check needs numpy")
         return
     import ros_navigator
 
-    # 30 cells at 5 cm placed 20 m out on a grid only 1 m across: entirely off it.
+    # 30 cells at 5 cm placed 20 m out: well past the old fixed square.
     grid = ros_navigator._GridSlam(
-        _payload(30, 30, 20, 0.05, 20.0, 20.0, [100] * 900))
-    check("a map wholly off the grid draws an empty one rather than raising",
-          int(grid.grid().max()), 0)
-
-    # Straddling the edge: half in, half out.
-    grid = ros_navigator._GridSlam(
-        _payload(30, 30, 20, 0.05, -0.5, -0.5, [100] * 900))
-    check("a map straddling the edge keeps the part that fits",
+        _payload(30, 30, 800, 0.05, 20.0, 20.0, [100] * 900))
+    check("a map beyond the old 40 m square is kept rather than dropped",
           int(grid.grid().max()), ros_navigator.GRID_OCCUPIED)
+    check("...on a square grown to hold it",
+          grid.config.grid_cells > ros_navigator.GRID_CELLS, True)
+    middle = grid.config.grid_cells // 2
+    check("...still centred where the rover started, so 20 m out is 400 cells out",
+          int(grid.grid()[middle + 400, middle + 400]),
+          ros_navigator.GRID_OCCUPIED)
+
+    # A map that fits keeps the grid the console's zoom controls were written
+    # against, so a rover that has just started up presents what it always did.
+    grid = ros_navigator._GridSlam(
+        _payload(30, 30, 800, 0.05, -0.5, -0.5, [100] * 900))
+    check("a map inside the old square does not move it",
+          grid.config.grid_cells, ros_navigator.GRID_CELLS)
+    check("...and nothing of it is lost",
+          int((grid.grid() == ros_navigator.GRID_OCCUPIED).sum()), 900)
+
+    # And past the ceiling it is still clipped rather than fatal.
+    grid = ros_navigator._GridSlam(
+        _payload(30, 30, 800, 0.05, 1000.0, 1000.0, [100] * 900))
+    check("a map past the ceiling is clipped, not an exception",
+          int(grid.grid().max()), 0)
+    check("...and the square stops at the ceiling",
+          grid.config.grid_cells, ros_navigator.GRID_MAX_CELLS)
 
 
 def test_a_map_that_lies_about_its_size_is_refused():
@@ -622,7 +652,7 @@ def test_resolution_is_readable_before_any_map_has_arrived():
 TESTS = (
     test_a_ros_map_lands_where_it_belongs,
     test_the_three_occupancy_states_survive_the_trip,
-    test_a_map_bigger_than_the_grid_is_clipped_not_fatal,
+    test_the_grid_follows_the_map_rather_than_walling_it_off,
     test_a_map_that_lies_about_its_size_is_refused,
     test_an_offset_becomes_a_place_before_it_crosses_the_socket,
     test_a_place_on_the_map_is_sent_untouched,

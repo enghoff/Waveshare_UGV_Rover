@@ -85,8 +85,47 @@ GRID_OCCUPIED_AT = 50
 # 800 cells at 5 cm is 40 m across with the rover's starting point in the middle,
 # which is the grid the daemon's own SLAM presented -- so the console's zoom
 # buttons and `MAP_MAX_HALF_EXTENT_M` mean what they always meant.
+#
+# **It is a floor now and not the size.** It was the size, and that quietly put a
+# wall 20 m from wherever the rover was switched on: slam_toolbox goes on mapping
+# past it perfectly well, and everything beyond was thrown away here, in the one
+# step between the map arriving and the picture being drawn. On 2026-09-04 the
+# rover stood at 18.6 m from its origin with the room drawn flat off at exactly
+# -20.00 m -- a straight edge no wall had put there -- and clicking past that line
+# was refused as "off the edge of the map the rover keeps". The square follows the
+# map now; see `_square_holding`.
 GRID_CELLS = 800
+# Where following the map stops. 4000 cells at 5 cm is 200 m across and 16 MB of
+# int8, which is nothing beside what the map itself costs to hold; the ceiling is
+# here so that an origin arriving wrong cannot ask for an allocation instead of a
+# picture. Past it the map is clipped exactly as the whole map used to be.
+GRID_MAX_CELLS = 4000
 DEFAULT_RESOLUTION_M = 0.05
+
+
+def _square_holding(payload: dict[str, Any], resolution_m: float) -> int:
+    """How wide a square, centred where the rover started, holds this whole map.
+
+    The renderer wants a square with the map frame's origin at the middle, which
+    is `mapimg`'s one assumption about the grid it is handed -- so the way to
+    hold a room the rover has walked 30 m into is a 60 m square, most of it
+    never-seen. That is an int8 per cell and it is drawn by sampling a window out
+    of it, so both the memory and the drawing cost what they cost regardless of
+    how much of the square is empty.
+
+    Never smaller than the grid the console's zoom controls were written against,
+    so a rover that has just started up presents exactly what it always did.
+    """
+    floor = int(payload.get("cells") or GRID_CELLS)
+    ox = int(round(float(payload["origin_x_m"]) / resolution_m))
+    oy = int(round(float(payload["origin_y_m"]) / resolution_m))
+    # Both ends of both axes, in cells from the origin, and never negative: a map
+    # that does not contain the origin at all still has to be measured from it.
+    reach = max(-ox, ox + int(payload["width"]),
+                -oy, oy + int(payload["height"]), 0)
+    # Two spare cells, because the middle is `cells // 2` and the rounding above
+    # is to the nearest cell either way.
+    return min(GRID_MAX_CELLS, max(floor, 2 * reach + 2))
 
 
 class _Config:
@@ -123,9 +162,9 @@ class _GridSlam:
             self.trail: tuple = ()
             return
 
-        cells = int(payload.get("cells") or GRID_CELLS)
         resolution = float(payload.get("resolution_m") or DEFAULT_RESOLUTION_M)
-        self.config = _Config(resolution, cells, GRID_OCCUPIED_AT)
+        self.config = _Config(resolution, _square_holding(payload, resolution),
+                              GRID_OCCUPIED_AT)
         where = payload.get("pose") or {}
         self.pose = (float(where.get("x_m") or 0.0),
                      float(where.get("y_m") or 0.0),
@@ -149,6 +188,12 @@ class _GridSlam:
         rounds to the nearest cell. That is up to two and a half centimetres, half
         the resolution of the thing being drawn, and it is the reason this rounds
         rather than truncating: truncating would bias every map the same way.
+
+        The clipping below is now only the `GRID_MAX_CELLS` case, because the
+        square was sized to hold this map before it was allocated. It stays,
+        because a map that has outgrown even that is a real thing and the
+        alternative to clipping is an exception in the middle of drawing a
+        picture somebody asked for.
         """
         import numpy as np
 
@@ -172,9 +217,10 @@ class _GridSlam:
         grid = np.zeros((cells, cells), dtype=np.int8)
         ox = int(round(float(payload["origin_x_m"]) / resolution)) + cells // 2
         oy = int(round(float(payload["origin_y_m"]) / resolution)) + cells // 2
-        # Clipped both ends, because a map that has grown past 40 m across is a
-        # real thing and the alternative to clipping is an exception in the middle
-        # of drawing a picture somebody asked for.
+        # Clipped both ends, which now only bites at `GRID_MAX_CELLS`: the square
+        # was sized to hold this map. A map past even that is a real thing, and
+        # the alternative to clipping is an exception in the middle of drawing a
+        # picture somebody asked for.
         sx, sy = max(0, -ox), max(0, -oy)
         ex = min(width, cells - ox)
         ey = min(height, cells - oy)
