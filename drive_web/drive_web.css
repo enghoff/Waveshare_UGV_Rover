@@ -140,6 +140,16 @@
      is not a match. */
   .wscore { margin-left: auto; font-weight: 600; }
   .wscore.wunder { font-weight: 400; color: var(--dim); }
+  /* Send the rover to look at this thing. Right of the row and small, because
+     the row is read far more often than it is pressed -- and it is the only
+     control in this popup that moves the rover, so it must not be reachable by
+     the same gesture that opens a row. */
+  .wgo { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+  /* Under a filter the score is already holding the right-hand side, and two
+     things each claiming the space would split it between them -- leaving the
+     score adrift in the middle of the row, at a different place in every row
+     because it moves with the length of the identifier beside it. */
+  .wscore + .wgo { margin-left: 0; }
   .whead { display: flex; align-items: baseline; gap: 8px; }
   .wplaced { font-weight: 600; }
   .wunplaced { opacity: .75; }

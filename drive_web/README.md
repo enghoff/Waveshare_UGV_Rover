@@ -187,10 +187,29 @@ more. It is the only popup on this page, because what it shows is a page of hist
 looked at deliberately and then closed, and a card of it would push the map off the
 screen for everybody who is only driving.
 
-Two buttons in it act on the rover. **inspect world** takes one look through the
+Three things in it act on the rover. **inspect world** takes one look through the
 perception sidecar, which is about a fifth of a second; **clear** is the map's, and
 throws the semantic world away with the map, because everything the store holds is
-a position or a bearing measured in that map's own frame.
+a position or a bearing measured in that map's own frame; and **go to**, on each
+row of the entity list, drives the rover to a place it can see that thing from.
+
+**Where it goes is the rover's answer, not the position in the row.** A placement
+names the middle of a thing, which is inside the furniture, so the console asks
+`world_state_viewpoint` for a patch of mapped floor the rover fits on with a clear
+line to the thing — the rules are in
+[`world_state/README.md`](../world_state/README.md) — and drives to that. The
+point then reaches the wheels by exactly the path a click on the map takes: it
+stops whatever is running rather than being refused, waits for the wheels, and is
+dropped with a notice if they never come free. The one thing it carries that a
+click does not is the heading to arrive on, so the rover ends up facing the thing
+instead of facing the way it travelled.
+
+The button is only on rows there is somewhere to go to: a thing seen once from one
+place has no position, and a thing placed under a map that has since been cleared
+has coordinates that are a place in this one only by coincidence. Both of those
+already say so on the row. While the drive runs the row says `going`, and what
+became of it — arrived, blocked, stopped — is written in the popup's note line,
+because the notice line that would otherwise carry it is behind the popup.
 
 ### The map in it: one place per thing, and every look drawn against it
 

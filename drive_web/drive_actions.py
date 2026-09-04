@@ -158,6 +158,18 @@ class SessionActions:
         speed = _number(action.get("speed_ms"), None)
         if speed is not None:
             arguments["speed_ms"] = speed
+        self.head_for(arguments)
+
+    def head_for(self, arguments: dict[str, Any]) -> None:
+        """Go to this place on the map, interrupting whatever is running to do it.
+
+        The tail of `tap`, shared with the world popup's "go to" button, because
+        the two are the same act: somebody has named a place on the map and the
+        rover is to go there. Everything the doc above says about a click holds
+        for a destination chosen off an entity's position -- it is a point rather
+        than an offset, so the second or two the stop takes does not move it, and
+        it outranks what is running rather than being refused.
+        """
         if self.busy_since is None and not self.exploring:
             self.move("drive_to", arguments)
             return
@@ -213,6 +225,7 @@ class SessionActions:
         if self.pending_target is None:
             return
         self.say(f"{self.new_target()} was dropped: {why}", "quiet")
+        self.world_dropped(self.pending_target, why)
         self.pending_target = None
         self.pending_until = 0.0
 

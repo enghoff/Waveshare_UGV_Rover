@@ -1,7 +1,8 @@
 // The drive console's world-state popup: what the rover has seen, drawn.
 //
 // The browser half of world_state/, and the counterpart to drive_world.py on
-// the server side. Read-only apart from the two buttons that act on the rover.
+// the server side. Read-only apart from the three things that act on the rover:
+// one inspection, the map's clear, and going to look at a thing.
 //
 // Loaded BEFORE drive_web.js, which is what calls `start()`. Nothing here runs
 // at load: it is all declarations, and everything it reaches for -- `$`, `post`,
@@ -10,7 +11,7 @@
 
 // --- the world-state popup --------------------------------------------------
 //
-// Read-only, apart from the two buttons that act on the rover. The point of it is
+// Read-only, apart from the three things that act on the rover. The point of it is
 // to decide whether any of this is worth believing, and everything in here is
 // arranged so that the ways it can be wrong show up rather than being smoothed
 // over: choosing a thing shows every look that was decided to be it, each with
@@ -27,6 +28,10 @@
 // pane beside the entity list.
 
 let worldGen = "", world = {}, worldTab = "entities";
+// Which thing the rover was last said to be on its way to, so that the list is
+// redrawn when that moves. It arrives in the pushed state rather than in the
+// body the list is otherwise drawn from.
+let worldGoing = "";
 // Whether the line under the box was drawn mid-search last time round, so that
 // the answer -- or the refusal, which brings no new body with it -- puts it
 // back.
@@ -148,6 +153,15 @@ function drawWorld(w) {
   $("worldInspect").disabled = w.busy || !state.link.connected;
   $("worldInspect").textContent = w.busy ? "looking..." : "inspect world";
   drawWorldAsking(w);
+  // Which thing the rover is being sent to look at rides in the pushed state and
+  // not in the body, so the list has to be told. Without this a press would show
+  // nothing until the rover next recorded a look -- which on a rover that has
+  // stopped looking is never, and on any rover is exactly the moment somebody is
+  // watching for their button to do something.
+  if (w.going !== worldGoing) {
+    worldGoing = w.going;
+    if (w.open && (world.entities || []).length) drawWorldList();
+  }
   if (!w.open || !w.gen || w.gen === worldGen) return;
   // Fetched rather than pushed, like the network list: tens of kilobytes against
   // a state that goes out ten times a second. While the popup is open the rover
@@ -344,6 +358,15 @@ function wRowFace(row, entity, newest, summary) {
   // Under a filter, what its best look scored against the phrase -- which is
   // why this row is one of the few left on screen, and the order they are in.
   if (worldFilter) head.append(wScore(worldFilter.things.get(entity.id)));
+  // And the one control in this list. Offered only where there is somewhere to
+  // go: a thing with no position has none, and a thing placed under a map that
+  // has since been cleared has coordinates that are a place in this one only by
+  // coincidence. Both of those already say so on the line below.
+  if (entity.placement
+      && (!summary.map_session
+          || entity.placement_map_session === summary.map_session)) {
+    head.append(wGoTo(entity));
+  }
 
   const meta = document.createElement("div");
   meta.className = "wmeta";
@@ -366,6 +389,33 @@ function wRowFace(row, entity, newest, summary) {
   // still by watching what is in it, and a row that collapsed and grew back
   // would be a row it had to correct for.
   row.replaceChildren(head, meta, wPlace(entity));
+}
+
+// Send the rover to look at this thing.
+//
+// **Where it actually goes is the rover's answer and not this position.** The
+// coordinates in the row are the middle of the thing, which is inside the
+// furniture; the rover works out a patch of mapped floor it fits on, with
+// nothing between it and the thing, and drives there facing it. All this button
+// carries is which thing was asked for.
+//
+// A click on the map outranks whatever is running, and so does this, for the
+// same reason: somebody choosing a destination is saying the rover is going to
+// the wrong place. So it is not greyed while the wheels are busy -- only while
+// this same thing is the one being driven to.
+function wGoTo(entity) {
+  const going = state.world.going === entity.id;
+  const button = document.createElement("button");
+  button.className = "wgo";
+  button.textContent = going ? "going" : "go to";
+  button.disabled = going || !state.link.connected || !state.link.can_drive;
+  button.onclick = (event) => {
+    // The row's own click is what chooses a thing to look at. This one must not
+    // also do that, or going somewhere would open the pane beside it as well.
+    event.stopPropagation();
+    post({do: "world", what: "approach", id: entity.id});
+  };
+  return button;
 }
 
 // The exact inverse of the sampling `render` does in lidar_slam/mapimg.py, which

@@ -84,8 +84,16 @@ class SessionWorld:
             "observations": 0,
             "backend": "",
             "searching": False,
+            # Which thing the rover is being sent to look at, so the row that
+            # asked for it says so while it happens. Empty the moment any move
+            # ends, because from then on the popup is not what is steering.
+            "going": "",
             "gen": 0,
         }
+        #: The destination that went with it, kept so that an outcome can be
+        #: matched to the move it belongs to: a move this one interrupted answers
+        #: first, and its verdict is not this one's.
+        self.world_target: dict[str, Any] | None = None
         #: What `/world.json` serves: everything the popup draws.
         self.world_payload: dict[str, Any] = {}
         #: Frames by identifier, so `/world_frame.jpg` can answer without going
@@ -128,6 +136,8 @@ class SessionWorld:
             self.world_select(str(action.get("id") or ""))
         elif what == "inspect":
             self.world_inspect()
+        elif what == "approach":
+            self.world_approach(str(action.get("id") or ""))
         elif what == "search":
             self.world_search(str(action.get("query") or ""))
 
@@ -206,6 +216,115 @@ class SessionWorld:
         self.world["note"] = "looking..."
         self.world_asked_at = time.monotonic()
         self.world_call("world_inspect")
+
+    def world_approach(self, entity_id: str) -> None:
+        """Go and look at that thing.
+
+        Two calls and not one, on two connections, because they are two different
+        kinds of thing. Where to stand is arithmetic over the map and answers in
+        milliseconds, so it goes out on the world channel with the rest of the
+        popup's questions; the drive that follows lasts minutes and belongs on
+        the move connection, under the same STOP and the same "a new destination
+        outranks what is running" that a click on the map has. What joins them is
+        `world_handle`, where the answer arrives and becomes a destination.
+
+        **The rover is not asked twice.** The point comes back with the entity's
+        name on it and is driven to as it stands; nothing here recomputes it from
+        a position the console holds, because the console's copy of the world is
+        as old as the last body it fetched and the map underneath it moves.
+        """
+        if self.world_link is None:
+            self.world["error"] = "not connected"
+            return
+        if not self.can_drive or "drive_to" not in self.tools:
+            self.world["error"] = ("this rover has no driving tools, so there "
+                                   "is nowhere to send it")
+            return
+        self.world["going"] = entity_id
+        # Whatever the last press was going to, this is not it. Held onto, the
+        # move now being stopped would answer against the new thing's name and
+        # write its verdict under a row the rover was never driving to.
+        self.world_target = None
+        self.world["error"] = ""
+        self.world["note"] = f"working out where to stand to see {entity_id}..."
+        self.world_call("world_state_viewpoint", {"id": entity_id})
+
+    def world_going(self, body: dict[str, Any]) -> None:
+        """The rover has said where to stand, so go there.
+
+        Through `head_for`, which is the tail of a click on the map: it stops
+        whatever is running, holds the destination until the wheels are free and
+        drops it if they never come. A viewpoint is a place on the map like any
+        other and there is no reason for it to reach the navigator by a second
+        road.
+
+        The one thing it carries that a click does not is which way to be facing
+        on arrival. A click is somewhere to be; this is somewhere to look *from*,
+        and a rover that parked in exactly the right spot with its back to the
+        thing would have done everything asked of it and nothing wanted.
+        """
+        going = str(body.get("id") or "")
+        self.world_target = {"x_m": body["x_m"], "y_m": body["y_m"],
+                             "heading_deg": body["heading_deg"]}
+        self.world["going"] = going
+        self.world["note"] = (
+            f"{going} is {body['range_m']:.1f} m from where the rover is being "
+            f"sent, {body['travel_m']:.1f} m away")
+        self.head_for(dict(self.world_target))
+
+    def world_arrived(self, arguments: dict[str, Any],
+                      body: dict[str, Any]) -> None:
+        """What became of a move the popup started, in the popup's own note.
+
+        The notice line under the console header says this too, and says it for
+        every move however it was started. But it is behind the popup: somebody
+        who pressed "go to" is looking at the entity list over a page they cannot
+        read, and a drive that ended against a doorway would otherwise be a rover
+        that silently stopped.
+
+        Only the popup's own destination gets an outcome written under it. A move
+        it interrupted answers first -- that is how the wheels come free -- and
+        reporting "stopped" under the thing the rover is about to set off for
+        would be the popup claiming a verdict on somebody else's drive.
+
+        Another move ending does take the row's flag off, but only once this
+        destination is no longer waiting to be sent: a click on the map that
+        replaced it, or a `drive` somebody pressed instead. While it is still
+        queued the rover really is on its way, and `hand_over` is about to send
+        it.
+        """
+        going = self.world.get("going") or ""
+        if not going:
+            return
+        if arguments != self.world_target:
+            if self.pending_target != self.world_target:
+                self.world["going"] = ""
+            return
+        self.world["going"] = ""
+        self.world_target = None
+        if not body.get("ok"):
+            self.world["note"] = ""
+            self.world["error"] = (f"the drive to {going} failed: "
+                                   f"{body.get('error') or body.get('reason')}")
+            return
+        detail = body.get("detail")
+        self.world["note"] = (f"{going}: {body.get('reason') or 'done'}"
+                              + (f" -- {detail}" if detail else ""))
+
+    def world_dropped(self, arguments: dict[str, Any], why: str) -> None:
+        """The destination never got the wheels, so the row stops claiming it will.
+
+        A waiting destination is thrown away when the move it interrupted does not
+        let go -- see `mind_the_target` -- and silence there is the bad outcome:
+        a row that says the rover is on its way to a thing it gave up on an hour
+        ago is worse than no row at all.
+        """
+        going, self.world["going"] = self.world.get("going") or "", ""
+        if not going or arguments != self.world_target:
+            return
+        self.world_target = None
+        self.world["note"] = ""
+        self.world["error"] = f"the drive to {going} was dropped: {why}"
 
     def world_search(self, query: str) -> None:
         """Find me the thing I described.
@@ -289,6 +408,14 @@ class SessionWorld:
             if name == "world_state_search":
                 self.world["searching"] = False
                 self.world_search_since = None
+            if name == "world_state_viewpoint":
+                # The refusal is the answer here rather than a fault: a thing
+                # with no position, a thing whose position belongs to a map that
+                # has been cleared, and a thing there is nowhere to see it from
+                # are all things the rover knows and the popup cannot work out
+                # for itself.
+                self.world["going"] = ""
+                self.world["note"] = ""
             # No bump: everything said here rides in the pushed state, which is
             # compared whole on every tick. Moving the tag would send the browser
             # back for 74 kB it already has, and a poll every two seconds means a
@@ -348,6 +475,12 @@ class SessionWorld:
             # phrase reads as the search having got it wrong.
             if str(body.get("query") or "") == self.world_query:
                 moved = self.world_put(search=body)
+        elif name == "world_state_viewpoint":
+            # Where to stand has come back, so this becomes a destination on the
+            # move connection -- through the same path a click on the map takes,
+            # so that it stops what is running, waits for the wheels and is
+            # dropped if they never come free, exactly as a click is.
+            self.world_going(body)
         elif name == "world_state_clear":
             self.world["note"] = (
                 f"cleared -- {body.get('entities', 0)} entities, "

@@ -556,8 +556,150 @@ def test_the_world_urls() -> None:
         drive_web.Handler.session = was
 
 
+def test_going_to_look_at_a_thing() -> None:
+    """The "go to" button, from the press to what the row says afterwards.
+
+    Two calls on two connections, and the join between them is the whole of what
+    is checked here. Where to stand is arithmetic over the rover's map and goes
+    out on the world channel; what comes back is a place on the map, and it
+    reaches the wheels through the same path a click on the map takes -- so it
+    stops what is running, waits for the wheels and is dropped if they never come
+    free. The one thing it carries that a click does not is which way to be
+    facing when it gets there, because the point of the drive is to be looking at
+    something.
+
+    None of the choosing is done here. The console never works out where to stand
+    from the position in the row: that is the rover's map to read, and the row is
+    as old as the last body the popup fetched.
+    """
+    try:
+        import drive_web
+        from console_model import Reply
+    except ImportError as exc:
+        SKIP.append(f"going to look at a thing ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append((name, arguments or {}))
+
+    def console():
+        session = drive_web.Session(None, 3.0, 480)
+        session.world_link = _Recorder()
+        session.moves, session.halt = Fake(), Fake()
+        session.tools = ["drive_to", "drive", "stop_driving"]
+        session.can_drive = True
+        return session
+
+    session = console()
+    session.act({"do": "world", "what": "approach", "id": "object:7"})
+    check("pressing go to asks the rover where to stand",
+          session.world_link.calls, [("world_state_viewpoint", {"id": "object:7"})])
+    check("...and nothing has been sent to the wheels on the strength of the row",
+          session.moves.sent, [])
+    check("...while the row says what is happening",
+          session.world_state()["going"], "object:7")
+
+    # The rover has read its own map and answered. That becomes a destination.
+    session.world_handle("world_state_viewpoint", {
+        "ok": True, "id": "object:7", "x_m": 3.2, "y_m": -1.0,
+        "heading_deg": 45.0, "range_m": 0.8, "travel_m": 2.2,
+        "placement": {"x_m": 3.8, "y_m": -0.4}}, 0.01)
+    check("the answer is driven to", [name for name, _ in session.moves.sent],
+          ["drive_to"])
+    sent = session.moves.sent[0][1]
+    check("...as a place on the map, with the way to face on arrival",
+          sent, {"x_m": 3.2, "y_m": -1.0, "heading_deg": 45.0})
+    check("...and not at the thing's own position, which is inside the thing",
+          (sent["x_m"], sent["y_m"]) == (3.8, -0.4), False)
+    check("...with the row still saying where the rover is going",
+          session.world_state()["going"], "object:7")
+    check("...and how far, in the popup's own note",
+          "2.2 m away" in session.world_state()["note"], True)
+
+    # And the move's verdict, in the popup -- which is over the notice line that
+    # would otherwise be the only place it was said.
+    session.handle(Reply("drive_to", sent,
+                         {"ok": True, "reason": "arrived", "travelled_m": 2.3},
+                         9.0))
+    check("what became of the drive is said in the popup",
+          session.world_state()["note"], "object:7: arrived")
+    check("...and the row stops claiming the rover is on its way",
+          session.world_state()["going"], "")
+
+    # A thing the rover will not be sent to. The refusal is the rover's sentence,
+    # because the three reasons -- no position, a position measured under a map
+    # that has been cleared, and nowhere to see it from -- are all things only the
+    # rover knows, and they are acted on differently.
+    session = console()
+    session.act({"do": "world", "what": "approach", "id": "object:9"})
+    session.world_handle("world_state_viewpoint",
+                         {"ok": False,
+                          "error": "the floor within 2.5 m of it has not been "
+                                   "mapped"}, 0.01)
+    world = session.world_state()
+    check("a refusal moves nothing", session.moves.sent, [])
+    check("...and says why, in the rover's own words",
+          "has not been mapped" in world["error"], True)
+    check("...and the row goes back to offering the button", world["going"], "")
+
+    # Interrupting: the popup's destination waits for the wheels exactly as a
+    # click does, and a verdict belongs to the move it was asked of. The one in
+    # flight answers first, and that outcome is not this drive's.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "world", "what": "approach", "id": "object:3"})
+    session.world_handle("world_state_viewpoint", {
+        "ok": True, "id": "object:3", "x_m": 1.0, "y_m": 2.0,
+        "heading_deg": -90.0, "range_m": 0.9, "travel_m": 4.0}, 0.01)
+    check("a rover already driving is stopped rather than told it is busy",
+          [name for name, _ in session.halt.sent], ["stop_driving"])
+    check("...and the destination waits for the wheels",
+          (session.pending_target or {}).get("heading_deg"), -90.0)
+    session.handle(Reply("drive_to", {"x_m": 9.0, "y_m": 9.0},
+                         {"ok": True, "reason": "stopped"}, 1.0))
+    check("the interrupted move's own verdict is not written under this thing",
+          "stopped" in session.world_state()["note"], False)
+    check("...and the row goes on saying where the rover is headed",
+          session.world_state()["going"], "object:3")
+    check("...because the waiting destination goes once the wheels are free",
+          [name for name, _ in session.moves.sent], ["drive_to"])
+    session.handle(Reply("drive_to", session.moves.sent[0][1],
+                         {"ok": True, "reason": "arrived", "travelled_m": 4.1},
+                         30.0))
+    check("...and it is that move whose verdict the row shows",
+          session.world_state()["note"], "object:3: arrived")
+
+    # A destination that never gets the wheels is dropped, and the row has to stop
+    # saying the rover is on its way to something it gave up on.
+    session = console()
+    session.busy_since, session.busy_name = 100.0, "drive_to"
+    session.act({"do": "world", "what": "approach", "id": "object:4"})
+    session.world_handle("world_state_viewpoint", {
+        "ok": True, "id": "object:4", "x_m": 1.0, "y_m": 2.0,
+        "heading_deg": 0.0, "range_m": 0.9, "travel_m": 4.0}, 0.01)
+    session.forget_target("the move it interrupted did not let go of the wheels")
+    check("a dropped destination clears the row", session.world_state()["going"], "")
+    check("...and says so rather than going quiet",
+          "was dropped" in session.world_state()["error"], True)
+
+    # And a rover with no driving tools at all is refused here rather than by the
+    # rover, which would answer a minute later with a sentence about a tool.
+    session = console()
+    session.tools, session.can_drive = ["look"], False
+    session.act({"do": "world", "what": "approach", "id": "object:7"})
+    check("a rover that cannot drive is not asked where to stand",
+          session.world_link.calls, [])
+    check("...and the popup says so", "no driving tools" in
+          session.world_state()["error"], True)
+
+
 TESTS = (
     test_the_world_state_popup,
+    test_going_to_look_at_a_thing,
     test_finding_a_thing_from_the_console,
     test_a_looking_loop_that_has_failed_still_says_so,
     test_an_open_popup_keeps_itself_current,

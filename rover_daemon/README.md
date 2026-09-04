@@ -119,6 +119,16 @@ on it is a guess), a fraction outside the picture, and a point that is solid or
 never-seen on the occupancy grid. Whether a *route* exists is left to Nav2, which
 owns that question and answers it in words.
 
+`drive_to` also takes a `heading_deg` — which way to be facing on arrival — and it
+is withheld from models for the same reason the coordinates are: it is a bearing
+in the map's frame. Left out, the goal faces along the way the rover travelled,
+which is what makes a series of clicked destinations read as a journey. The one
+caller that passes it is the drive console's world popup, sending the rover to
+look at something it has placed: the arrival heading is the difference between a
+spot the thing can be seen from and a rover that is actually looking at it. See
+`world_state_viewpoint` in [world_state/README.md](../world_state/README.md),
+which chooses the spot.
+
 A tool is offered only when its backend exists. In particular, `look` is withheld
 when no current voice/image destination has been registered. An advertised tool
 that can only fail encourages a model to claim it performed something that never

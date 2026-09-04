@@ -274,6 +274,27 @@ def test_a_place_on_the_map_is_sent_untouched():
           (-1.5, 4.25))
     check("...and no pose was asked for on the way",
           [r["op"] for r in bridge.seen], ["goto"])
+    check("a click on the map says nothing about which way to face",
+          sent[0]["yaw_deg"], None)
+
+    # And the one caller that does. The console's world popup sends the rover to
+    # look at something, so where it ends up pointing is the whole point of the
+    # move: with no yaw the goal faces along the way it travelled, which for a
+    # viewpoint chosen off to one side is the rover arriving with its back to the
+    # thing it went to see.
+    with FakeBridge({
+        "goto": [{"kind": "outcome", "reason": "arrived", "travelled_m": 2.0,
+                  "turned_deg": 90.0}],
+    }) as bridge:
+        nav = ros_navigator.RosNavigator(port=bridge.port)
+        nav.drive_to(x_m=-1.5, y_m=4.25, heading_deg=135.0)
+        sent = [r for r in bridge.seen if r.get("op") == "goto"]
+        asked = nav.report.snapshot()["asked"]
+
+    check("a viewpoint carries the way to be facing on arrival",
+          sent[0]["yaw_deg"], 135.0)
+    check("...and the commentary a console polls says so too",
+          asked, {"x_m": -1.5, "y_m": 4.25, "heading_deg": 135.0})
 
 
 def test_a_move_narrates_itself_while_it_runs():

@@ -215,6 +215,12 @@ class RoverNav:
         invented pair is a fifteen-metre drive to a place nobody chose. What wants
         them is a console with the map on screen, which knows the pose the picture
         was drawn at and can therefore name the point that was clicked.
+
+        `heading_deg` is out of the schema for the same reason and comes from the
+        same place: it is a bearing in the map's frame, and the only caller with
+        one is the console sending the rover to look at something it has placed.
+        Without it the rover faces the way it travelled, which is right for a
+        click on the floor and wrong for a viewpoint.
         """
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}
@@ -227,6 +233,9 @@ class RoverNav:
                      "left_m": _number(arguments.get("left_m", 0.0), "left_m")}
         else:
             where = {"x_m": _number(x, "x_m"), "y_m": _number(y, "y_m")}
+        heading = arguments.get("heading_deg")
+        if heading is not None:
+            where["heading_deg"] = _number(heading, "heading_deg")
         speed = arguments.get("speed_ms")
         outcome = self.nav.drive_to(speed_ms=None if speed is None
                                     else _number(speed, "speed_ms"), **where)

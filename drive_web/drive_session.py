@@ -788,6 +788,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
         if moved:
             self.busy_since = None
             self.busy_name = ""
+            # The world popup covers the notice line, so a drive it asked for is
+            # also reported inside it -- and any move ending is the popup no
+            # longer being what steers the rover. See `world_arrived`.
+            self.world_arrived(reply.arguments, body)
         self.show_outcome(reply)
         if name in ("start_tracking", "stop_tracking") and body.get("ok"):
             self.show_tracking(body)

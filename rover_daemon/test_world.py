@@ -488,6 +488,111 @@ def test_how_far_the_rover_could_see_comes_off_its_own_map() -> None:
           rover._world_reach(0.5, 2.0, 0.0), None)
 
 
+def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
+    """The call behind the console's "go to" button, with the three refusals.
+
+    The geometry itself is proved in `world_state/test_approach.py` against rooms
+    drawn by hand. What is proved here is the daemon's half: that the answer is
+    worked out from the live pose and the live map rather than from either of the
+    caches beside them, that a thing with no position or a position measured in a
+    map that has since been cleared is refused in a sentence instead of driving
+    the rover to a coordinate that means nothing now, and that the answer goes
+    down the wire -- which the numpy grid underneath it makes a real question.
+    """
+    try:
+        import numpy
+    except ImportError as error:
+        SKIP.append(f"choosing where to stand to see a thing ({error})")
+        return
+
+    import base64
+    import tempfile
+    import zlib
+
+    import rover_daemon
+
+    # Six metres square at 10 cm cells, open floor, with the rover at one end and
+    # a thing three metres away at the other.
+    cells = numpy.zeros((60, 60), dtype=numpy.int8)
+    payload = {
+        "ok": True, "width": 60, "height": 60, "resolution_m": 0.1,
+        "origin_x_m": 0.0, "origin_y_m": 0.0,
+        "data": base64.b64encode(zlib.compress(cells.tobytes())).decode(),
+    }
+
+    class Nav:
+        def __init__(self, pose):
+            self._pose = pose
+
+        def status(self):
+            return {"position_trusted": self._pose is not None, "pose": self._pose}
+
+        def ask(self, request, timeout_s):
+            return payload
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            rover.nav = Nav({"x_m": 1.0, "y_m": 3.0, "heading_deg": 90.0})
+            store = rover._world_store()
+            thing = store.create_entity()
+
+            check("a thing with no position has nowhere to be looked at from",
+                  rover.call("world_state_viewpoint", {"id": thing})["ok"], False)
+            check("...and an entity that does not exist is refused too",
+                  rover.call("world_state_viewpoint", {"id": "object:404"})["ok"],
+                  False)
+
+            store.place(thing, {"x_m": 4.0, "y_m": 3.0, "uncertainty_m": 0.2},
+                        store.map_session())
+            found = rover.call("world_state_viewpoint", {"id": thing})
+            check("a placed thing has a viewpoint", found["ok"], True)
+            check("...on the rover's side of it, at the near bound",
+                  (found["x_m"], found["y_m"]), (3.2, 3.0))
+            check("...facing it", found["heading_deg"], 0.0)
+            # The rover is pointed across the room, so the turn is the whole of
+            # the difference -- and it is what the console sends when the drive
+            # is too short to be worth planning.
+            check("...and the turn is measured from where it is pointing now",
+                  found["turn_deg"], -90.0)
+            check("...with the drive that is left over", found["travel_m"], 2.2)
+            try:
+                json.dumps(found)
+                encoded = True
+            except TypeError as error:
+                encoded = str(error)
+            check("...and the answer goes down the wire as one line of JSON",
+                  encoded, True)
+
+            # Clearing the map does not delete the entity, and that is exactly
+            # the trap: its coordinates are still there and they now name a place
+            # in a map that has never existed.
+            rover.call("world_map_session", {})
+            stale = rover.call("world_state_viewpoint", {"id": thing})
+            check("a position measured under a map that is gone is refused",
+                  stale["ok"], False)
+            check("...saying which map it was measured in",
+                  "was placed under map 1" in stale["error"], True)
+
+            rover.nav = Nav(None)
+            store.place(thing, {"x_m": 4.0, "y_m": 3.0}, store.map_session())
+            lost = rover.call("world_state_viewpoint", {"id": thing})
+            check("a rover that does not know where it is refuses to choose",
+                  lost["ok"], False)
+            check("...as a missing position rather than a missing map",
+                  "publishing the rover's position" in lost["error"], True)
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
     """When building the world state by itself, what is worth a look.
 
@@ -571,5 +676,6 @@ TESTS = (
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,
     test_a_world_observation_takes_the_live_pose_and_no_other,
     test_how_far_the_rover_could_see_comes_off_its_own_map,
+    test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map,
     test_the_rover_looks_when_there_is_something_new_to_see,
 )

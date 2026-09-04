@@ -73,7 +73,13 @@ def test_schemas():
                "world_state_clear",
                "world_state_entities", "world_state_entity", "world_state_frame",
                "world_state_observations", "world_state_search",
-               "world_state_summary"]
+               "world_state_summary",
+               # Where to stand to see one of those things, which is a control
+               # call for a second reason on top of that one: it answers with a
+               # point in the map's own frame, and every tool that does is kept
+               # from models because nothing a model can see says where the rover
+               # is in that frame. See `_tool_drive_to`.
+               "world_state_viewpoint"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)

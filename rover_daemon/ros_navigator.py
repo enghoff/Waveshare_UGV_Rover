@@ -508,7 +508,8 @@ class RosNavigator:
 
     def drive_to(self, ahead_m: float | None = None, left_m: float | None = None,
                  x_m: float | None = None, y_m: float | None = None,
-                 speed_ms: float | None = None) -> Outcome:
+                 speed_ms: float | None = None,
+                 heading_deg: float | None = None) -> Outcome:
         """Somewhere on the map, given either as an offset or as a point.
 
         The offset is converted here rather than on the ROS side, because that is
@@ -517,6 +518,14 @@ class RosNavigator:
         Converting late -- after the request has crossed the socket -- would move
         the destination by however far the rover travelled in between, which for a
         rover already driving is most of a metre.
+
+        `heading_deg` is which way to be facing on arrival. Left out -- which is
+        what a map click and every model tool leave it -- the goal faces along
+        the way the rover travelled, so a series of goals reads as a journey
+        rather than as arrivals in random directions. It is passed when the point
+        was chosen *because* of something to look at from it: the console's world
+        popup sends the bearing to the thing, and without it a rover can arrive
+        at a perfectly good viewpoint with its back to the reason it went there.
         """
         if x_m is None:
             where = self.pose_now()
@@ -532,9 +541,13 @@ class RosNavigator:
             asked = {"ahead_m": ahead, "left_m": left}
         else:
             asked = {"x_m": float(x_m), "y_m": float(y_m or 0.0)}
+        if heading_deg is not None:
+            asked["heading_deg"] = float(heading_deg)
         return self.move("drive_to", asked,
                          {"op": "goto", "x_m": float(x_m),
-                          "y_m": float(y_m or 0.0)})
+                          "y_m": float(y_m or 0.0),
+                          "yaw_deg": (None if heading_deg is None
+                                      else float(heading_deg))})
 
     def explore(self, budget_s: float | None = None,
                 min_frontier_m: float | None = None) -> Outcome:

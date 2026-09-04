@@ -723,6 +723,74 @@ class RoverWorld:
                                         limit=SELECTED_RAY_LIMIT,
                                         placement=entity.get("placement"))}
 
+    def _tool_world_state_viewpoint(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Where the rover would have to stand to look at one thing. A control call.
+
+        **It works out a place to drive to and does not drive there**, which is
+        the whole shape of this call. The console owns driving: it holds the
+        connection a move blocks for minutes on, the STOP that ends one, and the
+        rule that a new destination outranks whatever is running. A world call
+        that drove would be a second, worse copy of all three on the connection
+        the inspections are queued on. So this answers in a millisecond or two
+        with a point and a heading, and `drive_to` takes it from there.
+
+        The point is a place on the map and not an offset, for the reason every
+        destination in this daemon is: the answer is worked out from where the
+        rover was standing when it was asked, and by the time the wheels turn it
+        is standing somewhere else.
+
+        `heading_deg` is the way to be facing on arrival, and it is what makes
+        the difference between somewhere the thing *can* be seen from and
+        somewhere it *is* seen. `turn_deg` beside it is the same bearing measured
+        from where the rover is pointing now: nothing acts on it, and it is here
+        because it is what says whether the move about to happen is a drive or
+        mostly a turn on the spot -- which is the difference between a rover that
+        has not moved yet and one that is not going to.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        entity_id = str(arguments.get("id") or "")
+        store = self._world_store()
+        entity = store.entity(entity_id)
+        if entity is None:
+            return {"ok": False, "error": f"no such entity: {entity_id}"}
+        place = entity.get("placement")
+        if not place:
+            # The ordinary state of everything the rover has seen once from one
+            # place, and not a failure: there is nothing to drive at because
+            # nothing has crossed a second bearing with the first yet.
+            return {"ok": False,
+                    "error": f"{entity_id} has no position yet, so there is "
+                             f"nowhere to be sent to look at it"}
+        session = store.map_session()
+        if entity.get("placement_map_session") != session:
+            # Its coordinates were measured in a map that no longer exists, so
+            # they name a place in this one only by coincidence.
+            return {"ok": False,
+                    "error": f"{entity_id} was placed under map "
+                             f"{entity.get('placement_map_session')} and the "
+                             f"rover is now on map {session}, so its position "
+                             f"is not a place on this map"}
+        pose = self._world_pose()
+        if pose is None:
+            return {"ok": False,
+                    "error": "nothing is publishing the rover's position, so "
+                             "there is nowhere to measure a route from"}
+        grid = self._world_grid()
+        if grid is None:
+            return {"ok": False,
+                    "error": "the rover has no map yet, so it cannot tell floor "
+                             "it could stand on from the middle of a wall"}
+        found = world_state.approach.viewpoint(
+            place, world_state.approach.Grid(*grid), (pose["x_m"], pose["y_m"]))
+        if not found.get("ok"):
+            return {"ok": False, "error": found.pop("why"), "id": entity_id,
+                    "placement": place, "pose": pose, **found}
+        turn = found["heading_deg"] - pose["heading_deg"]
+        return {"ok": True, "id": entity_id, "placement": place, "pose": pose,
+                "turn_deg": round((turn + 180.0) % 360.0 - 180.0, 1), **found}
+
     def _tool_world_state_observations(self,
                                        arguments: dict[str, Any]) -> dict[str, Any]:
         """One page of the history, newest first, starting below a given row.

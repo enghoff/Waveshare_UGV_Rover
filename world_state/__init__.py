@@ -21,6 +21,7 @@ to cross it. Nothing here asks a model anything.
     search.py            a typed phrase against the stored semantic vectors
     view.py              an observation's measured provenance as a bearing to draw
     locate.py            two bearings from two places as a point on the map
+    approach.py          where the rover would have to stand to look at one
     replay.py            a recorded run back through the resolver, at a desk
 
 The rover deploys this to ``~/ugv/world_state`` and the daemon imports it from
@@ -30,6 +31,7 @@ can reach them.
 from __future__ import annotations
 
 from .inspector import Inspector
+from . import approach
 from . import resolve
 from . import search
 from .locate import agrees, best_fix, fix
@@ -41,6 +43,6 @@ from .view import ray, rays
 
 __all__ = [
     "Eyes", "FakeEyes", "Inspector", "Look", "SidecarEyes", "Sighting",
-    "WorldStore", "agrees", "best_fix", "describe_eyes", "fix", "ray", "rays",
-    "resolve", "search", "world_dir",
+    "WorldStore", "agrees", "approach", "best_fix", "describe_eyes", "fix",
+    "ray", "rays", "resolve", "search", "world_dir",
 ]
