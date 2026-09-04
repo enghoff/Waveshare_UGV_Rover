@@ -11,6 +11,7 @@ from board_link import (
     _battery_percent, _battery_state, _battery_summary,
 )
 from rover_camera import RoverCamera, VisionLink
+from rover_depth import RoverDepth
 from rover_nav import CAMERA_FOV_DEG, RoverNav
 from rover_recall import RoverRecall
 from rover_util import _level      # noqa: F401
@@ -22,7 +23,7 @@ from tool_schemas import (
 )
 
 
-class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall):
+class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The

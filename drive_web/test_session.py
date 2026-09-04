@@ -832,8 +832,88 @@ def test_a_slow_browser_is_shown_the_newest_state() -> None:
         watching.join(timeout=2.0)
 
 
+def test_the_low_power_switch_shows_the_camera_rather_than_the_click() -> None:
+    """The depth camera's switch: three states, one press, and who wins.
+
+    The switch is the one control on this page whose position the pointer is
+    resting on, so the interesting cases are not the happy ones. What is checked
+    here is that the panel is drawn from what the rover said rather than from
+    what was clicked, except for the moment between a press and its answer, and
+    that a rover with no depth camera takes the control off the page instead of
+    showing one that cannot do anything.
+    """
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"low power switch ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    sent = []
+    session.watch = type("Fake", (), {"submit": lambda _s, name, args=None:
+                                      sent.append((name, args))})()
+
+    session.show_depth({"ok": True, "supported": True, "power": "on",
+                        "since_s": 3600.0})
+    check("a camera that is running names itself and says so",
+          session.depth["text"], "depth camera on")
+    check("...and the switch is offered", session.depth["supported"], True)
+
+    # Waking is the state the switch exists to show. It takes four to six seconds
+    # and a console that showed "on" throughout would be lying for all of them.
+    session.show_depth({"ok": True, "supported": True, "power": "waking",
+                        "since_s": 6.0})
+    check("a camera that is waking counts",
+          session.depth["text"], "depth camera waking, 6 s")
+    check("...and is watched at a second rather than at five",
+          session.depth_gap(), 1.0)
+
+    session.show_depth({"ok": True, "supported": True, "power": "off",
+                        "since_s": 240.0})
+    check("a camera that is off does not count how long",
+          session.depth["text"], "depth camera off")
+
+    # The press. `low_power` is in the switch's sense -- low power on means the
+    # camera off -- and it is turned round exactly once, on the way out.
+    session.low_power(True)
+    check("switching low power on switches the camera off",
+          sent[-1], ("set_depth_power", {"on": False}))
+    check("...and the switch holds the press until it is answered",
+          session.depth_asked, True)
+    check("...and no poll goes out behind it", session.depth_outstanding, True)
+    session.handle(drive_web.Reply("set_depth_power", {"on": False},
+                                   {"ok": True, "supported": True,
+                                    "power": "off", "since_s": 0.0}, 0.01))
+    check("...and the answer takes the press back off",
+          session.depth_asked, None)
+    check("...and the panel now says what the camera said",
+          session.depth["text"], "depth camera off")
+
+    # A rover this console has lost. The press can never be answered, so it must
+    # not be left on the switch.
+    session.low_power(False)
+    session.abandon()
+    check("a press dies with the connection that carried it",
+          session.depth_asked, None)
+
+    # A depth service that is not answering is asked again; a rover that has no
+    # depth camera is not, and loses the control instead.
+    session.show_depth({"ok": False, "supported": True,
+                        "error": "Connection refused"})
+    check("a service that is down puts the reason on the panel",
+          session.depth["note"], "Connection refused")
+    check("...and is asked again, slowly", session.depth_gap(), 30.0)
+    session.show_depth({"ok": False, "supported": False,
+                        "error": "this rover has no depth camera component installed"})
+    check("a rover with no depth camera hides the switch",
+          session.depth["supported"], False)
+    check("...and the state it publishes says so too",
+          session.snapshot()["depth"]["supported"], False)
+
+
 TESTS = (
     test_web_console,
+    test_the_low_power_switch_shows_the_camera_rather_than_the_click,
     test_stopping_an_unwatched_rover,
     test_idle_console_waits_for_a_browser,
     test_finding_the_rover_again,

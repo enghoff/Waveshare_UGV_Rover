@@ -256,6 +256,47 @@ class SessionShow:
             note = f"{note}, and {stale}" if note else stale
         self.battery = {"text": text, "state": state, "note": note}
 
+    def show_depth(self, body: dict[str, Any]) -> None:
+        """What the depth camera is doing, in the two or three words beside the switch.
+
+        The line is the camera's state and nothing else -- `depth camera on`,
+        `depth camera off`, `depth camera waking, 6 s`, or the sentence the rover
+        gave for why it cannot say. What it never does is explain what the switch
+        is for: that is written down once in `oak_depth/README.md`, and a console
+        that repeated it would be repeating it every time anybody looked at the
+        battery.
+
+        **The subject is named because the switch is called something else.**
+        Every other control on this card has a heading of its own directly above
+        it -- headlights, face tracking -- so "off" beneath one is unambiguous.
+        This one sits under `battery` and is labelled `low power`, and "low power
+        on" beside a switch reads as the switch being on when it is the camera
+        that is. The two are opposites, which is the one way for a status line to
+        be worse than absent.
+
+        The elapsed seconds are only shown while it is waking, which is the one
+        state where they are news. "On for four hours" is not.
+        """
+        if not body.get("ok"):
+            error = str(body.get("error", "no answer"))
+            if body.get("supported") is False or "no such tool" in error:
+                # Either a rover with no depth camera or a daemon too old to have
+                # the calls. Both are permanent for this connection, and both are
+                # answered by taking the switch off the page rather than by
+                # showing one that cannot work.
+                self.depth.update({"supported": False, "power": "", "text": "-",
+                                   "since_s": 0.0, "note": ""})
+                return
+            self.depth.update({"supported": True, "power": "", "text": "-",
+                               "since_s": 0.0, "note": error})
+            return
+        power = str(body.get("power") or "")
+        since = float(body.get("since_s") or 0.0)
+        said = f"waking, {since:.0f} s" if power == "waking" else power
+        text = f"depth camera {said}" if said else "-"
+        self.depth.update({"supported": True, "power": power, "text": text,
+                           "since_s": since, "note": ""})
+
     def show_wifi(self, body: dict[str, Any]) -> None:
         """The access point, its strength, and what else was last heard.
 

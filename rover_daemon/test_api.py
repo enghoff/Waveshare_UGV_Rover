@@ -65,6 +65,13 @@ def test_schemas():
                # cutting the wire its own conversation arrives on, and no wording
                # of a description makes that a good idea.
                "wifi_status", "wifi_join",
+               # Switching the depth camera off to save what it draws, which is a
+               # control call for the same shape of reason: it is a decision about
+               # what the rover can afford at 5% of a battery, taken by the person
+               # who can see the pack voltage, and a model that switched a sensor
+               # off mid-sentence would be a fault with nothing on screen to show
+               # for it. See rover_depth.py.
+               "get_depth_power", "set_depth_power",
                # The semantic world state, every call that writes to it and every
                # call that answers in the console's vocabulary. Handing a model
                # the authority to record, to attach or to throw the world away is

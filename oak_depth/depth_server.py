@@ -9,7 +9,9 @@ boot. A colour picture, and millimetres out.
     GET  /depth      the newest frame as a coarse grid and per-sector ranges
     GET  /depth.png  the same frame as a greyscale picture, for a person
     GET  /frame      the newest colour picture, as a JPEG
+    GET  /power      is the camera on, off, or still waking up
     POST /ranges     how far away the things in these boxes are
+    POST /power      switch the camera off to save what it draws, or on again
 
 **The depth is aligned to the colour camera, and that is what makes the two
 answers one measurement.** `StereoDepth.setDepthAlign(CAM_A)` warps the disparity
@@ -32,6 +34,17 @@ one shape: a process that opens it and stays. This is that process, started from
 `crontab` by `run_oak_depth.sh`, and its being alive is the whole of the camera
 being awake. That shape was worked out while ruling the OAK off the *old*
 rover, and it survived the move to this one unchanged.
+
+**Which is also what makes the camera switchable, since 2026-09-04.** If holding
+the device open is the whole of being awake, then letting go of it is the whole
+of being off -- the Myriad falls back to ROM bootloader within its 1500 ms
+watchdog and waits there. So `POST /power` closes the device and keeps the
+process, and the port goes on answering `off` instead of going silent, which is
+the difference between a camera somebody switched off and a service that has
+died. Switching it back on is a fresh firmware upload and a fresh pipeline every
+time, because there is no other way this device is ever awake, and that takes
+several seconds -- which is why the state has three values rather than two and
+why nothing here blocks on the wake.
 
 The camera used to be the rover's face detector, running an SSD on that same VPU
 because a Pi 1 could not run one at all. Every board since has run YuNet faster
@@ -132,6 +145,13 @@ COLOUR_HISTORY = 4
 # that has been browned out or unplugged, so exiting *is* the repair. Generous
 # enough not to fire on a slow moment: at the default 2 fps this is ten frames.
 FRAME_TIMEOUT_S = 5.0
+# And how long the first frame after a switch-on may take before that counts as a
+# fault rather than as a camera waking up. Waking is not a process start: the host
+# uploads the firmware to a VPU with no flash and then builds the stereo pipeline,
+# which is several seconds every time -- 4 to 6 s measured on this rover. Well
+# past that, because the cost of being wrong is a process that exits while the
+# camera was merely slow, and the supervisor would then take another 15 s over it.
+WAKE_TIMEOUT_S = 40.0
 # Depths outside this are not measurements. The 7.5 cm baseline stops overlapping
 # below about 20 cm, and beyond 6 m one disparity step is more than a metre.
 MIN_MM, MAX_MM = 200, 6000
@@ -278,6 +298,25 @@ class Depth:
         self._periods: list[float] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        #: Whether the camera is meant to be awake, and since when. **This is the
+        #: switch, and it is a switch on a device rather than on a process.** The
+        #: Myriad has no flash and no standby: it is awake for exactly as long as
+        #: a host holds it open, so switching it off is closing the device and
+        #: switching it on is uploading the firmware again. What stays either way
+        #: is this process, which is what lets the port keep answering "off"
+        #: rather than going silent and reading as a crash.
+        self._wanted = True
+        #: When the camera last changed what it was doing, which is what the
+        #: three states are counted from -- how long it has been off, how long a
+        #: wake has been going on, how long it has been running. Separate from
+        #: `started_at`, which is this process's own age: after a switch off and
+        #: on again those are minutes apart.
+        self.power_at = time.monotonic()
+        #: Somewhere for the sleeping main thread to wait, and for a switch-on to
+        #: wake it. A condition rather than a poll so that a camera switched on
+        #: starts uploading firmware in the same instant rather than up to a
+        #: second later.
+        self._power = threading.Condition()
 
     # --- the pipeline -------------------------------------------------------
 
@@ -346,12 +385,17 @@ class Depth:
         return pipeline
 
     def run(self) -> None:
-        """Open the device and pull frames until something goes wrong.
+        """Open the device and pull frames until it is stopped or something breaks.
 
-        Returns when it does, having recorded why. The caller exits and the
-        supervisor opens it again -- see FRAME_TIMEOUT_S.
+        The two endings mean opposite things and the caller has to be able to
+        tell them apart. Raising `DepthError` is the device having gone: the
+        process exits and the supervisor opens it again from scratch, which is
+        the only repair there is for a Myriad that boots from its host. Simply
+        returning is the camera having been switched off, and the process stays
+        exactly where it is with the port still answering.
         """
         dai = self.dai
+        self.power_at = time.monotonic()
         try:
             # USB2, always. depthai asks for USB3 by default and uploads the
             # USB3-enabled firmware, which on this camera's link usually fails to
@@ -397,6 +441,11 @@ class Depth:
                         self._publish(pending, recent, now)
                     pending = (packet.getFrame(), _stamp_of(packet), now)
         except Exception as error:
+            # Not when it was switched off mid-frame: closing the device out from
+            # under a queue that is being read raises here, and that is this
+            # process doing as it was told rather than a camera that has gone.
+            if self._stop.is_set() and not self.wanted():
+                return
             self.errors += 1
             self.last_error = f"{type(error).__name__}: {error}"
             raise DepthError(self.last_error) from None
@@ -495,9 +544,154 @@ class Depth:
     def stop(self) -> None:
         self._stop.set()
 
+    # --- the switch ---------------------------------------------------------
+
+    def power(self) -> dict:
+        """What the camera is doing about being switched on, in three words.
+
+        `off` and `on` are what they sound like. `waking` is the one worth
+        having a name for: the host is uploading firmware to a VPU that has no
+        flash and then building the stereo pipeline, which takes several seconds
+        every single time, and a switch that showed `on` for that whole stretch
+        would be a switch that lies about a camera returning nothing.
+
+        `since_s` is how long it has been in that state, so that a wake which is
+        taking too long looks different from one that has just started.
+        """
+        with self._power:
+            wanted = self._wanted
+            opened = self.power_at
+        frame, _age = self.newest()
+        if not wanted:
+            state = "off"
+        elif frame is None:
+            state = "waking"
+        else:
+            state = "on"
+        return {"power": state,
+                "since_s": round(time.monotonic() - opened, 1),
+                "fps": round(self.rate, 1),
+                "frames": self.frames}
+
+    def set_power(self, on: bool) -> dict:
+        """Switch the camera on or off, and answer at once with what that did.
+
+        At once, and this is the whole reason the wake happens on another
+        thread: opening the device is four to six seconds, and a
+        console waiting on this call would be a console that has stopped
+        drawing the map and reading the stop button. So the answer to "switch it
+        on" is `waking`, and the caller finds out how it went by asking again.
+
+        Switching on a camera that is already on is not a restart. It leaves the
+        device alone and answers with what it is already doing, so a second
+        click on a toggle that had not caught up yet cannot cost a firmware
+        upload.
+        """
+        with self._power:
+            if on == self._wanted:
+                return self.power()
+            self._wanted = on
+            self.power_at = time.monotonic()
+            if on:
+                self._stop.clear()
+            else:
+                self._stop.set()
+            self._power.notify_all()
+        # Whichever way it was thrown, and that is not belt and braces. Switching
+        # off, the pull loop is blocked waiting for a frame and publishes one more
+        # before it notices. Switching **on**, the frame that has to go is that
+        # one: closing this device takes several seconds, so a switch thrown back
+        # inside that window would otherwise find the old frame waiting and report
+        # `on` about a camera that has not been opened yet -- measured on the
+        # rover, where the wake answered `on` in 0.0 s and meant nothing by it.
+        self.forget()
+        return self.power()
+
+    def wanted(self) -> bool:
+        with self._power:
+            return self._wanted
+
+    def await_power(self) -> None:
+        """Block until the camera is meant to be awake. Returns at once if it is."""
+        with self._power:
+            while not self._wanted:
+                self._power.wait(1.0)
+
+    def forget(self) -> None:
+        """Throw away the frames, because a switched-off camera is not looking.
+
+        The alternative is worse than it sounds. Every reader here is asking
+        what the rover can see *now* -- the world state draws a box on the
+        picture and takes a range out of the depth map behind it -- so a service
+        that went on serving the last frame it happened to hold would be
+        handing out a photograph of a room the rover may have left, with no way
+        for the reader to tell. The counters survive, because they are this
+        process's own history rather than the camera's.
+        """
+        with self._lock:
+            self.frame, self.frame_at, self.frame_stamp = None, 0.0, 0.0
+            self.jpeg, self.jpeg_at, self.jpeg_stamp = b"", 0.0, 0.0
+            self.rate = 0.0
+            self._periods.clear()
+
+    def no_frame(self, what: str = "depth") -> str:
+        """Why there is nothing to answer with, in words that say what to do.
+
+        "No frame yet" is true of a camera that is switched off, of one part way
+        through a firmware upload and of one that has failed, and those want
+        three different things from whoever reads it -- a switch, a wait, and a
+        look at the log. So the reason comes from the switch rather than from the
+        absence.
+        """
+        switch = self.power()
+        if switch["power"] == "off":
+            return "the depth camera is switched off"
+        if switch["power"] == "waking":
+            return (f"the depth camera is still waking up, "
+                    f"{switch['since_s']:.0f} s in")
+        return f"no {what} frame yet"
+
+    def trouble(self) -> str:
+        """Why this process should exit and let the supervisor start again, or "".
+
+        Three states have to be told apart and only one of them is a fault: a
+        camera that is switched off is silent on purpose, a camera that is
+        waking is silent for the several seconds the firmware upload takes, and
+        a camera that was awake and has stopped is a Myriad that has been
+        browned out, unplugged, or left booted by something that died. Only the
+        third is repaired by opening the device again from scratch, and exiting
+        is how that is asked for.
+        """
+        if not self.wanted():
+            return ""
+        since = time.monotonic() - self.power_at
+        frame, age = self.newest()
+        if frame is None:
+            if since < WAKE_TIMEOUT_S:
+                return ""
+            return (f"no depth frame in the {since:.0f} s since the device was "
+                    f"opened")
+        if age > FRAME_TIMEOUT_S:
+            return f"no depth for {age:.1f} s after {self.frames} frames"
+        return ""
+
     # --- what it has seen ---------------------------------------------------
 
     def newest(self):
+        # **A switched-off camera has nothing, whatever is still in the field.**
+        # Measured on the rover: closing the device takes several seconds -- the
+        # library writes a crash dump on the way out -- and the pull loop, blocked
+        # waiting for a frame when the switch was thrown, publishes one more
+        # before it notices. Throwing the frames away at the switch is therefore
+        # not enough on its own, and for those seconds `/ranges` was answering
+        # 3.49 m about a camera that said it was off. The switch is read here
+        # rather than in five endpoints, so there is one answer.
+        #
+        # `_wanted` is read without its lock on purpose: the alternative is this
+        # lock and that one in the opposite order to `power`, and what is being
+        # read is a bool whose staleness could only ever be microseconds.
+        if not self._wanted:
+            return None, 0.0
         with self._lock:
             if self.frame is None:
                 return None, 0.0
@@ -512,6 +706,8 @@ class Depth:
         rover are two different rooms, and the consumer has to be able to see
         that rather than assume it away. Zero when the device stamps neither.
         """
+        if not self._wanted:               # switched off -- see `newest`
+            return b"", 0.0, 0.0
         with self._lock:
             if not self.jpeg:
                 return b"", 0.0, 0.0
@@ -522,8 +718,16 @@ class Depth:
     def health(self) -> dict:
         frame, age = self.newest()
         jpeg, jpeg_age, apart = self.newest_jpeg()
+        switch = self.power()
         return {
             "ok": frame is not None and age < FRAME_TIMEOUT_S,
+            # Whether the camera is switched on, which `ok` above does not say:
+            # `ok` is "there is a fresh frame here", and a camera that is off or
+            # still uploading its firmware has none for reasons that are not
+            # faults. A reader that only wants to know whether to expect an
+            # answer reads `ok`; one drawing a switch reads this.
+            "power": switch["power"],
+            "power_since_s": switch["since_s"],
             "device": self.device_name,
             "usb": self.usb_speed,
             # The firmware version and the library version are the same number on
@@ -582,7 +786,7 @@ class Depth:
 
         frame, age = self.newest()
         if frame is None:
-            return {"ok": False, "error": "no depth frame yet"}
+            return {"ok": False, "error": self.no_frame()}
         height, width = frame.shape
         answers = []
         for box in boxes:
@@ -695,7 +899,7 @@ class Depth:
 
         frame, age = self.newest()
         if frame is None:
-            return {"ok": False, "error": "no depth frame yet"}
+            return {"ok": False, "error": self.no_frame()}
         height, width = frame.shape
         valid = (frame >= MIN_MM) & (frame <= MAX_MM)
 
@@ -763,7 +967,7 @@ class Depth:
             return None, f"no PNG encoder here: {error}"
         frame, _age = self.newest()
         if frame is None:
-            return None, "no depth frame yet"
+            return None, self.no_frame()
         clipped = numpy.clip(frame, MIN_MM, MAX_MM).astype(numpy.float32)
         # Near bright, far dark, and invalid pixels black rather than near: a zero
         # is "no measurement" and reading it as 20 cm would put a wall in front of
@@ -789,7 +993,13 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.partition("?")[0]
         if path in ("/health", "/"):
             health = self.depth.health()
-            return self._reply(200 if health["ok"] else 503, health)
+            # 503 is "ask me again, something is wrong", and a camera somebody
+            # has switched off is not that: it is this service answering
+            # correctly about a camera that is doing what it was told. So the
+            # only 503 left here is a camera that is meant to be awake and has
+            # no frame -- which is also what restart.sh waits out.
+            well = health["ok"] or health["power"] == "off"
+            return self._reply(200 if well else 503, health)
         if path == "/depth":
             summary = self.depth.summary()
             return self._reply(200 if summary["ok"] else 503, summary)
@@ -802,11 +1012,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(png)))
             self.end_headers()
             return self.wfile.write(png)
+        if path == "/power":
+            return self._reply(200, dict(self.depth.power(), ok=True))
         if path == "/frame":
             jpeg, age, apart = self.depth.newest_jpeg()
             if not jpeg:
                 return self._reply(503, {"ok": False,
-                                         "error": "no colour frame yet"})
+                                         "error": self.depth.no_frame("colour")})
             self.send_response(200)
             self.send_header("Content-Type", "image/jpeg")
             self.send_header("Content-Length", str(len(jpeg)))
@@ -821,11 +1033,14 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return self.wfile.write(jpeg)
         return self._reply(404, {"error": "GET /health, /depth, /depth.png, "
-                                          "/frame; POST /ranges"})
+                                          "/frame, /power; POST /ranges, /power"})
 
     def do_POST(self):
-        if self.path.partition("?")[0] != "/ranges":
-            return self._reply(404, {"error": "POST /ranges"})
+        path = self.path.partition("?")[0]
+        if path == "/power":
+            return self._switch()
+        if path != "/ranges":
+            return self._reply(404, {"error": "POST /ranges, /power"})
         try:
             length = int(self.headers.get("Content-Length") or 0)
             payload = json.loads(self.rfile.read(length).decode("utf-8", "replace"))
@@ -839,6 +1054,27 @@ class Handler(BaseHTTPRequestHandler):
                                               f"fractions of the frame: {error}"})
         answer = self.depth.ranges(boxes)
         return self._reply(200 if answer.get("ok") else 503, answer)
+
+    def _switch(self) -> None:
+        """`POST /power {"on": true}`, answered immediately with what it did.
+
+        Immediately, because waking this camera is a firmware upload and the
+        four to six seconds of it: the reply says `waking` and the caller asks
+        again rather than holding a socket open across it. 200 either way -- a
+        camera that has been switched off is not an error, and the state is in
+        the body.
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length).decode("utf-8", "replace"))
+            on = payload["on"]
+            if not isinstance(on, bool):
+                raise TypeError(f"on must be true or false, not {on!r}")
+        except (KeyError, TypeError, ValueError) as error:
+            return self._reply(400, {"ok": False,
+                                     "error": f"send {{\"on\": true}} or "
+                                              f"{{\"on\": false}}: {error}"})
+        return self._reply(200, dict(self.depth.set_power(on), ok=True))
 
     def log_message(self, fmt, *args):
         """Quiet by default: the supervisor's log is for events, not requests."""
@@ -874,12 +1110,23 @@ def main() -> int:
     # VPU" from "not listening at all".
     watchdog = threading.Thread(target=_watch, args=(depth,), daemon=True)
     watchdog.start()
-    try:
-        depth.run()
-    except DepthError as error:
-        print(f"[oak_depth] the camera stopped: {error}", file=sys.stderr, flush=True)
-        return 1
-    return 0
+    # A loop rather than one call, because the camera can now be switched off and
+    # on again without this process going anywhere -- see `Depth.set_power`. Every
+    # time round is a fresh firmware upload and a fresh pipeline, since that is the
+    # only way this device is ever awake. Coming out of `run` without an exception
+    # is the switch having been thrown; an exception is the device having gone, and
+    # that still exits so the supervisor can open it again from scratch.
+    while True:
+        depth.await_power()
+        try:
+            depth.run()
+        except DepthError as error:
+            print(f"[oak_depth] the camera stopped: {error}",
+                  file=sys.stderr, flush=True)
+            return 1
+        depth.forget()
+        print(f"[oak_depth] switched off after {depth.frames} frames; the camera "
+              f"is idle and this process is waiting", file=sys.stderr, flush=True)
 
 
 def _watch(depth: Depth) -> None:
@@ -888,16 +1135,17 @@ def _watch(depth: Depth) -> None:
     A depthai queue that has gone quiet does not raise: the host sits in `get()`
     and the device, having heard nothing, is already dead on its own watchdog. So
     silence has to be noticed by a clock rather than by an exception.
+
+    What counts as silence is `Depth.trouble`, because there are now two kinds of
+    quiet camera that are not faults -- one that has been switched off and one
+    that is still uploading its firmware -- and exiting on either would turn a
+    working switch into a restart loop.
     """
     while True:
         time.sleep(1.0)
-        _frame, age = depth.newest()
-        started = time.monotonic() - depth.started_at
-        if depth.frames == 0 and started < 30.0:
-            continue                    # still booting the VPU; that takes seconds
-        if depth.frames == 0 or age > FRAME_TIMEOUT_S:
-            print(f"[oak_depth] no depth for {age:.1f}s after {depth.frames} "
-                  f"frames; letting the supervisor reopen the device",
+        why = depth.trouble()
+        if why:
+            print(f"[oak_depth] {why}; letting the supervisor reopen the device",
                   file=sys.stderr, flush=True)
             os._exit(2)
 

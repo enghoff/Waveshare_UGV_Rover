@@ -118,6 +118,7 @@ function render(next) {
   $("battery").textContent = next.battery.text;
   $("battery").className = "reading " + verdictOf(next.battery.state);
   $("batteryNote").textContent = next.battery.note;
+  drawLowPower(next.depth);
 
   drawWifi(next.wifi);
   drawNotice(next.notice);
@@ -458,6 +459,26 @@ function drawPicture(img, empty, url, gen, get, set, error) {
   }
 }
 
+// The depth camera's switch, under the battery. Off the page entirely on a rover
+// that has no depth camera or a daemon too old to have the calls -- this is the
+// only panel here whose hardware is optional, and a switch that cannot switch
+// anything is worse than no switch.
+function drawLowPower(depth) {
+  if (!depth) return;                     // a console older than this panel
+  $("lowPowerRow").hidden = depth.supported !== true;
+  // Drawn from the rover, with one exception: `asked` is a press this console
+  // has sent and not yet had an answer to. Without it the box under the pointer
+  // flicks back to where it was for the fraction of a second before the reply
+  // lands and then settles forward again, which reads as a switch refusing.
+  $("lowPower").checked = depth.asked ?? depth.power === "off";
+  $("depthPower").textContent = depth.text;
+  // Coloured only while it is waking, which is the one state that is going
+  // somewhere: the firmware upload this camera needs every time it is switched
+  // on is four to six seconds, and the seconds beside the word are counting.
+  $("depthPower").classList.toggle("waking", depth.power === "waking");
+  $("depthNote").textContent = depth.note || "";
+}
+
 function drawWifi(wifi) {
   $("wifi").textContent = wifi.text;
   $("wifi").className = "reading " + (wifi.verdict || "");
@@ -561,6 +582,10 @@ function wire() {
     button.onclick = () => post({do: "lights",
       level: button.dataset.light === "on" ? setup.light_max : 0});
   }
+  // Low power on means the depth camera off. The turning round happens once, on
+  // the server, so nothing here has to remember which way round it is.
+  $("lowPower").onchange = () => post({do: "low_power",
+                                       on: $("lowPower").checked});
   $("refreshMap").onclick = () => post({do: "map"});
   $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
   $("resetLidar").onclick = () => post({do: "reset_lidar"});

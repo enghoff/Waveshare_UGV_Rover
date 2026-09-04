@@ -13,9 +13,11 @@ the camera's VPU did — see [face_tracking/yunet.py](../face_tracking/yunet.py)
    CAM_A colour, 640x360         |                   /depth    ranges, in mm
    CAM_B + CAM_C stereo,         |                   /depth.png a picture of it
    warped into CAM_A's frame     |                   /frame    the colour picture
-   all on the VPU                |              POST /ranges   how far are these
+   all on the VPU                |                   /power    on, off or waking
+                                 |              POST /ranges   how far are these
                         run_oak_depth.sh                       boxes away
-                        (@reboot, and restarts it)
+                        (@reboot, and restarts it)  /power    switch it off,
+                                                              and on again
 ```
 
 **The depth is aligned to the colour camera, since 2026-09-04, and that is what
@@ -62,6 +64,99 @@ directory:
 This was worked out while ruling the OAK *off* the Pi 1, in a document removed on
 2026-08-25 along with the board it was about; the reasoning still holds and what
 changed is the host it was measured against.
+
+## Which is why the camera has a switch, since 2026-09-04
+
+If holding the device open is the whole of being awake, letting go of it is the
+whole of being off. So `POST /power {"on": false}` closes the device and **keeps
+the process**: the Myriad falls back to ROM bootloader inside its 1500 ms
+watchdog and waits there, and the port goes on answering rather than going
+silent, which is the only way a camera somebody switched off can be told from a
+service that has died. The console's *low power* toggle, under the battery, is
+this call.
+
+Three states, not two, and the third is the reason anything about this is
+visible on a screen:
+
+| | |
+|---|---|
+| `on` | the device is open and frames are arriving |
+| `waking` | the firmware is going up the USB link and the pipeline is building |
+| `off` | the device is closed; `03e7:2485` on the bus, waiting for a host |
+
+**`waking` is not a detail.** This camera has no flash, so switching it on
+uploads the firmware and rebuilds the stereo pipeline every single time, and
+that is **4 to 6 seconds** on this link, measured over three cycles on the rover
+on 2026-09-04 — 4.1 s from cold, then 5.8 and 4.3 s — during which the camera is
+switched on and answering nothing. `POST /power` therefore returns immediately with `waking` and
+the wake happens on another thread — a console that blocked on it would be a
+console with no map, no lights and no stop button for the duration.
+
+While it is off, `/frame`, `/depth`, `/depth.png` and `/ranges` all answer *the
+depth camera is switched off* rather than "no frame yet", and the held frames are
+thrown away the moment the switch is thrown, because a service that went on
+handing out the last picture it happened to have would be handing out a
+photograph of a room the rover may since have left. `/health` answers **200**
+when the camera is off: it is this service correctly reporting a camera that is
+doing as it was told, and the only 503 left is a camera that is meant to be awake
+and has no frame.
+
+**The camera really does go down, and that is the part that was checked rather
+than assumed.** Measured on the rover on 2026-09-04: five seconds after the
+switch, `lsusb` moves from `03e7:f63b` — booted, running — to `03e7:2485`, the
+ROM bootloader, which is a Myriad with no firmware in it waiting for a host. That
+is the same state the camera sits in when nothing has ever opened it, and it is
+the whole of what "off" can mean on a device with no flash.
+
+**What it saves cannot be measured on this rover, and the honest answer is that
+it is not known.** Three conditions the same day, thirty one-second samples each,
+with the rest of the rover running:
+
+| | Orin `VDD_IN` |
+|---|---|
+| streaming at 2 fps | 5.931 W |
+| switched off, camera in ROM bootloader | 5.920 W |
+| the whole service stopped as well | 5.902 W |
+
+Eleven milliwatts for the switch and twenty-nine for stopping the process
+outright — against a sample-to-sample spread of 5.856 to 6.2 W in *every* one of
+the three. So this instrument says nothing: the differences are well inside its
+noise, and an earlier reading of "about 50 mW" from forty samples was noise too.
+
+The reason is that the instrument is looking in the wrong place. `VDD_IN` is the
+**Jetson module's** input, and the OAK hangs off the carrier board's USB 5 V,
+which is upstream of it — so the camera's own draw never crosses that shunt, and
+what the table can show is only the host-side cost of no longer carrying 300 kB/s
+over USB. The driver board reports pack voltage and no current at all, so there
+is no second instrument to ask.
+
+What is left is a manufacturer's figure and an inference: Luxonis quote about
+2.5 W for an OAK-D-Lite under load, and a Myriad in ROM bootloader with three
+sensors dark is a small fraction of that. That makes the saving plausibly the
+largest single load a person can shed from this rover, and **it remains
+unmeasured**. Settling it wants a USB power meter inline with the camera; until
+somebody puts one there, the switch is worth having because the camera is
+provably off, not because a number here says how much that is worth.
+
+**Every switch-off writes a depthai crash dump.** Closing the device while the
+pipeline is streaming makes the library log `Device with id ... has crashed` and
+save a dump under `~/.cache/depthai/crashdumps/`. Nothing is wrong — that is the
+Myriad being dropped, which is what was asked for — but it means
+[`read_crash_dump.py`](../oak_camera/read_crash_dump.py) will find a dump after
+any switch-off, and a dump timed to one is this rather than a fault.
+
+The switch is not remembered. A reboot, a crashed process, or a deploy that
+restarts this service all bring the camera back on, because the process starts
+awake — the only state there is is the running process, deliberately, and a
+switched-off camera that stayed off across a restart nobody was watching would be
+a rover that had quietly lost a sensor.
+
+```bash
+ssh orin 'curl -s http://127.0.0.1:8770/power'
+ssh orin 'curl -s -X POST -H "Content-Type: application/json" \
+          -d "{\"on\": false}" http://127.0.0.1:8770/power'
+ssh orin 'lsusb | grep 03e7'     # 2485 is off, f63b is awake
+```
 
 ## Which firmware version is the best match: 2.32.0.0
 

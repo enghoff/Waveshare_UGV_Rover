@@ -161,6 +161,22 @@ WORLD_RETRY_S = 30.0
 # Past this the reading has stopped being refreshed. The daemon serves one for
 # five seconds, so anything much older than that means the board went quiet.
 BATTERY_STALE_S = 20.0
+# How often to ask whether the depth camera is switched on. Slow, because the
+# answer only changes when somebody presses the switch: the call is a loopback
+# HTTP round trip on the rover and asking about it faster than the battery would
+# be spending the status connection on a thing that does not move.
+DEPTH_POLL_S = 5.0
+# ...except while it is waking, when it is the one number on the panel that is
+# going somewhere. Switching this camera on uploads firmware to a VPU with no
+# flash and then builds the stereo pipeline, which is the best part of ten
+# seconds, and a switch that only caught up every five would spend most of that
+# stretch showing a stale count of how long it had been waiting.
+DEPTH_WAKING_POLL_S = 1.0
+# And how long to leave it after a refusal before asking again. Same reasoning as
+# WORLD_RETRY_S and the same shape: a depth service that is restarting comes back
+# on its own, and a rover that has none says so in `supported` and is not asked
+# again at all.
+DEPTH_RETRY_S = 30.0
 # Which of the daemon's five words is worth spelling out on screen. Four of them
 # only restate the number above them, which the colour already grades, so they say
 # nothing that a glance at "11.10 V   15%" does not. "absent" is the exception: the

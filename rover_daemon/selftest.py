@@ -32,6 +32,7 @@ from test_aiming import (
 from test_api import TESTS as API_TESTS
 from test_board import TESTS as BOARD_TESTS
 from test_camera import TESTS as CAMERA_TESTS
+from test_depth import TESTS as DEPTH_TESTS
 from test_exposure import TESTS as EXPOSURE_TESTS
 from test_harness import FAIL, PASS, SKIP
 from test_map import TESTS as MAP_TESTS
@@ -52,7 +53,8 @@ AIMING_TESTS = (
 def main():
     for test in (*BOARD_TESTS, *API_TESTS, *CAMERA_TESTS, *EXPOSURE_TESTS,
                  *MAP_TESTS, *WIFI_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
-                 *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS):
+                 *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS,
+                 *DEPTH_TESTS):
         try:
             test()
         except Exception as exc:

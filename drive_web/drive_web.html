@@ -166,6 +166,16 @@
     <h2 style="margin-top:14px">battery</h2>
     <div id="battery" class="reading">-</div>
     <p id="batteryNote" class="hint"></p>
+    <!-- The one load on this rover a person can shed from here: the depth camera
+         holds its own VPU awake over USB, and it is the only thing aboard that
+         can be switched off without stopping the rover doing anything it is
+         doing. Beside the battery because that is the question it answers.
+         Hidden until the rover says it has one. -->
+    <div class="row" id="lowPowerRow" hidden>
+      <label class="check"><input type="checkbox" id="lowPower"> low power</label>
+      <span id="depthPower" class="mono">-</span>
+    </div>
+    <p id="depthNote" class="hint"></p>
   </section>
 
   <section id="networkCard">

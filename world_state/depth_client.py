@@ -13,6 +13,13 @@ on the device -- see `oak_depth/depth_server.py` -- so the same fraction of the
 picture and of the depth map is the same ray, with no remapping here and no
 second lens model to drift.
 
+**The camera can be switched off, and this is where that is asked for.** A
+console has a low-power toggle that closes the device to stop it drawing what it
+draws, and `power` and `set_power` are the two calls behind it. Nothing in a look
+changes: a switched-off camera returns the same "no range" every consumer here
+already treats as abstention, so the only difference between an OAK that is off
+and an OAK that was never fitted is the sentence in the diagnostics line.
+
 **The lens is fetched and never written down.** `face_tracking/lens.py` holds the
 gimbal camera's optics because a sweep on this rover fitted them and the gimbal is
 driven through them; the OAK's are stored on the OAK, and the service reads them
@@ -125,6 +132,35 @@ class Frame:
 
 
 @dataclass
+class Power:
+    """Whether the depth camera is switched on, and how long it has been that way.
+
+    Four states rather than two, and the two extra ones are the point. `waking`
+    is the several seconds the host spends uploading firmware to a VPU with no
+    flash, during which a camera that has been switched on is answering nothing;
+    an empty `state` with an `error` beside it is the service itself not
+    answering, which is a different thing again from a camera that is off and
+    saying so. Anything drawing a switch has to be able to tell all four apart,
+    because three of them look identical from the outside -- no frames.
+    """
+
+    state: str = ""
+    since_s: float = 0.0
+    error: str = ""
+
+    @property
+    def on(self) -> bool:
+        """Whether the camera is meant to be awake, waking included.
+
+        Waking counts as on because it is what was asked for and what it is on
+        its way to being. A switch that read `off` for the seconds after it
+        was turned on would invite a second press, and the second press is the
+        one that costs a firmware upload.
+        """
+        return self.state in ("on", "waking")
+
+
+@dataclass
 class Lens:
     """The colour camera's optics, as the device stores them.
 
@@ -164,6 +200,19 @@ class Ranger:
     def lens(self) -> Lens | None:
         return None
 
+    def power(self) -> Power:
+        """Whether the camera is switched on. Never raises, like everything here."""
+        return Power(error=f"{self.name} cannot be switched")
+
+    def set_power(self, on: bool) -> Power:
+        """Switch it, and answer with what that did rather than with success.
+
+        What comes back is a state and not an acknowledgement, because switching
+        on does not finish: it starts a firmware upload that takes several
+        seconds, and the honest answer at the moment of the call is `waking`.
+        """
+        return Power(error=f"{self.name} cannot be switched")
+
     def describe(self) -> str:
         return self.name
 
@@ -184,6 +233,8 @@ class FakeRanger(Ranger):
         self.frames = list(frames or [])
         self.answers = list(answers or [])
         self.fail = fail
+        self.switched = "on"
+        self.switches: list[bool] = []
         self._lens = lens or Lens(fx=456.5, fy=456.4, cx=321.1, cy=189.8,
                                   width=640, height=360,
                                   hfov_deg=70.1, vfov_deg=43.0)
@@ -214,6 +265,22 @@ class FakeRanger(Ranger):
 
     def lens(self) -> Lens | None:
         return None if self.fail else self._lens
+
+    def power(self) -> Power:
+        if self.fail:
+            return Power(error=self.fail)
+        return Power(state=self.switched)
+
+    def set_power(self, on: bool) -> Power:
+        self.switches.append(on)
+        if self.fail:
+            return Power(error=self.fail)
+        # `waking` rather than `on`, because that is what the real one answers
+        # and a test written against an instant switch-on is a test that would
+        # not have caught the toggle snapping straight to "on" and lying for the
+        # seconds the firmware upload takes.
+        self.switched = "waking" if on else "off"
+        return Power(state=self.switched)
 
 
 class SidecarRanger(Ranger):
@@ -270,6 +337,42 @@ class SidecarRanger(Ranger):
             return None
         self._lens, self._lens_at = lens, now
         return lens
+
+    def power(self) -> Power:
+        """Whether the camera is switched on, asked of the service each time.
+
+        Not cached, unlike the lens: the lens cannot change while the service
+        runs and this is the one thing about it that changes on purpose. It is
+        also the answer a person is watching after pressing a switch, so a
+        cached one would be a console that had stopped keeping up.
+        """
+        payload, error = self._json("GET", "/power", None)
+        if error:
+            return Power(error=error)
+        state = str(payload.get("power") or "")
+        if state not in ("on", "waking", "off"):
+            return Power(error=f"the depth camera answered {state!r}, which is "
+                                f"not one of on, waking or off")
+        return Power(state=state,
+                     since_s=_number(payload.get("since_s"), 0.0) or 0.0)
+
+    def set_power(self, on: bool) -> Power:
+        """Switch the camera off or on, and say what that did.
+
+        The service answers this one immediately whichever way it goes -- a wake
+        is a firmware upload it does on another thread -- so this is a short call
+        even though what it starts is not. The caller finds out how the wake went
+        by asking `power` again, which is what the console's poll is for.
+        """
+        body = json.dumps({"on": bool(on)}).encode()
+        payload, error = self._json("POST", "/power", body)
+        if error:
+            return Power(error=error)
+        if not payload.get("ok"):
+            return Power(error=str(payload.get("error")
+                                   or "the depth camera would not switch"))
+        return Power(state=str(payload.get("power") or ""),
+                     since_s=_number(payload.get("since_s"), 0.0) or 0.0)
 
     def frame(self) -> Frame:
         """The newest colour picture, or a sentence saying why not.

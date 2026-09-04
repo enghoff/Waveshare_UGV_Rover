@@ -446,6 +446,14 @@
   #mapNote { margin: 4px 0 0; color: var(--dim); font-size: 12px; }
   #mapError, #frameError { color: var(--bad); font-size: 13px; }
 
+  /* The depth camera's switch, under the battery. The word beside it is the
+     camera's state and is coloured only while it is waking, because that is the
+     one state that is going somewhere and worth waiting for. */
+  #lowPowerRow { margin-top: 6px; }
+  #lowPowerRow label { min-width: 0; color: var(--ink); }
+  #depthPower.waking { color: var(--warn); }
+  #depthNote { color: var(--bad); }
+
   /* --- readings ---------------------------------------------------------- */
   .big { font-family: ui-monospace, Consolas, monospace; font-size: 20px; }
   .reading { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
