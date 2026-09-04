@@ -464,21 +464,6 @@ def test_discovery_stays_on_this_board():
     check("...and the circular footprint EscapeSpin's soundness rests on is "
           "still a circle", "robot_radius:" in nav2_settings
           and "footprint:" not in nav2_settings, True)
-    # Guarded, like the other read of it below. The rover's ~/ugv is flat and has
-    # no deploy/ in it, so this raised there rather than skipping -- and it took
-    # the whole run down with it, which is why nothing in this file had been
-    # checked on the rover for as long as the check has existed.
-    deploy_path = os.path.join(os.path.dirname(HERE), "deploy", "manifest.json")
-    if os.path.isfile(deploy_path):
-        with open(deploy_path, encoding="utf-8") as fh:
-            deploy_cfg = json.load(fh)
-        ros_nav_cmds = next((c.get("commands") or []
-                             for c in deploy_cfg["components"]
-                             if c.get("name") == "ros_nav"), [])
-        check("a deploy rebuilds the plugin, or the rover runs last week's .so",
-              any("behaviors/build.sh" in cmd for cmd in ros_nav_cmds), True)
-    else:
-        print("  .... skipped, no deploy/manifest.json")
     # deploy.py packs every file with mtime = 0 so rsync can skip an unchanged
     # one, which leaves every source on the rover older than every object file.
     # An incremental build then finds nothing to do, for ever -- watched here,
@@ -487,16 +472,36 @@ def test_discovery_stays_on_this_board():
     with open(os.path.join(HERE, "behaviors", "build.sh"),
               encoding="utf-8", errors="replace") as fh:
         plugin_build = fh.read()
-    check("...and keys the rebuild on the sources' content, not their timestamps",
-          "sha256sum" in plugin_build and "rm -rf \"$BUILD\"" in plugin_build, True)
-    with open(os.path.join(os.path.dirname(HERE), "deploy", "deploy.py"),
-              encoding="utf-8", errors="replace") as fh:
-        check("...which is needed because the deployer still dates files 1970",
-              "info.mtime = 0" in fh.read(), True)
-    check("...and it builds before it restarts, not after",
-          ([i for i, c in enumerate(ros_nav_cmds) if "behaviors/build.sh" in c] or [99])[0]
-          < ([i for i, c in enumerate(ros_nav_cmds) if "restart.sh" in c] or [-1])[0],
-          True)
+    check("the plugin build keys the rebuild on the sources' content, not their "
+          "timestamps", "sha256sum" in plugin_build
+          and "rm -rf \"$BUILD\"" in plugin_build, True)
+
+    # Everything that reads the deploy tree, in one place and behind one guard.
+    # The rover's ~/ugv is flat and has no deploy/ in it, and these two reads had
+    # no guard on them: the first raised there, took the whole run down, and with
+    # it every check in this file -- which is why none of them had ever run on
+    # the machine they are about.
+    deploy_dir = os.path.join(os.path.dirname(HERE), "deploy")
+    if not os.path.isfile(os.path.join(deploy_dir, "manifest.json")):
+        print("  .... skipped, no deploy/ beside this checkout")
+    else:
+        with open(os.path.join(deploy_dir, "manifest.json"),
+                  encoding="utf-8") as fh:
+            deploy_cfg = json.load(fh)
+        ros_nav_cmds = next((c.get("commands") or []
+                             for c in deploy_cfg["components"]
+                             if c.get("name") == "ros_nav"), [])
+        check("a deploy rebuilds the plugin, or the rover runs last week's .so",
+              any("behaviors/build.sh" in cmd for cmd in ros_nav_cmds), True)
+        with open(os.path.join(deploy_dir, "deploy.py"),
+                  encoding="utf-8", errors="replace") as fh:
+            check("...which is needed because the deployer still dates files 1970",
+                  "info.mtime = 0" in fh.read(), True)
+        check("...and it builds before it restarts, not after",
+              ([i for i, c in enumerate(ros_nav_cmds)
+                if "behaviors/build.sh" in c] or [99])[0]
+              < ([i for i, c in enumerate(ros_nav_cmds)
+                  if "restart.sh" in c] or [-1])[0], True)
     with open(os.path.join(HERE, "restart.sh"), encoding="utf-8", errors="replace") as fh:
         restart = fh.read()
     check("restart.sh will not hang SSH on a wedged ros2 node list",
