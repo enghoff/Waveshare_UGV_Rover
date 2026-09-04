@@ -595,10 +595,13 @@ const turn = (angle) => post({do: "turn",
 
 function keys() {
   addEventListener("keydown", (event) => {
-    if (event.key === " " || event.key === "Escape") {
-      // Stop is the one key that works while a distance is being typed. Nothing
-      // else does: without that guard, typing 0.5 sends an arrow to the motors on
-      // the way to the decimal point.
+    // Stop is the one key that works while a distance is being typed. Nothing
+    // else does: without that guard, typing 0.5 sends an arrow to the motors on
+    // the way to the decimal point. The box that takes a phrase to look for is
+    // the exception for space alone: a space there is part of what is being
+    // typed, and Escape still stops the rover from inside it.
+    const phrase = event.target.id === "wSearchBox";
+    if ((event.key === " " && !phrase) || event.key === "Escape") {
       event.preventDefault();
       post({do: "stop"});
       return;

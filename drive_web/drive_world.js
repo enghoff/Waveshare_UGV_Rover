@@ -1464,8 +1464,9 @@ function wireWorld() {
   // The box's own clear -- the cross a browser puts in a search field. It takes
   // the filter off at once rather than waiting for an empty phrase to be
   // entered, because clearing a filter is a local thing and nothing has to go
-  // to the rover for it. **Not a key listener**: space and Escape stop the
-  // rover from anywhere on this page, and nothing in this popup may take them.
+  // to the rover for it. **Not a key listener**: Escape stops the rover from
+  // anywhere on this page, and nothing in this popup may take it. Space is the
+  // one key this box does take, because a phrase has spaces in it.
   $("wSearchBox").addEventListener("search", () => {
     if (!$("wSearchBox").value.trim()) {
       post({do: "world", what: "search", query: ""});

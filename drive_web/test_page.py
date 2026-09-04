@@ -174,6 +174,15 @@ def test_the_search_box_narrows_the_views_rather_than_owning_one() -> None:
           "#wSearchNote.wverdict" in css, True)
     check("...and a refusal to find something does not merely score lower",
           "#wSearchNote.wfound" in css and "#wSearchNote.wmissing" in css, True)
+    # A phrase has spaces in it, and space is the rover's stop everywhere else on
+    # this page. Without the exemption the box silently refuses the space bar and
+    # halts the rover instead, which is what a person typing here first sees.
+    stop = _console("js")
+    check("a space typed in the box goes into the box",
+          'event.target.id === "wSearchBox"' in stop, True)
+    check("...and Escape still stops the rover from inside it",
+          'event.key === "Escape"' in stop
+          and 'event.key === " " && !phrase' in stop, True)
 
 
 def test_the_popup_can_be_read_while_the_rover_is_filling_it() -> None:
