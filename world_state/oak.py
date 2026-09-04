@@ -181,9 +181,25 @@ def ray_at(x_frac: float, y_frac: float, lens: Any) -> tuple[float, float, float
     rational distortion model has its numerator and denominator terms within a
     tenth of each other and they very nearly cancel.
     """
+    x, y, z = pinhole_at(x_frac, y_frac, lens)
+    x, y = _unrolled(x, y)
+    return x, y, z
+
+
+def pinhole_at(x_frac: float, y_frac: float,
+               lens: Any) -> tuple[float, float, float]:
+    """The same pixel, through the lens alone and **not** through the mount.
+
+    `ray_at` is what everything that draws a bearing wants: the direction with
+    the mount's roll already taken out, so this camera can be treated as a gimbal
+    that never moves. This is what the *calibration* wants, and the difference is
+    the whole reason it is a separate function: a bench that measured the mount
+    through `ray_at` would be measuring how far the mount has moved since the
+    last time somebody wrote a number down, and would print that as if it were
+    the mount. The one it prints has to be absolute.
+    """
     x = (x_frac * lens.width - lens.cx) / lens.fx
     y = (y_frac * lens.height - lens.cy) / lens.fy
-    x, y = _unrolled(x, y)
     length = math.sqrt(x * x + y * y + 1.0)
     return x / length, y / length, 1.0 / length
 

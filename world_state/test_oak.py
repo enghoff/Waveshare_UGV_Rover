@@ -121,6 +121,21 @@ def test_a_pixel_survives_the_round_trip_through_the_mount() -> None:
         check("rolling and unrolling is the identity",
               tuple(round(one, 9) for one in oak._unrolled(x, y)), (0.3, -0.2))
 
+        # **And the calibration reads the lens alone.** A bench that measured the
+        # mount through the mount would report how far it had moved since the
+        # last number was written down, and print that as the mount. So the two
+        # have to differ by exactly the roll and by nothing else.
+        raw = oak.pinhole_at(0.8, 0.3, OAK_LENS)
+        drawn = oak.ray_at(0.8, 0.3, OAK_LENS)
+        check("the calibration's view of a pixel does not move with the mount",
+              raw, oak.pinhole_at(0.8, 0.3, OAK_LENS))
+        check("...while the bearing's view of it does",
+              tuple(round(one, 6) for one in drawn)
+              == tuple(round(one, 6) for one in raw), False)
+        check("...by the roll and nothing else",
+              tuple(round(one, 9) for one in oak._rolled(drawn[0], drawn[1])),
+              tuple(round(one, 9) for one in raw[:2]))
+
 
 def test_a_pixel_on_the_oak_becomes_a_direction() -> None:
     """A pinhole, so the centre of the picture is straight ahead and the edge is

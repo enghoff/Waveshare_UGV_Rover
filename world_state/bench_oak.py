@@ -419,7 +419,13 @@ def at_pan(cv2, numpy, pan, ranger, lens_oak, maps, offset, save):
     for (ox, oy), ray, range_m in zip(in_oak, rays, measured):
         if not range_m:
             continue
-        direction = oak.ray_at(ox / lens_oak.width, oy / lens_oak.height, lens_oak)
+        # **The lens alone and not the mount.** `oak.ray_at` takes the adopted
+        # roll out, which is right for anything drawing a bearing and wrong
+        # here: this would then measure how far the mount has moved since
+        # somebody last wrote a number down, and print it as if it were the
+        # mount. See `oak.pinhole_at`.
+        direction = oak.pinhole_at(ox / lens_oak.width, oy / lens_oak.height,
+                                   lens_oak)
         objects.append([one * range_m for one in direction])
         images.append(list(ray))
         ranged.append(range_m)
