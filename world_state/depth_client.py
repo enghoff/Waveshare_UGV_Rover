@@ -52,15 +52,23 @@ LENS_CACHE_S = 60.0
 FRAME_MAX_AGE_S = 2.0
 #: And how far apart the picture and the depth map behind it may have been taken.
 #:
-#: **Measured on the rover on 2026-09-04: 3 to 10 milliseconds.** The two are
-#: exposed together and the service holds each depth frame back until the picture
-#: it belongs with has come through the encoder, so what is left is jitter rather
-#: than lag. What this catches is that pairing breaking: taking whatever was
-#: newest of each -- which is what the service did before it matched them on the
-#: device's own timestamps -- put them 0.49 s apart, a whole frame interval, and
-#: 23 cm of rover at the speed it explores at. 0.10 is far above the measured
-#: jitter and far below a mispairing, so it separates the two cleanly.
-MAX_APART_S = 0.10
+#: **Measured on the rover on 2026-09-04 over sixty reads a second apart: median
+#: 0.197 s, worst 0.217.** The colour sensor and the mono pair free-run on their
+#: own clocks -- this camera has no hardware sync between them -- so a pair that
+#: is correctly matched still sits about a fifth of a second out of phase, and
+#: that is the floor rather than a fault to chase. The service pairs on the
+#: device's own timestamps and never picked a frame further out than that.
+#:
+#: So this separates *out of phase* from *off by a whole frame*, which is 0.500 s
+#: at the default rate and is what taking whatever was newest of each used to give
+#: -- 0.49 s measured, and 23 cm of rover at the speed it explores at. 0.30 is
+#: comfortably above the worst honest pairing and comfortably below a mispairing.
+#:
+#: **The phase is charged rather than merely tolerated.** A fifth of a second is
+#: 9 cm at the speed this rover explores at, and the box was drawn on one frame
+#: while the range came off the other; `Inspector._aged_sigma` adds it to the
+#: frame's own age and charges the pair to every range it produces.
+MAX_APART_S = 0.30
 
 
 @dataclass
@@ -87,6 +95,13 @@ class Ranged:
     #: the only one that can charge that to the answer; see
     #: `Inspector._aged_sigma`.
     age_s: float = 0.0
+    #: And how far apart the picture the box was drawn on and the depth map the
+    #: range came off were exposed. A fifth of a second on this camera, because
+    #: its colour sensor and its mono pair free-run on their own clocks -- see
+    #: `MAX_APART_S`. Charged the same way and for the same reason as the age:
+    #: both are time the rover was moving through between the two halves of one
+    #: measurement.
+    apart_s: float = 0.0
 
 
 @dataclass
@@ -324,7 +339,8 @@ class SidecarRanger(Ranger):
                 sigma_m=_number(one.get("sigma_m"), None),
                 valid=_number(one.get("valid"), 0.0) or 0.0,
                 pixels=int(one.get("pixels") or 0),
-                age_s=_number(payload.get("age_s"), 0.0) or 0.0))
+                age_s=_number(payload.get("age_s"), 0.0) or 0.0,
+                apart_s=_number(payload.get("depth_apart_s"), 0.0) or 0.0))
         return answers, ""
 
     # --- the wire -------------------------------------------------------------

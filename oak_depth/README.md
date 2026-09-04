@@ -122,17 +122,28 @@ pipeline when it is built, changing it is a restart and a fresh firmware upload
 rather than a live retune.
 
 **The two halves are paired on the device's own timestamps, and that was worth
-doing.** Both are exposed together, but the colour frame goes through the MJPEG
-encoder before it crosses the link, so it arrives a whole exposure behind its own
-depth frame: pairing whatever was newest of each put them **0.49 s apart at 2 fps
-— one full frame interval, and 23 cm of rover** at the speed it explores at. A box
-drawn on one of those and a range taken from the other are not one measurement. So
-each depth frame is held back until the picture it belongs with has arrived, and
-the two are published together; measured on the rover on 2026-09-04 that leaves
-them **3 to 10 ms apart**. The cost is that the pair is about 0.65 s old when it
-is read rather than 0.03, which `/frame`'s `X-Frame-Age` reports and which the
-consumer charges to the answer — a range from a stale frame is only true of where
-the camera was then.
+doing.** The colour frame goes through the MJPEG encoder before it crosses the
+link, so it arrives a whole exposure behind its own depth frame: pairing whatever
+was newest of each put them **0.49 s apart at 2 fps -- one full frame interval,
+and 23 cm of rover** at the speed it explores at. A box drawn on one of those and
+a range taken from the other are not one measurement. So each depth frame is held
+back until the picture it belongs with has arrived, and the two are published
+together.
+
+**What that leaves is a fifth of a second, and it is the sensors rather than the
+pairing.** Measured on the rover on 2026-09-04 over sixty reads a second apart:
+`depth_apart_s` has a **median of 0.197 s and a worst of 0.217**, never anywhere
+near the 0.5 s a mispairing would give. The colour sensor and the mono pair
+free-run on their own clocks -- this camera has no hardware sync between them --
+so a correctly matched pair still sits about that far out of phase, and that is a
+floor rather than a fault to chase. Raising `--fps` shrinks it proportionally,
+which is the only lever there is.
+
+The other cost is that the pair is about **0.65 s old** when it is read rather
+than 0.03. Both numbers ride on the reply -- `X-Frame-Age` and `X-Depth-Apart` --
+because both are time the rover was moving through, and the consumer is the only
+thing that knows how fast: `world_state`'s inspection charges the pair of them to
+every range it stores.
 
 **What the drop to 2 fps actually bought, measured the same day:** the Orin's
 `VDD_IN` rail fell from 6.49 W to 6.32 W, each averaged over forty one-second
@@ -219,8 +230,8 @@ relative to the right mono camera's; the alignment moved them.
 consumer needs and a second call could not answer about the same frame:
 
 ```
-X-Frame-Age: 0.652      how old the picture is, in seconds
-X-Depth-Apart: 0.004    how far the depth behind it was taken from it
+X-Frame-Age: 0.680      how old the picture is, in seconds
+X-Depth-Apart: 0.143    how far the depth behind it was exposed from it
 X-Frame-Size: 640x360
 ```
 
@@ -230,9 +241,9 @@ the thing in each is:
 ```
 $ curl -s -X POST -H 'Content-Type: application/json' \
        -d '{"boxes": [[0.35,0.35,0.65,0.65]]}' http://127.0.0.1:8770/ranges
-{"ok": true, "age_s": 0.35, "size": [320, 180], "frame_age_s": 0.35,
- "depth_apart_s": 0.007,
- "ranges": [{"range_m": 1.094, "sigma_m": 0.059, "valid": 0.691, "pixels": 2347}]}
+{"ok": true, "age_s": 0.70, "size": [320, 180], "frame_age_s": 0.70,
+ "depth_apart_s": 0.143,
+ "ranges": [{"range_m": 1.116, "sigma_m": 0.048, "valid": 0.682, "pixels": 2366}]}
 ```
 
 Fractions rather than pixels because the picture and the depth map are different
