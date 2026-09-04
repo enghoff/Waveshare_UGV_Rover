@@ -483,7 +483,7 @@ class Depth:
             self.baseline_cm = round(calibration.getBaselineDistance(), 2)
             # The stereo pair's own focal length, at the resolution the pair runs
             # at, because it is a term in what a range is worth -- see
-            # `RANGE_SIGMA_PER_M2`. Not the colour camera's: the disparity is
+            # `DISPARITY_SIGMA_PX`. Not the colour camera's: the disparity is
             # measured between the two monos whatever frame it is later warped
             # into.
             right = calibration.getCameraIntrinsics(

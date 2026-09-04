@@ -19,6 +19,47 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**A look can carry a range now, and it comes from the other camera, since
+2026-09-04.** A bearing has one blind spot that no amount of care removes: a
+crossing where nothing is lies exactly on the rays belonging to the real things
+either side of it, and fits them exactly as well, so three objects in a row seen
+from two places come back as one phantom. From two viewpoints that is genuinely
+unknowable, which is why this document has said for months that what the geometry
+wants next is a range on each ray. The OAK-D-Lite on the front of the rover has
+been serving one on loopback 8770 since 2026-08-31 with nothing reading it.
+
+An observation carries `range_m` and `range_sigma_m`, and `locate` spends them
+three ways: two rays must agree about the *distance* before they may place
+anything (`range_disagreement`, in `fix`), a later look joins a placed thing only
+at the distance it measured (`stands_at_range`, in `agrees`), and the range is a
+second residual in the fit -- where it pins the one axis every bearing leaves
+open, because a bearing constrains direction and says nothing at all about how
+far. All three **abstain** when a look has no range, which is every look taken
+before this and every look since taken somewhere the depth camera was not
+pointed, so a rover refuses nothing it knew yesterday.
+
+**The rover has two cameras and they are nothing alike**, so which one a look came
+through is a column and a lens rather than an assumption. `view._levelled` takes
+the optics as an argument: the swept fisheye in `face_tracking/lens.py` for the
+gimbal, and for the OAK the intrinsics the device itself reports -- fetched
+through [depth_client.py](depth_client.py) and never written down here, because a
+copy could only ever drift from the camera. The OAK is modelled as *a gimbal that
+never moves*: its mount's yaw and pitch go in as a pan and a tilt, and every
+bearing afterwards is the arithmetic that was already there.
+[`rover_world.WORLD_CAMERA`](../rover_daemon/rover_world.py) chooses between the
+two in code, with nothing on the console -- two cameras writing into one world
+through a switch a person could flip mid-drive would leave the store holding two
+halves nobody could tell apart.
+
+**The mount has not been measured, and until it is, none of this does anything.**
+A yaw taken off a bracket by eye is worth about five degrees against a bearing
+believed to one and a half, and it would swing every observation the same way with
+nothing downstream able to see it -- so `oak.MEASURED` gates all of it, in both
+directions: the OAK cannot draw a bearing without it, and a gimbal look cannot be
+given a range without it either. [bench_oak.py](bench_oak.py) measures it with no
+target and no tape measure; *What the two cameras have to agree about* below is
+what it does and what the rover has to be pointed at for it to work.
+
 **The same picture is not recorded twice, since 2026-09-04.** A rover standing
 still in a room that is not changing used to go on recording it — the same wall,
 the same sofa, from the same place — and each of those looks cost a frame on
@@ -245,6 +286,120 @@ gone. A person who wants prose about what the camera can see asks the daemon's
                       v            resolve.py: two bearings that cross
       control calls on TCP 8769 -> drive console popup
 ```
+
+## What the two cameras have to agree about, 2026-09-04
+
+**Not measured yet.** What follows is what is built and what it will take to
+switch on, written down because the gate is a one-line constant and somebody
+will otherwise be tempted to fill it in by eye.
+
+### Why a range is the thing the geometry was missing
+
+Everything here works from angles, and the failure mode is stated at the top of
+[locate.py](locate.py): two bearings cross *somewhere* whatever they were aimed
+at. `beyond_reach` catches the version of that which would have needed seeing
+through a wall -- it was the strongest gate this component had, and on the run of
+2026-09-02 it refused 19 of 22 bearings that claimed something past the first
+obstacle. What it cannot catch is the version in open floor. Two rays aimed at two
+different chairs meet at a point that is on neither of them, at a healthy parallax
+off a healthy baseline, and every guard accepts it -- while both rays would say,
+in millimetres, that what they were looking at was somewhere else.
+
+That is also the whole of why `resolve.DISCOVERY` still names the greedy pass.
+[cluster.py](cluster.py) fits positions and associations together, which is the
+standard formulation, and on the recording of 2026-09-03 it places 10 things where
+the greedy pass places 15 -- because a candidate set built from angles alone is a
+handful of possibilities per ray, and no single pass holds enough of the pool to
+choose between them. A range collapses each ray's candidate set from a handful to
+one.
+
+### What was built
+
+* [oak.py](oak.py) -- the OAK as a camera on *this* rover: its pixels as
+  directions, `MOUNT` for where it sits relative to the gimbal camera, and
+  `box_for`, which finds a box drawn on the gimbal camera's picture in the OAK's.
+* [depth_client.py](depth_client.py) -- the wire, shaped like
+  [perception_client.py](perception_client.py) and for the same reason: the caller
+  is an inspection inside the process that owns STOP, so a camera that is not
+  there is an ordinary answer.
+* `Inspector._ranges` -- two shapes, because the two cameras stand differently to
+  the depth map. A look taken through the OAK is already in the depth map's own
+  frame and a box goes straight across. A look taken through the gimbal becomes
+  four directions in the rover's frame, and lands in the OAK's picture or does
+  not: **the gimbal sees 122 degrees across and the OAK 70**, so about half of a
+  centred frame has depth behind it and a look taken over the rover's shoulder has
+  none whatever.
+
+Two corrections in there are worth knowing about, because both are the kind that
+would never show up as an error:
+
+* **A range is a length along a particular ray from a particular point.** The OAK
+  measures from its own lens; a gimbal observation's ray starts at the gimbal
+  camera's. Converting between them is a line-sphere intersection --
+  `oak.range_from_gimbal` -- and it matters more the closer the thing is: a few
+  centimetres at three metres, a quarter of the answer at half of one.
+* **A range is only true of where the camera was when the frame was taken.** The
+  depth service holds each frame until the picture it belongs with has arrived, so
+  a reading is about two thirds of a second old -- thirty centimetres at the 0.47
+  m/s this rover explores at, against a stereo error of two to seven centimetres.
+  `Inspector._aged_sigma` charges the rover's own speed over the shutter bracket
+  to the reading, in quadrature. It only ever widens.
+
+### What the calibration does, and what the rover has to be pointed at
+
+`bench_oak.py` needs no target. Both cameras look at whatever room the rover is
+in, the perception sidecar finds regions in both pictures, and the regions are
+matched across the two by the same DINO vectors the resolver uses -- at a higher
+floor than `resolve.DIFFERENT_THING`, because a wrong match here is a bad pair in
+a calibration everything else is built on and there are usually more honest pairs
+available than are needed. Each matched pair is then one thing seen down two known
+lenses from two unknown but fixed places, and:
+
+* the **rotation** that makes the two agree is the mount's yaw and pitch, solved
+  as Wahba's problem by singular value decomposition. The spread left over is what
+  the answer is worth, and `locate.BEARING_SIGMA_DEG` -- 1.5 degrees -- is what it
+  has to beat to be worth adopting. The roll is reported and not carried, on the
+  assumption that a bracket bolted to a flat plate has none; above a degree that
+  assumption wants revisiting rather than ignoring.
+* the **offset** between the two lenses comes out of what is left, because
+  parallax is the only thing in two pictures that knows about distance: a thing
+  three metres away should appear in the same direction down both lenses and does
+  not, by the offset over the range. With the ranges the OAK reports for those same
+  regions, that is a linear least-squares problem, and its condition number is
+  printed because a scene where everything is at one distance cannot tell an offset
+  from a rotation at all.
+
+**What it needs is a room with furniture at a spread of distances**, two to four
+metres off, and it says so rather than fitting whatever it was given. The rover
+was parked nose-to-wall when this was written, which is the one scene it cannot
+work from: a blank wall a metre away yields nothing to match.
+
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan -20 -10 0 10 20'
+
+Read the spread; if it beats a degree and a half, paste the block it prints into
+`oak.MOUNT` and set `MEASURED = True`. It is deliberately not written back
+automatically: a calibration that rewrites the constant the whole component
+depends on, from whatever the rover happened to be looking at, is a calibration
+nobody can review.
+
+### What is still open
+
+* **The mount, which is the whole of it.** Nothing above is switched on.
+* **The disparity term behind every `range_sigma_m` is assumed**, not measured
+  (`oak_depth.DISPARITY_SIGMA_PX`). The stereo
+  error model is `z^2 * 0.2 px / (focal * baseline)`, and the focal length and the
+  baseline are read off the device while the 0.2 px is a plausible figure for
+  subpixel mode. It wants a tape measure against a known distance, and what it
+  produces is spent as a weight -- so being wrong optimistic makes the world state
+  trust a range more than it should.
+* **The OAK path loses a turning look's bearing.** The frame it hands back
+  predates the pose bracket the inspection reads around it, so
+  `Inspector._at_the_shutter` cannot interpolate to it and the old
+  `TURNED_WHILE_LOOKING_DEG` fallback applies -- which is the state the gimbal path
+  was in before *The shutter has an instant* below. The fix is a short history of
+  poses in the daemon rather than a bracket of two, and it is not built.
+* **Whether any of it places more things is unmeasured**, because no recording
+  holds a range to replay. That wants a drive after the mount is measured.
 
 ## The one rule
 
