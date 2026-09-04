@@ -691,9 +691,23 @@ and none of them visible offline:
 * Even then the text tower and the three engines a look needs do not both fit.
   TensorRT answers `None` instead of raising when it cannot make an execution
   context, so the failure arrived several frames later as an attribute error on
-  nothing. A search now puts a look's engines down first and the next look picks
-  them up again, which costs a few seconds afterwards -- the right way round for
+  nothing. A search put a look's engines down first and the next look picked
+  them up again, which cost a few seconds afterwards -- the right way round for
   something a person types.
+
+**The four seconds are gone, since 2026-09-04, and what they were is not what
+this section assumed.** Measured on the rover: 2.3 s of every search was the
+tokenizer, rebuilt from its 34 MB of JSON each time for a thing that never
+changes; 2.6 s was deserialising the text tower, plus 0.2 s to hand it back and a
+look's own three engines to open again afterwards; 0.29 s was scoring a thousand
+stored vectors in a Python loop; and the forward pass everything else was in
+service of was ten milliseconds. The tokenizer is built once and kept, the
+scoring is one numpy matrix multiply, and the third bullet above no longer holds
+-- with the local language model gone from this rover all four engines open in
+one process, come to 2.7 GB and leave 1.3 GB spare, so the text tower is opened
+by the first search and kept. A look that cannot find room puts it down and tries
+again, which is what makes that safe rather than merely measured. A search after
+the first now costs a fraction of a second.
 
 A fourth was in the deployer rather than the rover: `rover_daemon` holds the
 world-state modules in memory, so deploying `world_state` alone put a new search

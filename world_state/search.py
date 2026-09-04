@@ -2,8 +2,10 @@
 
 A phrase is embedded by SigLIP2's text tower, whose image tower produced every
 stored region vector, so the two land in the same space and the comparison is a
-dot product. A few hundred vectors is a few hundred multiplications, which is why
-there is no vector database anywhere in this design and should not be one.
+dot product. A thousand vectors is one matrix multiply, which is why there is no
+vector database anywhere in this design and should not be one: the whole store
+fits in memory several times over, scoring all of it costs about three
+milliseconds, and an index would be another thing to keep true.
 
 **This is the only thing that turns a picture into words now, and deliberately
 so.** Regions used to be named by the nearest phrase in a fixed word list to the
@@ -62,6 +64,22 @@ def unpack(blob: bytes) -> tuple[float, ...]:
     return struct.unpack(f"<{len(blob) // 4}f", blob) if blob else ()
 
 
+def _numpy():
+    """numpy, or None on a host without it.
+
+    The scoring is one matrix multiply where numpy is present and the same
+    arithmetic in a Python loop where it is not. It is worth the branch: at the
+    thousand vectors the rover is now carrying the loop costs 0.29 s of the call
+    and the multiply costs about three milliseconds, and the loop is still the
+    thing that has to work on a machine that has only the standard library.
+    """
+    try:
+        import numpy
+    except ImportError:
+        return None
+    return numpy
+
+
 def cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     if not left or len(left) != len(right):
         return 0.0
@@ -86,16 +104,7 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
     if not wanted:
         return {"ok": False, "error": "the query has no vector", "matches": []}
 
-    scored, skipped = [], 0
-    for row in rows:
-        if backend and row.get("vectors_from") and row["vectors_from"] != backend:
-            skipped += 1
-            continue
-        stored = unpack(row.get("siglip_blob") or b"")
-        if len(stored) != len(wanted):
-            skipped += 1
-            continue
-        scored.append((cosine(wanted, stored), row))
+    scored, skipped = _scored(query, wanted, rows, backend)
     if not scored:
         return {"ok": True, "matches": [], "considered": 0, "skipped": skipped,
                 "confident": False,
@@ -147,6 +156,56 @@ def rank(query: bytes, rows: list[dict[str, Any]], limit: int = 10,
         "stands_clear": round(stands, 2),
         "detail": _detail(confident, best, stands, len(values)),
     }
+
+
+def _scored(query: bytes, wanted: tuple[float, ...],
+            rows: list[dict[str, Any]],
+            backend: str) -> tuple[list, int]:
+    """Every comparable row with its cosine, and a count of the rest.
+
+    A row is out either because its vectors came from the other backend or
+    because it does not have a vector of the same length, and both of those are
+    counted rather than scored so the answer can say how much of the store it
+    could not look at.
+    """
+    keep, skipped = [], 0
+    width = len(query)
+    for row in rows:
+        if backend and row.get("vectors_from") and row["vectors_from"] != backend:
+            skipped += 1
+            continue
+        blob = row.get("siglip_blob") or b""
+        if len(blob) != width:
+            skipped += 1
+            continue
+        keep.append(row)
+    if not keep:
+        return [], skipped
+
+    np = _numpy()
+    if np is None:
+        return [(cosine(wanted, unpack(row["siglip_blob"])), row)
+                for row in keep], skipped
+
+    # One buffer out of the blobs and one multiply over the lot. Double
+    # precision because the pure-Python path above is the reference for what a
+    # score means, and float32 accumulation over 768 terms would disagree with
+    # it in the fourth decimal -- which is the decimal the answer is rounded to
+    # and the floor is read against.
+    stored = np.frombuffer(
+        b"".join(bytes(row["siglip_blob"]) for row in keep),
+        dtype="<f4").reshape(len(keep), width // 4).astype(np.float64)
+    asked = np.frombuffer(query, dtype="<f4").astype(np.float64)
+    lengths = np.sqrt((stored * stored).sum(axis=1))
+    asked_length = float(np.sqrt(asked @ asked))
+    if asked_length < 1e-9:
+        return [(0.0, row) for row in keep], skipped
+    # A stored vector of no length scores nothing rather than dividing by nought,
+    # which is what the loop this replaces did with it.
+    safe = np.where(lengths < 1e-9, 1.0, lengths)
+    values = np.where(lengths < 1e-9, 0.0,
+                      (stored @ asked) / (safe * asked_length))
+    return list(zip(values.tolist(), keep)), skipped
 
 
 def _detail(confident: bool, best: float, stands: float, count: int) -> str:

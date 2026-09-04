@@ -276,12 +276,6 @@ class _CpuModels:
         self._blank = numpy.zeros((1, 3, SIGLIP_SIZE, SIGLIP_SIZE),
                                   dtype=numpy.float32)
 
-    def release(self) -> None:
-        """Nothing to give back. Onnxruntime's graphs are host memory and the CPU
-        backend never has the memory problem this exists to solve; it is here
-        because the two backends are swapped at run time and a method on one and
-        not the other is a crash on whichever board has the wrong one."""
-
     def regions(self, blob):
         return self._regions.run(None, {"images": blob})[0]
 
@@ -337,34 +331,48 @@ class _GpuModels:
             "vision": os.path.join(directory, SIGLIP_VISION),
         }
         self._text = os.path.join(directory, SIGLIP_TEXT)
-        self._regions = self._dino = self._vision = None
-        # Nothing is loaded here. **The order the engines are opened in decides
-        # whether this board survives opening them at all**: the text tower is
-        # 1.1 GB, the other three come to about 0.5 GB, and with the language
-        # model holding 3.2 GB of 7.4 the two together were enough for the
-        # out-of-memory killer to take the sidecar -- exit 137, measured. So the
-        # text tower is never held: a search loads it for the call and gives it
-        # back, and an ordinary start-up does not open it at all.
+        self._regions = self._dino = self._vision = self._text_engine = None
+        # Nothing is loaded here, and the text tower is not loaded even by a
+        # start-up that opens the other three: it is 1.1 GB against their 0.5,
+        # only a search wants it, and a rover nobody searches should not be
+        # carrying it. The first search opens it and every search after that
+        # finds it already open.
 
     def open(self) -> None:
-        """The three engines a look needs.
+        """The three engines a look needs. Idempotent."""
+        from .engines import NoEngines
 
-        Idempotent, and called before every look rather than only at start-up,
-        because a search puts these down to make room for the text tower.
-        """
+        if None not in (self._regions, self._dino, self._vision):
+            return
+        try:
+            self._open()
+        except NoEngines:
+            # Out of room, and the text tower is the one piece of this that a
+            # look does not need. Give it back and try once more: a search is
+            # something a person types and can wait for, and a look is the
+            # rover's eyes.
+            if self._text_engine is None:
+                raise
+            self.release_text()
+            self._open()
+
+    def _open(self) -> None:
+        """Whichever of the three is not open, so that a retry after running out
+        of room part-way through opens the rest rather than the lot again."""
         from .engines import Engine
 
         if self._regions is None:
             self._regions = Engine(self._paths["regions"], self._directory)
+        if self._dino is None:
             self._dino = Engine(self._paths["dino"], self._directory)
+        if self._vision is None:
             self._vision = Engine(self._paths["vision"], self._directory)
 
-    def release(self) -> None:
-        """Give a look's engines back, for something that needs the room more."""
-        for engine in (self._regions, self._dino, self._vision):
-            if engine is not None:
-                engine.close()
-        self._regions = self._dino = self._vision = None
+    def release_text(self) -> None:
+        """Give the text tower back. Only a look short of room asks for this."""
+        if self._text_engine is not None:
+            self._text_engine.close()
+            self._text_engine = None
 
     def regions(self, blob):
         return self._regions.run({"images": blob})["regions"]
@@ -376,27 +384,32 @@ class _GpuModels:
         return self._vision.run({"pixel_values": batch})["pooler_output"]
 
     def text_vectors(self, ids):
-        """The text tower, loaded for this call and then given back.
+        """The text tower, opened by the first search and then kept.
 
-        It is the largest of the four engines at over half a gigabyte and it
-        runs only when somebody types a search, so holding it for the life of
-        the process to save a two-second load is the wrong trade on a board
-        whose GPU memory is the same memory everything else is using.
+        **It used to be loaded for the call and given back**, because with the
+        local language model holding 3.2 GB of this board's 7.4 the text tower
+        and a look's three engines did not both fit -- asking for it on top of
+        them got a null execution context back, which is TensorRT's way of
+        saying it has run out of room, and once it got the sidecar killed
+        outright. That model has not been on the rover since it moved to the
+        Orin, and measured again with it gone all four engines open in one
+        process, come to 2.7 GB, run a look and a search either side of each
+        other, and leave 1.3 GB spare.
+
+        What it was costing was the whole of a search: 2.6 s to deserialise
+        1.1 GB, 0.2 s to give it back, and a look's three engines to open again
+        afterwards, around a forward pass that takes ten milliseconds. Held,
+        the second search and every one after it costs the ten milliseconds.
+
+        `open` is what makes this safe rather than a hope: a look that cannot
+        find room puts the text tower down and tries again, so the thing that
+        gets given up is the search nobody is waiting for.
         """
         from .engines import Engine
 
-        # A look's three engines come down first. They and the text tower do not
-        # both fit: measured on this rover with the language model resident,
-        # asking for the text tower on top of them got a null execution context
-        # back, which is TensorRT's way of saying it ran out of room. A search is
-        # something a person types, so paying a few seconds to open the look's
-        # engines again afterwards is the right way round.
-        self.release()
-        engine = Engine(self._text, self._directory)
-        try:
-            return engine.run({"input_ids": ids})["pooler_output"]
-        finally:
-            engine.close()
+        if self._text_engine is None:
+            self._text_engine = Engine(self._text, self._directory)
+        return self._text_engine.run({"input_ids": ids})["pooler_output"]
 
 
 class Perception:
@@ -424,6 +437,12 @@ class Perception:
         #: Why the GPU was not used, when it was not. Empty when nothing was
         #: given up; a sentence when the rover is seeing less well than it could.
         self.fallback = ""
+        #: The tokenizer, built on the first search and kept. Reading it back
+        #: from its 34 MB of JSON costs 2.3 s of a core, measured on the rover,
+        #: and it was being paid on every search for a thing that never changes.
+        #: 34 MB held for the life of the process is the cheaper half of that
+        #: trade by a wide margin.
+        self._tokenizer = None
 
     # --- loading --------------------------------------------------------------
 
@@ -725,15 +744,28 @@ class Perception:
         # host with no models installed should be told exactly that.
         self.load()
 
-        from tokenizers import Tokenizer
-
         np = self._np
-        tokenizer = Tokenizer.from_file(os.path.join(self.dir, TOKENIZER))
-        tokenizer.enable_padding(length=SIGLIP_TOKENS, pad_id=0, pad_token="<pad>")
-        tokenizer.enable_truncation(max_length=SIGLIP_TOKENS)
-        ids = np.array([e.ids for e in tokenizer.encode_batch(
+        ids = np.array([e.ids for e in self._words().encode_batch(
             [phrase.lower() for phrase in phrases])], dtype=np.int64)
         return _unit(np, self._models.text_vectors(ids))
+
+    def _words(self):
+        """The tokenizer, built once.
+
+        Under the same lock as everything else here, because two searches
+        arriving together would otherwise build it twice and the second one
+        would be paying the 2.3 s this exists to stop paying.
+        """
+        with self._lock:
+            if self._tokenizer is None:
+                from tokenizers import Tokenizer
+
+                tokenizer = Tokenizer.from_file(os.path.join(self.dir, TOKENIZER))
+                tokenizer.enable_padding(length=SIGLIP_TOKENS, pad_id=0,
+                                         pad_token="<pad>")
+                tokenizer.enable_truncation(max_length=SIGLIP_TOKENS)
+                self._tokenizer = tokenizer
+        return self._tokenizer
 
 
 # --- arithmetic that needs no model -----------------------------------------

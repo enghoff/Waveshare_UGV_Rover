@@ -63,19 +63,91 @@ def test_a_query_can_be_embedded_before_anything_has_been_looked_at() -> None:
 
 def test_both_backends_answer_the_same_four_questions() -> None:
     """They are swapped at run time, so a method on one and not the other is a
-    crash on whichever board has the wrong one. `release` is on the list because
-    the search path calls it on whichever backend is in use, and on the CPU it
-    has nothing to do."""
+    crash on whichever board has the wrong one. This is the whole of what
+    `Perception` asks a backend for; giving the text tower back is not on the
+    list, because only the GPU backend holds one and only its own `open` ever
+    asks."""
     from world_state.perceive import _CpuModels, _GpuModels
 
-    wanted = {"regions", "appearance", "image_vectors", "text_vectors",
-              "open", "release"}
+    wanted = {"regions", "appearance", "image_vectors", "text_vectors", "open"}
     for backend in (_CpuModels, _GpuModels):
         have = {name for name in dir(backend) if not name.startswith("_")}
-        check(f"{backend.name} answers all six",
+        check(f"{backend.name} answers all five",
               wanted - have, set())
     check("the two name themselves differently",
           _CpuModels.name != _GpuModels.name, True)
+
+
+def test_the_tokenizer_is_built_once_and_not_once_a_search() -> None:
+    """Reading it back from its 34 MB of JSON was measured on the rover at 2.3 s
+    of a core, and it was being paid on every search for a thing that never
+    changes -- more than half of what a four-second search cost."""
+    from world_state.perceive import Perception
+
+    with tempfile.TemporaryDirectory() as empty:
+        perception = Perception(empty)
+        already = object()
+        perception._tokenizer = already
+        # The directory is empty, so a second read would raise rather than
+        # quietly cost the 2.3 s again.
+        check("a tokenizer already built is the one a search uses",
+              perception._words() is already, True)
+        check("...and the one after it", perception._words() is already, True)
+
+
+def test_the_text_tower_is_kept_until_a_look_needs_the_room() -> None:
+    """What a search used to spend nearly all its time on, and the safety net
+    that lets it stop.
+
+    The tower is 1.1 GB and was opened and given back for every single search,
+    which was 2.8 s of a four-second answer. It is kept now. What makes that
+    safe is not that it fits -- measured, it does, with the language model that
+    used to crowd it gone from this rover -- but that a look which cannot find
+    room puts it down and tries again, so the thing given up is the search
+    nobody is waiting for rather than the rover's eyes.
+    """
+    from world_state import engines as engines_module
+    from world_state.perceive import _GpuModels
+
+    opened, closed, crowded = [], [], []
+
+    class Fake:
+        def __init__(self, path, vendor=None):
+            self.name = os.path.basename(path)
+            if crowded and self.name != engines_module.SIGLIP_TEXT:
+                raise engines_module.NoEngines("no room for an execution context")
+            opened.append(self.name)
+
+        def run(self, feed):
+            return {"pooler_output": feed}
+
+        def close(self):
+            closed.append(self.name)
+            crowded.clear()
+
+    real = engines_module.Engine
+    engines_module.Engine = Fake
+    try:
+        models = _GpuModels(os.path.join(HERE, "vendor"))
+        models.text_vectors("ids")
+        models.text_vectors("ids")
+        check("two searches open the text tower once between them",
+              opened.count(engines_module.SIGLIP_TEXT), 1)
+        check("...and neither gives it back", closed, [])
+
+        crowded.append("no room")
+        models.open()
+        check("a look that cannot find room gives the text tower back",
+              closed, [engines_module.SIGLIP_TEXT])
+        check("...and then opens its own three",
+              [opened.count(name) for name in (engines_module.REGIONS,
+                                               engines_module.DINO,
+                                               engines_module.SIGLIP_VISION)],
+              [1, 1, 1])
+        check("...leaving the next search to open the tower again",
+              models._text_engine, None)
+    finally:
+        engines_module.Engine = real
 
 
 def test_the_installer_builds_exactly_the_engines_the_runtime_opens() -> None:
@@ -249,6 +321,8 @@ TESTS = (
     test_a_board_with_no_engines_falls_back_and_says_why,
     test_a_query_can_be_embedded_before_anything_has_been_looked_at,
     test_both_backends_answer_the_same_four_questions,
+    test_the_tokenizer_is_built_once_and_not_once_a_search,
+    test_the_text_tower_is_kept_until_a_look_needs_the_room,
     test_the_installer_builds_exactly_the_engines_the_runtime_opens,
     test_a_region_that_is_an_edge_is_not_a_thing,
     test_a_frame_too_dark_to_see_is_not_an_empty_room,

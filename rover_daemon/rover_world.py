@@ -761,9 +761,8 @@ class RoverWorld:
         comparison is a dot product over a few hundred of them. It is also the
         only thing that turns what the rover saw into words -- nothing names a
         region any more -- so this is how a person finds anything by describing
-        it. Which is why the answer arrives
-        in milliseconds once the query itself has been embedded -- that part goes
-        to the sidecar and, on the GPU, loads the text engine for the call.
+        it. The whole of it is milliseconds once the sidecar has the text engine
+        open, which it does from the first search after a start-up onwards.
         """
         why = self._world_ready()
         if why:

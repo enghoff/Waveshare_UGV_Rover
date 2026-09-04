@@ -40,7 +40,7 @@ SIGLIP_TEXT = "siglip-text.plan"
 
 #: Every engine this component needs to be able to run. The text engine is in the
 #: list because a search cannot be answered without it, even though a look never
-#: touches it and it is loaded for the call and let go again.
+#: touches it and nothing opens it until somebody searches.
 REQUIRED = (REGIONS, DINO, SIGLIP_VISION, SIGLIP_TEXT)
 
 
@@ -184,9 +184,9 @@ class Engine:
     def close(self) -> None:
         """Give the GPU memory back.
 
-        Used for the text tower, which a search loads and is then dead weight: it
-        is the largest engine of the four and the board shares its memory with
-        everything else.
+        The text tower is what asks for this, and only when a look cannot find
+        room to open its own three: it is the largest engine of the four and the
+        board shares its memory with everything else.
         """
         cudart = self._cudart
         for pointer in self._device.values():

@@ -803,10 +803,22 @@ the board's 7.5 at the time; the installer stopped that sidecar for the duration
 and started it again afterwards. Neither is needed now that the model is gone, so
 the installer stops nothing.
 
-The text tower is never held. It is the largest of the four engines at over half
-a gigabyte, nothing on the per-look path wants it, and a search loads it for the
-call and gives it back — so an ordinary start-up does not open it at all. That is
-new: it used to be loaded at every start to embed the word list.
+**The text tower is opened by the first search and then kept, since
+2026-09-04.** It is the largest of the four engines at 1.1 GB and nothing on the
+per-look path wants it, so a start-up does not open it and a rover nobody
+searches never carries it. It used to be opened and given back for every search,
+which was most of what a search cost — 2.6 s to deserialise, 0.2 s to hand back,
+and a look's own three engines to open again afterwards, around a forward pass
+of ten milliseconds. That arrangement was forced by the local language model
+holding 3.2 GB of the board's 7.4; with that gone, all four engines measured
+2.7 GB in one process and left 1.3 GB spare, ran a look and a search either side
+of each other, and the sidecar's resident memory went from 1.5 GB to 2.7. The
+thing that makes it safe rather than merely measured is that a look which cannot
+find room puts the tower down and tries again, so what is given up is the search
+nobody is waiting for.
+
+The other half of what a search cost was the tokenizer, rebuilt from its 34 MB of
+JSON on every call at 2.3 s a time. It is built once now and kept.
 
 ```bash
 ssh orin 'cd ~/ugv/world_state && python3 bench_perceive.py'   # what a look costs

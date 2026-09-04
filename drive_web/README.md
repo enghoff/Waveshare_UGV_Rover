@@ -382,11 +382,13 @@ dim, so the near misses can be seen for what they are. The rover ranks every
 stored vector it has, not the window of history the stream happens to hold, so a
 filtered stream can show a look from an hour ago that the tiles had never reached
 — and it therefore stops paging while a filter is on, since scrolling to the end
-of an answer is not a request for older looks. And a search takes several seconds,
-because the phrase has to go through the text tower; while it is in flight the box
-pulses and the views go on showing the previous answer rather than emptying,
-since a screen that has gone blank for five seconds reads as a search that never
-went.
+of an answer is not a request for older looks. A search is not instant, because
+the phrase has to go through the text tower; while it is in flight the box pulses
+and the views go on showing the previous answer rather than emptying, since a
+screen that has gone blank reads as a search that never went. **It used to take
+four or five seconds and now takes a fraction of one** — the rover keeps the text
+tower open since 2026-09-04, so only the first search after a start-up still
+pays for opening it.
 
 **The answer chooses its own best thing**, since 2026-09-04. A search is somebody
 asking where one thing is, so the top of the narrowed list is selected as the

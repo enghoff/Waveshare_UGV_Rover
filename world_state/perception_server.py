@@ -123,9 +123,9 @@ class Handler(BaseHTTPRequestHandler):
 
         The same model whose image tower produced every stored region vector, so
         a query lands in the same space and the comparison is a dot product. On
-        the GPU this loads the text engine for the call and gives it back
-        afterwards, which costs a couple of seconds -- a search is something a
-        person types, not something a look does.
+        the GPU the first phrase after a start-up opens the text engine, which
+        takes a couple of seconds; every one after that finds it open and costs
+        about ten milliseconds.
         """
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         try:

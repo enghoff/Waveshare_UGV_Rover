@@ -334,12 +334,12 @@ class SessionWorld:
         view of the store. An empty one takes the filter off, which is why it is
         handled here rather than refused: nothing goes to the rover for it.
 
-        Slower than it looks and worth saying so in the note: the phrase has to
-        go through the same text tower that named every region, and on the rover
-        that means loading a model for the call and giving it back afterwards,
-        which is several seconds. A search is something a person types, so that
-        is the right way round, but a box that looks frozen for five seconds is
-        not.
+        Still not instant, and that is why the box says it is asking: the phrase
+        has to go through the same text tower that named every region. Since
+        2026-09-04 the rover keeps that model open, so the first search after a
+        start-up is a couple of seconds and the rest are a fraction of one --
+        short enough that the pulse is now a flicker, and long enough that
+        without it a slow one would read as a box that swallowed the phrase.
         """
         query = query.strip()
         if self.world_link is None:

@@ -144,10 +144,58 @@ def test_vectors_from_the_other_backend_are_not_ranked() -> None:
           answer["matches"][0]["observation_id"], 2)
 
 
+def test_the_fast_path_and_the_plain_one_score_the_same() -> None:
+    """A store of a thousand vectors is scored with one matrix multiply where
+    numpy is there to do it, which on the rover is three milliseconds against
+    the 0.29 s the Python loop was costing every search. The loop is still what
+    runs on a host with only the standard library, so the two have to agree:
+    a rover that found different things depending on what was installed would
+    be worse than a slow one.
+    """
+    import random
+
+    random.seed(7)
+
+    def vector():
+        return _packed(*[random.uniform(-1.0, 1.0) for _ in range(32)])
+
+    rows = [{"id": n, "siglip_blob": vector()} for n in range(50)]
+    # A vector of no length, which must score nothing rather than divide by
+    # nought, and a row from the other backend, which must be counted out.
+    rows.append({"id": 98, "siglip_blob": _packed(*([0.0] * 32))})
+    rows.append({"id": 99, "siglip_blob": vector(), "vectors_from": "onnxruntime"})
+    query = vector()
+
+    fast = search.rank(query, rows, limit=60, backend="tensorrt")
+    plain_numpy = search._numpy
+    search._numpy = lambda: None
+    try:
+        plain = search.rank(query, rows, limit=60, backend="tensorrt")
+    finally:
+        search._numpy = plain_numpy
+
+    check("both paths rank the same things in the same order",
+          [one["observation_id"] for one in fast["matches"]],
+          [one["observation_id"] for one in plain["matches"]])
+    check("...to the same scores",
+          [one["score"] for one in fast["matches"]],
+          [one["score"] for one in plain["matches"]])
+    check("...count out the same rows",
+          (fast["considered"], fast["skipped"]),
+          (plain["considered"], plain["skipped"]))
+    check("...and reach the same verdict",
+          (fast["confident"], fast["best"], fast["stands_clear"]),
+          (plain["confident"], plain["best"], plain["stands_clear"]))
+    check("a vector of no length scores nothing rather than failing",
+          [one["score"] for one in fast["matches"]
+           if one["observation_id"] == 98], [0.0])
+
+
 TESTS = (
     test_a_query_that_matches_nothing_says_so,
     test_a_search_says_which_part_of_the_frame_it_found,
     test_a_flat_field_is_not_what_decides_a_match,
     test_too_little_seen_is_not_a_match_either,
     test_vectors_from_the_other_backend_are_not_ranked,
+    test_the_fast_path_and_the_plain_one_score_the_same,
 )
