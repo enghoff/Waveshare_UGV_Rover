@@ -72,8 +72,8 @@ whole of being off. So `POST /power {"on": false}` closes the device and **keeps
 the process**: the Myriad falls back to ROM bootloader inside its 1500 ms
 watchdog and waits there, and the port goes on answering rather than going
 silent, which is the only way a camera somebody switched off can be told from a
-service that has died. The console's *low power* toggle, under the battery, is
-this call.
+service that has died. The console's tick box under the battery is this call,
+and it reads the same way round: ticked is the camera on.
 
 Three states, not two, and the third is the reason anything about this is
 visible on a screen:

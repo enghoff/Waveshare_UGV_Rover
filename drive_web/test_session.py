@@ -832,7 +832,7 @@ def test_a_slow_browser_is_shown_the_newest_state() -> None:
         watching.join(timeout=2.0)
 
 
-def test_the_low_power_switch_shows_the_camera_rather_than_the_click() -> None:
+def test_the_depth_switch_shows_the_camera_rather_than_the_click() -> None:
     """The depth camera's switch: three states, one press, and who wins.
 
     The switch is the one control on this page whose position the pointer is
@@ -845,7 +845,7 @@ def test_the_low_power_switch_shows_the_camera_rather_than_the_click() -> None:
     try:
         import drive_web
     except ImportError as exc:
-        SKIP.append(f"low power switch ({type(exc).__name__})")
+        SKIP.append(f"depth camera switch ({type(exc).__name__})")
         return
 
     session = drive_web.Session(None, 3.0, 480)
@@ -873,13 +873,13 @@ def test_the_low_power_switch_shows_the_camera_rather_than_the_click() -> None:
     check("a camera that is off does not count how long",
           session.depth["text"], "depth camera off")
 
-    # The press. `low_power` is in the switch's sense -- low power on means the
-    # camera off -- and it is turned round exactly once, on the way out.
-    session.low_power(True)
-    check("switching low power on switches the camera off",
+    # The press. `depth_power` is the camera's sense, the same one the daemon's
+    # own call takes, so nothing along the way turns it round.
+    session.depth_power(False)
+    check("clearing the box switches the camera off",
           sent[-1], ("set_depth_power", {"on": False}))
     check("...and the switch holds the press until it is answered",
-          session.depth_asked, True)
+          session.depth_asked, False)
     check("...and no poll goes out behind it", session.depth_outstanding, True)
     session.handle(drive_web.Reply("set_depth_power", {"on": False},
                                    {"ok": True, "supported": True,
@@ -891,7 +891,7 @@ def test_the_low_power_switch_shows_the_camera_rather_than_the_click() -> None:
 
     # A rover this console has lost. The press can never be answered, so it must
     # not be left on the switch.
-    session.low_power(False)
+    session.depth_power(True)
     session.abandon()
     check("a press dies with the connection that carried it",
           session.depth_asked, None)
@@ -913,7 +913,7 @@ def test_the_low_power_switch_shows_the_camera_rather_than_the_click() -> None:
 
 TESTS = (
     test_web_console,
-    test_the_low_power_switch_shows_the_camera_rather_than_the_click,
+    test_the_depth_switch_shows_the_camera_rather_than_the_click,
     test_stopping_an_unwatched_rover,
     test_idle_console_waits_for_a_browser,
     test_finding_the_rover_again,

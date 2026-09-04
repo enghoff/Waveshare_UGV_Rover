@@ -118,7 +118,7 @@ function render(next) {
   $("battery").textContent = next.battery.text;
   $("battery").className = "reading " + verdictOf(next.battery.state);
   $("batteryNote").textContent = next.battery.note;
-  drawLowPower(next.depth);
+  drawDepth(next.depth);
 
   drawWifi(next.wifi);
   drawNotice(next.notice);
@@ -463,14 +463,17 @@ function drawPicture(img, empty, url, gen, get, set, error) {
 // that has no depth camera or a daemon too old to have the calls -- this is the
 // only panel here whose hardware is optional, and a switch that cannot switch
 // anything is worse than no switch.
-function drawLowPower(depth) {
+function drawDepth(depth) {
   if (!depth) return;                     // a console older than this panel
-  $("lowPowerRow").hidden = depth.supported !== true;
+  $("depthRow").hidden = depth.supported !== true;
   // Drawn from the rover, with one exception: `asked` is a press this console
   // has sent and not yet had an answer to. Without it the box under the pointer
   // flicks back to where it was for the fraction of a second before the reply
   // lands and then settles forward again, which reads as a switch refusing.
-  $("lowPower").checked = depth.asked ?? depth.power === "off";
+  //
+  // Checked is the camera on, and a camera that is waking is on its way to on,
+  // so the box is already forward for the seconds it takes to get there.
+  $("depthSwitch").checked = depth.asked ?? depth.power !== "off";
   $("depthPower").textContent = depth.text;
   // Coloured only while it is waking, which is the one state that is going
   // somewhere: the firmware upload this camera needs every time it is switched
@@ -582,10 +585,10 @@ function wire() {
     button.onclick = () => post({do: "lights",
       level: button.dataset.light === "on" ? setup.light_max : 0});
   }
-  // Low power on means the depth camera off. The turning round happens once, on
-  // the server, so nothing here has to remember which way round it is.
-  $("lowPower").onchange = () => post({do: "low_power",
-                                       on: $("lowPower").checked});
+  // Checked is the camera on, which is the sense the daemon's own call takes as
+  // well, so nothing between this box and it turns anything round.
+  $("depthSwitch").onchange = () => post({do: "depth_power",
+                                          on: $("depthSwitch").checked});
   $("refreshMap").onclick = () => post({do: "map"});
   $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
   $("resetLidar").onclick = () => post({do: "reset_lidar"});
