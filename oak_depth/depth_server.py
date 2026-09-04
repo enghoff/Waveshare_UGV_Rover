@@ -1,12 +1,25 @@
-"""Stereo depth from the OAK, on the rover, kept alive from boot. Millimetres out.
+"""The OAK as a camera with a range on every pixel, on the rover, kept alive from
+boot. A colour picture, and millimetres out.
 
-    python3 depth_server.py                 # loopback 8770, 320x240 depth at 2 fps
+    python3 depth_server.py                 # loopback 8770, at 2 fps
     python3 depth_server.py --bind 0.0.0.0  # ...reachable from the LAN as well
     python3 depth_server.py --fps 10        # video rate, and five times the USB traffic
 
-    GET /health     is the device up, what is it, and how is the depth
-    GET /depth      the newest frame as a coarse grid and per-sector ranges
-    GET /depth.png  the same frame as a greyscale picture, for a person
+    GET  /health     is the device up, what is it, and how is the depth
+    GET  /depth      the newest frame as a coarse grid and per-sector ranges
+    GET  /depth.png  the same frame as a greyscale picture, for a person
+    GET  /frame      the newest colour picture, as a JPEG
+    POST /ranges     how far away the things in these boxes are
+
+**The depth is aligned to the colour camera, and that is what makes the two
+answers one measurement.** `StereoDepth.setDepthAlign(CAM_A)` warps the disparity
+out of the mono pair's geometry into the colour camera's, so a box drawn on the
+picture `/frame` returns indexes the same fraction of the depth map and needs no
+remapping on the host. The consequences are worth stating because they change
+what older readings meant: depth here is measured from the *colour* camera's
+optical centre rather than the right mono's, and every angle this service quotes
+is now in the colour camera's frame -- 70.1 degrees across and 43.0 high, read
+off the intrinsics the device stores rather than off `getFov`'s rounded 69.
 
 **This is what "upload the firmware at boot" means on this camera.** The Myriad X
 inside an OAK has no flash: it enumerates in ROM bootloader state as `03e7:2485`,
@@ -29,16 +42,18 @@ carries now -- so face detection has moved to the CPU
 built for. Its two mono sensors and 7.5 cm baseline are the only depth sense on
 this rover that sees anything above or below the lidar's one horizontal plane.
 
-**Nothing on the rover consumes this yet.** It is served rather than wired into
-navigation on purpose: the lidar is what keeps the rover off walls today, the
-floor reads as an obstacle to a forward-looking depth camera, and a range that
-has not been checked against the room is a poor thing to steer by. Read `/depth`,
-look at `/depth.png`, and see [README.md](README.md) for what wiring it in would
-have to answer first.
+**Nothing steers by this, and that is still deliberate.** The lidar is what keeps
+the rover off walls, the floor reads as an obstacle to a forward-looking depth
+camera, and a range that has not been checked against the room is a poor thing to
+drive by. What does read it is the semantic world state, which asks `/ranges` how
+far away the things it has just found are and spends the answer on deciding which
+lasting thing each of them is -- see `world_state/oak.py`. That is a use with no
+authority over the wheels, which is the order this was always meant to happen in.
 """
 
 import argparse
 import json
+import math
 import os
 import statistics
 import sys
@@ -58,23 +73,60 @@ VENDOR = HERE / "vendor"
 DEFAULT_PORT = 8770
 DEFAULT_BIND = "127.0.0.1"
 # Mono at 480p because the OV7251 sensors are native there and 400p is a crop, and
-# depth decimated 2x on the device.
+# the disparity decimated 2x on the device before it is warped.
 #
-# **Two frames a second, not ten.** Nothing on this rover consumes /depth yet, and
-# a parked rover is not looking at anything new; the camera is here so that a
-# range is available when somebody asks for one, which two frames a second
-# satisfies with a worst-case staleness of half a second. 320x240 of uint16 at 2
-# fps is 300 kB/s on a bus this rover also runs its camera, its wifi dongle and
-# its lidar over -- where the old 10 fps default cost 1.5 MB/s and the undecimated
-# 640x480 at 15 would cost 9. The link is the thing worth spending carefully: 40
-# MB/s is where it saturates, and losing the wifi adapter means losing the way to
-# say "stop".
+# **Two frames a second, not ten**, and it survived the colour camera being added
+# beside the depth. What reads this asks about once a second at most and a parked
+# rover is not looking at anything new, so the job is to have a picture and a
+# range ready when somebody asks rather than to stream either; two a second means
+# neither answer is ever more than half a second old. The link is the thing worth
+# spending carefully -- 40 MB/s is where it saturates, everything on this rover
+# shares one 480 Mbps root port, and losing the wifi adapter means losing the way
+# to say "stop" -- and the arithmetic is 230 kB/s of depth plus 40 kB/s of
+# colour, which is *less* than the 307 kB/s the unaligned depth alone cost before,
+# because the aligned map is 320x180 where the old one was 320x240.
 #
 # Raise it with --fps when something actually reads this at rate. The rate is
 # fixed when the pipeline is built, so changing it is a restart and a fresh
 # firmware upload -- there is no way to retune a running device.
 DEFAULT_FPS = 2
 DECIMATION = 2
+#: What the colour camera emits, and what the depth is warped to match.
+#:
+#: **640x360 because 1080p is the widest thing this sensor offers, not because
+#: 16:9 was wanted.** Asked of the device rather than assumed: the IMX214 offers
+#: 1920x1080, 3840x2160, 4056x3040 and 4208x3120 and nothing else, the two 4:3
+#: modes are twelve megapixels apiece, and the 1080p mode is a *vertical* crop of
+#: the sensor rather than a horizontal one -- 70.1 degrees across either way, and
+#: 43.0 high against the full sensor's 54.9. So the wide mode costs a third of the
+#: vertical field and saves the ISP eleven megapixels a frame, and a thing that
+#: falls off the top of the picture is a case the consumer of this already handles
+#: (`view.clipped_vertically`). The 4:3 route is `THE_12_MP` with an ISP downscale
+#: if that third ever turns out to matter.
+#:
+#: `setIspScale(1, 3)` takes 1920x1080 to 640x360 on the device, so nothing but
+#: the finished frame crosses the wire.
+COLOUR_SIZE = (640, 360)
+COLOUR_ISP_SCALE = (1, 3)
+#: MJPEG on the device's own encoder rather than on the host: this board has no
+#: OpenCV in this process, the VPU has an encoder sitting idle, and a 22 kB JPEG
+#: at 2 fps is 40 kB/s against the 460 kB a raw frame would be.
+JPEG_QUALITY = 90
+#: And what size the aligned depth comes off the device at -- half the colour
+#: frame in each direction, so `depth[y, x]` is the colour frame's `(2x, 2y)` and
+#: the same *fraction* of both is the same ray.
+#:
+#: Half rather than full because the link is the thing worth spending carefully:
+#: 320x180 of uint16 at 2 fps is 230 kB/s, which is less than the 307 kB/s the
+#: unaligned 320x240 map cost before the colour camera was added at all. The
+#: stereo pair still runs at 640x480 and is still decimated on the device; this is
+#: only how much of the result is worth sending.
+DEPTH_SIZE = (320, 180)
+#: How many colour frames to keep while waiting for the depth frame they belong
+#: with. Four is two seconds at the default rate, which is far longer than the
+#: stereo pipeline's own lag and short enough that the buffer is never the reason
+#: this process holds memory.
+COLOUR_HISTORY = 4
 # How long a frame may be missing before this process gives up and lets the
 # supervisor open the device again from scratch. Nothing else recovers a Myriad
 # that has been browned out or unplugged, so exiting *is* the repair. Generous
@@ -84,7 +136,7 @@ FRAME_TIMEOUT_S = 5.0
 # below about 20 cm, and beyond 6 m one disparity step is more than a metre.
 MIN_MM, MAX_MM = 200, 6000
 # What `/depth` reduces a frame to. Eight columns is about 9 degrees each across
-# the mono lens, which is the width of a doorway at three metres.
+# the lens, which is the width of a doorway at three metres.
 GRID_COLS, GRID_ROWS = 8, 6
 # Which rows the per-sector range is taken over: the middle band, because the top
 # of the frame is ceiling and the bottom is the floor a metre in front of the
@@ -96,6 +148,48 @@ BAND = (0.30, 0.70)
 # thousand-pixel cell is a surface.
 NEAR_PERCENTILE = 5
 STAT_WINDOW = 100
+
+#: How `/ranges` picks one distance out of a box full of pixels, as a percentile
+#: of the valid ones.
+#:
+#: **A box is a thing in front of a room, and the question is how far the thing
+#: is.** A region drawn round a chair also contains the floor beside it and the
+#: wall behind it, so the median of the box is a blend of three surfaces and the
+#: minimum is one bad pixel. What is wanted is the near *surface*: this
+#: percentile finds roughly where its front face is, and `RANGE_BAND_M` below
+#: gathers the pixels that belong to it.
+#:
+#: Twenty rather than the five the sectors use, because the two are asking
+#: different questions. A sector is asking "is there anything I could hit", where
+#: the nearest real surface is the whole answer; a region is asking "how far away
+#: is this object", where the nearest corner of it is an underestimate.
+RANGE_PERCENTILE = 20
+#: How far behind that percentile a pixel may lie and still be the same surface,
+#: as a fraction of the range and as a floor in metres. Whichever is larger: a
+#: sideboard is half a metre deep at any range, and the stereo noise itself grows
+#: with the square of the range.
+RANGE_BAND_FRAC = 0.15
+RANGE_BAND_M = 0.30
+#: The fewest valid pixels in a box worth answering from. Below this a range is a
+#: handful of stereo mismatches rather than a surface, and `null` is the honest
+#: answer -- which is not the same as nothing being there.
+RANGE_MIN_PIXELS = 12
+#: How wrong one disparity reading is, in pixels, which is the only assumed term
+#: in what a range is worth.
+#:
+#: A stereo range's error is `z^2 * sigma_disparity / (focal_px * baseline_m)`,
+#: and the other two terms are read off the device rather than assumed -- 455.8 px
+#: of focal length on CAM_C at 640x480 and a 7.50 cm baseline. A fifth of a pixel
+#: is what subpixel mode's eighth-of-a-pixel steps make plausible, and it comes to
+#: 0.00585 metres per metre squared: 2.3 cm at two metres, 9.4 at four and 21 at
+#: six, which is why `MAX_MM` stops where it does.
+#:
+#: **It is a model and not a measurement, and it wants a tape measure.** What it
+#: produces is spent by `locate` as the weight on a range residual, so being wrong
+#: optimistic makes the world state trust a range more than it should. The spread
+#: of the pixels behind each reading is added to it, which covers a thing being
+#: deep or slanted rather than flat, and covers nothing about the model itself.
+DISPARITY_SIGMA_PX = 0.2
 
 
 class DepthError(RuntimeError):
@@ -123,6 +217,21 @@ def _import_depthai():
                      f"unpack it into {VENDOR}")
 
 
+def _stamp_of(packet) -> float:
+    """When the device says this packet was captured, in seconds, or 0.
+
+    depthai hands back a `timedelta` on a clock it has already synchronised to
+    this host's monotonic one, which is what makes it worth keeping: the colour
+    frame and the depth frame carry stamps that can be *compared*, so a consumer
+    can be told how far apart the picture and the ranges in it actually were
+    rather than being left to assume they were simultaneous.
+    """
+    try:
+        return packet.getTimestamp().total_seconds()
+    except Exception:                  # a build that does not stamp its packets
+        return 0.0
+
+
 class Depth:
     """One device, one pipeline, and the newest frame it has produced.
 
@@ -138,14 +247,32 @@ class Depth:
         self.decimation = decimation
         self.frame = None            # newest depth frame, uint16 millimetres
         self.frame_at = 0.0          # time.monotonic() when it arrived
+        self.frame_stamp = 0.0       # the device's own clock, for pairing
         self.frames = 0
         self.errors = 0
         self.valid = 0.0             # share of pixels with a depth, last frame
         self.rate = 0.0
+        # The colour half. Kept beside the depth rather than in a class of its own
+        # because the two are one measurement: the depth is warped into this
+        # picture's geometry, and what makes them usable together is that they
+        # arrive from the same device at the same rate.
+        self.jpeg = b""              # newest colour frame, already encoded
+        self.jpeg_at = 0.0
+        self.jpeg_stamp = 0.0
+        self.jpegs = 0
         self.device_name = ""
         self.usb_speed = ""
         self.hfov_deg = None
+        self.vfov_deg = None
+        #: The colour camera's intrinsics at `COLOUR_SIZE`, as
+        #: (fx, fy, cx, cy) in pixels. This is what turns a box on the picture
+        #: into a direction, and it is published rather than kept, so that
+        #: whoever draws bearings from these frames does it through the lens the
+        #: device says it has instead of a copy that can drift. Null if the
+        #: stored calibration would not read, and null means no bearings.
+        self.colour_intrinsics = None
         self.baseline_cm = None
+        self.focal_px = None         # CAM_C's, which is what the depth is made of
         self.started_at = time.monotonic()
         self.last_error = ""
         self._periods: list[float] = []
@@ -157,6 +284,24 @@ class Depth:
     def _pipeline(self):
         dai = self.dai
         pipeline = dai.Pipeline()
+
+        # The colour camera, downscaled on the device's own ISP and encoded by
+        # its own MJPEG encoder, so what crosses the USB link is a finished
+        # picture. `video` rather than `preview` because the encoder wants NV12
+        # and `preview` is planar BGR for a host that is about to display it.
+        colour = pipeline.create(dai.node.ColorCamera)
+        colour.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+        colour.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+        colour.setIspScale(*COLOUR_ISP_SCALE)
+        colour.setVideoSize(*COLOUR_SIZE)
+        colour.setInterleaved(False)
+        colour.setFps(self.fps)
+
+        encoder = pipeline.create(dai.node.VideoEncoder)
+        encoder.setDefaultProfilePreset(
+            self.fps, dai.VideoEncoderProperties.Profile.MJPEG)
+        encoder.setQuality(JPEG_QUALITY)
+        colour.video.link(encoder.input)
 
         left = pipeline.create(dai.node.MonoCamera)
         left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
@@ -175,6 +320,14 @@ class Depth:
         # wall. It also fixes which camera the depth is aligned to.
         stereo.setLeftRightCheck(True)
         stereo.setSubpixel(True)
+        # **Warp the disparity into the colour camera's geometry, on the
+        # device.** This is what makes a box drawn on `/frame` index the same
+        # fraction of the depth map, with no remapping and no second lens model
+        # on the host. It moves where depth is measured from -- the colour
+        # camera's optical centre rather than the right mono's -- and it crops to
+        # the colour camera's field, which the mono pair's wider one covers.
+        stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
+        stereo.setOutputSize(*DEPTH_SIZE)
         config = stereo.initialConfig.get()
         config.postProcessing.decimationFilter.decimationFactor = self.decimation
         # Median over a small window: cheap on the device, and it is the filter
@@ -185,9 +338,11 @@ class Depth:
         left.out.link(stereo.left)
         right.out.link(stereo.right)
 
-        out = pipeline.create(dai.node.XLinkOut)
-        out.setStreamName("depth")
-        stereo.depth.link(out.input)
+        for name, source in (("depth", stereo.depth),
+                             ("jpeg", encoder.bitstream)):
+            out = pipeline.create(dai.node.XLinkOut)
+            out.setStreamName(name)
+            source.link(out.input)
         return pipeline
 
     def run(self) -> None:
@@ -204,40 +359,136 @@ class Depth:
             # measured. See docs/oak-usb-link.md.
             with dai.Device(self._pipeline(), maxUsbSpeed=dai.UsbSpeed.HIGH) as device:
                 self._describe(device)
-                queue = device.getOutputQueue("depth", maxSize=4, blocking=False)
+                queues = {name: device.getOutputQueue(name, maxSize=4,
+                                                      blocking=False)
+                          for name in ("depth", "jpeg")}
+                # **The two streams do not arrive together, and the colour is
+                # the late one.** Both are exposed at the same instant on the
+                # same device, but the colour frame goes through the MJPEG
+                # encoder before it crosses the link, and measured on this
+                # camera that puts it a whole exposure behind its own depth
+                # frame -- pairing whatever was newest of each gave 0.49 s at 2
+                # fps, which is 23 cm of rover at the speed it explores at, and
+                # a box drawn on one of those and a range taken from the other
+                # are not one measurement.
+                #
+                # So a depth frame is *held* rather than published on arrival,
+                # and goes out once the colour frame exposed with it has turned
+                # up. `recent` is the colour frames waiting to be claimed and
+                # `pending` is the depth frame waiting for one.
+                recent: list[tuple[float, bytes]] = []
+                pending = None
                 while not self._stop.is_set():
-                    packet = queue.get()
+                    # The depth queue is what this loop waits on, because it is
+                    # what the watchdog counts: silence there has to be
+                    # noticeable, and a colour stream that stopped on its own
+                    # must not be able to stall the depth.
+                    packet = queues["depth"].get()
                     now = time.monotonic()
-                    depth = packet.getFrame()
-                    with self._lock:
-                        if self.frame_at:
-                            self._periods.append(now - self.frame_at)
-                            del self._periods[:-STAT_WINDOW]
-                            if self._periods:
-                                self.rate = 1.0 / statistics.fmean(self._periods)
-                        self.frame, self.frame_at = depth, now
-                        self.frames += 1
-                        self.valid = float((depth != 0).mean())
+                    while True:
+                        picture = queues["jpeg"].tryGet()
+                        if picture is None:
+                            break
+                        recent.append((_stamp_of(picture),
+                                       bytes(picture.getData())))
+                        self.jpegs += 1
+                        del recent[:-COLOUR_HISTORY]
+                    if pending is not None:
+                        self._publish(pending, recent, now)
+                    pending = (packet.getFrame(), _stamp_of(packet), now)
         except Exception as error:
             self.errors += 1
             self.last_error = f"{type(error).__name__}: {error}"
             raise DepthError(self.last_error) from None
 
+    def _publish(self, pending, recent: list, now: float) -> None:
+        """Make one held depth frame, and the picture it belongs with, the answer.
+
+        The two go out together under one lock, so `/frame` and `/ranges` always
+        describe one instant rather than two -- which is the whole point of
+        holding the depth frame back. The picture is a little older than the
+        colour path could have delivered it, and that is the right way round.
+
+        The depth goes out whether or not a matching picture was found. A colour
+        stream that has stopped is a reason to have no picture, not a reason to
+        stop measuring distance.
+        """
+        depth, stamp, arrived = pending
+        matched = self._nearest(recent, stamp)
+        with self._lock:
+            if self.frame_at:
+                self._periods.append(arrived - self.frame_at)
+                del self._periods[:-STAT_WINDOW]
+                if self._periods:
+                    self.rate = 1.0 / statistics.fmean(self._periods)
+            self.frame, self.frame_at = depth, arrived
+            self.frame_stamp = stamp
+            self.frames += 1
+            self.valid = float((depth != 0).mean())
+            if matched is not None:
+                self.jpeg_stamp, self.jpeg = matched
+                # Aged from when its depth frame arrived rather than from when
+                # the picture did, because the two are now one reading and a
+                # consumer interpolating a pose to it needs one instant.
+                self.jpeg_at = arrived
+
+    @staticmethod
+    def _nearest(recent: list, stamp: float):
+        """The colour frame exposed closest to this depth frame, or None.
+
+        The newest one when the device stamps nothing, which is what this did
+        before the two were paired properly and is still the honest answer for a
+        build that cannot say when anything was taken.
+        """
+        if not recent:
+            return None
+        if not stamp:
+            return recent[-1]
+        usable = [one for one in recent if one[0]]
+        if not usable:
+            return recent[-1]
+        return min(usable, key=lambda one: abs(one[0] - stamp))
+
     def _describe(self, device) -> None:
         """What this device is, asked of it rather than remembered.
 
-        The horizontal field of view comes off the stored calibration because it
-        is the number `/depth`'s sector angles are made of, and a lens described
-        twice is two lenses that will disagree -- the mistake `aiming.LENS` exists
-        to have stopped making.
+        **The lens is read off the stored calibration for the size this service
+        actually emits**, because everything downstream turns pixels into angles
+        with it and a lens described twice is two lenses that will disagree --
+        the mistake `face_tracking/lens.py` exists to have stopped making for the
+        other camera on this rover. `getCameraIntrinsics(socket, w, h)` accounts
+        for the crop and the scale of the mode in use, so the numbers here
+        describe the frame `/frame` returns and not the full sensor.
+
+        It is also why the field of view quoted here is 70.1 degrees rather than
+        the 69 `getFov` reports: `getFov` returns the spec figure for the sensor,
+        and the fitted intrinsics are what the pixels obey.
         """
         dai = self.dai
         self.device_name = device.getDeviceName()
         self.usb_speed = device.getUsbSpeed().name
         try:
             calibration = device.readCalibration()
-            self.hfov_deg = round(calibration.getFov(dai.CameraBoardSocket.CAM_C), 1)
+            width, height = COLOUR_SIZE
+            matrix = calibration.getCameraIntrinsics(
+                dai.CameraBoardSocket.CAM_A, width, height)
+            fx, fy = float(matrix[0][0]), float(matrix[1][1])
+            self.colour_intrinsics = {
+                "fx": round(fx, 2), "fy": round(fy, 2),
+                "cx": round(float(matrix[0][2]), 2),
+                "cy": round(float(matrix[1][2]), 2),
+                "width": width, "height": height}
+            self.hfov_deg = round(math.degrees(2 * math.atan(width / (2 * fx))), 1)
+            self.vfov_deg = round(math.degrees(2 * math.atan(height / (2 * fy))), 1)
             self.baseline_cm = round(calibration.getBaselineDistance(), 2)
+            # The stereo pair's own focal length, at the resolution the pair runs
+            # at, because it is a term in what a range is worth -- see
+            # `RANGE_SIGMA_PER_M2`. Not the colour camera's: the disparity is
+            # measured between the two monos whatever frame it is later warped
+            # into.
+            right = calibration.getCameraIntrinsics(
+                dai.CameraBoardSocket.CAM_C, 640, 480)
+            self.focal_px = round(float(right[0][0]), 2)
         except Exception as error:      # a device with no stored calibration
             self.last_error = f"calibration unreadable: {error}"
 
@@ -252,8 +503,25 @@ class Depth:
                 return None, 0.0
             return self.frame, time.monotonic() - self.frame_at
 
+    def newest_jpeg(self):
+        """The newest colour frame, how old it is, and how far the depth it goes
+        with was taken from it.
+
+        The third number is the one worth having and is why this is not two
+        calls: a picture and a set of ranges measured a second apart on a moving
+        rover are two different rooms, and the consumer has to be able to see
+        that rather than assume it away. Zero when the device stamps neither.
+        """
+        with self._lock:
+            if not self.jpeg:
+                return b"", 0.0, 0.0
+            apart = (abs(self.jpeg_stamp - self.frame_stamp)
+                     if self.jpeg_stamp and self.frame_stamp else 0.0)
+            return self.jpeg, time.monotonic() - self.jpeg_at, apart
+
     def health(self) -> dict:
         frame, age = self.newest()
+        jpeg, jpeg_age, apart = self.newest_jpeg()
         return {
             "ok": frame is not None and age < FRAME_TIMEOUT_S,
             "device": self.device_name,
@@ -262,17 +530,121 @@ class Depth:
             # this camera, because the host uploads the firmware out of the wheel
             # on every open. See README.md.
             "depthai": getattr(self.dai, "__version__", "?"),
+            # The colour camera's field, not the mono pair's: the depth is warped
+            # into the colour camera's geometry, so this is the frame every angle
+            # this service quotes is measured in.
             "hfov_deg": self.hfov_deg,
+            "vfov_deg": self.vfov_deg,
             "baseline_cm": self.baseline_cm,
             "size": list(reversed(frame.shape)) if frame is not None else None,
             "fps": round(self.rate, 1),
             "frames": self.frames,
             "valid": round(self.valid, 3),
             "age_s": round(age, 2) if frame is not None else None,
+            # What the colour half is doing, and how well the two halves line up
+            # in time. A consumer that draws bearings from these pictures reads
+            # `colour` for the lens to draw them through.
+            "colour": {
+                "size": list(COLOUR_SIZE),
+                "bytes": len(jpeg),
+                "frames": self.jpegs,
+                "age_s": round(jpeg_age, 2) if jpeg else None,
+                "depth_apart_s": round(apart, 3),
+                "intrinsics": self.colour_intrinsics,
+            },
             "uptime_s": round(time.monotonic() - self.started_at, 1),
             "errors": self.errors,
             "last_error": self.last_error,
         }
+
+    def ranges(self, boxes: list) -> dict:
+        """How far away the thing in each box is, in metres, or null.
+
+        The boxes are fractions of the frame -- `[left, top, right, bottom]` in
+        0..1 -- because the colour picture and the depth map are different pixel
+        sizes covering the same field, so a fraction is the one coordinate that
+        means the same thing in both. That is the whole benefit of aligning the
+        depth on the device: the caller draws its box on the picture it was given
+        and asks about it directly.
+
+        **Null is a real answer and is not an error.** A dark or textureless
+        surface returns no disparity at all, so a box over a bare wall has
+        nothing in it to measure; `valid` beside each answer is how to tell that
+        from a box the camera simply could not see.
+        """
+        import numpy
+
+        frame, age = self.newest()
+        if frame is None:
+            return {"ok": False, "error": "no depth frame yet"}
+        height, width = frame.shape
+        answers = []
+        for box in boxes:
+            answers.append(self._range_in(numpy, frame, width, height, box))
+        _jpeg, jpeg_age, apart = self.newest_jpeg()
+        return {"ok": True, "age_s": round(age, 2),
+                "size": [width, height],
+                "frame_age_s": round(jpeg_age, 2),
+                "depth_apart_s": round(apart, 3),
+                "ranges": answers}
+
+    def _angle_across(self, x: float, width: int) -> float | None:
+        """Where a column of the depth map lies, in degrees right of the axis.
+
+        None when the calibration would not read, which is the same silence
+        everything else here keeps rather than quoting an angle off a guess. The
+        intrinsics are the colour camera's at `COLOUR_SIZE`, so they are scaled
+        to whatever width the depth map is emitted at.
+        """
+        if not self.colour_intrinsics:
+            return None
+        scale = width / float(self.colour_intrinsics["width"])
+        fx = self.colour_intrinsics["fx"] * scale
+        cx = self.colour_intrinsics["cx"] * scale
+        return round(math.degrees(math.atan2(x - cx, fx)), 1)
+
+    def _range_in(self, numpy, frame, width, height, box) -> dict | None:
+        """One box, as a distance to the near surface inside it.
+
+        Two steps, and the second is what stops the wall behind a chair being
+        averaged into the chair. A low percentile of the valid pixels finds where
+        the front of the thing is; everything within `RANGE_BAND_M` behind that
+        is taken to belong to it and the median of *those* is the answer. A plain
+        median over the box would blend the object, the floor beside it and the
+        wall behind it into a distance that is none of the three.
+        """
+        try:
+            left, top, right, bottom = (float(value) for value in box)
+        except (TypeError, ValueError):
+            return None
+        x0 = max(0, min(width - 1, int(round(min(left, right) * width))))
+        x1 = max(x0 + 1, min(width, int(round(max(left, right) * width))))
+        y0 = max(0, min(height - 1, int(round(min(top, bottom) * height))))
+        y1 = max(y0 + 1, min(height, int(round(max(top, bottom) * height))))
+        cell = frame[y0:y1, x0:x1]
+        mask = (cell >= MIN_MM) & (cell <= MAX_MM)
+        share = float(mask.mean()) if cell.size else 0.0
+        values = cell[mask]
+        if values.size < RANGE_MIN_PIXELS:
+            return {"range_m": None, "sigma_m": None,
+                    "valid": round(share, 3), "pixels": int(values.size)}
+        near_mm = float(numpy.percentile(values, RANGE_PERCENTILE))
+        band_mm = max(RANGE_BAND_M * 1000.0, RANGE_BAND_FRAC * near_mm)
+        surface = values[values <= near_mm + band_mm]
+        if surface.size < RANGE_MIN_PIXELS:
+            surface = values
+        range_m = float(numpy.median(surface)) / 1000.0
+        # What it is worth: the stereo model's own error at this range, and the
+        # spread of the surface that produced it, which is the thing being deep
+        # or slanted rather than flat.
+        focal = self.focal_px or 455.8
+        baseline_m = (self.baseline_cm or 7.5) / 100.0
+        model = range_m * range_m * DISPARITY_SIGMA_PX / (focal * baseline_m)
+        spread = float(numpy.std(surface)) / 1000.0
+        return {"range_m": round(range_m, 3),
+                "sigma_m": round(math.hypot(model, spread / 2.0), 3),
+                "valid": round(share, 3),
+                "pixels": int(surface.size)}
 
     def summary(self) -> dict:
         """The newest frame as a grid and as per-sector ranges.
@@ -305,14 +677,20 @@ class Depth:
 
         band = slice(int(height * BAND[0]), int(height * BAND[1]))
         sectors = []
-        span = self.hfov_deg or 0.0
         for x0, x1 in columns:
             cell, mask = frame[band, x0:x1], valid[band, x0:x1]
             # Positive is to the right of the camera's axis, which is the same
             # sign convention aiming.py uses for a face in the picture.
+            #
+            # **Through the lens rather than across the frame.** These used to be
+            # the field of view multiplied by how far across the picture the
+            # column sat, which is only right at the centre and at the two edges:
+            # a quarter of the way out it reads 17.5 degrees where the lens says
+            # 19.3. Now that something draws bearings from this camera the
+            # difference is worth the arctangent.
             sectors.append({
-                "from_deg": round(span * (x0 / width - 0.5), 1) if span else None,
-                "to_deg": round(span * (x1 / width - 0.5), 1) if span else None,
+                "from_deg": self._angle_across(x0, width),
+                "to_deg": self._angle_across(x1, width),
                 "near_mm": near(cell, mask),
                 "valid": round(float(mask.mean()), 3),
             })
@@ -386,7 +764,43 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(png)))
             self.end_headers()
             return self.wfile.write(png)
-        return self._reply(404, {"error": "GET /health, /depth, /depth.png"})
+        if path == "/frame":
+            jpeg, age, apart = self.depth.newest_jpeg()
+            if not jpeg:
+                return self._reply(503, {"ok": False,
+                                         "error": "no colour frame yet"})
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(jpeg)))
+            # How old the picture is and how far the depth that goes with it was
+            # taken from it, on the reply rather than in a second call: a caller
+            # about to work out a bearing from this frame needs both, and a
+            # second round trip would be answering about a different frame.
+            self.send_header("X-Frame-Age", f"{age:.3f}")
+            self.send_header("X-Depth-Apart", f"{apart:.3f}")
+            self.send_header("X-Frame-Size",
+                             f"{COLOUR_SIZE[0]}x{COLOUR_SIZE[1]}")
+            self.end_headers()
+            return self.wfile.write(jpeg)
+        return self._reply(404, {"error": "GET /health, /depth, /depth.png, "
+                                          "/frame; POST /ranges"})
+
+    def do_POST(self):
+        if self.path.partition("?")[0] != "/ranges":
+            return self._reply(404, {"error": "POST /ranges"})
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length).decode("utf-8", "replace"))
+            boxes = payload["boxes"]
+            if not isinstance(boxes, list):
+                raise TypeError("boxes must be a list")
+        except (KeyError, TypeError, ValueError) as error:
+            return self._reply(400, {"ok": False,
+                                     "error": f"send {{\"boxes\": [[left, top, "
+                                              f"right, bottom], ...]}} as "
+                                              f"fractions of the frame: {error}"})
+        answer = self.depth.ranges(boxes)
+        return self._reply(200 if answer.get("ok") else 503, answer)
 
     def log_message(self, fmt, *args):
         """Quiet by default: the supervisor's log is for events, not requests."""
@@ -401,11 +815,13 @@ def main() -> int:
                              f"nothing here authenticates)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--fps", type=int, default=DEFAULT_FPS,
-                        help=f"mono camera rate (default {DEFAULT_FPS})")
+                        help=f"camera rate, colour and depth alike "
+                             f"(default {DEFAULT_FPS})")
     parser.add_argument("--decimation", type=int, default=DECIMATION,
                         choices=(1, 2, 3, 4),
-                        help=f"on-device downscale of the depth map "
-                             f"(default {DECIMATION}, so 320x240)")
+                        help=f"on-device downscale of the disparity before "
+                             f"it is warped into the colour frame "
+                             f"(default {DECIMATION})")
     args = parser.parse_args()
 
     depth = Depth(fps=args.fps, decimation=args.decimation)

@@ -1,20 +1,44 @@
 # The OAK as the rover's depth camera
 
-Millimetres out over HTTP on `127.0.0.1:8770`, from the OAK-D-Lite's mono pair,
-kept awake from boot by a `crontab` entry. This is the camera doing what it is
-built for: until 2026-08-23 it was the rover's *face detector*, because the Pi 1
-could not run one, and every board since runs YuNet faster than the camera's VPU
-did — see [face_tracking/yunet.py](../face_tracking/yunet.py).
+A colour picture and a range for anything in it, over HTTP on
+`127.0.0.1:8770`, kept awake from boot by a `crontab` entry. This is the camera
+doing what it is built for: until 2026-08-23 it was the rover's *face detector*,
+because the Pi 1 could not run one, and every board since runs YuNet faster than
+the camera's VPU did — see [face_tracking/yunet.py](../face_tracking/yunet.py).
 
 ```
   jetson@jetson-orin (on the rover)
   ---------------------------------
-  OAK-D-LITE ==USB2/XLink==> depth_server.py ==> GET /health  is it awake
-   CAM_B + CAM_C                 |                  /depth    ranges, in mm
-   stereo on the VPU             |                  /depth.png a picture of it
-                        run_oak_depth.sh
+  OAK-D-LITE ==USB2/XLink==> depth_server.py ==> GET  /health  is it awake
+   CAM_A colour, 640x360         |                   /depth    ranges, in mm
+   CAM_B + CAM_C stereo,         |                   /depth.png a picture of it
+   warped into CAM_A's frame     |                   /frame    the colour picture
+   all on the VPU                |              POST /ranges   how far are these
+                        run_oak_depth.sh                       boxes away
                         (@reboot, and restarts it)
 ```
+
+**The depth is aligned to the colour camera, since 2026-09-04, and that is what
+turned this from a source into something usable.** `setDepthAlign(CAM_A)` warps
+the disparity out of the mono pair's geometry into the colour camera's on the
+device, so the same *fraction* of `/frame` and of the depth map is the same ray:
+a box drawn on the picture indexes the ranges directly, with no remapping on the
+host and no second lens model to drift out of step. Three consequences, all of
+which change what an old reading meant:
+
+* depth is measured from the **colour** camera's optical centre now, not the
+  right mono's;
+* every angle this service quotes is in the colour camera's frame — **70.1°
+  across and 43.0° high**, read off the intrinsics the device stores rather than
+  off `getFov`'s rounded 69, and worked out through the lens rather than
+  straight across the frame (a quarter of the way out those differ by 1.8°);
+* the depth map is 320×180 rather than 320×240, because it now covers a 16:9
+  colour frame.
+
+**Something reads it now.** The semantic world state asks `/ranges` how far away
+the things it has just found are, and spends the answer on deciding which lasting
+thing each of them is — see [world_state/oak.py](../world_state/oak.py). Nothing
+still steers by it, which remains deliberate.
 
 ## "Upload the firmware at boot" means a process that stays
 
@@ -74,15 +98,41 @@ firmware the camera gets.
 ## What it does, and what that costs
 
 The pipeline is deliberately modest. Mono at 480p because the OV7251 sensors are
-native there, left-right check and subpixel on, a 5×5 median, and the depth map
-decimated 2× **on the device** so 320×240 crosses the wire rather than 640×480.
+native there, left-right check and subpixel on, a 5×5 median, the disparity
+decimated 2× **on the device** and then warped into the colour camera's geometry
+and emitted at 320×180. Beside it the colour camera runs at 1080p, downscaled on
+the device's own ISP to 640×360 and encoded to MJPEG by the VPU's own encoder —
+so what crosses the link is a finished 18 kB picture rather than 460 kB of pixels,
+and this process needs no image library at all.
 
-**The default is two frames a second**, lowered from ten on 2026-08-31. Nothing
-consumes `/depth` yet and a parked rover is not looking at anything new, so the
-job is to have a range ready when somebody asks rather than to stream one; two
-frames a second means the answer is never more than half a second old. Raising it
-is `--fps`, and because the rate is baked into the pipeline when it is built,
-changing it is a restart and a fresh firmware upload rather than a live retune.
+**640×360 because that is the widest thing this sensor offers, not because 16:9
+was wanted.** Asked of the device rather than assumed: the IMX214 offers
+1920×1080, 3840×2160, 4056×3040 and 4208×3120 and nothing else. The 1080p mode is
+a *vertical* crop rather than a horizontal one — 70.1° across either way, and
+43.0° high against the full sensor's 54.9 — so the wide mode costs a third of the
+vertical field and saves the ISP eleven megapixels a frame. The 4:3 route is
+`THE_12_MP` with an ISP downscale, if that third ever turns out to matter.
+
+**The default is two frames a second**, lowered from ten on 2026-08-31 and
+unchanged when the colour camera was added beside the depth. What reads this asks
+about once a second at most and a parked rover is not looking at anything new, so
+the job is to have a picture and a range ready when somebody asks rather than to
+stream either. Raising it is `--fps`, and because the rate is baked into the
+pipeline when it is built, changing it is a restart and a fresh firmware upload
+rather than a live retune.
+
+**The two halves are paired on the device's own timestamps, and that was worth
+doing.** Both are exposed together, but the colour frame goes through the MJPEG
+encoder before it crosses the link, so it arrives a whole exposure behind its own
+depth frame: pairing whatever was newest of each put them **0.49 s apart at 2 fps
+— one full frame interval, and 23 cm of rover** at the speed it explores at. A box
+drawn on one of those and a range taken from the other are not one measurement. So
+each depth frame is held back until the picture it belongs with has arrived, and
+the two are published together; measured on the rover on 2026-09-04 that leaves
+them **3 to 10 ms apart**. The cost is that the pair is about 0.65 s old when it
+is read rather than 0.03, which `/frame`'s `X-Frame-Age` reports and which the
+consumer charges to the answer — a range from a stale frame is only true of where
+the camera was then.
 
 **What the drop to 2 fps actually bought, measured the same day:** the Orin's
 `VDD_IN` rail fell from 6.49 W to 6.32 W, each averaged over forty one-second
@@ -100,11 +150,19 @@ with `--fps`; the rest does not:
 | | on the Jetson Orin Nano, 2026-08-31 | on the Banana Pi, 2026-08-23 |
 |---|---|---|
 | depth | 320×240 at 10.0 fps, 43–48% of pixels valid | 320×240 at 10.0 fps, 61–66% valid |
-| the lens, read off the stored calibration | 73.0° across, 7.5 cm baseline | the same camera |
+| the lens, read off `getFov` | 73.0° across, 7.5 cm baseline | the same camera |
 | USB | negotiated `HIGH` | negotiated `HIGH`; about 1.5 MB/s of the link |
 | this board | **1.5% of one core**, 157 MB resident | 13% of one core, 156 MB resident |
 | face tracking beside it | still opens the gimbal camera and counts faces | 6.6 → 6.2 frames a second |
 | the scan matcher beside it | not measured here — ROS is waiting on a chassis calibration | 8394 scans, 2 dropped, no window overruns |
+
+That table predates the colour camera and the alignment, so read its depth row as
+the mono pair's own output rather than as what `/depth` returns today. What the
+addition cost, measured on 2026-09-04 with the same board doing its usual work:
+the aligned map is 320×180 at 2 fps, which is 230 kB/s where the unaligned 320×240
+was 307, and the colour stream adds about 40 — so **the whole service moves less
+over the link than the depth alone used to**, and the valid share was 33–59% in a
+room the rover was parked a metre from.
 
 The two valid-pixel figures are different rooms rather than different hardware:
 the fraction of the frame stereo can range is a property of what the camera is
@@ -123,17 +181,21 @@ two knobs; raising either raises that number.
 
 ```
 $ curl -s http://127.0.0.1:8770/depth
-{"ok": true, "age_s": 0.0, "size": [320, 240], "valid": 0.537,
- "near_mm": 2723, "band": [0.3, 0.7],
- "sectors": [{"from_deg": -36.5, "to_deg": -27.4, "near_mm": 2723, "valid": 0.529},
+{"ok": true, "age_s": 0.37, "size": [320, 180], "valid": 0.570,
+ "near_mm": 548, "band": [0.3, 0.7],
+ "sectors": [{"from_deg": -35.1, "to_deg": -27.8, "near_mm": 548, "valid": 0.203},
              ...
-             {"from_deg": 27.4, "to_deg": 36.5, "near_mm": 3026, "valid": 0.139}],
- "grid_mm": [[2837, 2644, 2644, 2723, 4539, 4863, 4464, 486], ...]}
+             {"from_deg": 27.6, "to_deg": 34.9, "near_mm": 1089, "valid": 0.650}],
+ "grid_mm": [[1055, 1055, 1055, 1055, ...], ...]}
 ```
 
-Eight sectors across the 73°, each about the width of a doorway at three metres,
-and a 8×6 grid of the whole frame. Three choices in there are worth knowing about
-before anything is concluded from the numbers:
+Eight sectors across the 70.1°, each about the width of a doorway at three metres,
+and a 8×6 grid of the whole frame. Note that the sectors are **not** equal widths:
+they are equal slices of the *picture*, and a slice at the edge of a lens covers
+less angle than one in the middle. Reading them as the field of view divided by
+eight is out by 1.8° a quarter of the way across, which mattered as soon as
+something started drawing bearings through this camera. Three further choices are
+worth knowing about before anything is concluded from the numbers:
 
 * **A sector's range is the fifth percentile of its valid pixels, not their
   minimum.** A single pixel is noise — stereo mismatches put isolated very-near
@@ -147,24 +209,80 @@ before anything is concluded from the numbers:
   nothing being there. A dark or textureless surface returns no disparity at all.
   `valid` beside it is how to tell the two apart.
 
-Angles are relative to the depth camera's own axis, positive to the right — the
-same sign convention `aiming.py` uses for a face in a picture.
+Angles are relative to the colour camera's axis, positive to the right — the same
+sign convention `aiming.py` uses for a face in a picture. They used to be
+relative to the right mono camera's; the alignment moved them.
 
-## Nothing consumes this yet, and here is what would have to be settled first
+## What `/frame` and `/ranges` say
 
-The service is deliberately a source rather than a input to navigation. The lidar
-is what keeps the rover off walls today, and it is 2D: one horizontal plane at its
-own height, which is precisely why a depth camera is worth having. Before a range
-from here steers anything:
+`/frame` is the newest colour picture as a JPEG, with three headers on it that a
+consumer needs and a second call could not answer about the same frame:
 
-* **Where is this camera, in the rover's frame?** There are no extrinsics between
-  the OAK, the lidar and the tracks anywhere in this repository. A range without a
-  frame is not a distance to anything.
+```
+X-Frame-Age: 0.652      how old the picture is, in seconds
+X-Depth-Apart: 0.004    how far the depth behind it was taken from it
+X-Frame-Size: 640x360
+```
+
+`/ranges` takes boxes drawn on that picture, as fractions, and says how far away
+the thing in each is:
+
+```
+$ curl -s -X POST -H 'Content-Type: application/json' \
+       -d '{"boxes": [[0.35,0.35,0.65,0.65]]}' http://127.0.0.1:8770/ranges
+{"ok": true, "age_s": 0.35, "size": [320, 180], "frame_age_s": 0.35,
+ "depth_apart_s": 0.007,
+ "ranges": [{"range_m": 1.094, "sigma_m": 0.059, "valid": 0.691, "pixels": 2347}]}
+```
+
+Fractions rather than pixels because the picture and the depth map are different
+sizes covering the same field, and a fraction is the one coordinate that means the
+same thing in both — which is the whole benefit of aligning the depth on the
+device.
+
+**A box is a thing in front of a room, and the question is how far the thing is.**
+A region drawn round a chair also contains the floor beside it and the wall behind
+it, so the median of the box is a blend of three surfaces and the minimum is one
+bad pixel. What comes back is the near *surface*: the 20th percentile of the valid
+pixels finds roughly where the front face is, everything within 30 cm or 15% behind
+that is taken to belong to it, and the answer is the median of those.
+
+`sigma_m` is what the reading is worth: the stereo model's own error at that
+distance — `z² × 0.2 px / (455.8 px × 0.075 m)`, which is 2.3 cm at two metres, 9.4
+at four and 21 at six — added to the spread of the surface behind it, which covers
+a thing being deep or slanted rather than flat. **The 0.2 px of disparity noise is
+assumed and not measured**; the other two terms are read off the device. It wants a
+tape measure, and what it produces is spent as a weight by
+[`world_state/locate.py`](../world_state/locate.py), so being wrong optimistic
+makes the world state trust a range more than it should.
+
+`null` for a range means the box had fewer than twelve valid pixels in it, which is
+not the same as nothing being there — `valid` beside it is how to tell those apart.
+
+## What still has to be settled before this steers anything
+
+The service is deliberately a source rather than an input to **navigation**. The
+lidar is what keeps the rover off walls today, and it is 2D: one horizontal plane
+at its own height, which is precisely why a depth camera is worth having. The
+semantic world state reads `/ranges` and has no authority over the wheels, which
+is the order this was always meant to happen in. Before a range from here steers
+anything:
+
+* **Where is this camera, in the rover's frame?** Still nothing in this repository
+  relates the OAK to the lidar or to the tracks. What *has* been built is the
+  relation between the OAK and the **gimbal camera**, which is what the world
+  state needs and which [`world_state/bench_oak.py`](../world_state/bench_oak.py)
+  measures — the two cameras look at one room and the rotation that makes their
+  answers agree is the mount. A range without a frame is still not a distance to
+  anything, and a range in the *camera's* frame is not one in the chassis's.
 * **The floor is not an obstacle.** A forward-and-slightly-down camera sees it at
   a few metres and reports it faithfully. The band above is a crude answer; the
   real one is a ground-plane fit.
 * **The gimbal.** The tracking camera moves and this one does not, so a face at
-  pan 90° and a wall at 0° are not in the same picture.
+  pan 90° and a wall at 0° are not in the same picture. The world state handles
+  that by mapping a gimbal box into this camera's picture and taking no range at
+  all when it lands outside — which is about half of a centred frame and all of a
+  look taken over the rover's shoulder.
 
 ## Running it
 
@@ -187,6 +305,7 @@ ssh orin 'sh ~/ugv/oak_depth/install.sh'       # depthai, unpacked into vendor/
 ssh orin 'python3 ~/ugv/oak_depth/selftest.py' # with the service stopped
 ssh orin '~/ugv/oak_depth/restart.sh'          # ~10 s; prints /health
 ssh orin 'curl -s http://127.0.0.1:8770/depth'
+ssh orin 'curl -s -o /tmp/oak.jpg -D - http://127.0.0.1:8770/frame'
 ssh orin 'tail -f ~/ugv/oak_depth/oak_depth.log'
 ```
 

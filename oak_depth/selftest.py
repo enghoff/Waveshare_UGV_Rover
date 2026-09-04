@@ -27,7 +27,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from depth_server import MAX_MM, MIN_MM, Depth, _import_depthai  # noqa: E402
+from depth_server import (  # noqa: E402
+    COLOUR_SIZE, MAX_MM, MIN_MM, Depth, _import_depthai,
+)
 
 FAILURES = []
 UDEV_RULE = "/etc/udev/rules.d/97-myriad-usbboot.rules"
@@ -142,10 +144,57 @@ def main():
         return report()
 
     def calibrated():
-        if depth.hfov_deg is None:
-            raise RuntimeError("the stored calibration would not read, so the "
-                              "sector angles in /depth cannot be trusted")
-        return (f"{depth.hfov_deg} deg across, {depth.baseline_cm} cm baseline")
+        if depth.hfov_deg is None or not depth.colour_intrinsics:
+            raise RuntimeError("the stored calibration would not read, so no "
+                               "angle this service quotes can be trusted -- and "
+                               "nothing can draw a bearing through this camera")
+        lens = depth.colour_intrinsics
+        return (f"{depth.hfov_deg} x {depth.vfov_deg} deg, fx={lens['fx']} "
+                f"cx={lens['cx']} cy={lens['cy']}, "
+                f"{depth.baseline_cm} cm baseline")
+
+    def colour():
+        """The colour half, which is half of what makes a range usable.
+
+        A depth map on its own says how far away *something* is. What the world
+        state needs is how far away the thing it has just found in the picture
+        is, and that needs the picture and the depth to be the same frame -- so
+        this checks that both arrived and how far apart in time they were.
+        """
+        jpeg, age, apart = depth.newest_jpeg()
+        if not jpeg:
+            raise RuntimeError(f"{depth.frames} depth frames arrived but no "
+                               f"colour frame did, so the MJPEG encoder or the "
+                               f"ISP scale is wrong for this sensor")
+        if not jpeg.startswith(b"\xff\xd8"):
+            raise RuntimeError(f"the colour stream is not JPEG: it starts "
+                               f"{jpeg[:4].hex()}")
+        return (f"{COLOUR_SIZE[0]}x{COLOUR_SIZE[1]}, {len(jpeg)} bytes, "
+                f"{age:.2f} s old, {apart * 1000:.0f} ms from its depth frame")
+
+    def ranged():
+        """A range for a box, which is the call the world state actually makes.
+
+        Three boxes across the middle of the picture rather than one, because
+        the interesting failure is not "no answer" but "the same answer
+        everywhere", which one box cannot show.
+        """
+        boxes = [[0.05, 0.35, 0.35, 0.65],
+                 [0.35, 0.35, 0.65, 0.65],
+                 [0.65, 0.35, 0.95, 0.65]]
+        answer = depth.ranges(boxes)
+        if not answer.get("ok"):
+            raise RuntimeError(answer.get("error", "no answer"))
+        got = [one for one in answer["ranges"] if one and one["range_m"]]
+        if not got:
+            shares = ", ".join(f"{one['valid']:.2f}" for one in answer["ranges"]
+                               if one)
+            raise RuntimeError(f"no box had enough valid pixels to range "
+                               f"(valid shares {shares}) -- point the camera at "
+                               f"something textured between "
+                               f"{MIN_MM / 1000:.1f} and {MAX_MM / 1000:.0f} m")
+        return ", ".join(f"{one['range_m']:.2f}+-{one['sigma_m']:.2f} m"
+                         for one in got)
 
     def measures():
         frame = frames[0]
@@ -172,6 +221,8 @@ def main():
 
     check("calibration reads", calibrated)
     check("the depth means something", measures)
+    check("the colour frame arrives", colour)
+    check("a box has a range", ranged)
     check("greyscale PNG encodes", picture)
     return report()
 
