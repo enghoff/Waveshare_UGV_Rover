@@ -150,8 +150,15 @@ def pairs_between(here: list, there: list) -> list[tuple[int, int, float]]:
     """
     import numpy
 
+    # **An empty side is the ordinary answer, not an error.** Pointed at a blank
+    # wall the region finder returns nothing at all, and it was this that the
+    # rover found first: a zero-length axis makes every reduction below raise
+    # rather than answer, so a bench run in the wrong room came back as a stack
+    # trace instead of as "there was nothing to match".
     left = [unit(region.dino) for region in here]
     right = [unit(region.dino) for region in there]
+    if not left or not right:
+        return []
     scores = numpy.full((len(left), len(right)), -1.0)
     for i, one in enumerate(left):
         if one is None:
