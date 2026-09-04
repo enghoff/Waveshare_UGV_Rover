@@ -19,6 +19,36 @@ language model it describes is no longer on the rover.
 
 ## Where this stands
 
+**The same picture is not recorded twice, since 2026-09-04.** A rover standing
+still in a room that is not changing used to go on recording it — the same wall,
+the same sofa, from the same place — and each of those looks cost a frame on
+disk, a pass through three encoders and a handful of observations that can never
+be triangulated with anything, because two rays from one place do not cross. The
+resolver compares every pair in the pool they join, so they also made every later
+look slower for as long as the rover was switched on. A look is now compared
+against the last picture that was *kept* before the frame is saved and before the
+sidecar is asked, and a look that shows the same room is thrown away with one line
+in the diagnostics log to say so.
+
+**The test is on the picture and not on the pose, because the pose is what was
+wrong.** The looking loop already refuses a look from a place the rover has
+looked from; a parked rover gets past that either deliberately, on
+`rover_world.LOOK_ANYWAY_S`, or because the scan matcher's position wanders far
+enough to look like a move while the wheels are stopped. Only the frame can tell
+those from a rover that really went somewhere.
+
+Measured parked in front of a wall, a sofa and a cable, with nothing in the room
+moving: **forty looks a second apart come back as one recorded and thirty-nine
+discarded.** Over ten minutes the same room stops being the same picture — the
+camera's automatic exposure hunts by several grey levels and does not hunt evenly
+— so **this cannot judge two looks minutes apart and is not asked to**; the
+five-minute look a parked rover takes anyway is what tells a person it has not
+stopped working. Replayed over the drive of 2026-09-04 it discards 2 of 134 looks
+and 4 of 643 observations, both taken after the rover had parked, and every
+entity and both scores come back identical. [bench_still.py](bench_still.py)
+is that measurement, on both sides; `inspector.SAME_PICTURE_SHARE` is the limit
+and carries the numbers.
+
 **A thing has a height now, and the room is no longer flat, since
 2026-09-04.** The lens returns a direction in three dimensions and the bearing
 uses two of them, so the vertical half of the ray was computed and thrown away
@@ -811,6 +841,16 @@ rates this rover actually reaches:
 
 ```bash
 ssh orin 'cd ~/ugv/world_state && python3 bench_shutter.py'
+```
+
+An eighth asks what refusing to record the same picture twice catches and what it
+costs, and it has a half on each side. The burst half needs the rover, the camera
+and a room nobody is walking through; the recording half runs at a desk and
+replays a real drive both ways:
+
+```bash
+ssh orin 'cd ~/ugv/world_state && python3 bench_still.py --burst 40 --gap 1'
+python world_state/bench_still.py /tmp/run.db --frames /tmp/frames
 ```
 
 **`replay.py` replays a recording with the bearings it was recorded with**, unless
