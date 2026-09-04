@@ -669,6 +669,107 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
           rover.worth(1000.0 + rover_world.LOOK_BLIND_S + 0.1), True)
 
 
+def test_the_camera_the_world_is_built_through_is_chosen_in_code() -> None:
+    """The rover has two cameras that see the room and they write into one world.
+
+    **The switch is a constant in this file and nothing on the console**, which is
+    the point of the test: two cameras writing bearings into one store through a
+    switch a person could flip mid-drive would leave it holding two halves
+    measured through different optics from different places. Which one took a look
+    is recorded on the row, so the question stays answerable afterwards; what must
+    not happen is the answer changing under a running experiment.
+    """
+    import rover_world
+    import world_state
+
+    check("the default is the camera every bearing so far was drawn through",
+          rover_world.WORLD_CAMERA, world_state.oak.GIMBAL)
+
+    class Standing:
+        """Enough of a rover to be asked which way it is looking."""
+
+        def __init__(self):
+            self.pan = 40.0
+
+        _world_camera_deg = rover_world.RoverWorld._world_camera_deg
+
+    rover = Standing()
+    pose = {"x_m": 0.0, "y_m": 0.0, "heading_deg": 10.0}
+    check("through the gimbal, swinging the servo is a new direction",
+          rover._world_camera_deg(pose), -30.0)
+
+    # **Through the OAK it is not**, and reading the gimbal's pan there would have
+    # a parked rover think it had found somewhere new to look every time the
+    # tracking loop moved a servo the depth camera cannot see through.
+    was = rover_world.WORLD_CAMERA
+    rover_world.WORLD_CAMERA = world_state.oak.OAK
+    try:
+        check("through the OAK, only the rover turning is",
+              round(rover._world_camera_deg(pose), 1),
+              round(10.0 - world_state.oak.pan_deg(), 1))
+    finally:
+        rover_world.WORLD_CAMERA = was
+
+
+def test_a_look_through_the_oak_needs_the_mount_measured() -> None:
+    """A bearing through a camera nobody has located is a guess with a number on it.
+
+    Refused rather than recorded without one, which is the opposite of what a
+    missing pose earns -- and the difference is that a missing pose passes. *Every*
+    look through this camera would be bearingless until somebody ran the bench, and
+    a rover quietly filling its store with directionless pictures looks exactly
+    like one that is working.
+    """
+    import rover_world
+    import world_state
+
+    class Blind:
+        _world_capture_oak = rover_world.RoverWorld._world_capture_oak
+
+        def _world_ranger(self):
+            return world_state.FakeRanger()
+
+    was_mount, was_measured = world_state.oak.MOUNT, world_state.oak.MEASURED
+    world_state.oak.MEASURED = False
+    try:
+        answer = Blind()._world_capture_oak()
+        check("an unmeasured mount refuses the look", answer["ok"], False)
+        check("...and says which bench measures it",
+              "bench_oak" in answer["error"], True)
+    finally:
+        world_state.oak.MOUNT = was_mount
+        world_state.oak.MEASURED = was_measured
+
+    class Nothing:
+        _world_capture_oak = rover_world.RoverWorld._world_capture_oak
+
+        def _world_ranger(self):
+            return None
+
+    check("a rover with no depth camera refuses it too, and says so",
+          Nothing()._world_capture_oak()["ok"], False)
+
+    # And with both in place, the picture comes back stamped with the mount as a
+    # pan and a tilt -- which is what makes `view.ray` treat this camera as a
+    # gimbal that never moves and need no new arithmetic at all.
+    class Looking:
+        _world_capture_oak = rover_world.RoverWorld._world_capture_oak
+
+        def _world_ranger(self):
+            return world_state.FakeRanger()
+
+    world_state.oak.MOUNT = world_state.oak.Mount(yaw_deg=-0.7, pitch_deg=2.7)
+    world_state.oak.MEASURED = True
+    try:
+        got = Looking()._world_capture_oak()
+        check("a measured rover takes the picture", got["ok"], True)
+        check("...and records the mount as the camera's own pan and tilt",
+              (got["camera"], got["pan"], got["tilt"]), ("oak", -0.7, 2.7))
+    finally:
+        world_state.oak.MOUNT = was_mount
+        world_state.oak.MEASURED = was_measured
+
+
 TESTS = (
     test_a_search_hands_back_the_whole_of_every_look_it_matched,
     test_the_world_state_calls_reach_the_store,
@@ -678,4 +779,6 @@ TESTS = (
     test_how_far_the_rover_could_see_comes_off_its_own_map,
     test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map,
     test_the_rover_looks_when_there_is_something_new_to_see,
+    test_the_camera_the_world_is_built_through_is_chosen_in_code,
+    test_a_look_through_the_oak_needs_the_mount_measured,
 )
