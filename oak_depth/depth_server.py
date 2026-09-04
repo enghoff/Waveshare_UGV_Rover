@@ -571,6 +571,12 @@ class Depth:
         surface returns no disparity at all, so a box over a bare wall has
         nothing in it to measure; `valid` beside each answer is how to tell that
         from a box the camera simply could not see.
+
+        The distance is **out along the ray to the box**, which is not what the
+        depth map holds -- see `_secant`. `/depth` and `/depth.png` still speak in
+        the map's own axial millimetres, because what a sector is for is "could I
+        hit that", and the distance in front of the camera plane is the honest
+        answer to that one.
         """
         import numpy
 
@@ -633,7 +639,18 @@ class Depth:
         surface = values[values <= near_mm + band_mm]
         if surface.size < RANGE_MIN_PIXELS:
             surface = values
-        range_m = float(numpy.median(surface)) / 1000.0
+        along_m = float(numpy.median(surface)) / 1000.0
+        # **Out along the ray, not along the axis, and the difference is not
+        # small.** What a stereo pipeline puts in a depth map is `focal *
+        # baseline / disparity`, which is the *Z* coordinate -- how far the
+        # surface is in front of the camera plane -- and what anybody asking
+        # "how far away is that" means is the length of the line to it. The two
+        # are the same only dead ahead: they differ by one over the cosine of the
+        # angle off the axis, which on this lens is 22% at the side of the frame
+        # and 32% in the corner. `world_state.locate` compares this against a
+        # distance measured on the map, so shipping the axial figure would have
+        # put every off-centre range a fifth short.
+        range_m = along_m * self._secant(x0, x1, y0, y1, width, height)
         # What it is worth: the stereo model's own error at this range, and the
         # spread of the surface that produced it, which is the thing being deep
         # or slanted rather than flat.
@@ -645,6 +662,27 @@ class Depth:
                 "sigma_m": round(math.hypot(model, spread / 2.0), 3),
                 "valid": round(share, 3),
                 "pixels": int(surface.size)}
+
+    def _secant(self, x0: int, x1: int, y0: int, y1: int,
+                width: int, height: int) -> float:
+        """One over the cosine of the angle from the lens axis to this box.
+
+        1.0 when the calibration would not read, which leaves the axial figure
+        alone rather than scaling it by a guess -- and a service with no
+        calibration already reports no angles at all, so nothing is drawing
+        bearings through it either.
+
+        Taken at the box's middle. A box is at most a few degrees wide as far as
+        this factor is concerned, and it varies slowly, so the middle is the box.
+        """
+        lens = self.colour_intrinsics
+        if not lens:
+            return 1.0
+        scale_x = width / float(lens["width"])
+        scale_y = height / float(lens["height"])
+        x = ((x0 + x1) / 2.0 - lens["cx"] * scale_x) / (lens["fx"] * scale_x)
+        y = ((y0 + y1) / 2.0 - lens["cy"] * scale_y) / (lens["fy"] * scale_y)
+        return math.sqrt(1.0 + x * x + y * y)
 
     def summary(self) -> dict:
         """The newest frame as a grid and as per-sector ranges.
