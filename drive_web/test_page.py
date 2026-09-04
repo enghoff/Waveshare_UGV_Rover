@@ -176,6 +176,64 @@ def test_the_search_box_narrows_the_views_rather_than_owning_one() -> None:
           "#wSearchNote.wfound" in css and "#wSearchNote.wmissing" in css, True)
 
 
+def test_the_popup_can_be_read_while_the_rover_is_filling_it() -> None:
+    """Nothing a person is inside is thrown away because the store moved.
+
+    The rover records a look a second, and every one of them sends a new body to
+    a popup that is open. Building the views again from nothing on each of those
+    is what made the popup unreadable while the rover worked: measured in a
+    browser on the rover's own store of sixty things, the entity list slid 52 px
+    under the pointer per body and went on sliding, and one look arriving on the
+    chosen thing threw the reader back to the top of its pictures with an opened
+    raw block shut and all nine crops fetched again.
+
+    So the three views a person scrolls keep their rows and move them, which is
+    also what gives the browser something to hold the view still against. What is
+    checked here is that each of them still does -- the drawing itself is in a
+    browser and nothing in this repository has one.
+    """
+    js = _console("world.js")
+
+    def body(name: str) -> str:
+        """One function out of the script, brace to brace at column zero."""
+        match = re.search(r"^function " + name + r"\(.*?\n\}", js,
+                          re.S | re.M)
+        check(f"the script still has {name}", bool(match), True)
+        return match.group(0) if match else ""
+
+    # Each view holds its rows by what the rover calls them, and moves the ones
+    # it already has rather than making them again.
+    for name, held in (("drawWorldList", "worldRows"),
+                       ("drawWorldLooks", "worldDetailRows"),
+                       ("drawWorldObservations", "worldTiles")):
+        drawn = body(name)
+        check(f"{name} keeps its rows by identifier", held in drawn, True)
+        check("...and moves the ones it has", "insertBefore" in drawn, True)
+        check("...rather than emptying the view first",
+              "replaceChildren()" in drawn, False)
+
+    # The chosen thing's pane is the one with something to lose: its rows carry
+    # the pictures and any raw block opened under them. So a look is only drawn
+    # again when what it says has changed, and the boxes it lives in are only
+    # replaced when a *different* thing is chosen.
+    looks = body("drawWorldLooks")
+    check("a look is redrawn only when it has really changed",
+          "row.drawn !== drawn" in looks, True)
+    chosen = body("drawWorldDetail")
+    check("the pane is replaced only for a different thing",
+          "worldDetailFor !== entity.id" in chosen, True)
+    check("...and the heading only when it has something new to say",
+          "key === worldDetailHead" in body("drawWorldHead"), True)
+
+    # The entity list is the other way round, and deliberately: one of the things
+    # a row says is how long ago the thing was last seen, so a row held unchanged
+    # would be a row whose age had quietly stopped counting.
+    listed = body("drawWorldList")
+    check("every row in the list is written afresh", "wRowFace(row" in listed, True)
+    check("...which is what keeps its ages counting",
+          "wAgo(" in body("wRowFace"), True)
+
+
 def test_the_page_brings_its_stylesheet_and_script_with_it() -> None:
     """All four files, over a real socket, with the types a browser needs.
 
@@ -234,5 +292,6 @@ TESTS = (
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
     test_the_search_box_narrows_the_views_rather_than_owning_one,
+    test_the_popup_can_be_read_while_the_rover_is_filling_it,
     test_the_page_brings_its_stylesheet_and_script_with_it,
 )

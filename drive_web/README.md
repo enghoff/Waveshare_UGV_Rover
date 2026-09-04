@@ -274,6 +274,33 @@ is really different. So a rover recording nothing costs the counts alone and no
 redraw, and one that is looking costs a payload per change. Nothing is polled while
 the popup is shut.
 
+**A body arriving is not allowed to disturb whatever is being read.** Keeping the
+popup current only helps if it can still be read while it is being kept current,
+and until 2026-09-04 it could not: every view was built again from nothing on each
+arrival, which at a look a second is every second. Two things went wrong with that,
+both measured in chromium against the rover's own store of sixty things and 635
+looks. Choosing a thing and reading down its pictures survived exactly until the
+next look was recorded, at which point the scroller went back to the top, a raw
+block opened under a crop closed, and all nine crops were fetched again. And the
+entity list beside it slid 52 pixels per body and went on sliding, because
+emptying a list destroys the element the browser had chosen to hold the view
+steady against, so its correction was made against nothing.
+
+Both are fixed the way the observation stream already worked. Every view now keeps
+its rows and moves the ones it has, which both leaves the browser something to
+anchor to and lets a row keep what belongs to it. In the chosen thing's pane a look
+is redrawn only when what it says has really changed — most often because the
+resolver has just attached it, or re-measured it against a position that has since
+settled — so its picture and any raw block opened under it stay; the pane's two
+boxes are replaced only when a *different* thing is chosen, which is the one time
+starting at the top is right. The entity list is the other way round on purpose:
+its rows are kept but written afresh every time, because one of the things a row
+says is how long ago that thing was last seen, and a row held unchanged is a row
+whose age has quietly stopped counting. Under the same recording that used to
+throw the reader to the top, the look in front of them now stays within a pixel of
+where it was, the opened block stays open, nine of the ten crops are the ones
+already fetched, and the list does not move at all.
+
 **There is no refresh button, and there is nothing for one to do.** Opening the
 popup asks for the whole of it and the poll above keeps it that way, so a button
 could only fetch what the console had a moment ago. The one thing it was still

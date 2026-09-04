@@ -57,6 +57,31 @@ let worldZoom = null, worldZoomDrawn = "";
 // the one line it drew for that row. Kept here rather than passed down because a
 // redraw arrives every couple of seconds and has to put the highlight back.
 let worldHover = null;
+// The rows the entity list is drawn as, by the thing each one is for.
+//
+// **This popup is read while the rover is filling it, and until these were kept
+// it could not be.** A body arrives every second or so while the rover is
+// recording, and the list used to be built again from nothing each time. That
+// destroys the element the browser had chosen to hold the view steady against,
+// so its correction is made against nothing: measured on the rover's own store
+// of sixty things, the list slid 52 px under the pointer per body and went on
+// sliding, which after half a minute of recording is a different part of the
+// list entirely. Keeping the row elements and moving them gives the browser
+// something to anchor to, and the list stays where it was put.
+//
+// What is *inside* a row is written again on every draw, because one of the
+// things a row says is how long ago the thing was last seen -- and a row held
+// unchanged would be a row whose age had quietly stopped counting.
+let worldRows = new Map();
+// The chosen thing's own pane, which is the one place in this popup where a
+// redraw costs more than a flicker: its looks carry the pictures, and reading
+// down them with one opened is the whole point of choosing a thing. So the two
+// boxes it is drawn in are kept for as long as the same thing is chosen -- the
+// lower one being the scroller somebody is inside -- and the heading and each
+// look are rebuilt only when what they say has really changed, the way the
+// large view of a single look already is. Rebuilding a look throws away both
+// the picture the browser had fetched and any raw block opened under it.
+let worldDetailFor = "", worldDetailHead = "", worldDetailRows = new Map();
 // The observation stream, and it is the one thing in this popup that does not
 // come out of the fetched body. The body carries the newest forty looks and is
 // replaced whole every time the rover records; everything older than that is
@@ -248,10 +273,10 @@ function wScore(value) {
 
 function drawWorldList() {
   const list = $("wList");
-  list.replaceChildren();
   const entities = wShown();
   const summary = world.summary || {};
   if (!entities.length) {
+    worldRows = new Map();
     const empty = document.createElement("p");
     empty.className = "hint";
     // Under a filter the list is empty for a different reason, and saying
@@ -270,53 +295,77 @@ function drawWorldList() {
         ? `${worldFilter.looks.size} matching look`
           + `${worldFilter.looks.size === 1 ? "" : "s"}, none of them a thing yet`
         : "no match";
-    list.append(empty);
+    list.replaceChildren(empty);
     return;
   }
   const newest = Math.max(...entities.map((e) => e.last_seen_at || 0));
 
+  // Rows are kept and moved rather than built again, exactly as the tiles in the
+  // observation stream are and for a sharper version of the same reason: see
+  // `worldRows`. Each one is then written afresh, which is what keeps "last 40 s
+  // ago" counting on a thing the rover has stopped looking at.
+  const kept = new Map();
+  let at = list.firstChild;
   for (const entity of entities) {
-    const row = document.createElement("div");
-    row.className = "wrow" + (entity.id === state.world.selected ? " on" : "");
-    row.style.borderLeft = `4px solid hsl(${wHue(entity.id)} 70% 45%)`;
-    row.onclick = () => post({do: "world", what: "select",
-                              id: entity.id === state.world.selected ? "" : entity.id});
-
-    // An identifier and no name. Nothing measures what a thing is called any
-    // more, so a row says which thing it is, how often it has been seen and
-    // where it is; what it looks like is one click away in the pane beside it.
-    const head = document.createElement("div");
-    head.className = "whead";
-    const id = document.createElement("span");
-    id.className = "wid mono";
-    id.textContent = entity.id;
-    head.append(id);
-    // Under a filter, what its best look scored against the phrase -- which is
-    // why this row is one of the few left on screen, and the order they are in.
-    if (worldFilter) head.append(wScore(worldFilter.things.get(entity.id)));
-    row.append(head);
-
-    const meta = document.createElement("div");
-    meta.className = "wmeta";
-    let text = `${entity.observation_count} observation`
-             + `${entity.observation_count === 1 ? "" : "s"}`
-             + ` · first ${wTime(entity.created_at)}`
-             + ` · last ${wAgo(entity.last_seen_at)}`;
-    if (entity.last_map_session && summary.map_session
-        && entity.last_map_session !== summary.map_session) {
-      // Not stale as such -- the sofa is still there -- but everything positional
-      // about it belongs to a map that no longer exists, and the popup is the only
-      // place that can say so.
-      text += ` · last seen under map ${entity.last_map_session}, now `
-            + `${summary.map_session}`;
-      meta.classList.add("wold");
+    let row = worldRows.get(entity.id);
+    if (!row) {
+      row = document.createElement("div");
+      row.style.borderLeft = `4px solid hsl(${wHue(entity.id)} 70% 45%)`;
     }
-    if (newest - (entity.last_seen_at || 0) > 300) meta.classList.add("wold");
-    meta.append(document.createTextNode(text));
-    row.append(meta);
-    row.append(wPlace(entity));
-    list.append(row);
+    wRowFace(row, entity, newest, summary);
+    kept.set(entity.id, row);
+    if (row === at) at = at.nextSibling;
+    else list.insertBefore(row, at);
   }
+  // Whatever is left below them is a thing the store no longer has, or one a
+  // filter has since narrowed away.
+  while (at) { const next = at.nextSibling; at.remove(); at = next; }
+  worldRows = kept;
+}
+
+// Everything a row in the entity list says, written into the row that is already
+// on the page. Nothing in here survives from the draw before it, so the row can
+// change hands between a filtered list and a whole one, or stop being the chosen
+// thing, without any of that having to be undone.
+function wRowFace(row, entity, newest, summary) {
+  row.className = "wrow" + (entity.id === state.world.selected ? " on" : "");
+  row.onclick = () => post({do: "world", what: "select",
+                            id: entity.id === state.world.selected ? "" : entity.id});
+
+  // An identifier and no name. Nothing measures what a thing is called any
+  // more, so a row says which thing it is, how often it has been seen and
+  // where it is; what it looks like is one click away in the pane beside it.
+  const head = document.createElement("div");
+  head.className = "whead";
+  const id = document.createElement("span");
+  id.className = "wid mono";
+  id.textContent = entity.id;
+  head.append(id);
+  // Under a filter, what its best look scored against the phrase -- which is
+  // why this row is one of the few left on screen, and the order they are in.
+  if (worldFilter) head.append(wScore(worldFilter.things.get(entity.id)));
+
+  const meta = document.createElement("div");
+  meta.className = "wmeta";
+  let text = `${entity.observation_count} observation`
+           + `${entity.observation_count === 1 ? "" : "s"}`
+           + ` · first ${wTime(entity.created_at)}`
+           + ` · last ${wAgo(entity.last_seen_at)}`;
+  if (entity.last_map_session && summary.map_session
+      && entity.last_map_session !== summary.map_session) {
+    // Not stale as such -- the sofa is still there -- but everything positional
+    // about it belongs to a map that no longer exists, and the popup is the only
+    // place that can say so.
+    text += ` · last seen under map ${entity.last_map_session}, now `
+          + `${summary.map_session}`;
+    meta.classList.add("wold");
+  }
+  if (newest - (entity.last_seen_at || 0) > 300) meta.classList.add("wold");
+  meta.append(document.createTextNode(text));
+  // In one go, so the row is never briefly empty: the browser holds the list
+  // still by watching what is in it, and a row that collapsed and grew back
+  // would be a row it had to correct for.
+  row.replaceChildren(head, meta, wPlace(entity));
 }
 
 // The exact inverse of the sampling `render` does in lidar_slam/mapimg.py, which
@@ -876,32 +925,61 @@ function wObservation(observation, options) {
 
 function drawWorldDetail() {
   const pane = $("wDetail");
-  pane.replaceChildren();
   const entity = world.selected;
   if (!entity || !entity.id || entity.id !== state.world.selected) {
+    worldDetailFor = worldDetailHead = "";
+    worldDetailRows = new Map();
     const hint = document.createElement("p");
     hint.className = "hint";
     hint.textContent = "nothing selected";
-    pane.append(hint);
+    pane.replaceChildren(hint);
     return;
   }
-  const head = document.createElement("div");
+  // A different thing is a different pane and starts at the top of itself. The
+  // same thing keeps the two boxes it is already drawn in, because the lower one
+  // is the scroller somebody is reading down.
+  if (worldDetailFor !== entity.id) {
+    worldDetailFor = entity.id;
+    worldDetailHead = "";
+    worldDetailRows = new Map();
+    const heading = document.createElement("div");
+    // Every look that was decided to be this thing, newest first, in a scroller
+    // of its own so that the heading above stays put and the entity list beside
+    // it does not scroll away. **The pictures are what a person is here to
+    // read**: nothing names a region any more, so whether these four crops
+    // really are one object is a question only the boxes can answer.
+    const looks = document.createElement("div");
+    looks.className = "wscroll";
+    pane.replaceChildren(heading, looks);
+  }
+  const head = pane.firstElementChild, scroller = pane.lastElementChild;
+  drawWorldHead(head, entity);
+  drawWorldLooks(scroller);
+}
+
+// The heading over the chosen thing's looks: what it is, where it is, and the
+// two things that make its position unreadable. Written again only when one of
+// them has really changed, so that a body arriving every second does not take a
+// half-made text selection with it.
+function drawWorldHead(head, entity) {
+  const key = JSON.stringify([entity, (world.summary || {}).map_session,
+                              worldFilter ? worldFilter.things.has(entity.id) : null]);
+  if (key === worldDetailHead) return;
+  worldDetailHead = key;
   const title = document.createElement("h2");
   title.textContent = entity.id;
-  head.append(title);
   const meta = document.createElement("div");
   meta.className = "wmeta mono";
   meta.textContent = `kind ${entity.kind} · ${entity.observation_count} `
                    + `observations · created ${wTime(entity.created_at)} · `
                    + `last seen ${wTime(entity.last_seen_at)}`;
-  head.append(meta);
-  head.append(wPlace(entity));
+  const parts = [title, meta, wPlace(entity)];
   if (worldFilter && !worldFilter.things.has(entity.id)) {
     // Chosen before the box narrowed the list, and the list no longer has it.
     const aside = document.createElement("div");
     aside.className = "wmeta wold";
     aside.textContent = "not one of the matches";
-    head.append(aside);
+    parts.push(aside);
   }
   if (entity.placement && entity.placement_map_session
       && (world.summary || {}).map_session
@@ -913,23 +991,30 @@ function drawWorldDetail() {
     stale.textContent = `this position was measured under map `
         + `${entity.placement_map_session} and the rover is now on map `
         + `${world.summary.map_session}, so it is not where the map shows`;
-    head.append(stale);
+    parts.push(stale);
   }
-  pane.append(head);
+  head.replaceChildren(...parts);
+}
 
+// The chosen thing's looks, in the scroller they are already in.
+//
+// **A look is left exactly as it is unless what it says has changed**, which is
+// the whole of what makes this pane readable while the rover records. Each row
+// carries a picture the browser has fetched and a raw block somebody may have
+// opened, and both of those go with the row: rebuilding all nine of them because
+// a tenth arrived is what used to throw a reader back to the top of the list
+// with their pictures loading again. Only a look that has genuinely moved --
+// most often one the resolver has just attached, or re-measured against a
+// position that has settled since -- is drawn again.
+function drawWorldLooks(scroller) {
   const observations = world.selected_observations || [];
-  // Every look that was decided to be this thing, newest first, in a scroller of
-  // its own so that the heading above stays put and the entity list beside it
-  // does not scroll away. **The pictures are what a person is here to read**:
-  // nothing names a region any more, so whether these four crops really are one
-  // object is a question only the boxes can answer.
-  const scroller = document.createElement("div");
-  scroller.className = "wscroll";
   if (!observations.length) {
+    worldDetailRows = new Map();
     const empty = document.createElement("p");
     empty.className = "hint";
     empty.textContent = "no observations";
-    scroller.append(empty);
+    scroller.replaceChildren(empty);
+    return;
   }
   // The rays already carry how each look stands to the settled position, worked
   // out on the rover by the resolver's own arithmetic. Joined to the rows by
@@ -940,18 +1025,34 @@ function drawWorldDetail() {
   for (const ray of world.selected_rays || []) {
     if (ray.id != null && ray.relation) relations[ray.id] = ray.relation;
   }
+  const kept = new Map();
+  let at = scroller.firstChild;
   for (const observation of observations) {
-    const row = wObservation(observation, {relations: relations});
-    // Reading down this scroller is reading one look at a time, and the question
-    // each one raises -- where was this taken from, and is this the line that
-    // disagrees -- is answered by the map beside it. So the pointer resting on a
-    // row lights that row's own line and dims the rest, which is the only way to
-    // tell which of eight lines belongs to the picture being looked at.
-    row.onmouseenter = () => wHighlight(observation.id);
-    row.onmouseleave = () => wHighlight(null);
-    scroller.append(row);
+    const relation = relations[observation.id] || null;
+    // Everything the row is drawn from, including whether a filter is putting a
+    // score on it: the same test the large view of a single look applies.
+    const drawn = JSON.stringify([observation, relation, !!worldFilter]);
+    let row = worldDetailRows.get(observation.id);
+    if (!row || row.drawn !== drawn) {
+      const node = wObservation(observation, {relations: relations});
+      // Reading down this scroller is reading one look at a time, and the
+      // question each one raises -- where was this taken from, and is this the
+      // line that disagrees -- is answered by the map beside it. So the pointer
+      // resting on a row lights that row's own line and dims the rest, which is
+      // the only way to tell which of eight lines belongs to the picture being
+      // looked at.
+      node.onmouseenter = () => wHighlight(observation.id);
+      node.onmouseleave = () => wHighlight(null);
+      row = {drawn: drawn, node: node};
+    }
+    kept.set(observation.id, row);
+    if (row.node === at) at = at.nextSibling;
+    else scroller.insertBefore(row.node, at);
   }
-  pane.append(scroller);
+  // Whatever is left below them is a look this thing no longer owns, or the
+  // "no observations" line from when it had none.
+  while (at) { const next = at.nextSibling; at.remove(); at = next; }
+  worldDetailRows = kept;
 }
 
 // One look in the tiled stream: the frame with its box on it, and the two things
