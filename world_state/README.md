@@ -51,22 +51,31 @@ two in code, with nothing on the console -- two cameras writing into one world
 through a switch a person could flip mid-drive would leave the store holding two
 halves nobody could tell apart.
 
-**The mount is measured, since 2026-09-04, and it is the first extrinsics between
-any two things on this rover.** [bench_oak.py](bench_oak.py) does it with no
-target: the OAK's picture is warped into the fisheye's own geometry, ORB matches
-the two, the depth camera says how far away each match is, and a RANSAC PnP finds
-the pose that reconciles them. Ten solves at pan 0 agree to 0.8 degrees and 5 cm,
-the points that survive miss by 0.4 degrees against the 1.5 a bearing is allowed,
-and refitting with the two lenses taken as co-located costs 2.0 degrees instead of
-0.4 -- so the offset is in the data rather than free. `oak.MEASURED` is the gate,
-and it gates everything in both directions: the OAK cannot draw a bearing without
-it, and a gimbal look cannot be given a range without it either.
+**Which way the OAK points is measured, since 2026-09-04.** Yaw -1.5 degrees,
+pitch +3.1, roll -2.1, relative to the gimbal camera at rest -- the first
+extrinsics between any two things on this rover. [bench_oak.py](bench_oak.py)
+does it with no target: the OAK's picture is warped into the fisheye's own
+geometry, ORB matches the two, the depth camera ranges every match, and the
+rotation lining the two sets of directions up is solved with its own inliers
+re-selected as it goes. What survives misses by 0.3 to 0.9 degrees against the
+1.5 a bearing here is allowed, and independent runs agree within a fifth of a
+degree.
 
-**What has not been checked is the offset against a ruler.** The falsifiable
-claim is that the OAK's lens sits about 57 cm ahead of the gimbal camera's, 18 cm
-to its right and 8 cm above; half a metre is a long way on a small rover, and
-while the fit is self-consistent and repeatable, nothing has yet compared it with
-the thing itself.
+**Where it sits is not measured, and is deliberately left at nothing.** The bench
+can fit an offset as well and its answer was wrong -- 0.571 m forward on a rover
+whose two lenses are a few centimetres apart -- while passing every internal
+check it had, including repeating to a centimetre over ten solves. *Two things
+the calibration measured that were not what it was for* below is what went wrong
+and why the bench now refuses to answer that question. Nothing is the honest
+placeholder: it is what every bearing before this was worked out as, and being
+out by a few centimetres costs about a degree of bearing at two metres, inside
+what the geometry already expects. **A ruler settles it** -- measure how far
+ahead of and above the gimbal camera's lens the OAK's sits and pass them to
+`bench_oak.py --offset`.
+
+`oak.MEASURED` is the gate, and it gates everything in both directions: the OAK
+cannot draw a bearing without it, and a gimbal look cannot be given a range
+without it either.
 
 **The same picture is not recorded twice, since 2026-09-04.** A rover standing
 still in a room that is not changing used to go on recording it — the same wall,
@@ -378,25 +387,61 @@ Four steps, and the first is what makes the rest easy:
    tiled floor repeats, and a mutual check because a corner that resembles every
    other corner is otherwise somebody's best match in one direction only.
 3. **The depth camera ranges every match**, in one batched call to `/ranges`.
-4. **A RANSAC PnP solves the pose** that takes the OAK's 3-D points to the gimbal
-   camera's directions -- rotation and offset together, out of one fit, with the
-   correspondences that do not agree thrown out rather than averaged in. The
-   image points are directions rather than pixels, which is what lets a fisheye be
-   handed to a pinhole solver at all.
+4. **The rotation is the one that lines the two sets of directions up**, with the
+   offset taken as given rather than fitted -- a singular value decomposition each
+   round, then the points within two degrees of that answer are kept and it is
+   done again. Starting from everything and tightening rather than from a random
+   four: the rotation is well enough determined not to need a random start, and
+   what has to be excluded is a third of the matches rather than a few.
 
-About seventy points survive per solve in an ordinary room, and what they miss by
-is 0.35 to 0.41 degrees against the 1.5 a bearing on this rover is allowed.
+Forty to seventy points survive per solve in an ordinary room, out of a couple of
+hundred matched, and what they miss by is 0.3 to 0.9 degrees against the 1.5 a
+bearing on this rover is allowed. The rest are matches that are simply wrong --
+one chair slat taken for the next.
 
 ### Two things the calibration measured that were not what it was for
 
-**The offset is real, and the report proves it rather than asserting it.** Two
-lenses a few centimetres apart looking at things metres away see them in almost
-the same direction, so the offset is the weakly observable half of this pose and
-a solver will put it wherever best trades against the rotation. So the same
-points are refitted with the two lenses taken as co-located: that costs 2.0
-degrees where the full fit costs 0.4, five times worse, which is the evidence that
-the data contained an offset at all. Without that test a printed number would have
-been indistinguishable from a free parameter.
+**It cannot measure the offset, and the way it failed is worth knowing.** Fitting
+the rotation and the offset together gave 0.571 m forward and 0.181 m to the
+right between two lenses that are a few centimetres apart -- and every check
+available from inside said it was right. Ten solves agreed to a centimetre.
+Refitting with the two lenses taken as co-located cost 2.0 degrees where the full
+fit cost 0.4, five times worse, which reads as proof the data contained an offset.
+It was adopted on that evidence and it was wrong; what caught it was the rover's
+owner saying both cameras are on the centre axis, so the lateral offset is zero
+by construction.
+
+The reason is that **the offset is the half of this pose the data barely
+constrains**. Five centimetres at three metres is one degree of parallax, which
+is the size of what the fit leaves over anyway -- so a solver handed both at once
+spends the offset absorbing whatever else is systematic, and fits better for it.
+The co-located test proves only that *some* translation-shaped correction helps,
+never that the one found is the offset. Two further traps sat underneath: a
+pinned fit compared against a RANSAC one is not a fair fight, because only 46 to
+70 of 220 matched points are inliers on a scene of repeated chair slats and the
+pinned fit was being scored on noise the RANSAC never saw; and the warp map was
+built with `cv2.resize`, which maps cell *centres*, so a grid sampled every
+eighth pixel came back shifted three pixels -- 0.4 degrees, the same size as the
+residual being chased.
+
+With those fixed and both sides scored on the same footing, **the rotation is
+stable to within half a degree whatever offset it is given**, from nothing to
+half a metre. That is what makes taking the rotation and refusing the offset the
+honest split, and it is what the bench does now: `--offset` is given, not fitted,
+and what a free solver claims is still printed as the evidence for the warning
+rather than a restatement of it.
+
+**The OAK is two degrees out of true, which the mount now carries.** The roll was
+left out at first on the argument that a bracket bolted to a flat plate has none,
+and it read as half a degree -- from the same fit that was inventing half a metre
+of offset. With the offset held at nothing it is -2.1, and a roll mixes a ray's
+bearing into its elevation by the roll times how far off the axis the ray is, so
+at the edge of this camera's field two degrees is worth more than one of
+elevation. `oak.ray_at` takes it out and `oak._in_oak` puts it back, which is two
+signs that have to stay in step in a chain that already had a yaw and a pitch in
+it -- so the check is a round trip with the mount crooked in all three axes at
+once, because a pair of compensating sign errors passes every test that looks at
+one of them.
 
 **The gimbal's own pan is worth about two degrees, and this is the first thing to
 measure it in the middle of its travel.** Solved at -10, 0 and +10 the mount's yaw
@@ -412,7 +457,8 @@ twice.
 
 ### Running it
 
-    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan 0 0 0 0 0'
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan 0 0 0'
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --offset 0.05 0 0.04'
 
 Several positions is a check on the answer rather than more of it -- each is
 solved on its own and the report prints them side by side. It needs a **textured
@@ -428,11 +474,13 @@ looking at, is a calibration nobody can review.
 
 ### What is still open
 
-* **The offset has not been checked against a ruler.** The claim is 57 cm forward,
-  18 cm right, 8 cm up, and half a metre is a long way on a small rover. The fit is
-  self-consistent, repeatable to a centimetre and demonstrably not free -- but it
-  has never been compared with the thing itself, and that is a two-minute check
-  somebody standing next to the rover can do and nothing here can.
+* **The offset is nothing until somebody holds a ruler up to it.** The rover's
+  owner reports a few centimetres forward and a few up with both lenses on the
+  centre axis; the two figures wanted are how far ahead of and above the gimbal
+  camera's lens the OAK's sits, and `bench_oak.py --offset` takes them. Until
+  then every bearing through this camera is out by the parallax that offset would
+  have caused, which is about a degree at two metres and less further out --
+  inside `BEARING_SIGMA_DEG`, and worth closing anyway.
 * **The disparity term behind every `range_sigma_m` is assumed**, not measured
   (`oak_depth.DISPARITY_SIGMA_PX`). The stereo
   error model is `z^2 * 0.2 px / (focal * baseline)`, and the focal length and the
