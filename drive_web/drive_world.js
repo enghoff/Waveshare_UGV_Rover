@@ -208,23 +208,23 @@ function wPlace(entity) {
          : minor == null ? ` to within ${(+major).toFixed(2)} m`
          : ` to within ${(+minor).toFixed(2)} m across `
            + `and ${(+major).toFixed(2)} m along the sight line`)
-      + (place.extent_m ? ` Â· ${(+place.extent_m).toFixed(2)} m wide` : "")
+      + (place.extent_m ? ` · ${(+place.extent_m).toFixed(2)} m wide` : "")
       // How high it stands. Above the floor once somebody has measured how high
       // the camera is -- see locate.CAMERA_HEIGHT_M -- and above the camera
       // until then, said as such rather than left to be read as the other one.
       + (place.height_above_floor_m != null
-         ? ` Â· ${(+place.height_above_floor_m).toFixed(2)} m up`
+         ? ` · ${(+place.height_above_floor_m).toFixed(2)} m up`
          : place.height_m != null
-         ? ` Â· ${(+place.height_m).toFixed(2)} m above the camera`
+         ? ` · ${(+place.height_m).toFixed(2)} m above the camera`
          : "")
-      + (place.baseline_m ? ` Â· from two looks ${(+place.baseline_m).toFixed(2)} m `
-                            + `apart crossing at ${Math.round(place.parallax_deg)}Â°`
+      + (place.baseline_m ? ` · from two looks ${(+place.baseline_m).toFixed(2)} m `
+                            + `apart crossing at ${Math.round(place.parallax_deg)}°`
                           : "")
       // How many separate places agreed, which is the number that says whether
       // the position was ever tested. Ten looks from one doorway and two from
       // opposite sides of the room are not the same evidence, and the count of
       // observations beside this cannot tell them apart.
-      + (place.viewpoints ? ` Â· agreed from ${place.viewpoints} place`
+      + (place.viewpoints ? ` · agreed from ${place.viewpoints} place`
                             + (place.viewpoints === 1 ? "" : "s")
                           : "")
       + (place.refined_from ? `, fitted over ${place.refined_from} looks` : "");
@@ -380,14 +380,14 @@ function wRowFace(row, entity, newest, summary) {
   meta.className = "wmeta";
   let text = `${entity.observation_count} observation`
            + `${entity.observation_count === 1 ? "" : "s"}`
-           + ` Â· first ${wTime(entity.created_at)}`
-           + ` Â· last ${wAgo(entity.last_seen_at)}`;
+           + ` · first ${wTime(entity.created_at)}`
+           + ` · last ${wAgo(entity.last_seen_at)}`;
   if (entity.last_map_session && summary.map_session
       && entity.last_map_session !== summary.map_session) {
     // Not stale as such -- the sofa is still there -- but everything positional
     // about it belongs to a map that no longer exists, and the popup is the only
     // place that can say so.
-    text += ` Â· last seen under map ${entity.last_map_session}, now `
+    text += ` · last seen under map ${entity.last_map_session}, now `
           + `${summary.map_session}`;
     meta.classList.add("wold");
   }
@@ -531,16 +531,16 @@ function wObservation(observation, options) {
   meta.className = "wmeta mono";
   const bits = [`source ${observation.source || "?"}`];
   if (observation.location_hint) bits.push(`hint ${observation.location_hint}`);
-  bits.push(`pan ${observation.observer_pan_deg ?? "-"}Â°`,
-            `tilt ${observation.observer_tilt_deg ?? "-"}Â°`);
+  bits.push(`pan ${observation.observer_pan_deg ?? "-"}°`,
+            `tilt ${observation.observer_tilt_deg ?? "-"}°`);
   // Which way the thing itself lies from where the rover stood, worked out on
   // the rover when the look was taken. For a look that belongs to no entity it
   // is the only thing on the row that says where to go and find it, and that is
   // the ordinary state of anything a search turns up that has been seen once.
   if (observation.bearing_deg != null) {
-    bits.push(`bearing ${(+observation.bearing_deg).toFixed(1)}Â°`);
+    bits.push(`bearing ${(+observation.bearing_deg).toFixed(1)}°`);
   }
-  bits.push(pose ? `at (${pose.x_m}, ${pose.y_m}) m facing ${pose.heading_deg}Â°`
+  bits.push(pose ? `at (${pose.x_m}, ${pose.y_m}) m facing ${pose.heading_deg}°`
                  : "no rover pose recorded");
   bits.push(`map ${observation.map_session ?? "?"}`);
   // Where this look stands to the one position the thing has settled on. It is
@@ -550,7 +550,7 @@ function wObservation(observation, options) {
       ? options.relations[observation.id] : null;
   if (relation) {
     bits.push(`${relation.range_m} m away`,
-              `bearing ${relation.off_deg > 0 ? "+" : ""}${relation.off_deg}Â° `
+              `bearing ${relation.off_deg > 0 ? "+" : ""}${relation.off_deg}° `
               + `of it, missing by ${relation.miss_m} m of the `
               + `${relation.tolerance_m} m allowed`,
               relation.agrees ? "on it" : "off it");
@@ -563,7 +563,7 @@ function wObservation(observation, options) {
   bits.push(observation.prompt_version
       ? `${observation.model_id || "?"} / prompt ${observation.prompt_version}`
       : `${observation.model_id || "?"}`);
-  meta.textContent = bits.join(" Â· ");
+  meta.textContent = bits.join(" · ");
   block.append(meta);
 
   block.append(wShot(observation));
@@ -632,8 +632,8 @@ function drawWorldHead(head, entity) {
   title.textContent = entity.id;
   const meta = document.createElement("div");
   meta.className = "wmeta mono";
-  meta.textContent = `kind ${entity.kind} Â· ${entity.observation_count} `
-                   + `observations Â· created ${wTime(entity.created_at)} Â· `
+  meta.textContent = `kind ${entity.kind} · ${entity.observation_count} `
+                   + `observations · created ${wTime(entity.created_at)} · `
                    + `last seen ${wTime(entity.last_seen_at)}`;
   const parts = [title, meta, wPlace(entity)];
   if (worldFilter && !worldFilter.things.has(entity.id)) {
@@ -770,11 +770,11 @@ function drawWorldDiagnostics() {
   const lines = document.createElement("p");
   lines.className = "mono";
   lines.textContent =
-      `${summary.entities ?? 0} entities Â· ${summary.observations ?? 0} observations`
-      + ` Â· ${summary.unmatched ?? 0} with no entity`
-      + ` Â· ${summary.inspections ?? 0} inspections`
-      + ` Â· map session ${summary.map_session ?? "?"}`
-      + ` Â· last success ${wAgo(summary.last_ok_at)}`;
+      `${summary.entities ?? 0} entities · ${summary.observations ?? 0} observations`
+      + ` · ${summary.unmatched ?? 0} with no entity`
+      + ` · ${summary.inspections ?? 0} inspections`
+      + ` · map session ${summary.map_session ?? "?"}`
+      + ` · last success ${wAgo(summary.last_ok_at)}`;
   pane.append(lines);
   const table = document.createElement("table");
   table.className = "wtable";

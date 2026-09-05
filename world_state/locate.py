@@ -612,20 +612,36 @@ def range_tolerance_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
 
 def range_disagreement(point: dict[str, Any], first: dict[str, Any],
                        second: dict[str, Any]) -> tuple[float, float] | None:
-    """Worst range disagreement and tightest allowance; None without both ranges."""
+    """Worst range disagreement and tightest allowance; None when neither measured one.
+
+    **A ray that measured nothing abstains; it does not silence the one that
+    did.** Requiring both used to mean that the commonest pair on this rover --
+    one look through the depth camera's picture and one outside it -- spent no
+    range at all, and that is the pair the gate is most needed for. Measured on
+    the store of 2026-09-05, only 11 of 251 placed things had a reading on every
+    look and 172 had one on some, so the gate was abstaining almost everywhere it
+    had something to say. `object:213` is what that costs: a crossing accepted
+    1.06 m from a look that had measured 5.94 m to the thing, which is the whole
+    length of a room in the one direction two bearings cannot see.
+
+    This is now the pair-wise form of `stands_at_range`, which has always
+    abstained per ray rather than per pair.
+    """
     misses = []
     allowed = []
     for ray in (first, second):
         measured = ray.get("range_m")
         if measured is None:
-            return None
+            continue
         try:
             measured = float(measured)
         except (TypeError, ValueError):
-            return None
+            continue
         misses.append(abs(_range_to(float(point["x_m"]), float(point["y_m"]),
                                     ray) - measured))
         allowed.append(range_tolerance_m(point, ray))
+    if not misses:
+        return None
     return max(misses), min(allowed)
 
 

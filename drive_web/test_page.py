@@ -347,8 +347,39 @@ def test_the_page_has_no_voice_token_control() -> None:
     check("the audio socket carries no token query", "/audio?k=" in html, False)
 
 
+def test_the_console_is_written_in_the_encoding_it_is_served_in() -> None:
+    """**Mojibake is invisible to every other check here.**
+
+    The console says things like "3 observations · at (-1.7, 0.4) m · bearing
+    30°", and those two characters are the ones an editor that guessed Latin-1
+    mangles: read the file as Latin-1 and write it back as UTF-8 and every "·"
+    becomes "Â·" on the screen. Nothing else notices -- the file is still valid
+    UTF-8, the page still parses, and the tests above still find every string
+    they look for, because they read the same mangled bytes. It reached the
+    rover: 23 of them were live on the console until 2026-09-05.
+
+    "Â" or "Ã" immediately in front of another non-ASCII character is the
+    signature, and it is one no honest text here has.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    doubled = re.compile(rb"[\xc3][\x82-\x9f](?=[\xc2-\xc3][\x80-\xbf])")
+    for name in ("drive_web.html", "drive_web.css", "drive_web.js",
+                 "drive_world.js", "drive_world_map.js",
+                 "drive_world_observations.js"):
+        with open(os.path.join(here, name), "rb") as handle:
+            raw = handle.read()
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            check(f"{name} is UTF-8, which is what it is served as", False, True)
+            continue
+        check(f"{name} has no UTF-8 read as Latin-1 in it",
+              len(doubled.findall(raw)), 0)
+
+
 TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
+    test_the_console_is_written_in_the_encoding_it_is_served_in,
     test_the_map_offers_two_acts_and_the_script_can_find_them_both,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,

@@ -341,8 +341,19 @@ def test_a_ray_with_no_range_says_nothing_about_the_distance() -> None:
           locate.stands_at_range(_placed(), _ray(range_m="near")), True)
     check("two rays that measured nothing do not disagree",
           locate.range_disagreement(_placed(), _ray(), _ray()), None)
-    check("nor does one that did against one that did not",
-          locate.range_disagreement(_placed(), _ray(range_m=2.0), _ray()), None)
+    # **Abstaining is not vetoing.** The silent ray drops out of the pair and
+    # the one that measured something is still heard, which is what
+    # `stands_at_range` has always done ray by ray. Requiring both meant the
+    # commonest pair on this rover -- one look through the depth camera's
+    # picture and one outside it -- spent no range at all, and that is the pair
+    # the gate is most needed for.
+    check("one that did is still heard against one that did not",
+          locate.range_disagreement(_placed(), _ray(range_m=2.0), _ray()),
+          (0.0, locate.range_tolerance_m(_placed(), _ray(range_m=2.0))))
+    check("and it refuses a point the one measurement puts elsewhere",
+          locate.range_disagreement(_placed(), _ray(range_m=6.0), _ray())[0]
+          > locate.range_disagreement(_placed(), _ray(range_m=6.0),
+                                      _ray())[1], True)
 
 
 def test_a_look_joins_a_thing_only_at_the_distance_it_measured() -> None:
@@ -423,6 +434,39 @@ def test_two_bearings_at_two_different_things_no_longer_cross() -> None:
     half = locate.fix(dict(left, range_m=2.83, range_sigma_m=0.05),
                       dict(right, range_m=1.20, range_sigma_m=0.05))
     check("and one right range does not rescue one wrong one", half, None)
+
+    lonely = locate.fix(dict(left, range_m=1.20, range_sigma_m=0.05), right)
+    check("one ray that measured a distance is enough to refuse a crossing",
+          lonely, None)
+
+
+def test_a_crossing_the_rover_really_made_that_one_look_contradicted() -> None:
+    """`object:213` of 2026-09-05, with the two bearings behind it.
+
+    The rover put it 1.06 m in front of itself, on both bearings exactly, while
+    the look that founded it had measured 5.94 m to the thing with the depth
+    camera -- the whole length of the room in the one direction two bearings
+    cannot see. The other look measured nothing, and that was enough to silence
+    the one that had: this is the pair the gate is most needed for and the pair
+    it used to abstain on. The world panel drew the result a metre from where
+    the rover was standing, which is what made a map of things look like a map
+    of where they were seen from."""
+    measured = {"x_m": -0.35, "y_m": -8.40, "bearing_deg": -25.5,
+                "span_deg": 4.0, "range_m": 5.94, "range_sigma_m": 0.05,
+                "origin_sigma_m": 0.0}
+    silent = {"x_m": -0.45, "y_m": -7.95, "bearing_deg": -40.6,
+              "span_deg": 4.0, "origin_sigma_m": 0.0}
+    check("the crossing the rover recorded is refused now",
+          locate.fix(measured, silent), None)
+    # And it is the range doing it rather than the geometry: the same two
+    # bearings with the measurement taken away are a perfectly good crossing,
+    # which is what the rover was left holding.
+    crossing = locate.fix({k: v for k, v in measured.items()
+                           if k not in ("range_m", "range_sigma_m")}, silent)
+    check("the bearings alone still cross where the rover put it",
+          None if crossing is None else (round(crossing["x_m"], 2),
+                                         round(crossing["y_m"], 2)),
+          (0.61, -8.86))
 
 
 def test_a_range_pins_the_axis_the_bearings_leave_open() -> None:
