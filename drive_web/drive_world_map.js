@@ -271,9 +271,15 @@ function drawWorldMap() {
 
   // --- what is on the screen ------------------------------------------------
   const missing = entities.length - placed.length;
+  const held = wHeldBack();
   const bits = [];
   if (selected) bits.push(selected);
   bits.push(`${placed.length} on the map`);
+  // What the evidence bar is keeping off it, which is a different absence from
+  // the one below and has to be said separately: those things have a position
+  // and it is not good enough, these have none at all. Silence here is what
+  // would make a bar look like a store that had lost half its contents.
+  if (held > 0) bits.push(`${held} held back`);
   if (missing > 0) {
     // Which is the ordinary state of a thing seen once -- and, after a map has
     // been cleared, of everything. Said as a count rather than left to be read

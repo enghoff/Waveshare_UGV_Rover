@@ -228,6 +228,17 @@
                placeholder="the spray bottle on the shelf"
                aria-label="describe the thing to look for">
       </form>
+      <!-- How much evidence a thing must have before it is drawn. A store this
+           size is mostly things seen twice from nearly the same place, and a map
+           carrying all of them says less than a map carrying the ones that are
+           actually pinned down. The options say the bar rather than naming a
+           grade, because "firm" is a word a person has to be taught and
+           "3 places" is one they can check against the row. -->
+      <select id="wGrade" aria-label="how well placed a thing must be to show">
+        <option value="all">every placed thing</option>
+        <option value="agreed">agreed, 3 places</option>
+        <option value="settled">settled to 0.3 m, 4 places</option>
+      </select>
       <p id="wSearchNote"></p>
     </div>
     <div id="worldBody">

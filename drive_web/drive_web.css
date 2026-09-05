@@ -113,9 +113,17 @@
      what it narrows is the entity list, the map beside it and the observation
      stream, so it cannot belong to any one of those. It is a fixed row and the
      views below it spend what height is left, the way the tabs above it are. */
-  #wFilter { padding: 8px 12px 0; }
-  #wSearchForm { margin: 0; }
+  /* The phrase and the evidence bar sit on one row: they narrow the same two
+     views and reading them apart would suggest one of them narrows something
+     else. The box takes the room that is left, because a phrase is long and a
+     bar is three fixed choices. */
+  #wFilter { padding: 8px 12px 0; display: flex; flex-wrap: wrap; gap: 8px;
+             align-items: center; }
+  #wSearchForm { margin: 0; flex: 1 1 220px; }
   #wSearchBox { width: 100%; box-sizing: border-box; padding: 5px 8px; font: inherit; }
+  #wGrade { padding: 5px 6px; font: inherit; flex: 0 0 auto; }
+  /* The verdict line spans the row under both of them rather than sharing it. */
+  #wSearchNote { flex: 1 0 100%; }
   /* A phrase in flight. The views below go on showing the answer to the phrase
      before it while the rover is thinking, so the box itself has to show that
      something is happening; a search runs for several seconds, and a screenful

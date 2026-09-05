@@ -193,7 +193,7 @@ function wPlace(entity) {
   line.className = "wmeta";
   if (!place) {
     line.classList.add("wunplaced");
-    line.textContent = "no position yet â€” seen from one place";
+    line.textContent = "no position yet — seen from one place";
     return line;
   }
   // The error is a cigar and not a disc -- long down the line the crossing was
@@ -271,14 +271,66 @@ function wReadFilter() {
                  floor: answer.floor};
 }
 
-// The things the entity list and the map are showing: all of them, or the ones
-// the filter matched with the best-scoring first.
+// How well a thing has to be pinned down before it is worth drawing.
+//
+// **A store this size is mostly things nobody has really located.** Of the 45
+// things on the map on 2026-09-05, a quarter were crossed from two places or
+// fewer, a third carried a look that no longer agrees with the position it is
+// attached to, and the widest error ellipse was 1.4 m across. Drawn together
+// they are one cloud, and a cloud is what made a map of where things are read
+// as a map of where the rover had been.
+//
+// Three bars rather than a slider, because the question a person has is which
+// of these to believe rather than which number to tune, and the two conditions
+// that matter are not one axis. `viewpoints` is how many separated places the
+// crossing was made from, which is the guard against a phantom; `error_major_m`
+// is how long the error ellipse is, which is nearly always the axis down the
+// line of sight and is what "to within" on the row means. `disagreeing` is the
+// third and the sharpest: a look attached to a thing whose bearing or measured
+// range no longer points at it, decided on the rover by the same `locate.agrees`
+// that would attach it today -- see `view.relate`. One of those is a thing whose
+// own evidence has moved out from under it.
+const WGRADES = {
+  all: () => true,
+  agreed: (one) => wPlacedFrom(one) >= 3 && !wDisagreeing(one),
+  settled: (one) => wPlacedFrom(one) >= 4 && !wDisagreeing(one)
+      && wSpread(one) <= 0.3,
+};
+let worldGrade = "all";
+
+const wPlacedFrom = (one) => +((one.placement || {}).viewpoints || 0);
+const wSpread = (one) => +((one.placement || {}).error_major_m
+                           || (one.placement || {}).uncertainty_m || 9);
+// Only the looks the rover sent with this entity, which is the newest handful
+// rather than all of them -- `RAY_LIMIT` in `rover_world.py`. That is the right
+// handful: a thing whose recent looks have stopped agreeing is the case this is
+// looking for, and an old disagreement the thing has since been refitted past is
+// not.
+const wDisagreeing = (one) => (one.rays || []).filter(
+    (ray) => ray.relation && ray.relation.agrees === false).length;
+
+// The things the entity list and the map are showing: the ones well enough
+// placed for the chosen bar, narrowed again by the search and best-scoring
+// first. Both narrowings apply to the list and the map together, because two
+// views of one store disagreeing on screen is the fault this popup exists to
+// make visible and must never itself invent.
 function wShown() {
-  const entities = world.entities || [];
-  if (!worldFilter) return entities;
+  const graded = (world.entities || []).filter(
+      WGRADES[worldGrade] || WGRADES.all);
+  if (!worldFilter) return graded;
   const best = worldFilter.things;
-  return entities.filter((one) => best.has(one.id))
+  return graded.filter((one) => best.has(one.id))
       .sort((a, b) => best.get(b.id) - best.get(a.id));
+}
+
+// How many placed things the bar is holding back, for the line under the map.
+// Counted against what is placed rather than against the whole store, because
+// the things with no position are already reported separately and counting them
+// twice would say the bar had hidden two hundred things it never saw.
+function wHeldBack() {
+  const keep = WGRADES[worldGrade] || WGRADES.all;
+  return (world.entities || []).filter(
+      (one) => one.placement && !keep(one)).length;
 }
 
 // What a row or a tile scored, as the line the two of them share. Dimmed below
@@ -307,7 +359,12 @@ function drawWorldList() {
     // at all and it matching looks the rover has not yet made a thing of --
     // which is the ordinary state of anything seen once, and sends them to the
     // stream rather than to the inspect button.
-    empty.textContent = !worldFilter
+    // A third case joined them: the store has things in it and none of them is
+    // placed well enough for the bar. Saying "none placed" there would blame the
+    // rover for a choice made in this popup.
+    empty.textContent = wHeldBack()
+        ? `${wHeldBack()} placed, none of them this well`
+        : !worldFilter
         ? (summary.observations
            ? `${summary.observations} observations, none placed`
            : summary.inspections
@@ -758,7 +815,7 @@ function drawWorldFilter() {
   }
   note.className = "wverdict " + (answer.confident ? "wfound" : "wmissing");
   note.textContent = (answer.confident
-      ? "found it. " : `nothing here matches â€œ${answer.query}â€. `)
+      ? "found it. " : `nothing here matches “${answer.query}”. `)
       + (answer.detail || "")
       + (answer.skipped ? ` -- ${answer.skipped} skipped, other backend` : "");
 }
@@ -876,4 +933,12 @@ function wireWorld() {
       post({do: "world", what: "search", query: ""});
     }
   });
+  // The bar is a local view of a payload the page already holds, so nothing is
+  // asked of the rover and the two views are redrawn here rather than waiting
+  // for the next state to arrive a second later.
+  $("wGrade").onchange = () => {
+    worldGrade = $("wGrade").value;
+    drawWorldList();
+    drawWorldMap();
+  };
 }

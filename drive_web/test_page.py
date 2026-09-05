@@ -223,6 +223,40 @@ def test_the_search_box_narrows_the_views_rather_than_owning_one() -> None:
           and 'event.key === " " && !phrase' in stop, True)
 
 
+def test_the_evidence_bar_narrows_both_views_and_says_what_it_hid() -> None:
+    """How well placed a thing must be to be drawn, and the count that goes with it.
+
+    The same rule the phrase above obeys: a list narrowed to the well-placed
+    things beside a map still carrying the cloud would be two answers to one
+    question. And a bar that hid things silently would read as a store that had
+    lost them, so the line under the map says how many it is holding back --
+    separately from the things that have no position at all, which is a different
+    absence and already counted there.
+    """
+    html = _console("html")
+    js = _console("world.js")
+
+    check("the bar sits beside the phrase, above the views",
+          html.index('id="wGrade"') < html.index('id="worldBody"'), True)
+    check("...and offers three steps",
+          html[html.index('id="wGrade"'):
+               html.index("</select>", html.index('id="wGrade"'))
+               ].count("<option"), 3)
+    check("every step the markup offers is a step the script knows",
+          sorted(re.findall(r'<option value="([a-z]+)"', html)),
+          sorted(re.findall(r"^  ([a-z]+): \(", js, re.M)))
+    check("the bar is applied where both views read their things",
+          "WGRADES[worldGrade]" in js, True)
+    check("...which is one function they share", js.count("= wShown()"), 2)
+    check("changing it redraws both without asking the rover",
+          '$("wGrade").onchange' in js
+          and "drawWorldList();" in js and "drawWorldMap();" in js, True)
+    check("the line under the map says how many it is holding back",
+          "held} held back" in js, True)
+    check("...counted against what is placed, not against the whole store",
+          "one.placement && !keep(one)" in js, True)
+
+
 def test_the_popup_can_be_read_while_the_rover_is_filling_it() -> None:
     """Nothing a person is inside is thrown away because the store moved.
 
@@ -347,22 +381,32 @@ def test_the_page_has_no_voice_token_control() -> None:
     check("the audio socket carries no token query", "/audio?k=" in html, False)
 
 
+#: What text that has been round-tripped through the wrong encoding looks like
+#: afterwards, as byte patterns. A file read as Latin-1 and written back as UTF-8
+#: turns each byte of a real character into a character of its own, and the
+#: leading byte of the original is what gives it away: a middle dot or a degree
+#: sign starts 0xC2 and comes back with a capital A-circumflex in front of it,
+#: while a curly quote, an em dash or an ellipsis starts 0xE2 and comes back as
+#: a-circumflex followed by a euro sign. Neither pair occurs in honest prose.
+MANGLED = (
+    (rb"\xc3\x82[\xc2-\xc3][\x80-\xbf]", "a middle dot or a degree sign"),
+    (rb"\xc3\xa2\xe2\x82\xac", "a curly quote, an em dash or an ellipsis"),
+)
+
+
 def test_the_console_is_written_in_the_encoding_it_is_served_in() -> None:
     """**Mojibake is invisible to every other check here.**
 
-    The console says things like "3 observations · at (-1.7, 0.4) m · bearing
-    30°", and those two characters are the ones an editor that guessed Latin-1
-    mangles: read the file as Latin-1 and write it back as UTF-8 and every "·"
-    becomes "Â·" on the screen. Nothing else notices -- the file is still valid
-    UTF-8, the page still parses, and the tests above still find every string
-    they look for, because they read the same mangled bytes. It reached the
-    rover: 23 of them were live on the console until 2026-09-05.
-
-    "Â" or "Ã" immediately in front of another non-ASCII character is the
-    signature, and it is one no honest text here has.
+    The console says things like "6 observations, at (-1.7, 0.4) m", with a
+    middle dot between the parts and a degree sign after every bearing, and
+    those are exactly the characters an editor that guessed Latin-1 mangles.
+    Nothing else notices: the file is still valid UTF-8, the page still parses,
+    and the tests above still find every string they look for, because they read
+    the same mangled bytes the browser does. It reached the rover -- 26 of them
+    were live on the console until 2026-09-05, two characters on screen wherever
+    one was meant.
     """
     here = os.path.dirname(os.path.abspath(__file__))
-    doubled = re.compile(rb"[\xc3][\x82-\x9f](?=[\xc2-\xc3][\x80-\xbf])")
     for name in ("drive_web.html", "drive_web.css", "drive_web.js",
                  "drive_world.js", "drive_world_map.js",
                  "drive_world_observations.js"):
@@ -373,13 +417,15 @@ def test_the_console_is_written_in_the_encoding_it_is_served_in() -> None:
         except UnicodeDecodeError:
             check(f"{name} is UTF-8, which is what it is served as", False, True)
             continue
-        check(f"{name} has no UTF-8 read as Latin-1 in it",
-              len(doubled.findall(raw)), 0)
+        for pattern, what in MANGLED:
+            check(f"{name} has {what} the browser can read",
+                  len(re.findall(pattern, raw)), 0)
 
 
 TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
     test_the_console_is_written_in_the_encoding_it_is_served_in,
+    test_the_evidence_bar_narrows_both_views_and_says_what_it_hid,
     test_the_map_offers_two_acts_and_the_script_can_find_them_both,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
