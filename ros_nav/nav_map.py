@@ -273,6 +273,17 @@ class NavMap:
         """
         with self.map_lock:
             pose = self.pose_deg()
+            with self._lock:
+                mapped = self.map_msg is not None
+            if not mapped:
+                # An empty graph is worse than no saved map, and not by a little.
+                # A restore of one comes back saying the map was kept, so the
+                # world state keeps coordinates it recorded in a frame that has
+                # gone -- while the rover, having nothing to anchor on, quietly
+                # starts a new map at wherever odometry happens to begin. Nothing
+                # to map, nothing to save.
+                return False, ("slam_toolbox has not published a map yet, so "
+                               "there is no graph worth keeping")
             if pose is None:
                 return False, ("there is no position, so there is nothing to "
                                "record as where the map was left")

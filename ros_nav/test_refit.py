@@ -356,6 +356,30 @@ def test_the_graph_is_written_for_driving_rather_than_for_time():
               saved.start_pose(), (3.0, 4.0, 90.0))
 
 
+def test_an_empty_graph_is_never_written_down():
+    """A saved empty map is worse than no saved map, and it reads as a success.
+
+    Read as text because the keeper needs rclpy and this file runs on a
+    workstation. The rule is worth pinning even so: a restore of an empty graph
+    comes back saying the map was kept, so the world state keeps coordinates it
+    recorded in a frame that has gone -- while the rover, with nothing to anchor
+    on, quietly starts a new map wherever odometry happens to begin. The two
+    together are exactly the fault map sessions exist to prevent.
+    """
+    section("what the keeper refuses to write")
+    path = os.path.join(HERE, "nav_map.py")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        source = fh.read()
+    saving = source[source.index("def save_graph"):source.index("def load_graph")]
+    check("saving asks whether there is a map at all",
+          "self.map_msg is not None" in saving, True)
+    check("...before it asks slam_toolbox for anything",
+          saving.index("self.map_msg is not None")
+          < saving.index("serialize_client.wait_for_service"), True)
+
+
 TESTS = (
     test_a_nudged_rover_is_found_again,
     test_what_the_sensor_never_heard_does_not_stop_it_fitting,
@@ -369,4 +393,5 @@ TESTS = (
     test_the_saved_map_is_only_usable_once_all_three_files_are_there,
     test_a_cleared_map_does_not_come_back_at_the_next_boot,
     test_the_graph_is_written_for_driving_rather_than_for_time,
+    test_an_empty_graph_is_never_written_down,
 )
