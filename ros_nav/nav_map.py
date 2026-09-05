@@ -409,14 +409,28 @@ class NavMap:
             answer["fitted"] = False
             answer["why"] = "the fit was found but not applied: %s" % (why,)
             return answer
+        # Where the rover actually ended up, which is the mapper's answer and not
+        # this one. It matches the next scan against the graph near the pose it
+        # was handed and keeps its own result, so what is reported is what
+        # happened rather than what was asked for -- measured on the rover, a
+        # 2.5-degree correction handed over came back as no move at all, because
+        # the mapper matched the scan against the node it had just made from it.
         landed = self.pose_deg() or (fit.x_m, fit.y_m, fit.heading_deg)
-        answer["fitted"] = True
         answer["pose"] = {"x_m": round(landed[0], 3), "y_m": round(landed[1], 3),
                           "heading_deg": round(landed[2], 1)}
         answer["moved_m"] = round(math.hypot(landed[0] - where[0],
                                              landed[1] - where[1]), 3)
         answer["turned_deg"] = round(
             (landed[2] - where[2] + 180.0) % 360.0 - 180.0, 1)
+        if (answer["moved_m"] < refit.SETTLED_M
+                and abs(answer["turned_deg"]) < refit.SETTLED_DEG):
+            answer["fitted"] = False
+            answer["why"] = ("the scan fits the map %.0f cm and %.1f degrees "
+                             "from here, but the mapper matched it against its "
+                             "own graph and kept the rover where it was"
+                             % (100.0 * fit.moved_m, fit.turned_deg))
+            return answer
+        answer["fitted"] = True
         answer["why"] = ("the rover was %.0f cm and %.1f degrees from where it "
                          "thought it was, and has been moved onto the map -- "
                          "%.0f%% of the scan now lies on a wall against %.0f%% "

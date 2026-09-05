@@ -220,12 +220,23 @@ def test_the_map_is_smeared_so_the_search_can_find_the_peak():
     section("the map as something a scan can be scored against")
     data = [0] * (20 * 20)
     data[10 * 20 + 10] = 100
-    field = refit.field(Grid(20, 20, 0.05, 0.0, 0.0, data))
-    check("the wall itself scores full", round(float(field[10][10]), 3), 1.0)
+    for cell in range(15 * 20, 20 * 20):
+        data[cell] = -1                     # five rows nobody has mapped
+    walls, known = refit.field(Grid(20, 20, 0.05, 0.0, 0.0, data))
+    check("the wall itself scores full", round(float(walls[10][10]), 3), 1.0)
     check("...five centimetres off scores less but not nothing",
-          0.5 < float(field[10][11]) < 1.0, True)
+          0.5 < float(walls[10][11]) < 1.0, True)
     check("...and a quarter of a metre off scores nothing at all",
-          float(field[10][15]), 0.0)
+          float(walls[10][15]), 0.0)
+    # And the other half of the map: where it has an opinion at all, which is what
+    # decides whether a scan point is scored or passed over.
+    check("mapped floor is somewhere a scan point counts",
+          float(known[2][2]), 1.0)
+    check("...and so is the far side of a wall, within the smear, because a "
+          "point a cell out is what a fit is correcting",
+          float(known[16][2]), 1.0)
+    check("...but open unmapped ground is not",
+          float(known[19][19]), 0.0)
 
 
 def test_the_saved_map_is_only_usable_once_all_three_files_are_there():

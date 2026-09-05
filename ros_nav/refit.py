@@ -53,10 +53,16 @@ The smear is what makes the search find anything at all: against bare occupied
 cells the score is zero everywhere except at the exact answer, and a search over
 a 10 cm grid steps straight over it.
 
-Unknown cells score zero, the same as free ones. That is deliberate rather than
-an oversight -- a scan pointing into a part of the room nobody has mapped tells
-you nothing about where the rover is, and pretending otherwise would let a rover
-facing an unmapped wall fit anywhere.
+**A scan point over ground nobody has mapped is not counted at all**, in either
+half of that average. The map has no opinion about those cells, so scoring them
+as misses makes the answer depend on how much of the house has been explored
+rather than on where the rover is: measured on the rover with a map five square
+metres across, a scan matched against the very map it had just drawn scored 0.72,
+because most of its 8 m reach lay outside the map entirely. Excluding them is
+safe here only because the search is a window -- over a metre, which candidate
+pose is chosen barely changes which points land on mapped ground, so there is
+nothing for a pose to gain by drifting into the unknown. A pose with almost
+nothing left to score is refused rather than believed; see `MIN_POINTS`.
 
 The search is two passes. A coarse one over the whole window at 10 cm and 3
 degrees, which is what finds the answer and what the rival is measured from, and
@@ -146,10 +152,12 @@ DISTINCT_DEG = 15.0
 SETTLED_M = 0.05
 SETTLED_DEG = 2.0
 
-#: Fewer scan points than this and there is nothing to match. A revolution this
-#: thin is a blocked sensor rather than an empty room -- lidar_node.py refuses to
-#: publish one, so in practice this catches a scan whose returns were all beyond
-#: the mapped part of the room.
+#: Fewer scan points than this and there is nothing to match, counted twice: the
+#: returns the sensor gave at all, and then the ones that landed on ground the map
+#: has an opinion about. A revolution this thin is a blocked sensor rather than an
+#: empty room -- lidar_node.py refuses to publish one -- and the second count is
+#: the case that actually happens, which is a rover looking into a room nobody has
+#: mapped yet. Sixty of 360 bins is a sixth of the horizon.
 MIN_POINTS = 60
 
 
@@ -163,7 +171,8 @@ class Fit(object):
     """
 
     def __init__(self, x_m, y_m, heading_deg, score, rival, guess_score,
-                 moved_m, turned_deg, points, ok, why, settled=False):
+                 moved_m, turned_deg, points, ok, why, settled=False,
+                 scored=0):
         self.x_m = x_m
         self.y_m = y_m
         self.heading_deg = heading_deg
@@ -173,6 +182,9 @@ class Fit(object):
         self.moved_m = moved_m
         self.turned_deg = turned_deg
         self.points = points
+        #: How many of those the map had an opinion about, at the winning pose.
+        #: The rest were over unmapped ground and were not scored.
+        self.scored = scored
         self.ok = ok
         self.why = why
         #: The fit agrees with where the rover already thinks it is, so there is
@@ -188,7 +200,7 @@ class Fit(object):
                 "score": round(self.score, 3),
                 "rival": round(self.rival, 3),
                 "guess_score": round(self.guess_score, 3),
-                "points": self.points}
+                "points": self.points, "scored": self.scored}
 
     def __repr__(self):
         return ("Fit(%.3f, %.3f, %.1f deg, score %.3f, rival %.3f, %s)"
@@ -225,20 +237,30 @@ def points_of(ranges, angle_min, angle_increment,
 
 
 def field(grid, smear_m=SMEAR_M):
-    """The map as something a scan can be scored against.
+    """The map as something a scan can be scored against, and where it has a view.
 
-    1.0 on a wall, falling off as a gaussian of distance from the nearest one, as
-    a `(height, width)` array of float32 laid out the way the occupancy grid is.
+    Two `(height, width)` arrays laid out the way the occupancy grid is. The
+    first is 1.0 on a wall, falling off as a gaussian of distance from the
+    nearest one. The second is 1.0 on every cell the mapper has an opinion about
+    -- wall or floor -- and 0.0 on the ones it has never seen, which is what
+    decides whether a scan point is scored at all.
 
-    Built by taking the maximum of the wall mask shifted every way within a few
-    cells and weighted by how far it was shifted, which is a max-filter with a
-    gaussian kernel rather than a blur: two walls a few centimetres apart must
-    not add up to a stronger wall than either, because a scan point can only be
-    on one of them.
+    The field is built by taking the maximum of the wall mask shifted every way
+    within a few cells and weighted by how far it was shifted, which is a
+    max-filter with a gaussian kernel rather than a blur: two walls a few
+    centimetres apart must not add up to a stronger wall than either, because a
+    scan point can only be on one of them.
+
+    The known mask is smeared the same way and for the same reason. Without it a
+    point landing one cell beyond the wall it belongs to -- which is most of what
+    a fit is correcting -- would fall in unmapped space and be dropped from the
+    average exactly when it is the evidence.
     """
     cells = np.asarray(grid.data, dtype=np.int16).reshape(grid.height, grid.width)
     wall = (cells >= OCCUPIED_AT).astype(np.float32)
+    seen = (cells >= 0).astype(np.float32)
     out = wall.copy()
+    known = seen.copy()
     # Two sigma. Past that the weight is under 0.14 and the extra shifts cost
     # more than they change; inside it, this is what lets the coarse pass at 10
     # cm find a peak it would otherwise step straight over.
@@ -251,26 +273,36 @@ def field(grid, smear_m=SMEAR_M):
             weight = math.exp(-(distance ** 2) / (2.0 * smear_m ** 2))
             if weight < 0.05:
                 continue
-            src = wall[max(0, -drow):grid.height - max(0, drow),
-                       max(0, -dcol):grid.width - max(0, dcol)]
-            dst = out[max(0, drow):grid.height - max(0, -drow),
-                      max(0, dcol):grid.width - max(0, -dcol)]
-            np.maximum(dst, src * weight, out=dst)
-    return out
+            rows = slice(max(0, -drow), grid.height - max(0, drow))
+            cols = slice(max(0, -dcol), grid.width - max(0, dcol))
+            into_rows = slice(max(0, drow), grid.height - max(0, -drow))
+            into_cols = slice(max(0, dcol), grid.width - max(0, -dcol))
+            dst = out[into_rows, into_cols]
+            np.maximum(dst, wall[rows, cols] * weight, out=dst)
+            dst = known[into_rows, into_cols]
+            np.maximum(dst, seen[rows, cols], out=dst)
+    return out, known
 
 
-def _scores(flat, grid, points, guess, offsets_x, offsets_y, headings):
-    """Mean field value under the scan, for every pose in a grid of them.
+def _scores(walls, known, grid, points, guess, offsets_x, offsets_y, headings):
+    """How much of the scan lies on a wall, for every pose in a grid of them.
 
-    Returns `(len(headings), len(offsets_y), len(offsets_x))`. The loop is over
-    headings and everything else is one array operation, because rotating the
-    scan is the only part that has to be redone per heading -- the translations
-    are then an outer sum, which is what makes a fourteen-thousand-pose search
-    a tenth of a second rather than a minute.
+    Returns two arrays shaped `(len(headings), len(offsets_y), len(offsets_x))`:
+    the share of the scan lying on a wall, and how many points that share was
+    taken over -- the ones landing on ground the map has an opinion about. A pose
+    whose scan lands entirely on unmapped floor comes back as a zero score over a
+    count of none, rather than as a division by it.
+
+    The loop is over headings and everything else is one array operation, because
+    rotating the scan is the only part that has to be redone per heading -- the
+    translations are then an outer sum, which is what makes a fourteen-thousand
+    pose search a tenth of a second rather than a minute.
     """
     width, height = grid.width, grid.height
     inv = 1.0 / grid.resolution
-    out = np.empty((len(headings), len(offsets_y), len(offsets_x)), np.float32)
+    shape = (len(headings), len(offsets_y), len(offsets_x))
+    out = np.empty(shape, np.float32)
+    counts = np.empty(shape, np.int32)
     shifts = np.stack(np.meshgrid(offsets_x, offsets_y), axis=-1).reshape(-1, 2)
     for h, heading in enumerate(headings):
         angle = math.radians(heading)
@@ -284,15 +316,19 @@ def _scores(flat, grid, points, guess, offsets_x, offsets_y, headings):
         row = np.floor((turned_y[None, :] + shifts[:, 1:2] - grid.origin_y)
                        * inv).astype(np.int32)
         inside = (col >= 0) & (col < width) & (row >= 0) & (row < height)
-        # Clipped so the gather is always in bounds; the mask is what actually
-        # decides. A point off the edge of the map scores zero, which is the same
-        # as one over unmapped floor -- past the grid is somewhere nobody has been.
+        # Clipped so the gather is always in bounds; the masks are what actually
+        # decide. Off the edge of the grid is the same as over a cell nobody has
+        # mapped -- past the map is somewhere nobody has been -- so both are left
+        # out of the average rather than counted as misses.
         np.clip(col, 0, width - 1, out=col)
         np.clip(row, 0, height - 1, out=row)
-        found = np.where(inside, flat[row * width + col], 0.0)
-        out[h] = (found.mean(axis=1)
-                  .reshape(len(offsets_y), len(offsets_x)))
-    return out
+        at = row * width + col
+        counted = inside & (known[at] > 0.0)
+        found = np.where(counted, walls[at], 0.0).sum(axis=1)
+        seen = counted.sum(axis=1)
+        out[h] = (found / np.maximum(seen, 1)).reshape(shape[1:])
+        counts[h] = seen.reshape(shape[1:])
+    return out, counts
 
 
 def _peak(scores, offsets_x, offsets_y, headings):
@@ -319,12 +355,19 @@ def fit(grid, points, guess, window_m=WINDOW_M, window_deg=WINDOW_DEG,
                    "only %d usable returns in the scan, which is not enough to "
                    "match anything" % (len(points),))
 
-    flat = field(grid, smear_m).reshape(-1)
+    walls, known = field(grid, smear_m)
+    walls, known = walls.reshape(-1), known.reshape(-1)
     steps = int(round(window_m / COARSE_STEP_M))
     offsets = np.arange(-steps, steps + 1) * COARSE_STEP_M
     turns = int(round(window_deg / COARSE_STEP_DEG))
     headings = guess[2] + np.arange(-turns, turns + 1) * COARSE_STEP_DEG
-    coarse = _scores(flat, grid, points, guess, offsets, offsets, headings)
+    coarse, seen = _scores(walls, known, grid, points, guess, offsets, offsets,
+                           headings)
+    # A pose the map can barely see is not a candidate at all. Without this the
+    # search could slide the scan off the edge of what has been mapped, where the
+    # handful of points still landing on a wall would average to a fine score
+    # over almost nothing.
+    coarse = np.where(seen >= MIN_POINTS, coarse, 0.0)
 
     score, dx, dy, heading = _peak(coarse, offsets, offsets, headings)
 
@@ -340,45 +383,55 @@ def fit(grid, points, guess, window_m=WINDOW_M, window_deg=WINDOW_DEG,
     # rather than decided on: it is the number that says how badly the rover was
     # placed, and a person reading "62% on a wall against 21% where it stood"
     # can see the difference between a nudge and a rover that had lost the room.
-    guess_score = float(_scores(flat, grid, points, guess,
+    guess_score = float(_scores(walls, known, grid, points, guess,
                                 np.zeros(1), np.zeros(1),
-                                np.array([guess[2]]))[0, 0, 0])
+                                np.array([guess[2]]))[0][0, 0, 0])
 
     fine_offsets = np.arange(-FINE_SPAN_M, FINE_SPAN_M + 1e-9, FINE_STEP_M)
     fine_turns = np.arange(-FINE_SPAN_DEG, FINE_SPAN_DEG + 1e-9, FINE_STEP_DEG)
-    fine = _scores(flat, grid, points, (guess[0] + dx, guess[1] + dy),
-                   fine_offsets, fine_offsets, heading + fine_turns)
+    fine, fine_seen = _scores(walls, known, grid, points,
+                              (guess[0] + dx, guess[1] + dy),
+                              fine_offsets, fine_offsets, heading + fine_turns)
+    fine = np.where(fine_seen >= MIN_POINTS, fine, 0.0)
     score, ddx, ddy, heading = _peak(fine, fine_offsets, fine_offsets,
                                      heading + fine_turns)
+    scored = int(fine_seen.reshape(-1)[int(np.argmax(fine))])
     x, y = guess[0] + dx + ddx, guess[1] + dy + ddy
     moved = math.hypot(x - guess[0], y - guess[1])
     turned = (heading - guess[2] + 180.0) % 360.0 - 180.0
 
+    if scored < MIN_POINTS:
+        return Fit(x, y, heading, score, rival, guess_score, moved, turned,
+                   len(points), False,
+                   "only %d of the %d returns in this scan land on ground that "
+                   "has been mapped, which is not enough to place the rover by: "
+                   "it is looking into a part of the room nobody has driven"
+                   % (scored, len(points)), scored=scored)
     if score < min_score:
         return Fit(x, y, heading, score, rival, guess_score, moved, turned,
                    len(points), False,
                    "the scan does not fit the map anywhere near here -- the best "
                    "of %d poses put %.0f%% of it on a wall, and a fit needs %.0f%%"
-                   % (coarse.size, 100.0 * score, 100.0 * min_score))
+                   % (coarse.size, 100.0 * score, 100.0 * min_score), scored=scored)
     if rival > 0.0 and score < rival * MIN_MARGIN:
         return Fit(x, y, heading, score, rival, guess_score, moved, turned,
                    len(points), False,
                    "the scan fits the map in two different places about equally "
                    "well (%.0f%% here against %.0f%% elsewhere), so which one the "
                    "rover is standing in is not something this can tell"
-                   % (100.0 * score, 100.0 * rival))
+                   % (100.0 * score, 100.0 * rival), scored=scored)
     if moved < SETTLED_M and abs(turned) < SETTLED_DEG:
         return Fit(x, y, heading, score, rival, guess_score, moved, turned,
                    len(points), True,
                    "the rover is where it thinks it is, to within %.0f cm and "
                    "%.1f degrees, so nothing was moved"
-                   % (100.0 * moved, abs(turned)), settled=True)
+                   % (100.0 * moved, abs(turned)), settled=True, scored=scored)
     return Fit(x, y, heading, score, rival, guess_score, moved, turned,
                len(points), True,
                "the scan fits the map %.0f cm and %.1f degrees from where the "
                "rover thought it was, with %.0f%% of it on a wall against %.0f%% "
                "where it stood" % (100.0 * moved, turned, 100.0 * score,
-                                   100.0 * guess_score))
+                                   100.0 * guess_score), scored=scored)
 
 
 def cast(grid, pose, bins=360, range_max=8.0):
