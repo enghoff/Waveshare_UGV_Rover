@@ -378,6 +378,13 @@ class Omni:
         self._frames: Frames | None = None
         self._wire: Any = None
         self._detached_at = time.monotonic()
+        # Somebody has asked for the conversation to stop. Kept as well as the
+        # asyncio Event `turn_off` sets, because that Event belongs to one
+        # conversation and there is a moment between two of them where setting it
+        # would land on the one that has already finished -- and a button press
+        # lost that way is a console that says "closing" over a rover still
+        # listening.
+        self._quit = False
 
     def _note(self, text: str, err: bool = False) -> None:
         """Say one line to the console, and write the same line down.
@@ -422,6 +429,7 @@ class Omni:
                     f"{KEY_PATH}, one line, mode 600.")
                 return self.error
             self.state, self.error, self.since = "starting", "", time.monotonic()
+            self._quit = False
             # The grace before an unattended session closes itself runs from
             # here, not from whenever a browser last let go. Without this the
             # console's own start time is the clock, so a session opened an hour
@@ -435,12 +443,13 @@ class Omni:
         return ""
 
     def turn_off(self) -> None:
+        with self._lock:
+            self._quit = True
+            if self.state in ("starting", "live"):
+                self.state = "closing"
         loop, stop = self._loop, self._stop
         if loop is not None and stop is not None:
             loop.call_soon_threadsafe(stop.set)
-        with self._lock:
-            if self.state in ("starting", "live"):
-                self.state = "closing"
 
     def close(self) -> None:
         self.turn_off()
@@ -591,7 +600,7 @@ class Omni:
         with self._lock:
             attached = self._wire is not None
             lived = time.monotonic() - self.since if self.since else 0.0
-            again = attached and lived >= SHORT_SESSION_S
+            again = attached and lived >= SHORT_SESSION_S and not self._quit
             if again:
                 self.state, self.error, self.since = ("starting", "",
                                                       time.monotonic())

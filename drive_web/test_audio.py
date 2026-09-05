@@ -439,7 +439,7 @@ def test_the_model_hanging_up_on_a_quiet_room() -> None:
         def release(self, why: str) -> None:
             self.let_go = why
 
-    def run(endings, *, holding: bool, lived: float = 400.0):
+    def run(endings, *, holding: bool, lived: float = 400.0, stop: bool = False):
         """One `_run` with the conversation faked out. Returns what was said."""
         said: list[str] = []
         browser = Browser() if holding else None
@@ -458,6 +458,8 @@ def test_the_model_hanging_up_on_a_quiet_room() -> None:
                 ending = endings[min(len(attempts) - 1, len(endings) - 1)]
                 if len(attempts) == 1:
                     console.since = time.monotonic() - lived
+                    if stop:
+                        console.turn_off()      # the button, as this one dies
                 if ending is not None:
                     raise ending
 
@@ -498,7 +500,15 @@ def test_the_model_hanging_up_on_a_quiet_room() -> None:
     check("...and the page is told to put the microphone down",
           browser.let_go, omni_bridge.HUNG_UP)
 
-    # 4. The other 1007. Still an error, still reported, still not retried.
+    # 4. The button, pressed while the conversation it belongs to is on its way
+    #    out. The asyncio event it sets belongs to that conversation, so on its
+    #    own it would be set on the one already finished and the console would go
+    #    on talking under a page that says "closing".
+    console, said, attempts, browser = run([hangup(quiet)], holding=True, stop=True)
+    check("a stop pressed as the service hangs up is not overtaken by the redial",
+          len(attempts), 1)
+
+    # 5. The other 1007. Still an error, still reported, still not retried.
     console, said, attempts, browser = run([hangup(exhausted)], holding=True)
     check("an exhausted account is not dialled again", len(attempts), 1)
     check("...it is reported", "free tier" in console.error, True)
