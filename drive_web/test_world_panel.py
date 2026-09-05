@@ -896,6 +896,15 @@ def test_the_popup_gets_a_map_wide_enough_for_what_it_draws() -> None:
     session.world_map_done_at = 1000.0
     check("a picture that is still fresh is left alone",
           session.world_map_due(1000.0 + WORLD_MAP_GAP_S / 2), None)
+    # And is left alone without walking the store to decide it. The pump runs ten
+    # times a second beside SLAM, and one pass over the 203 things this rover was
+    # holding is a couple of milliseconds on the Orin -- so an answer that cannot
+    # have changed must not be worked out again.
+    session.world_marks = lambda: (_ for _ in ()).throw(
+        AssertionError("the extent was worked out again for nothing"))
+    check("...and without counting the store again to say so",
+          session.world_map_due(1000.0 + WORLD_MAP_GAP_S / 2), None)
+    del session.world_marks
     check("...and one that has gone stale is drawn again",
           session.world_map_due(1000.0 + WORLD_MAP_GAP_S + 1) is not None, True)
     session.world_payload = _a_room((0.0, 0.0), (7.0, 0.5), (1.2, -0.4))

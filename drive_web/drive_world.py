@@ -170,6 +170,10 @@ class SessionWorld:
         self.world_map_asked = 0.0
         self.world_map_outstanding = False
         self.world_map_done_at = 0.0
+        #: The payload and the choice the extent was last worked out from, so
+        #: that a pump running ten times a second does not walk twelve hundred
+        #: looks to reach the same answer. See `world_map_due`.
+        self.world_map_stamp: tuple | None = None
 
     # --- what the buttons ask for --------------------------------------------
 
@@ -558,16 +562,27 @@ class SessionWorld:
         the picture has simply grown old while somebody watched it. Both only
         while the popup is open, because a shut popup draws nothing and this is
         the most expensive thing the console asks the rover for.
+
+        **Worked out only when something could have moved it**, which is the
+        difference between free and not. Measured on the store this rover was
+        holding -- 203 things and about 1200 looks -- one pass over the marks is
+        0.7 ms here and a few on the Orin, and the pump would otherwise run it
+        ten times a second for as long as the popup stayed open, next to SLAM,
+        to arrive at the same number every time. The payload's own generation and
+        the chosen thing are between them everything the answer depends on.
         """
         if (self.picture is None or not self.world["open"]
                 or self.world_map_outstanding):
             return None
+        stale = now - self.world_map_done_at > WORLD_MAP_GAP_S
+        stamp = (self.world["gen"], self.world_selected)
+        if stamp == self.world_map_stamp and not stale:
+            return None
+        self.world_map_stamp = stamp
         half = self.world_map_extent()
         if half is None:
             return None
-        if half != self.world_map_asked:
-            return half
-        return half if now - self.world_map_done_at > WORLD_MAP_GAP_S else None
+        return half if half != self.world_map_asked or stale else None
 
     def world_map_refresh(self, half: float) -> None:
         """Ask for it, on the connection the driving map already uses.
