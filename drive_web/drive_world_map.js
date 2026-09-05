@@ -42,101 +42,124 @@ function wRing(x, y, majorM, minorM, tiltDeg, view, steps) {
   return "M " + points.map(([px, py]) => `${px} ${py}`).join(" L ") + " Z";
 }
 
-// Which way a world bearing points once it is on the screen. Read off the map's
-// own transform rather than assumed, so it stays right when the map is rover-up.
-function wScreenDeg(x, y, bearingDeg, view) {
-  const t = bearingDeg * Math.PI / 180;
-  const [ax, ay] = wPointToPx(x, y, view);
-  const [bx, by] = wPointToPx(x + Math.cos(t), y + Math.sin(t), view);
-  return Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
-}
-
-// Where the rover stood and which way it was facing, as a small arrowhead. The
-// rover's own heading, not the camera's: the gimbal is drawn separately, because
-// "standing here, facing there, looking over its shoulder" is three facts and one
-// arrow can only carry two of them.
-function wObserverMark(into, ray, view, hue, size, pen) {
-  const [px, py] = wPointToPx(ray.x_m, ray.y_m, view);
-  const screen = wScreenDeg(ray.x_m, ray.y_m, ray.heading_deg || 0, view)
-                 * Math.PI / 180;
-  const corner = (deg, r) => {
-    const a = screen + deg * Math.PI / 180;
-    return `${px + r * Math.cos(a)} ${py + r * Math.sin(a)}`;
-  };
-  into.append(wSvg("path", {
-    d: `M ${corner(0, size)} L ${corner(140, size * 0.8)} `
-       + `L ${corner(220, size * 0.8)} Z`,
-    fill: `hsl(${hue} 70% 35%)`,
-    "fill-opacity": "0.95",
-    stroke: "rgba(255,255,255,.8)",
-    "stroke-width": pen(0.5),
-  }));
-}
-
-// How far along its own bearing a look's line is drawn: to the thing where the
-// thing has a position, and to the length the look itself claims where it does
-// not. Asked here by both the drawing and the sizing of the view, so that the
-// window cannot be worked out from a different reach than the one on screen.
-function wReach(ray, place) {
-  return place && ray.relation ? Math.max(0.3, ray.relation.range_m)
-                               : ray.length_m;
-}
-
-// The part of the map picture the panel shows, as a square in its pixels. It has
-// to hold every point given -- where each look was taken from, how far it runs,
-// and the ring round the position that was settled on -- with a margin, and it
-// is not allowed to close in past `floor`: a thing seen once from a metre away
-// would otherwise be blown up to fill the panel at a magnification none of the
-// measurements behind it support.
+// The window the panel shows, as a square in the picture's own pixels: the map
+// itself, centred, with a margin round it.
 //
-// **It is not clamped to the picture.** Half of what the rover has seen was seen
-// from outside the six metres the map is drawn across, and a window slid back
-// inside the edge would put the chosen thing somewhere off-centre with nothing
-// saying why. Outside the picture is empty, and the line under the map says the
-// view has left it.
-function wWindow(points, floor, ceiling) {
+// **Framed on the room and not on the picture.** The picture is centred on
+// wherever the rover happens to be standing and is as wide as the widest thing
+// the panel has to hold, so on a rover parked in a corner the room sat in one
+// half of it and the other half was the grey of a grid nobody has driven
+// through. `known_box_m` is the rover's own answer to "where is the map",
+// measured off the occupancy grid before the camera cone and the scale bar are
+// drawn over it -- so a cone reaching five metres into an unvisited room cannot
+// drag the frame off the floor the rover has actually seen.
+//
+// Square, because the picture is square and the frame stretches the drawing over
+// it; kept inside the picture, because past the edge is black and sliding the
+// view off the map to keep a box centred shows less map rather than more.
+const WMAP_MARGIN = 0.06;
+
+function wMapWindow(view, size, floorPx) {
+  const box = view && view.known_box_m;
+  if (!Array.isArray(box) || box.length !== 4) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const [x, y] of points) {
-    x0 = Math.min(x0, x); y0 = Math.min(y0, y);
-    x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  // Through `wPointToPx` corner by corner rather than by scaling the metres,
+  // because the map can be drawn rover-up and the box is then a diamond.
+  for (const [mx, my] of [[box[0], box[1]], [box[2], box[1]],
+                          [box[0], box[3]], [box[2], box[3]]]) {
+    const [px, py] = wPointToPx(mx, my, view);
+    x0 = Math.min(x0, px); y0 = Math.min(y0, py);
+    x1 = Math.max(x1, px); y1 = Math.max(y1, py);
   }
   if (!isFinite(x0)) return null;
-  const side = Math.min(ceiling,
-      Math.max(floor, (x1 - x0) * 1.2, (y1 - y0) * 1.2));
-  return [(x0 + x1) / 2 - side / 2, (y0 + y1) / 2 - side / 2, side];
+  const wanted = Math.max(x1 - x0, y1 - y0) * (1 + 2 * WMAP_MARGIN);
+  const side = Math.max(floorPx, Math.min(size, wanted));
+  const fit = (centre) => Math.max(0, Math.min(size - side, centre - side / 2));
+  return [fit((x0 + x1) / 2), fit((y0 + y1) / 2), side, wanted > size];
 }
 
-// Which look the map should pick out, or null for none of them. Every look was
-// drawn into a group carrying the row it came from, so this is two classes and
-// not a redraw -- which matters, because it runs on every pointer move across
-// the list and the map is several hundred lines.
+// Choosing a thing by pointing at it. **The map is a locator now, not a canvas
+// of evidence**: it carries one mark per thing and nothing else, and the list,
+// the pane of looks and the observation stream beside it are what the pointer
+// fills in. A click as well would make this the one panel here that has to be
+// operated rather than read.
 //
-// A row whose look never reached the map -- no pose, so no bearing -- lights
-// nothing and dims nothing, rather than fading the map to say "not this one".
-function wHighlight(id) {
-  worldHover = id;
-  const svg = $("wRays");
-  let found = false;
-  for (const group of svg.querySelectorAll("g.wray")) {
-    const hot = id != null && group.dataset.obs === String(id);
-    group.classList.toggle("whot", hot);
-    found = found || hot;
+// Delayed by `WPICK_MS`, and that is not a nicety. Choosing fetches the thing's
+// looks off the rover and moves a payload that every browser on this console
+// shares, so a pointer swept across a cluster of forty marks has to buy one of
+// those and not forty.
+const WPICK_MS = 140;
+let worldPickTimer = null;
+// Where the marks are, in the units the frame is drawn in, and what the frame is
+// showing. Kept because the pointer is answered against the *nearest* mark and
+// not against whatever element happens to be under it.
+let worldPickMarks = [], worldPickBox = null, worldPickNear = "";
+
+// **Nearest wins, not topmost.** A mark is three pixels across, so it needs a
+// target bigger than itself; give each one its own and a room's worth of them
+// overlap, at which point the one drawn last is the one the pointer hits and a
+// person aiming at a thing chooses its neighbour. Measured against a real store
+// of 105 marks that is not an edge case, it is most of the map. So the frame
+// answers the pointer itself: whichever centre is closest, if any is close
+// enough.
+//
+// One handler on the frame is also what survives a redraw. The marks are
+// replaced every time a body arrives, which is about once a second while the
+// rover is looking, and a handler belonging to a mark would go with it.
+function wPickOn(svg) {
+  svg.onpointermove = (event) => {
+    if (!worldPickBox) return;
+    const [vx, vy, side] = worldPickBox;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    // The frame is stretched over the panel -- `preserveAspectRatio="none"` --
+    // so this is the plain proportion either way, and it stays right when the
+    // panel is resized without anything having to be redrawn.
+    const ux = vx + (event.clientX - rect.left) / rect.width * side;
+    const uy = vy + (event.clientY - rect.top) / rect.height * side;
+    const reach = side / 25;
+    let best = "", nearest = reach * reach;
+    for (const mark of worldPickMarks) {
+      const away = (mark.x - ux) ** 2 + (mark.y - uy) ** 2;
+      if (away < nearest) { nearest = away; best = mark.id; }
+    }
+    wPickNear(svg, best);
+  };
+  // Leaving the map drops a choice that has not been bought yet. It does not
+  // undo one that has: the pane beside this is showing that thing's looks, and a
+  // panel that emptied itself when the pointer wandered off would be unreadable.
+  svg.onpointerleave = () => { wPickNear(svg, ""); };
+}
+
+// The thing the pointer is closest to: marked at once, chosen a moment later.
+//
+// The delay is not a nicety. Choosing fetches the thing's looks off the rover
+// and moves a payload every browser on this console shares, so a pointer swept
+// across a room's worth of marks must buy one of those and not a hundred. What
+// happens immediately is the ring, so that the wait reads as aim rather than as
+// a map ignoring the pointer.
+function wPickNear(svg, id) {
+  if (id !== worldPickNear) {
+    worldPickNear = id;
+    for (const mark of svg.querySelectorAll("g.wdot")) {
+      mark.classList.toggle("wnear", !!id && mark.dataset.entity === id);
+    }
   }
-  svg.classList.toggle("whover", found);
+  clearTimeout(worldPickTimer);
+  if (!id || id === state.world.selected) return;
+  worldPickTimer = setTimeout(
+      () => post({do: "world", what: "select", id: id}), WPICK_MS);
 }
 
 function drawWorldMap() {
   const wrap = $("wMapWrap"), note = $("wMapNote"), svg = $("wRays");
   // **The popup has a map of its own, and this is which one is under it.** The
   // card behind this popup is drawn a few metres around wherever the rover is
-  // standing, because that is what driving needs; this panel draws bearings
-  // taken from all over a flat, so a thing placed six metres away sat on black
-  // with "outside the drawn map" underneath. The console now asks the rover for
-  // a second picture wide enough to hold what is drawn here -- see
-  // `world_map_extent` -- and everything below is laid over whichever of the two
-  // is in hand. The driving map is the fallback rather than the default: it is
-  // what there is until the first of the wider ones lands, which is a second or
-  // so after the popup opens.
+  // standing, because that is what driving needs; this panel is about where
+  // things are in a whole flat, so a thing placed six metres away sat on black.
+  // The console asks the rover for a second picture wide enough to hold both the
+  // things and the map -- see `world_map_extent` -- and the driving map is the
+  // fallback for the second between the popup opening and the first one landing.
   const picture = state.world.map && state.world.map.gen
       ? {gen: state.world.map.gen, view: state.world.map.view,
          width: state.world.map.width, src: "/world_map.png"}
@@ -147,45 +170,23 @@ function drawWorldMap() {
   // covered in every thing the rover has seen, next to a list narrowed to one of
   // them, is two answers to one question.
   const entities = wShown();
-  // A thing chosen before a filter narrowed it away is still in the pane beside
-  // the list, but it is not on this map: nothing drawn here is the chosen one,
-  // and a map of one missing thing would be a map of nothing.
   const selected = entities.some((one) => one.id === state.world.selected)
       ? state.world.selected : "";
-  // **Once a thing is chosen it is the only thing drawn.** Ninety-three things'
-  // bearings laid over a map six metres across is a green smear a centimetre
-  // deep, and the one question this map answers -- whether a thing's own looks
-  // agree about where it is -- cannot be read out of it at all. Every other
-  // thing used to be drawn faintly behind the chosen one, which kept the smear
-  // and made it grey. Nothing chosen still draws them all, and that is the
-  // overview: where the things are, one look each.
-  const drawing = selected
-      ? entities.filter((one) => one.id === selected) : entities;
-  // The chosen entity's own reply carries more of its looks than the list does,
-  // and it is the one being examined, so it wins where both have the thing.
-  const chosen = world.selected && world.selected.id === selected
-      ? world.selected : null;
-  const shown = [];
-  for (const entity of drawing) {
-    const rays = (selected && chosen && (world.selected_rays || []).length)
-        ? world.selected_rays : (entity.rays || []);
-    // One sighting each while nothing is chosen, so the picture stays readable;
-    // all of a chosen thing's, because whether its own looks converge on the
-    // position it settled on is the question the map is here to answer.
-    shown.push({entity: entity, rays: selected ? rays : rays.slice(-1)});
-  }
-  const sightings = shown.reduce((n, one) => n + one.rays.length, 0);
-  const placed = drawing.filter((one) => one.placement
-      && (!(world.summary || {}).map_session
-          || one.placement_map_session === world.summary.map_session));
-  if (!view || !view.pose || !picture.gen || (!sightings && !placed.length)) {
+  // A position measured against a map that has since been cleared is not a
+  // position on this one. Those things stay in the list, where their looks and
+  // their pictures still mean something; they are not on the map, and the line
+  // underneath says how many.
+  const session = (world.summary || {}).map_session;
+  const placed = entities.filter((one) => one.placement
+      && (!session || one.placement_map_session === session));
+  if (!view || !view.pose || !picture.gen) {
     wrap.hidden = true;
     note.textContent = !picture.gen ? "no map yet"
-        : !sightings ? "nothing observed from a known pose"
         : "the map did not say where it was drawn from";
     return;
   }
   wrap.hidden = false;
+  wPickOn(svg);
   $("wMapImg").src = `${picture.src}?gen=${picture.gen}`;
   const size = picture.width || 1;
   svg.replaceChildren();
@@ -195,221 +196,95 @@ function drawWorldMap() {
     const [bx, by] = wPointToPx(metres, 0, view);
     return Math.hypot(bx - ax, by - ay);
   };
-  const placeOf = (entity) => (placed.includes(entity) ? entity.placement : null);
-  // A point a given distance along a given bearing from where a look was taken.
-  const along = (ray, deg, len) => {
-    const t = deg * Math.PI / 180;
-    return wPointToPx(ray.x_m + len * Math.cos(t),
-                      ray.y_m + len * Math.sin(t), view);
-  };
 
-  // --- the window, which is the whole map until something is chosen ----------
-  //
-  // A thing and its looks are a metre or two of a map drawn six metres across,
-  // and at full extent the fork between a bearing and the position it argues
-  // about is a few pixels wide. So the panel closes in on the chosen thing: the
-  // same picture, a smaller piece of it.
-  const marks = [];
-  for (const {entity, rays} of shown) {
-    const place = placeOf(entity);
-    for (const ray of rays) {
-      const reach = wReach(ray, place);
-      const half = (ray.span_deg || 12) / 2;
-      marks.push(wPointToPx(ray.x_m, ray.y_m, view),
-                 along(ray, ray.bearing_deg, reach),
-                 along(ray, ray.bearing_deg - half, reach),
-                 along(ray, ray.bearing_deg + half, reach));
-    }
-    if (place) {
-      const reach = Math.max(+place.error_major_m || 0,
-                             +place.extent_m || 0, 0.25);
-      for (const corner of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-        marks.push(wPointToPx(place.x_m + corner[0] * reach,
-                              place.y_m + corner[1] * reach, view));
-      }
-    }
-  }
-  const closeup = selected
-      ? wWindow(marks, metresToPx(2.5), size * 3) : null;
-  const [vx, vy, side] = closeup || [0, 0, size];
+  // --- the window -----------------------------------------------------------
+  const window_ = wMapWindow(view, size, metresToPx(2));
+  const [vx, vy, side] = window_ || [0, 0, size];
   const zoom = size / side;
   svg.setAttribute("viewBox", `${vx} ${vy} ${side} ${side}`);
-  // The picture under the lines has to move with them. It is one PNG at a fixed
+  // The picture under the marks has to move with them. It is one PNG at a fixed
   // resolution, so this is that same window taken out of it, and its cells come
   // out as the squares they are rather than as a blur -- see `.wclose`.
   const image = $("wMapImg");
-  image.style.transform = closeup
+  image.style.transform = window_
       ? `scale(${zoom}) translate(${-vx / size * 100}%, ${-vy / size * 100}%)`
       : "";
   image.classList.toggle("wclose", zoom > 1.5);
-  // Every width, radius and letter below is in the map's own pixels, so closing
-  // in would thicken all of them by the same factor and a magnified view would
-  // be drawn in crayon. This is what keeps a line the width it was on screen.
+  // Every radius and width below is in the map's own pixels, so closing in would
+  // thicken all of them by the same factor and a fitted view would be drawn in
+  // crayon. This is what keeps a mark the size it was on screen.
   const pen = (n) => n / zoom;
-  // The same unit, where the stylesheet can reach it: what it draws heavier is
-  // the one look the pointer is resting on.
   svg.style.setProperty("--wpen", pen(1));
-  let agreeing = 0, disagreeing = 0;
 
-  // --- what each look says, and how it stands to where the thing was settled --
-  for (const {entity, rays} of shown) {
-    const hue = wHue(entity.id);
-    const place = placeOf(entity);
-    for (const ray of rays) {
-      const relation = ray.relation;
-      const agrees = relation ? relation.agrees : null;
-      if (agrees === true) agreeing++;
-      if (agrees === false) disagreeing++;
-      const [x0, y0] = wPointToPx(ray.x_m, ray.y_m, view);
-      // Everything this one look draws, in a group carrying the row it was read
-      // from. That is what lets the pointer resting on a row in the list beside
-      // the map pick the look out here -- see `wHighlight` -- without the map
-      // having to be drawn again for every pointer move.
-      const drawn = wSvg("g", {class: "wray"});
-      if (ray.id != null) drawn.setAttribute("data-obs", ray.id);
-      svg.append(drawn);
-
-      // The cone the box actually subtends, drawn only as far as the thing is:
-      // a wedge running past the settled position claims the rover measured a
-      // direction further out than it was looking at anything.
-      const reach = wReach(ray, place);
-      const half = (ray.span_deg || 12) / 2;
-      const at = (deg, len) => along(ray, deg, len);
-      {
-        const [xa, ya] = at(ray.bearing_deg - half, reach);
-        const [xb, yb] = at(ray.bearing_deg + half, reach);
-        drawn.append(wSvg("path", {
-          d: `M ${x0} ${y0} L ${xa} ${ya} L ${xb} ${yb} Z`,
-          fill: `hsl(${hue} 70% 50%)`, "fill-opacity": "0.13",
-        }));
-      }
-
-      // **The sight line ends at the thing, and that is the change.** It used to
-      // be a stub of a fixed 2.5 m, so a look and the position it supports were
-      // two unconnected marks on the map and no arrangement of them read as
-      // wrong. Drawn to the settled point, a look that disagrees is a fork --
-      // the measured bearing going one way, the thing sitting off it -- and how
-      // far the two part is the miss in metres the row beside it reports.
-      if (place) {
-        const [xp, yp] = wPointToPx(place.x_m, place.y_m, view);
-        drawn.append(wSvg("line", {
-          x1: x0, y1: y0, x2: xp, y2: yp,
-          stroke: `hsl(${hue} 70% 40%)`,
-          "stroke-width": pen(agrees ? 1.8 : 1.2),
-          "stroke-opacity": agrees ? "0.95" : "0.5",
-          "stroke-dasharray": agrees ? "" : `${pen(size / 90)} ${pen(size / 90)}`,
-        }));
-      }
-      // And the bearing this look actually measured, always: where it agrees it
-      // lies under the sight line and adds nothing, and where it does not it is
-      // the other half of the fork.
-      const [xt, yt] = at(ray.bearing_deg, reach);
-      drawn.append(wSvg("line", {
-        x1: x0, y1: y0, x2: xt, y2: yt,
-        stroke: `hsl(${hue} 70% 30%)`,
-        "stroke-width": pen(agrees === false ? 2 : 1.4),
-        "stroke-opacity": "0.9",
-      }));
-      // Where the gimbal was pointing is inside the bearing already; what this
-      // adds is the rover's own facing, so a standstill that swept the camera
-      // and a drive that turned the whole rover are different pictures.
-      if (ray.heading_deg !== undefined && ray.heading_deg !== null) {
-        wObserverMark(drawn, ray, view, hue, pen(Math.max(2.5, size / 90)), pen);
-      }
-    }
-  }
-
-  // --- the one position the application has settled on -----------------------
+  // --- one mark per thing, and nothing else ---------------------------------
   //
-  // Drawn last so it sits on top of every line that argues about it, and drawn
-  // as the shape the fix measured rather than as a disc. A crossing taken at a
-  // shallow angle is uncertain a long way down its own line of sight and precise
-  // across it, and `locate.fix` records that as a major axis, a minor and a
-  // direction; a circle of the major radius says the rover is equally unsure in
-  // every direction, which is both wrong and flattering in the one direction
-  // that matters.
+  // **The bearings, the sight lines and the names are gone from here.** Two
+  // hundred things' worth of them over one room was a coloured haze with the
+  // map invisible underneath, and the questions they answered -- where was this
+  // look taken from, does it agree with the rest -- are answered in numbers on
+  // the look's own row in the pane beside this. What a map is good at is *where*,
+  // and that is now all it claims.
+  const marks = [];
   for (const entity of placed) {
     const hue = wHue(entity.id);
     const place = entity.placement;
     const [x, y] = wPointToPx(place.x_m, place.y_m, view);
-    const major = Math.max(0.02, +place.error_major_m
-                                 || +entity.placement_uncertainty_m || 0.2);
-    const minor = Math.max(0.02, +place.error_minor_m || major);
+    const on = entity.id === selected;
+    const mark = wSvg("g", {class: "wdot" + (on ? " won" : "")});
+    mark.setAttribute("data-entity", entity.id);
 
-    // How wide the thing itself is, measured from the crops that placed it. The
-    // ellipse is where its centre might be; this is the silhouette a later
-    // bearing has to land inside to be counted as pointing at it, so the two
-    // are different questions and are drawn as different rings.
-    if (place.extent_m) {
-      svg.append(wSvg("path", {
-        d: wRing(place.x_m, place.y_m, +place.extent_m, +place.extent_m, 0, view),
-        fill: "none", stroke: `hsl(${hue} 70% 45%)`,
-        "stroke-width": pen(0.9), "stroke-opacity": "0.55",
-        "stroke-dasharray": `${pen(size / 120)} ${pen(size / 120)}`,
+    // How sure the crossing was, for the chosen thing alone. It is the one claim
+    // a dot cannot make and the one a person examining a thing needs, and drawn
+    // for all of them it is the haze again.
+    if (on) {
+      const major = Math.max(0.02, +place.error_major_m
+                                   || +entity.placement_uncertainty_m || 0.2);
+      mark.append(wSvg("path", {
+        d: wRing(place.x_m, place.y_m, major,
+                 Math.max(0.02, +place.error_minor_m || major),
+                 place.error_major_deg, view),
+        fill: `hsl(${hue} 70% 50%)`, "fill-opacity": "0.25",
+        stroke: `hsl(${hue} 70% 30%)`, "stroke-width": pen(1.2),
       }));
     }
-    svg.append(wSvg("path", {
-      d: wRing(place.x_m, place.y_m, major, minor, place.error_major_deg, view),
-      fill: `hsl(${hue} 70% 50%)`, "fill-opacity": "0.32",
-      stroke: `hsl(${hue} 70% 28%)`, "stroke-width": pen(1.4),
-      "stroke-opacity": "1",
+    const r = pen(Math.max(1.5, size / 200)) * (on ? 1.8 : 1);
+    mark.append(wSvg("circle", {
+      cx: x, cy: y, r: r, fill: `hsl(${hue} 70% ${on ? 30 : 45}%)`,
+      stroke: "rgba(255,255,255,.9)", "stroke-width": pen(on ? 1.1 : 0.7),
     }));
-    const r = pen(Math.max(1.5, size / 200));
-    svg.append(wSvg("circle", {
-      cx: x, cy: y, r: r, fill: `hsl(${hue} 70% 20%)`,
-      stroke: "rgba(255,255,255,.85)", "stroke-width": pen(0.7),
-      "fill-opacity": "1",
-    }));
-    const label = wSvg("text", {
-      x: x + r * 1.6, y: y - r * 1.2,
-      "font-size": pen(Math.max(9, size / 40)),
-      fill: `hsl(${hue} 70% 25%)`, stroke: "rgba(255,255,255,.75)",
-      "stroke-width": pen(0.6), "paint-order": "stroke",
-    });
-    label.textContent = entity.id;
-    svg.append(label);
+    // Where the pointer is answered from -- see `wPickOn`, which measures
+    // against these rather than waiting to be hit.
+    marks.push({id: entity.id, x: x, y: y});
+    svg.append(mark);
   }
-  // An unplaced thing has nowhere to put a label, so its newest sighting carries
-  // one instead -- otherwise the only entities named on the map are the ones
-  // that already worked, which is the wrong half to show.
-  for (const {entity, rays} of shown) {
-    if (placeOf(entity) || !rays.length) continue;
-    const ray = rays[rays.length - 1];
-    const [tx, ty] = along(ray, ray.bearing_deg, ray.length_m);
-    const label = wSvg("text", {
-      x: tx, y: ty, "font-size": pen(Math.max(9, size / 40)),
-      fill: `hsl(${wHue(entity.id)} 70% 30%)`, stroke: "rgba(255,255,255,.7)",
-      "stroke-width": pen(0.6), "paint-order": "stroke",
-    });
-    label.textContent = entity.id;
-    svg.append(label);
-  }
-  // Whatever the pointer was resting on before this redraw is still what it is
-  // resting on: the list underneath it did not move, and a highlight that fell
-  // off every couple of seconds would read as the map losing track.
-  wHighlight(worldHover);
 
-  // What is on the screen, which is now one thing's evidence rather than the
-  // whole store's.
-  const bits = selected
-      ? [selected, `${sightings} sighting${sightings === 1 ? "" : "s"}`]
-      : [`${placed.length} placed`,
-         `${sightings} sighting${sightings === 1 ? "" : "s"}`];
-  if (agreeing || disagreeing) {
-    bits.push(`${agreeing} on it, ${disagreeing} off it`);
-  }
-  if (closeup) {
-    bits.push(`${(side / metresToPx(1)).toFixed(1)} m across`);
-    // It should not say this any more, and that is why it is still here. The
-    // console asks the rover for a picture wide enough to hold what is drawn on
-    // it, so a window leaving that picture now means one of two real things: the
-    // wider map has not arrived yet and this is still the driving one, or the
-    // thing is further from the rover than the renderer will draw -- twelve
-    // metres each way, which no longer fits in one picture. Both are worth
-    // saying; neither is the ordinary case it used to be.
-    if (vx < 0 || vy < 0 || vx + side > size || vy + side > size) {
-      bits.push("outside the drawn map");
+  worldPickMarks = marks;
+  worldPickBox = [vx, vy, side];
+  // Whatever the pointer was nearest before this redraw it is still nearest to:
+  // the room did not move, and a ring that fell off every second would read as
+  // the map losing the pointer.
+  if (worldPickNear) {
+    for (const mark of svg.querySelectorAll("g.wdot")) {
+      mark.classList.toggle("wnear", mark.dataset.entity === worldPickNear);
     }
   }
-  note.textContent = bits.join(" Â· ");
+
+  // --- what is on the screen ------------------------------------------------
+  const missing = entities.length - placed.length;
+  const bits = [];
+  if (selected) bits.push(selected);
+  bits.push(`${placed.length} on the map`);
+  if (missing > 0) {
+    // Which is the ordinary state of a thing seen once -- and, after a map has
+    // been cleared, of everything. Said as a count rather than left to be read
+    // off an empty picture, because an empty picture looks like a broken panel.
+    bits.push(`${missing} not placed on it`);
+  }
+  bits.push(`${(side / metresToPx(1)).toFixed(1)} m across`);
+  // The map has outgrown the picture it was drawn into. Rare -- the console asks
+  // for a picture that holds it -- and it means the rover's renderer has hit its
+  // own ceiling of twelve metres each way, so a flat bigger than that is being
+  // shown in part.
+  if (window_ && window_[3]) bits.push("wider than the picture");
+  note.textContent = bits.join(" · ");
 }

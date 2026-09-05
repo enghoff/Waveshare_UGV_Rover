@@ -393,6 +393,46 @@ def colour_occupancy(shown, occupied_at, origin):
     return rgb
 
 
+def known_box(slam):
+    """Where the map is, as (x0, y0, x1, y1) in map metres, or None for none of it.
+
+    The bounding box of every cell the rover has an opinion about -- free, dim or
+    occupied -- with never-seen left out. It is what a reader should frame a view
+    on: the grid is forty metres square and a room is a few, so a picture of the
+    whole grid is mostly a picture of nothing.
+
+    **Read off the grid and not off the picture, which is the whole point.** The
+    camera cone, the track and the scale bar are drawn *over* the occupancy by
+    `render`, and the cone in particular reaches several metres into a part of the
+    room nobody has been in. A reader that measured the rendered pixels would
+    frame on that wedge and push the map itself into a corner.
+
+    Metres in the grid's own frame, which is where the rover started and the frame
+    every position in the world state is recorded in -- so a caller converts it
+    with the same `to_px` inverse it uses for everything else.
+    """
+    import numpy as np
+
+    with slam.lock:
+        grid = np.asarray(slam.grid())
+        res = slam.config.resolution_m
+        cells = slam.config.grid_cells
+    if grid.size == 0:
+        return None
+    # Zero is never-seen: `render` codes free negative and occupied positive, and
+    # the square is allocated as zeros and painted into. So this is "not zero"
+    # rather than a threshold, and it must stay that way -- `>= 0` would count
+    # every unseen cell in a forty-metre square as known.
+    known = grid != 0
+    rows = np.flatnonzero(known.any(axis=1))
+    if not rows.size:
+        return None
+    cols = np.flatnonzero(known.any(axis=0))
+    half = cells // 2
+    return (float((rows[0] - half) * res), float((cols[0] - half) * res),
+            float((rows[-1] + 1 - half) * res), float((cols[-1] + 1 - half) * res))
+
+
 def camera_caption(bearing_deg, fov_deg):
     """The sentence that tells a reader what the violet wedge is.
 

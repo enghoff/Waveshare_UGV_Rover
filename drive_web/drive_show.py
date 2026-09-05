@@ -178,6 +178,11 @@ class SessionShow:
             "scale": int(body.get("scale") or 1),
             "rover_up": bool(body.get("rover_up")),
             "pose": body.get("pose") or {"heading_deg": self.heading_deg},
+            # Where the map is within the picture. Nothing on the drive card uses
+            # it; it is here because the world panel falls back to this view
+            # before its own picture lands, and a view missing half its fields
+            # would frame that first second differently from every second after.
+            "known_box_m": body.get("known_box_m"),
         }
 
         # What the rover actually drew, which is not always the size asked for: a

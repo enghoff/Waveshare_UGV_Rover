@@ -533,6 +533,18 @@ class RosNavigator:
         return mapimg.render(self._slam, half_extent_m, scale, self._slam.trail,
                              rover_up=rover_up, camera=camera)
 
+    def known_box(self):
+        """Where the map is, in map metres, off the grid the last picture used.
+
+        For a caller framing a view on the map rather than on the rover -- the
+        world-state panel does exactly that. `None` before any map has been
+        fetched, because this reads the grid `map_png` kept and does not go and
+        ask for another one: it is answered beside a picture, not on its own.
+        """
+        import mapimg
+
+        return None if self._slam is None else mapimg.known_box(self._slam)
+
     # --- writing --------------------------------------------------------------
     def stop(self, latch: bool = False) -> dict[str, Any]:
         """Stop now. Never refused, and answered even when the bridge is gone.

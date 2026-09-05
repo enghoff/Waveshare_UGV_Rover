@@ -609,9 +609,18 @@ class RoverNav:
         # number the caller is going to display, and it should be the real one.
         width = int.from_bytes(png[16:20], "big")
         x, y, th = self.nav.slam.pose
+        # Where the map itself is, which is not where the picture is: the picture
+        # is centred on the rover and the map is wherever it has grown to. A
+        # client framing a view on the room rather than on the rover needs this,
+        # and cannot get it from the pixels -- the camera cone and the scale bar
+        # are drawn over the occupancy. Absent on a navigator that does not offer
+        # it, rather than an error: it is an extra, and the picture is the answer.
+        box = getattr(self.nav, "known_box", None)
+        box = box() if callable(box) else None
         return {"ok": True, "caption": caption, "bytes": len(png),
                 "half_extent_m": round(half, 2), "scale": scale, "pixels": width,
                 "rover_up": rover_up,
+                **({"known_box_m": [round(n, 3) for n in box]} if box else {}),
                 "pose": {"x_m": round(x, 3), "y_m": round(y, 3),
                          "heading_deg": round(math.degrees(th), 1)},
                 "render_s": round(time.monotonic() - started, 2),

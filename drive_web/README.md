@@ -61,10 +61,23 @@ A search phrase filters all views together. Selecting an entity shows every
 stored observation used for it, including the source frame, measured box, pose,
 bearing, range and uncertainty where available.
 
-The map draws observation origins, bearings, visibility, placement extent and
-error. It uses the server-provided map transform rather than duplicating map
-geometry in the browser. Placements from an old map session are shown as stale
-and are not offered as current destinations.
+The map draws one mark per placed entity and nothing else. Bearings, sight lines
+and names were removed on 2026-09-05: a room's worth of them hid the map they
+were drawn on, and the same facts are read as numbers on each look's own row.
+Pointing near a mark selects that entity after a short delay, which fills the
+list, the detail pane and the observation stream; the nearest mark wins rather
+than the topmost, and the delay is what stops a swept pointer buying a request
+per mark. Uncertainty is drawn for the selected entity only.
+
+The popup has its own map picture, at `/world_map.png`, drawn wide enough to hold
+both the entities and the room; the driving map is a fallback until the first one
+arrives. The view is fitted to the map itself with a small margin, using the
+`known_box_m` the daemon measures off the occupancy grid — not off the rendered
+pixels, where the camera cone and the scale bar would move it. It uses the
+server-provided map transform rather than duplicating map geometry in the
+browser. Placements from an old map session are shown as stale, are not offered
+as current destinations, and are counted under the map rather than silently
+absent from it.
 
 The observation stream pages older rows by timestamp and ID. Images load lazily;
 the browser retains tile nodes so incoming observations do not move the item

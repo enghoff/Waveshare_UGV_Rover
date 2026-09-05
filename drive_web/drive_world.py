@@ -502,11 +502,36 @@ class SessionWorld:
         reach = 0.0
         for x, y in self.world_marks():
             reach = max(reach, abs(x - at_x), abs(y - at_y))
+        # And the map itself, because the panel frames on the room rather than on
+        # the picture: a map that ran past the edge would be a view fitted to a
+        # room with its far wall cut off. Known only once a picture has come back
+        # and said so, so the first one is sized on the things alone and the next
+        # covers both -- which settles in one refresh and never oscillates,
+        # because this only ever widens what the marks already asked for.
+        for x, y in self.world_map_corners():
+            reach = max(reach, abs(x - at_x), abs(y - at_y))
         if not reach:
             return None
         reach += WORLD_MAP_MARGIN_M
         return next((rung for rung in MAP_EXTENTS_M if rung >= reach),
                     MAP_EXTENTS_M[-1])
+
+    def world_map_corners(self):
+        """The corners of the drawn map, in map metres, off the last picture.
+
+        Empty until one has arrived, and empty on a rover whose daemon does not
+        report it -- an older one, or a navigator with no grid behind it. Both
+        mean the extent is sized on the things alone, which is what it did before
+        the panel framed on the room.
+        """
+        box = (self.world_map_view or {}).get("known_box_m")
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            return
+        edges = [_metres(n) for n in box]
+        if any(edge is None for edge in edges):
+            return
+        yield edges[0], edges[1]
+        yield edges[2], edges[3]
 
     def world_marks(self):
         """Every point the popup's map draws, in the map's own metres.
@@ -633,6 +658,13 @@ class SessionWorld:
             # round under a panel about where things are would be unreadable.
             "rover_up": False,
             "pose": body.get("pose") or {},
+            # Where the map is inside the picture, which is a different question
+            # from where the picture is: the picture is centred on the rover and
+            # the map is wherever it has grown to. The panel frames on this, and
+            # it cannot be read off the pixels -- the camera cone and the scale
+            # bar are drawn over the occupancy. Absent from an older daemon, and
+            # the panel then shows the whole picture as it used to.
+            "known_box_m": body.get("known_box_m"),
         }
 
     # --- what comes back ------------------------------------------------------

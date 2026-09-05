@@ -25,7 +25,7 @@ import zlib
 from mapimg import (
     C_ANCHOR, C_CAMERA, C_FREE, C_OCCUPIED, C_REACHABLE, C_ROVER, C_TRACK,
     Canvas, OCCUPIED, ROVER, UNKNOWN, camera_caption, colour_occupancy,
-    _decode, reachable_free, render, tap_to_point, tap_to_relative,
+    _decode, known_box, reachable_free, render, tap_to_point, tap_to_relative,
 )
 
 
@@ -405,11 +405,64 @@ def _check_reachable():
     print("reachable ok: green is connected empty floor, cream is empty behind a wall")
 
 
+def _check_known_box():
+    """`known_box` measures the map, not the picture drawn over it.
+
+    Two ways to get this wrong and both are silent. Counting never-seen cells as
+    known returns the whole forty-metre square, so a panel that frames on it
+    shows a room the size of a postage stamp in a field of grey. Measuring the
+    rendered pixels instead picks up the camera cone, which reaches metres into
+    a part of the room nobody has been in and drags the frame off the map.
+    """
+    import math
+    import threading
+
+    import numpy as np
+
+    cells, res = 800, 0.05
+
+    class Fake:
+        lock = threading.Lock()
+
+        class config:
+            resolution_m = res
+            grid_cells = cells
+            occupied_at = 20
+
+        def __init__(self):
+            self.pose = (0.0, 0.0, 0.0)
+            self.grid_ = np.zeros((cells, cells), dtype=np.int8)
+            self.trail = ()
+
+        def grid(self):
+            return self.grid_
+
+    slam = Fake()
+    assert known_box(slam) is None, "an untouched grid claims to hold a map"
+
+    # A room from -1 m to +2 m ahead and -0.5 m to +1 m left, and nothing else.
+    half = cells // 2
+    lo_x, hi_x = half + int(-1.0 / res), half + int(2.0 / res)
+    lo_y, hi_y = half + int(-0.5 / res), half + int(1.0 / res)
+    slam.grid_[lo_x:hi_x, lo_y:hi_y] = -1          # seen, and empty
+    slam.grid_[hi_x - 1, lo_y:hi_y] = 60           # a wall along the far end
+    box = known_box(slam)
+    for got, want in zip(box, (-1.0, -0.5, 2.0, 1.0)):
+        assert math.isclose(got, want, abs_tol=res), f"{box} is not the room"
+
+    # And the cone does not move it. `render` draws it over the occupancy after
+    # this is measured, several metres past anything the rover has seen.
+    render(slam, 6.0, 1, camera=(0.0, 60.0))
+    assert known_box(slam) == box, "the camera cone moved the map"
+    print("known box ok: the map is where the cells are, not where the cone points")
+
+
 def main():
     _check_orientation()
     _check_tap()
     _check_camera()
     _check_reachable()
+    _check_known_box()
 
     # And a picture to eyeball: a box with a gap, the geometry and the encoder
     # both visible without any hardware being involved.

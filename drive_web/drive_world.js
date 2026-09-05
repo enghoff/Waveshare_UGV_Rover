@@ -57,11 +57,6 @@ let worldFilter = null;
 // no longer exists. Beside it, the row as it was last drawn, which is what stops
 // a redraw every two seconds from collapsing the details a person just opened.
 let worldZoom = null, worldZoomDrawn = "";
-// Which look the pointer is resting on in the list of the chosen thing's
-// observations, by the store's own row identifier, so that the map can pick out
-// the one line it drew for that row. Kept here rather than passed down because a
-// redraw arrives every couple of seconds and has to put the highlight back.
-let worldHover = null;
 // Which of the popup's own maps is drawn. The picture arrives on its own clock
 // -- the rover redraws it while somebody watches, and again whenever the chosen
 // thing needs a different amount of room -- and that is not when the body
@@ -708,8 +703,6 @@ function drawWorldLooks(scroller) {
       // resting on a row lights that row's own line and dims the rest, which is
       // the only way to tell which of eight lines belongs to the picture being
       // looked at.
-      node.onmouseenter = () => wHighlight(observation.id);
-      node.onmouseleave = () => wHighlight(null);
       row = {drawn: drawn, node: node};
     }
     kept.set(observation.id, row);

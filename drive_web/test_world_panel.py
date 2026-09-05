@@ -879,10 +879,14 @@ def test_the_popup_gets_a_map_wide_enough_for_what_it_draws() -> None:
     session.world_map_arrived({
         "ok": True, "half_extent_m": 8.0, "scale": 2, "pixels": 962,
         "pose": {"x_m": 0.2, "y_m": -0.1, "heading_deg": 12.0},
+        "known_box_m": [-1.0, -2.0, 6.0, 3.0],
         "png_base64": base64.b64encode(png).decode()})
     state = session.world_state()
     check("the popup's map is published for the page to fetch",
           bool(state["map"]["gen"]), True)
+    check("...saying where the map is inside the picture, so the panel can "
+          "frame on the room", state["map"]["view"]["known_box_m"],
+          [-1.0, -2.0, 6.0, 3.0])
     check("...with the size it really came out as", state["map"]["width"], 962)
     check("...and the pose it was really drawn from, not the pose now",
           state["map"]["view"]["pose"]["x_m"], 0.2)
@@ -977,6 +981,59 @@ def test_the_popup_map_is_served_at_its_own_url() -> None:
         drive_web.Handler.session = was
 
 
+def test_the_picture_has_to_hold_the_map_as_well_as_the_things() -> None:
+    """The panel frames on the room, so the picture has to contain the room.
+
+    Sizing it on the things alone was enough while the view was the whole picture
+    and only closed in on one chosen thing. It is not enough now: the panel fits
+    itself to where the map is, and a map running past the edge of the picture
+    would be a view fitted to a room with its far wall cut off. The rover reports
+    where the map is with every picture -- off the occupancy grid, so the camera
+    cone drawn over it cannot move the answer -- and the next request covers it.
+    """
+    try:
+        import base64
+
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the popup's map extent ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.picture = _Recorder()
+    session.world["open"] = True
+    session.map_view = {"half_extent_m": 3.0, "scale": 4, "rover_up": False,
+                        "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}}
+    # One thing close by, so the things alone ask for very little.
+    session.world_payload = _a_room((0.0, 0.0), (0.6, 0.2))
+    close = session.world_map_extent()
+    check("a thing at arm's length asks for a small picture", close <= 2.0, True)
+
+    # The first picture comes back and says the room is ten metres away in one
+    # direction. Nothing about the things changed; the extent has to grow anyway.
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + (480).to_bytes(4, "big")
+    session.world_map_asked = close
+    session.world_map_arrived({
+        "ok": True, "half_extent_m": close, "scale": 4, "pixels": 480,
+        "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0},
+        "known_box_m": [-2.0, -1.5, 10.0, 4.0],
+        "png_base64": base64.b64encode(png).decode()})
+    wider = session.world_map_extent()
+    check("...and the map it came back with widens the next one",
+          wider >= 10.0, True)
+    check("...which settles rather than growing again",
+          session.world_map_extent(), wider)
+
+    # A daemon that does not report it leaves the extent where the things put it,
+    # which is what every console did before the panel framed on the room.
+    session.world_map_view["known_box_m"] = None
+    check("an older rover that says nothing about it is not guessed at",
+          session.world_map_extent(), close)
+    session.world_map_view["known_box_m"] = ["not", "a", "box", "at all"]
+    check("...and neither is a box that is not one",
+          session.world_map_extent(), close)
+
+
 TESTS = (
     test_the_world_state_popup,
     test_going_to_look_at_a_thing,
@@ -987,4 +1044,5 @@ TESTS = (
     test_the_world_urls,
     test_the_popup_gets_a_map_wide_enough_for_what_it_draws,
     test_the_popup_map_is_served_at_its_own_url,
+    test_the_picture_has_to_hold_the_map_as_well_as_the_things,
 )
