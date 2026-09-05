@@ -773,6 +773,34 @@ an ssh command cannot match itself. That last point is not theoretical — writi
 `pkill -f llama-vulkan/llama-server` into an ssh command while writing this killed
 the session mid-sentence, for the fourth time in this repository's history.
 
+### A boot with no GPU repairs itself
+
+**This board sometimes comes up with no GPU at all** -- twice in three boots on
+2026-09-05 -- and TensorRT does not survive meeting one: the sidecar starts,
+answers `/health`, and dies with SIGSEGV the first time a look asks for an
+inference runtime. What a person sees is the console reporting a sidecar that is
+not answering, with nothing said about a GPU. Reloading the driver module is the
+only repair observed to work; a reboot is a coin flip and fixed it once in two
+tries.
+
+`run_perception.sh` therefore looks for `/dev/nvgpu/igpu0/ctrl` before each start
+of the server -- the node a dead probe leaves out -- and calls
+[gpu_ctl.sh](gpu_ctl.sh) when it is missing. That half needs root, so it lives in
+`/usr/local/sbin` behind a passwordless sudo rule for that one path, and it holds
+itself to one reload every five minutes:
+
+```bash
+ssh orin 'sudo ~/ugv/world_state/install_gpu_recovery.sh'  # once per board
+ssh orin 'sudo -n /usr/local/sbin/gpu_ctl.sh status'       # is there a GPU
+```
+
+Until that install is run the check still happens and writes in the log that the
+helper is missing, which is a rover asking for a person rather than one quietly
+crash-looping. **What causes the bad probe is not known.** Nothing changed on the
+rover between the last boot that worked and the first that did not, and it is
+not memory, not the GPU firmware files and not the headless boot target -- all
+three were measured and cleared on 2026-09-05.
+
 ## The perception half
 
 Three ONNX models in a sidecar of their own on loopback 8776, and between them

@@ -34,6 +34,28 @@ stop() {
 }
 trap stop INT TERM
 
+# **The board sometimes boots with no GPU**, and TensorRT does not survive meeting
+# one: the server starts, answers /health, and dies with SIGSEGV the first time a
+# look asks for an inference runtime, so the console reports a sidecar that is not
+# answering and nobody is told about a GPU. Reloading the driver fixes it and
+# needs root, which is why that half lives in `gpu_ctl.sh` behind the sudo rule
+# `install_gpu_recovery.sh` puts down.
+#
+# It runs before every start rather than once at boot, because this restart loop
+# is also what catches a GPU that goes away mid-life. It costs one stat when there
+# is a GPU, and gpu_ctl.sh holds itself to one reload every five minutes when
+# there is not, so a board that genuinely has no GPU logs a line now and then
+# instead of reloading a driver every fifteen seconds.
+gpu_check() {
+    [ -e /dev/nvgpu/igpu0/ctrl ] && return 0
+    if [ -x /usr/local/sbin/gpu_ctl.sh ]; then
+        sudo -n /usr/local/sbin/gpu_ctl.sh recover >> "$LOG" 2>&1
+    else
+        echo "--- $(date -Is): no GPU, and /usr/local/sbin/gpu_ctl.sh is not" \
+             "installed; run install_gpu_recovery.sh ---" >> "$LOG"
+    fi
+}
+
 # onnxruntime, tokenizers and OpenCV are unpacked wheels rather than installed
 # packages, because this host's Python is externally managed and sudo wants a
 # password no deploy script has. perceive.py appends both directories to sys.path
@@ -47,6 +69,7 @@ export PYTHONUNBUFFERED
 
 echo "--- run_perception.sh starting at $(date -Is) ---" >> "$LOG"
 while true; do
+    gpu_check
     python3 "$DIR/perception_server.py" --port "$PORT" >> "$LOG" 2>&1 &
     child=$!
     wait "$child"
