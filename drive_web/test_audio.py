@@ -6,8 +6,12 @@ the first to finish dying.
 """
 from __future__ import annotations
 
+import contextlib
 import io
+import os
+import re
 import sys
+import tempfile
 
 import _paths  # noqa: F401 -- puts drive_web and voice_chat on the path
 from test_harness import SKIP, check
@@ -304,9 +308,90 @@ def test_a_second_conversation_starts_at_once() -> None:
           omni._frames, None)
 
 
+def test_the_conversation_is_written_down() -> None:
+    """What the model was asked, what it called, and what it was told back.
+
+    The fault this exists for: the rover refuses to go somewhere, says so out
+    loud, and by the time anybody asks why, the sentence it was handed has faded
+    off the console and is in no file on the board. The daemon logs nothing per
+    tool call and the protocol trace is all-or-nothing, so this file is the only
+    place the refusal is kept.
+    """
+    import omni_bridge
+
+    with tempfile.TemporaryDirectory() as work:
+        path = os.path.join(work, "omni.log")
+        said: list[str] = []
+        console = omni_bridge.Omni("127.0.0.1:1",
+                                   lambda text, err=False: said.append(text),
+                                   log_path=path)
+        check("a console nobody has spoken to leaves no file behind",
+              os.path.exists(path), False)
+
+        # Through `Notes`, because that is the object `Session` is handed: this
+        # checks the whole road from what the conversation reports to what lands
+        # on the disk, not just the last step of it.
+        notes = omni_bridge.Notes(console._note)
+        notes.say("you: go to the sofa")
+        notes.say('  [go_to_thing{"description": "the sofa"} -> {"ok": false, '
+                  '"error": "there is no route to there that the rover fits '
+                  'through"}]')
+        notes.say("  error: the session went away", err=True)
+        console.close()
+
+        lines = open(path, encoding="utf-8").read().splitlines()
+        check("every line the console showed is written down", len(lines), 3)
+        check("...and the console still heard all three", len(said), 3)
+        check("...each with the day and the second on it",
+              all(re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d ", line)
+                  for line in lines), True)
+        # The whole answer and not a summary of it: the error string *is* the
+        # thing somebody came to this file to read.
+        check("...the tool call keeps its name, its argument and its answer",
+              ("go_to_thing" in lines[1] and '"the sofa"' in lines[1]
+               and "no route to there that the rover fits through" in lines[1]),
+              True)
+        check("...and a line the console showed in red is marked as one",
+              lines[2].split(" ", 1)[1].startswith("! "), True)
+
+    # Rolled rather than grown, so an afternoon of talking cannot be the thing
+    # that fills the board's disk.
+    with tempfile.TemporaryDirectory() as work:
+        path = os.path.join(work, "omni.log")
+        log = omni_bridge.Transcript(path, roll_at=200, keep=1)
+        for turn in range(40):
+            log.write("you: %s" % ("say that again " * 3 + str(turn)))
+        log.close()
+        check("a log past its size is moved aside", os.path.exists(path + ".1"),
+              True)
+        check("...and only the one older file is kept",
+              os.path.exists(path + ".2"), False)
+        check("...with the newest lines in the live file",
+              "39" in open(path, encoding="utf-8").read(), True)
+
+    # A disk that will not take it is not a reason to stop talking to the model.
+    # The complaint is caught rather than let out, both to keep this runner's
+    # output clean and because the sentence is the thing being checked: a
+    # transcript that stopped without a word would read as a conversation that
+    # never happened.
+    nowhere = os.path.join(tempfile.gettempdir(), "no-such-dir-for-omni", "x.log")
+    log = omni_bridge.Transcript(nowhere)
+    complaint = io.StringIO()
+    with contextlib.redirect_stderr(complaint):
+        log.write("you: hello")
+        log.write("you: still here")
+    check("a log that cannot be opened gives up and names the file",
+          nowhere in complaint.getvalue(), True)
+    check("...and says so once, not once a line",
+          complaint.getvalue().count("no longer being written"), 1)
+    check("...while the conversation carries on without it",
+          os.path.exists(nowhere), False)
+
+
 TESTS = (
     test_the_audio_socket,
     test_talking_needs_no_console_token,
     test_what_the_browser_heard,
     test_a_second_conversation_starts_at_once,
+    test_the_conversation_is_written_down,
 )

@@ -45,6 +45,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import threading
 import time
 from typing import Any
@@ -92,6 +93,23 @@ IDLE_STOP_S = 120.0
 #: treated as stale. It is reported roughly five times a second, so this is
 #: several reports missed rather than one.
 PLAYED_STALE_S = 2.0
+
+#: Where the conversation is written down: beside the console's own log, in the
+#: directory this file is deployed into. Not under ~/.ugv because it is neither a
+#: secret nor state -- it is the same lines the console shows, kept.
+LOG_NAME = "omni.log"
+
+#: Roll at a megabyte and keep one older file, so the record survives a session
+#: that talked all afternoon without the board's disk being the thing that
+#: notices. A spoken exchange with a tool call in it is a few hundred bytes.
+LOG_BYTES = 1024 * 1024
+LOG_KEEP = 1
+
+#: The longest line worth writing whole. Every tool a model is offered answers in
+#: words -- `look` and `show_map` send their pictures by another road and hand
+#: back a name -- so nothing should come near this, and a line that does is a
+#: result that has grown a payload rather than one worth keeping in full.
+LOG_LINE_MAX = 4000
 
 
 def api_key() -> str:
@@ -192,6 +210,79 @@ class BrowserSpeaker:
             self._played_at = time.monotonic()
 
 
+class Transcript:
+    """The same lines the console shows, appended to a file with a clock on them.
+
+    **The console shows this conversation and keeps none of it.** A notice is one
+    line that replaces the last and fades, which is the right shape for somebody
+    watching the rover and the wrong one for somebody asked afterwards why it
+    refused. Nothing else holds the answer either: the daemon writes nothing per
+    tool call, and the protocol trace behind `QWEN_REALTIME_TRACE` is every frame
+    of the websocket or none of them, decided before the session starts.
+
+    So a model that says it cannot get to the sofa was quoting a refusal some
+    tool handed it, and until this file that sentence had been shown once and
+    written down nowhere. What lands here is what was heard, what was said, and
+    each tool call with the whole of its answer, in the order they happened.
+
+    Opened on the first line rather than at start-up, so a console nobody has
+    spoken to leaves no file behind -- which is also what keeps it out of a test
+    that builds an `Omni` and never says anything through it.
+    """
+
+    def __init__(self, path: str, roll_at: int = LOG_BYTES,
+                 keep: int = LOG_KEEP) -> None:
+        self.path = path
+        self.broken = ""            # why it stopped writing, if it has
+        self._roll_at = roll_at
+        self._keep = keep
+        self._lock = threading.Lock()
+        self._handle = None
+
+    def write(self, text: str, err: bool = False) -> None:
+        """One line, stamped. Never raises: a log is not worth a conversation."""
+        line = text.strip()
+        if not line:
+            return
+        if len(line) > LOG_LINE_MAX:
+            line = line[:LOG_LINE_MAX] + " ...[%d more]" % (len(line) - LOG_LINE_MAX)
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            with self._lock:
+                if self.broken:
+                    return
+                self._roll()
+                if self._handle is None:
+                    self._handle = open(self.path, "a", buffering=1,
+                                        encoding="utf-8")
+                self._handle.write("%s %s%s\n" % (stamp, "! " if err else "", line))
+        except OSError as error:
+            # Said once, on the console's own stderr, which is the log the
+            # supervisor keeps. Going quiet without a word would leave a missing
+            # transcript looking like a conversation that never happened.
+            self.broken = str(error)
+            self._handle = None
+            print(f"note: the conversation is no longer being written to "
+                  f"{self.path}: {error}", file=sys.stderr, flush=True)
+
+    def _roll(self) -> None:
+        """Move the file aside once it is big enough. Called holding the lock."""
+        if self._handle is None or self._handle.tell() < self._roll_at:
+            return
+        self._handle.close()
+        self._handle = None
+        for older in range(self._keep, 0, -1):
+            source = self.path if older == 1 else "%s.%d" % (self.path, older - 1)
+            if os.path.exists(source):
+                os.replace(source, "%s.%d" % (self.path, older))
+
+    def close(self) -> None:
+        with self._lock:
+            handle, self._handle = self._handle, None
+        if handle is not None:
+            handle.close()
+
+
 class Notes:
     """The indicator interface `Session` calls, writing into the console's transcript.
 
@@ -226,11 +317,16 @@ class Omni:
     """
 
     def __init__(self, rover_address: str, note, model: str | None = None,
-                 frame_port: int = FRAME_PORT) -> None:
+                 frame_port: int = FRAME_PORT, log_path: str | None = None) -> None:
         self.rover_address = rover_address
         self.model = model or omni.MODEL
         self.frame_port = frame_port
-        self._note = note
+        self._say = note
+        # Beside this file, which on the rover is ~/ugv/drive_web/ -- the same
+        # directory the supervisor's own log is in. A caller with somewhere else
+        # in mind says so; a test that wants no file says so with a temporary one.
+        self.log = Transcript(log_path or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), LOG_NAME))
         self._lock = threading.Lock()
 
         self.state = "off"           # off | starting | live | closing | error
@@ -249,6 +345,18 @@ class Omni:
         self._frames: Frames | None = None
         self._wire: Any = None
         self._detached_at = time.monotonic()
+
+    def _note(self, text: str, err: bool = False) -> None:
+        """Say one line to the console, and write the same line down.
+
+        Everything the conversation reports comes through here -- what `Session`
+        tells its indicator, and this class's own lines about the microphone --
+        so this is the one place that has to know the record exists. Called from
+        the asyncio thread and from console threads both; `Transcript` holds the
+        lock that makes that safe.
+        """
+        self.log.write(text, err)
+        self._say(text, err=err)
 
     # --- what the console asks -------------------------------------------------
 
@@ -311,6 +419,9 @@ class Omni:
         if frames is not None:
             frames.shutdown()
             frames.server_close()
+        # Last, and not in turn_off: the record spans the whole life of the
+        # console, not one press of the microphone button.
+        self.log.close()
 
     # --- what the audio socket does -------------------------------------------
 

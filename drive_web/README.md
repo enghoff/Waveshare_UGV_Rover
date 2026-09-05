@@ -525,6 +525,31 @@ attaches the matching picture to the Alibaba turn.
 That keeps the camera frame on the rover-to-cloud path rather than bouncing it
 through a phone/desk that has no use for it.
 
+### What was asked, and what it was told back
+
+Every one of those calls is written to `~/ugv/drive_web/omni.log` on the rover,
+beside the console's own log, with what was heard and what was said around it:
+
+```
+2026-09-05T05:47:08 you: go to the sofa
+2026-09-05T05:47:08   [go_to_thing{"description": "the sofa"} -> {"ok": false, ...}]
+2026-09-05T05:47:11 bot: I can't get there from here
+```
+
+It is the same text the notice shows, and it exists because the notice does not
+keep it: one line, replacing the last, gone in twenty-five seconds. Nothing else
+on the rover holds it either — the daemon writes nothing per tool call, and the
+protocol trace behind `QWEN_REALTIME_TRACE=1` is every frame of the websocket or
+none of them, decided before the session starts. So a model that says it cannot
+reach the sofa was quoting a refusal from some tool, and this is where to read
+which tool and what it actually said.
+
+The whole result is written, never a summary of it, because the refusal string is
+the thing worth reading. It rolls at a megabyte, keeping one older file, and a
+console nobody has spoken to leaves no file at all. It records what is said in the
+room, which is audio that already goes to Alibaba; delete it if that is not
+wanted.
+
 ## Browser interruption / barge-in
 
 The browser knows how much generated audio was actually audible. It reports its

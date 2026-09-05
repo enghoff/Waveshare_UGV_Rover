@@ -34,6 +34,11 @@ odometry.json
 # It is evidence about one afternoon on one network, not source.
 netwatch/*.log
 
+# The console's supervisor log and the conversation transcript beside it. Both
+# are written in this directory on the rover; a test or a console started here
+# would leave one in the working tree, and a dirty tree is a refused deploy.
+drive_web/*.log
+
 # ros_nav/behaviors/ is the ROS stack's one compiled component. Its build tree
 # and install prefix are made on the rover by build.sh, which the manifest runs
 # on every deploy; the deployer only ever copies files git tracks, so keeping
