@@ -7,6 +7,14 @@ nothing downstream can tell that from a photograph of an empty wall. A whole
 validation drive was recorded that way on 2026-09-02 before a person opened one of
 the pictures.
 
+The dark end of the same fault is quieter still, and is the one that happens
+daily: the camera shortens its exposure in three frames and lengthens it in none,
+so every picture taken after the gimbal comes off something bright is
+under-exposed and stays that way, at a brightness no blank-frame check would
+question. That is what the under-exposure checks below are about, and the one
+thing they have to get right that the blank-frame checks do not is that a dark
+picture is sometimes just a dark room.
+
 There is no camera here, so what is covered is the judgement and the plumbing: which
 frames are called blank, and whether a blank one makes the capture reach for the
 camera's controls and take the picture again. What the controls then do to the
@@ -61,6 +69,128 @@ def test_what_counts_as_a_blank_frame():
     # must not be turned into this one.
     check("rubbish is not called blank", nothing_in_it(b"\xff\xd8not a picture\xff\xd9"),
           False)
+
+
+def test_what_counts_as_under_exposed():
+    """The line between a dark room and a camera that has not been given the frames.
+
+    Drawn from what the rover measured on 2026-09-05: held on one view, three-frame
+    captures came back at 12.6 out of 255 three times running and a twenty-four
+    frame capture of the same view came back at 111, and this camera settles between
+    110 and 135 in this house. So the line sits at a third of what it manages and
+    three times what the failure gives.
+
+    The second half of this is the one that costs something if it is wrong. A room
+    that really is dark answers the longer look with another dark picture, and
+    without remembering that, every look in an unlit house would pay for a second
+    capture it already knows the answer to.
+    """
+    try:
+        import uvc_camera
+        from track_face_pi import too_dark_for_this_camera
+    except ImportError as error:
+        SKIP.append(f"under-exposure ({error})")
+        return
+    try:
+        _jpeg(120)
+    except ImportError as error:            # no OpenCV: nothing can judge a frame
+        SKIP.append(f"under-exposure ({error})")
+        return
+
+    dark, room = _jpeg(12), _jpeg(120)
+    uvc_camera._dark_room_at.clear()
+    try:
+        check("a settled picture is left alone",
+              too_dark_for_this_camera(room, "/dev/video9"), False)
+        check("one this camera should never return is not",
+              too_dark_for_this_camera(dark, "/dev/video9"), True)
+        # A frame nothing can decode is a different fault with its own report, and
+        # must not be turned into a second capture for every picture.
+        check("rubbish is not called under-exposed",
+              too_dark_for_this_camera(b"\xff\xd8not a picture\xff\xd9", "/dev/video9"),
+              False)
+
+        # The longer look came back just as dark: that is the room answering, and
+        # for the next minute it is believed rather than asked again.
+        uvc_camera._remember_the_room(dark, "/dev/video9", now=1000.0)
+        check("a room the longer look could not brighten is believed",
+              too_dark_for_this_camera(dark, "/dev/video9", now=1030.0), False)
+        check("...but only for a minute",
+              too_dark_for_this_camera(dark, "/dev/video9", now=1061.0), True)
+        check("...and only for the camera it was measured on",
+              too_dark_for_this_camera(dark, "/dev/video8", now=1030.0), True)
+
+        # And a longer look that *did* find a picture says the camera was the
+        # problem, so the next dark frame is worth taking again straight away.
+        uvc_camera._remember_the_room(dark, "/dev/video9", now=1000.0)
+        uvc_camera._remember_the_room(room, "/dev/video9", now=1001.0)
+        check("a longer look that worked is not remembered as a dark room",
+              too_dark_for_this_camera(dark, "/dev/video9", now=1002.0), True)
+    finally:
+        uvc_camera._dark_room_at.clear()
+
+
+def test_an_under_exposed_picture_is_taken_again():
+    """A dark picture reaches for the longer look, but not for the controls.
+
+    The two recoveries are deliberately not the same. A blank frame means a control
+    is wrong, so the exposure is handed back first. A dark one means the camera has
+    not had the frames to expose the room -- its controls were read on the way in
+    and are automatic -- and handing the exposure back there would reset a camera
+    that had wound itself out for a dark room to the 17 ms default, which is how a
+    recovery ends up returning a worse picture than the one it was asked about.
+    """
+    try:
+        import uvc_camera
+        from track_face_pi import snapshot
+    except ImportError as error:
+        SKIP.append(f"retaking an under-exposed picture ({error})")
+        return
+    try:
+        _jpeg(120)
+    except ImportError as error:
+        SKIP.append(f"retaking an under-exposed picture ({error})")
+        return
+
+    dark, room = _jpeg(12), _jpeg(120)
+    asked, answers, restored = [], [], []
+
+    def capture(device, size, frames, timeout):
+        asked.append(frames)
+        return [(answers[min(len(asked), len(answers)) - 1], 1.0)], ""
+
+    was_capture, uvc_camera._capture = uvc_camera._capture, capture
+    was_restore = uvc_camera.restore_automatic
+    was_manual = uvc_camera.under_manual_control
+    uvc_camera.restore_automatic = lambda device: restored.append(device)
+    uvc_camera.under_manual_control = lambda device: False
+    uvc_camera._dark_room_at.clear()
+    try:
+        answers[:] = [dark, room]
+        got, why = snapshot("/dev/video9", (640, 480), frames=3)
+        check("an under-exposed picture is taken again", len(asked), 2)
+        check("...with the camera given longer to expose", asked[1] > asked[0], True)
+        check("...without its exposure being touched", restored, [])
+        check("...and the second picture is the one handed back", got[0][0], room)
+        check("...with nothing to complain about", why, "")
+
+        # The room really is dark. The picture still comes back -- it is the honest
+        # one, and dark is not broken -- and the next look does not pay for the
+        # second capture again.
+        answers[:], asked[:] = [dark], []
+        uvc_camera._dark_room_at.clear()
+        got, why = snapshot("/dev/video9", (640, 480), frames=3)
+        check("a dark room is looked at twice, once", asked, [3, uvc_camera.RECOVER_FRAMES])
+        check("...and the picture comes back unremarked", (got[0][0], why), (dark, ""))
+        asked[:] = []
+        got, why = snapshot("/dev/video9", (640, 480), frames=3)
+        check("...and the look after it is not taken twice", asked, [3])
+        check("...and still gets the picture", got[0][0], dark)
+    finally:
+        uvc_camera._capture = was_capture
+        uvc_camera.restore_automatic = was_restore
+        uvc_camera.under_manual_control = was_manual
+        uvc_camera._dark_room_at.clear()
 
 
 def test_a_blank_picture_is_taken_again():
@@ -241,6 +371,8 @@ def test_reading_whether_the_camera_is_on_automatic():
 
 TESTS = (
     test_what_counts_as_a_blank_frame,
+    test_what_counts_as_under_exposed,
+    test_an_under_exposed_picture_is_taken_again,
     test_a_blank_picture_is_taken_again,
     test_the_exposure_is_handed_back_through_manual,
     test_reading_whether_the_camera_is_on_automatic,

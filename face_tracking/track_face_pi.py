@@ -122,8 +122,9 @@ import time
 # them from here, which is where they were when those callers were written. The
 # three exposure names join them for the checks' sake and for the same reason.
 from uvc_camera import (           # noqa: F401
-    Camera, DEFAULT_DEVICE, DEFAULT_SIZE, nothing_in_it, restore_automatic,
-    snapshot, split_jpegs, under_manual_control,
+    Camera, DEFAULT_DEVICE, DEFAULT_SIZE, brightness, nothing_in_it,
+    restore_automatic, snapshot, split_jpegs, too_dark_for_this_camera,
+    under_manual_control,
 )
 from aiming import (
     DETECT_WIDTH, GAIN, KEEP_SCORE, MAX_DT, SCAN_AFTER_S, SCAN_RATE, Gimbal, Scan,

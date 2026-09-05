@@ -2,10 +2,12 @@
 
 v4l2-ctl does the capturing. Frames arrive as bytes, are split on their own
 markers, and the newest complete one is kept; older ones are dropped where they
-lie, since a queue of frames is a queue of stale aiming errors. Only one thing
-here looks inside a frame, and only ever at one: `nothing_in_it` reads the
-brightness of a finished picture to find out whether it is a picture at all, so
-that a camera which has not stopped down is reported rather than passed on.
+lie, since a queue of frames is a queue of stale aiming errors. What is looked at
+inside a frame is only ever its brightness, and only to judge the camera by it:
+`nothing_in_it` asks whether this is a picture at all, so that a camera which has
+not stopped down is reported rather than passed on, and `too_dark_for_this_camera`
+asks the same question of the other end, where the picture is honest-looking and
+the camera has simply not been given the frames to expose the room.
 
 Two threads, because the two pipes have to be drained independently: stderr
 filling while only stdout is read would deadlock v4l2-ctl, and stdout filling
@@ -187,6 +189,41 @@ EXPOSURE_AUTO = 3
 # with a light on in it.
 BLOWN_FRACTION = 0.25
 BLACK_MEAN = 6.0
+
+
+# **This camera can shorten its exposure in three frames and cannot lengthen it at
+# all.** That asymmetry is the whole reason for what follows. Measured on the rover
+# on 2026-09-05, one room, the gimbal held still:
+#
+#     three frames, three times running   12.6  12.6  12.4
+#     twenty-four frames, same view      111.1
+#     three frames again, after it       114.2 114.8
+#
+# So a one-shot capture that finds the camera stopped down returns the same dark
+# picture for ever, while one longer look fixes it and the fix then survives the
+# device being closed and reopened -- 118 after thirty seconds idle, 134 after two
+# minutes. Nothing in `nothing_in_it` catches this: at 12.6 the frame is far above
+# the black floor, and a dark picture is exactly what a dark room gives.
+#
+# It is not a rare state either. The camera falls into it whenever the gimbal comes
+# off something bright: on the morning of 2026-09-05 a world-state sweep panned from
+# a lit wall onto a dark corridor and every look for the next ten seconds came back
+# under-exposed, with the detector drawing boxes round the noise in them.
+#
+# The line is drawn at a third of what this camera settles at -- 110 to 135 in this
+# house, at night and in the morning -- and three times the failure. A picture below
+# it is not called broken, only worth taking again with the camera given the frames
+# to expose it; what comes back the second time is the answer either way.
+UNDEREXPOSED_MEAN = 45.0
+
+
+# How long a longer look that did not help is believed. In a room that really is
+# this dark the second capture comes back as dark as the first, and there is no
+# point paying a second capture for every picture after it -- but the room is a
+# light switch away from being wrong, so the answer is held for a minute rather
+# than kept. The cost of being wrong for that minute is a dark picture; the cost of
+# not holding it at all is every look in a dark house taking 1.0 s instead of 0.3.
+DARK_ROOM_S = 60.0
 
 
 # How long to wait on v4l2-ctl for a control rather than a picture. These calls are
@@ -663,17 +700,64 @@ def nothing_in_it(jpeg):
     fault with its own report, and OpenCV is not on every bench this module runs
     on, where the behaviour then is exactly what it was before this existed.
     """
-    try:
-        import cv2
-        import numpy
-    except ImportError:
-        return False
-    grey = cv2.imdecode(numpy.frombuffer(jpeg, numpy.uint8),
-                        cv2.IMREAD_REDUCED_GRAYSCALE_8)
+    grey = _grey_eighth(jpeg)
     if grey is None:
         return False
     return bool(float((grey >= 250).mean()) >= BLOWN_FRACTION
                 or float(grey.mean()) <= BLACK_MEAN)
+
+
+def _grey_eighth(jpeg):
+    """A frame as an 80x60 grey image, or None if nothing here can decode it.
+
+    None rather than an exception, and None on a host with no OpenCV: every caller
+    is deciding whether to look again, and "cannot tell" has to mean "leave it
+    alone" or a bench with no image library would take two captures for every one.
+    """
+    try:
+        import cv2
+        import numpy
+    except ImportError:
+        return None
+    return cv2.imdecode(numpy.frombuffer(jpeg, numpy.uint8),
+                        cv2.IMREAD_REDUCED_GRAYSCALE_8)
+
+
+def brightness(jpeg):
+    """The mean grey level of a frame, 0 to 255, or None if it cannot be read."""
+    grey = _grey_eighth(jpeg)
+    return None if grey is None else float(grey.mean())
+
+
+#: When a longer look last failed to brighten anything, per device. Not the
+#: brightness itself: what is worth remembering is only that the room, and not the
+#: camera, is what is dark -- see DARK_ROOM_S.
+_dark_room_at = {}
+
+
+def too_dark_for_this_camera(jpeg, device=DEFAULT_DEVICE, now=None):
+    """Whether a picture this dark is worth taking again, with a longer look.
+
+    True means the camera has not been given the frames to expose the room, which
+    on this camera is a state it never climbs out of on its own -- the measurements
+    are under UNDEREXPOSED_MEAN. False means either that the picture is fine or
+    that a longer look has already been tried here and came back just as dark, in
+    which case the room is dark and a second capture buys nothing.
+    """
+    mean = brightness(jpeg)
+    if mean is None or mean > UNDEREXPOSED_MEAN:
+        return False
+    now = time.monotonic() if now is None else now
+    return now - _dark_room_at.get(device, -DARK_ROOM_S) >= DARK_ROOM_S
+
+
+def _remember_the_room(jpeg, device, now=None):
+    """Record what a longer look found, so the next one knows whether to bother."""
+    mean = brightness(jpeg)
+    if mean is not None and mean <= UNDEREXPOSED_MEAN:
+        _dark_room_at[device] = time.monotonic() if now is None else now
+    else:
+        _dark_room_at.pop(device, None)
 
 
 def _capture(device, size, frames, timeout):
@@ -777,18 +861,40 @@ def snapshot(device=DEFAULT_DEVICE, size=DEFAULT_SIZE, frames=SNAPSHOT_FRAMES,
     aiming into the sun should see what there is -- but with the complaint saying
     so, because a camera that cannot expose the room is worth reporting and a blank
     frame will not report itself.
+
+    **The dark half of that is the common one, and it does not look like a fault.**
+    This camera shortens its exposure happily in three frames and lengthens it in
+    none at all, so the moment the gimbal comes off something bright every picture
+    after it is under-exposed, for ever, at a brightness no blank-frame check would
+    ever question -- 12.6 out of 255 where the same view photographs at 111. That
+    is what UNDEREXPOSED_MEAN is for, and it reaches for the same longer look. The
+    difference is that a dark picture may simply be a dark room, which a white one
+    never is: so the second capture is the arbiter, and if it comes back as dark as
+    the first, that is taken as the room's answer and not asked again for a minute.
     """
     if recover and under_manual_control(device):
         restore_automatic(device)
     got, why = _capture(device, size, frames, timeout)
-    if not got or not recover or not nothing_in_it(got[-1][0]):
+    if not got or not recover:
         return got, why
-    restore_automatic(device)
+    blank = nothing_in_it(got[-1][0])
+    if not blank and not too_dark_for_this_camera(got[-1][0], device):
+        return got, why
+    # The exposure is handed back for a blank frame and not for a merely dark one,
+    # and the difference is what each says about the camera. A blank frame is a
+    # control that is wrong. An under-exposed one is not: the controls were read on
+    # the way in and they are automatic, and what this camera is short of is frames.
+    # Handing it back anyway would knock a camera that had wound itself out for a
+    # dark room down to the 17 ms default and make the longer look climb back from
+    # there, which is the one way to return a picture worse than the one asked about.
+    if blank:
+        restore_automatic(device)
     again, why_again = _capture(device, size, RECOVER_FRAMES, timeout)
     if not again:
         # The recovery capture found the camera gone or busy. The first pictures are
         # poor but they are what there is, and the complaint is the newer one.
         return got, why_again
+    _remember_the_room(again[-1][0], device)
     if nothing_in_it(again[-1][0]):
         return again, (f"the camera at {device} could not expose this: the picture "
                        f"is blank after a second, longer look")
