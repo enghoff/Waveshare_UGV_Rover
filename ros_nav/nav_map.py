@@ -158,12 +158,24 @@ class NavMap:
                 if self._map_settle_from is not None:
                     self.map_settle()
                     continue
-                pose = self.pose_deg()
-                if self.saved.due(pose):
+                if self.saved.due(self.travelled_deg()):
                     self.save_graph()
             except Exception as error:              # never past here: it is a loop
                 self.get_logger().warn("map keeper: %s: %s"
                                        % (type(error).__name__, error))
+
+    def travelled_deg(self):
+        """`(x_m, y_m, heading_deg)` in the *odom* frame, or None.
+
+        What the wheels and the gyro have done since the ROS stack started, with
+        no map correction on top -- which is what says whether the rover has
+        actually moved. See `mapstore.due`, and `dead_reckoned` in nav_bridge.py
+        for why the two frames answer different questions.
+        """
+        where = self.dead_reckoned()
+        if where is None:
+            return None
+        return (where[0], where[1], math.degrees(where[2]))
 
     def pose_deg(self):
         """`(x_m, y_m, heading_deg)` in the map frame, or None.
@@ -277,7 +289,8 @@ class NavMap:
             if result is None or result.result != result.RESULT_SUCCESS:
                 return False, "slam_toolbox could not write the graph"
             try:
-                note = self.saved.commit(self.map_id, pose)
+                note = self.saved.commit(self.map_id, pose,
+                                         odom=self.travelled_deg())
             except OSError as error:
                 return False, ("the graph was written but could not be put in "
                                "place: %s" % (error,))

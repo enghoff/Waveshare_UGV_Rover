@@ -66,7 +66,7 @@ STEM = "current"
 STAGING = "next"
 
 #: How often the graph is written, at most, and how far the rover has to have
-#: moved since the last one for a write to be worth doing at all.
+#: driven since the last one for a write to be worth doing at all.
 #:
 #: The second condition is not a saving so much as a statement of what the graph
 #: is: `minimum_travel_distance` in config/slam_toolbox.yaml means a parked rover
@@ -93,12 +93,12 @@ class SavedMap(object):
 
     def __init__(self, directory=None):
         self.dir = directory or MAP_DIR
-        #: When the last write finished and where the rover was standing then,
-        #: which is all `due` needs. Both None until this process has written
-        #: one -- a restored graph does not count as a write, because what
-        #: matters is whether *this* run has anything new to record.
+        #: When the last write finished, and how far the wheels had carried the
+        #: rover by then. Both None until this process has written one -- a
+        #: restored graph does not count as a write, because what matters is
+        #: whether *this* run has anything new to record.
         self.saved_at = None
-        self.saved_pose = None
+        self.saved_odom = None
 
     # --- where things are -----------------------------------------------------
 
@@ -165,7 +165,7 @@ class SavedMap(object):
 
     # --- writing --------------------------------------------------------------
 
-    def commit(self, map_id, pose, **extra):
+    def commit(self, map_id, pose, odom=None, **extra):
         """Move a freshly written staging graph into place and write its note.
 
         The order is the whole point: both graph files are renamed first -- a
@@ -188,7 +188,7 @@ class SavedMap(object):
             json.dump(note, fh, sort_keys=True)
         os.replace(tmp, self.note_path)
         self.saved_at = time.monotonic()
-        self.saved_pose = None if pose is None else tuple(pose)
+        self.saved_odom = None if odom is None else tuple(odom)
         return note
 
     def forget(self):
@@ -206,23 +206,33 @@ class SavedMap(object):
             except OSError:
                 pass
         self.saved_at = None
-        self.saved_pose = None
+        self.saved_odom = None
 
-    def due(self, pose, now=None):
-        """Whether it is worth writing the graph again, given where the rover is.
+    def due(self, odom, now=None):
+        """Whether it is worth writing the graph again, given what the wheels did.
 
-        Answers False on no pose at all: with nothing to record as the start pose
-        a restore would have nowhere to put the rover, and a graph saved without
-        one is worse than the older graph it would replace.
+        **Dead reckoning and not the rover's belief about where it is on the map,
+        and that distinction was measured rather than reasoned about.** A parked
+        rover's map pose is not still: `map -> odom` is only corrected when the
+        mapper folds in a scan, which needs motion, so between scans the gyro's
+        residual bias walks the believed heading round. Measured on the rover on
+        2026-09-05, standing still: 0.8 degrees a minute, and no position drift at
+        all. Judged on that, a rover left alone for half an hour would look like a
+        rover that had turned twenty degrees, and the graph would be written with
+        a heading that had drifted rather than one the rover had. The wheels are
+        the honest witness -- they are also what slam_toolbox counts nodes by.
+
+        Answers False on no reading at all: with nothing to say the rover has
+        moved, the older graph is the better one to keep.
         """
-        if pose is None:
+        if odom is None:
             return False
         now = time.monotonic() if now is None else now
-        if self.saved_at is None or self.saved_pose is None:
+        if self.saved_at is None or self.saved_odom is None:
             return True
         if now - self.saved_at < SAVE_EVERY_S:
             return False
-        moved = math.hypot(pose[0] - self.saved_pose[0],
-                           pose[1] - self.saved_pose[1])
-        turned = abs((pose[2] - self.saved_pose[2] + 180.0) % 360.0 - 180.0)
+        moved = math.hypot(odom[0] - self.saved_odom[0],
+                           odom[1] - self.saved_odom[1])
+        turned = abs((odom[2] - self.saved_odom[2] + 180.0) % 360.0 - 180.0)
         return moved >= SAVE_AFTER_M or turned >= SAVE_AFTER_DEG

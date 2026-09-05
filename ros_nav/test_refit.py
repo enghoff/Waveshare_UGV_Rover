@@ -317,22 +317,31 @@ def test_a_cleared_map_does_not_come_back_at_the_next_boot():
               saved.forget(), None)
 
 
-def test_the_graph_is_written_for_motion_rather_than_for_time():
+def test_the_graph_is_written_for_driving_rather_than_for_time():
     """A parked rover adds no nodes, so a second copy of the same graph is bytes
     for nothing -- `minimum_travel_distance` in the mapper's config is the same
-    rule, one layer down."""
+    rule, one layer down.
+
+    And it is the wheels that are asked, not the rover's belief about where it is
+    on the map. Those differ for a parked rover: `map -> odom` is only corrected
+    when a scan is folded in, so between scans the gyro's residual bias walks the
+    believed heading round at 0.8 degrees a minute -- measured on the rover -- and
+    half an hour of standing still would otherwise look like a rover that had
+    turned twenty degrees and get the drifted heading written down as where the
+    map was left.
+    """
     section("when the graph is worth writing again")
     with tempfile.TemporaryDirectory() as directory:
         saved = mapstore.SavedMap(directory)
         now = time.monotonic()
         check("with nothing saved, anything is worth saving",
               saved.due((0.0, 0.0, 0.0), now), True)
-        check("...but not without a pose to record it at",
+        check("...but not without a reading to compare against",
               saved.due(None, now), False)
         saved.make()
         for path in saved.graph_paths(saved.staging_stem):
             open(path, "w").write("graph")
-        saved.commit("map-one", (0.0, 0.0, 0.0))
+        saved.commit("map-one", (3.0, 4.0, 90.0), odom=(0.0, 0.0, 0.0))
         later = saved.saved_at + mapstore.SAVE_EVERY_S + 1.0
         check("a rover that has just been saved is not saved again",
               saved.due((5.0, 5.0, 0.0), saved.saved_at + 1.0), False)
@@ -342,6 +351,9 @@ def test_the_graph_is_written_for_motion_rather_than_for_time():
               saved.due((0.6, 0.0, 0.0), later), True)
         check("...and so is one that has only turned",
               saved.due((0.0, 0.0, 30.0), later), True)
+        check("and what was written down is where the rover is on the map, "
+              "which is not what decided to write it",
+              saved.start_pose(), (3.0, 4.0, 90.0))
 
 
 TESTS = (
@@ -356,5 +368,5 @@ TESTS = (
     test_the_map_is_smeared_so_the_search_can_find_the_peak,
     test_the_saved_map_is_only_usable_once_all_three_files_are_there,
     test_a_cleared_map_does_not_come_back_at_the_next_boot,
-    test_the_graph_is_written_for_motion_rather_than_for_time,
+    test_the_graph_is_written_for_driving_rather_than_for_time,
 )

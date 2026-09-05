@@ -264,12 +264,23 @@ falls back to exactly what it did before any of this existed.
 It lives outside `~/ugv` for the reason `~/.ugv/world` does. A deploy replaces the
 deploy tree, and a map is not code.
 
-**Written for motion, not for time.** At most once a minute, and only if the
-rover has moved half a metre or turned twenty degrees since the last one --
-`minimum_travel_distance` in [`config/slam_toolbox.yaml`](config/slam_toolbox.yaml)
-means a parked rover adds no nodes, so a second copy of an unchanged graph is
-bytes for nothing. Measured on the rover, writing a house-sized graph and reading
-it back is under a third of a second.
+**Written for driving, not for time.** At most once a minute, and only if the
+wheels have carried the rover half a metre or turned it twenty degrees since the
+last one -- `minimum_travel_distance` in
+[`config/slam_toolbox.yaml`](config/slam_toolbox.yaml) means a parked rover adds
+no nodes, so a second copy of an unchanged graph is bytes for nothing. Measured
+on the rover, writing a house-sized graph and reading it back is under a third of
+a second.
+
+**Dead reckoning decides that and not the rover's belief about where it is**,
+which is a distinction with a measurement behind it. A parked rover's map pose is
+not still: `map -> odom` is only corrected when the mapper folds in a scan, which
+needs motion, so between scans the gyro's residual bias walks the believed heading
+round -- 0.8 degrees a minute, measured standing still on 2026-09-05, with no
+position drift at all. Judged on that, a rover left alone for half an hour looks
+like one that has turned twenty degrees, and the graph would be written with a
+heading that had drifted rather than one the rover had. The wheels are the honest
+witness, and they are also what slam_toolbox counts nodes by.
 
 **`map_id` is how anything holding coordinates knows whether they still mean
 something.** It is minted when a genuinely new map is started -- first boot, a
