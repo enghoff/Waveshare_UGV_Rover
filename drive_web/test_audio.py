@@ -388,10 +388,129 @@ def test_the_conversation_is_written_down() -> None:
           os.path.exists(nowhere), False)
 
 
+def test_the_model_hanging_up_on_a_quiet_room() -> None:
+    """Five minutes of nobody talking, replayed from the rover's own transcript.
+
+    What happened on 2026-09-05: the model said "I've set off to explore and look
+    for the shoes" at 07:52:11, the person watched it drive, and at 07:57:11 to
+    the second the service closed the socket. The console showed a doubled
+    `ConnectionClosedError` where a sentence belonged, went on counting the
+    seconds of a session that no longer existed, and -- the part that mattered --
+    left the browser recording into it, so the next thing anybody said went
+    nowhere. Saying "stop" to a rover that is driving is exactly the case.
+
+    The close text below is that one, verbatim. It is checked against the other
+    1007 this service sends, because the code cannot tell them apart: an account
+    out of free quota closes the same way and must be reported, not redialled.
+    """
+    try:
+        import time
+
+        import omni_bridge
+        import session as omni
+    except Exception as error:                         # noqa: BLE001
+        SKIP.append(f"the model hanging up ({type(error).__name__}: {error})")
+        return
+
+    quiet = ("received 1007 (invalid frame payload data) Your session was closed "
+             "because no response was generated for 300 seconds.; then sent 1007 "
+             "(invalid frame payload data) Your session was closed because no "
+             "response was generated for 300 seconds.")
+    exhausted = ("received 1007 (invalid frame payload data) The free tier of the "
+                 "model has been exhausted. If you wish to continue access the "
+                 "model on a paid basis, please disable the 'use free tier only' "
+                 "mode in the management console.")
+    check("the service hanging up on a quiet room is recognised",
+          omni.idle_hangup(ConnectionError(quiet)), True)
+    check("...and the same close code out of free quota is not",
+          omni.idle_hangup(ConnectionError(exhausted)), False)
+
+    def hangup(text: str) -> ConnectionError:
+        """The close, as `websockets` hands it to the conversation: an exception
+        whose text is what the service said and nothing else."""
+        return ConnectionError(text)
+
+    class Browser:
+        """A page holding the microphone, as the console sees it."""
+
+        def __init__(self) -> None:
+            self.let_go = ""
+
+        def release(self, why: str) -> None:
+            self.let_go = why
+
+    def run(endings, *, holding: bool, lived: float = 400.0):
+        """One `_run` with the conversation faked out. Returns what was said."""
+        said: list[str] = []
+        browser = Browser() if holding else None
+        with tempfile.TemporaryDirectory() as work:
+            console = omni_bridge.Omni(
+                "127.0.0.1:1", lambda text, err=False: said.append(text),
+                log_path=os.path.join(work, "omni.log"))
+            console.state, console.since = "live", time.monotonic()
+            console._wire = browser
+            attempts: list[bool] = []
+
+            async def converse(key: str):
+                # Whether the page was still holding the microphone when this
+                # conversation started, which is what the restart turns on.
+                attempts.append(console._wire is not None)
+                ending = endings[min(len(attempts) - 1, len(endings) - 1)]
+                if len(attempts) == 1:
+                    console.since = time.monotonic() - lived
+                if ending is not None:
+                    raise ending
+
+            console._converse = converse
+            console._run("not-a-real-key")
+            console.log.close()
+            return console, said, attempts, browser
+
+    # 1. Somebody is watching the rover drive. The conversation is dialled again
+    #    without them touching anything, and their microphone stays open.
+    console, said, attempts, browser = run([hangup(quiet), None],
+                                          holding=True)
+    check("a conversation hung up on for silence is started again",
+          len(attempts), 2)
+    check("...with the page still holding the microphone", attempts, [True, True])
+    check("...and the transcript says what happened, in English",
+          any(omni_bridge.HUNG_UP in line and "starting another" in line
+              for line in said), True)
+    check("...naming what a new conversation costs",
+          any("will not remember" in line for line in said), True)
+    check("...and none of it is reported as a fault", console.error, "")
+
+    # 2. Nobody is there. Nothing is dialled, and the state goes back to the one
+    #    the button reads rather than staying an error with a ticking clock.
+    console, said, attempts, browser = run([hangup(quiet)], holding=False)
+    check("a hang-up with nobody listening is not dialled again", len(attempts), 1)
+    check("...the console is off rather than in error", console.state, "off")
+    check("...the clock has stopped", console.since, 0.0)
+    check("...and the raw close text is nowhere on the page", console.error, "")
+    check("...while the record says why it ended",
+          any(omni_bridge.HUNG_UP in line for line in said), True)
+
+    # 3. A session that dies in the first minute cannot have died of a
+    #    five-minute silence, whatever it says. Two attempts, not a loop.
+    console, said, attempts, browser = run([hangup(quiet)], holding=True)
+    check("a hang-up straight after connecting stops rather than spinning",
+          len(attempts), 2)
+    check("...and the page is told to put the microphone down",
+          browser.let_go, omni_bridge.HUNG_UP)
+
+    # 4. The other 1007. Still an error, still reported, still not retried.
+    console, said, attempts, browser = run([hangup(exhausted)], holding=True)
+    check("an exhausted account is not dialled again", len(attempts), 1)
+    check("...it is reported", "free tier" in console.error, True)
+    check("...and the microphone is released with the reason",
+          "free tier" in browser.let_go, True)
+
+
 TESTS = (
     test_the_audio_socket,
     test_talking_needs_no_console_token,
     test_what_the_browser_heard,
     test_a_second_conversation_starts_at_once,
     test_the_conversation_is_written_down,
+    test_the_model_hanging_up_on_a_quiet_room,
 )

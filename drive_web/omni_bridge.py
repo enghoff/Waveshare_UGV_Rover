@@ -39,6 +39,14 @@ or when nothing has been attached for IDLE_STOP_S.
 people talking over each other into the same sentence, and the model has no way
 to tell them apart. The newest connection wins and the older one is told it has
 lost the microphone, which is at least legible; sharing it silently would not be.
+
+**The service hangs up on a quiet room, and that is not a fault.** It ends a
+session the model has not spoken in for five minutes -- see `idle_hangup` in
+session.py for the recording -- which is exactly what a person watching the rover
+drive somewhere does. So the conversation is dialled again while a browser is
+still holding the microphone, and only reported when there is nobody left to talk
+to. What is lost is what the model remembers, which is why the restart says so
+rather than happening silently.
 """
 from __future__ import annotations
 
@@ -93,6 +101,22 @@ IDLE_STOP_S = 120.0
 #: treated as stale. It is reported roughly five times a second, so this is
 #: several reports missed rather than one.
 PLAYED_STALE_S = 2.0
+
+#: How long a conversation has to have lasted before its ending is believed to be
+#: the five-minute silence it says it is, and dialled again. The service cannot
+#: reach that timeout in less than five minutes, so anything shorter is the
+#: service saying one thing and meaning another -- and a wrong guess here is a
+#: console that redials in a tight loop against a free-quota account. This makes
+#: the worst case one attempt a minute, which is slow enough to notice and stop.
+SHORT_SESSION_S = 60.0
+
+#: What that hang-up is called, in one sentence that the transcript, the console
+#: and the browser all use, so the record and the page say the same thing about
+#: the same event. Five minutes rather than "300 seconds" because it is being
+#: said to a person; the number comes from the service's own timeout so the two
+#: cannot drift apart.
+HUNG_UP = ("the model hung up after %d minutes with nothing said"
+           % (omni.IDLE_HANGUP_S // 60))
 
 #: Where the conversation is written down: beside the console's own log, in the
 #: directory this file is deployed into. Not under ~/.ugv because it is neither a
@@ -439,7 +463,7 @@ class Omni:
         with self._lock:
             old, self._wire = self._wire, wire
         if old is not None and old is not wire:
-            old.evict("another browser took the microphone")
+            old.release("another browser took the microphone")
 
     def detach(self, wire) -> None:
         with self._lock:
@@ -509,12 +533,27 @@ class Omni:
         loop = asyncio.new_event_loop()
         self._loop = loop
         asyncio.set_event_loop(loop)
+        goodbye = "the rover ended the conversation"
         try:
-            loop.run_until_complete(self._converse(key))
-        except (Exception, SystemExit) as error:       # noqa: BLE001 - reported, not raised
-            with self._lock:
-                self.state, self.error = "error", f"{type(error).__name__}: {error}"
-            self._note(f"microphone: {self.error}", err=True)
+            while True:
+                try:
+                    loop.run_until_complete(self._converse(key))
+                except (Exception, SystemExit) as error:  # noqa: BLE001 - reported, not raised
+                    # The one ending that is not a fault: the service closing a
+                    # conversation nobody has spoken into for five minutes. Every
+                    # other way of failing is still a red line on the page.
+                    if not omni.idle_hangup(error):
+                        with self._lock:
+                            self.state, self.error = (
+                                "error", f"{type(error).__name__}: {error}")
+                        self._note(f"microphone: {self.error}", err=True)
+                        goodbye = self.error
+                        break
+                else:
+                    break              # stopped on purpose, or by the idle watch
+                if not self._dial_again():
+                    goodbye = HUNG_UP
+                    break
         finally:
             try:
                 loop.run_until_complete(loop.shutdown_asyncgens())
@@ -528,9 +567,57 @@ class Omni:
             with self._lock:
                 if self.state != "error":
                     self.state, self.since = "off", 0.0
+            # The browser is still holding the microphone at this point, and
+            # nothing else would ever tell it otherwise: the audio socket is this
+            # console's, not the model's, and it stays open whatever the model
+            # does. Left alone it is a live microphone feeding a session that no
+            # longer exists -- an open recording light, and every word spoken into
+            # it dropped on the floor by `on_audio`.
+            self._release(goodbye)
             self._note("microphone: the session is closed")
 
+    def _dial_again(self) -> bool:
+        """The service hung up on a silent conversation. Start another, or stop.
+
+        Worth doing only while somebody is holding the microphone, which is the
+        case this exists for: the rover is off exploring, the person watching it
+        has not needed to say anything for five minutes, and the next thing they
+        say is quite likely to be "stop". Before this, that word went nowhere.
+
+        Not worth doing for a session that has only just started -- see
+        SHORT_SESSION_S -- and not worth doing for nobody, since a session with no
+        browser on it is one `_idle_watch` is about to close anyway.
+        """
+        with self._lock:
+            attached = self._wire is not None
+            lived = time.monotonic() - self.since if self.since else 0.0
+            again = attached and lived >= SHORT_SESSION_S
+            if again:
+                self.state, self.error, self.since = ("starting", "",
+                                                      time.monotonic())
+        # Said either way, and said here rather than at the two call sites,
+        # because a conversation that ended is the thing worth writing down --
+        # what the console did about it is the clause after the semicolon.
+        self._note("microphone: %s; %s" % (
+            HUNG_UP, "starting another, which will not remember this one" if again
+            else "press the button to talk again"))
+        return again
+
+    def _release(self, why: str) -> None:
+        """Tell the browser to let go of the microphone, and say why.
+
+        The same road an evicted browser is sent down, for the same reason: a page
+        that keeps a microphone open for a conversation that has ended is worse
+        than one that has to be asked twice, because nothing on it says so.
+        """
+        with self._lock:
+            wire, self._wire = self._wire, None
+            self._detached_at = time.monotonic()
+        if wire is not None:
+            wire.release(why)
+
     async def _converse(self, key: str) -> None:
+        """One conversation, from dialling until something ends it."""
         # Named before the `try`, because the `finally` names it and the first
         # thing that can fail is the connection that has not happened yet.
         session = None
@@ -587,13 +674,22 @@ class Omni:
                 await session.drain()
                 # Whichever finished first may have finished by raising, and a
                 # socket closed by the service is the interesting case: it is how
-                # an exhausted free tier presents. Re-raise it so _run reports it.
+                # an exhausted free tier presents, and how a conversation hung up
+                # on for going quiet does. Re-raise it either way. Which of those
+                # it was is `_run`'s to decide, because a close can also reach it
+                # from `drain` or from the socket being shut, and one classifier
+                # on the outside cannot be walked around by a second road in.
                 for task in done:
                     if not task.cancelled() and task.exception() is not None:
                         raise task.exception()
         finally:
             self._session = None
             self._mirror(session=None)
+            # One client per conversation, and it holds a socket to the daemon.
+            # Left open it was a slow leak nobody reached, because a conversation
+            # ended when somebody pressed a button; a console that dials again by
+            # itself would reach it in an afternoon.
+            rover.close()
 
     async def _pump(self, session) -> None:
         """Microphone blocks into the session, in the order they arrived.

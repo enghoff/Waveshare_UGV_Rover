@@ -373,8 +373,11 @@ const voice = {
       this.queued -= Math.max(0, this.nextStart - this.play.currentTime);
       this.nextStart = this.play.currentTime;
       this.report();
-    } else if (message.t === "evicted") {
-      this.note(message.why || "another browser took the microphone");
+    } else if (message.t === "released") {
+      // The rover has let go of this microphone: another browser took it, or
+      // the conversation it was feeding has ended. Either way the page stops
+      // recording, so the button and the light agree with what is happening.
+      this.note(message.why || "the rover let go of the microphone");
       this.stop(false);
     }
   },

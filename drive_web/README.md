@@ -510,6 +510,14 @@ conversation, the tool calls it makes and the pictures it takes are all held on
 the board. The page used to say so in a paragraph under the button; it says it
 here instead.
 
+The service also ends a conversation the model has not spoken in for five
+minutes, which is what happens when the rover is asked to go somewhere and the
+person watching it has nothing to say for a while. The console starts another one
+and says so in the log; what a new conversation cannot bring with it is what the
+model remembered of the old one, so it will not know what it was asked earlier.
+If nobody is holding the microphone when that happens, it stops instead and the
+button starts the next one.
+
 ## Tool calls and vision
 
 The model receives the daemon's current tool schemas. When it calls one, the

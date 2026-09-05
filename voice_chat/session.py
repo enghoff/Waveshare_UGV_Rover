@@ -187,6 +187,27 @@ TRACE = os.environ.get("QWEN_REALTIME_TRACE", "") not in ("", "0", "false", "Fal
 # ending is a line in the log rather than a stack trace.
 SESSION_LIMIT_S = 120 * 60
 
+# ...and it is ended long before that if the *model* has not spoken for five
+# minutes. That is not an error and not this end doing anything wrong: it is a
+# person watching the rover get on with something. Recorded on the rover on
+# 2026-09-05 -- "I've set off to explore and look for the shoes" at 07:52:11, the
+# close at 07:57:11 to the second -- and until it was named the console reported
+# it as a crash, with the microphone still open in the browser and going nowhere.
+IDLE_HANGUP_S = 300
+_IDLE_HANGUP = "no response was generated"
+
+
+def idle_hangup(error: BaseException | str) -> bool:
+    """Is this the service hanging up on a conversation that went quiet?
+
+    Read out of the service's own sentence rather than out of the close code,
+    because the code does not tell them apart: an exhausted free tier closes with
+    the same 1007, and that one has to be reported to somebody rather than
+    quietly dialled again. The sentence arrives twice -- once as an `error` event
+    and again in the close frame -- and either one is enough to recognise it.
+    """
+    return _IDLE_HANGUP in str(error)
+
 # A picture cannot be put into an empty input buffer. The rule is the service's
 # and it is not negotiable -- "you must send audio data at least once before you
 # send image data" -- and a buffer that has been committed counts as empty, which

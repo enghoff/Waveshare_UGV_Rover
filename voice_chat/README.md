@@ -77,6 +77,14 @@ The browser reports how much generated audio was actually played. On interruptio
 history reflects what the user heard rather than what the service had already
 generated.
 
+A conversation the model has not spoken in for five minutes is ended by the
+service, which closes the socket with 1007 and the sentence `Your session was
+closed because no response was generated for 300 seconds.` That is not an error
+and `session.idle_hangup` recognises it; `omni_bridge` starts a fresh
+conversation while a browser still holds the microphone, and reports it only
+when there is nobody left to talk to. The close code alone does not identify it,
+because an exhausted free tier closes with the same one.
+
 ## Credentials
 
 The DashScope key lives on the rover:

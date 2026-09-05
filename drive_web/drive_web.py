@@ -506,8 +506,16 @@ class Wire:
     def control(self, payload: dict) -> None:
         self._send(wsframe.TEXT, json.dumps(payload).encode())
 
-    def evict(self, why: str) -> None:
-        self.control({"t": "evicted", "why": why})
+    def release(self, why: str) -> None:
+        """Ask the page to let go of the microphone, and say why in one line.
+
+        Two things send a browser down this road and they read the same way to
+        the person holding the microphone: another browser has taken it, or the
+        conversation it was feeding has ended. Either way the honest thing is a
+        page that puts the microphone down and says so, rather than one whose
+        recording light stays on over a session that is not there.
+        """
+        self.control({"t": "released", "why": why})
         self.alive = False
 
     def _send(self, opcode: int, payload: bytes) -> None:
