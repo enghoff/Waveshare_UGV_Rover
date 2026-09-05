@@ -250,7 +250,7 @@ to be measured in coordinates that ceased to exist at the next boot, which is wh
 ```bash
 ssh orin 'cat ~/.ugv/map/current.json'
 {"map_id": "0291059899f1", "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.3},
- "saved_at": 1788583121.14}
+ "pose_at": 1788583180.02, "saved_at": 1788583121.14}
 ```
 
 Three files, and the rules about them are in [`mapstore.py`](mapstore.py).
@@ -272,8 +272,25 @@ no nodes, so a second copy of an unchanged graph is bytes for nothing. Measured
 on the rover, writing a house-sized graph and reading it back is under a third of
 a second.
 
-**Dead reckoning decides that and not the rover's belief about where it is**,
-which is a distinction with a measurement behind it. A parked rover's map pose is
+**Where the rover is, though, is written down every second or so**, and that
+separation is the whole of what a boot after a power cut depends on. The graph is
+thirteen megabytes and slam_toolbox holds its own mutex to serialise one; the
+rover's place inside it is three numbers and a rename. So `pose` is rewritten on
+its own whenever the wheels have carried the rover ten centimetres or turned it
+three degrees, leaving `saved_at` for the graph and `pose_at` for the pose, and
+the two are deliberately allowed to disagree by a minute of driving. The graph's
+coordinates do not go stale; only the rover's place in them does, and it is that
+half a restore needs.
+
+Measured, on 2026-09-05, which is why it works this way: the stack went down
+mid-drive four seconds into a graph write. The serialisation never finished, so
+the note that survived was the one from the save before it, up to a minute of
+driving earlier. The rover came up faithfully where that note said, matched the
+map there at 56% against the 90% a fit needs, and stood a metre outside the
+window `refit.py` may search -- lost on a map it had kept perfectly.
+
+**Dead reckoning decides both of those and not the rover's belief about where it
+is**, which is a distinction with a measurement behind it. A parked rover's map pose is
 not still: `map -> odom` is only corrected when the mapper folds in a scan, which
 needs motion, so between scans the gyro's residual bias walks the believed heading
 round -- 0.8 degrees a minute, measured standing still on 2026-09-05, with no

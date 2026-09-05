@@ -158,8 +158,11 @@ class NavMap:
                 if self._map_settle_from is not None:
                     self.map_settle()
                     continue
-                if self.saved.due(self.travelled_deg()):
+                odom = self.travelled_deg()
+                if self.saved.due(odom):
                     self.save_graph()
+                elif self.saved.pose_due(odom):
+                    self.keep_pose(odom)
             except Exception as error:              # never past here: it is a loop
                 self.get_logger().warn("map keeper: %s: %s"
                                        % (type(error).__name__, error))
@@ -307,6 +310,29 @@ class NavMap:
                                "place: %s" % (error,))
             self.map_saved_at = note["saved_at"]
             return True, "the map is saved"
+
+    def keep_pose(self, odom=None):
+        """Write down where the rover is, without writing the graph again.
+
+        The cheap half of saving, and the half that a boot after a power cut
+        actually needs. Writing the graph means asking slam_toolbox to serialise
+        thirteen megabytes under its own mutex, which is why it happens about once
+        a minute; where the rover is inside that graph changes every time a wheel
+        turns, costs a rename to record, and is the one thing the next boot cannot
+        work out for itself.
+
+        Measured on this rover on 2026-09-05: the stack went down mid-drive four
+        seconds into a graph write, so the note that survived was the one from the
+        save before it. The boot put the rover back where that note said, the scan
+        fitted the map there at 56% against the 90% a fit needs, and the rover
+        came up outside the window `refit.py` can search -- unable to find its way
+        back onto a map it had kept perfectly well.
+
+        Under the map lock, so that a pose never lands in the note while `refit`
+        is between writing the graph and loading it back.
+        """
+        with self.map_lock:
+            return self.saved.note_pose(self.map_id, self.pose_deg(), odom)
 
     def load_graph(self, pose, drop_trail=False):
         """Load the saved graph and put the rover on it near `pose`.

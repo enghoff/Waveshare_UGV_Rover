@@ -356,6 +356,84 @@ def test_the_graph_is_written_for_driving_rather_than_for_time():
               saved.start_pose(), (3.0, 4.0, 90.0))
 
 
+def test_where_the_rover_is_survives_a_power_cut_between_graph_writes():
+    """The pose is written at the pace the rover moves, not the graph's.
+
+    This is the fault of 2026-09-05, in a temporary directory. The rover went
+    down mid-drive four seconds into a graph write; the serialisation never
+    finished, so what a boot found was the note from the save before it, up to a
+    minute of driving earlier. It came back where that note said, matched the
+    map there at 56% where a fit needs 90%, and stood a metre outside the window
+    `refit.py` is allowed to search -- lost on a map it had kept intact.
+    """
+    section("where the rover is, between graph writes")
+    with tempfile.TemporaryDirectory() as directory:
+        saved = mapstore.SavedMap(directory)
+        check("with no map saved there is nowhere to write a pose",
+              saved.note_pose("map-one", (1.0, 2.0, 30.0)), False)
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("graph")
+        check("...and a graph not yet committed is not a map either",
+              saved.note_pose("map-one", (1.0, 2.0, 30.0)), False)
+
+        saved.commit("map-one", (0.0, 0.0, 0.0), odom=(0.0, 0.0, 0.0))
+        graph_written = os.path.getmtime(saved.graph_paths()[0])
+        check("a rover that has just been written down is left alone",
+              saved.pose_due((0.0, 0.0, 0.0), saved.posed_at + 0.1), False)
+        later = saved.posed_at + mapstore.POSE_EVERY_S + 0.1
+        check("...and a second later, still, if it has not moved",
+              saved.pose_due((0.0, 0.0, 0.0), later), False)
+        check("but ten centimetres of driving is worth writing down",
+              saved.pose_due((0.11, 0.0, 0.0), later), True)
+        check("...and so is a few degrees of turning",
+              saved.pose_due((0.0, 0.0, 4.0), later), True)
+        check("long before the graph itself is worth writing again",
+              saved.due((0.11, 0.0, 4.0), later), False)
+
+        check("writing it says so", saved.note_pose(
+            "map-one", (3.5, -1.25, 91.4), odom=(0.11, 0.0, 4.0)), True)
+        check("a boot now starts where the rover last was",
+              saved.start_pose(), (3.5, -1.25, 91.4))
+        check("...under the identity it always had",
+              saved.held()["map_id"], "map-one")
+        check("...with the graph underneath it untouched",
+              os.path.getmtime(saved.graph_paths()[0]), graph_written)
+        check("...and the pose written down as its own moment",
+              saved.held()["pose_at"] > 0, True)
+
+        check("a pose for a map this is not is refused",
+              saved.note_pose("map-two", (9.0, 9.0, 0.0)), False)
+        check("...leaving the one that belongs to this map",
+              saved.start_pose(), (3.5, -1.25, 91.4))
+        check("and nothing to write to once the map is cleared",
+              (saved.forget(), saved.note_pose("map-one", (1.0, 1.0, 0.0)))[1],
+              False)
+
+
+def test_the_keeper_writes_the_pose_when_it_is_not_writing_the_graph():
+    """The rule above is only worth having if the keeper actually asks.
+
+    Read as text, like the check below it and for the same reason: the keeper
+    needs rclpy and this file runs on a workstation.
+    """
+    section("what the map keeper does with a tick")
+    path = os.path.join(HERE, "nav_map.py")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        source = fh.read()
+    loop = source[source.index("def _map_loop"):source.index("def travelled_deg")]
+    check("the tick that does not write a graph writes the pose",
+          "self.saved.pose_due(odom)" in loop, True)
+    check("...and it is one or the other rather than both",
+          "elif" in loop, True)
+    keeping = source[source.index("def keep_pose"):source.index("def load_graph")]
+    check("...from the map frame, for the map the rover has now",
+          "self.saved.note_pose(self.map_id, self.pose_deg(), odom)" in keeping,
+          True)
+
+
 def test_an_empty_graph_is_never_written_down():
     """A saved empty map is worse than no saved map, and it reads as a success.
 
@@ -393,5 +471,7 @@ TESTS = (
     test_the_saved_map_is_only_usable_once_all_three_files_are_there,
     test_a_cleared_map_does_not_come_back_at_the_next_boot,
     test_the_graph_is_written_for_driving_rather_than_for_time,
+    test_where_the_rover_is_survives_a_power_cut_between_graph_writes,
+    test_the_keeper_writes_the_pose_when_it_is_not_writing_the_graph,
     test_an_empty_graph_is_never_written_down,
 )

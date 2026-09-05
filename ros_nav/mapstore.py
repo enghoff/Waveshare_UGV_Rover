@@ -26,8 +26,8 @@ the same reason.
 ## What "usable" means
 
 Three files: `current.posegraph` and `current.data`, which are slam_toolbox's,
-and `current.json`, which is this module's note about them -- the pose the rover
-was standing at when they were written, and the identity of the map they hold.
+and `current.json`, which is this module's note about them -- where the rover
+last was, and the identity of the map they hold.
 
 **The note is written last and is the only thing that says the pair is
 complete.** A serialisation interrupted by a power cut leaves a truncated
@@ -35,6 +35,30 @@ complete.** A serialisation interrupted by a power cut leaves a truncated
 graph is written under a second name and renamed into place, and the note is
 written after both renames: no note, no restore, and the rover falls back to
 exactly what it did before any of this existed, which is to map the room again.
+
+## Where the rover is, written far more often than the map it is on
+
+**The pose is not the graph and must not be saved at the graph's pace.** A
+house-sized graph is thirteen megabytes and slam_toolbox holds its own mutex to
+write one, so a write is seconds of work and is worth doing about once a minute.
+The rover's position inside that graph is three numbers, changes every time a
+wheel turns, and is the one thing a boot cannot work out for itself: `refit.py`
+searches a metre around where it is told the rover was, and a pose a minute stale
+is a rover that drove out of that window before it was switched off.
+
+Measured on this rover on 2026-09-05, and this is why it is written down here.
+The stack went down mid-drive, four seconds after a graph write had begun -- the
+serialisation never finished, so the note that came back was the one from the
+save before it, up to a minute of driving earlier. The boot put the rover
+faithfully back where that older note said, the scan matched the map there at
+56% against the 90% a fit needs, and the rover came up on the far side of its own
+search window with no way back onto its map.
+
+So `note_pose` rewrites the pose alone -- a hundred and twenty bytes, no mapper,
+no mutex -- on the cadence the wheels set, while `commit` goes on writing the
+graph on its own. The two can disagree by a minute of driving and that is the
+point: the graph's coordinates do not go stale, only the rover's place in them,
+and it is the *newer* half that a restore needs.
 
 ## The identity, and what the rest of the rover does with it
 
@@ -77,6 +101,25 @@ SAVE_EVERY_S = 60.0
 SAVE_AFTER_M = 0.5
 SAVE_AFTER_DEG = 20.0
 
+#: The same three questions asked of the *pose* alone, which is why they are a
+#: different size. Rewriting the note is a small atomic write of three numbers
+#: rather than a serialisation of the whole graph, so what it costs is a rename
+#: and what it buys is the difference between a boot that knows where the rover
+#: was a second ago and one that knows where it was a minute ago. Ten
+#: centimetres is a fifth of the search window a boot has to find the rover
+#: within, and a second is below the time it takes this chassis to cross that.
+#:
+#: **Dead reckoning gates this exactly as it gates the graph**, for the reason
+#: `due` gives at length: a parked rover's believed heading walks with the gyro's
+#: residual bias, and gating on the belief would write that drift down as though
+#: the rover had turned. Three degrees rather than twenty only because this is
+#: the cheap write; a rover left standing still crosses it on drift alone every
+#: few minutes, and what lands is the same drifted heading the graph's own gate
+#: would have recorded later.
+POSE_EVERY_S = 1.0
+POSE_AFTER_M = 0.10
+POSE_AFTER_DEG = 3.0
+
 
 def new_id():
     """A fresh map identity. Short enough to read in a log line, random enough
@@ -99,6 +142,11 @@ class SavedMap(object):
         #: whether *this* run has anything new to record.
         self.saved_at = None
         self.saved_odom = None
+        #: The same pair for the pose on its own, which is written far more often
+        #: than the graph it belongs to and therefore keeps its own reckoning of
+        #: when it last was.
+        self.posed_at = None
+        self.posed_odom = None
 
     # --- where things are -----------------------------------------------------
 
@@ -146,12 +194,16 @@ class SavedMap(object):
         return note
 
     def start_pose(self):
-        """`(x_m, y_m, heading_deg)` the graph was last written at, or None.
+        """`(x_m, y_m, heading_deg)` the rover was last at, or None.
 
         This is where a restore puts the rover before it has matched anything:
         the rover is assumed to be where it was when it was switched off, which
         is true unless somebody moved it -- and moving it is what `refit.py` is
         for.
+
+        Last written rather than written with the graph: see `note_pose`. The
+        graph beneath it can be up to a minute older, which costs a minute of
+        mapping and does not move the frame this pose is measured in.
         """
         note = self.held() or {}
         pose = note.get("pose")
@@ -178,18 +230,58 @@ class SavedMap(object):
                             self.graph_paths()):
             os.replace(src, dst)
         note = {"map_id": map_id, "saved_at": time.time(),
-                "pose": None if pose is None else {
-                    "x_m": round(float(pose[0]), 3),
-                    "y_m": round(float(pose[1]), 3),
-                    "heading_deg": round(float(pose[2]), 1)}}
+                "pose": _pose_fields(pose)}
         note.update(extra)
+        self._write_note(note)
+        self.saved_at = time.monotonic()
+        self.saved_odom = None if odom is None else tuple(odom)
+        # The pose in it is this fresh too, so the cheap writer has nothing to
+        # add for another second.
+        self.posed_at = self.saved_at
+        self.posed_odom = self.saved_odom
+        return note
+
+    def note_pose(self, map_id, pose, odom=None):
+        """Write where the rover is now into the note beside the graph it has.
+
+        Returns whether anything was written. The graph is untouched: this is the
+        rest of the answer to "where was the rover when it went down", written at
+        the pace the rover actually moves rather than at the pace a thirteen
+        megabyte serialisation can be afforded. See the module docstring for the
+        drive that paid for it.
+
+        **It refuses unless a complete saved map is already there, and unless it
+        is this map.** A pose is a coordinate and means nothing without the frame
+        it was measured in, so writing one beside a graph that is missing, half
+        written, or from a map the rover has since thrown away would be worse
+        than writing nothing: it would be a note claiming a rover is somewhere in
+        a room it is not in. `held` answers the first question and `map_id`
+        answers the second -- the keeper mints a new identity the moment a
+        restore fails, and the note on disk still carries the old one until the
+        next graph write replaces the pair.
+        """
+        if pose is None:
+            return False
+        note = self.held()
+        if note is None:
+            return False
+        if map_id is not None and str(note.get("map_id")) != str(map_id):
+            return False
+        note["pose"] = _pose_fields(pose)
+        note["pose_at"] = time.time()
+        self._write_note(note)
+        self.posed_at = time.monotonic()
+        self.posed_odom = None if odom is None else tuple(odom)
+        return True
+
+    def _write_note(self, note):
+        """The note, atomically. Written under a temporary name and renamed, so
+        that a reader never sees half of one and a power cut never leaves half of
+        one behind."""
         tmp = self.note_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(note, fh, sort_keys=True)
         os.replace(tmp, self.note_path)
-        self.saved_at = time.monotonic()
-        self.saved_odom = None if odom is None else tuple(odom)
-        return note
 
     def forget(self):
         """Throw the saved map away, for a `clear_map` that means it.
@@ -207,6 +299,8 @@ class SavedMap(object):
                 pass
         self.saved_at = None
         self.saved_odom = None
+        self.posed_at = None
+        self.posed_odom = None
 
     def due(self, odom, now=None):
         """Whether it is worth writing the graph again, given what the wheels did.
@@ -236,3 +330,39 @@ class SavedMap(object):
                            odom[1] - self.saved_odom[1])
         turned = abs((odom[2] - self.saved_odom[2] + 180.0) % 360.0 - 180.0)
         return moved >= SAVE_AFTER_M or turned >= SAVE_AFTER_DEG
+
+    def pose_due(self, odom, now=None):
+        """Whether the rover has moved enough to be worth writing down again.
+
+        `due` for the pose alone, with the same shape and the same witness, and
+        smaller numbers because the write it decides on is a hundred and twenty
+        bytes rather than a graph. What it is buying is that the pose on disk is
+        never more than a few centimetres behind the rover, so that a boot after a
+        power cut mid-drive puts it back inside `refit.py`'s search window instead
+        of a minute of driving outside it.
+        """
+        if odom is None:
+            return False
+        now = time.monotonic() if now is None else now
+        if self.posed_at is None or self.posed_odom is None:
+            return True
+        if now - self.posed_at < POSE_EVERY_S:
+            return False
+        moved = math.hypot(odom[0] - self.posed_odom[0],
+                           odom[1] - self.posed_odom[1])
+        turned = abs((odom[2] - self.posed_odom[2] + 180.0) % 360.0 - 180.0)
+        return moved >= POSE_AFTER_M or turned >= POSE_AFTER_DEG
+
+
+def _pose_fields(pose):
+    """`(x_m, y_m, heading_deg)` as the note records it, or None.
+
+    Rounded here rather than at the callers, because two writers of one field
+    that round differently make a file whose history reads as movement that did
+    not happen.
+    """
+    if pose is None:
+        return None
+    return {"x_m": round(float(pose[0]), 3),
+            "y_m": round(float(pose[1]), 3),
+            "heading_deg": round(float(pose[2]), 1)}
