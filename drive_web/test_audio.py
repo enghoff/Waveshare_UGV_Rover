@@ -309,7 +309,7 @@ def test_a_second_conversation_starts_at_once() -> None:
 
 
 def test_the_conversation_is_written_down() -> None:
-    """What the model was asked, what it called, and what it was told back.
+    """What the model called, and what it was told back.
 
     The fault this exists for: the rover refuses to go somewhere, says so out
     loud, and by the time anybody asks why, the sentence it was handed has faded
@@ -332,7 +332,7 @@ def test_the_conversation_is_written_down() -> None:
         # checks the whole road from what the conversation reports to what lands
         # on the disk, not just the last step of it.
         notes = omni_bridge.Notes(console._note)
-        notes.say("you: go to the sofa")
+        notes.say("microphone: live, 24 tools, vision")
         notes.say('  [go_to_thing{"description": "the sofa"} -> {"ok": false, '
                   '"error": "there is no route to there that the rover fits '
                   'through"}]')

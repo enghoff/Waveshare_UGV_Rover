@@ -528,12 +528,12 @@ through a phone/desk that has no use for it.
 ### What was asked, and what it was told back
 
 Every one of those calls is written to `~/ugv/drive_web/omni.log` on the rover,
-beside the console's own log, with what was heard and what was said around it:
+beside the console's own log, with what the rover said out loud around it:
 
 ```
-2026-09-05T05:47:08 you: go to the sofa
-2026-09-05T05:47:08   [go_to_thing{"description": "the sofa"} -> {"ok": false, ...}]
-2026-09-05T05:47:11 bot: I can't get there from here
+2026-09-05T06:29:35 microphone: live, 24 tools, vision
+2026-09-05T06:29:41   [go_to_thing{"description": "the sofa"} -> {"ok": true, ...}]
+2026-09-05T06:29:43 bot: I've set off for the sofa, which is about 8.8 metres away.
 ```
 
 It is the same text the notice shows, and it exists because the notice does not
@@ -546,9 +546,15 @@ which tool and what it actually said.
 
 The whole result is written, never a summary of it, because the refusal string is
 the thing worth reading. It rolls at a megabyte, keeping one older file, and a
-console nobody has spoken to leaves no file at all. It records what is said in the
-room, which is audio that already goes to Alibaba; delete it if that is not
+console nobody has spoken to leaves no file at all. It records what the rover says
+out loud, which is audio that already goes to Alibaba; delete it if that is not
 wanted.
+
+What it does *not* carry is the question. `session.configure` never asks the
+service for `input_audio_transcription`, so the `you: ...` line the client knows
+how to write is one it is never sent — the same reason the microphone panel's
+"heard" has always been blank. Turning that on would put the spoken question above
+each call, at the cost of an ASR bill on a free-quota account.
 
 ## Browser interruption / barge-in
 

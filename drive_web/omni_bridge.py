@@ -222,8 +222,17 @@ class Transcript:
 
     So a model that says it cannot get to the sofa was quoting a refusal some
     tool handed it, and until this file that sentence had been shown once and
-    written down nowhere. What lands here is what was heard, what was said, and
-    each tool call with the whole of its answer, in the order they happened.
+    written down nowhere. What lands here is each tool call with its arguments
+    and the whole of its answer, what the rover said out loud around it, and the
+    session's own lifecycle, in the order they happened.
+
+    **What is not here is the question.** `Session.configure` never asks the
+    service for `input_audio_transcription`, so the "you: ..." line it knows how
+    to write is one the service is never asked to supply -- which is also why the
+    console's `heard` has always been empty. The call and its answer are the half
+    that a refusal is read from; the half that says why it was asked for costs an
+    ASR bill on a free-quota account, and is a decision rather than an oversight
+    to leave out.
 
     Opened on the first line rather than at start-up, so a console nobody has
     spoken to leaves no file behind -- which is also what keeps it out of a test
