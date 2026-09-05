@@ -255,11 +255,34 @@ cells become the squares they are rather than a blur, and every line, letter and
 arrowhead is divided by the same factor so that closing in does not draw the map in
 crayon. The line under it says how many metres across the view now is.
 
-That square is often mostly empty, and that is not a fault. The map is drawn a few
-metres around wherever the rover is standing and most of what it has seen was seen
-from somewhere else, so a thing can be perfectly well placed and have no map under
-it at all; the line under the map says "outside the drawn map" when the view has
-left the picture.
+**The popup draws on a map of its own, and until 2026-09-05 it did not.** It drew
+over the picture in the card behind it, which is the picture you drive by: a few
+metres around wherever the rover is standing, because that is what driving needs.
+The popup is not about where the rover is. It is about bearings taken from all
+over a flat, and against a six-metre picture a thing perfectly well placed sat on
+black with "outside the drawn map" written underneath — which was true and was
+nobody's fault but the console's. Read off this rover, half the things it had
+seen were beyond 4.9 m and twenty-nine of two hundred and three were beyond eight.
+
+So the console asks the rover for a second picture, sized to hold exactly what the
+panel is about to draw on it: the chosen thing's looks while one is chosen, and
+the whole store while nothing is. It is asked for only while the popup is open, on
+the same connection the driving map uses — there is no reason for the rover to
+draw both at once, and nobody is looking at the card underneath — and it is asked
+for again when it goes stale or when the room it covers stops matching the room
+being drawn. `world_map_extent` works the extent out from the same marks
+`wWindow` gathers in the browser, rounded up to a rung of the console's own zoom
+ladder so that a rover shuffling on the spot does not buy a new picture on every
+poll. It comes back at `WORLD_MAP_PX` — 960 px against the 480 the drive card
+asks for, because this is the panel that closes in — and is served from
+`/world_map.png`, the driving map being the fallback for the second between the
+popup opening and the first one arriving. Measured on the Orin: 0.14 s and 19 kB
+for a twelve-metre view, against 0.05 s and 6 kB for the drive card's six.
+
+The line under the map still says "outside the drawn map", and now it means
+something. Either the wider picture has not arrived yet, or the thing really is
+further out than the renderer will draw — twelve metres each way is its ceiling,
+and a flat can be bigger than that.
 
 **Pointing at a look in the list beside the map picks its line out of the others.**
 Reading that scroller is reading one crop at a time, and the question each one

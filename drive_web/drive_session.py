@@ -440,6 +440,14 @@ class Session(SessionActions, SessionShow, SessionWorld):
         if (self.camera is not None and not self.frame_outstanding
                 and now - self.frame_done_at > frame_gap):
             self.take_picture()
+        # And the world popup's own map, which is a different picture of the same
+        # room: wide enough to hold bearings taken from all over the flat, where
+        # the card above is drawn a few metres around the rover to drive by. Only
+        # while somebody has the popup open, and only when what the picture
+        # covers has stopped matching what the popup is drawing on it.
+        world_half = self.world_map_due(now)
+        if world_half is not None:
+            self.world_map_refresh(world_half)
         # Asked, not remembered: the voice session and any other console can start
         # or stop tracking, so the only honest source for this panel is the daemon.
         if (self.watch is not None and not self.track_outstanding
@@ -634,6 +642,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.scanner = self.world_link = None
         self.frame_outstanding = False
         self.map_outstanding = False
+        # The popup's own map, for the same reason and with the same result: left
+        # set, the panel would go on drawing over whichever picture it had when
+        # the link went, for the rest of the session.
+        self.world_map_outstanding = False
         self.wifi_outstanding = False
         self.poll_outstanding = False
         self.track_outstanding = False
@@ -763,6 +775,12 @@ class Session(SessionActions, SessionShow, SessionWorld):
         if name == "nav_status":
             self.poll_outstanding = False
             self.show_status(body)
+            return
+        if name == "map_png" and reply.tag == "world":
+            # The world popup's own, much wider map. Its own picture, its own
+            # generation and its own pacing, so nothing about it touches the
+            # driving map the card behind the popup is showing.
+            self.world_map_arrived(body)
             return
         if name == "map_png":
             self.map_outstanding = False

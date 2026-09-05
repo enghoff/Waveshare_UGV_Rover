@@ -62,6 +62,11 @@ let worldZoom = null, worldZoomDrawn = "";
 // the one line it drew for that row. Kept here rather than passed down because a
 // redraw arrives every couple of seconds and has to put the highlight back.
 let worldHover = null;
+// Which of the popup's own maps is drawn. The picture arrives on its own clock
+// -- the rover redraws it while somebody watches, and again whenever the chosen
+// thing needs a different amount of room -- and that is not when the body
+// arrives, so the map has to be told separately. See `drawWorld`.
+let worldMapGen = "";
 // The rows the entity list is drawn as, by the thing each one is for.
 //
 // **This popup is read while the rover is filling it, and until these were kept
@@ -161,6 +166,14 @@ function drawWorld(w) {
   if (w.going !== worldGoing) {
     worldGoing = w.going;
     if (w.open && (world.entities || []).length) drawWorldList();
+  }
+  // The map under the bearings is a picture of its own and moves on its own
+  // clock, so a new one is not a new body: without this the panel would go on
+  // drawing over the last picture until the rover next recorded something,
+  // which on a rover that has stopped looking is never.
+  if (w.map && w.map.gen !== worldMapGen) {
+    worldMapGen = w.map.gen;
+    if (w.open && worldGen) drawWorldMap();
   }
   if (!w.open || !w.gen || w.gen === worldGen) return;
   // Fetched rather than pushed, like the network list: tens of kilobytes against
@@ -545,7 +558,22 @@ function wHighlight(id) {
 
 function drawWorldMap() {
   const wrap = $("wMapWrap"), note = $("wMapNote"), svg = $("wRays");
-  const view = state.map.view;
+  // **The popup has a map of its own, and this is which one is under it.** The
+  // card behind this popup is drawn a few metres around wherever the rover is
+  // standing, because that is what driving needs; this panel draws bearings
+  // taken from all over a flat, so a thing placed six metres away sat on black
+  // with "outside the drawn map" underneath. The console now asks the rover for
+  // a second picture wide enough to hold what is drawn here -- see
+  // `world_map_extent` -- and everything below is laid over whichever of the two
+  // is in hand. The driving map is the fallback rather than the default: it is
+  // what there is until the first of the wider ones lands, which is a second or
+  // so after the popup opens.
+  const picture = state.world.map && state.world.map.gen
+      ? {gen: state.world.map.gen, view: state.world.map.view,
+         width: state.world.map.width, src: "/world_map.png"}
+      : {gen: state.map.gen, view: state.map.view,
+         width: state.map.width, src: "/map.png"};
+  const view = picture.view;
   // Whatever the list beside it is showing, and for the same reason: a map still
   // covered in every thing the rover has seen, next to a list narrowed to one of
   // them, is two answers to one question.
@@ -581,16 +609,16 @@ function drawWorldMap() {
   const placed = drawing.filter((one) => one.placement
       && (!(world.summary || {}).map_session
           || one.placement_map_session === world.summary.map_session));
-  if (!view || !view.pose || !state.map.gen || (!sightings && !placed.length)) {
+  if (!view || !view.pose || !picture.gen || (!sightings && !placed.length)) {
     wrap.hidden = true;
-    note.textContent = !state.map.gen ? "no map yet"
+    note.textContent = !picture.gen ? "no map yet"
         : !sightings ? "nothing observed from a known pose"
         : "the map did not say where it was drawn from";
     return;
   }
   wrap.hidden = false;
-  $("wMapImg").src = `/map.png?gen=${state.map.gen}`;
-  const size = state.map.width || 1;
+  $("wMapImg").src = `${picture.src}?gen=${picture.gen}`;
+  const size = picture.width || 1;
   svg.replaceChildren();
 
   const metresToPx = (metres) => {
@@ -640,11 +668,11 @@ function drawWorldMap() {
   // The picture under the lines has to move with them. It is one PNG at a fixed
   // resolution, so this is that same window taken out of it, and its cells come
   // out as the squares they are rather than as a blur -- see `.wclose`.
-  const picture = $("wMapImg");
-  picture.style.transform = closeup
+  const image = $("wMapImg");
+  image.style.transform = closeup
       ? `scale(${zoom}) translate(${-vx / size * 100}%, ${-vy / size * 100}%)`
       : "";
-  picture.classList.toggle("wclose", zoom > 1.5);
+  image.classList.toggle("wclose", zoom > 1.5);
   // Every width, radius and letter below is in the map's own pixels, so closing
   // in would thicken all of them by the same factor and a magnified view would
   // be drawn in crayon. This is what keeps a line the width it was on screen.
@@ -803,10 +831,13 @@ function drawWorldMap() {
   }
   if (closeup) {
     bits.push(`${(side / metresToPx(1)).toFixed(1)} m across`);
-    // Which is where the grey comes from. The map is drawn a few metres around
-    // wherever the rover is standing, and most of what it has seen was seen from
-    // somewhere else -- so a thing can be perfectly well placed and still have
-    // no map under it.
+    // It should not say this any more, and that is why it is still here. The
+    // console asks the rover for a picture wide enough to hold what is drawn on
+    // it, so a window leaving that picture now means one of two real things: the
+    // wider map has not arrived yet and this is still the driving one, or the
+    // thing is further from the rover than the renderer will draw -- twelve
+    // metres each way, which no longer fits in one picture. Both are worth
+    // saying; neither is the ordinary case it used to be.
     if (vx < 0 || vy < 0 || vx + side > size || vy + side > size) {
       bits.push("outside the drawn map");
     }

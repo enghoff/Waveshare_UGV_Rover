@@ -46,11 +46,15 @@ person can reach the end of.
 from __future__ import annotations
 
 import base64
+import math
 import threading
 import time
 from typing import Any
 
+import _paths  # noqa: F401 -- console_model
 import rover_tools
+from console_model import MAP_EXTENTS_M
+from drive_show import _png_width
 
 #: How many stored frames the console keeps in memory for the popup to draw.
 #: Bounded because these are the rover's own JPEGs and this process is on the
@@ -66,6 +70,37 @@ FRAME_TIMEOUT_S = 8.0
 #: How many observations one page of the stream carries. The same forty the
 #: payload's newest window holds, so that one scroll of the tiles is one ask.
 STREAM_PAGE = 40
+#: How big a picture the popup draws its map on, against the 480 px the console
+#: asks for to drive by. This is the one panel that closes in: it shows a metre
+#: or two of a room that can be twenty-four metres across, and a picture sized
+#: for the drive card would be four cells wide by the time it got there. Pixels
+#: per cell is derived by the daemon from this and the extent, so a wider view
+#: comes back as more room at the same picture size rather than a bigger file --
+#: measured on the Orin, the widest one is 962 px, 16 kB and 0.45 s.
+WORLD_MAP_PX = 960
+#: How often to draw it again while the popup is open, and never when it is
+#: shut. Slower than the drive map's five seconds because nothing here is a
+#: driving decision: what the picture sits under is a store of looks taken over
+#: minutes, and the map itself only grows when the rover goes somewhere new.
+WORLD_MAP_GAP_S = 10.0
+#: Room to leave round the outermost thing the popup might draw. The extent is
+#: worked out from where the rover was when the *last* picture was drawn, so
+#: this is what covers a rover that has rolled a little since -- and it keeps a
+#: thing sitting exactly on the edge off the edge.
+WORLD_MAP_MARGIN_M = 0.75
+
+
+def _metres(value: Any, fallback: float | None = None) -> float | None:
+    """A coordinate out of the rover's JSON, or the fallback.
+
+    Every number the popup's map is sized from crossed a socket, so nothing here
+    may assume one is present or is a number: a single missing `x_m` must cost
+    that one mark and not the whole picture.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 class SessionWorld:
@@ -121,6 +156,20 @@ class SessionWorld:
         #: which is what keeps an open popup current.
         self.world_watched_at = 0.0
         self.world_watching = False
+        #: The popup's own picture of the map: wide enough to hold every bearing
+        #: and every settled position it draws, which the console's driving map
+        #: is not. See `world_map_extent`.
+        self.world_map_png: bytes = b""
+        self.world_map_gen = 0
+        self.world_map_view: dict[str, Any] | None = None
+        self.world_map_shape = (0, 0)
+        #: What was asked for and what came back, which are not always the same
+        #: number: the daemon has a ceiling of its own. The picture is drawn
+        #: again when the room the popup needs stops matching what it asked for,
+        #: so it is the request that is remembered rather than the answer.
+        self.world_map_asked = 0.0
+        self.world_map_outstanding = False
+        self.world_map_done_at = 0.0
 
     # --- what the buttons ask for --------------------------------------------
 
@@ -416,6 +465,161 @@ class SessionWorld:
             self.world_call("world_state_clear")
             self.world_call("world_map_session")
 
+    # --- the map it draws on ---------------------------------------------------
+
+    def world_map_extent(self) -> float | None:
+        """How far each way the popup's map has to reach, or None to ask for none.
+
+        **The driving map is the wrong picture for this panel, and that is what
+        this exists to fix.** The card behind the popup is drawn a few metres
+        around wherever the rover is standing, because that is what driving
+        needs. The popup draws bearings taken from all over a flat, and against
+        that picture a thing perfectly well placed six metres away sat on black
+        with "outside the drawn map" written underneath it -- which was true, and
+        was not the reader's fault. So the popup asks for a map of its own, wide
+        enough to hold exactly what it is about to draw on it.
+
+        That is the chosen thing's own looks while a thing is chosen, since the
+        panel draws nothing else then and a room-wide picture would throw away
+        the resolution that makes the fork between a bearing and a position
+        readable; and every thing in the store while nothing is chosen, which is
+        the overview. The answer is a rung off the console's own zoom ladder
+        rather than the exact number, so a rover shuffling about on the spot does
+        not buy a new picture every time the popup polls.
+
+        None where there is nothing to cover, or nowhere to measure it from. The
+        popup then goes on drawing over the driving map, which is what it did
+        before this existed.
+        """
+        pose = (self.map_view or {}).get("pose") or {}
+        at_x, at_y = _metres(pose.get("x_m")), _metres(pose.get("y_m"))
+        if at_x is None or at_y is None:
+            return None
+        reach = 0.0
+        for x, y in self.world_marks():
+            reach = max(reach, abs(x - at_x), abs(y - at_y))
+        if not reach:
+            return None
+        reach += WORLD_MAP_MARGIN_M
+        return next((rung for rung in MAP_EXTENTS_M if rung >= reach),
+                    MAP_EXTENTS_M[-1])
+
+    def world_marks(self):
+        """Every point the popup's map draws, in the map's own metres.
+
+        The same three the page puts through `wPointToPx`: where each look was
+        taken from, how far along its bearing the line actually runs, and the
+        ring round the position the thing was settled at. Deliberately the same
+        marks `wWindow` in drive_world.js gathers, because the two answer one
+        question about one set of points -- how much room is needed -- and a
+        picture sized from fewer of them than are drawn on it is the fault this
+        is here to prevent.
+        """
+        payload = self.world_payload
+        chosen = payload.get("selected") or {}
+        if self.world_selected and chosen.get("id") == self.world_selected:
+            # The chosen thing's own reply carries more of its looks than the
+            # entity list does, and the drawing prefers it for the same reason.
+            entities = [dict(chosen, rays=(payload.get("selected_rays")
+                                           or chosen.get("rays") or []))]
+        else:
+            entities = payload.get("entities") or []
+        for entity in entities:
+            place = entity.get("placement") or {}
+            px, py = _metres(place.get("x_m")), _metres(place.get("y_m"))
+            if px is not None and py is not None:
+                # The wider of the two rings drawn round a settled position: how
+                # unsure the crossing was, and how wide the thing itself is.
+                ring = max(_metres(place.get("error_major_m"), 0.0),
+                           _metres(place.get("extent_m"), 0.0), 0.25)
+                yield px - ring, py - ring
+                yield px + ring, py + ring
+            for ray in entity.get("rays") or []:
+                ox, oy = _metres(ray.get("x_m")), _metres(ray.get("y_m"))
+                if ox is None or oy is None:
+                    continue
+                yield ox, oy
+                # As far out as the line is really drawn -- to the thing where
+                # there is one, and to the length the look itself claims where
+                # there is not. `wReach`, in Python.
+                relation = ray.get("relation") or {}
+                reach = (max(0.3, _metres(relation.get("range_m"), 0.0))
+                         if px is not None and relation
+                         else _metres(ray.get("length_m"), 2.5))
+                bearing = math.radians(_metres(ray.get("bearing_deg"), 0.0))
+                yield ox + reach * math.cos(bearing), oy + reach * math.sin(bearing)
+
+    def world_map_due(self, now: float) -> float | None:
+        """The extent to ask for now, or None to leave the picture alone.
+
+        Two reasons to draw it again and no others: the room the popup needs has
+        stopped matching the room the picture covers -- somebody chose a
+        different thing, or the rover placed one further out than the edge -- or
+        the picture has simply grown old while somebody watched it. Both only
+        while the popup is open, because a shut popup draws nothing and this is
+        the most expensive thing the console asks the rover for.
+        """
+        if (self.picture is None or not self.world["open"]
+                or self.world_map_outstanding):
+            return None
+        half = self.world_map_extent()
+        if half is None:
+            return None
+        if half != self.world_map_asked:
+            return half
+        return half if now - self.world_map_done_at > WORLD_MAP_GAP_S else None
+
+    def world_map_refresh(self, half: float) -> None:
+        """Ask for it, on the connection the driving map already uses.
+
+        The same one deliberately. These are the two most expensive pictures this
+        console asks for, and there is no reason for the rover to be drawing both
+        at once -- nor anybody to see the drive map while the popup is over it.
+        Tagged, because both calls are `map_png` and the window has to know which
+        of its two pictures has arrived.
+        """
+        self.world_map_outstanding = True
+        self.world_map_asked = half
+        self.picture.submit("map_png", {"half_extent_m": half,
+                                        "pixels": WORLD_MAP_PX}, tag="world")
+
+    def world_map_arrived(self, body: dict[str, Any]) -> None:
+        """The popup's map, or a refusal that says nothing on the page.
+
+        A picture that did not come back is deliberately not reported. The panel
+        falls back to the driving map -- the picture it drew over before this
+        existed -- and a red line about a render would be the popup complaining
+        about its own backdrop rather than about the world it is there to show.
+        """
+        self.world_map_outstanding = False
+        self.world_map_done_at = time.monotonic()
+        if not body.get("ok"):
+            return
+        try:
+            png = base64.b64decode(body["png_base64"])
+        except (KeyError, ValueError):
+            return
+        if not png:
+            return
+        self.world_map_png = png
+        self.world_map_gen += 1
+        width = int(body.get("pixels") or 0) or _png_width(png)
+        self.world_map_shape = (width, width)
+        # What it was really drawn at, which is what lets the page put a bearing
+        # on it: the extent and the pixels per cell it came out as, and the pose
+        # it was centred on. The pose it was drawn from and not the pose now -- a
+        # map is a photograph of a moment, and every mark laid over this one is
+        # placed against the moment it was taken.
+        self.world_map_view = {
+            "half_extent_m": _metres(body.get("half_extent_m"),
+                                     self.world_map_asked),
+            "scale": int(body.get("scale") or 1),
+            # Never turned. The popup has no such switch, and a map that swung
+            # round under a panel about where things are would be unreadable.
+            "rover_up": False,
+            "pose": body.get("pose") or {},
+        }
+
     # --- what comes back ------------------------------------------------------
 
     def world_handle(self, name: str, body: dict[str, Any], seconds: float) -> None:
@@ -656,6 +860,15 @@ class SessionWorld:
         asking = self.world_search_since
         return dict(self.world, gen=self.tag(self.world["gen"]),
                     selected=self.world_selected,
+                    # The popup's own map, which is a picture and so rides here
+                    # as a generation and the geometry to lay marks over it by --
+                    # exactly as the driving map's does, and fetched from
+                    # `/world_map.png` for the same reason. Free: this block is
+                    # already a new block whenever there is a new picture to say
+                    # it about.
+                    map={"gen": self.tag(self.world_map_gen),
+                         "width": self.world_map_shape[0],
+                         "view": self.world_map_view},
                     searched_s=(0 if asking is None
                                 else round(time.monotonic() - asking)))
 

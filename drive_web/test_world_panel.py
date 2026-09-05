@@ -197,8 +197,9 @@ class _Recorder:
     def __init__(self) -> None:
         self.calls = []
 
-    def submit(self, name, arguments=None) -> None:
-        self.calls.append((name, arguments))
+    def submit(self, name, arguments=None, tag="") -> None:
+        self.calls.append((name, arguments) if not tag
+                          else (name, arguments, tag))
 
 
 def test_finding_a_thing_from_the_console() -> None:
@@ -760,6 +761,213 @@ def test_going_to_look_at_a_thing() -> None:
           session.world_state()["error"], True)
 
 
+def _a_room(pose, *placements):
+    """A world payload with things placed round a rover standing at `pose`.
+
+    Each placement is (x, y) in map metres, with one look taken from a metre
+    short of it -- which is what the popup's map has to hold: the ring round the
+    position, the arrowhead where the rover stood, and the line between them.
+    """
+    entities = []
+    for index, (x, y) in enumerate(placements):
+        entities.append({
+            "id": f"object:{index}",
+            "placement": {"x_m": x, "y_m": y, "error_major_m": 0.3,
+                          "error_minor_m": 0.1, "extent_m": 0.2},
+            "placement_map_session": 1,
+            "rays": [{"id": index, "x_m": pose[0], "y_m": pose[1],
+                      "bearing_deg": 0.0, "span_deg": 20.0, "length_m": 2.5,
+                      "heading_deg": 0.0,
+                      "relation": {"range_m": 1.0, "agrees": True}}],
+        })
+    return {"entities": entities, "summary": {"entities": len(entities),
+                                              "map_session": 1}}
+
+
+def test_the_popup_gets_a_map_wide_enough_for_what_it_draws() -> None:
+    """The fault this fixes: the popup drew its bearings over the driving map.
+
+    The card behind the popup is drawn a few metres around wherever the rover is
+    standing, because that is what driving needs. The popup draws bearings taken
+    from all over a flat. On a real store of 203 things read off this rover on
+    2026-09-05, half of them were beyond 4.9 m and 29 were beyond 8 m, while the
+    map underneath reached three -- so a thing perfectly well placed sat on black
+    with "outside the drawn map" written under it. What is checked here is that
+    the console now asks the rover for a second picture sized to hold what the
+    panel is about to draw on it.
+    """
+    try:
+        import drive_web
+        from console_model import MAP_EXTENTS_M
+        from drive_world import WORLD_MAP_GAP_S, WORLD_MAP_PX
+    except ImportError as exc:
+        SKIP.append(f"the popup's own map ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.picture = _Recorder()
+    session.world["open"] = True
+    # The driving map, as the console has it: six metres across, round a rover
+    # standing at the origin.
+    session.map_view = {"half_extent_m": 3.0, "scale": 4, "rover_up": False,
+                        "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}}
+
+    # A thing seven metres off, which is an ordinary distance in a flat and four
+    # metres outside the picture the popup used to draw it on.
+    session.world_payload = _a_room((0.0, 0.0), (7.0, 0.5))
+    wanted = session.world_map_extent()
+    check("the driving map does not reach the thing the popup is drawing",
+          session.map_view["half_extent_m"] >= 7.0, False)
+    check("...so the popup asks for a map that does", wanted >= 7.5, True)
+    check("...at a rung of the console's own zoom ladder rather than a raw number",
+          wanted in MAP_EXTENTS_M, True)
+
+    # Choosing one thing narrows it. All of the store at once is the overview and
+    # a room-wide picture behind one thing's bearings throws away exactly the
+    # resolution that makes a fork between a bearing and a position readable.
+    session.world_payload = _a_room((0.0, 0.0), (7.0, 0.5), (1.2, -0.4))
+    check("nothing chosen covers the whole store",
+          session.world_map_extent() >= 7.5, True)
+    session.world_selected = "object:1"
+    session.world_payload["selected"] = session.world_payload["entities"][1]
+    session.world_payload["selected_rays"] = \
+        session.world_payload["entities"][1]["rays"]
+    check("...and one thing chosen closes in on that thing",
+          session.world_map_extent() <= 3.0, True)
+
+    # A store with nothing in it yet asks for nothing: the popup goes on drawing
+    # over the driving map, which is what it did before any of this existed.
+    session.world_selected = ""
+    session.world_payload = {"entities": []}
+    check("an empty store buys no picture", session.world_map_extent(), None)
+    # And so does a console that has never had a map, because there is then
+    # nowhere to measure the extent from.
+    session.world_payload = _a_room((0.0, 0.0), (7.0, 0.5))
+    session.map_view = None
+    check("...and so does a console with no map to measure from",
+          session.world_map_extent(), None)
+    session.map_view = {"half_extent_m": 3.0, "scale": 4, "rover_up": False,
+                        "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}}
+
+    # Only while somebody is looking. This is the most expensive thing the
+    # console asks the rover for, and a shut popup draws nothing.
+    session.world["open"] = False
+    check("a shut popup asks for no map", session.world_map_due(1000.0), None)
+    session.world["open"] = True
+    half = session.world_map_due(1000.0)
+    check("an open one does", half >= 7.5, True)
+
+    session.world_map_refresh(half)
+    check("...on the connection the driving map already uses",
+          session.picture.calls[-1][0], "map_png")
+    check("...tagged, so the two pictures can be told apart",
+          session.picture.calls[-1][2], "world")
+    check("...at the extent the popup needs",
+          session.picture.calls[-1][1]["half_extent_m"], half)
+    check("...and on a picture big enough to close in on",
+          session.picture.calls[-1][1]["pixels"], WORLD_MAP_PX)
+    check("nothing else is asked for while that one is in flight",
+          session.world_map_due(1001.0), None)
+
+    # The picture arrives. The page is told the geometry it was drawn at, not the
+    # geometry that was asked for: whole cells at whole pixels cannot reach every
+    # size, and a page that laid bearings over its own request would put them in
+    # the wrong place.
+    import base64
+
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + (962).to_bytes(4, "big")
+    session.world_map_arrived({
+        "ok": True, "half_extent_m": 8.0, "scale": 2, "pixels": 962,
+        "pose": {"x_m": 0.2, "y_m": -0.1, "heading_deg": 12.0},
+        "png_base64": base64.b64encode(png).decode()})
+    state = session.world_state()
+    check("the popup's map is published for the page to fetch",
+          bool(state["map"]["gen"]), True)
+    check("...with the size it really came out as", state["map"]["width"], 962)
+    check("...and the pose it was really drawn from, not the pose now",
+          state["map"]["view"]["pose"]["x_m"], 0.2)
+    check("...and never turned under the reader",
+          state["map"]["view"]["rover_up"], False)
+    check("the bytes are held for the URL that serves them",
+          session.world_map_png, png)
+
+    # It is drawn again as it ages, and at once when the room it has to cover
+    # stops matching the room the popup is drawing.
+    session.world_map_done_at = 1000.0
+    check("a picture that is still fresh is left alone",
+          session.world_map_due(1000.0 + WORLD_MAP_GAP_S / 2), None)
+    check("...and one that has gone stale is drawn again",
+          session.world_map_due(1000.0 + WORLD_MAP_GAP_S + 1) is not None, True)
+    session.world_payload = _a_room((0.0, 0.0), (7.0, 0.5), (1.2, -0.4))
+    session.world_selected = "object:1"
+    session.world_payload["selected"] = session.world_payload["entities"][1]
+    session.world_payload["selected_rays"] = \
+        session.world_payload["entities"][1]["rays"]
+    check("choosing a thing redraws it without waiting for the gap",
+          session.world_map_due(1000.0) is not None, True)
+
+    # A refusal says nothing on the page: the panel falls back to the driving map,
+    # and a red line about a render would be the popup complaining about its own
+    # backdrop rather than about the world it is there to show.
+    before = session.world_state()["map"]["gen"]
+    session.world_map_arrived({"ok": False, "error": "there is no map yet"})
+    check("a refused picture keeps the last one",
+          session.world_state()["map"]["gen"], before)
+    check("...and says nothing about it", session.world_state()["error"], "")
+
+
+def test_the_popup_map_is_served_at_its_own_url() -> None:
+    """`/world_map.png`, over a real socket, beside the driving map.
+
+    Two pictures of one room, and they have to stay two: a browser that fetched
+    the driving map here would be back to laying bearings over six metres of a
+    flat that is twenty across.
+    """
+    try:
+        import http.client
+        import threading
+
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"the popup's map URL ({type(exc).__name__})")
+        return
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.map_png = b"\x89PNG the one to drive by"
+    session.world_map_png = b"\x89PNG the one the popup draws on"
+
+    was, drive_web.Handler.session = drive_web.Handler.session, session
+    server = drive_web.Console(("127.0.0.1", 0), drive_web.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    connection = http.client.HTTPConnection(
+        "127.0.0.1", server.server_address[1], timeout=5)
+    try:
+        connection.request("GET", "/world_map.png?gen=abc-3")
+        reply = connection.getresponse()
+        body = reply.read()
+        check("the popup's map is served", reply.status, 200)
+        check("...as a picture", reply.getheader("Content-Type"), "image/png")
+        check("...and is the popup's own, not the one to drive by",
+              body, session.world_map_png)
+        check("...immutable, because the URL carries the generation",
+              "immutable" in (reply.getheader("Cache-Control") or ""), True)
+
+        # A console that has not been asked for one yet answers plainly. The page
+        # falls back to the driving map, so this must not be an error the browser
+        # has to survive as a broken image.
+        session.world_map_png = b""
+        connection.request("GET", "/world_map.png?gen=abc-4")
+        reply = connection.getresponse()
+        reply.read()
+        check("...and there is a plain answer before the first one is drawn",
+              reply.status, 404)
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        drive_web.Handler.session = was
+
+
 TESTS = (
     test_the_world_state_popup,
     test_going_to_look_at_a_thing,
@@ -768,4 +976,6 @@ TESTS = (
     test_a_looking_loop_that_has_failed_still_says_so,
     test_an_open_popup_keeps_itself_current,
     test_the_world_urls,
+    test_the_popup_gets_a_map_wide_enough_for_what_it_draws,
+    test_the_popup_map_is_served_at_its_own_url,
 )

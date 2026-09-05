@@ -233,6 +233,17 @@ class Handler(BaseHTTPRequestHandler):
             # URL, and the one already fetched can never change under it.
             self._send(self.session.map_png, "image/png",
                        "public, max-age=31536000, immutable")
+        elif path == "/world_map.png":
+            # The same room as `/map.png` and a different picture of it: drawn
+            # wide enough to hold every bearing the world popup lays over it,
+            # where the card behind the popup is drawn a few metres around the
+            # rover to drive by. Immutable for the same reason: the URL carries
+            # the generation, so a new picture is a new URL.
+            if not self.session.world_map_png:
+                self._missing("no map for the world panel yet")
+                return
+            self._send(self.session.world_map_png, "image/png",
+                       "public, max-age=31536000, immutable")
         elif path == "/frame.jpg":
             if not self.session.frame_jpeg:
                 self._missing("no frame yet")

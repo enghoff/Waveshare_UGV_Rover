@@ -409,13 +409,21 @@ def rung(ladder: tuple, value: float) -> int:
 
 
 class Reply:
-    """One answered call, on its way back to the window."""
+    """One answered call, on its way back to the window.
 
-    def __init__(self, name, arguments, body, seconds):
+    `tag` says *why* the call was made, and exists because the same call is now
+    made for two different panels: the map the console draws to drive by and the
+    much wider one the world-state popup needs behind its bearings are both
+    `map_png`, and the window has to know which of its two pictures has arrived.
+    Empty for a call that is only ever made for one reason, which is most of them.
+    """
+
+    def __init__(self, name, arguments, body, seconds, tag=""):
         self.name = name
         self.arguments = arguments
         self.body = body
         self.seconds = seconds
+        self.tag = tag
 
 
 class Channel:
@@ -436,15 +444,16 @@ class Channel:
         threading.Thread(target=self._run, daemon=True,
                          name=f"rover-{label}").start()
 
-    def submit(self, name: str, arguments: dict[str, Any] | None = None) -> None:
-        self._work.put((name, arguments or {}))
+    def submit(self, name: str, arguments: dict[str, Any] | None = None,
+               tag: str = "") -> None:
+        self._work.put((name, arguments or {}, tag))
 
     def _run(self) -> None:
         while True:
             item = self._work.get()
             if item is None:
                 return
-            name, arguments = item
+            name, arguments, tag = item
             began = time.monotonic()
             if name == "list_tools":
                 # Not a tool, so it does not go through `call` -- and `tools` raises
@@ -456,7 +465,7 @@ class Channel:
             else:
                 body = self.client.call(name, arguments)
             self._replies.put(Reply(name, arguments, body,
-                                    time.monotonic() - began))
+                                    time.monotonic() - began, tag))
 
     def close(self) -> None:
         self._work.put(None)
