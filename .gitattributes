@@ -68,3 +68,10 @@ ros_nav/fixtures/** -text
 # here, on the one that a CRLF checkout would leave looking like a model that
 # will not load.
 world_state/** text eol=lf
+
+# .githooks/pre-commit is run by git through its bundled sh, so it falls into the
+# same trap as every rover script above: a CRLF checkout leaves a carriage return
+# on the end of the interpreter name and of the path it hands to python. The
+# failure would be a commit guard that quietly refuses to run rather than one
+# that refuses a credential.
+.githooks/** text eol=lf

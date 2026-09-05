@@ -4,7 +4,9 @@ Rules for changing the rover. Deploy/restart commands, directory ownership and m
 recovery are in [docs/deploy.md](docs/deploy.md); host and network facts are in
 [docs/hosts.md](docs/hosts.md); a rover that has dropped off the network is
 [docs/rover-unresponsive.md](docs/rover-unresponsive.md). A component's README
-describes the component.
+describes the component, and a rule that applies to one component lives in
+that component's own AGENTS.md -- the web console's are in
+[drive_web/AGENTS.md](drive_web/AGENTS.md).
 
 ## Report in plain English
 
@@ -15,23 +17,6 @@ cannot act on — the investigation, the options weighed, the names of files and
 settings — is a supporting clause at most, and usually is not needed at all. Say
 plainly when something is unproven, failed or was skipped. Two sentences beat two
 paragraphs. Finish with the next step if there is one.
-
-## The console shows state, not explanations
-
-The person at the console owns the rover and has used it before. **Do not add
-descriptive text to the web console**: no help line under a control, no sentence
-saying what a button does, no tooltip restating a label, no paragraph teaching how
-a panel works or why it was built that way. That material belongs in the
-component's README, where it is read once, and not on a screen where it is read
-every time.
-
-Status stays, and status is what changes with the rover: a reading, a count, what
-is happening now, what happened when a button was pressed, what failed and why.
-The test for a line is whether it could be written before the rover was switched
-on. If it could, it is documentation and does not go on the page. Where a status
-line already says the thing, prefer the short form -- `cleared -- 4 entities, 96
-observations` over a sentence explaining what clearing does -- and drop the clause
-that teaches rather than reports.
 
 ## Reproduce faults before fixing them
 
@@ -80,6 +65,11 @@ Edit here and push; never edit a tracked file in place on the rover. The deploye
 refuses dirty tracked files, because the recorded commit must describe the bytes that
 were sent. Where prose and executable source or config disagree, **the source wins**:
 correct the document, and never revive an old setting because a README remembers it.
+
+`deploy/guards/` checks two of these rules mechanically: a shell command that
+would edit the deploy tree in place or carry a credential is refused, and a
+session that changed a deployed component is reminded before it finishes.
+`git config core.hooksPath .githooks` adds the credential check to commits.
 
 ## Credentials
 

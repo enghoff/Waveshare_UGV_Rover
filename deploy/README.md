@@ -151,3 +151,28 @@ python -m unittest deploy.test_deploy -v
 These do not contact the rover. The final proof remains the component's remote
 restart/self-test/health output; a copied file is not evidence that the running
 robot changed.
+
+## Guards
+
+`guards/` enforces two rules from [../AGENTS.md](../AGENTS.md) that are otherwise
+only remembered: a shell command must not edit `~/ugv` on the rover in place or
+carry the contents of a `secrets/` file, and a session that changed a deployed
+component must not finish without deploying it. Both read
+[manifest.json](manifest.json) and `secrets/`, never a list of their own, so they
+follow the manifest as it changes.
+
+They are plain scripts and are not deployed:
+
+```bash
+python deploy/guards/rover_guard.py --command "scp x.py orin:~/ugv/"   # exit 1 + why
+python deploy/guards/rover_guard.py --staged                           # what a commit stages
+python deploy/guards/deploy_watch.py --components world_state/resolve.py
+```
+
+Any agent or editor can call them. Two wirings exist: `git config core.hooksPath
+.githooks` runs the credential check on every commit from this clone, and
+[../.claude/settings.json](../.claude/settings.json) runs both as Claude Code
+hooks, where the command is refused before it executes. A command that genuinely
+must touch the deploy tree -- manual recovery per
+[../docs/rover-unresponsive.md](../docs/rover-unresponsive.md) -- carries the
+comment `# deploy-guard: allow`.

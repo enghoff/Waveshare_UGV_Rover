@@ -1,0 +1,9 @@
+#!/bin/sh
+# Refuse a commit that stages the contents of a secrets/ file.
+#
+# Enabled per clone, by whoever or whatever is committing:
+#     git config core.hooksPath .githooks
+#
+# This runs for every agent and for hand commits; deploy/guards/rover_guard.py
+# holds the same check for anything that wants it before the commit stage.
+exec python "$(git rev-parse --show-toplevel)/deploy/guards/rover_guard.py" --staged
