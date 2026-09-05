@@ -66,7 +66,23 @@ GRAPH_TIMEOUT_S = 30.0
 #: -- and never exactly it. Half a metre and twenty degrees is that window with
 #: room to spare, and a pose that never gets that close is the mapper having
 #: refused, which is worth saying out loud.
-LANDED_S = 8.0
+#:
+#: **A minute, and it used to be eight seconds.** Eight is right for the wait it
+#: was written for -- a mapper that is already publishing takes a scan or two to
+#: anchor -- and it is nowhere near enough for the wait that actually happens. On
+#: a cold boot nothing publishes `map -> base_link` for tens of seconds: an
+#: eleven-megabyte graph is being read off cold cache, the lidar is still
+#: enumerating, and the clock is not yet set. On 2026-09-05 that reported a map
+#: the rover had in fact restored and was standing in as a map it could not read,
+#: which minted a new map identity, which moved the world state onto a new map
+#: session, which took 256 placed things off the console's map. Every failure in
+#: the log is within a minute of a boot; every restore after a restart of the
+#: stack on a running machine succeeds.
+#:
+#: What the length costs is only how long a genuine failure takes to be reported,
+#: once, at startup -- and against that, a restore wrongly abandoned throws away
+#: the map and everything measured in it.
+LANDED_S = 60.0
 LANDED_M = 0.5
 LANDED_DEG = 20.0
 
@@ -372,15 +388,33 @@ class NavMap:
             if not self.wait(future, GRAPH_TIMEOUT_S):
                 return False, ("slam_toolbox did not finish loading the graph in "
                                "%.0f seconds" % (GRAPH_TIMEOUT_S,))
+            # **Two failures, and they were one sentence.** A transform tree that
+            # never says anything and one that puts the rover in the wrong room
+            # are different faults with different cures, and the message that
+            # covered both -- "either a graph it could not read or a scan it
+            # could not match" -- named neither. The first is what a cold boot
+            # looks like and is usually not a fault at all; the second is a real
+            # refusal and the reason this check exists. So the last pose seen is
+            # kept, and it decides which of the two is reported.
             deadline = time.monotonic() + LANDED_S
+            last = None
             while time.monotonic() < deadline:
                 where = self.pose_deg()
-                if where is not None and _near(where, pose):
-                    return True, "the map is loaded"
+                if where is not None:
+                    if _near(where, pose):
+                        return True, "the map is loaded"
+                    last = where
                 time.sleep(0.1)
-            return False, ("slam_toolbox did not put the rover where the map "
-                           "says it was left, which is either a graph it could "
-                           "not read or a scan it could not match")
+            if last is None:
+                return False, ("the rover's own position never reached the "
+                               "transform tree in %.0f seconds, so nothing here "
+                               "can say whether the graph was read"
+                               % (LANDED_S,))
+            return False, ("slam_toolbox put the rover %.2f m and %.0f degrees "
+                           "from where the map says it was left, which is a scan "
+                           "it could not match"
+                           % (math.hypot(last[0] - pose[0], last[1] - pose[1]),
+                              abs((last[2] - pose[2] + 180.0) % 360.0 - 180.0)))
 
     # --- fitting the rover to the map -----------------------------------------
 
