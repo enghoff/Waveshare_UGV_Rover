@@ -30,10 +30,11 @@ import cv2
 import depthai as dai
 import numpy as np
 
+from depth_colour import colourise
+
 # OV7251 mono sensors run at 640x480 natively; 400_P would crop.
 MONO_RES = dai.MonoCameraProperties.SensorResolution.THE_480_P
 FPS = 15
-DEPTH_RANGE_MM = (200, 4000)
 DEFAULT_FADE_S = 1.0
 # USB2-only firmware; the USB3 build usually fails to boot on this link. See docs/oak-usb-link.md.
 MAX_USB_SPEED = dai.UsbSpeed.HIGH
@@ -68,13 +69,6 @@ def build_pipeline():
     return pipeline
 
 
-def colourise(depth: np.ndarray) -> np.ndarray:
-    """uint16 millimetres -> BGR, near = red, far = blue, invalid = black."""
-    lo, hi = DEPTH_RANGE_MM
-    scaled = ((np.clip(depth, lo, hi) - lo) / (hi - lo) * 255).astype(np.uint8)
-    colour = cv2.applyColorMap(255 - scaled, cv2.COLORMAP_TURBO)
-    colour[depth == 0] = 0
-    return colour
 
 
 class Fader:

@@ -66,11 +66,17 @@ in-process, a window to watch it in, and a link to the board over WiFi or USB.
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 import time
+
+# The checkout keeps board tools beside face_tracking; deployment flattens both.
+_BOARD_TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "driver_board")
+if os.path.isdir(_BOARD_TOOLS) and _BOARD_TOOLS not in sys.path:
+    sys.path.insert(0, _BOARD_TOOLS)
+from board_transport import BAUD, HttpLink, NoLink, SerialLink, js_path
+
 import urllib.request
 
 import cv2
@@ -107,7 +113,6 @@ MAX_READ_FAILURES = 30
 # --- the link -------------------------------------------------------------
 
 DEFAULT_HOST = "192.168.4.1"  # the ESP32's own AP: SSID "UGV", password "12345678"
-BAUD = 115200
 PROBE_COMMAND = {"T": 130}
 PROBE_REPLY = b'"T":1001'
 PROBE_TIMEOUT = 0.4
@@ -286,92 +291,6 @@ def fourcc_name(value):
 
 
 # --- link -----------------------------------------------------------------
-
-
-def js_path(command):
-    """A command as the board wants it: JSON in the query string of `/js`."""
-    from urllib.parse import quote
-
-    return "/js?json=" + quote(json.dumps(command, separators=(",", ":")), safe="")
-
-
-class HttpLink:
-    """JSON commands over the ESP32's own `/js` endpoint, on one kept-open socket."""
-
-    def __init__(self, host, timeout=0.5):
-        import http.client
-
-        self._client = http.client
-        self.host = host
-        self.timeout = timeout
-        self.connection = None
-
-    def describe(self):
-        return f"http://{self.host}/js"
-
-    def send(self, command):
-        path = js_path(command)
-        for attempt in (1, 2):  # a stale keep-alive costs one retry, not a command
-            if self.connection is None:
-                self.connection = self._client.HTTPConnection(
-                    self.host, timeout=self.timeout)
-            try:
-                self.connection.request("GET", path)
-                self.connection.getresponse().read()
-                return True
-            except Exception:
-                self.close()
-                if attempt == 2:
-                    return False
-        return False
-
-    def close(self):
-        if self.connection is not None:
-            try:
-                self.connection.close()
-            except Exception:
-                pass
-            self.connection = None
-
-
-class SerialLink:
-    """JSON commands over the ESP32's Type-C port -- the one *not* labelled LIDAR."""
-
-    def __init__(self, port):
-        import serial
-
-        self.port = port
-        self.link = serial.Serial(port, BAUD, timeout=0.1)
-
-    def describe(self):
-        return f"{self.port} at {BAUD}"
-
-    def send(self, command):
-        try:
-            self.link.write(json.dumps(command, separators=(",", ":")).encode() + b"\n")
-            self.link.reset_input_buffer()  # the board chatters; nothing here reads it
-            return True
-        except Exception:
-            return False
-
-    def close(self):
-        try:
-            self.link.close()
-        except Exception:
-            pass
-
-
-class NoLink:
-    """--no-move: everything runs, nothing is commanded."""
-
-    def describe(self):
-        return "nothing (--no-move)"
-
-    def send(self, command):
-        return True
-
-    def close(self):
-        pass
 
 
 def find_serial_port():

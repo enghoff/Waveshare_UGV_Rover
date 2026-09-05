@@ -13,8 +13,8 @@ The current system is deliberately simple about where work happens:
   network scripts;
 - a **browser** supplies the microphone and speaker for voice interaction;
 - **Alibaba DashScope** supplies the realtime Qwen Omni model;
-- no separate GPU/MEDIA host is part of the running system, and nothing that is
-  deployed uses the Orin's own GPU either.
+- no separate GPU/MEDIA host is part of the running system; world-state
+  perception uses the Orin's GPU through TensorRT.
 
 The Orin replaced a Banana Pi M4 Zero on 2026-08-31. The chassis, driver board,
 lidar and gimbal camera all came across unchanged; what moved is the computer

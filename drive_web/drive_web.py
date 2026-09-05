@@ -68,10 +68,10 @@ same reason.
 Only the standard library, plus [rover_tools.py](../voice_chat/rover_tools.py)
 for the wire and [console_model.py](../voice_chat/console_model.py) for the
 pacing and the English. The page is [drive_web.html](drive_web.html) beside this
-file, with its stylesheet in [drive_web.css](drive_web.css) and its script split
-between [drive_world.js](drive_world.js), the world-state popup, and
-[drive_web.js](drive_web.js), which is everything else and calls `start()`. All
-four are read from disk on every request, so editing one needs no restart.
+file, with its stylesheet in [drive_web.css](drive_web.css), three
+`drive_world*.js` modules for the world-state popup, and
+[drive_web.js](drive_web.js) for everything else. Assets are read from disk on
+every request, so editing one needs no restart.
 """
 
 from __future__ import annotations
@@ -111,6 +111,11 @@ ASSETS = {
     "/drive_web.css": (os.path.join(HERE, "drive_web.css"), "text/css; charset=utf-8"),
     "/drive_world.js": (os.path.join(HERE, "drive_world.js"),
                         "application/javascript; charset=utf-8"),
+    "/drive_world_map.js": (os.path.join(HERE, "drive_world_map.js"),
+                            "application/javascript; charset=utf-8"),
+    "/drive_world_observations.js": (
+        os.path.join(HERE, "drive_world_observations.js"),
+        "application/javascript; charset=utf-8"),
     "/drive_web.js": (os.path.join(HERE, "drive_web.js"),
                       "application/javascript; charset=utf-8"),
 }

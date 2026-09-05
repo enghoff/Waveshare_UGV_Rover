@@ -1,49 +1,7 @@
-"""Which lasting thing an observation was of, decided from where it is.
+"""Resolve observations into entities using map geometry and appearance.
 
-This is the part the proof-of-concept failed at, and the reason it failed is
-worth keeping in front of the reader: asking a vision-language model "is this
-the sofa you saw before?" fails in both directions -- Cosmos Reason 2 never
-recognises anything and Cosmos 3 recognises things that are not in the room --
-and **no model can do better from one picture**, because two identical chairs at
-opposite ends of a room are identical in the picture. What separates them is
-where they are, which the rover already measures.
-
-So identity here is a geometry problem with two supporting witnesses. The gates
-run cheapest first and each one can only *remove* a candidate:
-
-    1. map session   coordinates from a map that no longer exists mean nothing.
-    2. spatial       the bearing has to point at where the thing already is.
-                     **For furniture this is a hard gate**, and no amount of
-                     appearance may overrule it -- that is the redundant-
-                     furniture test the whole design exists to pass.
-    3. appearance    DINOv2 against several stored exemplars, twice over: to
-                     throw out a candidate that plainly is not the same object,
-                     and then to choose between the ones geometry accepted.
-    4. history       how recently and how often, as a tiebreak of last resort.
-
-**There used to be a semantic gate in front of all of these** -- a chair is not a
-ceiling light -- and it is gone with the word list that fed it. Nothing measures
-what a region is called any more, because the nearest phrase in that list scored
-between 0.08 and 0.12 whatever the crop held and put "a computer monitor" on a
-sofa. What took its place is `DIFFERENT_THING`, which asks the same question of
-the appearance vector and answers it from two numbers this rover measured rather
-than from a hand-written list of synonyms.
-
-Three outcomes, and the third is not optional:
-
-    MATCH       exactly one candidate survives every gate
-    NEW         none does, and two bearings cross well enough to place a thing
-    AMBIGUOUS   more than one survives, or nothing crosses well enough yet
-
-**AMBIGUOUS is a real answer and the pool is not a queue that must be drained.**
-An observation with one bearing and no partner stays where it is indefinitely;
-a thing seen once from one place is a thing the rover cannot honestly claim to
-have located, and inventing a position for it is exactly the failure this
-replaced.
-
-Nothing here is a probability. The pieces stay separate and inspectable, because
-"appearance 0.98 but 4.2 m away" and "appearance 0.97 and 0.16 m away" is a
-sentence a person can check, and a fused score of 0.61 is not.
+Ambiguous observations remain unplaced. Discovery uses pair crossings; the
+cluster alternative remains available for comparison against recorded drives.
 """
 from __future__ import annotations
 
@@ -52,124 +10,22 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import cluster, locate, view
+from .appearance import _UNIT, appearance, similarity
 
 MATCH = "match"
 NEW = "new"
 AMBIGUOUS = "ambiguous"
 
-#: Below this, two crops are not two views of one object, and the candidate is
-#: removed. **A removal-only gate and never a confirmation**, which is the role
-#: the word list's synonym families used to have and the reason this number is
-#: nowhere near a matching threshold. It sits between the two things this rover
-#: measured with DINOv2: a chair against a spray bottle scores 0.122, and the
-#: same chair across a real change of viewpoint -- the worst honest case -- still
-#: scores 0.696. Anything in between only ever removes what is plainly unrelated,
-#: and geometry decides everything else.
-#:
-#: It applies only where there is something to compare. An entity with no stored
-#: exemplar, or an observation whose look produced no appearance vector, is
-#: passed through to the spatial gate rather than rejected for silence.
-#:
-#: **Both of those numbers were measured on the CPU int8 graphs and neither
-#: describes what the rover now produces, so read this as a floor that removes
-#: very little rather than as a calibrated gate.** Re-measured on the TensorRT
-#: engines over both drives of 2026-09-03 -- 3,741 pairs of regions taken from one
-#: frame, which are different objects by construction -- the noise band is stable
-#: between runs and tighter than the 157-crop sample it used to be quoted from:
-#:
-#:     morning    1,138 pairs   median 0.349   p90 0.623   p95 0.715
-#:     afternoon  2,603 pairs   median 0.336   p90 0.594   p95 0.677
-#:
-#: **0.5 let a fifth of those through, and it showed.** With the pairing pass no
-#: longer stopping at the first standoff, the afternoon run placed five things of
-#: which three were plainly two objects each -- a door with a blown-out ceiling
-#: panel at 0.542, a framed picture with a bright doorway at 0.525, a landscape
-#: with a doorway at 0.538. At 0.55 all three go and both of the run's genuine
-#: entities stay, while the morning run replays unchanged at four entities with
-#: nothing mixed. It removes about a third of the pairs 0.5 admitted: 13-15% of
-#: known-different pairs still pass.
-#:
-#: **It is a better place for a floor and it is still not a separation, and the
-#: margin is thin enough to say out loud.** The chair the afternoon run genuinely
-#: saw twice scores 0.648; the pair of looks that founds its framed picture scores
-#: **0.557**, seven thousandths above this line. Geometry carries identity here.
-#: **Do not try to fix identity by moving this number** -- what it can do is stop
-#: the plainly unrelated founding a thing, and that is all this move claims.
+# Appearance rejects candidates below 0.55; a winner needs a 0.05 lead.
+# These gates were measured on room recordings, not calibrated probabilities.
 DIFFERENT_THING = 0.55
-
-#: How alike two DINOv2 vectors have to be before appearance is allowed to break
-#: a tie. **Deliberately not a matching threshold.** Measured on this rover: the
-#: same chair across a real change of viewpoint scores 0.696, and the *twin*
-#: chair across the room scores 0.735 -- higher. Appearance answers "does this
-#: look like that picture", not "is this the same object", so it is used only to
-#: choose between candidates the geometry has already accepted, and only when
-#: one is clearly ahead.
 APPEARANCE_LEAD = 0.05
-
-#: How much worse a rival crossing may be and still count as a rival. A pair of
-#: rays that locates something to within half a metre is not thrown into doubt by
-#: another pair that locates it to within a metre and a half: the second is a
-#: poorer view of possibly the same thing, not a competing answer. Only crossings
-#: of comparable quality can make each other ambiguous.
 RIVAL_FACTOR = 2.0
-#: How far apart two answers have to be before they are answers to different
-#: questions, in metres. This is a statement about rooms rather than a
-#: measurement: the resolver's question is which *thing* this is, and two
-#: positions a handspan apart name the same chair whichever of them is right, so
-#: refusing to place anything because they disagree by that much helps nobody.
-#:
-#: **It exists because the alternative gets worse as the rover gets better.** The
-#: rival test asks whether two crossings are further apart than their own
-#: uncertainty allows, and when bearings improved from five degrees to one and a
-#: half those uncertainties shrank with them -- so a pair of crossings thirty
-#: centimetres apart, which had comfortably overlapped, became a standoff and the
-#: resolver stopped placing chairs it had been placing. Accuracy should not cost
-#: the rover answers.
 SAME_PLACE_M = 0.5
-
-#: How much better one arrangement of a look's regions has to be than the next
-#: before the difference is a decision rather than a rounding, as a fraction of
-#: one bearing's whole allowance.
-#:
-#: **The geometric twin of `APPEARANCE_LEAD`, and it is asked of the look rather
-#: than of the region.** Two regions of one picture and two things placed a
-#: handspan apart have two arrangements between them, and where the total miss is
-#: the same either way the geometry has said nothing about which region is which
-#: -- so appearance is asked, and if that cannot separate them either, neither is
-#: assigned. That is the case `object:12` and `object:15` of the drive of
-#: 2026-09-03 are: over the four looks that saw both, the arrangement the rover
-#: chose explained 2.12 m of miss where swapping the two regions explained 0.76,
-#: so it had committed, look by look, to whichever it happened to consider first.
 SAME_ANSWER = 0.05
-
-#: How many new things one pairing pass may place before it stops and leaves the
-#: rest for the next one.
-#:
-#: **A cost bound, and it became necessary the moment looks taken on the move
-#: kept their bearings.** Searching for a crossing compares every pair and then
-#: asks every ray whether it agrees with each survivor, which is one second at a
-#: pool of 500 on the Orin -- and the search runs again after each placement,
-#: because placing a thing takes rays out of the pool and changes what the rest
-#: support. Measured there with a 500-ray pool, a pass that placed 107 things took
-#: 55 seconds, against a `SETTLE_EVERY_S` of 10. The old build never met that
-#: because it had a hundred bearings to work with, and stopped at the first
-#: standoff besides.
-#:
-#: The cost is linear in this at a given pool size -- measured on the Orin over a
-#: 500-ray pool, one placement is 2.7 s, two 5.3, three 7.7 and four 10.0. Two
-#: keeps the worst pass comfortably inside `SETTLE_EVERY_S`, and two every ten
-#: seconds is twelve a minute against the four things the rover's best drive so
-#: far has placed in thirteen minutes.
-#:
-#: **Only new things are capped.** Joining an observation to something already
-#: placed is the cheap path and runs over the whole pool every pass, which is the
-#: right priority: an entity the rover already knows about should collect its
-#: evidence immediately, and only inventing one is worth rationing.
-#:
-#: Nothing is lost by stopping: the pool persists, the next pass carries on from
-#: it, and identity was never a queue that had to be drained in one go. What is
-#: gained is that settling can never eat the looking.
+# Bound discovery work so repeated inspection stays responsive as the pool grows.
 MAX_NEW_PER_PASS = 2
+
 
 @dataclass
 class Decision:
@@ -273,104 +129,11 @@ def ray_of(observation: dict[str, Any],
     return built
 
 
-def unit(blob: bytes) -> tuple[float, ...]:
-    """A stored vector as floats scaled to unit length, or empty if it has none.
-
-    Separate from `similarity` because the same blob is compared against many
-    others in one pass, and unpacking 384 floats out of it for each of those
-    comparisons was 96% of the resolver's running time -- measured on the rover
-    at a 500-observation pool, where one pass took 14 s and 123,659 of those 14
-    seconds' worth of arithmetic was this. Scaling here rather than dividing
-    later means a comparison is one dot product.
-
-    The cache is keyed on the bytes themselves, so it is shared by every caller
-    within a pass and is bounded by how many distinct vectors exist. Cleared
-    between passes by `resolve`, because a rover that ran for an hour would
-    otherwise hold every vector it had ever compared.
-    """
-    got = _UNIT.get(blob)
-    if got is None:
-        import struct
-
-        count = len(blob) // 4
-        values = struct.unpack(f"<{count}f", blob) if count else ()
-        length = math.sqrt(sum(value * value for value in values))
-        got = tuple(value / length for value in values) if length > 1e-9 else ()
-        _UNIT[blob] = got
-    return got
-
-
 #: Unit vectors by the blob they came from, for the length of one resolve pass.
 #: Shared and unlocked, which is safe for the reason it is keyed on the bytes: an
 #: entry is a pure function of its key, so a reader that finds one left behind by
 #: a pass that has not cleared yet gets the right answer. The daemon serialises
 #: its passes behind the inspector's lock in any case.
-_UNIT: dict[bytes, tuple[float, ...]] = {}
-
-
-def similarity(left: bytes, right: bytes) -> float:
-    """Cosine between two float32 vectors, written out rather than in numpy.
-
-    **Not because the daemon may not import one.** It said so here and that was
-    already wrong: `python3-numpy` and `python3-scipy` are apt packages on this
-    rover, in `/usr/lib/python3/dist-packages`, so they are neither vendored nor
-    liable to be missing and a source deploy cannot remove them. The rule this
-    docstring used to state was written for the Pi and has no force now.
-
-    What is left is a measurement rather than a prohibition, and it points the
-    other way as the pool grows. Timed on the rover, one thread, over 500 of its
-    own stored vectors: comparing every pair takes **5.5 s this way and 73 ms as
-    one matrix multiply**, which is 76 times. Three of the resolver's shapes are
-    workarounds for that cost -- geometry runs before appearance, `MAX_NEW_PER_PASS`
-    is 2, and the pending pool is capped at the newest 500 -- and all three stop
-    being necessary once the arithmetic moves. What holds the change back is that
-    it is the working part of a working resolver, not the import.
-
-    If it does move, pin `OMP_NUM_THREADS=1` with it. The lidar scan matcher is
-    this rover's only odometer, and what a spinning thread pool costs it has been
-    measured here before: turning off onnxruntime's was worth 3.3x.
-    """
-    if not left or not right or len(left) != len(right):
-        return 0.0
-    a, b = unit(left), unit(right)
-    if not a or not b:
-        return 0.0
-    return sum(x * y for x, y in zip(a, b))
-
-
-def appearance(store, entity_id: str, vector: bytes) -> float | None:
-    """How much this crop looks like what the entity has typically shown.
-
-    The middle of the exemplars rather than the best of them, and **that is the
-    fix for a gate that got looser every time it was wrong**. Scoring against the
-    best is a ratchet: every crop that joins an entity becomes an exemplar, so an
-    entity that has swallowed something it should not have will accept the next
-    thing more readily for it. Measured on the run of 2026-09-03, an entity
-    holding one exemplar admitted 10% of the pending pool at `DIFFERENT_THING`
-    and the same entity holding twenty-one admitted 64%, monotonically the whole
-    way. The exemplar window slides as well, so the crops the thing was founded
-    on had been evicted and what it was being compared against was the last five
-    things it took by mistake.
-
-    The middle rather than the average for the reason the exemplars are kept
-    apart at all: a chair seen from the front and the same chair from the side
-    average to a picture of neither, and a single odd exemplar should move the
-    answer no further than one place along.
-
-    **None means the question could not be asked**, and that is not the same as a
-    low score: an observation whose look produced no appearance vector, or an
-    entity that has never stored an exemplar, has said nothing about whether it
-    is the same thing. Since appearance is now the only gate left that can throw
-    out a candidate on what it looks like, reporting silence as 0.0 would reject
-    every candidate on a rover whose vectors had not arrived.
-    """
-    if not vector:
-        return None
-    seen = sorted(similarity(exemplar, vector)
-                  for exemplar in store.exemplars(entity_id, width=len(vector)))
-    if not seen:
-        return None
-    return seen[len(seen) // 2]
 
 
 def resolve(store, *, map_session: int | None = None,

@@ -514,7 +514,7 @@ class SessionWorld:
         The same three the page puts through `wPointToPx`: where each look was
         taken from, how far along its bearing the line actually runs, and the
         ring round the position the thing was settled at. Deliberately the same
-        marks `wWindow` in drive_world.js gathers, because the two answer one
+        marks `wWindow` in drive_world_map.js gathers, because the two answer one
         question about one set of points -- how much room is needed -- and a
         picture sized from fewer of them than are drawn on it is the fault this
         is here to prevent.

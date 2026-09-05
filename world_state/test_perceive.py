@@ -36,6 +36,26 @@ def test_a_board_with_no_engines_falls_back_and_says_why() -> None:
         check("...with the reason kept rather than swallowed", bool(missing), True)
 
 
+def test_the_cpu_backend_can_open_after_construction() -> None:
+    """The lazy open must retain numpy instead of referring to a dead local."""
+    from world_state.perceive import _CpuModels
+
+    class Numpy:
+        int64 = "int64"
+        float32 = "float32"
+
+        @staticmethod
+        def zeros(shape, dtype):
+            return shape, dtype
+
+    model = object.__new__(_CpuModels)
+    model._numpy = Numpy
+    model._regions = object()
+    model.open()
+    check("the CPU backend retains numpy until lazy open", model._pad_ids,
+          ((1, 64), "int64"))
+
+
 def test_a_query_can_be_embedded_before_anything_has_been_looked_at() -> None:
     """The first thing a freshly booted sidecar is asked may be a search.
 
@@ -320,6 +340,7 @@ def test_a_cushion_inside_a_sofa_is_not_a_second_thing() -> None:
 
 TESTS = (
     test_a_board_with_no_engines_falls_back_and_says_why,
+    test_the_cpu_backend_can_open_after_construction,
     test_a_query_can_be_embedded_before_anything_has_been_looked_at,
     test_both_backends_answer_the_same_four_questions,
     test_the_tokenizer_is_built_once_and_not_once_a_search,

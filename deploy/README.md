@@ -7,7 +7,7 @@ recovery path and the detailed map of what lands where.
 
 There is one deployment host in the current system: `orin`, the Jetson Orin Nano
 on the rover, which replaced the Banana Pi on 2026-08-31. The realtime Qwen Omni
-model is an Alibaba cloud service and is not deployed from this repository.
+model is an Alibaba cloud service; local world-state perception uses TensorRT.
 
 ## Requirements
 

@@ -31,8 +31,8 @@ with replay and controller simulations ([ros_nav/README.md](ros_nav/README.md));
 ## Where things run
 
 Rover services run on the Jetson Orin Nano (`orin`), which replaced the Banana Pi on
-2026-08-31; the realtime voice model is Alibaba's hosted Qwen Omni, and nothing that
-is deployed uses the Orin's GPU. What gets deployed is decided by
+2026-08-31. The realtime voice model is Alibaba's hosted Qwen Omni; world-state
+perception uses the Orin's GPU through TensorRT. What gets deployed is decided by
 `deploy/manifest.json`, not by a list here — bench scripts under
 `oak_camera/`, `lidar/` and `usb_cameras/` are not deployed, while files from
 `face_tracking/`, `voice_chat/` and `driver_board/` are.

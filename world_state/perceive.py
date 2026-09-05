@@ -229,7 +229,7 @@ class _CpuModels:
     name = "onnxruntime"
 
     def __init__(self, directory: str, threads: int) -> None:
-        numpy = _vendored()[0]
+        self._numpy = _vendored()[0]
         ort = _onnxruntime()
         options = ort.SessionOptions()
         if threads:
@@ -264,6 +264,7 @@ class _CpuModels:
 
     def open(self) -> None:
         """The two graphs a look needs beyond the one already open."""
+        numpy = self._numpy
         if self._regions is None:
             self._regions = self._session(YOLOE)
             self._dino = self._session(DINO)
@@ -322,7 +323,7 @@ class _GpuModels:
     def __init__(self, directory: str) -> None:
         from .engines import DINO as DINO_ENGINE
         from .engines import REGIONS as REGIONS_ENGINE
-        from .engines import SIGLIP_TEXT, SIGLIP_VISION, Engine
+        from .engines import SIGLIP_TEXT, SIGLIP_VISION
 
         self._directory = directory
         self._paths = {

@@ -18,7 +18,7 @@ restart/readiness checks pass. The manual commands below remain the recovery pat
 
 The current installation has one deploy target: the Jetson Orin Nano on the
 rover (`orin`), which replaced the Banana Pi on 2026-08-31. The realtime Qwen
-Omni model is Alibaba-hosted and has no repository deployment target.
+Omni model is Alibaba-hosted. World-state perception runs locally with TensorRT.
 
 ## Where each directory runs
 

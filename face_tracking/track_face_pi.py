@@ -118,6 +118,13 @@ import socket
 import sys
 import time
 
+# The checkout keeps board tools beside face_tracking; deployment flattens both.
+_BOARD_TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "driver_board")
+if os.path.isdir(_BOARD_TOOLS) and _BOARD_TOOLS not in sys.path:
+    sys.path.insert(0, _BOARD_TOOLS)
+from board_transport import HttpLink, NoLink, SerialLink
+
+
 # `snapshot` and `split_jpegs` are re-exported: the daemon and its checks import
 # them from here, which is where they were when those callers were written. The
 # three exposure names join them for the checks' sake and for the same reason.
@@ -175,9 +182,6 @@ SERIAL_CANDIDATES = ("/dev/ttyTHS1", "/dev/ttyS4", "/dev/ttyAMA0")
 
 DEFAULT_SERIAL = next((p for p in SERIAL_CANDIDATES if os.path.exists(p)),
                       SERIAL_CANDIDATES[0])
-
-
-BAUD = 115200
 
 
 SERIAL_CONSOLE_HINT = ("Is a getty still on it? `systemctl status serial-getty@"
@@ -284,94 +288,6 @@ class Detector:
             except Exception:
                 pass
             self.connection = None
-
-
-class SerialLink:
-    """JSON commands down the GPIO UART to the ESP32.
-
-    The wire the whole arrangement is built around: the detector may be a room
-    away, but the servos are commanded over a cable that cannot drop out.
-    """
-
-    def __init__(self, port):
-        import serial
-
-        self.port = port
-        self.link = serial.Serial(port, BAUD, timeout=0.1)
-
-    def describe(self):
-        return f"{self.port} at {BAUD}"
-
-    def send(self, command):
-        try:
-            self.link.write(json.dumps(command, separators=(",", ":")).encode() + b"\n")
-            # The board streams T:1001 telemetry continuously and nothing here
-            # reads it; left alone it would fill the buffer within seconds.
-            self.link.reset_input_buffer()
-            return True
-        except Exception:
-            return False
-
-    def close(self):
-        try:
-            self.link.close()
-        except Exception:
-            pass
-
-
-class HttpLink:
-    """JSON commands over the ESP32's own `/js` endpoint, for a board on WiFi."""
-
-    def __init__(self, host, timeout=0.5):
-        import http.client
-        from urllib.parse import quote
-
-        self._client = http.client
-        self._quote = quote
-        self.host = host
-        self.timeout = timeout
-        self.connection = None
-
-    def describe(self):
-        return f"http://{self.host}/js"
-
-    def send(self, command):
-        path = "/js?json=" + self._quote(
-            json.dumps(command, separators=(",", ":")), safe="")
-        for attempt in (1, 2):
-            if self.connection is None:
-                self.connection = self._client.HTTPConnection(
-                    self.host, timeout=self.timeout)
-            try:
-                self.connection.request("GET", path)
-                self.connection.getresponse().read()
-                return True
-            except Exception:
-                self.close()
-                if attempt == 2:
-                    return False
-        return False
-
-    def close(self):
-        if self.connection is not None:
-            try:
-                self.connection.close()
-            except Exception:
-                pass
-            self.connection = None
-
-
-class NoLink:
-    """--no-move: everything runs, nothing is commanded."""
-
-    def describe(self):
-        return "nothing (--no-move)"
-
-    def send(self, command):
-        return True
-
-    def close(self):
-        pass
 
 
 def open_link(args):

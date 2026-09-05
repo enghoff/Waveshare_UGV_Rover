@@ -1,18 +1,8 @@
-"""The daemon's side of the semantic world state: control calls, and one camera.
+"""Semantic world-state control, capture and background inspection for the daemon.
 
-Everything here is a control call and none of it is a model tool. `tools()` builds
-its list from the schemas in `tool_schemas.py` and nothing in this file is in them,
-so a voice model is never shown any of it -- which is the intention. This slice
-exists to find out whether the world state is worth trusting; giving a model the
-authority to write to it, or to clear it, before that question is answered would be
-the wrong order.
-
-Why the store lives in this process at all, when the *model* deliberately does not:
-the camera has exactly one owner. An inspection needs the frame the gimbal is
-actually looking at, and a second process opening the camera behind the tracking
-loop's back is the failure this daemon exists to prevent. So the picture is taken
-here, by the same `_whole_jpeg` that answers `camera_jpeg` and `look`, and only the
-model -- the part that can run out of memory and take a fault -- is out of process.
+The daemon owns the camera; the perception sidecar owns model inference. Control
+calls here are distinct from the voice tool schemas. Map-session identity,
+measured pose and camera provenance accompany every stored observation.
 """
 from __future__ import annotations
 
@@ -45,165 +35,36 @@ except Exception as _error:                     # deployed without the component
 else:
     WORLD_IMPORT_ERROR = ""
 
-#: How many observations one entity's detail carries, and how many the console's
-#: stream asks for at a time. Enough to see whether the descriptions have
-#: drifted, bounded because this crosses a socket to a phone.
+# Bounded pages and ray lists keep control replies small enough for Wi-Fi.
 DETAIL_LIMIT = 40
-#: And the most one page of that stream may be asked for at once, whatever the
-#: caller says. The whole history is readable now -- the console pages back
-#: through it -- and a single reply carrying thousands of rows would be a
-#: minute of wi-fi and several megabytes of JSON on a phone.
 PAGE_MAX = 200
-#: How many of an entity's newest observations become rays on the map, in the
-#: list where every entity is drawn at once.
 RAY_LIMIT = 6
-#: And how many for the one entity somebody has chosen. Higher because the
-#: question changes: in the list the map has to stay readable with every thing on
-#: it at once, while a chosen thing's sightings all end at its own settled
-#: position, so more of them is more evidence about whether they converge rather
-#: than more clutter. Bounded all the same -- the rover records a look a second,
-#: and this crosses a socket to a phone.
 SELECTED_RAY_LIMIT = 24
-#: How many of a thing's newest looks are read for the directions it has been
-#: seen from, when working out where to stand to see it. Higher than the map's
-#: limits because nothing is being drawn: what these decide is a median, and a
-#: median over six looks taken in six seconds from one spot is a median over one
-#: place. Bounded because the rover records a look a second and one thing can
-#: have hundreds, and because every one of them is a ray to work out.
 SIGHT_LIMIT = 60
-#: How long to wait before asking the camera a second time. Long enough for the
-#: previous v4l2-ctl to be well out of the way, short enough to be nothing beside
-#: the minute of model that follows. See :meth:`RoverWorld._world_capture`.
 CAMERA_RETRY_S = 0.5
-#: Substitutes the deterministic fake for the real sidecar. For bringing the
-#: console up on the rover before the encoders are installed, and for nothing
-#: else -- every row it writes is stamped with the backend that wrote it and the
-#: popup shows that, so a rover left in this state says so rather than looking
-#: like one that is really measuring anything.
 ENV_FAKE = "UGV_WORLD_FAKE"
-
-#: Which of the rover's two cameras the world state looks through.
-#:
-#: **An in-code flag with no way to set it from the console, deliberately.** The
-#: two cameras produce bearings into one shared world, and a switch a person could
-#: flip mid-drive would leave the store holding two halves measured through
-#: different optics from different places with nothing recording which was which.
-#: The `camera` column does record it, so the question is answerable afterwards;
-#: what must not happen is the answer changing under a running experiment. This is
-#: a line to edit and redeploy, which is exactly as often as it should change.
-#:
-#: `"gimbal"` is the default and is what every bearing this component has ever
-#: recorded was drawn through: a 130-degree fisheye on two servos, swept and
-#: fitted on this rover, that can look anywhere. It gets a *range* on the regions
-#: that happen to fall inside the OAK's own narrow view, which is about half of a
-#: centred frame and none of a look taken over the rover's shoulder.
-#:
-#: `"oak"` looks through the depth camera instead: 70 degrees, bolted to the
-#: chassis, cannot turn -- and a range on **everything** it sees, because the box
-#: and the depth are the same picture. What it costs is the ability to look
-#: around at all, and a frame that is not quite of this instant -- the service
-#: holds each depth frame for the picture it belongs with.
-#:
-#: Either way it needs `world_state.oak.MOUNT` measured. Until then the OAK
-#: cannot draw a bearing and the gimbal path gets no ranges -- see
-#: `world_state/bench_oak.py`.
+# The selected camera is fixed for a deployment; observations record its identity.
+# Cross-camera ranges require a measured OAK mount (world_state.oak.MEASURED).
 WORLD_CAMERA = "gimbal"
-
-
-#: The fastest the rover will ever look around by itself. **It was 15 s, and 15 s
-#: is why a three-minute drive came back with four pictures.** What set it was the
-#: resolver reading the whole pending pool on every look -- so a rover recording
-#: faster than it could place things got slower and slower at placing them -- and
-#: that is no longer what happens: the pool is settled on its own schedule below,
-#: and one pass over it got 145 times cheaper when the geometry was allowed to
-#: throw a pair out before its appearance was compared.
-#:
-#: What sets it now is the camera and the lidar. A bounded capture is 0.29 s on
-#: the Orin and a look through the encoders 0.16 s, so a look a second is a 45%
-#: duty cycle; measured against the scan matcher on 2026-09-03, that costs it
-#: nothing -- 9.95 revolutions a second with a capture every second against 9.90
-#: with none, and no dropped scans in either. **That measurement is the Orin's
-#: and does not transfer.** The same experiment on the Pi's four cores, recorded
-#: in `uvc_camera.snapshot`, lost 22% of revolutions to a camera held open, and
-#: the scan matcher is the only odometer this rover has.
+# Capture and resolution have separate schedules; a pass schedules from completion.
 LOOK_EVERY_S = 1.0
-#: How often identity is decided, in seconds. Separate from looking because the
-#: two cost wildly different amounts: a look is a near-constant 0.45 s, while a
-#: resolver pass compares every pair and then asks every ray whether it agrees
-#: with each crossing that survived, so it grows as the square of what is waiting.
-#: Settling after every look is what made looking often unaffordable.
-#:
-#: **The 1.4 s at 500 bearings this used to claim was measured on a pool that
-#: could place nothing.** Re-measured on the Orin on 2026-09-03 with a pool of 500
-#: that can, one pass is 55 s, and `resolve.MAX_NEW_PER_PASS` is what bounds that
-#: now. The clock below is also read after the pass rather than before it, because
-#: a pass longer than this was otherwise due again the instant it returned.
 SETTLE_EVERY_S = 10.0
-
-#: How often the looking loop asks the navigation stack which map it is holding.
-#: A poll for a rare event -- the answer changes when the map is cleared or comes
-#: up new, and not otherwise -- so it is set far below how long a person takes to
-#: notice anything and far above what one status call costs.
 FOLLOW_MAP_S = 5.0
-
-#: How long `world_state_clear` waits for the look or the resolver pass in flight
-#: before answering that it could not empty the store. Generous on purpose: the
-#: longest thing it can be queued behind is one resolver pass, which is seconds
-#: rather than minutes even on a store far larger than this rover has held, and
-#: the console gives a world call seventy seconds to answer.
 CLEAR_WAIT_S = 20.0
-#: What counts as somewhere new. **Deliberately shorter than the 0.4 m the
-#: geometry calls a baseline**, which is what this was: two looks this close
-#: cannot be triangulated against *each other*, but they can be against the look
-#: three back, and in the meantime each is a picture of the room from a place the
-#: rover has not photographed. At the 0.35 m/s it explores at this is a look every
-#: 0.4 s, so `LOOK_EVERY_S` above is the real governor while driving and this one
-#: takes over as the rover slows down.
+# A new look need not itself provide the 0.4 m triangulation baseline.
 MOVED_ENOUGH_M = 0.15
-#: And what counts as a new direction. **Where the camera points, not where the
-#: chassis does**: heading minus pan, which is what a bearing is built from in the
-#: first place. Measured against the chassis alone, turning the gimbal through
-#: three positions recorded nothing at all, which is the one case a rover standing
-#: still can still learn something from.
 TURNED_ENOUGH_DEG = 25.0
-#: A rover that has not moved at all still looks this often, so that a parked
-#: rover in a room that changes notices, and so that "nothing is happening" is
-#: distinguishable from "it stopped working".
 LOOK_ANYWAY_S = 300.0
-#: And how often it looks when it cannot tell whether it has moved -- when the
-#: scan matcher has stopped trusting its own position. Slower than a look a second
-#: because none of these can be triangulated with anything, and far faster than
-#: the five minutes above because the pictures are still worth having and this is
-#: the part of the building that just confused the rover.
 LOOK_BLIND_S = 5.0
-
-#: How long a fetched occupancy grid is reused for. One resolve pass asks how far
-#: the rover could see for every bearing in the pending pool -- a few hundred
-#: questions of the same map -- and refetching for each would be a few hundred
-#: round trips to the bridge and a few hundred decompressions of the same 80 kB.
-#: Short enough that a map five seconds further explored is used on the next look,
-#: which is far finer than the rover can drive.
+# Cache one map per short interval rather than refetch it for every pending ray.
 MAP_CACHE_S = 5.0
-#: No sighting is bounded beyond this, in metres. It is `locate.MAX_RANGE_M`,
-#: which already refuses a crossing further out, so walking past it would only
-#: cost time.
 REACH_LIMIT_M = 12.0
-#: What counts as a wall in the grid the bridge sends. The same threshold
-#: `ros_navigator.GRID_OCCUPIED_AT` renders a map with, stated here rather than
-#: imported because this module already survives that one being missing.
 OCCUPIED_AT = 50
-#: How long to wait for the bridge to send the map. The same patience `map_png`
-#: has, for the same request.
 MAP_ASK_S = 8.0
 
 
 class RoverWorld:
-    """Semantic world state, as calls on the daemon's existing protocol.
-
-    A mixin on `Rover` rather than a service of its own, because the console
-    already holds several connections to this daemon and the alternative was
-    another LAN port to secure, discover and keep alive for four control calls.
-    """
+    """Semantic world state on the daemon's existing control protocol."""
 
     # --- building it without being asked --------------------------------------
 

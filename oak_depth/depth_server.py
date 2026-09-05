@@ -1,67 +1,15 @@
-"""The OAK as a camera with a range on every pixel, on the rover, kept alive from
-boot. A colour picture, and millimetres out.
+"""The OAK depth service: paired colour and aligned depth on loopback port 8770.
 
-    python3 depth_server.py                 # loopback 8770, at 15 fps
-    python3 depth_server.py --bind 0.0.0.0  # ...reachable from the LAN as well
-    python3 depth_server.py --fps 2         # a still every half second, and a fifth of the link
+GET /health, /depth, /depth.png, /frame and /power; POST /ranges and /power.
+Run with --bind, --port, --fps or --decimation to override pipeline defaults.
 
-    GET  /health     is the device up, what is it, and how is the depth
-    GET  /depth      the newest frame as a coarse grid and per-sector ranges
-    GET  /depth.png  the same frame as a greyscale picture, for a person
-    GET  /frame      the newest colour picture, as a JPEG
-    GET  /power      is the camera on, off, or still waking up
-    POST /ranges     how far away the things in these boxes are
-    POST /power      switch the camera off to save what it draws, or on again
+The process owns the camera and uploads the pinned DepthAI firmware on open.
+Switching off closes the device but keeps HTTP available; waking uploads again.
+The supervisor restarts a failed device. Only one process may own the OAK.
 
-**The depth is aligned to the colour camera, and that is what makes the two
-answers one measurement.** `StereoDepth.setDepthAlign(CAM_A)` warps the disparity
-out of the mono pair's geometry into the colour camera's, so a box drawn on the
-picture `/frame` returns indexes the same fraction of the depth map and needs no
-remapping on the host. The consequences are worth stating because they change
-what older readings meant: depth here is measured from the *colour* camera's
-optical centre rather than the right mono's, and every angle this service quotes
-is now in the colour camera's frame -- 70.1 degrees across and 43.0 high, read
-off the intrinsics the device stores rather than off `getFov`'s rounded 69.
-
-**This is what "upload the firmware at boot" means on this camera.** The Myriad X
-inside an OAK has no flash: it enumerates in ROM bootloader state as `03e7:2485`,
-waits for a host to hand it firmware over USB, and comes back as `03e7:f63b` once
-booted. depthai does that upload every time a pipeline opens -- so the firmware
-version *is* the depthai version, and there is nothing to flash and walk away
-from. Worse, a booted device that stops hearing from its host kills itself on a
-1500 ms watchdog. "Bring the OAK up when the rover boots" therefore has exactly
-one shape: a process that opens it and stays. This is that process, started from
-`crontab` by `run_oak_depth.sh`, and its being alive is the whole of the camera
-being awake. That shape was worked out while ruling the OAK off the *old*
-rover, and it survived the move to this one unchanged.
-
-**Which is also what makes the camera switchable, since 2026-09-04.** If holding
-the device open is the whole of being awake, then letting go of it is the whole
-of being off -- the Myriad falls back to ROM bootloader within its 1500 ms
-watchdog and waits there. So `POST /power` closes the device and keeps the
-process, and the port goes on answering `off` instead of going silent, which is
-the difference between a camera somebody switched off and a service that has
-died. Switching it back on is a fresh firmware upload and a fresh pipeline every
-time, because there is no other way this device is ever awake, and that takes
-several seconds -- which is why the state has three values rather than two and
-why nothing here blocks on the wake.
-
-The camera used to be the rover's face detector, running an SSD on that same VPU
-because a Pi 1 could not run one at all. Every board since has run YuNet faster
-than the VPU did -- 146 ms a frame on the Banana Pi's four A53 cores against 190
-through the old loopback service, and 24 ms on the Jetson Orin Nano the rover
-carries now -- so face detection has moved to the CPU
-(`face_tracking/yunet.py`) and the camera is free to do the thing it is actually
-built for. Its two mono sensors and 7.5 cm baseline are the only depth sense on
-this rover that sees anything above or below the lidar's one horizontal plane.
-
-**Nothing steers by this, and that is still deliberate.** The lidar is what keeps
-the rover off walls, the floor reads as an obstacle to a forward-looking depth
-camera, and a range that has not been checked against the room is a poor thing to
-drive by. What does read it is the semantic world state, which asks `/ranges` how
-far away the things it has just found are and spends the answer on deciding which
-lasting thing each of them is -- see `world_state/oak.py`. That is a use with no
-authority over the wheels, which is the order this was always meant to happen in.
+Depth is aligned to CAM_A: normalized colour boxes index the same depth rays.
+World state uses these ranges for association; navigation still uses the lidar.
+See README.md for endpoint contracts, installation and hardware limitations.
 """
 
 import argparse
@@ -77,161 +25,17 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# depthai is unpacked here by install.sh, for the same reason OpenCV is unpacked
-# beside yunet.py: this board's Debian has no pip and `sudo` wants a password no
-# deploy script has. An installed copy is preferred, so a desk is unaffected --
-# see _import_depthai.
+# install.sh unpacks the pinned firmware wheel here; an installed copy is preferred.
 VENDOR = HERE / "vendor"
 
-DEFAULT_PORT = 8770
-DEFAULT_BIND = "127.0.0.1"
-# Mono at 480p because the OV7251 sensors are native there and 400p is a crop, and
-# the disparity decimated 2x on the device before it is warped.
-#
-# **Fifteen frames a second, raised from two on 2026-09-04**, because how *old*
-# the answer is turned out to matter more than what the link costs. Two a second
-# was chosen when nothing read this; `world_state` now stitches a range from here
-# onto a box drawn on the gimbal camera, and there what matters is how old the
-# pair it reads is, because that age is rover movement between the two pictures a
-# single measurement is assembled from. The age is one frame interval of hold-back
-# plus about half a frame of waiting for a turn, so the interval is the whole
-# lever. Measured on the rover on 2026-09-04, one read a second: a median age of
-# **0.768 s at 2 fps against 0.102 at 15**, which at the speed this rover explores
-# at is 36 cm of error against 5. The gap between the two halves of a pair fell
-# with it, from a drifting 0.041-0.069 s to a stable 0.001.
-#
-# The link stays inside its budget, which is what two fps was protecting: the
-# arithmetic is 1.7 MB/s of depth plus 0.3 of colour against the 40 MB/s where
-# this camera has been measured saturating, on a 480 Mbps root port shared with
-# the wifi dongle. Ten was this service's own default until 2026-08-31 and ran on
-# a slower board than this one, and dropping to two bought about 180 mW -- inside
-# the power rail's own sample-to-sample spread. So the cost of going back up is
-# small and measured; see the README for both figures.
-#
-# Lower it with --fps if the link ever does become the binding constraint. The
-# rate is fixed when the pipeline is built, so changing it is a restart and a
-# fresh firmware upload -- there is no way to retune a running device.
-DEFAULT_FPS = 15
-DECIMATION = 2
-#: What the colour camera emits, and what the depth is warped to match.
-#:
-#: **640x360 because 1080p is the widest thing this sensor offers, not because
-#: 16:9 was wanted.** Asked of the device rather than assumed: the IMX214 offers
-#: 1920x1080, 3840x2160, 4056x3040 and 4208x3120 and nothing else, the two 4:3
-#: modes are twelve megapixels apiece, and the 1080p mode is a *vertical* crop of
-#: the sensor rather than a horizontal one -- 70.1 degrees across either way, and
-#: 43.0 high against the full sensor's 54.9. So the wide mode costs a third of the
-#: vertical field and saves the ISP eleven megapixels a frame, and a thing that
-#: falls off the top of the picture is a case the consumer of this already handles
-#: (`view.clipped_vertically`). The 4:3 route is `THE_12_MP` with an ISP downscale
-#: if that third ever turns out to matter.
-#:
-#: `setIspScale(1, 3)` takes 1920x1080 to 640x360 on the device, so nothing but
-#: the finished frame crosses the wire.
-COLOUR_SIZE = (640, 360)
-COLOUR_ISP_SCALE = (1, 3)
-#: MJPEG on the device's own encoder rather than on the host: this board has no
-#: OpenCV in this process, the VPU has an encoder sitting idle, and a 22 kB JPEG
-#: at 15 fps is 330 kB/s against the 3.5 MB/s a raw frame would be.
-JPEG_QUALITY = 90
-#: And what size the aligned depth comes off the device at -- half the colour
-#: frame in each direction, so `depth[y, x]` is the colour frame's `(2x, 2y)` and
-#: the same *fraction* of both is the same ray.
-#:
-#: Half rather than full because the link is the thing worth spending carefully:
-#: 320x180 of uint16 at 15 fps is 1.7 MB/s where the full colour frame's size
-#: would be 6.9, and it is this halving that keeps the rate affordable at all.
-#: The stereo pair still runs at 640x480 and is still decimated on the device;
-#: this is only how much of the result is worth sending.
-DEPTH_SIZE = (320, 180)
-#: How long a window of colour frames to keep while waiting for the depth frame
-#: they belong with, in seconds.
-#:
-#: **A duration and not a count, because the lag this has to reach back across
-#: is a duration.** The colour frame arrives behind its own depth frame by the
-#: time the MJPEG encoder takes, and nothing measured says that time falls when
-#: the frame rate rises. A fixed four frames was two seconds at the old 2 fps and
-#: would be a quarter of a second at 15 -- so the buffer would have been shorter
-#: than the lag, `_nearest` would have found only frames that had already aged
-#: out of the window it wanted, and the pairing would have quietly started
-#: matching the wrong picture or none at all.
-#:
-#: Two seconds is what the pairing has had since it was written, and it is far
-#: longer than the encoder lag needs. The cost is the frames held: 22 kB apiece,
-#: so 30 of them at 15 fps is under a megabyte.
-COLOUR_HISTORY_S = 2.0
-# How long a frame may be missing before this process gives up and lets the
-# supervisor open the device again from scratch. Nothing else recovers a Myriad
-# that has been browned out or unplugged, so exiting *is* the repair. Generous
-# enough not to fire on a slow moment: at the default 15 fps this is 75 frames,
-# and it stays a duration rather than a frame count because what it is really
-# waiting for is a device that has gone, which takes the same time either way.
-FRAME_TIMEOUT_S = 5.0
-# And how long the first frame after a switch-on may take before that counts as a
-# fault rather than as a camera waking up. Waking is not a process start: the host
-# uploads the firmware to a VPU with no flash and then builds the stereo pipeline,
-# which is several seconds every time -- 4 to 6 s measured on this rover. Well
-# past that, because the cost of being wrong is a process that exits while the
-# camera was merely slow, and the supervisor would then take another 15 s over it.
-WAKE_TIMEOUT_S = 40.0
-# Depths outside this are not measurements. The 7.5 cm baseline stops overlapping
-# below about 20 cm, and beyond 6 m one disparity step is more than a metre.
-MIN_MM, MAX_MM = 200, 6000
-# What `/depth` reduces a frame to. Eight columns is about 9 degrees each across
-# the lens, which is the width of a doorway at three metres.
-GRID_COLS, GRID_ROWS = 8, 6
-# Which rows the per-sector range is taken over: the middle band, because the top
-# of the frame is ceiling and the bottom is the floor a metre in front of the
-# tracks, and both are things the rover drives happily under and over.
-BAND = (0.30, 0.70)
-# The near edge of a sector as a percentile of its valid pixels rather than as
-# their minimum. A single pixel is noise -- stereo mismatches produce isolated
-# very-near readings on textureless walls -- and the fifth percentile of a
-# thousand-pixel cell is a surface.
-NEAR_PERCENTILE = 5
-STAT_WINDOW = 100
-
-#: How `/ranges` picks one distance out of a box full of pixels, as a percentile
-#: of the valid ones.
-#:
-#: **A box is a thing in front of a room, and the question is how far the thing
-#: is.** A region drawn round a chair also contains the floor beside it and the
-#: wall behind it, so the median of the box is a blend of three surfaces and the
-#: minimum is one bad pixel. What is wanted is the near *surface*: this
-#: percentile finds roughly where its front face is, and `RANGE_BAND_M` below
-#: gathers the pixels that belong to it.
-#:
-#: Twenty rather than the five the sectors use, because the two are asking
-#: different questions. A sector is asking "is there anything I could hit", where
-#: the nearest real surface is the whole answer; a region is asking "how far away
-#: is this object", where the nearest corner of it is an underestimate.
-RANGE_PERCENTILE = 20
-#: How far behind that percentile a pixel may lie and still be the same surface,
-#: as a fraction of the range and as a floor in metres. Whichever is larger: a
-#: sideboard is half a metre deep at any range, and the stereo noise itself grows
-#: with the square of the range.
-RANGE_BAND_FRAC = 0.15
-RANGE_BAND_M = 0.30
-#: The fewest valid pixels in a box worth answering from. Below this a range is a
-#: handful of stereo mismatches rather than a surface, and `null` is the honest
-#: answer -- which is not the same as nothing being there.
-RANGE_MIN_PIXELS = 12
-#: How wrong one disparity reading is, in pixels, which is the only assumed term
-#: in what a range is worth.
-#:
-#: A stereo range's error is `z^2 * sigma_disparity / (focal_px * baseline_m)`,
-#: and the other two terms are read off the device rather than assumed -- 455.8 px
-#: of focal length on CAM_C at 640x480 and a 7.50 cm baseline. A fifth of a pixel
-#: is what subpixel mode's eighth-of-a-pixel steps make plausible, and it comes to
-#: 0.00585 metres per metre squared: 2.3 cm at two metres, 9.4 at four and 21 at
-#: six, which is why `MAX_MM` stops where it does.
-#:
-#: **It is a model and not a measurement, and it wants a tape measure.** What it
-#: produces is spent by `locate` as the weight on a range residual, so being wrong
-#: optimistic makes the world state trust a range more than it should. The spread
-#: of the pixels behind each reading is added to it, which covers a thing being
-#: deep or slanted rather than flat, and covers nothing about the model itself.
-DISPARITY_SIGMA_PX = 0.2
+from depth_settings import (
+    DEFAULT_PORT, DEFAULT_BIND, DEFAULT_FPS, DECIMATION,
+    COLOUR_SIZE, COLOUR_ISP_SCALE, JPEG_QUALITY, DEPTH_SIZE,
+    COLOUR_HISTORY_S, FRAME_TIMEOUT_S, WAKE_TIMEOUT_S, MIN_MM,
+    MAX_MM, GRID_COLS, GRID_ROWS, BAND,
+    NEAR_PERCENTILE, STAT_WINDOW, RANGE_PERCENTILE, RANGE_BAND_FRAC,
+    RANGE_BAND_M, RANGE_MIN_PIXELS, DISPARITY_SIGMA_PX,
+)
 
 
 class DepthError(RuntimeError):

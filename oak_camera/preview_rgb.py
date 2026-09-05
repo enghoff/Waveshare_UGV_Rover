@@ -32,12 +32,12 @@ import sys
 
 import cv2
 import depthai as dai
-import numpy as np
+
+from depth_colour import colourise
 
 PREVIEW_SIZE = (960, 540)
 RGB_FPS = 30
 RGBD_FPS = 15  # both streams over one USB2 link; see the note above
-DEPTH_RANGE_MM = (200, 4000)
 # This link only ever negotiates USB2, and the USB3-enabled firmware fails to
 # come back up on the bus after boot roughly six times in seven. See docs/oak-usb-link.md.
 MAX_USB_SPEED = dai.UsbSpeed.HIGH
@@ -91,13 +91,6 @@ def build_pipeline(with_depth, fps):
     return pipeline
 
 
-def colourise(depth: np.ndarray) -> np.ndarray:
-    """uint16 millimetres -> BGR, near = red, far = blue, invalid = black."""
-    lo, hi = DEPTH_RANGE_MM
-    scaled = ((np.clip(depth, lo, hi) - lo) / (hi - lo) * 255).astype(np.uint8)
-    colour = cv2.applyColorMap(255 - scaled, cv2.COLORMAP_TURBO)
-    colour[depth == 0] = 0
-    return colour
 
 
 def run_rgb(device):
