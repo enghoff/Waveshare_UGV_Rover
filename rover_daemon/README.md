@@ -279,7 +279,14 @@ model choice, for example:
 - `nav_status`;
 - `map_png`;
 - `camera_jpeg`;
-- map/reset/diagnostic controls;
+- map/reset/diagnostic controls, including `refit_pose`, which matches what the
+  lidar can see against the map the rover kept from its last session and moves
+  the rover onto it. It is a control call rather than a tool for a subtler reason
+  than the rest: it is safe -- the search will not move the rover further than a
+  metre and the mapper does not fold the scan it matches into the graph -- but
+  whether the rover has been moved since it was parked is a thing a person knows,
+  and a model refused a route would reach for anything labelled "fix the
+  position" when the position is usually not what is wrong;
 - detector diagnostics such as running YuNet over a supplied known image;
 - the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
 - `get_depth_power`, which reports whether the OAK is awake and cannot set it.

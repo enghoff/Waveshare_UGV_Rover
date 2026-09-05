@@ -20,7 +20,11 @@ since been answered on the hardware:
   measures 20.9% of six cores on the Orin against 41.4% of four on the Banana Pi.
 - **MPPI has still not been benchmarked** (recommendation 4). The headroom for it
   now exists; the work has not been done.
-- **Saved-map localization** (recommendation 5) has not been done either.
+- **Saved-map localization** (recommendation 5) was done on 2026-09-05, and not
+  with AMCL. The pose graph is saved and reloaded, and a scan matcher in
+  `ros_nav/refit.py` puts the rover back on the map it kept; slam_toolbox remains
+  the only owner of `map -> odom`. See "Keeping the map between sessions" in
+  [`../ros_nav/README.md`](../ros_nav/README.md).
 - **Frontier exploration is built** (recommendation 7), as an `explore` op on the
   nav bridge rather than as `explore_lite`, which is not in RoboStack and would
   have bypassed this rover's goal checks. See "Automatic exploration" below.

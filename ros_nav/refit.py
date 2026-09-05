@@ -117,30 +117,39 @@ SMEAR_M = 0.10
 #: on a wall, and it must beat the best *rival* -- the best pose in the window
 #: more than DISTINCT_M away or DISTINCT_DEG round from it -- by this margin.
 #:
-#: **These three were measured rather than chosen, and the measurement is the
-#: reason they are as strict as they are.** Sixty places on the kitchen-loop map,
-#: a scan cast from each, and the rover told it was somewhere it was not:
+#: **Both numbers were measured against real recorded lidar rather than against
+#: cast scans, and both moved a long way when they were.** Sixteen (map, scan,
+#: pose) triples were captured while the recorded `kitchen-loop` drive was
+#: replayed -- so the map, the scan and the pose are one mapper's, in one frame --
+#: and each was fitted from four kinds of wrong start. A *nudged* rover should come
+#: back to where the scan fits when the rover is told the truth; a *carried* one
+#: cannot, because the truth is outside the window, so every carried fit accepted
+#: is a rover moved confidently to somewhere it is not.
 #:
-#:      what happened to the rover        accepted   and wrong
-#:      nudged 35 cm and 15 deg             60/60         0
-#:      nudged, a quarter of the room moved 56/60         0
-#:      nudged, half the room moved          9/60         0
-#:      carried 2 m                          3/60         3
-#:      carried 3 m                          0/60         0
-#:      turned 90 deg                        0/60         0
+#:      score   margin  kept   lied about   refused a good one
+#:      0.60    1.25      33        1               28
+#:      0.75    1.10      54        4                7
+#:      0.85    1.10      52        1                9
+#:      0.90    1.10      52        0                9
+#:      0.90    1.25      33        0               28
 #:
-#: The bottom three rows are outside the window and cannot be answered correctly
-#: at all, so every one of them accepted is a lie -- a rover moved confidently to
-#: somewhere it is not. Loosening the score to 0.50 takes those three lies to
-#: nine and buys back the half-changed room; the trade was taken the other way,
-#: because a refusal costs a person one drive with the mapper doing its ordinary
-#: job and a lie costs them a rover that believes a wall is a doorway.
+#: 0.60 and 1.25 are what a cast scan asks for and they are wrong here in both
+#: directions at once -- they refused half the good answers *and* let one lie
+#: through. The reason is that a real map's walls are several cells thick, drawn
+#: from many passes, so a pose thirty centimetres out still puts most of the scan
+#: on something: measured here the rival sits at 0.65 to 0.86 where a cast scan
+#: put it near 0.5. What separates right from wrong on a real map is the score
+#: itself, not the gap.
 #:
-#: Read the middle row as the honest limit of the feature rather than as a
-#: failure: half of every scan disagreeing with the map is not a rover that has
-#: moved, it is a room that has.
-MIN_SCORE = 0.60
-MIN_MARGIN = 1.25
+#: **A stale map is the case this cannot be tuned for and should not be.** Every
+#: one of those sixteen was fitted against a map drawn the same afternoon, and a
+#: correct pose scored 0.94 to 0.98. A map a week old with the furniture moved
+#: will score lower and be refused, and that is the trade taken deliberately: a
+#: refusal costs a person one drive with the mapper doing its ordinary job, and it
+#: says which of the two refusals it was and what the number was, while a lie
+#: costs them a rover that believes a wall is a doorway.
+MIN_SCORE = 0.90
+MIN_MARGIN = 1.10
 DISTINCT_M = 0.25
 DISTINCT_DEG = 15.0
 
@@ -192,7 +201,12 @@ class Fit(object):
         self.settled = settled
 
     def as_dict(self):
-        return {"ok": self.ok, "why": self.why, "settled": self.settled,
+        # `trusted` rather than `ok`, and the name was paid for on the rover: the
+        # bridge's protocol puts an `ok` on every reply, this dict is merged into
+        # one, and a refused fit therefore arrived at the daemon as a *failed
+        # call* -- which reported "the navigation stack did not answer" about a
+        # stack that had answered perfectly clearly.
+        return {"trusted": self.ok, "why": self.why, "settled": self.settled,
                 "x_m": round(self.x_m, 3), "y_m": round(self.y_m, 3),
                 "heading_deg": round(self.heading_deg, 1),
                 "moved_m": round(self.moved_m, 3),
@@ -410,9 +424,13 @@ def fit(grid, points, guess, window_m=WINDOW_M, window_deg=WINDOW_DEG,
     if score < min_score:
         return Fit(x, y, heading, score, rival, guess_score, moved, turned,
                    len(points), False,
-                   "the scan does not fit the map anywhere near here -- the best "
-                   "of %d poses put %.0f%% of it on a wall, and a fit needs %.0f%%"
-                   % (coarse.size, 100.0 * score, 100.0 * min_score), scored=scored)
+                   "the scan does not fit the map well enough anywhere near "
+                   "here: the best of %d poses put %.0f%% of it on a wall and a "
+                   "fit needs %.0f%%, which is either a room that has changed "
+                   "since it was mapped or a rover that has been moved further "
+                   "than this can see"
+                   % (coarse.size, 100.0 * score, 100.0 * min_score),
+                   scored=scored)
     if rival > 0.0 and score < rival * MIN_MARGIN:
         return Fit(x, y, heading, score, rival, guess_score, moved, turned,
                    len(points), False,

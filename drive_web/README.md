@@ -322,7 +322,23 @@ throw the reader to the top, the look in front of them now stays within a pixel 
 where it was, the opened block stays open, nine of the ten crops are the ones
 already fetched, and the list does not move at all.
 
-**There is no refresh button, and there is nothing for one to do.** Opening the
+**There is no refresh button on the map either, and it went for this reason.**
+The map card had five controls and has two: *refit to map*, which asks the rover
+to find itself on the map it kept from the last session, and *clear map*, which
+throws that map away. The three that went were views rather than acts — refresh
+could only ever fetch what the console had a moment ago, "describe surroundings"
+put into words what the picture above it was already showing, and "rover up"
+turned the room under the reader every time the rover turned.
+
+*Refit* is the one call this console makes that is slow and has no panel of its
+own to look slow in — the search is a tenth of a second and writing and reading
+the pose graph is the rest — so the button carries it, saying "refitting..." while
+it runs. It goes out on the map's connection rather than the status one, for the
+reason the clear does: the status poll is what holds the stop button. Its whole
+result is a sentence from the rover, so the notice line is its panel, and the map
+is asked for again only when the rover actually moved on it.
+
+**There is no refresh button on the world popup either.** Opening the
 popup asks for the whole of it and the poll above keeps it that way, so a button
 could only fetch what the console had a moment ago. The one thing it was still
 good for was un-sticking a console that had decided this rover has no world state

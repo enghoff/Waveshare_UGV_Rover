@@ -33,7 +33,7 @@ help diagnose what runs, or document a current hardware fact or failure mode.
 |---|---|
 | [`rover_daemon/`](rover_daemon) | owns the driver-board UART and gimbal camera; exposes hardware and navigation as tools on TCP 8769 |
 | [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the rover; the rover daemon imports this code |
-| [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it |
+| [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it; keeps the map between sessions and puts the rover back on it |
 | [`world_state/`](world_state) | what the rover has seen in the room, kept apart from where things are: segmented regions, the picture each look was read from, and a search that compares a description against what was actually seen |
 | [`lidar_slam/`](lidar_slam) | the fast LD19 parser, room description, map renderer and USB recovery code still used by the ROS stack and daemon |
 | [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |

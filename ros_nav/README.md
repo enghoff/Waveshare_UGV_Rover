@@ -216,7 +216,11 @@ discovery to the whole subnet, which is how a laptop rviz works and how a dead
 radio's leftover address takes this graph down. The launchers source both. A
 laptop that wants rviz on the LAN should source only `env.sh`.
 
-## Saving a map
+## Saving a map by hand
+
+The rover saves its own now -- see *Keeping the map between sessions* below --
+and this is how to keep a *second* copy, of a particular map, somewhere the rover
+will not overwrite it.
 
 ```bash
 ssh orin
@@ -224,14 +228,189 @@ ssh orin
 ros2 run nav2_map_server map_saver_cli -f ~/ugv/maps/house
 ```
 
-which writes `house.pgm` and `house.yaml`. `slam_toolbox` can also serialise its
-whole pose graph, which is the thing to keep if the map is ever to be *continued*
-rather than just used:
+which writes `house.pgm` and `house.yaml`: a picture and its metadata, which is
+what to keep if the map is to be *looked at*. The pose graph is what to keep if it
+is ever to be **continued**, and it is the same call the rover makes for itself:
 
 ```bash
 ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
     "{filename: /home/jetson/ugv/maps/house}"
 ```
+
+## Keeping the map between sessions
+
+**The rover no longer starts with an empty map.** The pose graph is written to
+`~/.ugv/map` while the rover drives and loaded again when the stack starts, so
+the map it wakes up with is the map it was switched off with. That is worth more
+than the ten minutes of driving it saves: everything measured in the map frame --
+the track on the console, and every position in the semantic world state -- used
+to be measured in coordinates that ceased to exist at the next boot, which is why
+[`world_state/`](../world_state) threw its whole database away on every one.
+
+```bash
+ssh orin 'cat ~/.ugv/map/current.json'
+{"map_id": "0291059899f1", "pose": {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.3},
+ "saved_at": 1788583121.14}
+```
+
+Three files, and the rules about them are in [`mapstore.py`](mapstore.py).
+`current.posegraph` and `current.data` are slam_toolbox's own serialisation;
+`current.json` is the note beside them, and it is **written last and is the only
+thing that says the pair is complete**. The graph goes down under a second name
+and is renamed into place first, so a power cut during a write costs the last
+minute of mapping rather than the whole map: no note, no restore, and the rover
+falls back to exactly what it did before any of this existed.
+
+It lives outside `~/ugv` for the reason `~/.ugv/world` does. A deploy replaces the
+deploy tree, and a map is not code.
+
+**Written for motion, not for time.** At most once a minute, and only if the
+rover has moved half a metre or turned twenty degrees since the last one --
+`minimum_travel_distance` in [`config/slam_toolbox.yaml`](config/slam_toolbox.yaml)
+means a parked rover adds no nodes, so a second copy of an unchanged graph is
+bytes for nothing. Measured on the rover, writing a house-sized graph and reading
+it back is under a third of a second.
+
+**`map_id` is how anything holding coordinates knows whether they still mean
+something.** It is minted when a genuinely new map is started -- first boot, a
+`clear_map`, a saved graph that would not load -- and carried across every
+restore of the same graph. `nav_status` reports it, and the world state compares
+it against the one its rows were recorded under; only when they differ does it
+start a new map session. "The rover has rebooted" is no longer a reason to throw
+work away.
+
+**Clearing the map clears the saved one too.** Otherwise the next boot would load
+the map somebody had just deleted, which is the one outcome a person pressing
+that button cannot have meant.
+
+## Putting the rover back on the map
+
+The one thing a rover cannot know about the map it kept is whether somebody moved
+it while it was off. Nudge a parked rover thirty centimetres and turn it a little,
+switch it on, and it comes up believing it is exactly where it was parked -- with
+every wall it sees thirty centimetres from where the map says it should be.
+
+So the map card on the console has a **refit to map** button, and the same thing
+runs by itself once, a second after every restore. It takes the scan the lidar can
+see now, slides it over the map the rover already has, and reports the position and
+heading that make the two agree.
+
+```bash
+ssh orin 'python3 -c "..."'   # or press the button; the daemon call is refit_pose
+{"fitted": false, "settled": true, "score": 0.959, "rival": 0.668,
+ "guess_score": 0.888, "scored": 270, "points": 272, "took_s": 0.22,
+ "why": "the rover is where it thinks it is, to within 3 cm and 1.5 degrees,
+         so nothing was moved"}
+```
+
+The search is [`refit.py`](refit.py) and has no ROS in it, so `selftest.py` argues
+with the same code the rover runs. What makes it safe rather than clever is three
+things, and all three are refusals:
+
+- **It searches a window** -- a metre and forty-five degrees -- so a fit cannot
+  move the rover further than the error it exists to remove. A rover that has been
+  *carried* is not a rover this can find, and the honest answer to that is a
+  bounded error rather than a confident one.
+- **It refuses when the scan fits in two places.** A corridor looks the same
+  everywhere along it to a planar lidar, and the best of two equal peaks is a coin
+  toss wearing an answer's clothes. `rival` is the best score anywhere in the
+  window that is not the winner, and the winner has to beat it by a tenth.
+- **It refuses when the scan does not fit well enough anywhere.** Nine tenths of
+  the scan has to lie on a wall, and below that the number cannot tell a room that
+  has changed from a rover that has been moved further than this can see -- so the
+  sentence says both.
+
+**The mapper has the last word, and that is the design.** `map -> odom` still has
+exactly one owner. What this does with its answer is hand it to slam_toolbox as a
+deserialise-at-pose, which matches the *next* scan against the graph near that
+pose and decides where the rover ends up -- and in the version on this rover it
+does **not** add that scan to the graph, so a refit cannot damage the map. The
+worst a wrong one can do is move the rover, and pressing the button again fixes
+it. What comes back is where the rover actually landed rather than what was asked
+for: measured on the rover, a 2.5-degree correction handed over came back as no
+move at all, because the mapper matched the scan against the node it had just
+made from it.
+
+**Why the graph is written before the answer is applied.** Applying it means
+loading the graph again, and the copy on disk is up to a minute behind the one in
+memory. So it is saved first, and what comes back is what the rover had a moment
+ago rather than what it had a minute ago.
+
+### Why a parked rover re-anchors at all, which it does not for `clear_map`
+
+slam_toolbox will not fold a scan into its graph until the rover has driven
+`minimum_travel_distance` -- which is why a clear leaves a parked rover in the
+frame it just threw away until the wheels turn, and why `trail.py` has to wait for
+it. A restore and a refit would have the same problem, and a button that appears
+to do nothing until somebody drives is not a button.
+
+They do not, and the reason is one line in slam_toolbox: deserialising sets
+`first_measurement_`, and the next scan after that is processed whatever the rover
+has or has not done. That is checked here rather than assumed --
+[`nav_map.py`](nav_map.py) waits until the transform tree says the rover has
+arrived, and says so when it never does.
+
+### What it scores, and the number that was wrong
+
+The map becomes a field -- 1.0 on a wall, falling away with distance from one --
+and a candidate pose scores the share of the scan lying under it. **A scan point
+over ground nobody has mapped is not counted at all**, and getting that wrong is
+worth recording, because it looked fine in simulation and was badly wrong on the
+rover. Scanning against cast rays, every point lands on a mapped wall by
+construction and a correct pose scored 0.96. On the rover, a scan matched against
+the very map it had just drawn scored **0.72** -- because the map was five square
+metres, most of the lidar's 8 m reach fell outside it entirely, and every one of
+those returns was being counted as a miss. Scoring an unmapped cell as a miss
+makes the answer depend on how much of the house has been explored rather than on
+where the rover is. Leaving them out took the same measurement to **0.96**.
+
+That is safe here only because the search is a window: over a metre, which
+candidate pose is chosen barely changes which points land on mapped ground, so
+there is nothing for a pose to gain by drifting into the unknown. A pose with
+fewer than sixty points left to score is refused rather than believed.
+
+### The thresholds came from recorded lidar, and a cast scan had them both wrong
+
+`replay_bag.sh` was run over the recorded `kitchen-loop` drive with a collector
+subscribed on its domain, keeping sixteen (map, scan, pose) triples -- one
+mapper's, in one frame, so nothing has to be aligned afterwards. Each was then
+fitted from four kinds of wrong start, and what a *nudged* rover has to do is come
+back to where the scan fits when the rover is told the truth. A *carried* one
+cannot, because the truth is outside the window, so every carried fit accepted is
+a lie.
+
+| score | margin | kept | lied about | refused a good one |
+|---|---|---|---|---|
+| 0.60 | 1.25 | 33 | **1** | 28 |
+| 0.75 | 1.10 | 54 | **4** | 7 |
+| 0.85 | 1.10 | 52 | **1** | 9 |
+| **0.90** | **1.10** | **52** | **0** | **9** |
+| 0.90 | 1.25 | 33 | 0 | 28 |
+
+**0.60 and 1.25 are what a cast scan asks for, and on real data they were wrong
+in both directions at once** -- refusing half the good answers *and* letting a lie
+through. A real map's walls are several cells thick, drawn from many passes, so a
+pose thirty centimetres out still puts most of the scan on something: the rival
+sits at 0.65 to 0.86 here where a cast scan put it near 0.5. What separates right
+from wrong on a real map is the score itself and not the gap, and a correct pose
+scores 0.94 to 0.98.
+
+**The map those sixteen were fitted against was drawn the same afternoon**, and
+that is the limit of what this measures. A map a week old with the furniture moved
+will score lower and be refused. That trade was taken deliberately and it is the
+same one everywhere else here: a refusal costs a person one drive with the mapper
+doing its ordinary job, and it says which of the two refusals it was and what the
+number was; a lie costs them a rover that believes a wall is a doorway.
+
+### What it will not do for you
+
+**A rover with almost no map cannot be found on it.** Reproduced on the rover on
+2026-09-05: with a map five square metres across, built from a single scan, the
+rover was deliberately mis-anchored by 34 cm and the refit refused -- 90% here
+against 89% somewhere else, which is exactly the ambiguity guard doing its job. A
+room seen once from one spot is not a map with enough in it to place anything.
+Drive the rover about first; the feature is for a rover that has a map of the
+house, which is also the only kind of rover that has anything worth keeping.
 
 ## Clearing it, and where the rover ends up when you do
 
@@ -1824,9 +2003,13 @@ left behind. `rotation_penalty` stays at 5.0, and the note beside it in
 
 ## What is deliberately not here
 
-**AMCL and the map server.** They localise against a map saved earlier, and this
-rover maps as it goes. `slam_toolbox` already publishes the `map -> odom`
+**AMCL and the map server.** They localise against a map saved earlier, and
+this rover now keeps one -- so the first half of that argument has gone and the
+second half is the whole of it: `slam_toolbox` already publishes the `map -> odom`
 transform AMCL would, and running both puts two things in charge of one transform.
+What a saved map wanted was a way to *start* on it and a way to find the rover on
+it again, and both of those are `nav_map.py` handing an answer to the mapper that
+is already there rather than a second thing publishing where the rover is.
 
 **The OAK-D and the gimbal camera.** The OAK is owned by
 [`oak_depth/`](../oak_depth) and serves the drive console on 8770; only one

@@ -602,7 +602,7 @@ class RosNavigator:
         answer = self.ask(request, REFIT_TIMEOUT_S)
         if not answer.get("ok"):
             return {"fitted": False,
-                    "why": str(answer.get("error")
+                    "why": str(answer.get("error") or answer.get("why")
                                or "the navigation stack did not answer")}
         answer.pop("kind", None)
         answer.pop("ok", None)
