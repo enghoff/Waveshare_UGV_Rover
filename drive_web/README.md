@@ -1,614 +1,110 @@
-# Drive console, on the rover
+# Browser drive console
 
-`drive_web` serves the browser console from the rover. A phone or desk opens
-it directly; there is no desktop companion process.
-
-```text
-phone / desk browser
-        |
-        | HTTPS / WebSocket :8771
-        v
- drive_web.py
-        |
-        +-- TCP 127.0.0.1:8769 -> rover_daemon
-        +-- voice_chat/session.py -> Alibaba Qwen Omni (when mic is active)
-```
-
-The daemon remains the hardware owner. The console is a client of its tool
-protocol over loopback and adds presentation, map/camera display and the browser
-audio bridge.
-
-## Running it
-
-The console is started from the `jetson` crontab, beside the other rover services:
-
-```text
-@reboot /home/jetson/ugv/drive_web/run_drive_web.sh
-```
-
-Normal deployment is:
-
-```bash
-python deploy/deploy.py --only drive_web
-```
-
-Manual fallback:
-
-```bash
-scp drive_web/*.py drive_web/*.html drive_web/*.css drive_web/*.js \
-    drive_web/*.sh drive_web/README.md \
-    orin:~/ugv/drive_web/
-scp voice_chat/{console_model,rover_tools,session,talk_frames,prompts}.py \
-    orin:~/ugv/drive_web/
-
-ssh orin 'sh ~/ugv/drive_web/install.sh'
-ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
-ssh orin '~/ugv/drive_web/restart.sh'
-```
-
-The shared `voice_chat` modules stay in their current repository directory for
-now but are copied beside `drive_web` on the rover. Reworking that package layout
-is a separate architectural refactor, not part of the current cleanup.
-
-Open:
+The console serves rover status, manual driving, camera controls, maps,
+world-state inspection and browser audio over HTTPS on port 8771:
 
 ```text
 https://192.168.1.80:8771/
 ```
 
-Plain HTTP on the same port redirects to HTTPS.
+It is intentionally usable without the voice dependencies. The browser is the
+microphone and speaker; the rover holds the Alibaba Qwen Omni session and all
+credentials.
 
-## TLS
-
-TLS exists primarily because browsers refuse `getUserMedia` microphone access
-outside a secure context. [`make_cert.sh`](make_cert.sh) maintains a small local
-CA and leaf certificate under:
-
-```text
-~/.ugv/tls/
-```
-
-That directory is outside `~/ugv` so a source deploy cannot overwrite private
-keys. `run_drive_web.sh` checks the certificate at startup. The stable service
-address `192.168.1.80` is included so the URL the user trusts keeps working
-whichever network the rover is on and whatever DHCP does with its lease.
-
-That check waits for an address and for a synchronised clock before it will mint
-anything. Nothing keeps time on this board while it is unplugged, so it boots in
-1970 and the `@reboot` entry can reach `make_cert.sh` before NTP has answered; a
-certificate written in that window is valid from 1970 until 1972, which every
-browser reads as expired. Where the clock is still unset after 90 s an existing
-certificate is kept rather than replaced.
-
-The certificate can be regenerated manually:
+## Install and run
 
 ```bash
-ssh orin '~/ugv/drive_web/make_cert.sh'
-ssh orin '~/ugv/drive_web/make_cert.sh --force'
+ssh orin 'sh ~/ugv/drive_web/install.sh'
+ssh orin 'sh ~/ugv/drive_web/install_websockets.sh'
+ssh orin '~/ugv/drive_web/restart.sh'
 ```
 
-The CA certificate can be installed on a phone/computer to avoid the browser
-warning; otherwise the console can still be used after explicitly trusting the
-local certificate.
+`install.sh` adds the supervisor to the `jetson` user's crontab and creates TLS
+material under `~/.ugv/tls/` when needed. A newly generated CA must be trusted on
+the workstation. The leaf certificate covers the stable service address and the
+rover's local hostname; transient DHCP addresses are not certificate names.
+
+Use `restart.sh` rather than launching the child directly. The supervisor keeps
+the console up and preserves its required arguments.
+
+## Source layout
+
+- `drive_web.html` contains the page structure.
+- `drive_web.css` contains all presentation.
+- `drive_web.js` handles connection, driving, status, maps and voice.
+- `drive_world.js` holds world-state data, lists, details and wiring.
+- `drive_world_map.js` draws placed entities, observations and uncertainty.
+- `drive_world_observations.js` owns the paged observation grid and zoom view.
+- `drive_web.py` serves HTTPS/WebSocket traffic and static assets.
+- `drive_session.py` holds the rover connection and state snapshots.
+- `omni_bridge.py` connects browser audio to the hosted realtime model.
+
+The world scripts load before `drive_web.js`, which calls `start()`. Assets are
+read from disk per request, but deployed changes still use the normal restart and
+verification path.
 
 ## Driving and status
 
-The page maintains several daemon connections so a slow operation such as a map
-render or move does not block STOP/status. `voice_chat/console_model.py` contains
-the shared English and pacing, while `voice_chat/rover_tools.py` contains the TCP
-client/discovery logic.
+Manual controls send bounded actions through the daemon on TCP 8769. The console
+does not open the driver-board UART or talk directly to ROS. It displays the
+daemon's navigation, battery, link, camera and movement state.
 
-**explore** sits beside STOP, and is the one control here that hands the rover
-its own work: it drives to the edge of the mapped area over and over, choosing
-where to go, until there is nowhere unmapped left it can reach. Pressing it again
-stops it, so does STOP, and so does clicking somewhere on the map.
+The map image is fetched only when its generation changes. Manual map clicks and
+world-state destinations go through the daemon's existing route planning and
+drive checks. Browser disconnection does not bypass the daemon's own movement
+timeouts and stop behavior.
 
-It is drawn from the rover's own `exploring` rather than from a call this console
-is waiting on, and that is not a detail. Starting a run answers in a moment and
-leaves the rover driving for ten minutes — and the voice model or a second
-browser can start one too — so a toggle lit from "we have a call in flight" would
-be a button that disagreed with the room. It is left to the left of STOP for the
-reason the header exists at all: STOP is the control you reach for without
-looking, and it keeps the corner it has always had.
+## World-state popup
 
-The map is generated by the rover-side renderer from the current ROS occupancy
-grid and is annotated with rover pose/heading, track and camera direction. Map
-clicks become navigation requests in map coordinates rather than offsets measured
-later after the rover may already have moved.
+The popup has entity, map and observation views over one read-only data source.
+A search phrase filters all views together. Selecting an entity shows every
+stored observation used for it, including the source frame, measured box, pose,
+bearing, range and uncertainty where available.
 
-A click outranks whatever the rover is doing when it lands, because somebody
-clicking is saying it is going to the wrong place and “stop it or wait” is a
-console arguing with the only instruction it has. So the click stops what is
-running — a move, or an exploring run — and is sent once the wheels come free.
-Holding the place in map coordinates is what makes that safe: the second or two
-the stop takes does not move the destination.
+The map draws observation origins, bearings, visibility, placement extent and
+error. It uses the server-provided map transform rather than duplicating map
+geometry in the browser. Placements from an old map session are shown as stale
+and are not offered as current destinations.
 
-The two waits differ, and by a lot. A commanded move drops its goal within a
-control cycle, so a click that has not been taken up in six seconds is one whose
-stop never landed. An exploring run between goals is choosing the next one — up
-to four candidate frontiers, each costing a costmap query and a planner call —
-and it only looks at the stop when that round is over, so it is given thirty.
-Either way a click that is never taken up is dropped and the notice line says so,
-rather than the rover setting off minutes later for a place somebody has stopped
-thinking about.
+The observation stream pages older rows by timestamp and ID. Images load lazily;
+the browser retains tile nodes so incoming observations do not move the item
+under the pointer or discard an open detail view.
 
-The map and the camera frame refresh themselves. The console asks for the next one
-a fixed gap after the last one *arrived*, rather than on a clock started when the
-request went out, so what the rover charged for the picture is spent before the gap
-begins; neither is ever asked for twice at once.
+Direct inspection and clearing are console controls, not voice tools. A model can
+read placed world state through the daemon's controlled tools and can ask the
+navigator to approach a selected thing.
 
-Which gap depends on whether anything is happening. A move in flight gets
-`PICTURE_GAP_S` — half a second — because the map is drawn around a pose that is
-changing and so the next picture is a different picture. A rover that is doing
-nothing gets `PARKED_MAP_GAP_S` (five seconds) and `PARKED_FRAME_GAP_S` (two), the
-camera being the one that can still see something change; while face tracking runs
-the camera goes back to the fast gap. The status poll has the same two paces,
-`POLL_S` against `PARKED_POLL_S`.
+## Voice
 
-The reason is arithmetic. Measured on the rover, one open browser cost about
-1.1 Mbit/s of the wi-fi it shares with everything else, and almost none of it was
-news: the state is pushed whenever it differs from the last one, so a field that
-counts — the map's age in tenths of a second, an in-flight stopwatch — was a fresh
-8 kB state ten times a second by itself. Nothing in the state counts any more; the
-map's age is published only once it is late enough to be worth saying and the
-browser counts the ordinary case itself, the network list moved out to
-`/wifi.json`, and "drawing"/"taking" mean slower than usual rather than in flight.
-With those and the two paces, the same browser on a parked rover measures 78 kbit/s
-end to end — 36 of stream and 42 of pictures.
+The `/audio` WebSocket carries microphone frames to `omni_bridge.py` and returns
+model audio. The DashScope key remains at `~/.ugv/alibaba.key` on the rover and
+never reaches the page.
 
-There is one line of words on the page and it sits under the header: the notice.
-It is for what no panel shows — a map click that was dropped, a button that was
-refused, a move that ended badly — and each one replaces the last, fading after
-twenty-five seconds. It carries a count rather than a time so that a console with
-nothing new to say publishes a state identical to the previous one, and therefore
-publishes nothing at all.
+Tool calls stay on loopback. A `look` request receives its camera frame through
+the loopback frame handoff on port 8774. Browser barge-in cancels pending output
+through the realtime session rather than mixing old and new replies.
 
-Until 2026-08-31 the page instead carried a scrolling transcript of every call and
-every reply, and a table of turns asked against turns achieved. Both are gone. The
-transcript cost a 61 kB backlog on every page load, the turns table was a third of
-every state pushed down the stream ten times a second, and the panels underneath
-them had come to say the same things better. What is worth keeping out of the
-transcript — a failure, and a move's own verdict on itself — is now the notice.
+If voice dependencies or the hosted service are unavailable, manual driving and
+status remain available. The page reports current failure state rather than
+showing setup instructions in the control surface.
 
-The network panel shows the network the rover is on, its signal and address, and
-what the radio last heard. Nothing there happens by itself: pressing "look for
-networks" is what causes a scan, and pressing `join` is the only thing that moves
-the rover onto one of the other house networks. That join costs the page -- the
-rover has one radio, so the link goes down and the console reconnects a few
-seconds later. See [`wifi_roam/README.md`](../wifi_roam/README.md).
-
-## The world-state popup
-
-**world** in the header opens a read-only view of what the rover has seen in the
-room: the lasting things it has worked out are there, every look behind each one,
-and the picture each look was read from with the measured box drawn on it. Nothing
-in it is named, because nothing on the rover measures what a thing is called any
-more. It is the only popup on this page, because what it shows is a page of history
-looked at deliberately and then closed, and a card of it would push the map off the
-screen for everybody who is only driving.
-
-Three things in it act on the rover. **inspect world** takes one look through the
-perception sidecar, which is about a fifth of a second; **clear** is the map's, and
-throws the semantic world away with the map, because everything the store holds is
-a position or a bearing measured in that map's own frame; and **go to**, on each
-row of the entity list, drives the rover to a place it can see that thing from.
-
-**Where it goes is the rover's answer, not the position in the row.** A placement
-names the middle of a thing, which is inside the furniture, so the console asks
-`world_state_viewpoint` for a patch of mapped floor the rover fits on with a clear
-line to the thing — and, before that, for one of the directions the thing has
-actually been seen from, since a place the rover has already looked at it from is
-a demonstration that it is visible from there and no question put to the map is.
-The rules are in [`world_state/README.md`](../world_state/README.md). The
-point then reaches the wheels by exactly the path a click on the map takes: it
-stops whatever is running rather than being refused, waits for the wheels, and is
-dropped with a notice if they never come free. The one thing it carries that a
-click does not is the heading to arrive on, so the rover ends up facing the thing
-instead of facing the way it travelled.
-
-The button is only on rows there is somewhere to go to: a thing seen once from one
-place has no position, and a thing placed under a map that has since been cleared
-has coordinates that are a place in this one only by coincidence. Both of those
-already say so on the row. While the drive runs the row says `going`, and what
-became of it — arrived, blocked, stopped — is written in the popup's note line,
-because the notice line that would otherwise carry it is behind the popup.
-
-### The map in it: one place per thing, and every look drawn against it
-
-This is the part a person reads to decide whether any of it is worth believing, and
-it was rearranged on 2026-09-03 because the old drawing could not be read that way.
-It drew each look as a wedge 2.5 m long from where the rover stood — a length that
-was a drawing convention and not a measurement — and the position the thing had
-been settled at as a separate disc somewhere else on the map. A look and the thing
-it supports were two unconnected marks, so no arrangement of them read as wrong.
-
-What is drawn now:
-
-- **The settled position**, as the shape the crossing actually measured rather than
-  as a circle. Two bearings meeting at a shallow angle put a thing somewhere along
-  a long smear — precise across the line of sight and vague down it — and
-  `locate.fix` records that as a long axis, a short one and a direction. A circle of
-  the long radius claims the rover is that unsure in every direction, which is
-  flattering in exactly the direction that decides whether the next look joins.
-- **The thing's own width**, as a second dashed ring. That is the silhouette a later
-  bearing has to land inside to count as pointing at it, which is a different
-  question from where its centre is, so it is a different ring.
-- **Each look as a sighting**: an arrowhead where the rover stood, pointing the way
-  the rover itself was facing, with the cone the box subtends drawn only as far out
-  as the thing is, and a line running from there **to the settled position**. Where
-  the look agrees the line is solid and the measured bearing lies under it; where it
-  does not, the two part and the disagreement is a visible fork.
-- **How far off it is, in numbers**, on the look's own row beside the picture: how
-  far away the thing is from there, how many degrees off the bearing was, how far
-  that misses by in metres and what the resolver allowed. A row that disagrees has a
-  dashed edge so it can be found in a scroller of forty.
-
-**Choosing a thing empties the map of everything else and closes in on it.** All of
-it at once is the overview — where the things are, one look each — and it is only
-readable as an overview: ninety-three things' bearings over a map six metres across
-is a smear a centimetre deep, and drawing the other ninety-two faintly behind the
-chosen one kept the smear and made it grey. So a chosen thing is the only thing
-drawn, and the panel shows the square of the map picture that holds its looks and
-the ring they settled on, with a margin, never closing in past two and a half
-metres across. The picture underneath is the same PNG moved and magnified, so its
-cells become the squares they are rather than a blur, and every line, letter and
-arrowhead is divided by the same factor so that closing in does not draw the map in
-crayon. The line under it says how many metres across the view now is.
-
-**The popup draws on a map of its own, and until 2026-09-05 it did not.** It drew
-over the picture in the card behind it, which is the picture you drive by: a few
-metres around wherever the rover is standing, because that is what driving needs.
-The popup is not about where the rover is. It is about bearings taken from all
-over a flat, and against a six-metre picture a thing perfectly well placed sat on
-black with "outside the drawn map" written underneath — which was true and was
-nobody's fault but the console's. Read off this rover, half the things it had
-seen were beyond 4.9 m and twenty-nine of two hundred and three were beyond eight.
-
-So the console asks the rover for a second picture, sized to hold exactly what the
-panel is about to draw on it: the chosen thing's looks while one is chosen, and
-the whole store while nothing is. It is asked for only while the popup is open, on
-the same connection the driving map uses — there is no reason for the rover to
-draw both at once, and nobody is looking at the card underneath — and it is asked
-for again when it goes stale or when the room it covers stops matching the room
-being drawn. `world_map_extent` works the extent out from the same marks
-`wWindow` gathers in the browser, rounded up to a rung of the console's own zoom
-ladder so that a rover shuffling on the spot does not buy a new picture on every
-poll. It comes back at `WORLD_MAP_PX` — 960 px against the 480 the drive card
-asks for, because this is the panel that closes in — and is served from
-`/world_map.png`, the driving map being the fallback for the second between the
-popup opening and the first one arriving. Measured on the Orin: 0.14 s and 19 kB
-for a twelve-metre view, against 0.05 s and 6 kB for the drive card's six.
-
-The line under the map still says "outside the drawn map", and now it means
-something. Either the wider picture has not arrived yet, or the thing really is
-further out than the renderer will draw — twelve metres each way is its ceiling,
-and a flat can be bigger than that.
-
-**Pointing at a look in the list beside the map picks its line out of the others.**
-Reading that scroller is reading one crop at a time, and the question each one
-raises — where was this taken from, is this the line that forks — can only be
-answered by the map. So the row under the pointer lights its own line and dims the
-rest. Each look is drawn into a group carrying the observation's own row
-identifier, which is what makes this two class names rather than a redraw of
-several hundred lines on every pointer move; a look with no pose never reached the
-map, and its row lights nothing rather than dimming the map to say so.
-
-The arithmetic behind "agrees" is not the page's. It is `world_state/view.relate`,
-which calls the same `locate.agrees` against the same `locate.match_tolerance` that
-`resolve` uses when it attaches a look — so a look drawn as off the thing is a look
-the rover would not attach today, rather than a second opinion the browser formed.
-The shapes are built from points in map metres and each one is put through
-`wPointToPx`, for the same reason: the map can be drawn rover-up, and a shape that
-did its own trigonometry would be right only while that switch was off.
-
-The inspection has a connection of its own, for the reason the wi-fi scan does: a
-minute of model on the status connection would stall the lights, the tracking panel
-and the map behind it, and nothing may ever sit in front of STOP. The popup's
-contents are fetched from `/world.json` when a generation tag in the state moves,
-for the reason the network list and the pictures are fetched rather than pushed.
-
-**The popup keeps itself current while it is open, and there is nothing to press.**
-The rover records a look a second and decides identities every ten, so a panel that
-only changed when it was asked to was a still photograph of a store that had moved
-on — and the person watching had no way to tell those apart. While the popup is on
-screen the console asks the rover for the counts every two seconds, which are 7 kB
-and 16 ms; it fetches the body behind them, 74 kB and about 70 ms, only once those
-counts have moved; and the tag the browser re-fetches under moves only when the body
-is really different. So a rover recording nothing costs the counts alone and no
-redraw, and one that is looking costs a payload per change. Nothing is polled while
-the popup is shut.
-
-**A body arriving is not allowed to disturb whatever is being read.** Keeping the
-popup current only helps if it can still be read while it is being kept current,
-and until 2026-09-04 it could not: every view was built again from nothing on each
-arrival, which at a look a second is every second. Two things went wrong with that,
-both measured in chromium against the rover's own store of sixty things and 635
-looks. Choosing a thing and reading down its pictures survived exactly until the
-next look was recorded, at which point the scroller went back to the top, a raw
-block opened under a crop closed, and all nine crops were fetched again. And the
-entity list beside it slid 52 pixels per body and went on sliding, because
-emptying a list destroys the element the browser had chosen to hold the view
-steady against, so its correction was made against nothing.
-
-Both are fixed the way the observation stream already worked. Every view now keeps
-its rows and moves the ones it has, which both leaves the browser something to
-anchor to and lets a row keep what belongs to it. In the chosen thing's pane a look
-is redrawn only when what it says has really changed — most often because the
-resolver has just attached it, or re-measured it against a position that has since
-settled — so its picture and any raw block opened under it stay; the pane's two
-boxes are replaced only when a *different* thing is chosen, which is the one time
-starting at the top is right. The entity list is the other way round on purpose:
-its rows are kept but written afresh every time, because one of the things a row
-says is how long ago that thing was last seen, and a row held unchanged is a row
-whose age has quietly stopped counting. Under the same recording that used to
-throw the reader to the top, the look in front of them now stays within a pixel of
-where it was, the opened block stays open, nine of the ten crops are the ones
-already fetched, and the list does not move at all.
-
-**There is no refresh button on the map either, and it went for this reason.**
-The map card had five controls and has two: *refit to map*, which asks the rover
-to find itself on the map it kept from the last session, and *clear map*, which
-throws that map away. The three that went were views rather than acts — refresh
-could only ever fetch what the console had a moment ago, "describe surroundings"
-put into words what the picture above it was already showing, and "rover up"
-turned the room under the reader every time the rover turned.
-
-*Refit* is the one call this console makes that is slow and has no panel of its
-own to look slow in — the search is a tenth of a second and writing and reading
-the pose graph is the rest — so the button carries it, saying "refitting..." while
-it runs. It goes out on the map's connection rather than the status one, for the
-reason the clear does: the status poll is what holds the stop button. Its whole
-result is a sentence from the rover, so the notice line is its panel, and the map
-is asked for again only when the rover actually moved on it.
-
-**There is no refresh button on the world popup either.** Opening the
-popup asks for the whole of it and the poll above keeps it that way, so a button
-could only fetch what the console had a moment ago. The one thing it was still
-good for was un-sticking a console that had decided this rover has no world state
-— which happens on any refusal, including a store that was busy for a moment while
-the daemon restarted — and that is handled where it belongs: after a refusal the
-asking slows to `WORLD_RETRY_S` rather than stopping, so the panel comes back on
-its own.
-
-**Nothing on this page reports the rover's own looking, and nothing switches it
-off.** There was a world-state entry in the side panel with an on/off pair and
-then a line of counts, and both are gone: the rover looks around for as long as
-it is switched on, so the switch only made it possible to leave a rover learning
-nothing, and the line that replaced it could only ever say the same thing. The one
-part worth keeping was the looking loop's own complaint -- a rover that has quietly
-stopped recording is the single thing about its looking a person cannot see for
-themselves -- and that arrives with the summary the popup already asks for, on the
-popup's error line.
-
-The stored frames come from `/world_frame.jpg`, and that one goes to the rover on a
-connection of its own again, synchronously, on whichever thread is serving the
-page. **It used to guess ahead instead** — one frame per entity, the newest four of
-whoever was selected, pushed over the world channel — and every observation whose
-frame had not been guessed drew the words "not fetched" where its picture should
-be, which is every row in the observation stream. Now the page asks for the picture
-it is about to draw and the browser asks only for the ones on screen, which is what
-makes it bounded on a rover that records a look a second. Each is fetched once,
-because a stored frame never changes under its name.
-
-The line under a placed thing says how many separate **places** agreed with it, not
-just how many looks did, and the two are different evidence: ten looks taken from
-one doorway and two from opposite sides of a room read identically in a count of
-observations, and the evening drive of 2026-09-03 placed a thing with ten agreeing
-rays from two places 42 cm apart. Where the position has been fitted over the looks
-that agree rather than left on its founding pair, it says that too.
-
-### The search box: one phrase, and every view answers it
-
-The box above the tabs takes a description — "the spray bottle on the shelf" —
-and narrows what is on screen to what matched it: the entity list keeps only the
-things one of the matching looks belongs to, best score first; the map beside it
-draws only those; and the observation stream becomes the matching looks, again
-best first, each thumbnail carrying its score. Emptying the box puts all three
-back, including the place the stream was scrolled to.
-
-**It used to be a fourth tab**, holding a ranked list of crops next to three other
-views of the same store. What a person wants from a search here is to find one
-thing *in* those views — where it is on the map, what else was decided to be it,
-which crops it was read from — and a separate answer meant reading it in one place
-and then hunting for it in the others. So the answer moved into the views and the
-tab went.
-
-Three details are load bearing. The verdict is on the line under the box and says
-"found it" or "nothing here matches" in so many words, because a ranked list
-always has a top and the whole difficulty of this feature is saying that the top
-means nothing; a match that scored below the floor a real match takes is drawn
-dim, so the near misses can be seen for what they are. The rover ranks every
-stored vector it has, not the window of history the stream happens to hold, so a
-filtered stream can show a look from an hour ago that the tiles had never reached
-— and it therefore stops paging while a filter is on, since scrolling to the end
-of an answer is not a request for older looks. A search is not instant, because
-the phrase has to go through the text tower; while it is in flight the box pulses
-and the views go on showing the previous answer rather than emptying, since a
-screen that has gone blank reads as a search that never went. **It used to take
-four or five seconds and now takes a fraction of one** — the rover keeps the text
-tower open since 2026-09-04, so only the first search after a start-up still
-pays for opening it.
-
-**The answer chooses its own best thing**, since 2026-09-04. A search is somebody
-asking where one thing is, so the top of the narrowed list is selected as the
-answer arrives: its sightings are drawn on the map, its looks are in the pane, and
-**go to** has something to send the rover to without a click that had no decision
-in it. It is the first match with a *thing* behind it, which is not always the
-first match — a look belonging to nothing yet is the ordinary state of anything
-seen once, and stopping at one of those would leave the real, placed thing under
-it unselected. A phrase that matched only such looks clears the selection rather
-than leaving the pane describing something the list no longer shows. The verdict
-is not consulted: below the floor the answer is still "nothing here matches", said
-on the line and on every row, and what is selected is the nearest thing the rover
-has, which is what somebody asking that question wants to see.
-
-### The observation stream: thumbnails, and one at a time large
-
-The **observations** tab holds everything the rover has recorded, newest first. It
-drew each of them as a full row until 2026-09-03: the picture at the width of the
-pane, its numbers above it and its raw measurement folded away below. Forty of
-those was six screens of scrolling
-for one recording session, and it is the wrong shape for what a person does in this
-tab -- which is hunt for the one frame whose box is on the wrong thing, a question
-about pictures and not about numbers.
-
-So the stream is a grid of thumbnails: forty on one screen at a laptop's width,
-each with the measured box on it, the time it was taken, and the thing it was
-decided to be -- or `no entity` in amber, which is the failure this tab is watched
-for. The tile's left edge carries that thing's own colour, the same one the entity
-list and the map use, so two things wrongly merged into one are two colours in one
-grid. Clicking a thumbnail puts that look over the grid at the size of the window,
-with everything the full row carried: the pose, how the bearing stands to the
-settled position, the box, and what was measured.
-
-**The tab is not capped at those forty, and the body it is drawn from is.** Only
-the newest forty looks ride in `/world.json`, because that body is re-sent every
-time the rover records anything; everything older is fetched a page of forty at a
-time from `/world_observations.json` as the tiles are scrolled, once each, and
-kept by the browser. So the stream ends where the store does -- a day of looking
-is something a person can reach the bottom of -- at the cost of the pages they
-actually asked for. A page is asked for by the oldest row already on screen rather
-than by how far down the history it is, since the rover goes on recording while
-somebody reads and a count of rows to skip would hand back looks already drawn and
-step over others entirely. The line above the grid says how much of the store is
-on the page: `160 of 851 shown, newest first`.
-
-Two things follow from a stream that long, both of them arithmetic rather than
-taste. The tiles are kept and moved when a new body arrives rather than rebuilt,
-or the redraw that happens every time the rover records would throw away both the
-place somebody had scrolled back to and every frame the browser had fetched. And a
-thumbnail is given its height in the stylesheet before its picture arrives: what
-asks for the next page is how much room the drawn tiles take, and a tile with no
-picture in it yet takes almost none, so without that height the tab pulls twice
-the history the moment it is opened -- 160 looks against 80, measured in chromium
-against a four-hundred-look store.
-
-Two details in it are load bearing rather than taste. The large view's **close** is
-at the top left, because the popup's own close is in the corner directly above and
-two buttons of the same name in one corner is a single mis-click between reading a
-frame and shutting the popup. And **nothing in the popup listens for a key**: space
-and Escape stop the rover from anywhere on this page, so the large view closes on
-that button or on a click in the room beside the picture, never on Escape. The
-search box is the single exception, and only for space: what is typed there is a
-phrase, so a space goes into the box rather than to the motors, while Escape stops
-the rover from inside it like everywhere else.
-
-The box is drawn red rather than in the console's accent blue. It is the one mark on
-a frame that was not in the room, and in blue it read as part of the furniture.
-
-See [`../world_state/README.md`](../world_state/README.md).
-
-## Microphone: Alibaba Qwen Omni
-
-The microphone button starts the current hosted Qwen Omni conversation. The
-protocol is [`voice_chat/session.py`](../voice_chat/session.py), adapted to the
-browser by [`omni_bridge.py`](omni_bridge.py).
-
-```text
-browser mic  --16 kHz PCM--> rover
-browser audio <--24 kHz PCM-- rover
-                              |
-                              +--> Alibaba DashScope realtime Qwen Omni
-                              +--> rover_daemon tools on loopback
-```
-
-There is no local GPU voice server. The model endpoint/model defaults live in
-`voice_chat/session.py` and may be overridden with `QWEN_REALTIME_URL` and
-`QWEN_REALTIME_MODEL`.
-
-The DashScope API key is read from:
-
-```text
-~/.ugv/alibaba.key
-```
-
-A session is created on demand and closed when the user ends it, when the tab
-goes, or when no browser has been attached for `IDLE_STOP_S` (120 s). One
-browser owns the microphone at a time so two people cannot feed one model
-context. The browser never receives the DashScope key. Like the driving controls,
-starting a conversation relies on the console being on a trusted home LAN.
-
-What crosses the Wi-Fi is audio in both directions and nothing else: the
-conversation, the tool calls it makes and the pictures it takes are all held on
-the board. The page used to say so in a paragraph under the button; it says it
-here instead.
-
-The service also ends a conversation the model has not spoken in for five
-minutes, which is what happens when the rover is asked to go somewhere and the
-person watching it has nothing to say for a while. The console starts another one
-and says so in the log; what a new conversation cannot bring with it is what the
-model remembered of the old one, so it will not know what it was asked earlier.
-If nobody is holding the microphone when that happens, it stops instead and the
-button starts the next one.
-
-## Tool calls and vision
-
-The model receives the daemon's current tool schemas. When it calls one, the
-rover performs it locally and sends the result back to the same cloud session.
-This includes driving/navigation, lights, camera/gimbal controls, tracking and
-rover-side scripting where allowed.
-
-For `look`, a JPEG is not sent through the browser. `omni_bridge.py` starts a
-small frame service on loopback TCP 8774; the daemon POSTs the captured JPEG
-there and the tool result carries only its token. `voice_chat/session.py` then
-attaches the matching picture to the Alibaba turn.
-
-That keeps the camera frame on the rover-to-cloud path rather than bouncing it
-through a phone/desk that has no use for it.
-
-### What was asked, and what it was told back
-
-Every one of those calls is written to `~/ugv/drive_web/omni.log` on the rover,
-beside the console's own log, with what the rover said out loud around it:
-
-```
-2026-09-05T06:29:35 microphone: live, 24 tools, vision
-2026-09-05T06:29:41   [go_to_thing{"description": "the sofa"} -> {"ok": true, ...}]
-2026-09-05T06:29:43 bot: I've set off for the sofa, which is about 8.8 metres away.
-```
-
-It is the same text the notice shows, and it exists because the notice does not
-keep it: one line, replacing the last, gone in twenty-five seconds. Nothing else
-on the rover holds it either — the daemon writes nothing per tool call, and the
-protocol trace behind `QWEN_REALTIME_TRACE=1` is every frame of the websocket or
-none of them, decided before the session starts. So a model that says it cannot
-reach the sofa was quoting a refusal from some tool, and this is where to read
-which tool and what it actually said.
-
-The whole result is written, never a summary of it, because the refusal string is
-the thing worth reading. It rolls at a megabyte, keeping one older file, and a
-console nobody has spoken to leaves no file at all. It records what the rover says
-out loud, which is audio that already goes to Alibaba; delete it if that is not
-wanted.
-
-What it does *not* carry is the question. `session.configure` never asks the
-service for `input_audio_transcription`, so the `you: ...` line the client knows
-how to write is one it is never sent — the same reason the microphone panel's
-"heard" has always been blank. Turning that on would put the spoken question above
-each call, at the cost of an ASR bill on a free-quota account.
-
-## Browser interruption / barge-in
-
-The browser knows how much generated audio was actually audible. It reports its
-playback cursor back to the rover while a reply plays. If the user interrupts,
-that audible position is forwarded to the realtime session so conversation
-history does not assume the model said audio that never reached the listener.
-
-## Health and tests
-
-`GET /health` is the readiness endpoint used by `restart.sh`. `watching` reports
-open browser event streams; the rover client is created lazily when needed.
-
-Offline checks:
+## Verification
 
 ```bash
 python drive_web/selftest.py
-python voice_chat/selftest.py
+python drive_web/test_page.py
+python drive_web/test_network.py
+python drive_web/test_session.py
 ```
 
-Without physical hardware, use the mock:
+The main self-test covers the server, page/assets, protocol, world panel, session
+state, pictures and audio framing. Hardware and browser-media behavior still
+require the running service:
 
 ```bash
-python voice_chat/mock_rover.py --drive
-python drive_web/drive_web.py --no-idle --bind 127.0.0.1
+ssh orin 'curl -sk https://127.0.0.1:8771/'
 ```
+
+Final proof is a successful HTTPS response plus live rover state. Camera, audio
+and movement tests should be run only when their real devices and safe floor space
+are available.
