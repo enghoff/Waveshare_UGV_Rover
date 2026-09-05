@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 import scripting
-from rover_util import _flag, _number
+from rover_util import _flag, _number, _optional
 
 # What every tool here says when there is no navigator behind it. It deliberately
 # does not name the lidar: the sensor belongs to the ROS stack now, so on a rover
@@ -635,6 +635,37 @@ class RoverNav:
             return {"ok": False, "error": NO_DRIVING}
         result = self.nav.clear_map()
         return {"ok": bool(result.get("cleared")), **result}
+
+    def _tool_refit_pose(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Find the rover on the map it already has. A control call, not a model tool.
+
+        The rover keeps its map between sessions now, so it comes up believing it
+        is exactly where it was switched off -- which is true unless somebody
+        moved it in the meantime, and a rover that was nudged half a metre and
+        turned a little sees every wall in the wrong place until something
+        notices. This is that something: it matches what the lidar can see now
+        against the map, and moves the rover onto it.
+
+        **Not offered to a model, and this one is a closer call than the others.**
+        It is safe -- the search will not move the rover further than a metre, it
+        refuses when the room fits in two places, and the mapper does not fold the
+        scan it matches into the graph, so a wrong answer costs a second press and
+        not a damaged map. What it is not is *understood* by a model: asked to
+        drive somewhere and refused, an obliging model would reach for anything
+        labelled "fix the position", and the rover's position is usually not what
+        is wrong. Whether the rover has been moved since it was parked is a thing
+        a person knows and a model can only guess.
+
+        Refused while the rover is driving, and it says so; stopping is never
+        refused.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": NO_DRIVING}
+        result = self.nav.refit_pose(
+            window_m=_optional(arguments.get("window_m"), "window_m"),
+            window_deg=_optional(arguments.get("window_deg"), "window_deg"),
+            min_score=_optional(arguments.get("min_score"), "min_score"))
+        return {"ok": True, **result}
 
     def _tool_reset_lidar(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """Reset the lidar's USB device. A control call, not a model tool.

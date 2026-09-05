@@ -140,6 +140,12 @@ LOOK_EVERY_S = 1.0
 #: a pass longer than this was otherwise due again the instant it returned.
 SETTLE_EVERY_S = 10.0
 
+#: How often the looking loop asks the navigation stack which map it is holding.
+#: A poll for a rare event -- the answer changes when the map is cleared or comes
+#: up new, and not otherwise -- so it is set far below how long a person takes to
+#: notice anything and far above what one status call costs.
+FOLLOW_MAP_S = 5.0
+
 #: How long `world_state_clear` waits for the look or the resolver pass in flight
 #: before answering that it could not empty the store. Generous on purpose: the
 #: longest thing it can be queued behind is one resolver pass, which is seconds
@@ -201,41 +207,87 @@ class RoverWorld:
 
     # --- building it without being asked --------------------------------------
 
-    def _world_forget_after_reboot(self) -> str:
-        """Empty the world state if the host has rebooted since it was recorded.
+    def _world_kept(self) -> str:
+        """The line to log at startup: what the world state came up holding.
 
-        The reason is the map. Nothing saves the SLAM map, so the rover comes up
-        with an empty one, while every position and every bearing in the store
-        was measured in the map that has just gone -- and the store carried on
-        stamping the new map with the old map's session number, so the console
-        drew things from the last room on the map of this one.
+        **It used to say what a reboot had thrown away, because it threw the
+        whole thing away.** The reason was the map: nothing saved the SLAM map,
+        so every boot began an empty one, and every position and every bearing in
+        the store had been measured in a map that no longer existed. ros_nav
+        keeps its pose graph between sessions now -- see `nav_map.py` -- so a
+        rover switched on in the room it was switched off in comes back to
+        coordinates that still mean what they meant.
 
-        Here rather than in the store's constructor because it is a decision
-        about this rover rather than a property of the database, and a bench
-        script or a replay that opens the same store must not lose its rows to
-        it. Done before the looking thread starts, and before the daemon serves
-        anything, so nothing can be holding the frame or the inference row that
-        is about to be deleted -- which is the state a clear from the console has
-        to refuse, and the reason one pressed at the wrong moment does nothing.
+        Which map they belong to is not settled here and cannot be: the daemon
+        starts the looking loop before it attaches the navigator, and the
+        navigation stack takes half a minute to come up. `_world_follow_map` does
+        it a few seconds later, when there is something to ask.
 
-        Answers with the line to log, or with nothing when nothing went. Never
-        raises: a world state that could not be cleared is worth a daemon that
-        starts anyway.
+        Answers with the line to log, or with nothing when there is nothing worth
+        saying, and never raises: a world state that could not be counted is
+        worth a daemon that starts anyway.
         """
         if self._world_ready():
             return ""
         try:
-            gone = self._world_store().clear_if_rebooted()
+            counts = self._world_store().summary()
         except Exception as error:
-            return (f"[rover] world state kept: it could not be cleared for this "
-                    f"boot: {type(error).__name__}: {error}")
-        if not gone.get("cleared"):
+            return (f"[rover] world state kept, but it could not be counted: "
+                    f"{type(error).__name__}: {error}")
+        if not counts["observations"] and not counts["entities"]:
             return ""
-        return (f"[rover] world state cleared for a new boot -- "
-                f"{gone.get('entities', 0)} entities, "
-                f"{gone.get('observations', 0)} observations, "
-                f"{gone.get('frames_removed', 0)} frames; now on map session "
-                f"{gone.get('map_session')}")
+        return (f"[rover] world state kept from an earlier session: "
+                f"{counts['entities']} entities, {counts['observations']} "
+                f"observations, map session {counts['map_session']}")
+
+    def _world_follow_map(self) -> None:
+        """Tell the store which SLAM map the rover is on, once the stack says.
+
+        The store stamps every observation with a map session, and a session
+        exists to answer one question: are these coordinates comparable with the
+        map on screen? So it has to move when the map underneath it changes --
+        which is now a rarer event than a reboot. The navigation stack carries an
+        identity for the graph it is holding: it survives a restore of the same
+        graph across a boot or a deploy, and it changes when the map is cleared,
+        when a saved one could not be read, and when there was none to read.
+
+        **No answer is not an answer.** The stack takes half a minute to come up
+        and may not be running at all, and both look like `None` here -- neither
+        is a reason to touch anything, because the alternative is a world state
+        that starts a new session every time somebody restarts navigation.
+
+        Never raises, and asks at most every `FOLLOW_MAP_S`: it runs on the
+        looking loop, which has a look due every second.
+        """
+        now = time.monotonic()
+        if now - getattr(self, "_world_map_at", 0.0) < FOLLOW_MAP_S:
+            return
+        self._world_map_at = now
+        navigator = getattr(self, "nav", None)
+        if navigator is None or self._world_ready():
+            return
+        try:
+            told = navigator.status().get("map_id")
+        except Exception:
+            return
+        if not told or told == getattr(self, "_world_map_id", None):
+            return
+        try:
+            answer = self._world_store().follow_map(str(told))
+        except Exception as error:
+            self._world_map_note = (f"the world state could not be moved onto "
+                                    f"this map: {type(error).__name__}: {error}")
+            return
+        self._world_map_id = str(told)
+        if answer.get("changed"):
+            self._world_map_note = (
+                f"{answer['reason']}, so what was recorded before -- "
+                f"{answer.get('entities', 0)} entities, "
+                f"{answer.get('observations', 0)} observations -- is kept but no "
+                f"longer drawn on the map; new looks go on map session "
+                f"{answer['map_session']}")
+        else:
+            self._world_map_note = answer.get("reason", "")
 
     def start_world_building(self) -> str:
         """Look around on a schedule, from the moment the daemon starts.
@@ -252,10 +304,10 @@ class RoverWorld:
         directly, so a fault in this loop cannot corrupt anything -- at worst it
         stops looking.
 
-        Answers with the one line the caller should log, which at the moment is
-        what a reboot threw away and usually nothing at all.
+        Answers with the one line the caller should log, which is what the
+        store came up holding and is usually nothing at all.
         """
-        note = self._world_forget_after_reboot()
+        note = self._world_kept()
         self._world_build_stop = threading.Event()
         self._world_build_at = 0.0
         self._world_settle_at = 0.0
@@ -263,6 +315,12 @@ class RoverWorld:
         self._world_build_from = None
         self._world_build_looks = 0
         self._world_build_error = ""
+        #: The map the store has been told about, and what happened when it was.
+        #: Both start empty: which map this is takes a running navigation stack
+        #: to answer, and this runs before the daemon has attached one.
+        self._world_map_id = None
+        self._world_map_at = 0.0
+        self._world_map_note = ""
         thread = threading.Thread(target=self._world_building_loop,
                                   name="world-building", daemon=True)
         self._world_build_thread = thread
@@ -356,6 +414,9 @@ class RoverWorld:
         while not self._world_build_stop.wait(0.2):
             try:
                 now = time.monotonic()
+                # Before anything is recorded, because what a look is stamped
+                # with is the map session, and that is what this settles.
+                self._world_follow_map()
                 if self._world_ready():
                     # No component, or no database. Wait out the long gap rather
                     # than asking again every fifth of a second for the life of
@@ -421,6 +482,10 @@ class RoverWorld:
                 # What the last resolver pass did, which is the only place a
                 # rover recording steadily and placing nothing would say so.
                 "settled": getattr(self, "_world_settled", {}),
+                # Which SLAM map the rows in the store belong to, in a sentence.
+                # Empty until the navigation stack has said; see
+                # `_world_follow_map`.
+                "map": getattr(self, "_world_map_note", ""),
                 "error": getattr(self, "_world_build_error", "")}
 
     @property

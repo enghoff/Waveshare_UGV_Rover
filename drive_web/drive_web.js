@@ -101,11 +101,15 @@ function render(next) {
     : [drawn && `drawn ${drawn}`, next.map.settings, next.map.note]
         .filter(Boolean).join(" -- ");
   $("mapError").textContent = next.map.error || "";
-  $("roverUp").checked = next.map.rover_up;
   // What it takes with it, said on the armed press rather than in a dialog: the
   // world state is measured entirely in the map's own frame, so it goes too.
   $("clearMap").textContent = next.clear_armed
     ? "clear map and world state -- press again" : "clear map";
+  // A refit is seconds rather than milliseconds -- the search is quick and
+  // writing and reading the pose graph is not -- so the button says so while it
+  // runs, for the reason the wifi scan does: a button that looks idle for three
+  // seconds is a button people press again.
+  $("refitPose").textContent = next.refitting ? "refitting..." : "refit to map";
 
   drawPicture($("frameImg"), $("frameEmpty"), "/frame.jpg", next.frame.gen,
               () => frameGen, (g) => frameGen = g, next.frame.error);
@@ -143,6 +147,10 @@ function render(next) {
     button.disabled = !next.link.tools.includes("start_tracking");
   }
   $("clearMap").disabled = !next.link.connected || wheelsTaken;
+  // Same two conditions, plus the one it has of its own: the rover has to be
+  // still to be measured against its map, and the daemon refuses it while a move
+  // is running anyway.
+  $("refitPose").disabled = !next.link.connected || wheelsTaken || next.refitting;
 
   // The explore toggle. Its rules are not the driving buttons' rules, which is
   // why it is not one of them: those go out while anything is running, and this
@@ -566,10 +574,8 @@ function wire() {
     button.onclick = () => post({do: "lights",
       level: button.dataset.light === "on" ? setup.light_max : 0});
   }
-  $("refreshMap").onclick = () => post({do: "map"});
-  $("roverUp").onchange = () => post({do: "map", rover_up: $("roverUp").checked});
   $("resetLidar").onclick = () => post({do: "reset_lidar"});
-  $("describe").onclick = () => post({do: "describe"});
+  $("refitPose").onclick = () => post({do: "refit"});
   $("clearMap").onclick = () => post({do: "clear_map"});
   $("wifiScan").onclick = () => post({do: "wifi_scan"});
 

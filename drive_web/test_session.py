@@ -894,7 +894,68 @@ def test_the_depth_lamp_is_coloured_from_the_camera() -> None:
           hasattr(session, "depth_power"), False)
 
 
+def test_the_refit_button_says_what_happened() -> None:
+    """The one call whose whole result is a sentence.
+
+    Everything a refit did is in the sentence the rover sends back -- how far out
+    it was, how much better the scan lies on the map now, or which of the two
+    reasons it refused for -- so the notice line is the panel for it. The button
+    is the other half: it is the only thing this console does that is slow and
+    has nothing else to look slow in, and one that sat there looking idle for
+    three seconds would be pressed again.
+    """
+    try:
+        import drive_web
+        from console_model import Reply
+    except ImportError as exc:
+        SKIP.append(f"the refit button says what happened ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append((name, arguments or {}))
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.picture = Fake()
+    session.act({"do": "refit"})
+    check("the press goes to the rover", [n for n, _ in session.picture.sent],
+          ["refit_pose"])
+    check("...on the map's connection rather than the status one, because the "
+          "poll behind that wait is what holds the stop button",
+          session.snapshot()["refitting"], True)
+
+    session.act({"do": "refit"})
+    check("a second press while one is running is not sent",
+          len(session.picture.sent), 1)
+
+    session.handle(Reply("refit_pose", {}, {
+        "ok": True, "fitted": True, "moved_m": 0.31, "turned_deg": -12.0,
+        "why": "the rover was 31 cm and -12.0 degrees from where it thought it "
+               "was, and has been moved onto the map"}, 2.4))
+    check("the answer frees the button", session.snapshot()["refitting"], False)
+    check("...and says what the rover said, rather than a word of its own",
+          "31 cm" in session.snapshot()["notice"]["text"], True)
+    check("...and asks for the map again, because the rover moved on it",
+          [n for n, _ in session.picture.sent][-1], "map_png")
+
+    # A refusal is not a failure and must not read as one: the rover is where it
+    # was, and the sentence explains why it stayed there.
+    session.picture.sent.clear()
+    session.act({"do": "refit"})
+    session.handle(Reply("refit_pose", {}, {
+        "ok": True, "fitted": False, "settled": True,
+        "why": "the rover is where it thinks it is, to within 2 cm"}, 1.1))
+    check("a rover that was already right is reported quietly",
+          session.snapshot()["notice"]["tag"], "quiet")
+    check("...and no new map is asked for, because nothing moved",
+          [n for n, _ in session.picture.sent], ["refit_pose"])
+
+
 TESTS = (
+    test_the_refit_button_says_what_happened,
     test_web_console,
     test_the_depth_lamp_is_coloured_from_the_camera,
     test_stopping_an_unwatched_rover,

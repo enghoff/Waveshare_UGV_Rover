@@ -1,0 +1,319 @@
+"""Keeping the map between sessions, and finding the rover on it again.
+
+Two modules with no ROS in them, so what runs here is what runs on the rover:
+`refit.py` decides where the rover is and `mapstore.py` decides when the pose
+graph is written. The fitting is argued against the occupancy grid the recorded
+`kitchen-loop` drive produced, because the only honest test of a scan matcher is
+a room with the mess in it -- a hand-drawn rectangle is a room where everything
+fits everywhere.
+
+The scans here are cast from that map rather than recorded, and that limits what
+these checks can prove: they can show that the search finds a pose the map itself
+explains, and they cannot show what a real lidar's noise does to the score. That
+is what the thresholds in `refit.py` were measured against and what the first
+press of the console button on the rover is for.
+"""
+import math
+import os
+import tempfile
+import time
+
+import mapstore
+import refit
+from frontier import Grid, read_pgm
+from test_harness import HERE, check, section
+
+#: Three places on the kitchen-loop map with floor around them, in different
+#: rooms. Metres in the map's own frame, which for a PGM read back is measured
+#: from its bottom-left corner.
+SPOTS = ((2.48, 3.53), (5.28, 9.12), (8.78, 11.23))
+
+#: What the rover is told it is at when it is really at one of those: a third of
+#: a metre and fifteen degrees out, which is a rover somebody has nudged and
+#: turned while it was switched off.
+NUDGE = (0.35, -0.25, 15.0)
+
+
+def _map():
+    return read_pgm(os.path.join(HERE, "fixtures", "kitchen-loop.pgm.gz"))
+
+
+def _scan(grid, pose, drop=0, move=0):
+    """What the lidar would see at `pose`, optionally with the room changed.
+
+    `drop` and `move` are one in N: a dropped return is something the sensor got
+    no echo from -- a black sofa, a glass door -- and a moved one is something
+    that is not where the map has it, which is a chair pushed out or a person
+    standing in the room. Both are what separate a scan taken today from the map
+    drawn last week.
+    """
+    rays = refit.cast(grid, pose)
+    out = []
+    for i, r in enumerate(rays):
+        if not math.isfinite(r):
+            out.append(r)
+        elif drop and i % drop == 0:
+            out.append(float("inf"))
+        elif move and i % move == 0:
+            out.append(max(0.25, r * 0.6))
+        else:
+            out.append(r)
+    return refit.points_of(out, -math.pi, 2.0 * math.pi / len(out), 0.12, 8.0)
+
+
+def _corridor():
+    """A two-metre corridor forty metres long: the same room everywhere along it.
+
+    The one shape a planar lidar genuinely cannot place itself in, and the reason
+    `refit.py` reports a rival at all. Nothing about this is a caricature -- a
+    house has hallways, and this is what one looks like to a scan matcher when
+    both ends are out of range.
+    """
+    width, height, res = 800, 40, 0.05
+    data = [0] * (width * height)
+    for col in range(width):
+        data[col] = 100
+        data[(height - 1) * width + col] = 100
+    return Grid(width, height, res, 0.0, 0.0, data)
+
+
+def test_a_nudged_rover_is_found_again():
+    """The headline: told it is somewhere it is not, it works out where it is.
+
+    A third of a metre and fifteen degrees is the case this exists for -- a rover
+    pushed aside and turned a little while it was switched off, coming back up on
+    the map it was parked on. What is checked is the answer rather than the
+    score: within a few centimetres of the truth, in every room tried.
+    """
+    section("finding a nudged rover on the map it already has")
+    grid = _map()
+    for x, y in SPOTS:
+        for heading in (20.0, -140.0):
+            truth = (x, y, heading)
+            guess = (x + NUDGE[0], y + NUDGE[1], heading + NUDGE[2])
+            fit = refit.fit(grid, _scan(grid, truth), guess)
+            check("at %.1f,%.1f facing %.0f the fit is trusted" % truth, fit.ok)
+            check("...and lands within 6 cm of where the rover really is",
+                  math.hypot(fit.x_m - x, fit.y_m - y) < 0.06)
+            check("...and within two degrees of its real heading",
+                  abs((fit.heading_deg - heading + 180) % 360 - 180) < 2.0)
+            check("...and says the rover was about 43 cm out",
+                  fit.moved_m, 0.43, tolerance=0.04)
+
+
+def test_a_room_that_has_changed_is_still_a_room_it_knows():
+    """A quarter of the scan disagreeing with the map is a furnished house.
+
+    The map is drawn once and the room goes on being used, so by the time this
+    matters a chair has moved and a door is shut. What is checked is that the fit
+    survives that: it is what separates a feature that works in a house from one
+    that works in an empty corridor.
+    """
+    section("a room with a quarter of it moved since the map was drawn")
+    grid = _map()
+    x, y = SPOTS[1]
+    truth = (x, y, 65.0)
+    guess = (x + NUDGE[0], y + NUDGE[1], 65.0 + NUDGE[2])
+    fit = refit.fit(grid, _scan(grid, truth, drop=8, move=4), guess)
+    check("a quarter of the room moved and an eighth of it silent still fits",
+          fit.ok)
+    check("...to within 10 cm", math.hypot(fit.x_m - x, fit.y_m - y) < 0.10)
+    check("...and it says how much of the scan it could account for, which is "
+          "the number a person judges the answer by",
+          0.6 <= fit.score <= 1.0, True)
+
+
+def test_a_rover_that_has_not_moved_is_left_alone():
+    """Agreement is not a correction, and saying so is the point.
+
+    Applying a fit means writing the pose graph and reading it back, which jumps
+    the rover on the console and costs a second or two. Doing that to move the
+    rover a centimetre would make the button feel like it had gone wrong.
+    """
+    section("a rover standing where it thinks it is")
+    grid = _map()
+    x, y = SPOTS[0]
+    fit = refit.fit(grid, _scan(grid, (x, y, 10.0)), (x, y, 10.0))
+    check("the fit is trusted", fit.ok)
+    check("...and reports that there was nothing to move", fit.settled)
+    check("...having found the rover within a centimetre or two of itself",
+          fit.moved_m < 0.05, True)
+
+
+def test_a_corridor_is_refused_rather_than_guessed_at():
+    """Two places that fit equally well are not an answer, they are a coin toss.
+
+    This is the guard that stops the feature being dangerous. A wrong fit that is
+    *reported* costs a person a sentence; a wrong fit that is applied costs them a
+    rover driving on a map it is not on.
+    """
+    section("a corridor that looks the same everywhere along it")
+    grid = _corridor()
+    truth = (20.0, 1.0, 0.0)
+    fit = refit.fit(grid, _scan(grid, truth), (20.4, 1.0, 0.0))
+    check("the corridor is not answered", fit.ok, False)
+    check("...because something else fits it about as well",
+          fit.rival > fit.score * 0.8, True)
+    check("...and the sentence says which of the two refusals this is",
+          "two different places" in fit.why, True)
+
+
+def test_a_fit_can_never_move_the_rover_further_than_its_window():
+    """The promise the whole feature rests on.
+
+    A rover that has been *carried* cannot be found by a search around where it
+    thinks it is, and the honest response to that is a bounded error rather than a
+    clever one: whatever this answers, it is inside the window it searched. So the
+    worst a wrong answer can do is the same order as the error it exists to
+    remove, and pressing the button again fixes it.
+    """
+    section("a rover that was carried, which is outside what this can do")
+    grid = _map()
+    x, y = SPOTS[2]
+    for away in (2.0, -3.0):
+        guess = (x + away, y - away / 2.0, 40.0)
+        fit = refit.fit(grid, _scan(grid, (x, y, 40.0)), guess)
+        moved = math.hypot(fit.x_m - guess[0], fit.y_m - guess[1])
+        check("carried %.0f m: the answer stays inside the window" % (away,),
+              moved <= refit.WINDOW_M + 0.01, True)
+        check("...and inside the angle it searched",
+              abs((fit.heading_deg - guess[2] + 180) % 360 - 180)
+              <= refit.WINDOW_DEG + 0.01, True)
+
+
+def test_a_scan_with_nothing_in_it_is_not_matched():
+    """A revolution this thin is a blocked sensor, not an empty room."""
+    section("a scan with almost nothing in it")
+    grid = _map()
+    fit = refit.fit(grid, [(1.0, 0.0)] * 4, (SPOTS[0][0], SPOTS[0][1], 0.0))
+    check("four returns are not a scan", fit.ok, False)
+    check("...and it says so in the words a person would use",
+          "not enough" in fit.why, True)
+
+
+def test_the_scan_arrives_in_the_rovers_own_frame():
+    """x forward, y left, and nothing beyond the sensor's own limits.
+
+    Worth checking rather than assuming, because a sign flip here is a rover that
+    fits its scan to the map back to front and is confident about it.
+    """
+    section("a laser scan as points")
+    quarter = math.pi / 2.0
+    points = refit.points_of([2.0, 3.0, 4.0, 5.0], -math.pi, quarter, 0.12, 8.0)
+    check("four returns become four points", len(points), 4)
+    check("...the one straight behind is behind", round(points[0][0], 3), -2.0)
+    check("...the one to the right is to the right", round(points[1][1], 3), -3.0)
+    check("...the one straight ahead is ahead", round(points[2][0], 3), 4.0)
+    check("...and the one to the left is to the left", round(points[3][1], 3), 5.0)
+    thin = refit.points_of([float("inf"), 0.05, 40.0, 1.0], -math.pi, quarter,
+                           0.12, 8.0)
+    check("no echo, too near and too far are all dropped rather than clamped",
+          len(thin), 1)
+
+
+def test_the_map_is_smeared_so_the_search_can_find_the_peak():
+    """A scan point near a wall has to score more than one nowhere near it.
+
+    Against bare occupied cells the score is zero everywhere except exactly on
+    the answer, and a search stepping in 10 cm walks straight over it.
+    """
+    section("the map as something a scan can be scored against")
+    data = [0] * (20 * 20)
+    data[10 * 20 + 10] = 100
+    field = refit.field(Grid(20, 20, 0.05, 0.0, 0.0, data))
+    check("the wall itself scores full", round(float(field[10][10]), 3), 1.0)
+    check("...five centimetres off scores less but not nothing",
+          0.5 < float(field[10][11]) < 1.0, True)
+    check("...and a quarter of a metre off scores nothing at all",
+          float(field[10][15]), 0.0)
+
+
+def test_the_saved_map_is_only_usable_once_all_three_files_are_there():
+    """The note is written last, and it is what says the pair is complete.
+
+    A power cut during a write leaves a truncated graph, and a rover that loaded
+    one would come up with half a house. What it does instead is come up with no
+    saved map at all, which is exactly what it did before any of this existed.
+    """
+    section("what makes a saved map loadable")
+    with tempfile.TemporaryDirectory() as directory:
+        saved = mapstore.SavedMap(directory)
+        check("nothing saved yet", saved.held(), None)
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("graph")
+        check("a graph written but not yet committed is not offered",
+              saved.held(), None)
+        note = saved.commit("map-one", (1.5, -2.5, 90.0))
+        check("committing it makes it loadable", bool(saved.held()), True)
+        check("...under the identity it was given",
+              saved.held()["map_id"], "map-one")
+        check("...remembering where the rover was standing",
+              saved.start_pose(), (1.5, -2.5, 90.0))
+        check("...and the staging copy is gone rather than left to be found",
+              os.path.exists(saved.graph_paths(saved.staging_stem)[0]), False)
+        check("...with the note carrying when it happened",
+              note["saved_at"] > 0, True)
+
+        os.remove(saved.graph_paths()[1])
+        check("a note whose graph has lost a file is not loadable",
+              saved.held(), None)
+
+
+def test_a_cleared_map_does_not_come_back_at_the_next_boot():
+    """The one outcome somebody pressing "clear map" cannot have meant."""
+    section("clearing the map clears the saved one")
+    with tempfile.TemporaryDirectory() as directory:
+        saved = mapstore.SavedMap(directory)
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("graph")
+        saved.commit("map-one", (0.0, 0.0, 0.0))
+        saved.forget()
+        check("nothing is left to load", saved.held(), None)
+        check("...and nothing is left on disk either",
+              [n for n in os.listdir(directory)], [])
+        check("forgetting a map that is not there is not an error",
+              saved.forget(), None)
+
+
+def test_the_graph_is_written_for_motion_rather_than_for_time():
+    """A parked rover adds no nodes, so a second copy of the same graph is bytes
+    for nothing -- `minimum_travel_distance` in the mapper's config is the same
+    rule, one layer down."""
+    section("when the graph is worth writing again")
+    with tempfile.TemporaryDirectory() as directory:
+        saved = mapstore.SavedMap(directory)
+        now = time.monotonic()
+        check("with nothing saved, anything is worth saving",
+              saved.due((0.0, 0.0, 0.0), now), True)
+        check("...but not without a pose to record it at",
+              saved.due(None, now), False)
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("graph")
+        saved.commit("map-one", (0.0, 0.0, 0.0))
+        later = saved.saved_at + mapstore.SAVE_EVERY_S + 1.0
+        check("a rover that has just been saved is not saved again",
+              saved.due((5.0, 5.0, 0.0), saved.saved_at + 1.0), False)
+        check("...nor a parked one a minute later",
+              saved.due((0.0, 0.0, 0.0), later), False)
+        check("but one that has driven half a metre since is",
+              saved.due((0.6, 0.0, 0.0), later), True)
+        check("...and so is one that has only turned",
+              saved.due((0.0, 0.0, 30.0), later), True)
+
+
+TESTS = (
+    test_a_nudged_rover_is_found_again,
+    test_a_room_that_has_changed_is_still_a_room_it_knows,
+    test_a_rover_that_has_not_moved_is_left_alone,
+    test_a_corridor_is_refused_rather_than_guessed_at,
+    test_a_fit_can_never_move_the_rover_further_than_its_window,
+    test_a_scan_with_nothing_in_it_is_not_matched,
+    test_the_scan_arrives_in_the_rovers_own_frame,
+    test_the_map_is_smeared_so_the_search_can_find_the_peak,
+    test_the_saved_map_is_only_usable_once_all_three_files_are_there,
+    test_a_cleared_map_does_not_come_back_at_the_next_boot,
+    test_the_graph_is_written_for_motion_rather_than_for_time,
+)

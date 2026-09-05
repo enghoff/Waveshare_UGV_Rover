@@ -51,6 +51,12 @@ def test_schemas():
                # watching a stale map and the wrong thing for a model, since it
                # takes the camera down with it for a few seconds.
                "reset_lidar",
+               # Putting the rover back on the map it kept from the last session.
+               # Safe -- it moves the rover by less than a metre and cannot
+               # damage the graph -- but whether the rover has been moved since
+               # it was parked is a thing a person knows and a model would only
+               # reach for whenever it was refused a route.
+               "refit_pose",
                # Two of the five scripting calls. The other three are model
                # tools now, offered to a client on loopback -- which since the
                # rover started holding its own conversation includes the model.

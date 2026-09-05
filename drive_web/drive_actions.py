@@ -72,8 +72,6 @@ class SessionActions:
             self.watch_call("explore")
         elif what == "tap":
             self.tap(action)
-        elif what == "describe":
-            self.watch_call("describe_surroundings")
         elif what == "map":
             self.map_settings(action)
         elif what == "track":
@@ -88,6 +86,8 @@ class SessionActions:
             self.reset_lidar()
         elif what == "clear_map":
             self.clear_map()
+        elif what == "refit":
+            self.refit_pose()
         elif what == "wifi_scan":
             self.wifi_scan()
         elif what == "wifi_join":
@@ -294,21 +294,48 @@ class SessionActions:
         # failed.
         self.picture.submit("clear_map")
 
+    def refit_pose(self) -> None:
+        """Ask the rover to find itself on the map it already has.
+
+        On the map's connection rather than the status one, for `clear_map`'s
+        reason and one more of its own: this takes seconds -- the search is a
+        tenth of one and writing and reading the pose graph is the rest -- and the
+        status poll behind that wait is what holds the stop button.
+
+        No arming, unlike the clear beside it. Nothing is destroyed: the mapper
+        does not fold the scan it matches into the graph, so the worst a wrong
+        answer can do is move the rover by less than the window it searched, and
+        pressing it again puts that right.
+        """
+        if self.picture is None:
+            self.say("not connected, so the rover was not refitted", "bad")
+            return
+        if self.refitting:
+            return
+        self.refitting = True
+        self.say("matching what the lidar can see against the map...", "note")
+        self.picture.submit("refit_pose")
+
     def map_settings(self, action: dict[str, Any]) -> None:
-        """Zoom and which way is up, from the two controls left under the map.
+        """How wide a view of the map to draw, from the two zoom controls on it.
 
         An extent, never a magnification: the picture is always the same number of
         pixels and the rover derives pixels per cell from the extent, which is what
         keeps the picture the same size when the view widens. Asking for a
         magnification instead resized the picture on every zoom, which is not
         zooming.
+
+        **Which way is up is no longer a setting**, and the map is always drawn
+        with the heading the rover started on pointing up. A map that turns under
+        the reader is harder to read, not easier -- the room swings round every
+        time the rover does -- and the rover on it is drawn pointing where it
+        points either way. The renderer can still do it and the daemon's `map_png`
+        still takes the argument; nothing on this page passes one.
         """
         if "zoom" in action:
             index = rung(MAP_EXTENTS_M, self.half_extent) + int(action["zoom"])
             self.half_extent = MAP_EXTENTS_M[
                 max(0, min(len(MAP_EXTENTS_M) - 1, index))]
-        if "rover_up" in action:
-            self.rover_up = bool(action["rover_up"])
         self.refresh_map()
 
     def refresh_map(self) -> None:
@@ -333,8 +360,7 @@ class SessionActions:
         self.map_outstanding = True
         self.map_asked_at = time.monotonic()
         self.picture.submit("map_png", {"half_extent_m": self.half_extent,
-                                        "pixels": self.map_size,
-                                        "rover_up": self.rover_up})
+                                        "pixels": self.map_size})
 
     def wifi_scan(self) -> None:
         """Ask the radio to look around, which costs the rover the link for a moment.

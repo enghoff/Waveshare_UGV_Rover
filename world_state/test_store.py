@@ -14,7 +14,6 @@ import time
 
 from test_harness import FAIL, check
 from test_fakes import JPEG, a_sighting, a_store, observe
-from world_state.store import host_boot_id
 
 
 # --- the store --------------------------------------------------------------
@@ -330,54 +329,78 @@ def test_clearing_the_map_keeps_the_semantic_world() -> None:
         store.close()
 
 
-def test_a_reboot_empties_the_world_and_an_unknown_boot_does_not() -> None:
-    """The map does not survive a reboot, so neither may the things placed in it.
+def test_the_world_follows_the_map_rather_than_the_boot() -> None:
+    """What the rows are worth depends on the map, and the map now survives a boot.
 
-    The dangerous state is not the stale row, it is the stale row wearing the
-    current map's session number: that is what the console draws on the map, so
-    a world kept across a reboot put the last room's furniture on this room's
-    map. Deleting on an *unknown* boot would be the opposite mistake -- a desk
-    replaying a recording has no boot identifier to offer, and losing the
-    recording to that would be losing the experiment.
+    This used to be a test that a reboot emptied the world state, because nothing
+    saved the SLAM map and every coordinate in here was therefore measured in a
+    frame that no longer existed. ros_nav keeps its pose graph now, so the
+    question that decides whether these rows still mean anything is not "has the
+    machine restarted" but "is this the same map" -- and the answer is a string
+    the navigation stack carries across a restore and changes when the map does.
+
+    The dangerous state is unchanged and is what the sessions exist to prevent: a
+    stale row wearing the *current* map's session number is what the console draws
+    on the map, so two chairs measured in a room the rover has since been carried
+    out of would appear on the fresh map as though they had just been seen.
     """
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         store.record([a_sighting()], capture={"frame_id": store.save_frame(JPEG)})
-        first = store.clear_if_rebooted("boot-one")
-        check("a world that does not say which boot wrote it is kept",
-              first["cleared"], False)
-        check("...and the observation is still there",
+        session = store.summary()["map_session"]
+
+        quiet = store.follow_map(None)
+        check("a stack that has not said which map this is changes nothing",
+              quiet["changed"], False)
+        check("...and the session stands", store.summary()["map_session"], session)
+
+        first = store.follow_map("map-one")
+        check("a world state that does not say which map it was recorded in "
+              "starts a new session, because before this nothing survived a boot",
+              first["changed"], True)
+        check("...but nothing is deleted with it",
               store.summary()["observations"], 1)
-        check("the same boot again changes nothing",
-              store.clear_if_rebooted("boot-one")["cleared"], False)
-        check("...and still changes nothing",
-              store.summary()["observations"], 1)
+        moved = store.summary()["map_session"]
+        check("...and the session really moved", moved > session, True)
+        check("...and it says what it kept", first["observations"], 1)
         store.close()
 
-        # A reboot: the same database, opened again under a different boot.
+        # A reboot: the same database, opened again, and the navigation stack
+        # holding the map it was holding before. This is the ordinary case now.
         store = a_store(directory)
-        check("a host that cannot say which boot it is on deletes nothing either",
-              store.clear_if_rebooted("")["cleared"], False)
-        check("...so the world is intact until something knows better",
-              store.summary()["observations"], 1)
-        gone = store.clear_if_rebooted("boot-two")
-        check("a new boot empties the world", gone["cleared"], True)
-        check("...saying what went with it", gone["observations"], 1)
-        check("...and taking the pictures too", gone["frames_removed"], 1)
-        check("...leaving nothing to draw", store.summary()["observations"], 0)
-        check("...on a map session of its own, so anything that survived a "
-              "half-done clear is not comparable with what comes next",
-              store.summary()["map_session"], 2)
-        check("and the boot it happened on is remembered, so a daemon that "
-              "restarts twice under one boot only clears once",
-              store.clear_if_rebooted("boot-two")["cleared"], False)
-        # Asking with nothing reads the host, which is what the daemon does and
-        # is why the empty string above has to mean something else: a falsy
-        # default would have made "this host cannot say" quietly become "ask
-        # /proc", and the check above would then pass on a desk and clear a
-        # rover. Which answer is right here depends on the machine running this.
-        check("asking with nothing reads the host's own identifier",
-              store.clear_if_rebooted()["cleared"], bool(host_boot_id()))
+        again = store.follow_map("map-one")
+        check("the same map after a restart changes nothing at all",
+              again["changed"], False)
+        check("...so the observation is still on the session it was recorded in",
+              store.summary()["map_session"], moved)
+        check("...and it is still there", store.summary()["observations"], 1)
+
+        cleared = store.follow_map("map-two")
+        check("a different map starts a new session", cleared["changed"], True)
+        check("...and still deletes nothing", store.summary()["observations"], 1)
+        check("...so what was measured before is kept, on a session that no "
+              "longer matches the map, which is what the console draws it as",
+              store.observations()[0]["map_session"] != store.map_session(), True)
+        store.close()
+
+
+def test_an_empty_world_does_not_burn_a_map_session() -> None:
+    """A rover with nothing recorded has nothing to protect.
+
+    Worth its own check because the session number is what the console compares
+    against, and a store that bumped it on every fresh map would leave a rover
+    that has never inspected anything on session forty.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        session = store.summary()["map_session"]
+        answer = store.follow_map("map-one")
+        check("an empty world state keeps its session", answer["changed"], False)
+        check("...at the number it started on",
+              store.summary()["map_session"], session)
+        check("...and the map is remembered, so the first thing recorded under "
+              "it is not immediately treated as belonging to an older map",
+              store.follow_map("map-one")["changed"], False)
         store.close()
 
 
@@ -495,7 +518,8 @@ TESTS = (
     test_a_missing_pose_is_recorded_as_missing,
     test_clearing_the_semantic_world_takes_its_frames_with_it,
     test_clearing_the_map_keeps_the_semantic_world,
-    test_a_reboot_empties_the_world_and_an_unknown_boot_does_not,
+    test_the_world_follows_the_map_rather_than_the_boot,
+    test_an_empty_world_does_not_burn_a_map_session,
     test_unreadable_stored_json_cannot_take_the_viewer_down,
     test_a_reader_is_not_blocked_by_a_writer,
     test_a_full_pending_pool_still_shows_what_just_arrived,

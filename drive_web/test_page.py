@@ -57,6 +57,41 @@ def test_the_page_draws_every_pane_its_tabs_offer() -> None:
               f'id="{name}"' in html, True)
 
 
+def test_the_map_offers_two_acts_and_the_script_can_find_them_both() -> None:
+    """The map card had five controls and has two, and both of those do something.
+
+    Three went on 2026-09-05 and the argument was the popup's own: the map
+    redraws itself every few seconds, so a "refresh" button could only ever fetch
+    what the console had a moment ago; "describe surroundings" put into words
+    what the picture above it was already showing; and turning the map to the
+    rover's heading made the room swing under the reader on every turn. What is
+    left is the two things that are acts rather than views -- putting the rover
+    back on the map, and throwing the map away.
+
+    The half of this worth automating is the other half: an element removed from
+    the markup while the script still reaches for it is a page whose script dies
+    on the first line that touches it, taking every panel with it, and there is
+    no browser in this repository's test loop to notice.
+    """
+    import re
+
+    html, js = _console("html"), _console("js")
+    row = html[html.index('id="mapCard"'):html.index('id="cameraCard"')]
+    buttons = re.findall(r'<button id="([A-Za-z]+)"', row)
+    check("the map card offers exactly two buttons", len(buttons), 2)
+    check("...one that fits the rover to the map", "refitPose" in buttons, True)
+    check("...and one that throws the map away", "clearMap" in buttons, True)
+    for gone in ("roverUp", "refreshMap", "describe"):
+        check(f"nothing on the page is called {gone} any more",
+              f'id="{gone}"' in html, False)
+        check(f"...and the script does not reach for it either",
+              f'$("{gone}")' in js, False)
+    # And the general form of that mistake, for every element this script names.
+    for name in sorted(set(re.findall(r'\$\("([A-Za-z][A-Za-z0-9_]*)"\)', js))):
+        check(f"the page has an element called {name}",
+              f'id="{name}"' in html, True)
+
+
 def test_the_world_popup_scrolls_its_lists_not_its_body() -> None:
     """The map and headings stay put while the two entity lists move.
 
@@ -306,6 +341,7 @@ def test_the_page_has_no_voice_token_control() -> None:
 
 TESTS = (
     test_the_page_draws_every_pane_its_tabs_offer,
+    test_the_map_offers_two_acts_and_the_script_can_find_them_both,
     test_the_world_popup_scrolls_its_lists_not_its_body,
     test_the_observation_stream_is_tiled_and_opens_one_at_a_time,
     test_the_search_box_narrows_the_views_rather_than_owning_one,

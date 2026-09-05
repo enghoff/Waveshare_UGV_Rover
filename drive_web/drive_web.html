@@ -111,10 +111,15 @@
     <p id="plan">-</p>
     <p id="mapNote"></p>
     <p id="mapError"></p>
+    <!-- Two buttons, and there were five. The map redraws itself every few
+         seconds, so "refresh" could only ever fetch what the console had a
+         moment ago -- the same argument the world popup's own refresh button
+         lost -- and "describe surroundings" said in words what the picture above
+         it was already showing. "rover up" turned the map to the rover's heading
+         and went with them: what is left is the map's two real acts, one that
+         moves the rover onto the map and one that throws the map away. -->
     <div class="row" style="margin-top:8px">
-      <label class="check"><input type="checkbox" id="roverUp"> rover up</label>
-      <button id="refreshMap">refresh</button>
-      <button id="describe">describe surroundings</button>
+      <button id="refitPose">refit to map</button>
       <button id="clearMap">clear map</button>
     </div>
   </section>

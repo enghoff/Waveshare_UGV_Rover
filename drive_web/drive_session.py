@@ -174,12 +174,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.map_error = ""
         self.map_note = ""
         self.map_caption = ""
-        # Which way is up. Off, the page keeps the heading the rover started with, so
-        # the room holds still and the arrow turns -- right for watching where the
-        # rover has got to. On, the page turns with the rover, so ahead is always up
-        # and the room swings instead, which is what you want when the question is
-        # whether it will fit through the gap in front of it.
-        self.rover_up = False
+        # Whether a refit is in flight. It is the one call this console makes that
+        # is slow *and* has no panel of its own to look slow in, so the button
+        # carries it -- see `refit_pose`.
+        self.refitting = False
 
         self.frame_outstanding = False
         self.frame_done_at = 0.0       # when the last frame landed; see map_done_at
@@ -285,7 +283,6 @@ class Session(SessionActions, SessionShow, SessionWorld):
                     # nothing happening after a click is what makes a console look
                     # as though it dropped the click.
                     "superseded": self.pending_target is not None}
-        facing = "rover up" if self.rover_up else "start heading up"
         return {
             "link": {"address": self.address or self.wanted_address,
                      "text": self.link_text,
@@ -294,6 +291,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
                      "tools": self.tools},
             "busy": busy,
             "exploring": self.exploring,
+            "refitting": self.refitting,
             "status": {"rows": self.status_rows, "pose": self.pose_text,
                        "error": self.status_error},
             "lidar": {"offer": self.lidar_live is False, "note": self.lidar_note},
@@ -306,7 +304,6 @@ class Session(SessionActions, SessionShow, SessionWorld):
                     # per map, saying the console was drawing a map.
                     "drawing": self.slow(self.map_outstanding, self.map_asked_at),
                     "half_extent_m": self.half_extent, "size_px": self.map_size,
-                    "rover_up": self.rover_up,
                     # What the picture was drawn at, which the world-state popup
                     # needs to put a bearing on it. Free, because this block is
                     # already a new block whenever there is a new map to say it
@@ -317,7 +314,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
                     # and saying so in tenths was, on its own, most of what this
                     # console put on the wi-fi.
                     "age_s": self.map_age(),
-                    "settings": f"{2 * self.half_extent:.0f} m across, {facing}"},
+                    "settings": f"{2 * self.half_extent:.0f} m across"},
             "frame": {"gen": self.tag(self.frame_gen), "note": self.frame_note,
                       "error": self.frame_error,
                       "taking": self.slow(self.frame_outstanding,
@@ -642,6 +639,10 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.track_outstanding = False
         self.battery_outstanding = False
         self.depth_outstanding = False
+        # For the same reason as the six above, and it matters more: this one is
+        # a button that stays greyed out and saying "refitting..." for the rest of
+        # the session rather than a picture that stops arriving.
+        self.refitting = False
 
     def rest(self) -> None:
         """Stop being a client. `--idle` calls this once nobody is watching."""
@@ -772,6 +773,25 @@ class Session(SessionActions, SessionShow, SessionWorld):
             return
         if name == "list_tools":
             self.show_tools(body)
+            return
+        if name == "refit_pose":
+            # The one call whose whole result is a sentence. Everything it did is
+            # in `why` -- how far the rover was out, how well the scan lies on the
+            # map now against before, or which of the two reasons it refused for --
+            # and the panel it changes is the map, which is asked for again only
+            # when the rover actually moved.
+            self.refitting = False
+            if not body.get("ok"):
+                self.say(f"the rover was not refitted: "
+                         f"{body.get('error') or 'no answer'}", "bad")
+                return
+            fitted = bool(body.get("fitted"))
+            self.say(str(body.get("why") or
+                         ("the rover was moved onto the map" if fitted
+                          else "nothing was moved")),
+                     "good" if fitted else "quiet")
+            if fitted:
+                self.refresh_map()
             return
         if name == "camera_jpeg":
             self.frame_outstanding = False

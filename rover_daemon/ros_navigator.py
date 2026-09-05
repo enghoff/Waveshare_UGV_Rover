@@ -63,6 +63,11 @@ PORT = 8773
 STATUS_TIMEOUT_S = 2.0
 MAP_TIMEOUT_S = 8.0
 STOP_TIMEOUT_S = 3.0
+# Fitting the rover to its map is a tenth of a second of searching and then the
+# pose graph written and read again, which on a house-sized graph is most of a
+# minute in the worst case. The bridge has its own thirty-second limit on each of
+# those two, so this is the point at which a silent socket is a dead bridge.
+REFIT_TIMEOUT_S = 90.0
 # A move is answered by Nav2 when Nav2 is done, and a long route across a house
 # legitimately takes minutes. This is not a schedule -- the bridge has its own
 # time allowance per goal, worked out from the goal -- it is the point at which a
@@ -469,6 +474,12 @@ class RosNavigator:
                     "steering_deg": None, "remaining_m": None,
                     "match_score": None, "position_trusted": False,
                     "mapping": False, "scans": None, "dropped_scans": None,
+                    # Not a map rather than a new one: with the bridge down,
+                    # nothing knows what map this is, and saying so is what
+                    # stops the world state starting a new session over a
+                    # navigation stack that is merely restarting.
+                    "map_id": None, "map_kept": False, "map_note": "",
+                    "map_saved_age_s": None, "map_fit": None,
                     "pwm": None, "lidar_ok": False, "lidar_live": False,
                     "lidar_port": self._lidar_port, "scan_age_s": None,
                     "lidar_resets": self._resets,
@@ -565,6 +576,39 @@ class RosNavigator:
                     "reason": str(answer.get("reason")
                                   or answer.get("error") or "the map was kept")}
         return {"cleared": True, "reason": str(answer.get("reason") or "")}
+
+    def refit_pose(self, window_m: float | None = None,
+                   window_deg: float | None = None,
+                   min_score: float | None = None) -> dict[str, Any]:
+        """Find the rover on the map it already has, and move it there.
+
+        For a rover that was nudged or turned while it was switched off. It
+        matches the scan the lidar can see now against the saved map, and if that
+        lands somewhere clearly better than where the rover thinks it is, it hands
+        the answer to slam_toolbox -- which owns the map frame and is the only
+        thing that may move the rover within it.
+
+        Takes seconds rather than milliseconds: the search is a tenth of a second
+        and the rest is the pose graph being written and read again, which is what
+        applying the answer costs.
+        """
+        request: dict[str, Any] = {"op": "refit"}
+        if window_m is not None:
+            request["window_m"] = float(window_m)
+        if window_deg is not None:
+            request["window_deg"] = float(window_deg)
+        if min_score is not None:
+            request["min_score"] = float(min_score)
+        answer = self.ask(request, REFIT_TIMEOUT_S)
+        if not answer.get("ok"):
+            return {"fitted": False,
+                    "why": str(answer.get("error")
+                               or "the navigation stack did not answer")}
+        answer.pop("kind", None)
+        answer.pop("ok", None)
+        answer.setdefault("fitted", False)
+        answer.setdefault("why", "")
+        return answer
 
     def reset_lidar(self) -> dict[str, Any]:
         """Replug the lidar's USB device in software.

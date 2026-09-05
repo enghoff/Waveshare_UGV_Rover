@@ -97,6 +97,11 @@ from nav_limits import (
     wrap, yaw_of,
 )
 from nav_explore import NavExplore
+# And likewise, for the third time: keeping the pose graph between sessions and
+# finding the rover on it again is its own job, and the two halves of it that are
+# arithmetic -- where the files go, and where the scan fits -- are in `mapstore.py`
+# and `refit.py` beside it.
+from nav_map import NavMap
 from nav_moves import NavMoves
 # And likewise: where the rover has been is a list and a rule about when the
 # coordinates in it mean anything, neither of which needs ROS -- see trail.py for
@@ -110,7 +115,7 @@ HOST = "127.0.0.1"
 PORT = 8773
 
 
-class NavBridge(NavMoves, NavExplore, Node):
+class NavBridge(NavMoves, NavExplore, NavMap, Node):
     """Everything the daemon needs to know about, kept current by subscription.
 
     The node holds no navigation logic. It caches what arrives -- the map, the
@@ -200,6 +205,9 @@ class NavBridge(NavMoves, NavExplore, Node):
         # --- the cache
         self.scan_at = None
         self.scan_count = 0
+        # The scan itself and not only its age, because `refit` matches it
+        # against the map. One reference swapped ten times a second.
+        self.scan_msg = None
         self.map_msg = None
         self.map_at = None
         self.odom = None
@@ -229,6 +237,9 @@ class NavBridge(NavMoves, NavExplore, Node):
         self.stop_seq = 0
 
         self.create_timer(0.5, self.sample_trail, callback_group=self.group)
+        # Last, because it starts a thread that reads everything above it: the
+        # map on disk, loaded and kept and fitted to. See nav_map.py.
+        self.map_startup()
         self.get_logger().info("nav bridge ready; serving %s:%d"
                                % (args.bind, args.port))
 
@@ -237,6 +248,7 @@ class NavBridge(NavMoves, NavExplore, Node):
         with self._lock:
             self.scan_at = time.monotonic()
             self.scan_count += 1
+            self.scan_msg = msg
 
     def on_map(self, msg):
         with self._lock:
@@ -433,6 +445,9 @@ class NavBridge(NavMoves, NavExplore, Node):
             "map_age_s": None if self.map_at is None
                          else round(now - self.map_at, 1),
             "nav2_ready": self.actions["goto"].server_is_ready(),
+            # What map this is, whether it came back from disk, and how the
+            # rover was last fitted to it. See nav_map.py.
+            **self.map_status(),
         }
 
     def steering(self, where, plan):
@@ -600,6 +615,9 @@ class NavBridge(NavMoves, NavExplore, Node):
                 self.trail.cleared(discarded, odom)
                 self.map_msg = None
                 self.map_at = None
+            # And the copy on disk, which would otherwise be loaded at the next
+            # boot -- the one outcome somebody pressing this cannot have meant.
+            self.map_forgotten()
             # Not "and the rover is at its origin", which this used to say and
             # which is only true just after a restart: the new map keeps
             # odometry's origin, and over the 46 clears in the rover's own log
@@ -668,6 +686,15 @@ class Handler(socketserver.StreamRequestHandler):
             result = node.clear_map()
             self.write({"kind": "reply", "ok": bool(result.get("cleared")),
                         **result})
+        elif op == "refit":
+            # Not a move -- nothing turns a wheel -- but it takes the move mutex
+            # and it can take a couple of seconds on a large graph, so it goes out
+            # on whichever connection asked rather than being streamed.
+            result = node.refit(
+                window_m=_maybe(request.get("window_m")),
+                window_deg=_maybe(request.get("window_deg")),
+                min_score=_maybe(request.get("min_score")))
+            self.write({"kind": "reply", "ok": True, **result})
         elif op in ("drive", "turn", "goto", "explore"):
             self.move(node, op, request)
         else:
@@ -722,6 +749,12 @@ class Handler(socketserver.StreamRequestHandler):
             "%s: %s -- %s" % (op, outcome.get("reason"),
                               outcome.get("detail") or "no detail"))
         self.write({"kind": "outcome", **outcome})
+
+
+def _maybe(value):
+    """A float the caller may have left out. None stays None: every one of these
+    means "use what refit.py measured", and a zero would mean something else."""
+    return None if value is None else float(value)
 
 
 class Server(socketserver.ThreadingTCPServer):

@@ -36,6 +36,16 @@ def _number(value: Any, what: str) -> float:
         raise ValueError(f"{what} must be a number, not {value!r}")
 
 
+def _optional(value: Any, what: str) -> float | None:
+    """A number the caller was allowed to leave out.
+
+    None survives as None rather than becoming zero, because every caller of this
+    reads a missing argument as "use the measured default" and a zero as a real
+    request -- a `min_score` of 0 would accept any fit at all.
+    """
+    return None if value is None else _number(value, what)
+
+
 def _flag(value: Any, what: str) -> bool:
     """Whatever the caller produced -> a yes or a no, or ValueError.
 

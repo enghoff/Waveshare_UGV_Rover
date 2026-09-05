@@ -49,27 +49,8 @@ INFERENCE_LIMIT = 12
 EXEMPLARS = 5
 
 
-#: Where Linux publishes an identifier that is fixed for the life of one boot and
-#: different on the next. Read in preference to the clock or the uptime because
-#: this rover has no battery-backed clock: its wall time starts at whatever the
-#: last write left behind and jumps again the moment it reaches the network, so
-#: "was this row written before the machine came up" is not a question the
-#: timestamps on the rows can answer. Absent off Linux, and the empty string that
-#: comes back then means "which boot this is cannot be told" rather than any
-#: particular boot.
-BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
-
-
 def world_dir() -> str:
     return os.environ.get(ENV_DIR) or os.path.expanduser("~/.ugv/world")
-
-
-def host_boot_id() -> str:
-    try:
-        with open(BOOT_ID_PATH) as handle:
-            return handle.read().strip()
-    except OSError:
-        return ""
 
 
 class WorldStore:
@@ -814,60 +795,65 @@ class WorldStore:
         return {"ok": True, "frames_removed": removed, **counts,
                 "map_session": self.map_session()}
 
-    def clear_if_rebooted(self, boot_id: str | None = None) -> dict[str, Any]:
-        """Throw the world away when the host has rebooted since it was written.
+    def follow_map(self, map_id: str | None) -> dict[str, Any]:
+        """Keep everything, and move the map session only when the map has changed.
 
         Everything in here is measured against the SLAM map: a bearing means
         something only from the pose it was taken at, and a position only in the
-        frame the bearings crossed in. Nothing saves that map, so every boot
-        starts an empty one -- and the store used to come back holding the old
-        map's positions stamped with the *same* map session as the new map, which
-        is precisely the comparison `new_map_session` exists to prevent. The
-        console draws exactly those rows: a thing is on the map when its
-        placement session matches the store's, so two chairs measured in a room
-        the rover has since been carried out of appeared on the fresh map as
-        though they had just been seen.
+        frame the bearings crossed in. So the one question worth asking on
+        startup is not "has this machine rebooted" but "is this the same map",
+        and since ros_nav keeps its pose graph across a boot the answer is
+        usually yes -- a rover that comes back up in the room it was switched off
+        in comes back to a world state that still means something.
 
-        Bumping the session and keeping the rows is the other answer, and it is
-        the one the console's map button gave until it stopped: what survives
-        that is a list of things with nowhere to be.
+        `map_id` is the navigation stack's identity for the graph it is holding,
+        which survives a restore of the same graph and changes when the map is
+        cleared, fails to load, or is built from scratch. **None means nothing
+        knows yet** -- the ROS stack is still starting, or is not running -- and
+        that is deliberately not a reason to do anything: the alternative is a
+        world state that starts a new session every time somebody restarts the
+        navigation stack.
 
-        An unknown boot deletes nothing. That is either a host with no `/proc` to
-        read -- a desk, a replay -- or a database written before this was
-        recorded, and "I cannot tell whether this machine has rebooted" must not
-        be a reason to destroy an experiment somebody is halfway through. The
-        identifier is remembered either way, so the next boot is knowable.
-
-        `boot_id` is the host's own by default. Passing one names the boot
-        instead, and passing the empty string is a host that cannot say which
-        boot it is on -- which is a different thing from not asking, and the
-        distinction is the whole of the caution above, so it is in the argument
-        rather than in a falsy default that would quietly read `/proc`.
+        **Nothing is ever deleted here, and it used to be.** This threw the whole
+        world away on every boot, because nothing saved the map and every
+        position in the database was therefore measured in coordinates that no
+        longer existed. What is kept instead is the rows with the session they
+        were recorded under, which the console already reads: a placement whose
+        session is not the current one is drawn as a position that was measured
+        under a map that is gone, rather than as a chair in this room.
         """
-        boot_id = host_boot_id() if boot_id is None else boot_id
-        was = self._meta("boot_id")
-        if not boot_id:
-            return {"cleared": False, "boot_id": was,
-                    "reason": "this host does not say which boot it is on"}
-        if was == boot_id:
-            return {"cleared": False, "boot_id": boot_id,
-                    "reason": "the world was recorded under this boot"}
+        if not map_id:
+            return {"changed": False, "map_id": self._meta("map_id"),
+                    "map_session": self.map_session(),
+                    "reason": "nothing has said which map this is yet"}
+        was = self._meta("map_id")
+        if was == map_id:
+            return {"changed": False, "map_id": map_id,
+                    "map_session": self.map_session(),
+                    "reason": "this is the map the world state was recorded in"}
         with self._lock, self.db:
-            self.db.execute("REPLACE INTO meta(key, value) VALUES('boot_id', ?)",
-                            (boot_id,))
-        if not was:
-            return {"cleared": False, "boot_id": boot_id,
-                    "reason": "the world does not say which boot recorded it"}
-        gone = self.clear()
-        # The session moves as well as the rows going, for the same reason the
-        # console moves it: a clear that half failed must not leave old
-        # coordinates comparable with new ones.
-        return {"cleared": True, "boot_id": boot_id,
-                "reason": f"recorded under boot {was}",
-                "entities": gone["entities"],
-                "observations": gone["observations"],
-                "frames_removed": gone["frames_removed"],
-                "map_session": self.new_map_session()}
+            self.db.execute("REPLACE INTO meta(key, value) VALUES('map_id', ?)",
+                            (map_id,))
+        # A store that has never seen a map identity is either empty, or was
+        # written before any of this existed -- and in the second case its
+        # coordinates belong to a map that certainly is not this one, because
+        # before this nothing survived a boot. So the session moves for it too,
+        # once, and what that costs is one map's worth of positions marked as
+        # older than the map on screen rather than drawn in the wrong room.
+        counts = self.summary()
+        if not counts["observations"] and not counts["entities"]:
+            return {"changed": False, "map_id": map_id,
+                    "map_session": self.map_session(),
+                    "reason": "the world state is empty, so there was nothing "
+                              "measured in the map it replaces"}
+        return {"changed": True, "map_id": map_id, "was": was,
+                "map_session": self.new_map_session(),
+                "entities": counts["entities"],
+                "observations": counts["observations"],
+                "reason": ("this is a different map from the one the world state "
+                           "was recorded in" if was else
+                           "the world state does not say which map it was "
+                           "recorded in")}
 
     def close(self) -> None:
         with self._lock:

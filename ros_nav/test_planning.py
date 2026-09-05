@@ -13,17 +13,18 @@ from test_harness import HERE, check, section
 
 
 def _bridge_source():
-    """The navigation bridge's source, all four files of it, or "" off the rover.
+    """The navigation bridge's source, all five files of it, or "" off the rover.
 
     These checks read the bridge as text because they cannot import it: it needs
     rclpy, and this file runs on a workstation that has none. Since the bridge was
-    split -- the node, its moves, its exploring and the numbers it is held to --
-    that means reading all four and looking at them as one, which is also what
-    makes a count like "this appears exactly once" mean what it used to.
+    split -- the node, its moves, its exploring, the map it keeps on disk and the
+    numbers it is held to -- that means reading all five and looking at them as
+    one, which is also what makes a count like "this appears exactly once" mean
+    what it used to.
     """
     out = []
     for name in ("nav_bridge.py", "nav_moves.py", "nav_explore.py",
-                 "nav_limits.py"):
+                 "nav_map.py", "nav_limits.py"):
         path = os.path.join(HERE, name)
         if os.path.exists(path):
             with open(path, encoding="utf-8") as fh:
