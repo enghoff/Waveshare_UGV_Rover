@@ -171,6 +171,31 @@ host-built `libslam2d.so` — come from the installers listed under
 [Manual deployment](#manual-deployment), and the `@reboot` entries from
 `install-boot.sh` and `drive_web/install.sh`.
 
+## Deploying while another agent holds the tree
+
+`deploy.py` refuses to run while **any** tracked file is dirty, not only files in
+the components being deployed — a file under `docs/` blocks a `ros_nav` deploy.
+When somebody else is mid-edit and cannot commit yet, the way past it is a clean
+worktree at your own commit, which satisfies the check on its own terms rather
+than bypassing it: the recorded SHA still describes the bytes that were sent, and
+the other agent's files are not even readable from there.
+
+```bash
+git worktree add --detach "$SCRATCH/deploy-wt" HEAD
+cd "$SCRATCH/deploy-wt" && python deploy/deploy.py
+git worktree remove --force "$SCRATCH/deploy-wt"
+```
+
+`--detach` is required, because `main` is already checked out in the primary tree.
+`secrets/` is gitignored and so is absent from the worktree — copy it in only if
+the deploy needs a privileged installer (`--system`), and delete it with the
+worktree afterwards.
+
+Ask the other agent first, and tell it afterwards: two deploys at once, or a
+restart landing in the middle of somebody's verification, is the thing this is
+meant to avoid rather than cause. See
+[the concurrency rules](../AGENTS.md#another-agent-may-be-working-here-at-the-same-time).
+
 ## Cross-cutting traps
 
 **Use each component's `restart.sh`.** An unguarded `pkill` pattern typed over

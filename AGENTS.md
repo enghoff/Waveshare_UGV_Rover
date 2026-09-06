@@ -54,10 +54,36 @@ manifest or source set wants `deploy.py --plan`.
 Expect to be one of several. Work in your own files and your own scratchpad and it
 will not come up. When it does — a tracked file changed underneath you, a deploy
 refused because somebody else's edit is dirty, a service restarted mid-verification
-— **do not fight it and do not work around it.** Finish everything that does not
-touch the contested ground, then stop and say where you got to, what is left, and
-exactly what blocked you. Reverting, stashing or overwriting another agent's work to
-get past it is never the answer, and neither is retrying in a loop until it clears.
+— **talk to the other agent.** Silence is what turns a two-minute overlap into two
+half-finished changes.
+
+**Two things are never the answer.** Reverting, stashing or overwriting another
+agent's work to get past it, and retrying in a loop until it clears. Neither is
+made acceptable by being in a hurry.
+
+**Say what you are holding and ask for what you need.** If your harness can address
+another agent, do it directly; if it cannot, put it in your report so the person
+can. Name the files, say whether your change overlaps theirs and how, and say when
+you expect to be done. Answer the same question the same way when it is put to you:
+commit or revert what you hold, then say the file is free. Handing back a file you
+have already committed costs you nothing and unblocks somebody. If what you are
+about to start needs files somebody else has dirty, ask before you start rather
+than after you collide.
+
+**Undeployed work is unfinished work, and "another agent had the tree" does not
+change that.** A deploy sends a whole registered component at the current commit,
+so it carries whatever anybody has committed — which makes it a shared act, not a
+private one. Two agents must not deploy or restart the same service at the same
+time, so agree who does it: usually whoever finishes last deploys both changes and
+says so, and if you deploy somebody else's commit alongside yours, tell them what
+went out and what proved it. When you are blocked only by a dirty tree and the
+other agent cannot commit yet, deploy your own commit from a clean detached
+worktree — [docs/deploy.md](docs/deploy.md) has it — and tell them you did.
+
+Only when none of that is available do you stop: finish everything that does not
+touch the contested ground, then say exactly what is committed, what is not on the
+rover, and who or what is holding it. That is a handover to be picked up, and it is
+worth saying as one — not a finished piece of work.
 
 ## The repository is the source of truth
 
