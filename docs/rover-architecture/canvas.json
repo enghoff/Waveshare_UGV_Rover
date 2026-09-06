@@ -1,6 +1,6 @@
 {
   "artboards": [
-    { "file": "Main.dc.html", "title": "1 · The rover's ROS 2 network", "x": 0, "y": 0, "w": 1280, "h": 720, "print": "fixed" },
+    { "file": "Main.dc.html", "title": "1 · How the rover finds its way", "x": 0, "y": 0, "w": 1280, "h": 720, "print": "fixed" },
     { "file": "WorldState.dc.html", "title": "2 · What the rover has seen", "x": 1360, "y": 0, "w": 1280, "h": 720, "print": "fixed" }
   ],
   "launch": { "view": "canvas" }

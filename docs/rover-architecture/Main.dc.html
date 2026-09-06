@@ -18,12 +18,12 @@
 
   <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; height: 54px;">
     <div>
-      <div style="font-size: 27px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1;">The rover&#8217;s ROS 2 network</div>
-      <div style="font-size: 12.5px; color: #6B6355; margin-top: 4px;">Thirteen nodes on one board, between the driver board&#8217;s UART and the wheels.</div>
+      <div style="font-size: 27px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1;">How the rover finds its way</div>
+      <div style="font-size: 12.5px; color: #6B6355; margin-top: 4px;">A spinning laser draws a map of the room, and off-the-shelf navigation software plans a route across it and drives the wheels along it.</div>
     </div>
     <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #6B6355; text-align: right; line-height: 1.5; white-space: nowrap;">
       <div>Jetson Orin Nano &#183; ROS 2 Jazzy</div>
-      <div>DDS discovery pinned to loopback</div>
+      <div>all of it runs on the rover itself</div>
     </div>
   </div>
 
@@ -31,7 +31,7 @@
 
     <div style="position: relative; width: 1200px; height: 556px;">
 
-      <svg viewBox="0 0 1200 556" width="1200" height="556" role="img" aria-label="The lidar reaches lidar_node directly over USB, bypassing the daemon; the ESP32 driver board reaches the rover daemon over the GPIO UART. The daemon lends the wheels and gyro to base_node on TCP 8772 and borrows navigation from nav_bridge on TCP 8773. lidar_node publishes scan to slam_toolbox and surroundings to nav_bridge; base_node publishes odometry and the odom-to-base_link transform to slam_toolbox; slam_toolbox publishes the map and the map-to-odom transform to Nav2; nav_bridge exchanges Nav2 actions and the map and plan with Nav2; Nav2's velocity smoother publishes cmd_vel back to base_node." style="position: absolute; left: 0; top: 0;">
+      <svg viewBox="0 0 1200 556" width="1200" height="556" role="img" aria-label="The laser scanner plugs in on its own and is read directly by the navigation software; the driver board is reached over a serial cable by the program that owns the hardware. That program lends the wheels and the tilt sensor to one navigation component and takes goals back from another. The laser reading becomes a scan for the mapper and a description in words for the way in to navigation; the wheels report how far the rover has rolled; the mapper publishes the map and where the rover is on it; goals go out to Nav2 and the map and plan come back; and Nav2 finally says how fast to drive." style="position: absolute; left: 0; top: 0;">
         <defs>
           <marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 Z" fill="#8C8371"></path>
@@ -50,111 +50,121 @@
           <path d="M720,500 H690 V520 H646" marker-end="url(#ar)"></path>
         </g>
         <g font-family="'IBM Plex Mono', ui-monospace, Consolas, monospace" font-size="9.5" fill="#6B6355">
-          <text x="288" y="45" text-anchor="middle">USB serial &#183; 230400</text>
-          <text x="160" y="365" text-anchor="middle">UART</text>
-          <text x="160" y="375" text-anchor="middle">115200</text>
-          <text x="402" y="234" text-anchor="middle">TCP 8773</text>
-          <text x="402" y="245" text-anchor="middle">goals &#8646; map</text>
-          <text x="402" y="454" text-anchor="middle">TCP 8772</text>
-          <text x="402" y="465" text-anchor="middle">wheels &#8646; PWM</text>
-          <text x="555" y="136">/surroundings</text>
-          <text x="683" y="38" text-anchor="middle">/scan</text>
-          <text x="692" y="150" text-anchor="end">/odom</text>
-          <text x="692" y="161" text-anchor="end">TF odom&#8594;base_link</text>
-          <text x="683" y="232" text-anchor="middle">Nav2 actions</text>
-          <text x="683" y="243" text-anchor="middle">/map, /plan</text>
-          <text x="950" y="114" text-anchor="end">/map</text>
-          <text x="950" y="125" text-anchor="end">TF map&#8594;odom</text>
-          <text x="683" y="534" text-anchor="middle">/cmd_vel</text>
+          <text x="288" y="45" text-anchor="middle">over its own USB port</text>
+          <text x="160" y="365" text-anchor="middle">serial</text>
+          <text x="160" y="375" text-anchor="middle">cable</text>
+          <text x="402" y="234" text-anchor="middle">goals in</text>
+          <text x="402" y="245" text-anchor="middle">map out</text>
+          <text x="402" y="454" text-anchor="middle">orders out</text>
+          <text x="402" y="465" text-anchor="middle">counts back</text>
+          <text x="555" y="136">walls and gaps</text>
+          <text x="683" y="38" text-anchor="middle">the scan</text>
+          <text x="692" y="150" text-anchor="end">how far the wheels</text>
+          <text x="692" y="161" text-anchor="end">say it has rolled</text>
+          <text x="683" y="232" text-anchor="middle">goals out</text>
+          <text x="683" y="243" text-anchor="middle">plans back</text>
+          <text x="950" y="114" text-anchor="end">the map, and</text>
+          <text x="950" y="125" text-anchor="end">where it is on it</text>
+          <text x="683" y="534" text-anchor="middle">the speed</text>
         </g>
-        <text x="288" y="70" text-anchor="middle" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif" font-size="9.5" font-style="italic" fill="#8C8371">a separate USB device, so ROS takes it directly</text>
+        <text x="288" y="70" text-anchor="middle" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif" font-size="9.5" font-style="italic" fill="#8C8371">it plugs in on its own, so navigation reads it directly</text>
       </svg>
 
       <div style="position: absolute; left: 0px; top: 10px; width: 132px; height: 88px; box-sizing: border-box; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 3px; padding: 9px 10px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">D500 lidar</div>
-        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">One revolution at 10 Hz, on its own USB port.</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">the laser</div>
+        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">Spins ten times a second, measuring how far away things are.</div>
       </div>
 
       <div style="position: absolute; left: 0px; top: 330px; width: 132px; height: 100px; box-sizing: border-box; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 3px; padding: 9px 10px;">
         <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">driver board</div>
-        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">The ESP32: motors, encoders, IMU, lights, gimbal, pack voltage.</div>
+        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">The board that moves things: motors, wheel counters, a tilt sensor, lights, the camera head.</div>
       </div>
 
       <div style="position: absolute; left: 188px; top: 172px; width: 172px; height: 384px; box-sizing: border-box; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 3px; padding: 11px 12px; display: flex; flex-direction: column; gap: 9px;">
         <div>
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #4A443A;">rover_daemon</div>
-          <div style="font-size: 9px; color: #8C8371; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.07em;">not a ROS node</div>
+          <div style="font-size: 12px; font-weight: 600; color: #4A443A;">it owns the hardware</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">rover_daemon</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Only one process can hold the UART, and this is the one that does &#8212; along with the lights, the gimbal and the pack voltage. It is also what the voice model&#8217;s tools call, so it can give none of that up.</div>
-        <div style="border-top: 1px solid #DDD6C8; padding-top: 8px; font-size: 10.5px; line-height: 1.4; color: #3D3A33;">So it lends out the two things ROS cannot do without &#8212; the encoders and gyro, and the motor commands &#8212; and borrows navigation back the other way.</div>
-        <div style="margin-top: auto; font-size: 10px; line-height: 1.35; color: #6B6355; font-style: italic;">Both ports are loopback only. Either one on the LAN would put the wheels behind nothing.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Only one program can talk to the driver board at a time, and this is it &#8212; so the lights, the camera head and the battery gauge are its as well, and the voice assistant reaches for all of them through it. It cannot hand any of that over.</div>
+        <div style="border-top: 1px solid #DDD6C8; padding-top: 8px; font-size: 10.5px; line-height: 1.4; color: #3D3A33;">So it lends navigation the two things it cannot do without &#8212; the wheel counters and the tilt sensor, and the motor orders &#8212; and takes goals back the other way.</div>
+        <div style="margin-top: auto; font-size: 10px; line-height: 1.35; color: #6B6355; font-style: italic;">Neither connection leaves the rover. Either one reachable from the network would put the wheels behind nothing at all.</div>
       </div>
 
       <div style="position: absolute; left: 444px; top: 0px; width: 202px; height: 116px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">lidar_node</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">Publishes each revolution as a laser scan. The packets are parsed by the C library the old SLAM left behind &#8212; 0.3 ms, where Python takes 25 &#8212; which also turns a revolution into walls and gaps in words.</div>
+        <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">reads the laser</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">lidar_node</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">Passes on every revolution as a scan for the rest of the stack, and puts the same sweep into words: where the walls and the gaps are.</div>
       </div>
 
       <div style="position: absolute; left: 444px; top: 172px; width: 202px; height: 222px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">nav_bridge</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">The daemon cannot import rclpy: it runs the Orin&#8217;s system Python for the serial port and the camera, while ROS lives in a conda environment. So this serves the whole stack over loopback instead, in newline-delimited JSON.</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 7px;">Every move it is asked for becomes a Nav2 action. It has no control loop of its own.</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 7px;">It also saves that graph, and puts the rover back on it when the stack starts again.</div>
+        <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">the way in to navigation</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">nav_bridge</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">Navigation lives in a world the hardware program cannot reach into directly, so this sits between the two. Ask it to go somewhere and it turns that into a navigation goal.</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 7px;">It does no steering itself; everything to the right of it does that.</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 7px;">It also keeps the map, and puts the rover back on it after a restart.</div>
       </div>
 
       <div style="position: absolute; left: 444px; top: 418px; width: 202px; height: 138px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">base_node</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">The wheels and gyro as a ROS base. Outwards it turns a velocity command into the board&#8217;s left and right PWM pair; inwards it integrates encoder ticks and gyro into odometry at 50 Hz. Every constant in it was measured on this chassis.</div>
+        <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">turns orders into motion</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">base_node</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">One way it turns &#8220;go this fast&#8221; into power for the left and right motors. The other way it adds up wheel turns and tilt into an estimate of how far the rover has moved.</div>
       </div>
 
       <div style="position: absolute; left: 720px; top: 0px; width: 480px; height: 100px; box-sizing: border-box; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 3px; padding: 9px 12px;">
         <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #8A5215;">slam_toolbox</div>
-          <div style="font-size: 9.5px; color: #9A8B70;">asynchronous node, mapping mode</div>
+          <div style="font-size: 12px; font-weight: 600; color: #8A5215;">draws the map</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9.5px; color: #9A8B70;">slam_toolbox</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.38; color: #3D3A33; margin-top: 5px;">Matches every scan against the odometry prior into a pose graph, then publishes a 5 cm occupancy grid and the transform saying where the rover sits on it. This is the thing the rover&#8217;s own SLAM could never afford: loop closure. A circuit driven now closes instead of drifting apart for ever, and the graph is saved to disk as it goes.</div>
+        <div style="font-size: 10.5px; line-height: 1.38; color: #3D3A33; margin-top: 5px;">Lines every laser sweep up against the ones before it and builds a map out of them, five centimetres to a square, along with where the rover is standing on it. Because it recognises somewhere it has already been, a lap of the room joins up instead of drifting away from itself, and the map is written to disk as it goes.</div>
       </div>
 
       <div style="position: absolute; left: 720px; top: 140px; width: 480px; height: 416px; box-sizing: border-box; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 3px; padding: 14px 16px; display: flex; flex-direction: column;">
         <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 13px; font-weight: 500; color: #8A5215;">Nav2</div>
-          <div style="font-size: 9.5px; color: #9A8B70;">every move the rover makes is one of these servers&#8217; actions</div>
+          <div style="font-size: 13px; font-weight: 600; color: #8A5215;">the navigation software</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9.5px; color: #9A8B70;">Nav2 &#183; every move comes from one of these</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-top: 12px;">
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">bt_navigator</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Runs the behaviour tree behind a &#8220;go there&#8221; goal, replans and recoveries included.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">takes the goal</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">bt_navigator</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Holds a &#8220;go there&#8221; request from beginning to end, replanning or backing out of trouble on the way.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">planner_server</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Plans the route across the global costmap, whose static layer is the map, on a motion lattice.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">plans the route</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">planner_server</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Works out a path across the map, from where the rover is to where it has been asked to go.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">controller_server</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Follows that route, steering against a local costmap it builds from the live scan.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">follows the route</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">controller_server</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Steers along that path, watching the live laser for anything that was not on the map.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">smoother_server</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Rounds the planned path off before the controller has to follow its corners.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">rounds the corners</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">smoother_server</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Takes the sharp turns out of the planned path before anything has to drive it.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">behavior_server</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Spin, back up, drive on a heading, wait. Three are ours, because stock Nav2 will not move a rover that is touching something.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">gets it unstuck</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">behavior_server</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Spin, back up, drive on a heading, wait. Three are ours: the stock ones refuse to move a rover that is touching something.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">waypoint_follower</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Drives a list of poses in order, pausing at each. Nothing on the rover asks it to yet.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">drives a list</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">waypoint_follower</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Visits a series of places in order, pausing at each. Nothing on the rover asks for this yet.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">velocity_smoother</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Rate-limits the controller&#8217;s output and republishes it, so the wheels have exactly one writer.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">has the last word</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">velocity_smoother</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Evens out the steering and is the only thing that speaks to the wheels, so they never get two orders at once.</div>
           </div>
-          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">lifecycle_manager &#215;2</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Waits for each server to exist, then configures and activates it. One for these seven, one for slam_toolbox.</div>
+          <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 80px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">starts the rest</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">lifecycle_manager &#215;2</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Waits for each of the others to appear, then brings it up. One for these servers, one for the mapper.</div>
           </div>
         </div>
-        <div style="margin-top: auto; border-top: 1px solid #E4CFB2; padding-top: 8px; font-size: 9.5px; line-height: 1.35; color: #6B6355;">No AMCL and no map server, deliberately: slam_toolbox already publishes where the rover is on the map, and two processes publishing that one transform is a robot that teleports between two versions of where it thinks it is.</div>
       </div>
 
     </div>
@@ -167,11 +177,11 @@
         </div>
         <div style="display: flex; align-items: center; gap: 7px;">
           <span style="width: 13px; height: 13px; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 2px; display: inline-block; flex-shrink: 0;"></span>
-          <span>stock ROS 2 packages, not forked</span>
+          <span>off-the-shelf software, unmodified</span>
         </div>
         <div style="display: flex; align-items: center; gap: 7px;">
           <span style="width: 13px; height: 13px; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 2px; display: inline-block; flex-shrink: 0;"></span>
-          <span>outside ROS &#8212; the hardware, and the daemon that owns it</span>
+          <span>the hardware, and the program that owns it</span>
         </div>
       </div>
       <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; white-space: nowrap;">slam.launch.py &#183; nav.launch.py</div>
