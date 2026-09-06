@@ -160,7 +160,11 @@ function drawWorld(w) {
   // watching for their button to do something.
   if (w.going !== worldGoing) {
     worldGoing = w.going;
-    if (w.open && (world.entities || []).length) drawWorldList();
+    // The chosen thing's heading carries the same button, so it is told at the
+    // same moment -- otherwise a press in the pane would leave its own button
+    // saying "go to" while the row for the same thing across the popup said
+    // "going".
+    if (w.open && (world.entities || []).length) { drawWorldList(); drawWorldDetail(); }
   }
   // The map under the bearings is a picture of its own and moves on its own
   // clock, so a new one is not a new body: without this the panel would go on
@@ -681,18 +685,36 @@ function drawWorldDetail() {
 // them has really changed, so that a body arriving every second does not take a
 // half-made text selection with it.
 function drawWorldHead(head, entity) {
+  // The button beside the title reads the pushed state rather than the body, so
+  // what it says belongs in the key: a heading held unchanged would be a heading
+  // still offering to drive somewhere the rover is already on its way to.
   const key = JSON.stringify([entity, (world.summary || {}).map_session,
-                              worldFilter ? worldFilter.things.has(entity.id) : null]);
+                              worldFilter ? worldFilter.things.has(entity.id) : null,
+                              state.world.going === entity.id,
+                              state.link.connected, state.link.can_drive]);
   if (key === worldDetailHead) return;
   worldDetailHead = key;
+  // The identifier, and to its right the one control in this pane that moves the
+  // rover. Offered on the same terms as the row in the list beside it: a thing
+  // with no position has nowhere to be driven to, and neither has one placed
+  // under a map that has since been cleared -- both of which the lines under
+  // this one already say.
+  const bar = document.createElement("div");
+  bar.className = "whead";
   const title = document.createElement("h2");
   title.textContent = entity.id;
+  bar.append(title);
+  if (entity.placement
+      && (!(world.summary || {}).map_session
+          || entity.placement_map_session === world.summary.map_session)) {
+    bar.append(wGoTo(entity));
+  }
   const meta = document.createElement("div");
   meta.className = "wmeta mono";
   meta.textContent = `kind ${entity.kind} · ${entity.observation_count} `
                    + `observations · created ${wTime(entity.created_at)} · `
                    + `last seen ${wTime(entity.last_seen_at)}`;
-  const parts = [title, meta, wPlace(entity)];
+  const parts = [bar, meta, wPlace(entity)];
   if (worldFilter && !worldFilter.things.has(entity.id)) {
     // Chosen before the box narrowed the list, and the list no longer has it.
     const aside = document.createElement("div");
