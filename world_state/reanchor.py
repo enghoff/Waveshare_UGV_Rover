@@ -266,13 +266,20 @@ def moved(placement: dict[str, Any], turn: float, shift: tuple[float, float],
     return grown
 
 
-def plan(store, min_agreeing: int = MIN_AGREEING) -> dict[str, Any]:
+def plan(store, min_agreeing: int = MIN_AGREEING,
+         only: Any = None) -> dict[str, Any]:
     """What re-anchoring would do to this store, without doing any of it.
 
     `min_agreeing` is how much consensus a transform needs before a whole map's
     positions are carried on its word. It is an argument only so that the checks
     can exercise the mechanism in a room with six things in it rather than a
     house with three hundred; nothing that runs on the rover passes it.
+
+    `only` plans one old map rather than all of them, which is how `carry_all`
+    keeps three old maps from each dropping their own copy of the sofa beside
+    the others. Every map is measured against the things standing in the current
+    one, so a map carried across has to *become* part of that before the next is
+    planned, or the folding has nothing to fold into.
     """
     now = store.map_session()
     width = vector_width(store)
@@ -284,6 +291,8 @@ def plan(store, min_agreeing: int = MIN_AGREEING) -> dict[str, Any]:
 
     maps = []
     for old_map in sorted(by_map, key=lambda one: (one is None, one)):
+        if only is not None and old_map != only:
+            continue
         theirs = by_map[old_map]
         pairs = pairs_between(store, theirs, here, width)
         found = align(pairs)
@@ -386,31 +395,89 @@ def apply(store, decided: dict[str, Any]) -> dict[str, Any]:
     return done
 
 
-def report(decided: dict[str, Any]) -> None:
-    print(f"map session {decided['map_session']}: {decided['here']} things "
-          f"standing in it, {decided['stranded']} stranded in older maps")
-    for entry in decided["maps"]:
-        found = entry["fit"]
-        print(f"\nmap {entry['map']}: {entry['things']} things, "
-              f"{entry['candidates']} of them found again in this map")
-        print(f"  {entry['steady']}")
-        if not found or entry.get("why"):
-            print(f"  LEFT ALONE: {entry.get('why', 'no transform')}")
-            continue
-        print(f"  turn {found['turn_deg']:+.1f} deg, shift "
-              f"({found['shift'][0]:+.2f}, {found['shift'][1]:+.2f}) m, from "
-              f"{found['agreeing']} agreeing pairs, median miss "
-              f"{found['residual_m']:.2f} m, worst {found['worst_m']:.2f} m")
-        print(f"  {len(entry['move'])} carried onto this map, "
-              f"{len(entry['merge'])} folded into the thing already standing "
-              f"there, {len(entry['left'])} left alone")
-        if entry["move"]:
-            far = sorted(math.hypot(*one["to"]) for one in entry["move"])
-            print(f"  the carried ones land {far[0]:.1f} m to {far[-1]:.1f} m "
-                  f"from the map's origin, median {far[len(far)//2]:.1f} m")
-        for one in sorted(entry["merge"], key=lambda one: -one["seen"])[:5]:
-            print(f"    {one['gone']} ({one['seen']} looks) -> {one['into']}, "
-                  f"{one['gap_m']} m apart")
+def carry_all(store, min_agreeing: int = MIN_AGREEING, write: bool = False,
+              say=print) -> dict[str, Any]:
+    """Every old map, best-supported first, each one planned afresh.
+
+    **One map at a time, and re-read in between, because the maps are not
+    independent.** Three old maps of one room hold three rows for the same sofa,
+    and if all three are planned against the same handful of things standing
+    here, all three land beside each other and none of them is folded into
+    anything -- which is the ambiguity this is meant to avoid, arrived at three
+    times over. Carrying the best-supported map first and then looking again
+    means the second map's sofa finds the first map's sofa already standing
+    where it is going, and folds into it.
+
+    Best-supported first for the same reason a survey starts from the longest
+    baseline: the map with the most agreeing pairs is the one whose transform is
+    least likely to be wrong, and everything carried afterwards is measured
+    against what it laid down.
+    """
+    done = {"moved": 0, "merged": 0, "refused": [], "left": 0, "rounds": []}
+    finished: set = set()
+    while True:
+        decided = plan(store, min_agreeing=min_agreeing)
+        if not write:
+            # Nothing is being carried, so nothing new comes to stand here and
+            # a second round would answer exactly what this one did. Every map
+            # measured against what is here now, said once.
+            for entry in decided["maps"]:
+                say("")
+                _say_one(entry, say)
+                done["moved"] += len(entry["move"])
+                done["merged"] += len(entry["merge"])
+                done["left"] += len(entry["left"])
+            say("\n  (a dry run measures every old map against the things "
+                "standing here now; carried one at a time, each later map has "
+                "more to fold into and moves fewer)")
+            return done
+        waiting = [one for one in decided["maps"]
+                   if one["map"] not in finished
+                   and one["fit"] and (one["move"] or one["merge"])]
+        if not waiting:
+            for entry in decided["maps"]:
+                if entry["map"] not in finished:
+                    say("")
+                    _say_one(entry, say)
+                    done["left"] += len(entry["left"])
+            return done
+        best = max(waiting, key=lambda one: one["fit"]["agreeing"])
+        say("")
+        _say_one(best, say)
+        finished.add(best["map"])
+        done["left"] += len(best["left"])
+        done["rounds"].append({"map": best["map"], "move": len(best["move"]),
+                               "merge": len(best["merge"])})
+        got = apply(store, {"map_session": decided["map_session"],
+                            "maps": [best]})
+        done["moved"] += got["moved"]
+        done["merged"] += got["merged"]
+        done["refused"].extend(got["refused"])
+
+
+def _say_one(entry: dict[str, Any], say=print) -> None:
+    """One old map's plan, in the words somebody reading a terminal wants."""
+    found = entry["fit"]
+    say(f"map {entry['map']}: {entry['things']} things, "
+        f"{entry['candidates']} of them found again in this map")
+    say(f"  {entry['steady']}")
+    if not found or entry.get("why"):
+        say(f"  LEFT ALONE: {entry.get('why', 'no transform could be fitted')}")
+        return
+    say(f"  turn {found['turn_deg']:+.1f} deg, shift "
+        f"({found['shift'][0]:+.2f}, {found['shift'][1]:+.2f}) m, from "
+        f"{found['agreeing']} agreeing pairs, median miss "
+        f"{found['residual_m']:.2f} m, worst {found['worst_m']:.2f} m")
+    say(f"  {len(entry['move'])} carried onto this map, "
+        f"{len(entry['merge'])} folded into the thing already standing "
+        f"there, {len(entry['left'])} left alone")
+    if entry["move"]:
+        far = sorted(math.hypot(*one["to"]) for one in entry["move"])
+        say(f"  the carried ones land {far[0]:.1f} m to {far[-1]:.1f} m "
+            f"from the map's origin, median {far[len(far) // 2]:.1f} m")
+    for one in sorted(entry["merge"], key=lambda one: -one["seen"])[:5]:
+        say(f"    {one['gone']} ({one['seen']} looks) -> {one['into']}, "
+            f"{one['gap_m']} m apart")
 
 
 def main() -> int:
@@ -423,18 +490,19 @@ def main() -> int:
 
     store = WorldStore(args.dir)
     try:
-        decided = plan(store)
-        report(decided)
+        now = store.map_session()
+        print(f"map session {now}: {len(store.placed(now))} things standing in "
+              f"it, {len(store.placed_elsewhere(now))} stranded in older maps")
+        done = carry_all(store, write=args.apply)
         if not args.apply:
             print("\nnothing was written -- pass --apply to carry this out")
             return 0
-        done = apply(store, decided)
-        print(f"\ncarried {done['moved']} onto map {decided['map_session']}, "
-              f"folded {done['merged']} into what was already there")
+        print(f"\ncarried {done['moved']} onto map {now}, folded "
+              f"{done['merged']} into what was already there")
         for why in done["refused"]:
             print(f"  refused: {why}")
-        left = store.placed_elsewhere(store.map_session())
-        print(f"{len(left)} things are still stranded")
+        print(f"{len(store.placed_elsewhere(store.map_session()))} things are "
+              f"still stranded")
         return 0
     finally:
         store.close()

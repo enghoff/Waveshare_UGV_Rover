@@ -190,6 +190,52 @@ def test_a_thing_that_was_seen_again_keeps_the_history_of_both() -> None:
             store.close()
 
 
+def test_three_old_maps_do_not_each_drop_their_own_copy_of_the_sofa() -> None:
+    """**The fault the rover's own store showed on the day this was written.**
+
+    By then the room had been mapped four times over, so the same sofa had a row
+    in three maps that were gone and one in the map the rover was on. Planning
+    all three old maps against that one at once carries three sofas across, each
+    landing beside the others and none of them folded into anything -- because
+    what each was measured against was the handful of things standing here
+    *before* any of them arrived. The result is the ambiguity the folding exists
+    to prevent, arrived at three times over, and from then on every bearing at
+    the sofa would be refused as unassignable.
+
+    So they are carried one map at a time, best-supported first, and the store is
+    read again in between.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        try:
+            room = [(spot, its_own(index))
+                    for index, spot in enumerate(WHERE[:4])]
+            # The same four things, mapped three times, each map its own frame.
+            a_room(store, room)
+            for turn, shift in ((25.0, (1.0, -1.0)), (-15.0, (-2.0, 3.0))):
+                store.new_map_session()
+                a_room(store, [(turned(spot, turn, shift), vector)
+                               for spot, vector in room])
+            # ...and a fourth map, which is the one the rover is on.
+            store.new_map_session()
+            a_room(store, [(turned(spot, 40.0, SHIFT), vector)
+                           for spot, vector in room])
+            check("four things standing here, twelve stranded in three maps",
+                  (len(store.placed(store.map_session())),
+                   len(store.placed_elsewhere(store.map_session()))), (4, 12))
+
+            reanchor.carry_all(store, min_agreeing=3, write=True,
+                               say=lambda *a: None)
+            check("the room is four things again", len(store.placed()), 4)
+            check("...with nothing left stranded",
+                  len(store.placed_elsewhere(store.map_session())), 0)
+            check("...and each holding every look from all four maps",
+                  sorted(one["observation_count"] for one in store.placed()),
+                  [8, 8, 8, 8])
+        finally:
+            store.close()
+
+
 def test_a_transform_nothing_agrees_on_moves_nothing() -> None:
     """Too little in common is an answer, and the answer is to leave it alone.
 
@@ -298,6 +344,7 @@ def test_a_fold_is_refused_where_one_look_saw_both() -> None:
 TESTS = (
     test_a_room_seen_twice_gives_up_the_transform_between_its_two_maps,
     test_a_thing_that_was_seen_again_keeps_the_history_of_both,
+    test_three_old_maps_do_not_each_drop_their_own_copy_of_the_sofa,
     test_a_transform_nothing_agrees_on_moves_nothing,
     test_two_things_that_land_on_one_double_are_left_alone,
     test_a_fold_is_refused_where_one_look_saw_both,
