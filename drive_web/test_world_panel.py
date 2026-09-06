@@ -164,14 +164,15 @@ def test_the_world_state_popup() -> None:
     # a position measured in the map's frame: what used to survive a map clear was
     # a list of things with nowhere to be, and the two were always cleared
     # together anyway.
+    session.world_selected = "object:1"
     session.world_link = _Recorder()
     session.world_map_cleared()
     check("clearing the map clears the world with it",
           [name for name, _ in session.world_link.calls],
           ["world_state_clear", "world_map_session"])
-    check("...and lets go of the frames it was holding",
-          session.world_frames, {})
-    check("...and of whatever was selected", session.world_selected, "")
+    check("...and holds on to the frames until the rover says they have gone",
+          list(session.world_frames), ["20260901-120000-abc123"])
+    check("...and to whatever was selected", session.world_selected, "object:1")
 
     # The store says what went, and it is the map's clear that is being reported.
     session.world_handle("world_state_clear",
@@ -179,6 +180,35 @@ def test_the_world_state_popup() -> None:
     note = session.world_state()["note"]
     check("what went is counted", "4 entities" in note and "96 " in note, True)
     check("...as part of clearing the map", note.startswith("cleared"), True)
+    check("...and the frames go once the rover says they have",
+          session.world_frames, {})
+    check("...and so does whatever was chosen", session.world_selected, "")
+
+    # A clear the rover refused, which is the outcome that used to be reported as
+    # a success. The rover waits for a look in flight and gives up after twenty
+    # seconds, and a resolve pass grows as the square of the store -- so a refusal
+    # is likeliest on exactly the full store somebody is pressing the button to
+    # empty. The map is gone by then and every row is measured against it.
+    session.world_frames["20260901-120000-abc123"] = held
+    session.world_selected = "object:1"
+    session.world_link = _Recorder()
+    session.world_map_cleared()
+    check("a refused clear still moves the session on",
+          [name for name, _ in session.world_link.calls],
+          ["world_state_clear", "world_map_session"])
+    session.world_handle("world_state_clear", {
+        "ok": False, "error": "an inspection has been running for longer than "
+                              "20 s; nothing was cleared"}, 0.1)
+    check("a refusal is not left reading as a clear",
+          session.world_state()["note"], "not cleared")
+    check("...with what stopped it on the error line",
+          "inspection" in session.world_state()["error"], True)
+    check("...and the popup keeps the frames it can still fetch",
+          list(session.world_frames), ["20260901-120000-abc123"])
+    check("...and the thing that is still there stays chosen",
+          session.world_selected, "object:1")
+    session.world_frames.clear()
+    session.world_selected = ""
 
     # A rover with no world-state component says so once. Anything else is a
     # popup that shows the same error every few seconds for the rest of the day.

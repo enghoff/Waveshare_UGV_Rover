@@ -33,6 +33,27 @@ Runtime data lives outside the deploy tree:
 The database grows through additive migrations in `schema.py`. Historical
 columns remain readable even when the current pipeline no longer writes them.
 
+It survives a reboot, because the navigation stack keeps its pose graph and the
+coordinates every row is measured in therefore still mean what they meant. Three
+things move it:
+
+- **Clearing the map from the console clears the world state with it.** One
+  button does both. Everything the store holds is a position in the map's frame
+  or a bearing from a pose in it, so what used to survive a map clear was a list
+  of things with nowhere to be.
+- **A map that changed without being cleared starts a new map session and keeps
+  the record.** A restore that failed, or a graph built from scratch, gives the
+  navigation stack a different map identity; `follow_map` notices within seconds
+  and moves the session. The rows stay, shown as measured against a map that has
+  gone rather than drawn in this room.
+- **`world_state_clear` on its own empties the store and leaves the map alone**,
+  which is what a repeatable experiment needs.
+
+The clear is refused while a look is in flight, after waiting `CLEAR_WAIT_S` for
+it. The console reports that as `not cleared` with the reason beside it, and the
+session moves on regardless, so rows that survived a refusal are marked as
+belonging to the map that has gone.
+
 ## How an observation becomes an entity
 
 An observation keeps its frame, region, capture time, camera, pose, bearing,

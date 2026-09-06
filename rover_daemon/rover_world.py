@@ -949,9 +949,13 @@ class RoverWorld:
         """The SLAM map was cleared, so start a new map session. A control call.
 
         The console owns the button that clears the map, so it tells the store
-        rather than the store polling for it. Nothing is deleted here: entities and
-        their history are meant to outlive a map, and only the stamp on new
-        observations moves.
+        rather than the store polling for it. Nothing is deleted here, and that is
+        a description of this call rather than of the policy: the console empties
+        the world state with `world_state_clear` and then moves the session on
+        with this. The two are separate so that the one case where the emptying is
+        refused -- a look still in flight -- leaves the rows that survived marked
+        as belonging to the map that has gone, rather than drawn as though they
+        had been measured in this one.
         """
         why = self._world_ready()
         if why:

@@ -459,13 +459,21 @@ class SessionWorld:
         and in practice the two were always cleared together -- the second press
         being a separate button was friction, not a safeguard.
 
-        So there is one button now, and it is the map's. The session is still
-        started afresh afterwards, because a clear that half fails must not leave
-        old coordinates comparable with new ones.
+        So there is one button now, and it is the map's. The session is started
+        afresh whatever the clear answers, because a clear that was refused
+        leaves rows measured against a map that has gone, and those must not stay
+        comparable with what the rover records next.
+
+        **What the popup lets go of waits for the reply, and that is the
+        difference between this and what it did before.** It used to drop the
+        frames it was holding and the thing that was chosen the moment the button
+        was pressed, and then report the reply's counts without looking at
+        whether the clear had worked at all -- so a refusal read as "cleared -- 0
+        entities, 0 observations" over a store that was still full. The rover
+        refuses while a look is in flight, which is likeliest on exactly the full
+        store somebody is trying to empty. See `world_handle`.
         """
         if self.world_link is not None and self.world.get("available"):
-            self.world_frames.clear()
-            self.world_selected = ""
             self.world_call("world_state_clear")
             self.world_call("world_map_session")
 
@@ -693,6 +701,14 @@ class SessionWorld:
             if name == "world_state_search":
                 self.world["searching"] = False
                 self.world_search_since = None
+            if name == "world_state_clear":
+                # **The map went and the world state did not.** The reason is on
+                # the error line; what this stops is the note beside it still
+                # reading `cleared -- 4 entities, 96 observations` from the last
+                # press, over a store that is still full. The session moved on
+                # anyway, so what survived is drawn as belonging to a map that is
+                # gone rather than as this room.
+                self.world["note"] = "not cleared"
             if name == "world_state_viewpoint":
                 # The refusal is the answer here rather than a fault: a thing
                 # with no position, a thing whose position belongs to a map that
@@ -771,12 +787,19 @@ class SessionWorld:
             self.world["note"] = (
                 f"cleared -- {body.get('entities', 0)} entities, "
                 f"{body.get('observations', 0)} observations")
+            # Only now, and not when the button was pressed: until the rover says
+            # the rows have gone, the frames are still fetchable and the thing
+            # that was chosen still exists.
+            self.world_frames.clear()
+            self.world_selected = ""
             moved = bool(self.world_payload)
             self.world_payload = {}
             self.world_refresh()
         elif name == "world_map_session":
             # Second half of the same button, and it has nothing of its own to
-            # say: the clear above has already reported what went.
+            # say: the clear above has already reported what went, or why it did
+            # not. This half runs either way, so rows that survived a refusal are
+            # marked as belonging to the map that has gone.
             self.world_refresh()
         elif name == "world_inspect":
             self.world["busy"] = False

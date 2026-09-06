@@ -24,7 +24,13 @@ read-only except for the existing navigation tool used after a result is chosen.
 - Map visibility, height and OAK range reject inconsistent crossings.
 - Appearance can reject or choose candidates after geometry accepts them.
 - Ambiguous evidence remains pending.
-- A map reset starts a new map session without deleting the observation record.
+- Clearing the map from the console clears the world state with it, because
+  every row in it is a position or a bearing measured against that map.
+- A map that changes without being cleared -- a restore that failed, a graph
+  built from scratch -- starts a new map session and keeps the record, which is
+  then shown as measured against a map that is gone.
+- A reboot onto the same map changes nothing: the navigation stack keeps its pose
+  graph, so the coordinates still mean what they meant.
 
 The design deliberately has no fixed object vocabulary and no local language
 model in the inspection path. Both approaches were measured and removed because

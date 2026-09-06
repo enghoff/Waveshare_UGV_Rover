@@ -19,11 +19,11 @@
   <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; height: 54px;">
     <div>
       <div style="font-size: 27px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1;">What the rover has seen</div>
-      <div style="font-size: 12.5px; color: #6B6355; margin-top: 4px;">The rover looks about once a second while it drives, and nothing here ever gives what it sees a name.</div>
+      <div style="font-size: 12.5px; color: #6B6355; margin-top: 4px;">As it drives it photographs what is around it and works out where each thing is &#8212; without ever needing a word for what the thing is.</div>
     </div>
     <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #6B6355; text-align: right; line-height: 1.5; white-space: nowrap;">
-      <div>Jetson Orin Nano &#183; TensorRT</div>
-      <div>perception on loopback 8776</div>
+      <div>Jetson Orin Nano</div>
+      <div>the models run on the rover&#8217;s own GPU</div>
     </div>
   </div>
 
@@ -31,7 +31,7 @@
 
     <div style="position: relative; width: 1200px; height: 556px;">
 
-      <svg viewBox="0 0 1200 556" width="1200" height="556" role="img" aria-label="The gimbal camera and the OAK-D-Lite feed rover_world.py, which sends one frame to perception_server.py on loopback 8776 and gets boxes and vectors back; the sidecar runs YOLOE, DINOv2 and SigLIP2 through TensorRT. rover_world.py writes one observation per region into store.py, which keeps the database and frames under ~/.ugv/world; resolve.py takes pending observations from the store and returns placed entities, which are what the console, a description, an approach and the voice tools are answered from." style="position: absolute; left: 0; top: 0;">
+      <svg viewBox="0 0 1200 556" width="1200" height="556" role="img" aria-label="The camera on the pan-tilt head and a second, depth-measuring camera both feed the part that takes the look; it sends one photograph to a separate program that runs three models on the GPU and gets regions and fingerprints back. Each look is written into the record as sightings that are never rewritten; a second part takes the sightings that are still unplaced and works out where things are, and those placed things are what the console, a typed description, an approach and the voice assistant are answered from." style="position: absolute; left: 0; top: 0;">
         <defs>
           <marker id="wa" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 Z" fill="#8C8371"></path>
@@ -48,121 +48,122 @@
         </g>
         <g font-family="'IBM Plex Mono', ui-monospace, Consolas, monospace" font-size="9.5" fill="#6B6355">
           <text x="160" y="42" text-anchor="middle">a still</text>
-          <text x="160" y="52" text-anchor="middle">0.36 s</text>
-          <text x="160" y="178" text-anchor="middle">a range</text>
+          <text x="160" y="52" text-anchor="middle">picture</text>
+          <text x="160" y="178" text-anchor="middle">a distance</text>
           <text x="160" y="188" text-anchor="middle">sometimes</text>
-          <text x="413" y="110" text-anchor="middle">8776</text>
-          <text x="413" y="120" text-anchor="middle">one look</text>
-          <text x="667" y="110" text-anchor="middle">TensorRT</text>
-          <text x="667" y="120" text-anchor="middle">or the CPU</text>
-          <text x="298" y="278">one row per region,</text>
+          <text x="413" y="110" text-anchor="middle">one look</text>
+          <text x="413" y="120" text-anchor="middle">out, regions back</text>
+          <text x="667" y="115" text-anchor="middle">on the GPU</text>
+          <text x="298" y="278">one row per thing seen,</text>
           <text x="298" y="288">never rewritten</text>
-          <text x="413" y="410" text-anchor="middle">pending</text>
-          <text x="413" y="420" text-anchor="middle">placed</text>
-          <text x="667" y="420" text-anchor="middle">entities</text>
+          <text x="413" y="410" text-anchor="middle">not yet placed</text>
+          <text x="413" y="420" text-anchor="middle">out, placed back</text>
+          <text x="667" y="420" text-anchor="middle">things, with places</text>
         </g>
       </svg>
 
       <div style="position: absolute; left: 0px; top: 0px; width: 132px; height: 116px; box-sizing: border-box; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 3px; padding: 9px 10px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">gimbal camera</div>
-        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">The camera on the pan-tilt head. Every look is taken through it.</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">the main camera</div>
+        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">On the head that pans and tilts. Every look is taken through it.</div>
       </div>
 
       <div style="position: absolute; left: 0px; top: 136px; width: 132px; height: 116px; box-sizing: border-box; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 3px; padding: 9px 10px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">OAK-D-Lite</div>
-        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">It can measure how far away something is, but only within its own narrower view, and only when it is switched on.</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">the depth camera</div>
+        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">Measures how far away things are &#8212; but over a narrower view, and only when switched on.</div>
       </div>
 
       <div style="position: absolute; left: 188px; top: 0px; width: 196px; height: 268px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;">
         <div>
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">rover_world.py</div>
-          <div style="font-size: 9px; color: #8C8371; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.07em;">in the daemon</div>
+          <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">takes the look</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">rover_world.py</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">A look is a single photograph, taken once the rover has moved 15 cm or turned 25 degrees, and at most once a second.</div>
-        <div style="border-top: 1px solid #C9D8E6; padding-top: 8px; font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Where the rover was is read before and after the shutter, and the midpoint used. If it moved more than 30 cm in between, the picture is kept but the direction is not trusted.</div>
-        <div style="margin-top: auto; font-size: 10px; line-height: 1.35; color: #6B6355; font-style: italic;">The daemon owns this camera and the stop button, so nothing here is allowed to crash.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">A look is one photograph, taken once the rover has moved 15 cm or turned 25 degrees, and at most once a second.</div>
+        <div style="border-top: 1px solid #C9D8E6; padding-top: 8px; font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Where the rover was is read before and after the shutter, and the middle used. If it moved more than 30 cm in between, the picture is kept but the direction is not.</div>
+        <div style="margin-top: auto; font-size: 10px; line-height: 1.35; color: #6B6355; font-style: italic;">This sits inside the program that also holds the stop button, so nothing here may crash.</div>
       </div>
 
       <div style="position: absolute; left: 442px; top: 0px; width: 196px; height: 268px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;">
         <div>
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">perception_server.py</div>
-          <div style="font-size: 9px; color: #8C8371; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.07em;">a process of its own</div>
+          <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">looks at the picture</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">perception_server.py</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Send it a picture and it returns the regions it found, each with two vectors describing it. It runs on its own because half a gigabyte of models is what a kernel short of memory kills first, and it must not take the daemon down with it.</div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">The models only load when the first look arrives, so a rover that never looks at anything costs neither the seven seconds nor the memory.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Send it a photograph and it hands back the things it found in it, each with two fingerprints of what it looks like.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">It is a program of its own, because half a gigabyte of models is the first thing a machine short of memory kills, and it must not take the rover&#8217;s controls down with it.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">Nothing loads until the first look arrives, so a rover that never looks pays nothing.</div>
       </div>
 
       <div style="position: absolute; left: 696px; top: 0px; width: 504px; height: 268px; box-sizing: border-box; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 3px; padding: 14px 16px; display: flex; flex-direction: column;">
         <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
-          <div style="font-size: 13px; font-weight: 600; color: #8A5215;">three models</div>
+          <div style="font-size: 13px; font-weight: 600; color: #8A5215;">three models, off the shelf</div>
           <div style="font-size: 9.5px; color: #9A8B70;">none of them is asked what it is looking at</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px;">
           <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 104px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">YOLOE</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Finds the regions in a picture. Its list of words was cut out of the model, so all it can report is that something is there.</div>
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">finds the things</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">YOLOE</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Picks out the separate things in a picture. Its vocabulary was cut out of it, so all it can report is that something is there.</div>
           </div>
           <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 104px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">DINOv2</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Says whether two regions are the same object. It is only asked about candidates the geometry has already accepted, and never suggests any itself.</div>
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">same one, or not</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">DINOv2</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Says whether two pictures show the same object. It is only ever asked about pairs the geometry has already accepted.</div>
           </div>
           <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 104px; box-sizing: border-box;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">SigLIP2</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Turns a region into a vector that somebody&#8217;s words can be matched against later. It is never asked to pick a word for a picture.</div>
+            <div style="font-size: 10.5px; font-weight: 600; color: #8A5215;">what it looks like</div>
+            <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 9px; color: #9A8B70;">SigLIP2</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Turns a thing into a fingerprint that somebody&#8217;s words can be matched against later. It never picks a word itself.</div>
           </div>
         </div>
-        <div style="margin-top: auto; border-top: 1px solid #E4CFB2; padding-top: 8px; font-size: 9.5px; line-height: 1.35; color: #6B6355;">Naming was tried here and measured. Picking the nearest phrase from a fixed word list scored between 0.08 and 0.12 whatever the picture held, and it called a sofa a computer monitor. The three models take 16, 70 and 42 milliseconds a look on the GPU and 520, 1137 and 854 on the CPU, and the vectors the two produce agree only to 0.86 &#8212; so each observation records which of them it came from, and rows from the other are left out of a comparison rather than scored in it.</div>
+        <div style="margin-top: auto; border-top: 1px solid #E4CFB2; padding-top: 8px; font-size: 9.5px; line-height: 1.35; color: #6B6355;">Nothing here is asked to name what it sees. Made to pick from a fixed list of words it called a sofa a computer monitor, and was no less certain of that than of anything else. So the rover keeps what a thing looks like as it is, and matches it against your words only at the moment you ask.</div>
       </div>
 
       <div style="position: absolute; left: 0px; top: 296px; width: 132px; height: 216px; box-sizing: border-box; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 3px; padding: 9px 10px;">
-        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">~/.ugv/world</div>
-        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">One database, and a JPEG for every look. It sits outside the deploy tree because a deploy replaces that tree, and this is the evidence.</div>
-        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 7px;">Starting a new map does not empty it. Every row remembers which map it was measured against, so the old ones simply stop being current.</div>
+        <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; color: #4A443A;">the record</div>
+        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 5px;">One database, and a photograph for every look. It is kept apart from the rover&#8217;s software, so installing a new version never wipes it.</div>
+        <div style="font-size: 10px; line-height: 1.35; color: #6B6355; margin-top: 7px;">Starting a new map does not empty it. Every entry says which map it was measured against.</div>
       </div>
 
       <div style="position: absolute; left: 188px; top: 296px; width: 196px; height: 260px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;">
         <div>
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">store.py</div>
-          <div style="font-size: 9px; color: #8C8371; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.07em;">observations are not entities</div>
+          <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">a sighting is not a thing</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">store.py</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">An observation is what the models said about one picture at one moment. An entity is what the rover currently believes about a lasting thing in the room.</div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">If an answer could edit a row in place, &#8220;the sofa looks different today&#8221; and &#8220;that is a different sofa&#8221; would leave behind the same record. So a look only ever adds one.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">A sighting is what the models said about one photograph at one moment. What the rover believes about a lasting thing in the room is put together from several of them.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">If an answer could rewrite an earlier row, &#8220;the sofa looks different today&#8221; and &#8220;that is a different sofa&#8221; would leave the same record behind. So a look only ever adds one.</div>
       </div>
 
       <div style="position: absolute; left: 442px; top: 296px; width: 196px; height: 260px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;">
         <div>
-          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">resolve.py</div>
-          <div style="font-size: 9px; color: #8C8371; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.07em;">every ten seconds</div>
+          <div style="font-size: 12px; font-weight: 600; color: #2F5D8C;">works out where things are</div>
+          <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; margin-top: 3px;">resolve.py &#183; every ten seconds</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">One sighting places nothing. It takes two at least twelve degrees apart, from spots 40 cm apart, and where they cross must agree with the map, the height and any distance the OAK measured.</div>
-        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">What a thing looks like only rules out or chooses between candidates the geometry accepts. Anything still ambiguous is left pending.</div>
-        <div style="margin-top: auto; font-size: 10px; line-height: 1.35; color: #6B6355; font-style: italic;">Every pending sighting is compared with every other: 1.4 s at 500 of them, 8 s at 2000.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">One sighting places nothing. It takes two, twelve degrees apart and from spots 40 cm apart, and where the two lines cross has to agree with the map, the height, and any distance the depth camera measured.</div>
+        <div style="font-size: 10.5px; line-height: 1.4; color: #3D3A33;">What a thing looks like only rules out or chooses between the candidates geometry accepts. Anything still ambiguous waits for next time.</div>
       </div>
 
       <div style="position: absolute; left: 696px; top: 296px; width: 504px; height: 260px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 14px 16px; display: flex; flex-direction: column;">
         <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
           <div style="font-size: 13px; font-weight: 600; color: #2F5D8C;">what it can then be asked</div>
-          <div style="font-size: 9.5px; color: #8C8371;">the voice model gets the three that only read</div>
+          <div style="font-size: 9.5px; color: #8C8371;">only the last of these moves the rover</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-top: 12px;">
-          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
+          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 88px; box-sizing: border-box;">
             <div style="font-size: 10.5px; font-weight: 600; color: #2F5D8C;">the world panel</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Everything the rover has placed, drawn on the console&#8217;s map, with the photograph behind each look.</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Everything the rover has placed, drawn on the console&#8217;s map, with the photograph behind each look a click away.</div>
           </div>
-          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
+          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 88px; box-sizing: border-box;">
             <div style="font-size: 10.5px; font-weight: 600; color: #2F5D8C;">a description</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Type what you are after. It goes through the same model and is compared with every stored vector; below 0.09 the answer is no.</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Type what you are after. Your words go through the same model the pictures did, and are compared against everything stored.</div>
           </div>
-          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
+          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 88px; box-sizing: border-box;">
             <div style="font-size: 10.5px; font-weight: 600; color: #2F5D8C;">where to stand</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">A thing&#8217;s own position is inside the sofa, so what comes back is floor the rover can reach, on a line it has really seen it along.</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">A thing&#8217;s own position is inside the sofa, so what comes back instead is floor the rover can reach, on a line it has really seen the thing along.</div>
           </div>
-          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
-            <div style="font-size: 10.5px; font-weight: 600; color: #2F5D8C;">the voice tools</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Find a thing, go to it, or measure between two of them. Actually driving there is still a Nav2 goal, as on the page before.</div>
+          <div style="background: #F6F9FC; border: 1px solid #C9D8E6; border-radius: 2px; padding: 8px 9px; height: 88px; box-sizing: border-box;">
+            <div style="font-size: 10.5px; font-weight: 600; color: #2F5D8C;">the voice assistant</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Find a thing, go to it, or measure between two of them. Actually driving there is a navigation goal, as on the page before.</div>
           </div>
         </div>
-        <div style="margin-top: auto; border-top: 1px solid #C9D8E6; padding-top: 8px; font-size: 9.5px; line-height: 1.35; color: #6B6355;">Still unproven. The direction the OAK points has been measured; where it sits has not, and neither has the gimbal camera&#8217;s offset from the position SLAM reports, so any height is relative to the camera rather than to the floor. What is still owed is a real drive with the OAK switched on, to show that a measured distance stops two different objects on one line of sight being merged into one.</div>
       </div>
 
     </div>
@@ -175,11 +176,11 @@
         </div>
         <div style="display: flex; align-items: center; gap: 7px;">
           <span style="width: 13px; height: 13px; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 2px; display: inline-block; flex-shrink: 0;"></span>
-          <span>stock models, compiled for this GPU</span>
+          <span>off-the-shelf models, compiled for this GPU</span>
         </div>
         <div style="display: flex; align-items: center; gap: 7px;">
           <span style="width: 13px; height: 13px; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 2px; display: inline-block; flex-shrink: 0;"></span>
-          <span>outside the code &#8212; the cameras, and the record they leave</span>
+          <span>the cameras, and the record they leave</span>
         </div>
       </div>
       <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #8C8371; white-space: nowrap;">inspector.py &#183; resolve.py</div>
