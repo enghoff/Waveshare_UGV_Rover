@@ -308,6 +308,62 @@ class RoverNav:
                         "again to hear how it is getting on."
                         % round(budget_s / 60.0)}
 
+    def _trip_ended(self, kind: str, asked: dict[str, Any], outcome) -> None:
+        """Tell whoever is holding a conversation that a move nobody waited for
+        is over.
+
+        **The gap this closes is a rover that says "I'm on my way" and then never
+        mentions it again.** `go_to_thing` and `explore` answer in a second and
+        drive for a minute or ten, because a tool call that blocked for the
+        length of a drive would block `stop_driving` with it. The cost of that
+        shape was never paid until now: nothing asks the model anything once the
+        trip is running, so the moment the wheels stop is a moment the model has
+        no way of learning about. It is left saying it is on its way to the sofa
+        long after it has arrived, and the person who asked is waiting for an
+        announcement that was never coming.
+
+        So the news goes up the road the pictures already use -- the loopback
+        address a client registers with `set_vision`, which exists exactly while
+        somebody is holding a conversation. Written as something to say rather
+        than as a result to parse, because what happens to it at the other end is
+        that a model reads it and speaks.
+
+        Nothing waits for this and nothing retries it. A conversation that is not
+        running is the ordinary case and costs one refused connection on the move
+        thread, after the move.
+        """
+        link = getattr(self, "vision", None)
+        if link is None:
+            return
+        said = str((asked or {}).get("said") or "").strip()
+        reason = getattr(outcome, "reason", "")
+        detail = str(getattr(outcome, "detail", "") or "").strip()
+        if kind == "errand":
+            where = f"to look at {said}" if said else "to the place it was sent"
+            if reason == "arrived":
+                news = (f"The rover has arrived. It drove {where} and has "
+                        f"stopped where it can see it.")
+            else:
+                news = (f"The rover has stopped without getting {where}.")
+        elif kind == "explore":
+            news = ("The rover has finished exploring on its own."
+                    if reason == "arrived" else
+                    "The rover has stopped exploring.")
+        else:                                       # a kind added later
+            news = f"The rover has finished what it was doing ({kind})."
+        if detail:
+            news = f"{news} {detail[0].upper()}{detail[1:]}."
+        # The instruction rather than the news, and it is here for the reason
+        # every tool note on this daemon carries one: a model handed a fact with
+        # nothing asked of it may reason about it silently, and the whole point
+        # of this arriving unasked is that it is said out loud.
+        news = (f"{news} Tell the person, in one short sentence. Nobody asked "
+                f"you this -- the rover is telling you it happened.")
+        answer = link.notice(news)
+        if not answer.get("ok"):
+            print(f"[rover] the trip ended and nobody could be told: "
+                  f"{answer.get('error')}", flush=True)
+
     def _tool_stop_driving(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         if self.nav is None:
             return {"ok": True, "stopped": True,

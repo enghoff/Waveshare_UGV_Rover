@@ -298,6 +298,12 @@ class RosNavigator:
         #: `in_background` sets out.
         self._away_thread: threading.Thread | None = None
         self._away_kind = ""
+        #: Called with `(kind, asked, outcome)` the moment one of these ends, by
+        #: whoever wants to know without asking. Nothing here reads it back --
+        #: `ran_errand` and `explored` remain the record, and this is only the
+        #: news travelling while it is still news. The daemon points it at the
+        #: conversation; see `RoverNav._trip_ended`.
+        self.told = None
         self._away_since: float | None = None
         self._away_asked: dict[str, Any] = {}
         self._away_last: dict[str, tuple[dict[str, Any], Outcome]] = {}
@@ -790,8 +796,20 @@ class RosNavigator:
                               "the %s stopped with an error: %s: %s"
                               % (kind, type(error).__name__, error))
         with self._away_lock:
-            self._away_last[kind] = (dict(self._away_asked), outcome)
+            asked = dict(self._away_asked)
+            self._away_last[kind] = (asked, outcome)
             self._away_since = None
+        # Outside the lock, because what this ends up doing is an HTTP request to
+        # another process, and holding the lock across it would make every reader
+        # of `away` wait on a socket. Anything it raises is its own problem: this
+        # thread's job was the move, the move is over, and a listener that throws
+        # must not be able to turn a completed drive into a lost one.
+        told = self.told
+        if told is not None:
+            try:
+                told(kind, asked, outcome)
+            except Exception:
+                pass
 
     def explore_in_background(self, budget_s: float | None = None,
                               min_frontier_m: float | None = None) -> dict[str, Any]:

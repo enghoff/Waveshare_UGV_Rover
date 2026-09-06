@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 
 import _paths  # noqa: F401 -- puts drive_web and voice_chat on the path
 from test_harness import SKIP, check
@@ -308,6 +309,102 @@ def test_a_second_conversation_starts_at_once() -> None:
           omni._frames, None)
 
 
+def test_the_rover_can_say_something_nobody_asked_it_for() -> None:
+    """A trip that has ended, reaching the model with no tool call to ride on.
+
+    **The whole road, from the port the daemon posts to as far as the session.**
+    `go_to_thing` answers "it has set off" in a second and the drive takes a
+    minute, so the moment the wheels stop is a moment nothing was going to tell
+    the model about -- it goes on saying it is on its way to the sofa, and the
+    person who asked waits for an announcement that never comes. What closes that
+    is the daemon posting a sentence to the receiver it already knows about,
+    which is why this is tested through an HTTP request rather than by calling
+    the relay.
+    """
+    import asyncio
+    import http.client
+    import json as _json
+    import socket
+    import threading
+    import omni_bridge
+
+    def free_port() -> int:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            return sock.getsockname()[1]
+
+    said: list[str] = []
+    port = free_port()
+    console = omni_bridge.Omni("127.0.0.1:1",
+                               lambda text, err=False: said.append(text),
+                               frame_port=port)
+
+    def notice(text: str) -> dict:
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        body = _json.dumps({"text": text}).encode()
+        connection.request("POST", "/notice", body=body,
+                           headers={"Content-Length": str(len(body)),
+                                    "Content-Type": "application/json"})
+        payload = _json.loads(connection.getresponse().read())
+        connection.close()
+        return payload
+
+    class Listening:
+        """A session that writes down what it was asked to mention."""
+
+        def __init__(self) -> None:
+            self.mentioned: list[str] = []
+
+        async def mention(self, text: str) -> bool:
+            self.mentioned.append(text)
+            return True
+
+    loop = asyncio.new_event_loop()
+    spinning = threading.Thread(target=loop.run_forever, daemon=True)
+    spinning.start()
+    try:
+        console._frame_server()
+
+        # Nobody is talking to the rover. The receiver stays bound between
+        # conversations, so this is the ordinary case rather than a failure --
+        # but it must be visible, or a trip that ended in silence looks the same
+        # as one that was announced.
+        answer = notice("The rover has arrived.")
+        check("news with no conversation running is accepted",
+              answer["ok"], True)
+        check("...and says it reached nobody", answer["relayed"], False)
+        check("...and is written down anyway, with the sentence in it",
+              any("The rover has arrived." in line for line in said), True)
+
+        session = Listening()
+        with console._lock:
+            console._loop = loop
+            console._session = session
+        answer = notice("The rover has arrived at the sofa.")
+        check("news with a conversation running is taken", answer["relayed"], True)
+        for _ in range(200):
+            if session.mentioned:
+                break
+            time.sleep(0.01)
+        check("...and reaches the session as the sentence the daemon wrote",
+              session.mentioned, ["The rover has arrived at the sofa."])
+        for _ in range(200):
+            if any("rover: " in line for line in said):
+                break
+            time.sleep(0.01)
+        check("...and the transcript records that it was spoken",
+              any(line == "rover: The rover has arrived at the sofa."
+                  for line in said), True)
+    finally:
+        with console._lock:
+            console._loop = None
+            console._session = None
+        loop.call_soon_threadsafe(loop.stop)
+        spinning.join(timeout=5)
+        loop.close()
+        console.close()
+
+
 def test_the_conversation_is_written_down() -> None:
     """What the model called, and what it was told back.
 
@@ -521,6 +618,7 @@ TESTS = (
     test_talking_needs_no_console_token,
     test_what_the_browser_heard,
     test_a_second_conversation_starts_at_once,
+    test_the_rover_can_say_something_nobody_asked_it_for,
     test_the_conversation_is_written_down,
     test_the_model_hanging_up_on_a_quiet_room,
 )

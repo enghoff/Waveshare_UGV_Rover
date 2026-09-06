@@ -22,6 +22,7 @@ import base64
 import json
 import os
 import sys
+import time
 from typing import Any
 
 import numpy as np
@@ -42,6 +43,13 @@ IN_RATE = 16000
 OUT_RATE = 24000
 
 OPEN_TIMEOUT_S = 15.0
+
+#: How long a mention waits for the conversation to be free before it goes in
+#: without a reply being asked for. Generous because arriving somewhere is not
+#: news that goes stale in seconds, and bounded because a session that never
+#: falls quiet must not hold the rover's news for ever. See `Session.mention`.
+MENTION_WAIT_S = 20.0
+MENTION_POLL_S = 0.25
 
 # The international endpoint. The mainland host refuses this account's key with a
 # 401, which reads like a bad key and is a wrong region -- see the note in
@@ -379,6 +387,63 @@ class Session:
         """Ask for a reply, and remember that one is owed."""
         self._asked += 1
         await self.send({"type": "response.create"})
+
+    async def mention(self, text: str) -> bool:
+        """Put something the rover has noticed into the conversation, unasked.
+
+        **The only thing in here that starts at the rover's end.** Everything
+        else happens because somebody spoke or because a tool the model called
+        came back, and that is exactly the shape that leaves a person waiting:
+        `go_to_thing` answers "it has set off" in a second and the drive takes a
+        minute, so the moment the wheels stop is a moment nothing tells the
+        model about. It says it is on its way and then never mentions the sofa
+        again. This is the road back.
+
+        **It waits for the conversation to be free rather than cutting in**, for
+        two different reasons that happen to want the same thing. A
+        `response.create` sent while a turn is in progress is discarded without a
+        word -- the rule `_show_picture` is built around, and the reason this
+        cannot simply be sent the instant the news arrives -- and one sent while
+        somebody is mid-sentence is the rover talking over them.
+
+        If the conversation does not go quiet within `MENTION_WAIT_S` the news
+        goes in anyway, with no reply asked for: the model is then holding it and
+        will say it in its own next turn, which is late but not lost. That is the
+        better of the two failures, because the alternative is dropping the one
+        thing the person is waiting to hear.
+
+        Answers whether the model was asked to speak it.
+        """
+        if self.closed:
+            return False
+        deadline = time.monotonic() + MENTION_WAIT_S
+        while not self._free():
+            if self.closed or time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(MENTION_POLL_S)
+        if self.closed:
+            return False
+        await self.send({"type": "conversation.item.create",
+                         "item": {"type": "message", "role": "user",
+                                  "content": [{"type": "input_text",
+                                               "text": text}]}})
+        if not self._free():
+            if not self.quiet:
+                self.indicator.say("  [the rover's own news went in without a "
+                                   "reply being asked for: the conversation was "
+                                   "busy]")
+            return False
+        await self.ask()
+        return True
+
+    def _free(self) -> bool:
+        """Nothing is in flight that an injected turn would land in the middle of.
+
+        `idle` and one more thing: a picture going up holds the microphone and
+        turn detection while it commits a turn by hand, and a second item created
+        inside that dance is an item inside somebody else's turn.
+        """
+        return self.idle and not self.hold_mic
 
     @property
     def idle(self) -> bool:

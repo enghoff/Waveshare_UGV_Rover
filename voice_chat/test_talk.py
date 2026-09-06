@@ -357,6 +357,36 @@ def test_frames() -> None:
         for _ in range(talk_frames.MAX_FRAMES + 2):
             post(jpeg)
         check("only a few frames are kept", len(frames._frames), talk_frames.MAX_FRAMES)
+
+        # The road back. The daemon holds this address for pictures, and a trip
+        # that has finished has nobody waiting on a call to be told through.
+        status, payload = post(b'{"text": "The rover has arrived."}', "/notice")
+        check("news posted with nobody listening is accepted",
+              (status, payload["ok"]), (200, True))
+        check("...and says plainly that it reached no conversation",
+              payload["relayed"], False)
+
+        taken = []
+        frames._notice = lambda text: taken.append(text) or True
+        status, payload = post(b'{"text": "The rover has arrived."}', "/notice")
+        check("...and reaches a conversation that is listening",
+              (payload["ok"], payload["relayed"]), (True, True))
+        check("...with the sentence unaltered", taken, ["The rover has arrived."])
+
+        status, payload = post(b"not json at all", "/notice")
+        check("a notice that is not a notice is refused",
+              (status, payload["ok"]), (400, False))
+        status, payload = post(b'{"text": "   "}', "/notice")
+        check("...and so is one with nothing in it",
+              (status, payload["ok"]), (400, False))
+        status, payload = post(
+            b'{"text": "' + b"x" * talk_frames.MAX_NOTICE_BYTES + b'"}', "/notice")
+        check("...and one longer than anything worth saying out loud",
+              (status, payload["ok"]), (413, False))
+        # A picture is still a picture: the second path did not take the first
+        # one's place.
+        status, payload = post(jpeg)
+        check("frames still go where frames go", payload["ok"], True)
     finally:
         frames.shutdown()
         frames.server_close()
@@ -561,6 +591,52 @@ def test_talk_session() -> None:
         await session.handle({"type": "response.created", "response": {}})
         await session.handle({"type": "response.done", "response": {}})
         check("...and is once it has been and gone", session.idle, True)
+
+        # The one thing in the conversation that starts at the rover's end. A
+        # trip takes minutes and the tool that started it answered in a second,
+        # so without this the model is left saying it is on its way long after
+        # the wheels have stopped.
+        ws.sent.clear()
+        spoken = await session.mention("The rover has arrived.")
+        check("the rover's own news goes in as a turn of its own",
+              ws.types(), ["conversation.item.create", "response.create"])
+        item = ws.sent[0]["item"]
+        check("...as something said to the model, not as a tool result",
+              (item["role"], item["content"][0]["type"]), ("user", "input_text"))
+        check("...carrying the sentence itself",
+              item["content"][0]["text"], "The rover has arrived.")
+        check("...and it was asked to be spoken", spoken, True)
+        await session.handle({"type": "response.created", "response": {}})
+        await session.handle({"type": "response.done", "response": {}})
+
+        # News that lands mid-turn. A `response.create` sent while a turn is in
+        # progress is discarded by this service without a word, and one sent over
+        # somebody speaking is the rover talking across them -- so the wait runs
+        # out and the news goes in unspoken rather than being dropped. The model
+        # is then holding it for its own next turn, which is late but not lost.
+        ws.sent.clear()
+        waited, omni.MENTION_WAIT_S = omni.MENTION_WAIT_S, 0.05
+        try:
+            session.responding = True
+            spoken = await session.mention("The rover has stopped short.")
+        finally:
+            omni.MENTION_WAIT_S = waited
+            session.responding = False
+        check("news arriving mid-turn is still put in front of the model",
+              ws.types(), ["conversation.item.create"])
+        check("...without a reply asked for over the top of one in progress",
+              spoken, False)
+
+        # And a session that has ended says nothing at all rather than writing
+        # into a socket that has gone.
+        ws.sent.clear()
+        session.closed = True
+        try:
+            check("a closed session takes no news", await session.mention("late"),
+                  False)
+            check("...and sends nothing", ws.sent, [])
+        finally:
+            session.closed = False
 
     try:
         asyncio.run(exercise())

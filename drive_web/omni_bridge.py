@@ -522,11 +522,55 @@ class Omni:
         if frames is not None:
             frames.forget()
             return frames
-        frames = Frames(port=self.frame_port, host=FRAME_HOST)
+        frames = Frames(port=self.frame_port, host=FRAME_HOST,
+                        notice=self._relay)
         frames.serve_in_background()
         with self._lock:
             self._frames = frames
         return frames
+
+    def _relay(self, text: str) -> bool:
+        """Hand the rover's own news to the conversation, from the frame server's
+        thread.
+
+        Answers whether there was a conversation to hand it to, and not whether
+        the model went on to say it. The daemon posting this is a thread inside a
+        move that has just ended; making it wait while a session finds a gap to
+        speak in would hold the rover's move thread open on somebody else's turn.
+        So this hands the coroutine to the loop and returns.
+
+        A console with no session is the ordinary case rather than a failure --
+        the receiver stays bound between conversations, so news arrives here
+        whenever nobody is talking to the rover -- and it is logged rather than
+        raised, because the line is worth having in the transcript beside the
+        conversation it did not reach.
+        """
+        text = (text or "").strip()
+        if not text:
+            return False
+        with self._lock:
+            loop, session = self._loop, self._session
+        if loop is None or session is None:
+            self._note(f"microphone: nothing is listening, so the rover's news "
+                       f"went nowhere -- {text}")
+            return False
+
+        def landed(task) -> None:
+            try:
+                spoken = task.result()
+            except Exception as error:
+                self._note(f"microphone: the rover's news could not be put to "
+                           f"the model: {type(error).__name__}: {error}", err=True)
+                return
+            self._note(f"rover: {text}" if spoken else
+                       f"rover (unspoken): {text}")
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(session.mention(text), loop)
+        except RuntimeError:                # the loop closed between the two lines
+            return False
+        future.add_done_callback(landed)
+        return True
 
     def _send_audio(self, pcm: bytes) -> None:
         wire = self._wire

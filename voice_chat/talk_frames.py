@@ -10,6 +10,9 @@ import time
 FRAME_TTL_S = 60.0
 MAX_FRAMES = 4
 MAX_FRAME_BYTES = 180 * 1024
+#: A line of news is a sentence or two. Bounded because this port is
+#: reachable by anything on the rover and the text goes to the model.
+MAX_NOTICE_BYTES = 4 * 1024
 
 def _jpeg_size(data: bytes) -> tuple[int | None, int | None]:
     """Width and height out of a JPEG's frame header, without decoding it.
@@ -70,12 +73,34 @@ class Frames(http.server.ThreadingHTTPServer):
     allow_reuse_address = False
     daemon_threads = True  # inherited, and load-bearing: see above
 
-    def __init__(self, port: int = 8767, host: str = "0.0.0.0") -> None:
+    def __init__(self, port: int = 8767, host: str = "0.0.0.0",
+                 notice=None) -> None:
         super().__init__((host, port), _FrameHandler)
         self._frames: dict[str, tuple[bytes, float]] = {}
         self._seq = 0
         self._lock = threading.Lock()
         self.posted = 0
+        #: Called with one line of the rover's own news, if anybody is listening
+        #: for it. `POST /notice` is the road back: the daemon has this address
+        #: already, because a conversation registers it for pictures, and a trip
+        #: that has finished has to reach the model somehow. See `mention`.
+        self._notice = notice
+        self.noticed = 0
+
+    def mention(self, text: str) -> bool:
+        """Hand one line of news to whoever is listening. Answers whether it was
+        taken.
+
+        False is ordinary rather than an error: the daemon keeps this address
+        from one conversation to the next and may post a trip's ending into a
+        console that has nobody talking to it.
+        """
+        listener = self._notice
+        if listener is None:
+            return False
+        with self._lock:
+            self.noticed += 1
+        return bool(listener(text))
 
     def stash(self, jpeg: bytes) -> str:
         with self._lock:
@@ -132,8 +157,12 @@ class _FrameHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:
-        if self.path.rstrip("/") not in ("/frame", ""):
-            self._reply(404, {"ok": False, "error": "only /frame"})
+        path = self.path.rstrip("/")
+        if path == "/notice":
+            self._do_notice()
+            return
+        if path not in ("/frame", ""):
+            self._reply(404, {"ok": False, "error": "only /frame and /notice"})
             return
         length = int(self.headers.get("Content-Length") or 0)
         data = self.rfile.read(length) if length else b""
@@ -155,9 +184,36 @@ class _FrameHandler(http.server.BaseHTTPRequestHandler):
         self._reply(200, {"ok": True, "image": name, "w": width, "h": height,
                           "bytes": len(data)})
 
+    def _do_notice(self) -> None:
+        """One line of the rover's own news, on its way to the model.
+
+        Answered at once with whether anybody took it, and never with whether the
+        model went on to say it: the poster is a thread inside a move that has
+        just ended, and what it needs to know is that it can stop carrying this.
+        """
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_NOTICE_BYTES:
+            self._reply(413, {"ok": False,
+                              "error": f"{length} bytes is more news than a "
+                                       f"conversation takes at once"})
+            return
+        try:
+            said = json.loads(self.rfile.read(length) if length else b"{}")
+            text = str(said["text"]).strip()
+        except (KeyError, TypeError, ValueError) as error:
+            self._reply(400, {"ok": False,
+                              "error": f"a notice is JSON with a text in it: "
+                                       f"{type(error).__name__}"})
+            return
+        if not text:
+            self._reply(400, {"ok": False, "error": "a notice with nothing in it"})
+            return
+        self._reply(200, {"ok": True, "relayed": self.server.mention(text)})
+
     def do_GET(self) -> None:
         if self.path.rstrip("/") == "/health":
-            self._reply(200, {"ok": True, "frames": self.server.posted})
+            self._reply(200, {"ok": True, "frames": self.server.posted,
+                              "notices": self.server.noticed})
         else:
             self._reply(404, {"ok": False, "error": "only /frame and /health"})
 

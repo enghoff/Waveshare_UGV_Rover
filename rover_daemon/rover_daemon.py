@@ -201,6 +201,10 @@ def main() -> int | str:
             from ros_navigator import RosNavigator
 
             rover.nav = RosNavigator(port=args.ros_nav)
+            # So that a trip nobody is waiting for can still say it is over. See
+            # `RoverNav._trip_ended`: the navigator knows the moment, and the
+            # daemon knows where the conversation is.
+            rover.nav.told = rover._trip_ended
             rover.nav.start()
             up = "answering" if rover.nav.reachable else "not up yet"
             print(f"[rover] driving through ROS 2 on 127.0.0.1:{args.ros_nav} "

@@ -97,6 +97,13 @@ Tool calls stay on loopback. A `look` request receives its camera frame through
 the loopback frame handoff on port 8774. Browser barge-in cancels pending output
 through the realtime session rather than mixing old and new replies.
 
+Port 8774 also carries `POST /notice` in the other direction, which is how a
+trip that has finished reaches the model: nothing waits for a background move, so
+without it the rover announces that it is setting off and never mentions arriving.
+The notice is spoken when the conversation is free and held for the model's next
+turn when it is not. With no conversation running it is accepted and dropped, and
+the transcript says so.
+
 If voice dependencies or the hosted service are unavailable, manual driving and
 status remain available. The page reports current failure state rather than
 showing setup instructions in the control surface.

@@ -164,6 +164,22 @@ The camera is on a moving gimbal, so a new visual question normally takes a new
 picture. Reusing an old image after the camera has moved is a confident answer
 about somewhere the rover is no longer looking.
 
+## The rover speaking first
+
+That same loopback port carries one thing the other way, as `POST /notice`. A
+trip started with `go_to_thing` or `explore` is not waited for -- the tool answers
+in a second and the driving takes a minute -- so when the wheels stop there is no
+call in flight to report it through, and the model was left saying it was on its
+way long after it had arrived. The daemon posts a sentence when a background move
+ends; `Session.mention` puts it into the conversation as a turn of its own and
+asks for a reply, which is how the arrival is spoken without anybody asking.
+
+It waits for the conversation to fall quiet first. A reply asked for during a turn
+is discarded by the service without a word, and one asked for over somebody
+speaking is the rover talking across them. If the conversation does not go quiet
+within `MENTION_WAIT_S`, the news goes in with no reply asked for: the model
+raises it in its own next turn instead of it being lost.
+
 `show_map` uses the same frame handoff. It takes how many metres of room to show
 (`across_m`) and how big a picture (`pixels`); leave both out for about six metres
 across. Those names are deliberate: `map_png`'s `half_extent_m` is half of the

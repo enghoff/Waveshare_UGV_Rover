@@ -641,6 +641,118 @@ def test_a_trip_to_one_place_is_not_waited_for_either():
               time.monotonic() - began < 2.0, True)
 
 
+def test_a_trip_that_ends_says_so_without_being_asked():
+    """The moment nothing was telling anybody about.
+
+    A background move is the one thing on this rover that finishes with nobody
+    waiting on it: the tool that started it answered in a second and the driving
+    took a minute. So the ending has to go out rather than be collected, or the
+    voice model goes on saying it is on its way long after the wheels stopped --
+    which is exactly what it did, because `ran_errand` is only ever read when
+    somebody starts the *next* trip.
+    """
+    import ros_navigator
+
+    class Instant(ros_navigator.RosNavigator):
+        """A rover that has arrived by the time it is asked to set off."""
+
+        def stream(self, request, phase):
+            from nav_types import Outcome
+            return Outcome("arrived", 2.4, 12.0, "2.4 m in 41 s")
+
+    nav = Instant(port=_closed_port())
+    told: list[tuple] = []
+    nav.told = lambda kind, asked, outcome: told.append((kind, asked, outcome))
+
+    nav.drive_to_in_background(3.2, 3.0, for_what={"said": "the sofa"})
+    deadline = time.monotonic() + 5.0
+    while not told and time.monotonic() < deadline:
+        time.sleep(0.02)
+    check("the end of a trip is announced rather than filed",
+          [one[0] for one in told], ["errand"])
+    check("...carrying what the trip was for, which is the only thing worth "
+          "saying out loud", told[0][1].get("said"), "the sofa")
+    check("...and how it ended", told[0][2].reason, "arrived")
+    check("...after the record was written, so a listener that asks sees it",
+          nav.ran_errand is not None, True)
+
+    # A listener that throws is the listener's problem. The move is over, and the
+    # thread that ran it must not be able to lose it.
+    nav.told = lambda *_args: 1 / 0
+    again = nav.drive_to_in_background(1.0, 1.0, for_what={"said": "the desk"})
+    check("a trip still starts when the listener is broken",
+          again.get("started"), True)
+    deadline = time.monotonic() + 5.0
+    while nav.away and time.monotonic() < deadline:
+        time.sleep(0.02)
+    check("...and still ends recorded",
+          (nav.ran_errand or ({}, None))[0].get("said"), "the desk")
+
+
+def test_the_arrival_the_model_is_told_about():
+    """What the daemon actually posts, in the words the model will read.
+
+    Written as something to say rather than as a result to parse, because what
+    happens to it at the far end is that a model reads it out. The two endings
+    have to be told apart in that sentence -- "it has arrived" and "it stopped
+    without getting there" are the difference between a person going to look and
+    a person not bothering.
+    """
+    import rover_daemon
+    from test_fakes import FakeLink
+
+    class Outcome:
+        def __init__(self, reason, detail=""):
+            self.reason = reason
+            self.detail = detail
+
+    class Link:
+        def __init__(self):
+            self.said = []
+
+        def notice(self, text):
+            self.said.append(text)
+            return {"ok": True, "relayed": True}
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    link = Link()
+    rover.vision = link
+
+    rover._trip_ended("errand", {"said": "the sofa"},
+                      Outcome("arrived", "2.4 m in 41 s"))
+    check("an arrival is announced as one", "has arrived" in link.said[0], True)
+    check("...naming the thing it was sent to, not a coordinate",
+          "look at the sofa" in link.said[0], True)
+    check("...with what the move came to", "2.4 m in 41 s" in link.said[0], True)
+    check("...and asks for it to be said out loud, since nobody asked anything",
+          "Tell the person" in link.said[0], True)
+
+    rover._trip_ended("errand", {"said": "the sofa"},
+                      Outcome("blocked", "nothing it fits through"))
+    check("a trip that did not get there does not read as an arrival",
+          "has arrived" in link.said[1], False)
+    check("...and says what stopped it",
+          "Nothing it fits through" in link.said[1], True)
+
+    rover._trip_ended("explore", {}, Outcome("arrived", "nothing reachable left"))
+    check("an exploring run that finished is its own sentence",
+          "finished exploring" in link.said[2], True)
+
+    # A console that has gone. The daemon keeps the address between
+    # conversations, so this is the ordinary case and must not raise on the
+    # thread of a move that has just ended.
+    class Gone:
+        def notice(self, text):
+            return {"ok": False, "error": "connection refused"}
+
+    rover.vision = Gone()
+    rover._trip_ended("errand", {"said": "the sofa"}, Outcome("arrived"))
+    rover.vision = None
+    rover._trip_ended("errand", {"said": "the sofa"}, Outcome("arrived"))
+    check("a conversation that is not there costs nothing but a log line",
+          True, True)
+
+
 def test_the_map_is_refused_in_words_when_there_is_none():
     """`ValueError` on purpose: the daemon's dispatcher reports those as the
     sentence alone, and everything else with the exception class in front."""
@@ -695,6 +807,8 @@ TESTS = (
     test_a_bridge_that_dies_mid_move_stops_the_rover,
     test_exploring_does_not_wedge_every_other_tool,
     test_a_trip_to_one_place_is_not_waited_for_either,
+    test_a_trip_that_ends_says_so_without_being_asked,
+    test_the_arrival_the_model_is_told_about,
     test_the_map_is_refused_in_words_when_there_is_none,
     test_resolution_is_readable_before_any_map_has_arrived,
 )

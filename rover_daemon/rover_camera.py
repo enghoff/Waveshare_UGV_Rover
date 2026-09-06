@@ -101,8 +101,15 @@ class VisionLink:
     def describe(self) -> str:
         return f"http://{self.host}:{self.port}/frame"
 
-    def post(self, jpeg: bytes) -> dict[str, Any]:
-        """Send one frame. Returns the service's answer, or {"ok": false, ...}."""
+    def _send(self, path: str, body: bytes,
+              content_type: str) -> tuple[Any, str]:
+        """One POST on the kept-open connection, remade once if it was stale.
+
+        Answers `(payload, "")` or `(None, why)`. Shared by the picture and the
+        news because the connection handling is the whole of what is delicate
+        here -- one request at a time, and a keep-alive the far end has quietly
+        dropped costing a retry rather than the thing being sent.
+        """
         with self._lock:
             for attempt in (1, 2):
                 try:
@@ -115,24 +122,54 @@ class VisionLink:
                         self.connection.sock.setsockopt(
                             socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     self.connection.request(
-                        "POST", "/frame", body=jpeg,
-                        headers={"Content-Type": "image/jpeg",
-                                 "Content-Length": str(len(jpeg))})
-                    payload = json.loads(self.connection.getresponse().read())
+                        "POST", path, body=body,
+                        headers={"Content-Type": content_type,
+                                 "Content-Length": str(len(body))})
+                    return json.loads(self.connection.getresponse().read()), ""
                 except Exception as error:
                     self.close()
                     if attempt == 2:
-                        return {"ok": False,
-                                "error": f"could not send the picture to {self.describe()}: "
-                                         f"{type(error).__name__}: {error}"}
-                    continue
-                if not isinstance(payload, dict) or not payload.get("image"):
-                    return {"ok": False,
-                            "error": str(payload.get("error") if isinstance(payload, dict)
-                                         else "the vision service gave no answer")}
-                return {"ok": True, "image": payload["image"],
-                        "w": payload.get("w"), "h": payload.get("h")}
-        return {"ok": False, "error": "unreachable"}
+                        return None, f"{type(error).__name__}: {error}"
+        return None, "unreachable"
+
+    def post(self, jpeg: bytes) -> dict[str, Any]:
+        """Send one frame. Returns the service's answer, or {"ok": false, ...}."""
+        payload, why = self._send("/frame", jpeg, "image/jpeg")
+        if why:
+            return {"ok": False,
+                    "error": f"could not send the picture to {self.describe()}: "
+                             f"{why}"}
+        if not isinstance(payload, dict) or not payload.get("image"):
+            return {"ok": False,
+                    "error": str(payload.get("error") if isinstance(payload, dict)
+                                 else "the vision service gave no answer")}
+        return {"ok": True, "image": payload["image"],
+                "w": payload.get("w"), "h": payload.get("h")}
+
+    def notice(self, text: str) -> dict[str, Any]:
+        """Send one line of the rover's own news up the same road the pictures go.
+
+        **The only thing this daemon says to a client that the client did not
+        ask for.** Everything else here answers a call; a trip that has finished
+        has nobody waiting on a call to answer, because the tool that started it
+        came back in a second and the driving took a minute. So the news goes to
+        the address the client registered with `set_vision`, which is exactly the
+        address that exists while somebody is holding a conversation.
+
+        `relayed` is whether a conversation took it, and false is ordinary: the
+        console keeps this receiver bound between conversations, so news posted
+        while nobody is talking to the rover is accepted and dropped.
+        """
+        payload, why = self._send(
+            "/notice", json.dumps({"text": text}).encode(), "application/json")
+        if why:
+            return {"ok": False, "error": f"could not tell {self.host}:"
+                                          f"{self.port} about it: {why}"}
+        if not isinstance(payload, dict) or not payload.get("ok"):
+            return {"ok": False,
+                    "error": str(payload.get("error") if isinstance(payload, dict)
+                                 else "the client gave no answer")}
+        return {"ok": True, "relayed": bool(payload.get("relayed"))}
 
     def close(self) -> None:
         if self.connection is not None:
