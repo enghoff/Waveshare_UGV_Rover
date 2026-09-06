@@ -302,6 +302,33 @@ class SavedMap(object):
         self.posed_at = None
         self.posed_odom = None
 
+    def restored(self, odom, now=None):
+        """Take the note on disk as already describing where the rover is.
+
+        **Called after a restore, and it is what stops a boot writing a worse
+        pose over a better one.** The note was written by a session that had
+        driven to that spot and matched scans there. What would replace it a
+        second into this one is the mapper's anchor for a graph it read a moment
+        ago -- its own scan matcher's answer, which is allowed to be half a metre
+        and twenty degrees out. On a rover nobody has moved the older number is
+        simply the truer one, and letting the newer one win walks the parking
+        spot across the room a boot at a time.
+
+        So the gates start as though this session had already written, and the
+        first thing it does write is written because the rover drove. Returns
+        whether there was a reading to measure that from: with no dead reckoning
+        yet there is no baseline, nothing is written either way, and the caller
+        asks again on its next tick.
+        """
+        if odom is None:
+            return False
+        now = time.monotonic() if now is None else now
+        self.saved_at = now
+        self.saved_odom = tuple(odom)
+        self.posed_at = now
+        self.posed_odom = self.saved_odom
+        return True
+
     def due(self, odom, now=None):
         """Whether it is worth writing the graph again, given what the wheels did.
 

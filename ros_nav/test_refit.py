@@ -428,6 +428,46 @@ def test_the_graph_is_written_for_driving_rather_than_for_time():
               saved.start_pose(), (3.0, 4.0, 90.0))
 
 
+def test_a_restore_is_treated_as_a_write_that_has_already_happened():
+    """**A boot has nothing new to say about a rover that has not moved.**
+
+    With nothing saved this session, both gates answer "write" on the first ask,
+    which on a fresh map is right and after a restore is not: what would be
+    written a second into the boot is the mapper's anchor for a graph it read a
+    moment ago, over a pose a previous session measured while driving there. The
+    anchor is allowed to be half a metre and twenty degrees out, and boot after
+    boot that walks the parking spot across the room.
+
+    So a restore sets the gates as though this session had already written, and
+    the first thing it writes is written because the rover drove.
+    """
+    section("what a boot has to say about where the rover is")
+    with tempfile.TemporaryDirectory() as directory:
+        saved = mapstore.SavedMap(directory)
+        now = time.monotonic()
+        check("with nothing saved this session, a boot would write at once",
+              saved.pose_due((0.0, 0.0, 0.0), now), True)
+        check("...and the graph with it", saved.due((0.0, 0.0, 0.0), now), True)
+
+        check("a restore says the note already describes the rover",
+              saved.restored((0.0, 0.0, 0.0), now), True)
+        check("...so a rover standing where it was parked is left alone",
+              saved.pose_due((0.0, 0.0, 0.0), now + mapstore.POSE_EVERY_S + 1.0),
+              False)
+        check("...and its graph is not rewritten either",
+              saved.due((0.0, 0.0, 0.0), now + mapstore.SAVE_EVERY_S + 1.0),
+              False)
+        check("but ten centimetres of actual driving is worth writing down",
+              saved.pose_due((0.11, 0.0, 0.0),
+                             now + mapstore.POSE_EVERY_S + 1.0), True)
+
+        saved = mapstore.SavedMap(directory)
+        check("wheels that are not answering yet leave no baseline",
+              saved.restored(None, now), False)
+        check("...and nothing is written on no reading anyway",
+              saved.pose_due(None, now), False)
+
+
 def test_where_the_rover_is_survives_a_power_cut_between_graph_writes():
     """The pose is written at the pace the rover moves, not the graph's.
 
@@ -545,6 +585,7 @@ TESTS = (
     test_the_saved_map_is_only_usable_once_all_three_files_are_there,
     test_a_cleared_map_does_not_come_back_at_the_next_boot,
     test_the_graph_is_written_for_driving_rather_than_for_time,
+    test_a_restore_is_treated_as_a_write_that_has_already_happened,
     test_where_the_rover_is_survives_a_power_cut_between_graph_writes,
     test_the_keeper_writes_the_pose_when_it_is_not_writing_the_graph,
     test_an_empty_graph_is_never_written_down,

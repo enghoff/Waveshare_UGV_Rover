@@ -61,10 +61,11 @@ class Mapper:
     by `tick` on every sleep, so a wait of a minute costs nothing to run.
     """
 
-    def __init__(self, poses, tick=0.1, answers=True):
+    def __init__(self, poses, tick=0.1, answers=True, odom=(0.0, 0.0, 0.0)):
         self.poses = list(poses)
         self.tick = tick
         self.answers = answers
+        self.odom = odom
         self.clock = 0.0
         self.looks = 0
         self.map_lock = threading.RLock()
@@ -88,6 +89,10 @@ class Mapper:
     def pose_deg(self):
         self.looks += 1
         return self.poses[min(self.looks - 1, len(self.poses) - 1)]
+
+    def travelled_deg(self):
+        """What the wheels have done, which is the baseline a restore takes."""
+        return self.odom
 
     # --- and the rest, for `map_restore` ------------------------------------
     def get_logger(self):
@@ -119,6 +124,20 @@ NOTE = {"map_id": "map-one", "saved_at": 1788600000.0,
                  "heading_deg": PARKED[2]}}
 
 
+class Saved(types.SimpleNamespace):
+    """The note on disk, as much of it as a restore touches.
+
+    `baselined` records what `map_restore` handed to `SavedMap.restored`, which
+    is the call that stops the boot writing its anchor over the parked pose.
+    """
+
+    def restored(self, odom, now=None):
+        self.baselined.append(odom)
+        if odom is not None:
+            self.posed_odom = tuple(odom)
+        return odom is not None
+
+
 def _restorer(poses, note=NOTE, parked=None, **fields):
     """A stand-in ready for `map_restore`, with a note already on disk."""
     node = Mapper(poses, **fields)
@@ -128,12 +147,13 @@ def _restorer(poses, note=NOTE, parked=None, **fields):
     node.map_settled = False
     node.map_note = ""
     node.map_saved_at = None
-    node._map_settle_from = None
-    node._map_settle_at = None
-    node.saved = types.SimpleNamespace(
+    node.map_parked_at = None
+    node.map_anchored_at = None
+    node.saved = Saved(
         stem="/tmp/current",
         held=lambda: note,
-        start_pose=lambda: PARKED if parked is None else parked)
+        start_pose=lambda: PARKED if parked is None else parked,
+        posed_odom=None, baselined=[])
     return node
 
 
@@ -151,6 +171,16 @@ def _restore_map(node):
     finally:
         nav_map.time.monotonic, nav_map.time.sleep = real_monotonic, real_sleep
     return node
+
+
+def _source():
+    """`nav_map.py` itself, for the rules about what does *not* happen.
+
+    A stand-in node can show what a call returns; it cannot show that no call
+    was made from a loop the test never runs.
+    """
+    with open(nav_map.__file__, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def _restore(poses, **fields):
@@ -250,7 +280,9 @@ def test_a_badly_anchored_graph_is_still_the_map_the_rover_is_standing_on() -> N
     a 15-metre house grid on screen -- and the bridge called it a map that could
     not be loaded, minted a new identity, and told the world state to start a new
     session. What must happen instead is the plain truth: a pose arrived, so the
-    graph was read, so this is the old map and the rover needs fitting to it.
+    graph was read, so this is the old map. The rover is then taken to be where
+    it was parked, because nobody drove it while it was switched off -- the boot
+    says so and waits, rather than searching for it unasked.
     """
     section("a graph the mapper anchored somewhere else")
     node = _restore_map(_restorer([ANCHORED]))
@@ -263,15 +295,49 @@ def test_a_badly_anchored_graph_is_still_the_map_the_rover_is_standing_on() -> N
           "anchored it" in node.map_note and "from scratch" not in node.map_note,
           True)
 
-    check("a fit is scheduled, which is the thing that can undo 81 degrees",
-          node._map_settle_from is not None, True)
-    check("...centred on where the map says the rover was parked",
-          node._map_settle_at, PARKED)
-    check("...and not on where the mapper put it, which is the error itself",
-          node._map_settle_at == ANCHORED, False)
+    check("...and nothing goes looking for the rover, which nobody asked for",
+          "refit" in node.map_note, True)
+    check("...saying instead that the rover is taken to be where it was parked",
+          "parked where the map left it" in node.map_note, True)
 
-    check("and until that fit has run, nothing is written back to disk",
+    check("the parked pose is kept, as what a fit would search around",
+          node.map_parked_at, PARKED)
+    check("...and so is the anchor, which is the error rather than a belief",
+          node.map_anchored_at, ANCHORED)
+    check("and until somebody asks for a fit, nothing is written back to disk",
           node.map_trustworthy(), False)
+
+
+def test_a_boot_does_not_write_its_anchor_over_the_parked_pose() -> None:
+    """**The pose on disk is the better number, and the boot leaves it alone.**
+
+    A restore used to be followed within a second by the keeper writing down
+    where the rover was -- which on a fresh boot is the mapper's anchor for a
+    graph it read a moment ago, allowed to be half a metre and twenty degrees
+    out. The pose it replaced was measured by a session that had driven there.
+    A rover nobody has moved is still at the older one, so the newer one is not
+    news; written boot after boot it walks the parking spot across the room.
+
+    So the restore hands the wheels' reading to `SavedMap.restored`, and the
+    gates behave as though this session had already written: the first thing it
+    writes is written because the rover drove.
+    """
+    section("what a boot writes down")
+    node = _restore_map(_restorer([LANDED]))
+    check("the wheels' reading becomes the baseline for driving",
+          node.saved.baselined, [node.odom])
+    check("...so nothing is written until the rover has moved from it",
+          node.saved.posed_odom, node.odom)
+
+    node = _restore_map(_restorer([LANDED], odom=None))
+    check("wheels that are not answering yet leave no baseline",
+          node.saved.posed_odom, None)
+    check("...which the keeper's loop is what asks again for",
+          "self.saved.restored(odom)" in _source(), True)
+
+    node = _restore_map(_restorer([None]))
+    check("and a map this session is drawing from scratch takes none",
+          node.saved.baselined, [])
 
 
 def test_only_a_graph_that_was_never_read_starts_a_new_map() -> None:
@@ -289,8 +355,8 @@ def test_only_a_graph_that_was_never_read_starts_a_new_map() -> None:
     check("...under a new identity", node.map_id not in (None, "map-one"), True)
     check("...and says the rover is mapping from scratch",
           "from scratch" in node.map_note, True)
-    check("...with no fit scheduled, because there is nothing to fit to",
-          node._map_settle_from, None)
+    check("...with no parked pose kept, because there is nothing to fit to",
+          node.map_parked_at, None)
     check("...and a map this session drew needs no permission to be saved",
           node.map_trustworthy(), True)
 
@@ -301,27 +367,123 @@ def test_only_a_graph_that_was_never_read_starts_a_new_map() -> None:
     node = _restore_map(_restorer([LANDED], note=None))
     check("no saved note at all starts a new map", node.map_restored, False)
     check("...and does not go looking for a pose to fit",
-          node._map_settle_from, None)
+          node.map_parked_at, None)
 
 
-def test_a_restore_that_landed_cleanly_still_settles() -> None:
-    """The ordinary restore keeps every behaviour it had, plus the search centre.
+def test_a_restore_that_landed_cleanly_needs_nothing_further() -> None:
+    """The ordinary restore: the mapper agrees, so the rover is where it was.
 
-    Worth pinning separately: the fix widens what counts as a kept map, and the
-    case that already worked must come out the same -- kept, identified, and
-    followed by the one fit that checks nobody moved the rover while it was off.
+    The rover was parked here and cannot have driven while it was off, so an
+    anchor that lands on the saved pose is that belief confirmed by the only
+    other thing with an opinion. Nothing is searched for, and the keeper is free
+    to write over the saved pose again -- which is the whole of what a boot has
+    to do on the day nothing went wrong.
     """
     section("the restore that always worked")
     node = _restore_map(_restorer([LANDED]))
     check("the map is kept", node.map_restored, True)
     check("...and says the rover is where it was parked",
           "where it was parked" in node.map_note, True)
-    check("...and still schedules the fit that checks that claim",
-          node._map_settle_from is not None, True)
-    check("...around the parked pose, which is where it is standing",
-          node._map_settle_at, PARKED)
-    check("...and is not trusted for writing until that fit has run",
-          node.map_trustworthy(), False)
+    check("...with the parked pose kept, should a fit be asked for later",
+          node.map_parked_at, PARKED)
+    check("...and is trusted for writing straight away, with nothing to await",
+          node.map_trustworthy(), True)
+    check("...though the note on disk already describes a rover nobody moved",
+          node.saved.baselined, [node.odom])
+
+
+def test_a_boot_never_fits_the_rover_by_itself() -> None:
+    """**No boot runs a search nobody asked for, and that is the rule here.**
+
+    A fit moves the rover on one scan matched against a stored graph, and the
+    case it exists for -- somebody carried the rover while it was off -- is the
+    case where that scan agrees with the map least. So it belongs to the console
+    button and the daemon call that a person presses, and the keeper's job on a
+    restore ends at saying what it found.
+
+    Checked against the source because it is a rule about what does *not*
+    happen, and nothing a stand-in node returns can demonstrate that.
+    """
+    section("what a boot does on its own")
+    source = _source()
+    keeper = source[source.index("def _map_loop"):source.index("def map_trustworthy")]
+    check("the keeper's loop never calls the fit", "self.refit(" in keeper, False)
+    restore = source[source.index("def map_restore"):source.index("def load_graph")]
+    check("...and neither does the restore", "self.refit(" in restore, False)
+    check("...nor is there anything left to schedule one",
+          "def map_settle(" in source, False)
+
+
+class Prompted:
+    """A node with just enough on it for `refit` to choose a search centre.
+
+    The fit itself is a recorder: what is under test is which pose the search is
+    centred on, not what the search then finds, which is `test_refit.py`'s.
+    """
+
+    def __init__(self, pose, settled=False, parked=PARKED, anchored=ANCHORED):
+        self._pose = pose
+        self.map_lock = threading.RLock()
+        self.move_mutex = threading.Lock()
+        self.map_restored = True
+        self.map_settled = settled
+        self.map_fit = None
+        self.map_parked_at = parked
+        self.map_anchored_at = anchored
+        self.asked = []
+
+    def pose_deg(self):
+        return self._pose
+
+    def map_fit_now(self, _window_m, _window_deg, _min_score, around):
+        self.asked.append(around)
+        return {"fitted": False, "why": "measured, not moved"}
+
+    def map_trustworthy(self):
+        return nav_map.NavMap.map_trustworthy(self)
+
+    def still_parked(self):
+        return nav_map.NavMap.still_parked(self)
+
+
+def _asked_around(pose, around=None, **fields):
+    node = Prompted(pose, **fields)
+    nav_map.NavMap.refit(node, around=around)
+    return node.asked[0]
+
+
+def test_a_fit_asked_for_looks_where_the_map_was_left() -> None:
+    """**Where the search is centred, which is what made every refit refuse.**
+
+    On 2026-09-06 the rover woke anchored 81 degrees from where it was parked,
+    and each refit searched a window around that anchor -- with the truth
+    outside it, since the anchor was the error. The rover's own pose is not
+    evidence about the rover until something has confirmed it; the pose the map
+    was left at is, because nobody drove the rover while it was switched off.
+
+    That holds only while it is still standing there. Once it has driven, the
+    parked pose is history and the search goes back to where the rover is.
+    """
+    section("where a prompted fit looks")
+    check("a rover woken badly anchored is searched for where it was parked",
+          _asked_around(ANCHORED), PARKED)
+    check("...and not around the anchor, which is the error being corrected",
+          _asked_around(ANCHORED) == ANCHORED, False)
+
+    check("a rover whose anchor was confirmed is searched for where it is",
+          _asked_around(LANDED, settled=True), None)
+
+    driven = (ANCHORED[0] + 1.5, ANCHORED[1], ANCHORED[2])
+    check("...and so is one that has driven since it woke",
+          _asked_around(driven), None)
+    nudged = (ANCHORED[0] + 0.02, ANCHORED[1], ANCHORED[2] + 1.0)
+    check("...where drifting on the spot is not driving",
+          _asked_around(nudged), PARKED)
+
+    check("a caller that names a centre is still obeyed",
+          _asked_around(ANCHORED, around=LANDED), LANDED)
+    check("...and a restore that kept no parked pose falls back to the rover",
+          _asked_around(ANCHORED, parked=None), None)
 
 
 def test_an_unsettled_map_is_never_written_over_the_saved_one() -> None:
@@ -341,7 +503,7 @@ def test_an_unsettled_map_is_never_written_over_the_saved_one() -> None:
     check("a restored map whose pose no scan has confirmed is not written",
           node.map_trustworthy(), False)
     node.map_settled = True
-    check("...and is written once a fit has confirmed it",
+    check("...and is written once the anchor or a fit has confirmed it",
           node.map_trustworthy(), True)
 
     node = _restorer([ANCHORED])
@@ -350,8 +512,7 @@ def test_an_unsettled_map_is_never_written_over_the_saved_one() -> None:
           node.map_trustworthy(), True)
 
     # And the keeper has to actually ask, or the rule is decoration.
-    with open(nav_map.__file__, encoding="utf-8") as fh:
-        source = fh.read()
+    source = _source()
     loop = source[source.index("def _map_loop"):source.index("def map_trustworthy")]
     check("the keeper asks before it saves anything",
           "self.map_trustworthy()" in loop, True)
@@ -375,7 +536,10 @@ TESTS = (
     test_a_pose_that_lands_somewhere_else_is_still_refused,
     test_a_badly_anchored_graph_is_still_the_map_the_rover_is_standing_on,
     test_only_a_graph_that_was_never_read_starts_a_new_map,
-    test_a_restore_that_landed_cleanly_still_settles,
+    test_a_restore_that_landed_cleanly_needs_nothing_further,
+    test_a_boot_never_fits_the_rover_by_itself,
+    test_a_boot_does_not_write_its_anchor_over_the_parked_pose,
+    test_a_fit_asked_for_looks_where_the_map_was_left,
     test_an_unsettled_map_is_never_written_over_the_saved_one,
     test_a_mapper_that_never_answers_is_reported_as_itself,
 )

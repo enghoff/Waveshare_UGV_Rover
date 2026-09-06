@@ -484,7 +484,10 @@ class RosNavigator:
                     # nothing knows what map this is, and saying so is what
                     # stops the world state starting a new session over a
                     # navigation stack that is merely restarting.
-                    "map_id": None, "map_kept": False, "map_settled": False,
+                    # `map_settled` is None for the same reason: with no bridge
+                    # there is no map, and "nothing is confirmed yet" is a rover
+                    # to worry about where "there is nothing to confirm" is not.
+                    "map_id": None, "map_kept": False, "map_settled": None,
                     "map_note": "", "map_saved_age_s": None, "map_fit": None,
                     "pwm": None, "lidar_ok": False, "lidar_live": False,
                     "lidar_port": self._lidar_port, "scan_age_s": None,

@@ -51,19 +51,28 @@ over these documentary values.
 
 The stack periodically serializes its pose graph and last trusted pose under
 `~/.ugv/map/`, outside the deploy tree so a deploy cannot take the map with
-it. On restart it scores the current scan around the saved pose before
-accepting the old map. A weak or ambiguous fit leaves the rover mapping
-without claiming that it knows its old position.
+it. On restart it loads that graph and takes the rover to be standing where the
+map says it was parked, because nobody drove it while it was switched off.
 
 `slam_toolbox` anchors the graph it has just read with its own scan matcher,
 which lands within a quarter of a metre and twenty degrees of the saved pose
 ordinarily and much further when loop closure fires in a room whose two ends
-look alike. That anchor is not where the rover is: the restore therefore keeps
-the map and fits the rover to it, searching around the pose the map was left at
-rather than around the anchor. Nothing is written back to disk until a scan has
-confirmed where the rover is standing, so a session that cannot place itself
-cannot overwrite the map that would have let the next one try again. `nav_status`
-reports that as `map_settled` alongside `map_kept`.
+look alike. That anchor is the mapper's answer rather than the rover's belief,
+so an anchor landing on the saved pose confirms it and an anchor landing
+somewhere else does not. Either way the map is kept; what changes is whether the
+keeper may write over the saved pose. It may not until something has confirmed
+where the rover stands, so a session that cannot place itself cannot overwrite
+the map that would have let the next one try again. `nav_status` reports that as
+`map_settled` alongside `map_kept`, and `map_note` says which happened.
+
+**No boot fits the rover to the map on its own.** A fit moves the rover on one
+scan matched against a stored graph, and the case it exists for — somebody
+carried the rover while it was off — is the case where that scan agrees with the
+map least, so it belongs to a person: the console's "refit to map" button, or
+the daemon's `refit_pose`. While the rover has not moved since it woke and its
+anchor is still unconfirmed, that fit searches around the pose the map was left
+at rather than around the anchor, which is what lets it undo a large error at
+all.
 
 Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
@@ -143,9 +152,13 @@ print(s.makefile("r").readline())'
 
 Adding `"min_score": 1.01` makes the same call measure without applying
 anything, which is how to find out where the scan really fits before moving the
-rover. A wide window is a manual act on purpose: it can place the rover
-confidently in the wrong one of two rooms that look alike, which is why the
-automatic fit will not use one.
+rover. A wide window can place the rover confidently in the wrong one of two
+rooms that look alike, so it is worth measuring first.
+
+A rover that was driven while badly anchored is the one case past what any of
+this can find: the pose the map was left at is no longer where it is, and its
+own pose is wrong by however far the anchor was out. Park it roughly where the
+map thinks it is and refit, or clear the map and start again.
 
 Logs are under `~/ugv/ros_nav/`. Restart the component through
 `~/ugv/ros_nav/restart.sh`; the deploy manifest defines the required build,
