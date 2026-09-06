@@ -57,7 +57,7 @@ from typing import Any
 if __package__ in (None, ""):                       # run as a script on the rover
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from world_state.appearance import any_of
+from world_state.appearance import between
 from world_state.resolve import RECOGNISED
 from world_state.store import WorldStore
 
@@ -97,24 +97,37 @@ def vector_width(store) -> int:
     return int(row["width"]) if row and row["width"] else 1536
 
 
-def looks_like(store, one: dict[str, Any], other: dict[str, Any],
-               width: int) -> float:
+def exemplars_of(store, entities: list[dict], width: int) -> dict[str, list]:
+    """Every one of these things' exemplars, read once and kept for the pass.
+
+    The comparison below is every stranded thing against every thing standing
+    here, which is tens of thousands of questions over a few hundred rows: asked
+    through the store each time, that is the same handful of blobs read out of
+    SQLite thousands of times, and on the rover it is most of what the tool
+    spends its time doing.
+    """
+    return {one["id"]: store.exemplars(one["id"], width=width)
+            for one in entities}
+
+
+def looks_like(one: dict[str, Any], other: dict[str, Any],
+               vectors: dict[str, list]) -> float:
     """How much one remembered thing looks like another, on the exemplars.
 
-    `appearance.any_of` asked the other way round from usual: the crops are the
+    `appearance.between` asked the other way round from usual: the crops are the
     first thing's exemplars rather than one fresh observation, and the answer is
     still the middle of the second thing's, so a single odd exemplar on either
     side moves it one place along and no further.
     """
-    mine = store.exemplars(one["id"], width=width)
+    mine = vectors.get(one["id"]) or []
     if not mine:
         return 0.0
-    got = any_of(store, other["id"], mine)
+    got = between(vectors.get(other["id"]) or [], mine)
     return 0.0 if got is None else got
 
 
-def pairs_between(store, theirs: list[dict], here: list[dict],
-                  width: int) -> list[tuple]:
+def pairs_between(theirs: list[dict], here: list[dict],
+                  vectors: dict[str, list]) -> list[tuple]:
     """Every stranded thing beside the thing in this map that most looks like it.
 
     Only the best, and only above `RECOGNISED`: this is the same bar a fresh
@@ -126,7 +139,7 @@ def pairs_between(store, theirs: list[dict], here: list[dict],
     for one in theirs:
         best, who = 0.0, None
         for other in here:
-            got = looks_like(store, one, other, width)
+            got = looks_like(one, other, vectors)
             if got > best:
                 best, who = got, other
         if who is not None and best >= RECOGNISED:
@@ -285,6 +298,7 @@ def plan(store, min_agreeing: int = MIN_AGREEING,
     width = vector_width(store)
     here = store.placed(now)
     stranded = store.placed_elsewhere(now)
+    vectors = exemplars_of(store, here + stranded, width)
     by_map: dict[Any, list] = {}
     for one in stranded:
         by_map.setdefault(one.get("placement_map_session"), []).append(one)
@@ -294,7 +308,7 @@ def plan(store, min_agreeing: int = MIN_AGREEING,
         if only is not None and old_map != only:
             continue
         theirs = by_map[old_map]
-        pairs = pairs_between(store, theirs, here, width)
+        pairs = pairs_between(theirs, here, vectors)
         found = align(pairs)
         note = steady(pairs) if pairs else "nothing in this map was found again"
         entry = {"map": old_map, "things": len(theirs), "candidates": len(pairs),
@@ -325,7 +339,7 @@ def plan(store, min_agreeing: int = MIN_AGREEING,
                 gap = math.hypot(other["placement"]["x_m"] - x_m,
                                  other["placement"]["y_m"] - y_m)
                 if gap <= SAME_THING_M + SECOND_PLACE_M:
-                    if looks_like(store, one, other, width) >= RECOGNISED:
+                    if looks_like(one, other, vectors) >= RECOGNISED:
                         near.append((gap, other["id"]))
             near.sort()
             if near and near[0][0] <= SAME_THING_M:
@@ -339,9 +353,9 @@ def plan(store, min_agreeing: int = MIN_AGREEING,
                     entry["left"].append(one["id"])
                     continue
                 gap, into = near[0]
-                held = spoken_for.get(into)
-                if held is not None:
-                    loser = one if held[0] <= gap else held[1]
+                claimed = spoken_for.get(into)
+                if claimed is not None:
+                    loser = one if claimed[0] <= gap else claimed[1]
                     entry["left"].append(loser["id"])
                     if loser is one:
                         continue

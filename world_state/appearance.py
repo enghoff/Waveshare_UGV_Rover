@@ -110,12 +110,26 @@ def any_of(store, entity_id: str, vectors: list[bytes]) -> float | None:
     wanted = [vector for vector in vectors if vector]
     if not wanted:
         return None
-    exemplars = store.exemplars(entity_id, width=len(wanted[0]))
-    if not exemplars:
+    return between(store.exemplars(entity_id, width=len(wanted[0])), wanted)
+
+
+def between(exemplars: list[bytes], vectors: list[bytes]) -> float | None:
+    """The same answer as `any_of` for exemplars a caller already holds.
+
+    Split out for one caller and one reason: `reanchor` compares every thing an
+    old map stranded against every thing standing in the current one, which is
+    tens of thousands of questions over a few hundred rows, and going through
+    the store for each of them reads the same handful of blobs out of SQLite
+    thousands of times over. Held in memory for the length of one pass instead,
+    that is a few hundred reads. The rule itself is unchanged and lives here so
+    that there is one of it.
+    """
+    wanted = [vector for vector in vectors if vector]
+    if not exemplars or not wanted:
         return None
     best = None
     for vector in wanted:
-        if len(vector) != len(wanted[0]):
+        if len(vector) != len(exemplars[0]):
             # A different width is a different model's vector, and the two
             # measure different things. `add_exemplar` drops the older ones for
             # the same reason.
