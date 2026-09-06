@@ -165,6 +165,30 @@ class RoverRecall:
             return None
         return place
 
+    def _not_placed_because(self, entity: dict[str, Any]) -> str:
+        """Why the rover cannot say where a thing it knows is, in words.
+
+        **The two reasons are not the same and it used to give the first one for
+        both**, which is how a rover holding 275 things it had measured came to
+        tell the person asking that it had only ever glimpsed them. A thing seen
+        once from one place has never been located and needs a look from
+        somewhere else; a thing whose map was replaced was located, properly, in
+        coordinates that have since stopped meaning anything -- what it needs is
+        to be seen again here, after which it goes back to being the same thing
+        it always was rather than a new one. Said plainly because the voice model
+        reads this out, and "I have only looked at it from one place" is a
+        different sentence from "I knew where that was until the map changed".
+        """
+        if not entity.get("placement"):
+            return ("the rover has seen it but has only looked at it from one "
+                    "place, so it cannot say where it is; driving somewhere "
+                    "else and looking again is what gives it a position")
+        return ("the rover knew where this was, but it was measured against a "
+                "map that has since been replaced, so the position is no longer "
+                "a place in the room the rover is in; looking at it again from "
+                "two places puts it back on the map, with everything the rover "
+                "already knows about it")
+
     def _from_here(self, place: dict[str, Any]) -> dict[str, Any]:
         """How far away the thing is and which way, or an empty answer.
 
@@ -255,10 +279,7 @@ class RoverRecall:
         place = self._placed_now(entity)
         if place is None:
             return {**answer, "placed": False,
-                    "note": "the rover has seen it but has only looked at it "
-                            "from one place, so it cannot say where it is; "
-                            "driving somewhere else and looking again is what "
-                            "gives it a position"}
+                    "note": self._not_placed_because(entity)}
         answer = {**answer, "placed": True, **self._measured(place)}
         here = self._from_here(place)
         if not here:

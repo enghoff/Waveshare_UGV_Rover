@@ -262,6 +262,16 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
     rover could see from a place in a direction. `--map` builds one from a grid
     fetched off the rover; without it every bearing is unbounded, which is what
     the resolver did before it could ask.
+
+    **The map sessions on the rows are followed, and that is the whole of how a
+    map change gets replayed.** Every look the rover took carries the map it was
+    taken under, and this used to read that off the first look and hold it for
+    the rest of the run -- so a recording spanning two maps replayed as the first
+    one with every later look silently dropped, because the pending pool is
+    filtered by session. What happens when the map changes underneath a world
+    full of things is not a rare case on this rover, and it was the one case the
+    harness could not show. `--session` replays a single map where that is what
+    is wanted.
     """
     skip = skip or set()
     groups = inspections(path) if groups is None else groups
@@ -275,7 +285,7 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
                                and row["observer_pose_json"] == ORIGIN)]
             if not wanted:
                 continue
-            if session is None:
+            if wanted[0]["map_session"] != session:
                 session = wanted[0]["map_session"]
                 store.db.execute(
                     "REPLACE INTO meta(key, value) VALUES('map_session', ?)",
@@ -302,7 +312,8 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
         entities = [dict(row) for row in store.db.execute("SELECT * FROM entities")]
         observations = [dict(row) for row in store.db.execute(
             "SELECT id, entity_id, inference_id, bearing_deg, span_deg,"
-            " elevation_deg, observer_pose_json, dino_blob FROM observations")]
+            " elevation_deg, observer_pose_json, map_session, dino_blob"
+            " FROM observations")]
         store.close()
         return entities, observations
     finally:
@@ -379,6 +390,15 @@ def score(entities, observations, sigma_deg: float = 1.5,
         for one in group:
             if not placement or one["bearing_deg"] is None:
                 continue
+            # A bearing is a direction *from a place*, and the place is a
+            # position in the map of the day. A look taken before the map
+            # changed cannot be asked whether it points at a position measured
+            # after it -- the two are in different frames, so the miss it
+            # reports is arithmetic on unrelated coordinates rather than
+            # evidence about this entity. The resolver holds itself to the same
+            # rule; see `resolve._replace_placement`.
+            if one.get("map_session") != entity.get("placement_map_session"):
+                continue
             try:
                 pose = json.loads(one["observer_pose_json"])
             except (TypeError, ValueError):
@@ -403,12 +423,45 @@ def score(entities, observations, sigma_deg: float = 1.5,
           f"{mixed} ({_share(mixed, attached)})")
     print(f"  bearings that miss the entity's own position:          "
           f"{stray} ({_share(stray, attached)})")
+    survived = _across_maps(entities, held)
+    if survived is not None:
+        drivable, kept, last = survived
+        print(f"  things standing in map {last}, which is the only map the rover "
+              f"could be sent to one in: {drivable} of {len(entities)}")
+        print(f"  things that kept what they were across a map change:   {kept}")
     if detail:
         print("    entity        looks  things  odd  stray")
         for row in sorted(rows, key=lambda one: -one[3]):
             print("    %-13s %4d %6d %5d %6d" % row)
     return {"entities": len(entities), "attached": attached, "mixed": mixed,
             "stray": stray, "orphans": orphans, "rows": rows}
+
+
+def _across_maps(entities, held) -> tuple[int, int, int] | None:
+    """What survived the map changes in this recording, or None if it has none.
+
+    Two numbers, and the second is the one worth having. **A position is only
+    ever a position in the map it was measured in**, so when the map is replaced
+    the rover can be sent to a thing only if that thing has since been placed
+    again in the new one -- which is the first number. The second is how many of
+    those are the *same thing the rover already knew*, still carrying the looks
+    it was recognised by, rather than a stranger that happens to be standing
+    where a chair the rover has photographed forty times is standing.
+    """
+    sessions = {one.get("map_session") for group in held.values()
+                for one in group if one.get("map_session") is not None}
+    if len(sessions) < 2:
+        return None
+    last = max(sessions)
+    drivable = kept = 0
+    for entity in entities:
+        if entity.get("placement_map_session") != last:
+            continue
+        drivable += 1
+        if any(one.get("map_session") != last
+               for one in held.get(entity["id"], [])):
+            kept += 1
+    return drivable, kept, last
 
 
 def _biggest(vectors, join: float = JOIN) -> int:
@@ -460,6 +513,10 @@ def main() -> int:
     parser.add_argument("--no-untrusted-pose", action="store_true",
                         help="drop the observations taken at exactly the map "
                              "origin, which is what an unlocalised stack gave")
+    parser.add_argument("--session", type=int, default=0,
+                        help="replay only the looks taken under this map "
+                             "session; the default follows the map changes the "
+                             "recording itself went through")
     parser.add_argument("--detail", action="store_true",
                         help="one line per entity")
     parser.add_argument("--verbose", action="store_true",
@@ -474,6 +531,10 @@ def main() -> int:
         print(f"  {len(skip)} regions with no picture in them, left out")
     reach = reach_from(args.map) if args.map else None
     groups = inspections(args.database)
+    if args.session:
+        groups = [group for group in groups
+                  if group[0]["map_session"] == args.session]
+        print(f"  map session {args.session} alone: {len(groups)} looks")
     if args.recompute_bearings:
         width, height = (int(part) for part in args.frame_size.lower().split("x"))
         count, median = remeasure(groups, (width, height))

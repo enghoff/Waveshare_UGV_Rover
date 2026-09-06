@@ -414,6 +414,14 @@ def test_a_found_thing_carries_what_was_measured_about_it() -> None:
               stale["placed"], False)
         check("...and offers no coordinates at all", "map_x_m" in stale, False)
         check("...but is still a thing the rover has seen", stale["found"], True)
+        # The sentence the voice model reads out, and it used to be the wrong
+        # one of the two: a thing whose map was replaced was measured properly,
+        # and saying the rover had only glimpsed it once was a plain untruth
+        # about a thing it had looked at from several places.
+        check("...and it says the map changed rather than that it never looked",
+              "map that has since been replaced" in stale["note"], True)
+        check("...and says what would put it back on the map",
+              "from two places" in stale["note"], True)
     finally:
         done(rover)
 

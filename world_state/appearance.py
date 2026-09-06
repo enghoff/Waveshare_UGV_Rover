@@ -87,10 +87,40 @@ def appearance(store, entity_id: str, vector: bytes) -> float | None:
     out a candidate on what it looks like, reporting silence as 0.0 would reject
     every candidate on a rover whose vectors had not arrived.
     """
-    if not vector:
+    return any_of(store, entity_id, [vector])
+
+
+def any_of(store, entity_id: str, vectors: list[bytes]) -> float | None:
+    """The best `appearance` any of these crops scores, for one read of the row.
+
+    The same question asked of several crops at once, and it exists for the cost
+    rather than for the answer: scoring a handful of crops against every thing
+    the rover owns is a `SELECT` per crop per thing when it goes through
+    `appearance`, and the exemplars of one entity are the same bytes every time.
+    Read once here, compared many times. See `resolve._adopt`, which asks it of
+    every thing the rover cannot currently place.
+
+    The best rather than the middle *across crops*, while staying the middle
+    across each entity's own exemplars: two crops of one crossing are two looks
+    at the same thing from two places, and one of them showing a side the rover
+    has never kept is not evidence that this is a different thing. Silence still
+    means the question could not be asked -- no vector, or an entity holding no
+    exemplar of that width.
+    """
+    wanted = [vector for vector in vectors if vector]
+    if not wanted:
         return None
-    seen = sorted(similarity(exemplar, vector)
-                  for exemplar in store.exemplars(entity_id, width=len(vector)))
-    if not seen:
+    exemplars = store.exemplars(entity_id, width=len(wanted[0]))
+    if not exemplars:
         return None
-    return seen[len(seen) // 2]
+    best = None
+    for vector in wanted:
+        if len(vector) != len(wanted[0]):
+            # A different width is a different model's vector, and the two
+            # measure different things. `add_exemplar` drops the older ones for
+            # the same reason.
+            continue
+        seen = sorted(similarity(exemplar, vector) for exemplar in exemplars)
+        middle = seen[len(seen) // 2]
+        best = middle if best is None else max(best, middle)
+    return best

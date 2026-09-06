@@ -546,6 +546,156 @@ def test_a_placement_belongs_to_the_map_it_was_measured_in() -> None:
         store.close()
 
 
+def test_a_thing_the_map_change_orphaned_is_recognised_rather_than_replaced() -> None:
+    """**The fault of 2026-09-06, and it cost the rover four fifths of what it
+    knew.**
+
+    A map session is not a rare event on this rover -- a cleared map does it, and
+    so does a boot where the saved graph will not load -- and every position
+    recorded under the old map stops being a place the moment it happens. That
+    much is right and has to stay: the coordinates really are meaningless. What
+    was wrong is what came next. The resolver only ever considered things placed
+    in the map it was working in, so an orphaned thing could never be placed
+    again by any number of looks, while the same furniture was discovered all
+    over again as strangers. On the rover that left 275 of 350 things standing in
+    a map that no longer existed, which is a voice model that answers "I know
+    where that is, but it is on a different map" to almost everything it is asked
+    to drive to.
+
+    The crops never expired, so they are what re-anchors it: the first crossing
+    in the new map that plainly looks like something the rover already owns takes
+    that thing's identity back, with its history and its looks intact.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        chair = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, vector=chair, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=chair, inference=2)
+        resolve.resolve(store)
+        was = store.placed()[0]["id"]
+        check("the rover knows a thing, in this map", len(store.placed(1)), 1)
+
+        store.new_map_session()
+        check("the map changes and it stands in no map the rover is on",
+              len(store.placed(2)), 0)
+        check("...but the rover still owns it",
+              len(store.placed_elsewhere(2)), 1)
+
+        # The same chair, seen twice from elsewhere: this map's coordinates are
+        # nothing like the old ones, which is the whole situation.
+        observe(store, 0.0, 10.0, -45.0, vector=chair, inference=3)
+        observe(store, 6.0, 10.0, -135.0, vector=chair, inference=4)
+        result = resolve.resolve(store)
+
+        check("no stranger was invented", len(store.placed()), 1)
+        now = store.placed()[0]
+        check("...because the thing the rover knew took its own identity back",
+              now["id"], was)
+        check("...and it now stands in the map the rover is on",
+              now["placement_map_session"], 2)
+        check("...where the new looks actually cross",
+              (round(now["placement"]["x_m"]), round(now["placement"]["y_m"])),
+              (3, 7))
+        check("...carrying everything it was ever seen in",
+              now["observation_count"], 4)
+        check("...and the popup is told it was recognised rather than found",
+              "recognised as" in result["decisions"][0]["why"], True)
+        store.close()
+
+
+def test_a_position_in_the_old_map_does_not_drag_the_new_one() -> None:
+    """The trap inside the fix, and it would have put things between two rooms.
+
+    A recognised thing carries the looks it was recognised by, and those were
+    taken from poses in a map that has gone. The placement is worked out again
+    from everything attached whenever a thing gains a look, so unless that fit is
+    held to this map, the first confirming look would drag the thing back towards
+    where its old bearings say it is -- an average of two rooms, which is a place
+    in neither.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        chair = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, vector=chair, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=chair, inference=2)
+        resolve.resolve(store)
+        store.new_map_session()
+
+        observe(store, 0.0, 10.0, -45.0, vector=chair, inference=3)
+        observe(store, 6.0, 10.0, -135.0, vector=chair, inference=4)
+        resolve.resolve(store)
+        # A third look in the new map, which is what triggers the refit.
+        observe(store, 3.0, 10.0, -90.0, vector=chair, inference=5)
+        result = resolve.resolve(store)
+
+        check("the confirming look joins it", result["matched"], 1)
+        now = store.placed()[0]
+        check("...and the thing stays where this map's looks put it",
+              (round(now["placement"]["x_m"]), round(now["placement"]["y_m"])),
+              (3, 7))
+        check("...rather than being pulled towards the old map's",
+              now["placement"]["y_m"] > 6.0, True)
+        store.close()
+
+
+def test_two_things_the_rover_knew_that_look_alike_are_not_guessed_between() -> None:
+    """Identical chairs, across a map change: the answer is a new thing.
+
+    `_adopt` has no geometry behind it -- that is the situation it exists for --
+    so appearance is the whole of the evidence, and where two things the rover
+    owns look equally like the thing now standing here it says nothing rather
+    than picking one. A stranger can be recognised later; two histories merged by
+    mistake cannot be taken apart.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        chair = a_vector(1.0, 0.0)
+        twin = a_vector(0.999, 0.045)
+        observe(store, 0.0, 0.0, 45.0, vector=chair, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=chair, inference=2)
+        observe(store, 0.0, -8.0, -45.0, vector=twin, inference=3)
+        observe(store, 6.0, -8.0, -135.0, vector=twin, inference=4)
+        resolve.resolve(store)
+        resolve.resolve(store)
+        check("the rover knows two things that look alike",
+              len(store.placed()), 2)
+
+        store.new_map_session()
+        observe(store, 0.0, 10.0, -45.0, vector=chair, inference=5)
+        observe(store, 6.0, 10.0, -135.0, vector=chair, inference=6)
+        result = resolve.resolve(store)
+
+        check("neither of them is claimed", result["created"], 1)
+        check("...a new thing is made instead",
+              len(store.placed(store.map_session())), 1)
+        check("...and it says nothing about having been recognised",
+              "recognised as" in result["decisions"][0]["why"], False)
+        check("...leaving both of the old ones as they were",
+              len(store.placed_elsewhere(store.map_session())), 2)
+        store.close()
+
+
+def test_something_the_rover_has_never_seen_is_not_recognised() -> None:
+    """The gate does its job in the ordinary direction too."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        observe(store, 0.0, 0.0, 45.0, vector=a_vector(1.0, 0.0), inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=a_vector(1.0, 0.0), inference=2)
+        resolve.resolve(store)
+        store.new_map_session()
+
+        light = a_vector(0.0, 1.0)
+        observe(store, 0.0, 10.0, -45.0, vector=light, inference=3)
+        observe(store, 6.0, 10.0, -135.0, vector=light, inference=4)
+        result = resolve.resolve(store)
+
+        check("a thing that looks nothing like it is a new thing",
+              result["created"], 1)
+        check("...and the rover now owns both",
+              len(store.entities()), 2)
+        store.close()
+
+
 def test_an_inspection_settles_identity_as_well_as_measuring() -> None:
     """The two halves joined: measure, then decide, in that order.
 
@@ -841,6 +991,10 @@ TESTS = (
     test_the_evidence_survives_the_decision,
     test_one_entity_can_be_sent_to_a_console_like_the_list_can,
     test_a_placement_belongs_to_the_map_it_was_measured_in,
+    test_a_thing_the_map_change_orphaned_is_recognised_rather_than_replaced,
+    test_a_position_in_the_old_map_does_not_drag_the_new_one,
+    test_two_things_the_rover_knew_that_look_alike_are_not_guessed_between,
+    test_something_the_rover_has_never_seen_is_not_recognised,
     test_an_inspection_settles_identity_as_well_as_measuring,
     test_one_look_gives_a_thing_one_region_however_many_passes_it_takes,
     test_a_wrong_exemplar_does_not_make_the_next_one_easier,

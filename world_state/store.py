@@ -256,6 +256,33 @@ class WorldStore:
             """).fetchall()
         return [_shown(dict(row)) for row in rows]
 
+    def placed_elsewhere(self, map_session: int) -> list[dict[str, Any]]:
+        """Entities the rover knows, standing in a map that is not this one.
+
+        The other half of `placed`, and the two together are every entity that
+        has ever been located. What is in here is not stale evidence: the looks
+        behind these things were real, the crops still show what they showed, and
+        the only thing that expired is the coordinate. So this is what a fresh
+        crossing is offered before it is allowed to invent a stranger -- see
+        `resolve._adopt`. Without it a rover that loses its map meets everything
+        it owns again as something it has never seen.
+        """
+        query = ("SELECT * FROM entities WHERE placement_json IS NOT NULL"
+                 " AND (placement_map_session IS NULL"
+                 "      OR placement_map_session != ?)")
+        with self._lock:
+            rows = self.db.execute(query, (int(map_session),)).fetchall()
+        found = []
+        for row in rows:
+            entity = dict(row)
+            try:
+                entity["placement"] = json.loads(entity["placement_json"])
+            except (ValueError, TypeError):
+                continue
+            entity.pop("exemplars", None)
+            found.append(entity)
+        return found
+
     def entity(self, entity_id: str) -> dict[str, Any] | None:
         """One entity, shaped the same way the list shapes them.
 

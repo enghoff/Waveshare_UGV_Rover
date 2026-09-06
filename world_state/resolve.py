@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import cluster, locate, view
-from .appearance import _UNIT, appearance, similarity
+from .appearance import _UNIT, any_of, appearance, similarity
 
 MATCH = "match"
 NEW = "new"
@@ -20,6 +20,17 @@ AMBIGUOUS = "ambiguous"
 # These gates were measured on room recordings, not calibrated probabilities.
 DIFFERENT_THING = 0.55
 APPEARANCE_LEAD = 0.05
+#: What a new position's own crops have to score against a thing the rover knows
+#: but cannot place here, for the two to be called the same thing. See `_adopt`.
+#:
+#: **Higher than `DIFFERENT_THING` because it is doing a different job.** That
+#: gate only removes the plainly unrelated from candidates the geometry has
+#: already accepted; this one has no geometry behind it at all, because the whole
+#: situation is that the old coordinates are in a map that is gone. So it is set
+#: where this rover's own measurements put the line: two regions of one frame,
+#: which are different things by construction, score 0.32 in the median and 0.69
+#: at the 95th, and one object across a real change of viewpoint scores 0.70.
+RECOGNISED = 0.70
 RIVAL_FACTOR = 2.0
 SAME_PLACE_M = 0.5
 SAME_ANSWER = 0.05
@@ -672,11 +683,13 @@ def _cluster_up(store, leftover, session, entities, taken_in,
             kept.append(observation_id)
         if len(kept) < 2:
             continue
-        entity_id = store.create_entity()
+        known = _adopt(store, session,
+                       [by_id[one] for one in kept if one in by_id])
+        entity_id, again = known if known else (store.create_entity(), "")
         store.place(entity_id, placement, session)
         why = (f"{placement['rays_agreeing']} bearings from "
                f"{placement['viewpoints']} places fitted {entity_id} to within "
-               f"{placement['uncertainty_m']} m")
+               f"{placement['uncertainty_m']} m{again}")
         store.attach(entity_id, kept, why)
         for observation_id in kept:
             vector = (by_id.get(observation_id) or {}).get("dino_blob") or b""
@@ -808,12 +821,13 @@ def _place_one(store, available, session, reach=None):
                          [ray for ray, one in rays
                           if one["id"] in {o["id"] for o in support}]))
 
-    entity_id = store.create_entity()
-    store.place(entity_id, placement, session)
     taken = [first_observation["id"], second_observation["id"]]
+    known = _adopt(store, session, [first_observation, second_observation])
+    entity_id, again = known if known else (store.create_entity(), "")
+    store.place(entity_id, placement, session)
     why = (f"two looks {placement['baseline_m']} m apart crossed at "
            f"{placement['parallax_deg']} degrees, placing {entity_id} to "
-           f"within {placement['uncertainty_m']} m")
+           f"within {placement['uncertainty_m']} m{again}")
     store.attach(entity_id, taken, why)
     for observation in (first_observation, second_observation):
         vector = observation.get("dino_blob") or b""
@@ -923,14 +937,85 @@ def _could_be_one(first: dict[str, Any], second: dict[str, Any]) -> bool:
     return similarity(left, right) >= DIFFERENT_THING
 
 
+def _adopt(store, session: int, observations: list[dict[str, Any]]
+           ) -> tuple[str, str] | None:
+    """The thing the rover already knows that this new position belongs to.
+
+    **A map change must not cost the rover what it knows.** Everything located
+    here is located in the map of the day, and when the SLAM map is replaced --
+    cleared, or rebuilt because a saved one would not load -- every coordinate
+    recorded under the old one stops meaning anything. What does not stop meaning
+    anything is the *appearance*: the crops are still crops of the same chair,
+    and the rover has been keeping them as exemplars all along. So the moment a
+    fresh crossing establishes a position in the new map, the thing standing
+    there is offered to everything the rover owns but cannot currently place, and
+    takes back its own identity where one of them is plainly it.
+
+    Without this a map change is quietly destructive in a way nothing reports:
+    the old entities keep their history and their looks and can never be placed
+    again -- nothing re-places a thing the resolver will not consider, and it
+    considers only what is placed in the map it is working in -- while the same
+    furniture is discovered all over again as strangers. Replayed across the map
+    change of 2026-09-06, that is 272 things of which 99 could be driven to and
+    **none at all** were still what the rover had spent the previous day
+    learning.
+
+    Two rules, and the second is the one that stops this being dangerous.
+    `RECOGNISED` is where a crop stops being a coincidence, and it is set from
+    what this rover has measured rather than chosen to be safe. The lead is the
+    identical-chairs rule the placed candidates already live under: where two
+    things the rover knows look equally like the thing now standing here,
+    appearance cannot say which, and inventing a new thing is the answer that
+    can be corrected later. Merging two histories cannot be.
+
+    Answers the entity to adopt and the sentence to say so, or None for a thing
+    the rover has genuinely not seen before.
+    """
+    vectors = [one.get("dino_blob") or b"" for one in observations]
+    vectors = [vector for vector in vectors if vector]
+    if not vectors:
+        return None
+    ranked = []
+    for entity in store.placed_elsewhere(session):
+        # The best of the founding crops rather than their average, and each
+        # score itself the middle of the entity's exemplars -- see
+        # `appearance.any_of`, which is where both of those are written down and
+        # where the ratchet this could otherwise become is held shut.
+        looks = any_of(store, entity["id"], vectors)
+        if looks is not None:
+            ranked.append((looks, entity))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda one: (-one[0], one[1]["id"]))
+    best, entity = ranked[0]
+    if best < RECOGNISED:
+        return None
+    if len(ranked) > 1 and best - ranked[1][0] < APPEARANCE_LEAD:
+        return None
+    was = entity.get("placement_map_session")
+    return entity["id"], (f"; recognised as {entity['id']}, which the rover last "
+                          f"placed in map {was} and which these looks match at "
+                          f"{best:.2f}")
+
+
 def _replace_placement(store, entity_id: str, session: int,
                        reach=None) -> None:
     """Work the placement out again from everything now attached.
 
     Every observation-level measurement is kept when this happens: what changes
     is the application's opinion, and the evidence it was formed from is history.
+
+    **Only the looks taken under this map, which matters from the moment a thing
+    can outlive one.** A ray is a bearing *from a place*, and the place is a
+    position in the map of the day; a look recorded before the map changed names
+    a point in this one only by coincidence. An entity that has just been
+    recognised across a map change carries a history of those, and fitting them
+    together with the looks that recognised it would put the thing at the
+    average of two rooms. The same rule, for the same reason, as the one
+    `_world_sight_lines` applies when it works out where to stand.
     """
-    observations = store.observations(entity_id, limit=24)
+    observations = [one for one in store.observations(entity_id, limit=24)
+                    if one.get("map_session") == session]
     rays = [ray for ray in (ray_of(one, reach) for one in observations) if ray]
     best = locate.best_fix(rays)
     if best is not None:

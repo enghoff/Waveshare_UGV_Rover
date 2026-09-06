@@ -46,6 +46,16 @@ things move it:
   navigation stack a different map identity; `follow_map` notices within seconds
   and moves the session. The rows stay, shown as measured against a map that has
   gone rather than drawn in this room.
+- **A thing whose map was replaced is recognised when it is seen again, rather
+  than met as a stranger.** The coordinates expired; the crops did not. So the
+  first crossing in the new map that plainly looks like something the rover
+  already owns takes that thing's identity back, with its history intact --
+  `resolve._adopt`, gated at `RECOGNISED` and refused where two known things look
+  equally like it. Until this existed nothing could ever re-place an orphaned
+  thing, because the resolver considers only what is placed in the map it is
+  working in: replayed across the map change of 2026-09-06, 272 things came out
+  of which 99 could be driven to and none were still what the rover had spent the
+  previous day learning.
 - **`world_state_clear` on its own empties the store and leaves the map alone**,
   which is what a repeatable experiment needs.
 
@@ -62,7 +72,8 @@ unplaced until the resolver has enough independent evidence.
 
 The resolver:
 
-1. rejects evidence from another map session;
+1. rejects evidence from another map session, while still offering a new
+   crossing to the things that map left behind;
 2. crosses bearings taken from separated viewpoints with enough parallax;
 3. checks map visibility, elevation and any measured ranges;
 4. uses appearance to reject or choose among geometrically valid candidates;
@@ -129,7 +140,9 @@ encoder pose, GPU execution or real-room identity.
 
 Useful replay and measurement tools remain beside the component:
 
-- `replay.py` reruns stored observations through current resolution logic;
+- `replay.py` reruns stored observations through current resolution logic,
+  following the map changes the recording itself went through (`--session`
+  pins it to one), and reports how much survived them;
 - `bench_oak.py` measures the relationship between the two cameras;
 - `bench_bearing.py`, `bench_height.py` and `bench_cluster.py` compare geometry;
 - `bench_perceive.py` and `bench_still.py` inspect model and capture behavior.
