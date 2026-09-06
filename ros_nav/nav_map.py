@@ -74,6 +74,33 @@ map confirmed and the keeper may write over the saved pose; an anchor that does
 not leaves the map kept, the disagreement in the note, and the saved pose
 exactly where it was. `map_trustworthy` is that last rule.
 
+## A saved map is only ever replaced by itself, or by somebody clearing it
+
+The trap above cost the map three times and was survivable each time, because
+the graph was still on disk. The same evening it was lost outright, and this is
+the rule that stops that. A restore that produced no pose at all -- as opposed to
+one anchored badly -- used to mint a new identity and let the rover's own scratch
+graph be the map. The world state adopted that identity within seconds, so 489
+placed things stopped being anywhere; and because a map the session drew itself
+needs no permission to be written down, the keeper wrote the scratch graph over
+the saved one as soon as the wheels turned, so the frame those 489 positions were
+measured in ceased to exist and nothing could carry them across.
+
+Every way of failing to read a saved graph is the mapper being slow or busy: a
+deserialise still holding its own mutex after thirty seconds, no transform after
+sixty, a node that has not finished coming up. None of them is news about the
+room. So `map_restore` claims nothing, writes nothing and asks again on a later
+tick, for as long as that takes -- `map_id` stays None, which everything
+downstream already reads as "no answer yet", and which the keeper reads as a tick
+to spend on the restore rather than on a write. `mapstore.commit` then refuses
+outright to put a graph over a saved map recorded under another identity, so the
+rule holds at the point the bytes move even if some future caller forgets it.
+
+The cost is a rover that drives on an unnamed scratch map until its own comes
+back, and `rover_world._world_pose` is where that is paid: no map identity means
+no pose, so looks are still recorded and still kept, and none of them gets a
+bearing it would have to measure in a frame that is about to be thrown away.
+
 ## Nothing goes looking for the rover unless somebody asks
 
 **The fit is prompted and never automatic**, which is the console's "refit to
@@ -153,6 +180,16 @@ LANDED_S = 60.0
 LANDED_M = 0.5
 LANDED_DEG = 20.0
 
+#: How long to leave between attempts at a saved map that has not loaded yet.
+#:
+#: **A restore that produced nothing is asked again rather than replaced**, and
+#: the spacing is the whole of what makes that affordable. Every attempt asks
+#: slam_toolbox to deserialise the entire graph under its own mutex, so a keeper
+#: retrying every tick would be competing for the mapper with the very work it is
+#: waiting on. Thirty seconds is far below how long anybody minds waiting at a
+#: boot and far above the cost of one attempt.
+RESTORE_RETRY_S = 30.0
+
 #: How far the rover may have moved on the map since it woke and still have the
 #: pose the map was left at used as the centre of a fit.
 #:
@@ -201,6 +238,12 @@ class NavMap:
         #: there is a restored map to have them.
         self.map_parked_at = None
         self.map_anchored_at = None
+        #: When the last attempt at a saved map began, and how many there have
+        #: been. A saved map that will not load is asked for again rather than
+        #: written over, so this is what spaces those attempts out and what lets
+        #: the note say how long it has been trying.
+        self.map_restore_at = None
+        self.map_restore_tries = 0
 
         self.serialize_client = self.create_client(
             SerializePoseGraph, "/slam_toolbox/serialize_map",
@@ -366,13 +409,29 @@ class NavMap:
         return (where[0], where[1], math.degrees(where[2]))
 
     def map_restore(self):
-        """Find out what map this is, and load it if there is one. Once, at start.
+        """Find out what map this is, and load it if there is one.
 
         Does nothing at all until slam_toolbox is answering, and that is
         deliberate rather than defensive: "there is no saved map, so this is a
         new one" is a statement about a running mapper, and made while the mapper
         is still starting it would hand the rest of the rover a map identity that
         the actual mapper then has nothing to do with.
+
+        **Asked again for as long as it takes, rather than once at start.** A
+        saved graph that has not loaded has not gone anywhere: every way of
+        failing to read one is the mapper being slow or busy -- a deserialise
+        still holding its mutex after thirty seconds, no transform after sixty, a
+        node still coming up. Minting a new identity there was how this rover
+        lost its map on 2026-09-06, twice over: the world state adopted the new
+        identity within seconds and 489 placed things stopped being anywhere, and
+        the keeper then wrote the scratch graph over the saved one as soon as the
+        wheels turned, so the map those positions were measured in was gone from
+        the disk and no re-anchoring could ask it anything. The saved map is now
+        only ever forgotten by somebody clearing it.
+
+        So a failure claims nothing, writes nothing, and says so. `map_id` stays
+        None, which everything downstream already reads as "no answer yet" -- and
+        which the keeper reads as a tick to spend here instead of on a write.
         """
         if not self.deserialize_client.wait_for_service(timeout_sec=0.5):
             self.map_note = ("waiting for slam_toolbox before looking for a "
@@ -380,6 +439,10 @@ class NavMap:
             return
         note = self.saved.held()
         if note is None:
+            # Nothing on disk is not a restore that failed. There is no map to
+            # abandon and nothing anywhere holds coordinates measured against
+            # one, so the rover names the graph it is about to draw and gets on
+            # with it. This is the only new identity nobody asks for.
             with self.map_lock:
                 self.map_id = mapstore.new_id()
                 self.map_restored = False
@@ -387,50 +450,57 @@ class NavMap:
                                  "room from scratch")
             self.get_logger().info(self.map_note)
             return
+        now = time.monotonic()
+        if (self.map_restore_at is not None
+                and now - self.map_restore_at < RESTORE_RETRY_S):
+            return
+        self.map_restore_at = now
+        self.map_restore_tries += 1
         pose = self.saved.start_pose()
         ok, why, landed = self.load_graph(pose, drop_trail=True)
         with self.map_lock:
             if landed is None:
-                self.map_id = mapstore.new_id()
-                self.map_restored = False
-                self.map_note = ("the saved map could not be loaded (%s), so the "
-                                 "rover is mapping the room from scratch" % (why,))
-            else:
-                # A pose arrived, so the graph was read and the rover is standing
-                # on the old map whether or not the mapper anchored it where it
-                # was asked. Keeping the identity is the whole point: it is what
-                # tells the semantic world state that its coordinates still mean
-                # something, and minting a new one here is what used to throw a
-                # good map and everything measured in it away.
-                self.map_id = str(note.get("map_id"))
-                self.map_restored = True
-                self.map_saved_at = note.get("saved_at")
-                # Where the map says the rover physically is, and where the
-                # mapper actually put it. The first is what the rover is taken to
-                # believe about itself, because it was parked there and nobody
-                # can have driven it while it was off; the second is only the
-                # mapper's own matcher answering, and is kept so that a fit
-                # asked for later can tell a rover that has stayed put from one
-                # somebody has since driven. See `refit.fit`'s `was`.
-                self.map_parked_at = pose
-                self.map_anchored_at = landed
-                # An anchor that agrees with the parked pose is that belief
-                # confirmed, and the keeper may write over the saved pose. One
-                # that disagrees is the mapper wrong about a rover that has not
-                # moved, so the saved pose stays exactly as it is until a fit
-                # somebody asked for settles the argument. Nothing goes looking
-                # on its own -- that search is what used to run here.
-                self.map_settled = bool(ok)
-                self.map_note = (
-                    "the map from the last session is back, and the rover is "
-                    "where it was parked" if ok else
-                    "the map from the last session is back, but %s -- the rover "
-                    "is taken to be parked where the map left it, and a refit "
-                    "is what moves it if it is not" % (why,))
-                # And the pose in the note is where it is taken to be, so this
-                # session has nothing to add until the wheels turn. Without
-                # this the keeper's first tick writes the anchor over it.
-                self.saved.restored(self.travelled_deg())
+                self.map_note = ("the saved map has not loaded yet (%s); it is "
+                                 "untouched on disk and will be asked for "
+                                 "again, attempt %d"
+                                 % (why, self.map_restore_tries))
+                self.get_logger().warn(self.map_note)
+                return
+            # A pose arrived, so the graph was read and the rover is standing
+            # on the old map whether or not the mapper anchored it where it
+            # was asked. Keeping the identity is the whole point: it is what
+            # tells the semantic world state that its coordinates still mean
+            # something, and minting a new one here is what used to throw a
+            # good map and everything measured in it away.
+            self.map_id = str(note.get("map_id"))
+            self.map_restored = True
+            self.map_saved_at = note.get("saved_at")
+            # Where the map says the rover physically is, and where the
+            # mapper actually put it. The first is what the rover is taken to
+            # believe about itself, because it was parked there and nobody
+            # can have driven it while it was off; the second is only the
+            # mapper's own matcher answering, and is kept so that a fit
+            # asked for later can tell a rover that has stayed put from one
+            # somebody has since driven. See `refit.fit`'s `was`.
+            self.map_parked_at = pose
+            self.map_anchored_at = landed
+            # An anchor that agrees with the parked pose is that belief
+            # confirmed, and the keeper may write over the saved pose. One
+            # that disagrees is the mapper wrong about a rover that has not
+            # moved, so the saved pose stays exactly as it is until a fit
+            # somebody asked for settles the argument. Nothing goes looking
+            # on its own -- that search is what used to run here.
+            self.map_settled = bool(ok)
+            self.map_note = (
+                "the map from the last session is back, and the rover is "
+                "where it was parked" if ok else
+                "the map from the last session is back, but %s -- the rover "
+                "is taken to be parked where the map left it, and a refit "
+                "is what moves it if it is not" % (why,))
+            # And the pose in the note is where it is taken to be, so this
+            # session has nothing to add until the wheels turn. Without
+            # this the keeper's first tick writes the anchor over it.
+            self.saved.restored(self.travelled_deg())
         self.get_logger().info(self.map_note)
 
     # --- the graph on disk ----------------------------------------------------
@@ -476,6 +546,13 @@ class NavMap:
             except OSError as error:
                 return False, ("the graph was written but could not be put in "
                                "place: %s" % (error,))
+            if note is None:
+                # The map on disk belongs to another session's room, so this one
+                # is not allowed to land on top of it. Nothing above should ever
+                # reach here -- a restore that failed claims no identity to save
+                # under -- and it is refused rather than trusted to stay true.
+                return False, ("the saved map was recorded under a different "
+                               "identity, so this graph was not written over it")
             self.map_saved_at = note["saved_at"]
             return True, "the map is saved"
 

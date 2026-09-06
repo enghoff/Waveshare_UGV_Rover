@@ -46,7 +46,8 @@ class Nav:
         self.stops = 0
 
     def status(self):
-        return {"position_trusted": self._pose is not None, "pose": self._pose}
+        return {"position_trusted": self._pose is not None, "pose": self._pose,
+                "map_id": "map-one"}
 
     def ask(self, request, timeout_s):
         return self._grid

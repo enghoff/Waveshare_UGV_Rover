@@ -611,12 +611,14 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
         class slam:
             pose = (0.0, 0.0, 0.0)
 
-        def __init__(self, trusted=True, pose=None):
+        def __init__(self, trusted=True, pose=None, map_id="map-one"):
             self._trusted = trusted
             self._pose = pose
+            self._map_id = map_id
 
         def status(self):
-            return {"position_trusted": self._trusted, "pose": self._pose}
+            return {"position_trusted": self._trusted, "pose": self._pose,
+                    "map_id": self._map_id}
 
     class Asking:
         _world_pose = rover_world.RoverWorld._world_pose
@@ -633,6 +635,23 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
 
     rover.nav = Nav(True, None)
     check("...and neither is a navigator that has no pose to give",
+          rover._world_pose(), None)
+
+    # **A pose in a map with no name is not a pose in this session's map.** The
+    # navigator says which SLAM graph its coordinates belong to, and it says
+    # nothing while a saved map has not loaded yet -- during which slam_toolbox is
+    # perfectly happily mapping and publishing a position, in a scratch frame
+    # with no relation to the one every placement in the store was measured in.
+    # Recording bearings from it would put things in this room that are not in
+    # it, under a session that looks current. A look with no bearing is what the
+    # store already handles honestly, so that is what this becomes.
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0},
+                    map_id=None)
+    check("a position in a map the navigator cannot name is no position either",
+          rover._world_pose(), None)
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0},
+                    map_id="")
+    check("...and an empty name is the same silence",
           rover._world_pose(), None)
 
     class Broken:
@@ -756,7 +775,8 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
             self._pose = pose
 
         def status(self):
-            return {"position_trusted": self._pose is not None, "pose": self._pose}
+            return {"position_trusted": self._pose is not None,
+                    "pose": self._pose, "map_id": "map-one"}
 
         def ask(self, request, timeout_s):
             return payload

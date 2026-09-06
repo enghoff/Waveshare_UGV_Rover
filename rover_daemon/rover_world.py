@@ -611,6 +611,18 @@ class RoverWorld:
         the coordinates are dead reckoning wearing a map's clothes, and an
         observation with no pose is a thing this store already handles honestly --
         it keeps the picture and records no bearing.
+
+        **And neither is a pose in a map with no name.** The navigator says which
+        SLAM graph its coordinates belong to, and it says nothing at all while a
+        saved map has not loaded yet -- a state that now lasts as long as it takes
+        rather than being ended by starting a rival map, because ending it that
+        way is what threw this rover's map away on 2026-09-06. Through the whole
+        of it slam_toolbox is mapping and publishing a position perfectly happily,
+        in a scratch frame with no relation to the one every placement in the
+        store was measured in. Recording bearings from that would put things in
+        this room that have never been in it, stamped with a session that looks
+        like the current one. So the picture is still taken and still kept; what
+        it does not get is a direction. See `nav_map.map_restore`.
         """
         navigator = getattr(self, "nav", None)
         if navigator is None:
@@ -619,7 +631,7 @@ class RoverWorld:
             status = navigator.status()
         except Exception:
             return None
-        if not status.get("position_trusted"):
+        if not status.get("position_trusted") or not status.get("map_id"):
             return None
         where = status.get("pose")
         if not isinstance(where, dict):

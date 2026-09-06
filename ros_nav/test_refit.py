@@ -372,6 +372,57 @@ def test_the_saved_map_is_only_usable_once_all_three_files_are_there():
               saved.held(), None)
 
 
+def test_a_saved_map_is_never_written_over_by_a_different_one():
+    """**The lock on the rule that cost this rover its map, put where the bytes
+    are.**
+
+    A saved map is one session's account of a room, and everything positional
+    anywhere on the rover -- the trail, every placement in the semantic world
+    state -- is coordinates in it. So it may be replaced by a later save of
+    *itself*, and otherwise only by somebody clearing it, which removes it first
+    and leaves nothing here to refuse. What must never happen is the third thing,
+    which did: a boot that failed to read the saved graph started a scratch one
+    under a new identity, and the keeper wrote that over the map on disk as soon
+    as the wheels turned. `map_restore` no longer mints an identity there, and
+    this is the same rule stated where it cannot be got round -- a guard on the
+    only function that replaces those files.
+    """
+    section("what may overwrite a saved map")
+    with tempfile.TemporaryDirectory() as directory:
+        saved = mapstore.SavedMap(directory)
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("the room")
+        saved.commit("map-one", (1.5, -2.5, 90.0))
+
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("a scratch graph")
+        check("a graph under another identity is refused",
+              saved.commit("map-two", (0.0, 0.0, 0.0)), None)
+        check("...leaving the saved map exactly as it was",
+              saved.held()["map_id"], "map-one")
+        check("...including where it says the rover was parked",
+              saved.start_pose(), (1.5, -2.5, 90.0))
+        check("...and the refused copy cleared away rather than left to be found",
+              os.path.exists(saved.graph_paths(saved.staging_stem)[0]), False)
+
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("the room, later")
+        check("the same map saving again is what this is for",
+              bool(saved.commit("map-one", (2.0, -3.0, 95.0))), True)
+        check("...and moves the parked pose with it",
+              saved.start_pose(), (2.0, -3.0, 95.0))
+
+        saved.forget()
+        saved.make()
+        for path in saved.graph_paths(saved.staging_stem):
+            open(path, "w").write("a new room")
+        check("and a cleared map leaves nothing to refuse against",
+              bool(saved.commit("map-two", (0.0, 0.0, 0.0))), True)
+
+
 def test_a_cleared_map_does_not_come_back_at_the_next_boot():
     """The one outcome somebody pressing "clear map" cannot have meant."""
     section("clearing the map clears the saved one")
@@ -583,6 +634,7 @@ TESTS = (
     test_the_scan_arrives_in_the_rovers_own_frame,
     test_the_map_is_smeared_so_the_search_can_find_the_peak,
     test_the_saved_map_is_only_usable_once_all_three_files_are_there,
+    test_a_saved_map_is_never_written_over_by_a_different_one,
     test_a_cleared_map_does_not_come_back_at_the_next_boot,
     test_the_graph_is_written_for_driving_rather_than_for_time,
     test_a_restore_is_treated_as_a_write_that_has_already_happened,

@@ -137,9 +137,15 @@ class SavedMap(object):
     def __init__(self, directory=None):
         self.dir = directory or MAP_DIR
         #: When the last write finished, and how far the wheels had carried the
-        #: rover by then. Both None until this process has written one -- a
-        #: restored graph does not count as a write, because what matters is
-        #: whether *this* run has anything new to record.
+        #: rover by then. Both None until this process has written one, because
+        #: what matters is whether *this* run has anything new to record.
+        #:
+        #: A restore is the one exception and is deliberately counted as a write:
+        #: see `restored`. The note on disk already says where the rover is, and
+        #: what would otherwise replace it a second into the session is the
+        #: mapper's anchor for a graph it has only just read -- a worse number
+        #: overwriting a better one, every boot, until the parking spot has
+        #: walked across the room.
         self.saved_at = None
         self.saved_odom = None
         #: The same pair for the pose on its own, which is written far more often
@@ -224,7 +230,33 @@ class SavedMap(object):
         rename within one directory is atomic -- and the note that declares them
         usable is written last. A power cut anywhere in here leaves either the
         previous complete map or no map, never half of this one.
+
+        **A saved map is only ever replaced by a later save of itself.** Answers
+        with None, having written nothing, when what is on disk was saved under
+        another identity. Everything positional on this rover is coordinates in
+        the map it was measured in -- the trail, and every placement in the
+        semantic world state -- so a graph drawn in some other frame landing on
+        top of it does not replace a map, it destroys one and silently relabels
+        several hundred remembered positions as somewhere they have never been.
+        That is not hypothetical: on 2026-09-06 a boot failed to read the saved
+        graph, started a scratch one, and the keeper wrote it over the map on
+        disk within half a metre of driving, taking 489 placed things with it.
+        `nav_map.map_restore` no longer starts a rival map, and this is the same
+        rule where it cannot be got round.
+
+        Clearing the map is the way past it and needs no exception here: `forget`
+        removes the note first, so there is nothing left to refuse against.
         """
+        held = self.held()
+        if held is not None and held.get("map_id") != map_id:
+            # The staging copy goes rather than being left for the next commit to
+            # rename into place, which would make this refusal a delay.
+            for path in self.graph_paths(self.staging_stem):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            return None
         self.make()
         for src, dst in zip(self.graph_paths(self.staging_stem),
                             self.graph_paths()):

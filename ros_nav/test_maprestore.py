@@ -129,7 +129,13 @@ class Saved(types.SimpleNamespace):
 
     `baselined` records what `map_restore` handed to `SavedMap.restored`, which
     is the call that stops the boot writing its anchor over the parked pose.
+    `asked` counts the attempts that got as far as reading the parked pose, which
+    is how the checks tell an attempt from a tick the retry gap turned away.
     """
+
+    def start_pose(self):
+        self.asked += 1
+        return self.parked
 
     def restored(self, odom, now=None):
         self.baselined.append(odom)
@@ -149,11 +155,13 @@ def _restorer(poses, note=NOTE, parked=None, **fields):
     node.map_saved_at = None
     node.map_parked_at = None
     node.map_anchored_at = None
+    node.map_restore_at = None
+    node.map_restore_tries = 0
     node.saved = Saved(
         stem="/tmp/current",
         held=lambda: note,
-        start_pose=lambda: PARKED if parked is None else parked,
-        posed_odom=None, baselined=[])
+        parked=PARKED if parked is None else parked,
+        posed_odom=None, baselined=[], asked=0)
     return node
 
 
@@ -340,34 +348,131 @@ def test_a_boot_does_not_write_its_anchor_over_the_parked_pose() -> None:
           node.saved.baselined, [])
 
 
-def test_only_a_graph_that_was_never_read_starts_a_new_map() -> None:
-    """The other half: a real failure still has to mint a new identity.
+def test_a_graph_that_was_never_read_leaves_the_saved_map_alone() -> None:
+    """**The fault of 2026-09-06 evening, and this is the one that was permanent.**
 
-    Keeping the map on a mis-anchored restore is only safe because a restore that
-    genuinely produced nothing is still told apart from it. No pose ever reaching
-    the transform tree means nothing here can say the graph was read, and
-    claiming the old map's identity then would hand the world state coordinates in
-    a frame that may not exist.
+    A restore that produced no pose at all used to mint a new map identity and
+    let the rover's own scratch graph be the map. Two things followed and nobody
+    asked for either. The world state adopted the new identity within seconds,
+    so every position it held stopped being a place -- on this rover that was 489
+    things spread across map sessions 59 to 66, none of which the rover would
+    then drive to. And because a map the session drew itself needs no permission
+    to be written down, the keeper wrote that scratch graph over the saved one as
+    soon as the rover had moved half a metre, so the map those positions were
+    measured in was gone from the disk for good and no re-anchoring could ask it
+    anything.
+
+    Every way this branch is reached is the mapper being slow or busy rather than
+    the map being wrong: a deserialise that has not answered in thirty seconds, a
+    transform that has not arrived in sixty, a graph read while the node is still
+    coming up. So nothing is claimed and nothing is written. The map stays on
+    disk exactly as it is, the keeper asks again on a later tick, and a saved map
+    is only ever forgotten by somebody clearing it.
     """
     section("a graph that really was not read")
     node = _restore_map(_restorer([None]))
-    check("no pose at all starts a new map", node.map_restored, False)
+    check("no pose at all claims no identity at all", node.map_id, None)
+    check("...so nothing downstream is told this is a different map",
+          node.map_restored, False)
+    check("...and the note says it will be asked again rather than that the "
+          "room is being mapped from scratch",
+          "again" in node.map_note and "from scratch" not in node.map_note,
+          True)
+    check("...with no parked pose kept, because there is nothing to fit to",
+          node.map_parked_at, None)
+    check("...and no baseline taken, because nothing was restored",
+          node.saved.baselined, [])
+
+    node = _restore_map(_restorer([LANDED], answers=False))
+    check("a deserialise that never answers keeps the saved map too",
+          node.map_id, None)
+
+    node = _restorer([PARKED])
+    node.saved.parked = None
+    check("a note with no pose in it is not a reason to overwrite the graph",
+          _restore_map(node).map_id, None)
+
+
+def test_the_keeper_writes_nothing_while_no_map_is_claimed() -> None:
+    """The other half of leaving the saved map alone, and it is a rule about a
+    call that must not happen.
+
+    Nothing above stops the keeper writing; what stops it is that a tick with no
+    map claimed is spent on the restore and goes no further. That ordering is the
+    guard, so it is checked where it lives rather than inferred from a node that
+    returns whatever the test wants.
+    """
+    section("what the keeper does with no map")
+    keeper = _source()
+    keeper = keeper[keeper.index("def _map_loop"):
+                    keeper.index("def map_trustworthy")]
+    unclaimed = keeper.index("self.map_restore()")
+    check("the restore is the first thing the tick considers",
+          unclaimed < keeper.index("self.save_graph()"), True)
+    check("...and the tick ends there rather than falling through to a write",
+          "continue" in keeper[unclaimed:keeper.index("self.save_graph()")],
+          True)
+
+
+def test_a_restore_that_failed_is_asked_again_rather_than_replaced() -> None:
+    """Waiting is the whole remedy, because every one of these is a wait.
+
+    A mapper reading eleven megabytes off cold cache while the lidar enumerates
+    is not a map that has gone; it is a map that has not answered yet. So a
+    failed attempt costs a note and another attempt, and the one that eventually
+    answers restores the same map under the same identity -- which is what keeps
+    the world state's coordinates meaning what they meant.
+
+    Spaced out rather than run every tick: each attempt asks slam_toolbox to
+    deserialise the whole graph under its own mutex, and a boot that hammered
+    that would be competing with the thing it is waiting for.
+    """
+    section("asking again")
+    slow = [None] * int(nav_map.LANDED_S / 0.1) + [LANDED]
+    node = _restorer(slow)
+    _restore_map(node)
+    check("an attempt that timed out claims nothing", node.map_id, None)
+    _restore_map(node)
+    check("...and the next attempt restores the map it left alone",
+          node.map_id, "map-one")
+    check("...as the map from the last session rather than a new room",
+          node.map_restored, True)
+
+    # A failure that costs nothing is the one that needs spacing. The slow one
+    # above spends longer failing than the gap between attempts, so it is due
+    # again the moment it returns; a deserialise refused outright comes back at
+    # once, and a keeper that took that as its cue would ask a busy mapper for
+    # the whole graph every second.
+    node = _restorer([LANDED], answers=False)
+    _restore_map(node)
+    tried = node.saved.asked
+    _restore_map(node)
+    check("a failure that cost no time is not retried on the very next tick",
+          node.saved.asked, tried)
+    node.clock += nav_map.RESTORE_RETRY_S
+    _restore_map(node)
+    check("...and is asked again once the gap has passed",
+          node.saved.asked, tried + 1)
+
+
+def test_a_rover_with_nothing_saved_still_starts_a_map() -> None:
+    """The only unprompted new identity left, and it strands nothing.
+
+    Nothing on disk is not a restore that failed: there is no map to abandon, and
+    nothing anywhere holds coordinates measured against one. So the rover names
+    the graph it is about to draw and gets on with it. That is a fresh rover, and
+    a rover whose map somebody has just cleared.
+    """
+    section("a rover with nothing saved")
+    node = _restore_map(_restorer([LANDED], note=None))
+    check("no saved note at all starts a new map", node.map_restored, False)
     check("...under a new identity", node.map_id not in (None, "map-one"), True)
     check("...and says the rover is mapping from scratch",
           "from scratch" in node.map_note, True)
-    check("...with no parked pose kept, because there is nothing to fit to",
+    check("...and does not go looking for a pose to fit",
           node.map_parked_at, None)
     check("...and a map this session drew needs no permission to be saved",
           node.map_trustworthy(), True)
-
-    node = _restore_map(_restorer([LANDED], answers=False))
-    check("a deserialise that never answers starts a new map too",
-          node.map_restored, False)
-
-    node = _restore_map(_restorer([LANDED], note=None))
-    check("no saved note at all starts a new map", node.map_restored, False)
-    check("...and does not go looking for a pose to fit",
-          node.map_parked_at, None)
 
 
 def test_a_restore_that_landed_cleanly_needs_nothing_further() -> None:
@@ -535,7 +640,10 @@ TESTS = (
     test_a_cold_boot_is_not_a_map_that_could_not_be_read,
     test_a_pose_that_lands_somewhere_else_is_still_refused,
     test_a_badly_anchored_graph_is_still_the_map_the_rover_is_standing_on,
-    test_only_a_graph_that_was_never_read_starts_a_new_map,
+    test_a_graph_that_was_never_read_leaves_the_saved_map_alone,
+    test_the_keeper_writes_nothing_while_no_map_is_claimed,
+    test_a_restore_that_failed_is_asked_again_rather_than_replaced,
+    test_a_rover_with_nothing_saved_still_starts_a_map,
     test_a_restore_that_landed_cleanly_needs_nothing_further,
     test_a_boot_never_fits_the_rover_by_itself,
     test_a_boot_does_not_write_its_anchor_over_the_parked_pose,
