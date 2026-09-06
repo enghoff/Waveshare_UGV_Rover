@@ -192,8 +192,12 @@ class NavMap:
             # scan. A kept map with this false is a rover standing on real
             # coordinates it cannot vouch for its position in, which is worth
             # telling apart from both a fresh map and a settled one -- and it is
-            # also the state in which nothing is written back to disk.
-            "map_settled": self.map_trustworthy(),
+            # also the state in which nothing is written back to disk. None
+            # before the keeper has decided what map this is, for `map_id`'s
+            # reason: "nothing is confirmed yet" and "nothing needs confirming"
+            # are both false-ish and only one of them is a rover to worry about.
+            "map_settled": (None if self.map_id is None
+                            else self.map_trustworthy()),
             "map_note": self.map_note,
             "map_saved_age_s": (None if self.map_saved_at is None
                                 else round(time.time() - self.map_saved_at, 1)),
@@ -532,10 +536,13 @@ class NavMap:
                                "transform tree in %.0f seconds, so nothing here "
                                "can say whether the graph was read"
                                % (LANDED_S,)), None
-            return False, ("slam_toolbox read the graph but anchored it %.2f m "
-                           "and %.0f degrees from where the map says the rover "
-                           "was left, which is its own scan matcher's answer and "
-                           "not the rover's"
+            # Phrased as a clause, because `map_restore` reads it out after "the
+            # map from the last session is back, but ..." and the first draft of
+            # this said "but slam_toolbox read the graph but anchored it".
+            return False, ("the mapper anchored it %.2f m and %.0f degrees from "
+                           "where the map says the rover was left, which is its "
+                           "own scan matcher's answer rather than anything the "
+                           "rover believes"
                            % (math.hypot(last[0] - pose[0], last[1] - pose[1]),
                               abs((last[2] - pose[2] + 180.0) % 360.0 - 180.0))), last
 
