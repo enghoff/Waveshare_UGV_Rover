@@ -24,8 +24,9 @@ read-only except for the existing navigation tool used after a result is chosen.
 - Map visibility, height and OAK range reject inconsistent crossings.
 - Appearance can reject or choose candidates after geometry accepts them.
 - Ambiguous evidence remains pending.
-- Clearing the map from the console clears the world state with it, because
-  every row in it is a position or a bearing measured against that map.
+- Clearing the map clears the world state with it, in the rover's own `clear_map`
+  rather than in whatever pressed the button, because every row in it is a
+  position or a bearing measured against that map.
 - A map that changes without being cleared -- a restore that failed, a graph
   built from scratch -- starts a new map session and keeps the record, which is
   then shown as measured against a map that is gone.

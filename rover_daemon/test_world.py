@@ -138,8 +138,9 @@ def test_the_world_state_calls_reach_the_store():
                   rover.call("world_state_entity", {"id": "object:404"})["ok"],
                   False)
 
-            session = rover.call("world_map_session", {})
-            check("clearing the map starts a new session", session["map_session"], 2)
+            session = rover._world_store().follow_map("a-map-this-was-not-recorded-in")
+            check("a map the rows were not measured in starts a new session",
+                  session["map_session"], 2)
             check("...and deletes nothing",
                   rover.call("world_state_summary", {})["summary"]["observations"],
                   1)
@@ -382,6 +383,136 @@ def test_a_clear_waits_for_the_look_in_flight_instead_of_refusing():
                 check("...and deletes nothing",
                       rover.call("world_state_summary",
                                  {})["summary"]["observations"], 1)
+            finally:
+                rover_world.CLEAR_WAIT_S = waiting
+                stuck.set()
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
+def test_clearing_the_map_takes_the_world_state_with_it():
+    """One button, and both ends of it answered for inside the rover.
+
+    **This is the fault of 2026-09-06 written down.** Clearing the map was meant
+    to empty the world state with it, and the console was where the two were
+    joined: it made the second call only when its own world panel had been
+    opened, because the flag it tested is set by that panel's polling and by
+    nothing else. So a map cleared with the popup shut went alone. Nothing said
+    so, and a few seconds later the store noticed the new map identity and moved
+    its session, which is precisely what a successful clear also looks like from
+    outside -- so the rover carried 423 things for two hours as positions
+    measured against a map that no longer existed, and answered "that was
+    measured against a map that has since been replaced" to every question about
+    any of them.
+
+    What is proved here is the wiring and not the emptying, which
+    `test_a_clear_waits_for_the_look_in_flight_instead_of_refusing` owns: that
+    the clear reaches the store through the map's own call, that the reply says
+    what went, and that a store the rover refused to empty is left marked as
+    belonging to the map that has gone rather than drawn as this room.
+    """
+    import tempfile
+    import threading
+
+    import rover_daemon
+    import rover_world
+    import world_state
+
+    class Keeper:
+        """As much of the navigation stack as the tie needs.
+
+        The identity is the whole of it: it changes when the graph is thrown
+        away, which is how the store tells a map it is still measured in from one
+        it merely used to be.
+        """
+
+        def __init__(self):
+            self.map_id = "map-one"
+            self.clears = 0
+
+        def status(self, since_seq=None):
+            return {"map_id": self.map_id}
+
+        def clear_map(self):
+            self.clears += 1
+            self.map_id = "map-%d" % (self.clears + 1)
+            return {"cleared": True, "reason": "the pose graph is empty"}
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            rover.nav = Keeper()
+            store = rover._world_store()
+            inspector = rover._world_inspector()
+            for _ in range(3):
+                store.record([world_state.Sighting(bbox=[0.2, 0.2, 0.4, 0.4],
+                                                   dino=b"", siglip=b"")],
+                             capture={"frame_id": "f"})
+            # The state everything below starts from: a store recording against
+            # the map the rover is standing in.
+            rover._world_follow_map()
+            settled = store.map_session()
+            check("the store is following the rover's own map",
+                  store.follow_map(rover.nav.map_id)["changed"], False)
+
+            answer = rover.call("clear_map", {})
+            check("the map goes", answer["ok"], True)
+            # Read with `get`, because the whole of the fault was a reply that
+            # said nothing about the world state at all.
+            check("...and the world state goes with it",
+                  answer.get("world_cleared"), True)
+            check("...with what went counted on the same reply",
+                  answer.get("observations"), 3)
+            check("...so there is nothing left holding coordinates from it",
+                  rover.call("world_state_summary",
+                             {})["summary"]["observations"], 0)
+            check("...and the store is on the map the rover is now building",
+                  store.follow_map(rover.nav.map_id)["changed"], False)
+            check("...without a session minted to hide an empty store behind",
+                  store.map_session(), settled)
+
+            # The other outcome: a look that will not end, so the rows survive.
+            # They are the case the session number exists for -- measured against
+            # a map that has gone, and no longer comparable with what comes next.
+            store.record([world_state.Sighting(bbox=[0.2, 0.2, 0.4, 0.4],
+                                               dino=b"", siglip=b"")],
+                         capture={"frame_id": "f"})
+            stuck = threading.Event()
+            held = threading.Event()
+
+            def wedged():
+                with inspector.not_looking(5.0) as idle:
+                    assert idle
+                    held.set()
+                    stuck.wait(10.0)
+
+            threading.Thread(target=wedged, daemon=True).start()
+            held.wait(5.0)
+            waiting = rover_world.CLEAR_WAIT_S
+            rover_world.CLEAR_WAIT_S = 0.2
+            try:
+                refused = rover.call("clear_map", {})
+                check("a look that will not end still lets the map go",
+                      refused["ok"], True)
+                check("...but not the world state",
+                      refused.get("world_cleared"), False)
+                check("...saying what stopped it",
+                      "inspection" in str(refused.get("world_note")), True)
+                check("...and what survived is marked as belonging to the map "
+                      "that has gone",
+                      store.map_session() > settled, True)
+                check("...which is what the rows themselves say",
+                      rover.call("world_state_observations",
+                                 {"limit": 1})["observations"][0]["map_session"]
+                      < store.map_session(), True)
             finally:
                 rover_world.CLEAR_WAIT_S = waiting
                 stuck.set()
@@ -693,10 +824,12 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
             check("...facing it", round(seen["heading_deg"]), -90.0)
             check("...reading both of the looks behind it", seen["sight_lines"], 2)
 
-            # Clearing the map does not delete the entity, and that is exactly
-            # the trap: its coordinates are still there and they now name a place
-            # in a map that has never existed.
-            rover.call("world_map_session", {})
+            # A map change does not delete the entity, and that is exactly the
+            # trap: its coordinates are still there and they now name a place in
+            # a map that has never existed. This is the failed restore rather
+            # than the button -- the button empties the store, see
+            # `test_clearing_the_map_takes_the_world_state_with_it`.
+            rover._world_store().follow_map("a-map-this-was-not-recorded-in")
             stale = rover.call("world_state_viewpoint", {"id": thing})
             check("a position measured under a map that is gone is refused",
                   stale["ok"], False)
@@ -915,6 +1048,7 @@ TESTS = (
     test_a_rover_without_a_camera_refuses_to_inspect,
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,
     test_a_clear_waits_for_the_look_in_flight_instead_of_refusing,
+    test_clearing_the_map_takes_the_world_state_with_it,
     test_a_world_observation_takes_the_live_pose_and_no_other,
     test_how_far_the_rover_could_see_comes_off_its_own_map,
     test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map,

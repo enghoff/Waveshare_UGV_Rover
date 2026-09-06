@@ -406,9 +406,11 @@ def test_a_found_thing_carries_what_was_measured_about_it() -> None:
         check("two things are in the same frame, so they can be compared",
               round(apart, 1), 5.0)
 
-        # And a position measured under a map that has been cleared is not a
-        # position in this one, so none of the above is offered for it.
-        rover.call("world_map_session", {})
+        # And a position measured under a map that has been replaced is not a
+        # position in this one, so none of the above is offered for it. A restore
+        # that failed is how this happens in the room: the button that clears the
+        # map empties the store instead of stranding it.
+        rover._world_store().follow_map("a-map-this-was-not-recorded-in")
         stale = rover.call("find_thing", {"description": "the bed"})
         check("a thing placed under a map that is gone has no position now",
               stale["placed"], False)

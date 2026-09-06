@@ -37,10 +37,14 @@ It survives a reboot, because the navigation stack keeps its pose graph and the
 coordinates every row is measured in therefore still mean what they meant. Three
 things move it:
 
-- **Clearing the map from the console clears the world state with it.** One
-  button does both. Everything the store holds is a position in the map's frame
-  or a bearing from a pose in it, so what used to survive a map clear was a list
-  of things with nowhere to be.
+- **Clearing the map clears the world state with it.** One button does both, and
+  the rover does both: `clear_map` empties the store and re-points it at the new
+  map before it answers, so the reply says what went. Everything the store holds
+  is a position in the map's frame or a bearing from a pose in it, so what
+  survived a map clear was a list of things with nowhere to be. The console used
+  to make the world's half of the call itself, guarded by a flag its world panel
+  sets and nothing else does; on 2026-09-06 a map cleared with that panel shut
+  left 423 things behind, measured against a map that had gone, and said nothing.
 - **A map that changed without being cleared starts a new map session and keeps
   the record.** A restore that failed, or a graph built from scratch, gives the
   navigation stack a different map identity; `follow_map` notices within seconds
@@ -123,8 +127,13 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 - `world_state_frame`
 - `world_state_viewpoint`
 - `world_state_clear`
-- `world_map_session`
 - `world_inspect`
+
+There was a `world_map_session` here and it has been removed. It read as a
+question and was an instruction: every call minted a new session, which is to say
+it told the rover that everything it had located belonged to a map that no longer
+existed. The session moves for one reason now -- the map identity underneath it
+changing -- and the number is readable in `world_state_summary`.
 
 Voice tools are read-only: `find_thing`, `go_to_thing`, and
 `distance_between_things`. Clearing and direct inspection are not shown to the

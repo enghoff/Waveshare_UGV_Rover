@@ -695,11 +695,23 @@ class RoverNav:
 
         The refusal while driving comes from the navigator, where the route being
         followed is: see `clear_map` there.
+
+        **The semantic world state goes with the map, here rather than in
+        whatever pressed the button.** Every position the store holds was
+        measured in the frame of the graph this discards, so the two have to end
+        together or the rover is left holding a room full of things with nowhere
+        to be. The console used to make that second call for itself and skipped
+        it whenever its world panel had not been opened -- see
+        `_world_map_cleared`, which is what it now takes from the reply instead.
         """
         if self.nav is None:
             return {"ok": False, "error": NO_DRIVING}
         result = self.nav.clear_map()
-        return {"ok": bool(result.get("cleared")), **result}
+        if not result.get("cleared"):
+            # The map was kept, so there is nothing for the world state to stop
+            # being comparable with.
+            return {"ok": False, **result}
+        return {"ok": True, **result, **self._world_map_cleared()}
 
     def _tool_refit_pose(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Find the rover on the map it already has. A control call, not a model tool.

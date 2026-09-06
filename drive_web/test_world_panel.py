@@ -160,29 +160,25 @@ def test_the_world_state_popup() -> None:
           "not answering" in session.world_state()["error"], True)
     check("...and the button comes back", session.world_state()["busy"], False)
 
-    # Clearing. One button, the map's, because everything the world state holds is
-    # a position measured in the map's frame: what used to survive a map clear was
-    # a list of things with nowhere to be, and the two were always cleared
-    # together anyway.
+    # Clearing. One button, the map's, and the rover answers for both ends of it:
+    # everything the world state holds is a position measured in the map's frame,
+    # so what survived a map clear was a list of things with nowhere to be. The
+    # console used to make the world's half of the call itself and skip it
+    # whenever this popup had never been opened, which is how a real clear on
+    # 2026-09-06 took the map and left 423 things behind.
     session.world_selected = "object:1"
     session.world_link = _Recorder()
-    session.world_map_cleared()
-    check("clearing the map clears the world with it",
-          [name for name, _ in session.world_link.calls],
-          ["world_state_clear", "world_map_session"])
-    check("...and holds on to the frames until the rover says they have gone",
-          list(session.world_frames), ["20260901-120000-abc123"])
-    check("...and to whatever was selected", session.world_selected, "object:1")
-
-    # The store says what went, and it is the map's clear that is being reported.
-    session.world_handle("world_state_clear",
-                         {"ok": True, "entities": 4, "observations": 96}, 0.1)
+    session.world_map_cleared({"ok": True, "cleared": True, "world_cleared": True,
+                               "entities": 4, "observations": 96})
     note = session.world_state()["note"]
     check("what went is counted", "4 entities" in note and "96 " in note, True)
     check("...as part of clearing the map", note.startswith("cleared"), True)
-    check("...and the frames go once the rover says they have",
+    check("...and the frames go with the rows they belong to",
           session.world_frames, {})
     check("...and so does whatever was chosen", session.world_selected, "")
+    check("...and nothing is asked of the rover but the redraw",
+          [name for name, _ in session.world_link.calls],
+          ["world_state_entities", "world_state_summary"])
 
     # A clear the rover refused, which is the outcome that used to be reported as
     # a success. The rover waits for a look in flight and gives up after twenty
@@ -192,13 +188,10 @@ def test_the_world_state_popup() -> None:
     session.world_frames["20260901-120000-abc123"] = held
     session.world_selected = "object:1"
     session.world_link = _Recorder()
-    session.world_map_cleared()
-    check("a refused clear still moves the session on",
-          [name for name, _ in session.world_link.calls],
-          ["world_state_clear", "world_map_session"])
-    session.world_handle("world_state_clear", {
-        "ok": False, "error": "an inspection has been running for longer than "
-                              "20 s; nothing was cleared"}, 0.1)
+    session.world_map_cleared({
+        "ok": True, "cleared": True, "world_cleared": False,
+        "world_note": "an inspection has been running for longer than "
+                      "20 s; nothing was cleared"})
     check("a refusal is not left reading as a clear",
           session.world_state()["note"], "not cleared")
     check("...with what stopped it on the error line",

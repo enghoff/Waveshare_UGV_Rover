@@ -882,13 +882,12 @@ class Session(SessionActions, SessionShow, SessionWorld):
         if moved or name == "clear_map":
             self.refresh_map()
         if name == "clear_map" and body.get("ok"):
-            # The semantic world goes with the map, because everything it holds
+            # The semantic world went with the map, because everything it holds
             # was measured against the map: a position in the old frame, or a
-            # bearing from a pose in it. It used to survive, and what survived was
-            # a list of things with nowhere to be. The store also starts a new
-            # session, which is what covers the clear the rover refuses -- see
+            # bearing from a pose in it. The rover does that itself now and says
+            # what went in this same reply, which is all this reads -- see
             # `world_map_cleared`.
-            self.world_map_cleared()
+            self.world_map_cleared(body)
         # The move that was in flight has answered, so the wheels are free and a
         # click that was waiting for them goes now. After that move's own outcome
         # has been said, so the notice line reads as one thing ending and the next

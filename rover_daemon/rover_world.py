@@ -124,6 +124,17 @@ class RoverWorld:
         if now - getattr(self, "_world_map_at", 0.0) < FOLLOW_MAP_S:
             return
         self._world_map_at = now
+        self._world_map_now()
+
+    def _world_map_now(self) -> None:
+        """The same question, asked at once instead of on the loop's schedule.
+
+        Within `FOLLOW_MAP_S` is soon enough for a map that changed while nobody
+        was watching, and it is not soon enough for a map somebody has just this
+        moment thrown away: the answer to that press has to be able to say what
+        became of the world state, and it cannot if the store is still pointed at
+        a map that no longer exists. So `_world_map_cleared` calls this directly.
+        """
         navigator = getattr(self, "nav", None)
         if navigator is None or self._world_ready():
             return
@@ -149,6 +160,61 @@ class RoverWorld:
                 f"{answer['map_session']}")
         else:
             self._world_map_note = answer.get("reason", "")
+
+    def _world_map_cleared(self) -> dict[str, Any]:
+        """The SLAM map has just been thrown away, so the world state goes too.
+
+        **The two are one act, and this is where they are joined.** Everything
+        the store holds is a position in the map's frame or a bearing from a pose
+        in it, so a world state that outlives the map it was measured against is
+        a list of things with nowhere to be.
+
+        That much was already the intention. What was wrong was the place: the
+        console made the second call itself, and only when its own world panel
+        had been opened, because the flag it tested is set by that panel's
+        polling and by nothing else. So a map cleared with the popup shut took
+        the map and left the whole store behind -- on 2026-09-06 that was 423
+        things, every one of them from that second on a position measured against
+        a map that had gone, with no message anywhere saying so. Here there is no
+        panel to have been opened, and every route to clearing the map arrives
+        through `clear_map`.
+
+        **Emptied first and told which map it is on second**, in that order,
+        because `store.follow_map` moves the session only for a store with
+        something in it. A clear that worked leaves nothing to strand and needs
+        no new session; a clear the rover refused -- a look still in flight --
+        leaves rows that must stop being comparable with what it records next,
+        and gets one. Neither case needs a session minted by hand, which is the
+        other half of why this is here: the number now moves for exactly one
+        reason, the map underneath it changing.
+        """
+        why = self._world_ready()
+        if why:
+            # Nothing to clear rather than a failure. A rover without the
+            # component still has a map, and the button still works.
+            return {"world_cleared": False, "world_note": why}
+        try:
+            gone = self._tool_world_state_clear({})
+        except Exception as error:
+            gone = {"ok": False, "error": f"the world state could not be "
+                                          f"cleared: {type(error).__name__}: "
+                                          f"{error}"}
+        self._world_map_now()
+        try:
+            session = self._world_store().map_session()
+        except Exception:
+            session = None
+        if not gone.get("ok"):
+            return {"world_cleared": False, "map_session": session,
+                    "world_note": str(gone.get("error")
+                                      or "the world state was not cleared")}
+        return {"world_cleared": True, "map_session": session,
+                "entities": gone.get("entities", 0),
+                "observations": gone.get("observations", 0),
+                "frames_removed": gone.get("frames_removed", 0),
+                "world_note": (f"{gone.get('entities', 0)} things and "
+                               f"{gone.get('observations', 0)} looks went with "
+                               f"the map")}
 
     def start_world_building(self) -> str:
         """Look around on a schedule, from the moment the daemon starts.
@@ -945,22 +1011,15 @@ class RoverWorld:
             inspector.forget_picture()
         return cleared
 
-    def _tool_world_map_session(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        """The SLAM map was cleared, so start a new map session. A control call.
-
-        The console owns the button that clears the map, so it tells the store
-        rather than the store polling for it. Nothing is deleted here, and that is
-        a description of this call rather than of the policy: the console empties
-        the world state with `world_state_clear` and then moves the session on
-        with this. The two are separate so that the one case where the emptying is
-        refused -- a look still in flight -- leaves the rows that survived marked
-        as belonging to the map that has gone, rather than drawn as though they
-        had been measured in this one.
-        """
-        why = self._world_ready()
-        if why:
-            return {"ok": False, "error": why}
-        return {"ok": True, "map_session": self._world_store().new_map_session()}
+    # There was a `world_map_session` control call here, and it is gone. It read
+    # like a question -- which map session is this? -- and it was an instruction:
+    # every call minted a new one, which is to say it told the rover that
+    # everything it had located belonged to a map that no longer existed. Asked
+    # six times in a diagnosis on 2026-09-06 it stranded 72 things that were
+    # perfectly well placed on the map the rover was standing in. The session
+    # moves for one reason now, `store.follow_map` noticing that the map itself
+    # has changed, and the number is readable in `world_state_summary` where a
+    # reader can do no harm with it.
 
     def _tool_world_inspect(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Take a picture, measure what is in it, and record that.
