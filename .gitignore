@@ -49,3 +49,9 @@ ros_nav/behaviors/install/
 
 # Personal Claude Code overrides; the shared hooks are in .claude/settings.json
 .claude/settings.local.json
+
+# docs/rover-architecture/ builds these from its artboards on the way to the
+# committed PDF: the printable page make-pdf.mjs writes, and the screenshots
+# check-fit.mjs takes of it. The PDF is the output worth keeping.
+docs/rover-architecture/print.html
+docs/rover-architecture/*.png

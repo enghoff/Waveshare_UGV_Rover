@@ -188,6 +188,7 @@ Useful starting points:
 
 | Document | Covers |
 |---|---|
+| [`docs/rover-architecture/`](docs/rover-architecture) | the rover on two pages: the ROS 2 graph, and the semantic world state |
 | [`docs/deploy.md`](docs/deploy.md) | deployment, restart and verification paths |
 | [`docs/hosts.md`](docs/hosts.md) | current Jetson Orin, network facts, services and ports |
 | [`docs/face-tracking.md`](docs/face-tracking.md) | local YuNet, aiming geometry and calibration |

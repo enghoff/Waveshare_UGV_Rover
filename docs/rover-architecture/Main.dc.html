@@ -22,7 +22,7 @@
       <div style="font-size: 12.5px; color: #6B6355; margin-top: 4px;">Thirteen nodes on one board, between the driver board&#8217;s UART and the wheels.</div>
     </div>
     <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10px; color: #6B6355; text-align: right; line-height: 1.5; white-space: nowrap;">
-      <div>Banana Pi M4 Zero &#183; ROS 2 Jazzy</div>
+      <div>Jetson Orin Nano &#183; ROS 2 Jazzy</div>
       <div>DDS discovery pinned to loopback</div>
     </div>
   </div>
@@ -95,15 +95,16 @@
         <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">Publishes each revolution as a laser scan. The packets are parsed by the C library the old SLAM left behind &#8212; 0.3 ms, where Python takes 25 &#8212; which also turns a revolution into walls and gaps in words.</div>
       </div>
 
-      <div style="position: absolute; left: 444px; top: 172px; width: 202px; height: 176px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
+      <div style="position: absolute; left: 444px; top: 172px; width: 202px; height: 222px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
         <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">nav_bridge</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">The daemon cannot import rclpy: it runs the board&#8217;s system Python for the serial port and the camera, while ROS lives in a conda environment. So this serves the whole stack over loopback instead, in newline-delimited JSON.</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">The daemon cannot import rclpy: it runs the Orin&#8217;s system Python for the serial port and the camera, while ROS lives in a conda environment. So this serves the whole stack over loopback instead, in newline-delimited JSON.</div>
         <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 7px;">Every move it is asked for becomes a Nav2 action. It has no control loop of its own.</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 7px;">Keeping the graph on disk is here too, and so is putting the rover back on it at boot.</div>
       </div>
 
-      <div style="position: absolute; left: 444px; top: 400px; width: 202px; height: 156px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
+      <div style="position: absolute; left: 444px; top: 418px; width: 202px; height: 138px; box-sizing: border-box; background: #EAF0F6; border: 1px solid #9FB7CE; border-radius: 3px; padding: 9px 11px;">
         <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #2F5D8C;">base_node</div>
-        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">The wheels and gyro as a ROS base. Outwards it turns a velocity command into the board&#8217;s left and right PWM pair; inwards it integrates encoder ticks and gyro into odometry at 50 Hz. Every constant in it was measured on this chassis, not assumed.</div>
+        <div style="font-size: 10.5px; line-height: 1.35; color: #3D3A33; margin-top: 5px;">The wheels and gyro as a ROS base. Outwards it turns a velocity command into the board&#8217;s left and right PWM pair; inwards it integrates encoder ticks and gyro into odometry at 50 Hz. Every constant in it was measured on this chassis.</div>
       </div>
 
       <div style="position: absolute; left: 720px; top: 0px; width: 480px; height: 100px; box-sizing: border-box; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 3px; padding: 9px 12px;">
@@ -111,7 +112,7 @@
           <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 500; color: #8A5215;">slam_toolbox</div>
           <div style="font-size: 9.5px; color: #9A8B70;">asynchronous node, mapping mode</div>
         </div>
-        <div style="font-size: 10.5px; line-height: 1.38; color: #3D3A33; margin-top: 5px;">Matches every scan against the odometry prior into a pose graph, then publishes a 5 cm occupancy grid and the transform saying where the rover sits on it. This is the thing the rover&#8217;s own SLAM could never afford: loop closure. A circuit driven now closes, instead of drifting apart for ever.</div>
+        <div style="font-size: 10.5px; line-height: 1.38; color: #3D3A33; margin-top: 5px;">Matches every scan against the odometry prior into a pose graph, then publishes a 5 cm occupancy grid and the transform saying where the rover sits on it. Loop closure is what the rover&#8217;s own SLAM could never afford: a circuit driven now closes instead of drifting apart for ever, and the graph is written to disk as it goes.</div>
       </div>
 
       <div style="position: absolute; left: 720px; top: 140px; width: 480px; height: 416px; box-sizing: border-box; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 3px; padding: 14px 16px; display: flex; flex-direction: column;">
@@ -138,7 +139,7 @@
           </div>
           <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
             <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">behavior_server</div>
-            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Spin, back up, drive on a heading, wait: the recoveries, and three of the daemon&#8217;s own moves.</div>
+            <div style="font-size: 9.5px; line-height: 1.32; color: #3D3A33; margin-top: 4px;">Spin, back up, drive on a heading, wait. Three are ours: stock Nav2 will not move a rover already touching something.</div>
           </div>
           <div style="background: #FDF8F1; border: 1px solid #E4CFB2; border-radius: 2px; padding: 8px 9px; height: 72px; box-sizing: border-box;">
             <div style="font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #8A5215;">waypoint_follower</div>
@@ -166,7 +167,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 7px;">
           <span style="width: 13px; height: 13px; background: #F8F0E5; border: 1px solid #D6B58A; border-radius: 2px; display: inline-block; flex-shrink: 0;"></span>
-          <span>stock ROS 2 packages, unmodified</span>
+          <span>stock ROS 2 packages, not forked</span>
         </div>
         <div style="display: flex; align-items: center; gap: 7px;">
           <span style="width: 13px; height: 13px; background: #F2EFE8; border: 1px dashed #BEB6A4; border-radius: 2px; display: inline-block; flex-shrink: 0;"></span>

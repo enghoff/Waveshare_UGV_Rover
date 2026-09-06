@@ -50,9 +50,10 @@ over these documentary values.
 ## Maps and localization
 
 The stack periodically serializes its pose graph and last trusted pose under
-`~/ugv/ros_nav/maps/`. On restart it scores the current scan around the saved
-pose before accepting the old map. A weak or ambiguous fit leaves the rover
-mapping without claiming that it knows its old position.
+`~/.ugv/map/`, outside the deploy tree so a deploy cannot take the map with
+it. On restart it scores the current scan around the saved pose before
+accepting the old map. A weak or ambiguous fit leaves the rover mapping
+without claiming that it knows its old position.
 
 Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
@@ -62,7 +63,7 @@ To save an additional visual map manually:
 
 ```bash
 . ~/ugv/ros_nav/env.sh
-ros2 run nav2_map_server map_saver_cli -f ~/ugv/ros_nav/maps/house
+ros2 run nav2_map_server map_saver_cli -f ~/house
 ```
 
 ## Movement
