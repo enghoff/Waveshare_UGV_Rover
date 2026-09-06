@@ -484,8 +484,8 @@ class RosNavigator:
                     # nothing knows what map this is, and saying so is what
                     # stops the world state starting a new session over a
                     # navigation stack that is merely restarting.
-                    "map_id": None, "map_kept": False, "map_note": "",
-                    "map_saved_age_s": None, "map_fit": None,
+                    "map_id": None, "map_kept": False, "map_settled": False,
+                    "map_note": "", "map_saved_age_s": None, "map_fit": None,
                     "pwm": None, "lidar_ok": False, "lidar_live": False,
                     "lidar_port": self._lidar_port, "scan_age_s": None,
                     "lidar_resets": self._resets,

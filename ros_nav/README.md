@@ -55,6 +55,16 @@ it. On restart it scores the current scan around the saved pose before
 accepting the old map. A weak or ambiguous fit leaves the rover mapping
 without claiming that it knows its old position.
 
+`slam_toolbox` anchors the graph it has just read with its own scan matcher,
+which lands within a quarter of a metre and twenty degrees of the saved pose
+ordinarily and much further when loop closure fires in a room whose two ends
+look alike. That anchor is not where the rover is: the restore therefore keeps
+the map and fits the rover to it, searching around the pose the map was left at
+rather than around the anchor. Nothing is written back to disk until a scan has
+confirmed where the rover is standing, so a session that cannot place itself
+cannot overwrite the map that would have let the next one try again. `nav_status`
+reports that as `map_settled` alongside `map_kept`.
+
 Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
 treated as current positions.
@@ -119,6 +129,23 @@ If Nav2 starts but the rover does not move, ask `nav_status` first. Check
 `board_ok`, `lidar_live`, `position_trusted`, `nav2_ready`, and scan/transform
 age. A healthy lidar with no odometry usually means the calibration file or
 board bridge is missing.
+
+If the rover is drawn on the map facing the wrong way, ask `nav_status` for
+`map_note` and `map_fit`. A rover whose pose is further out than a fit can search
+— the window is a metre and forty-five degrees around where it thinks it is — is
+recoverable by widening the search once, by hand:
+
+```bash
+python3 -c 'import json,socket;s=socket.create_connection(("127.0.0.1",8773));\
+s.sendall(json.dumps({"op":"refit","window_deg":180}).encode()+b"\n");\
+print(s.makefile("r").readline())'
+```
+
+Adding `"min_score": 1.01` makes the same call measure without applying
+anything, which is how to find out where the scan really fits before moving the
+rover. A wide window is a manual act on purpose: it can place the rover
+confidently in the wrong one of two rooms that look alike, which is why the
+automatic fit will not use one.
 
 Logs are under `~/ugv/ros_nav/`. Restart the component through
 `~/ugv/ros_nav/restart.sh`; the deploy manifest defines the required build,

@@ -353,18 +353,38 @@ def _peak(scores, offsets_x, offsets_y, headings):
 
 
 def fit(grid, points, guess, window_m=WINDOW_M, window_deg=WINDOW_DEG,
-        min_score=MIN_SCORE, smear_m=SMEAR_M):
+        min_score=MIN_SCORE, smear_m=SMEAR_M, was=None):
     """The pose in the window that best explains this scan, and whether to trust it.
 
-    `guess` is where the rover currently believes it is, as `(x_m, y_m,
-    heading_deg)` in the map frame, and the answer is in the same frame. Every
+    `guess` is where to look -- the centre of the window, as `(x_m, y_m,
+    heading_deg)` in the map frame -- and the answer is in the same frame. Every
     distance is metres and every angle is degrees, because everything that reads
     this -- the bridge, the daemon, the console -- is in degrees, and one
     conversion at the sensor is cheaper than four in the callers.
+
+    `was` is where the rover currently believes it is, and it is only the
+    baseline: `moved`, `turned`, `settled` and `guess_score` are all measured
+    against it. Ordinarily it is the same as `guess` and can be left out, because
+    the best place to look for a rover is where it thinks it is.
+
+    **The two come apart on exactly one occasion, and it is the occasion this
+    module exists for.** After a restore, slam_toolbox anchors the graph it has
+    just read with its own scan matcher, and where that lands is not the rover's
+    belief about anything -- measured on the rover on 2026-09-06, it landed 81
+    degrees and 41 cm from where the map said the rover was parked, on a rover
+    nobody had touched. Searching around *that* is searching around the error:
+    the truth was outside the window, the best pose inside it put 57% of the scan
+    on a wall, and the fit was refused. Searching the same window around the
+    saved pose found the truth at 97% against a 75% rival. So the window goes
+    where the rover is believed to physically be, and the correction is measured
+    from where the mapper put it -- which is what makes an 81 degree anchoring
+    error something this can undo while still refusing to move a rover more than
+    a window away from where it was parked.
     """
     points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    was = tuple(guess) if was is None else tuple(was)
     if len(points) < MIN_POINTS:
-        return Fit(guess[0], guess[1], guess[2], 0.0, 0.0, 0.0, 0.0, 0.0,
+        return Fit(was[0], was[1], was[2], 0.0, 0.0, 0.0, 0.0, 0.0,
                    len(points), False,
                    "only %d usable returns in the scan, which is not enough to "
                    "match anything" % (len(points),))
@@ -397,9 +417,11 @@ def fit(grid, points, guess, window_m=WINDOW_M, window_deg=WINDOW_DEG,
     # rather than decided on: it is the number that says how badly the rover was
     # placed, and a person reading "62% on a wall against 21% where it stood"
     # can see the difference between a nudge and a rover that had lost the room.
-    guess_score = float(_scores(walls, known, grid, points, guess,
+    # `was` rather than `guess`, because "where it stood" is where the rover
+    # stands and not where this was told to look.
+    guess_score = float(_scores(walls, known, grid, points, was,
                                 np.zeros(1), np.zeros(1),
-                                np.array([guess[2]]))[0][0, 0, 0])
+                                np.array([was[2]]))[0][0, 0, 0])
 
     fine_offsets = np.arange(-FINE_SPAN_M, FINE_SPAN_M + 1e-9, FINE_STEP_M)
     fine_turns = np.arange(-FINE_SPAN_DEG, FINE_SPAN_DEG + 1e-9, FINE_STEP_DEG)
@@ -411,8 +433,11 @@ def fit(grid, points, guess, window_m=WINDOW_M, window_deg=WINDOW_DEG,
                                      heading + fine_turns)
     scored = int(fine_seen.reshape(-1)[int(np.argmax(fine))])
     x, y = guess[0] + dx + ddx, guess[1] + dy + ddy
-    moved = math.hypot(x - guess[0], y - guess[1])
-    turned = (heading - guess[2] + 180.0) % 360.0 - 180.0
+    # From where the rover stands, not from where the window was centred. This is
+    # what decides whether a correction is worth applying, and after a restore the
+    # two differ by the whole of the mapper's anchoring error.
+    moved = math.hypot(x - was[0], y - was[1])
+    turned = (heading - was[2] + 180.0) % 360.0 - 180.0
 
     if scored < MIN_POINTS:
         return Fit(x, y, heading, score, rival, guess_score, moved, turned,

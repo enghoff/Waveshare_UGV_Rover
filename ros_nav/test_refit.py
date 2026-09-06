@@ -210,6 +210,78 @@ def test_a_fit_can_never_move_the_rover_further_than_its_window():
               <= refit.WINDOW_DEG + 0.01, True)
 
 
+def test_a_badly_anchored_restore_is_found_from_where_the_map_was_left():
+    """**The fault of 2026-09-06, and the whole reason `was` exists.**
+
+    A rover nobody had touched came up with its map pose 41 cm and 81 degrees
+    from where the map said it was parked, because slam_toolbox anchors a
+    deserialised graph with its own scan matcher and loop closure had snapped it
+    round. Measured on the rover: searching the ordinary window around *that*
+    anchor put 57% of the scan on a wall at best and was refused, while searching
+    the same window around the parked pose found the truth at 97% against a 75%
+    rival.
+
+    So the rover is standing still in one place and there are two candidate
+    centres for the search. Only one of them can find it, and it is not the one
+    the rover currently believes.
+    """
+    section("a restore the mapper anchored 81 degrees out")
+    grid = _map()
+    x, y = SPOTS[2]
+    parked = (x, y, 40.0)
+    # Where the mapper anchored the graph: 81 degrees round and 41 cm off, which
+    # is what was measured. Nothing has moved -- the scan is still the one taken
+    # standing at `parked`.
+    anchored = (x + 0.29, y - 0.29, 40.0 + 81.0)
+    scan = _scan(grid, parked)
+
+    around_anchor = refit.fit(grid, scan, anchored)
+    check("searching around the mapper's anchor cannot find the rover",
+          around_anchor.ok, False)
+    check("...because 81 degrees is outside the window it searches",
+          81.0 > refit.WINDOW_DEG, True)
+
+    fit = refit.fit(grid, scan, parked, was=anchored)
+    check("searching around where the map was left finds it", fit.ok, True)
+    check("...within 6 cm of the truth",
+          math.hypot(fit.x_m - x, fit.y_m - y) < 0.06)
+    check("...and within two degrees of its real heading",
+          abs((fit.heading_deg - 40.0 + 180) % 360 - 180) < 2.0)
+    # And the correction is measured from where the rover stands, not from where
+    # the window was centred -- otherwise an 81 degree error reads as "nothing was
+    # moved" and nothing is applied.
+    check("...and reports the turn the rover actually needs",
+          abs(fit.turned_deg), 81.0, tolerance=2.0)
+    check("...rather than calling it settled and leaving the rover where it is",
+          fit.settled, False)
+    check("...and scores where the rover stood, which is the poor number",
+          fit.guess_score < 0.5, True)
+
+
+def test_a_carried_rover_is_still_refused_when_the_window_moves():
+    """The safety property has to survive `was`, or the fix is worse than the bug.
+
+    Centring the search on the saved pose is only sound because the saved pose is
+    where the rover physically is unless somebody carried it -- and a carried
+    rover must still be refused rather than confidently placed. So the same
+    window, centred on a parked pose the rover is no longer anywhere near, finds
+    nothing worth believing.
+    """
+    section("a carried rover, searched for where it used to be")
+    grid = _map()
+    x, y = SPOTS[2]
+    parked = (x, y, 40.0)
+    # Carried into a different room, so the scan is nothing like the one the
+    # parked pose explains.
+    truth = (SPOTS[0][0], SPOTS[0][1], -120.0)
+    fit = refit.fit(grid, _scan(grid, truth), parked, was=truth)
+    check("a scan from another room does not fit around the parked pose",
+          fit.ok, False)
+    check("...and the answer is still inside the window that was searched",
+          math.hypot(fit.x_m - parked[0], fit.y_m - parked[1])
+          <= refit.WINDOW_M + 0.01, True)
+
+
 def test_a_scan_with_nothing_in_it_is_not_matched():
     """A revolution this thin is a blocked sensor, not an empty room."""
     section("a scan with almost nothing in it")
@@ -465,6 +537,8 @@ TESTS = (
     test_a_rover_that_has_not_moved_is_left_alone,
     test_a_corridor_is_refused_rather_than_guessed_at,
     test_a_fit_can_never_move_the_rover_further_than_its_window,
+    test_a_badly_anchored_restore_is_found_from_where_the_map_was_left,
+    test_a_carried_rover_is_still_refused_when_the_window_moves,
     test_a_scan_with_nothing_in_it_is_not_matched,
     test_the_scan_arrives_in_the_rovers_own_frame,
     test_the_map_is_smeared_so_the_search_can_find_the_peak,

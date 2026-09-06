@@ -37,6 +37,40 @@ rover has or has not done. So the pose lands within a scan or two of the request
 parked or not. That is checked here rather than assumed -- `load_graph` waits
 until the rover's own transform says it has arrived, and reports it if it never
 does.
+
+## The other trap, which was live for weeks and cost the map three times over
+
+**Where the mapper anchors the graph it has just read is not where it was asked
+to, and it is not a mistake either.** Deserialising hands slam_toolbox a pose and
+slam_toolbox then matches the next scan against the graph near it, so the anchor
+that results is its own matcher's answer -- ordinarily within a quarter of a
+metre and twenty degrees, and much further when loop closure fires in a room
+whose two ends look alike. Measured on the rover on 2026-09-06, standing still
+and untouched: the graph came back anchored 41 cm and 81 degrees from where the
+map said the rover was parked, and the scan fitted the map at 97% at the parked
+pose against 30% at the anchored one.
+
+Three things then went wrong in a row, and together they made that permanent:
+
+1. **The anchor was read as a map that could not be loaded.** The graph was in
+   fact loaded -- the rover was standing on it, in its coordinates, driving on
+   its walls -- but a new map identity was minted, which moved the semantic world
+   state onto a new session and took everything measured in the old one off the
+   console. The map on screen was the right map; only the rover's place in it and
+   the label on it were wrong.
+2. **The fit that exists to correct exactly this never ran**, because it was
+   conditional on the restore having been called a success.
+3. **The bad pose was written to disk within seconds**, over the good one, so the
+   next boot restored *at* it, anchored somewhere worse again, and wrote that
+   down in turn. The log has three consecutive restores at 20, 180 and 29 degrees
+   doing this.
+
+So a pose arriving at all now means the map was read and is kept; the fit that
+follows a restore looks around the pose the map was left at rather than around
+the mapper's anchor, which is what lets it undo 81 degrees at all; and nothing is
+written back to disk until a scan has confirmed where the rover is standing.
+`map_trustworthy` is that last rule and `refit.fit`'s `was` argument is the
+second.
 """
 
 import math
@@ -60,12 +94,20 @@ TICK_S = 1.0
 GRAPH_TIMEOUT_S = 30.0
 
 #: How long to wait for a deserialised pose to actually reach the transform tree,
-#: and how close counts as arrived. The mapper matches the next scan against the
-#: graph near the pose it was handed, so what lands is within its own correlation
-#: window of what was asked for -- a quarter of a metre by config/slam_toolbox.yaml
-#: -- and never exactly it. Half a metre and twenty degrees is that window with
-#: room to spare, and a pose that never gets that close is the mapper having
-#: refused, which is worth saying out loud.
+#: and how close counts as arrived cleanly.
+#:
+#: **These no longer decide whether the map is kept, and that is the fix of
+#: 2026-09-06.** They decide only which sentence the restore reports, because a
+#: pose arriving at all means the graph was read: `map_restore` keeps the map
+#: either way and fits the rover to it. What they used to do was throw the map
+#: away, and the numbers made that easy -- `correlation_search_space_dimension`
+#: is 0.5 in config/slam_toolbox.yaml, so the mapper's own matcher can move the
+#: anchor a quarter of a metre against the half here, but
+#: `coarse_search_angle_offset` is 0.349 rad, which is *exactly* the twenty
+#: degrees here with no room at all. So an anchor at the edge of the mapper's
+#: ordinary search window read as a refusal, and the log has one at 20 degrees
+#: doing precisely that. Loop closure can then move it much further again -- 180
+#: degrees in a room whose two ends match, which the log also has.
 #:
 #: **A minute, and it used to be eight seconds.** Eight is right for the wait it
 #: was written for -- a mapper that is already publishing takes a scan or two to
@@ -108,10 +150,18 @@ class NavMap:
         #: yet" from that None rather than being told a map that might change.
         self.map_id = None
         self.map_restored = False
+        #: Whether the rover's place on a restored map has been checked against a
+        #: scan yet. False on a map this session drew itself, where there is
+        #: nothing to check: the rover built those coordinates as it went. It
+        #: gates writing over the saved map -- see `save_graph`.
+        self.map_settled = False
         self.map_note = "the map keeper has not run yet"
         self.map_saved_at = None
         self.map_fit = None
         self._map_settle_from = None
+        #: Where the note said the rover was parked, kept from the restore for the
+        #: settle fit that follows it to search around.
+        self._map_settle_at = None
 
         self.serialize_client = self.create_client(
             SerializePoseGraph, "/slam_toolbox/serialize_map",
@@ -138,6 +188,12 @@ class NavMap:
         return {
             "map_id": self.map_id,
             "map_kept": self.map_restored,
+            # Whether the rover's place on that map has been checked against a
+            # scan. A kept map with this false is a rover standing on real
+            # coordinates it cannot vouch for its position in, which is worth
+            # telling apart from both a fresh map and a settled one -- and it is
+            # also the state in which nothing is written back to disk.
+            "map_settled": self.map_trustworthy(),
             "map_note": self.map_note,
             "map_saved_age_s": (None if self.map_saved_at is None
                                 else round(time.time() - self.map_saved_at, 1)),
@@ -157,6 +213,7 @@ class NavMap:
             self.saved.forget()
             self.map_id = mapstore.new_id()
             self.map_restored = False
+            self.map_settled = False
             self.map_fit = None
             self.map_saved_at = None
             self.map_note = ("the map was cleared, so the saved one went with it "
@@ -174,6 +231,8 @@ class NavMap:
                 if self._map_settle_from is not None:
                     self.map_settle()
                     continue
+                if not self.map_trustworthy():
+                    continue
                 odom = self.travelled_deg()
                 if self.saved.due(odom):
                     self.save_graph()
@@ -182,6 +241,27 @@ class NavMap:
             except Exception as error:              # never past here: it is a loop
                 self.get_logger().warn("map keeper: %s: %s"
                                        % (type(error).__name__, error))
+
+    def map_trustworthy(self):
+        """Whether the rover's own pose is fit to be written down as where it is.
+
+        **The one guard that stops a bad session poisoning the next one, and it
+        was missing.** The keeper writes where the rover is far more often than it
+        writes the graph, and the first of those writes happens seconds after a
+        restore. So a restore that anchored the graph 81 degrees out used to
+        overwrite the good saved pose with the bad one within seconds -- and then
+        the next boot restored *at* the bad pose, anchored somewhere worse again,
+        and wrote that down in turn. Measured in the log on 2026-09-06: three
+        restores in a row, 20 degrees out, then 180, then 29, each inheriting the
+        last one's error and each starting a new map session in the world state.
+
+        A map this session drew needs no permission: its coordinates are the
+        rover's own and there is nothing for a scan to disagree with. A map that
+        came off disk does, because the rover's place in it is the mapper's guess
+        until a fit has confirmed it, and an unconfirmed guess must not be the
+        thing the next boot trusts.
+        """
+        return self.map_settled or not self.map_restored
 
     def travelled_deg(self):
         """`(x_m, y_m, heading_deg)` in the *odom* frame, or None.
@@ -231,19 +311,32 @@ class NavMap:
             self.get_logger().info(self.map_note)
             return
         pose = self.saved.start_pose()
-        ok, why = self.load_graph(pose, drop_trail=True)
+        ok, why, landed = self.load_graph(pose, drop_trail=True)
         with self.map_lock:
-            if not ok:
+            if landed is None:
                 self.map_id = mapstore.new_id()
                 self.map_restored = False
                 self.map_note = ("the saved map could not be loaded (%s), so the "
                                  "rover is mapping the room from scratch" % (why,))
             else:
+                # A pose arrived, so the graph was read and the rover is standing
+                # on the old map whether or not the mapper anchored it where it
+                # was asked. Keeping the identity is the whole point: it is what
+                # tells the semantic world state that its coordinates still mean
+                # something, and minting a new one here is what used to throw a
+                # good map and everything measured in it away.
                 self.map_id = str(note.get("map_id"))
                 self.map_restored = True
                 self.map_saved_at = note.get("saved_at")
-                self.map_note = ("the map from the last session is back, and the "
-                                 "rover is where it was parked")
+                self.map_note = (
+                    "the map from the last session is back, and the rover is "
+                    "where it was parked" if ok else
+                    "the map from the last session is back, but %s -- fitting "
+                    "the rover to it" % (why,))
+                # Where the map says the rover physically is, which is where the
+                # fit that follows has to look. Not where the mapper anchored it:
+                # see `map_settle` and `refit.fit`'s `was`.
+                self._map_settle_at = pose
                 self._map_settle_from = time.monotonic()
         self.get_logger().info(self.map_note)
 
@@ -256,11 +349,22 @@ class NavMap:
         the scan the lidar can actually see, applied if it is trustworthy and
         reported either way.
 
+        **The fit looks around the saved pose and not around where the rover
+        currently is, and after a restore those are different places.** The
+        mapper anchors the graph it has just read with its own scan matcher, and
+        that answer is not a belief the rover holds about anything -- on
+        2026-09-06 it landed 81 degrees out on a rover nobody had touched, and a
+        fit centred there searched a window with the truth outside it and refused.
+        The saved pose is the honest prior, and centring the window on it means
+        the only thing being searched for is how far somebody nudged a parked
+        rover -- which is the distance the window was measured for.
+
         Nothing here waits for a person, because the alternative is a rover that
         comes up believing a wall is a doorway and stays that way until somebody
         opens the console. The safety is in the fit rather than in the asking:
-        `refit.py` will not move the rover further than its window, and refuses
-        outright when the scan fits the map in more than one place.
+        `refit.py` will not move the rover further than its window *from where the
+        map said it was parked*, and refuses outright when the scan fits the map
+        in more than one place.
         """
         waited = time.monotonic() - self._map_settle_from
         with self._lock:
@@ -276,7 +380,13 @@ class NavMap:
             self.get_logger().warn(self.map_note)
             return
         self._map_settle_from = None
-        answer = self.refit()
+        answer = self.refit(around=self._map_settle_at)
+        # A fit that found nothing to move settles the rover just as much as one
+        # that moved it: both end with its place on the map checked against the
+        # scan, which is what `trusted` means. Only a refusal leaves it unchecked,
+        # and an unchecked pose is one this must not write over the saved map --
+        # see `save_graph`.
+        self.map_settled = bool(answer.get("trusted"))
         self.map_note = "the map from the last session is back: " + str(
             answer.get("why") or "")
         self.get_logger().info(self.map_note)
@@ -353,7 +463,19 @@ class NavMap:
     def load_graph(self, pose, drop_trail=False):
         """Load the saved graph and put the rover on it near `pose`.
 
-        Returns `(ok, why)`. `pose` is `(x_m, y_m, heading_deg)` in the map frame.
+        Returns `(ok, why, landed)`. `pose` is `(x_m, y_m, heading_deg)` in the
+        map frame, and `landed` is where the rover's own transform actually
+        arrived -- None if it never arrived at all.
+
+        **`landed` is the difference between a map that could not be read and a
+        map that was read and anchored badly, and conflating those two cost the
+        rover its map repeatedly.** A pose arriving at all means slam_toolbox
+        read the graph: it is publishing `map -> base_link` in that graph's own
+        coordinates, and the rover is on that map whatever this function returns.
+        Where it landed is the mapper's own scan matcher's answer and can be a
+        long way from what was asked for -- so "not where I asked" is a rover
+        that needs fitting to the map it has, and only "nothing ever arrived" is
+        a rover with no map. See `map_restore`, which is where that mattered.
 
         **The wait at the end is the whole of the checking that can be done.**
         The service this rover has answers with nothing at all -- no result code,
@@ -371,10 +493,10 @@ class NavMap:
         has been, so the track it has drawn all session is kept.
         """
         if pose is None:
-            return False, "the saved map does not say where the rover was left"
+            return False, "the saved map does not say where the rover was left", None
         with self.map_lock:
             if not self.deserialize_client.wait_for_service(timeout_sec=2.0):
-                return False, "slam_toolbox is not answering"
+                return False, "slam_toolbox is not answering", None
             if drop_trail:
                 with self._lock:
                     self.trail.cleared(self.correction(), self.dead_reckoned())
@@ -387,7 +509,7 @@ class NavMap:
             future = self.deserialize_client.call_async(request)
             if not self.wait(future, GRAPH_TIMEOUT_S):
                 return False, ("slam_toolbox did not finish loading the graph in "
-                               "%.0f seconds" % (GRAPH_TIMEOUT_S,))
+                               "%.0f seconds" % (GRAPH_TIMEOUT_S,)), None
             # **Two failures, and they were one sentence.** A transform tree that
             # never says anything and one that puts the rover in the wrong room
             # are different faults with different cures, and the message that
@@ -402,24 +524,30 @@ class NavMap:
                 where = self.pose_deg()
                 if where is not None:
                     if _near(where, pose):
-                        return True, "the map is loaded"
+                        return True, "the map is loaded", where
                     last = where
                 time.sleep(0.1)
             if last is None:
                 return False, ("the rover's own position never reached the "
                                "transform tree in %.0f seconds, so nothing here "
                                "can say whether the graph was read"
-                               % (LANDED_S,))
-            return False, ("slam_toolbox put the rover %.2f m and %.0f degrees "
-                           "from where the map says it was left, which is a scan "
-                           "it could not match"
+                               % (LANDED_S,)), None
+            return False, ("slam_toolbox read the graph but anchored it %.2f m "
+                           "and %.0f degrees from where the map says the rover "
+                           "was left, which is its own scan matcher's answer and "
+                           "not the rover's"
                            % (math.hypot(last[0] - pose[0], last[1] - pose[1]),
-                              abs((last[2] - pose[2] + 180.0) % 360.0 - 180.0)))
+                              abs((last[2] - pose[2] + 180.0) % 360.0 - 180.0))), last
 
     # --- fitting the rover to the map -----------------------------------------
 
-    def refit(self, window_m=None, window_deg=None, min_score=None):
+    def refit(self, window_m=None, window_deg=None, min_score=None, around=None):
         """Find where the rover actually is on the map it has, and go there.
+
+        `around` is where to centre the search, and it defaults to where the rover
+        thinks it is, which is right for every caller but one: the settle after a
+        restore passes the pose the map was left at, because the mapper's own
+        anchor is the error being corrected rather than evidence about it.
 
         Refused while a move is running, for `clear_map`'s reason: the route
         being followed is a list of places in coordinates this is about to move
@@ -436,13 +564,15 @@ class NavMap:
                     "against the map -- stop it first"}
         try:
             with self.map_lock:
-                answer = self.map_fit_now(window_m, window_deg, min_score)
+                answer = self.map_fit_now(window_m, window_deg, min_score,
+                                          around)
                 self.map_fit = answer
                 return answer
         finally:
             self.move_mutex.release()
 
-    def map_fit_now(self, window_m=None, window_deg=None, min_score=None):
+    def map_fit_now(self, window_m=None, window_deg=None, min_score=None,
+                    around=None):
         """The fit and its consequence, with the mutex already held."""
         with self._lock:
             grid_msg, scan = self.map_msg, self.scan_msg
@@ -466,18 +596,24 @@ class NavMap:
                                  scan.angle_increment, scan.range_min,
                                  scan.range_max)
         started = time.monotonic()
-        fit = refit.fit(grid, points, where,
+        fit = refit.fit(grid, points, where if around is None else around,
                         window_m=refit.WINDOW_M if window_m is None else window_m,
                         window_deg=(refit.WINDOW_DEG if window_deg is None
                                     else window_deg),
                         min_score=(refit.MIN_SCORE if min_score is None
-                                   else min_score))
+                                   else min_score),
+                        was=where)
         answer = dict(fit.as_dict())
         answer["took_s"] = round(time.monotonic() - started, 2)
         answer["was"] = {"x_m": round(where[0], 3), "y_m": round(where[1], 3),
                          "heading_deg": round(where[2], 1)}
         if not fit.ok or fit.settled:
             answer["fitted"] = False
+            # A fit that agrees with where the rover already is has confirmed the
+            # pose just as firmly as one that corrects it, so the keeper may write
+            # it down. A refusal has confirmed nothing and must not.
+            if fit.ok:
+                self.map_settled = True
             return answer
 
         saved, why = self.save_graph()
@@ -488,7 +624,8 @@ class NavMap:
                              "it means loading the graph again"
                              % (100.0 * fit.moved_m, fit.turned_deg, why))
             return answer
-        loaded, why = self.load_graph((fit.x_m, fit.y_m, fit.heading_deg))
+        loaded, why, _landed = self.load_graph(
+            (fit.x_m, fit.y_m, fit.heading_deg))
         if not loaded:
             answer["fitted"] = False
             answer["why"] = "the fit was found but not applied: %s" % (why,)
@@ -515,6 +652,14 @@ class NavMap:
                              % (100.0 * fit.moved_m, fit.turned_deg))
             return answer
         answer["fitted"] = True
+        # The rover's place on the map has now been checked against a scan, so
+        # the keeper may write it down again -- and it must, straight away. The
+        # save above recorded where the rover was *before* the fit, which is the
+        # pose this has just proved wrong, and nothing else would rewrite it
+        # until the wheels turned: a rover that refitted and then sat still used
+        # to leave the wrong pose on disk for the next boot to restore at.
+        self.map_settled = True
+        self.keep_pose(self.travelled_deg())
         answer["why"] = ("the rover was %.0f cm and %.1f degrees from where it "
                          "thought it was, and has been moved onto the map -- "
                          "%.0f%% of the scan now lies on a wall against %.0f%% "
