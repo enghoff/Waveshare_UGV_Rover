@@ -171,14 +171,27 @@ PAN_LIMIT = 180
 TILT_LIMITS = (-30, 90)
 
 
-# Where the camera rests: straight ahead, and ten degrees above level rather than
-# on it. Not a calibration -- the aiming maths is the same at any tilt -- but a
-# choice about what the rover is pointed at when nothing has asked it to point
-# anywhere. The camera sits low on a rover that sits on the floor, so level puts
-# the bottom two thirds of every frame on the ground a metre in front of it. Ten
-# degrees is enough to spend that on the room instead, and small enough that
-# what was in the middle of the picture stays in it: the lens takes in 76
-# degrees vertically, so this moves the view by about one part in eight.
+# Where the camera rests: straight ahead, and twenty degrees above level rather
+# than on it. Not a calibration -- the aiming maths is the same at any tilt --
+# but a choice about what the rover is pointed at when nothing has asked it to
+# point anywhere. The camera sits low on a rover that sits on the floor, so level
+# puts the bottom two thirds of every frame on the ground a metre in front of it,
+# and this spends that on the room instead. In the 640x480 mode the rover
+# captures the lens takes in 96 degrees vertically -- 45.5 above its axis and
+# 50.7 below -- so twenty degrees moves the view by about a fifth of a frame and
+# lifts the bottom edge from the floor 35 cm in front of the wheels to 50 cm.
+#
+# **What bounds this number is the OAK, not the lens.** The depth camera is
+# bolted to the chassis pitched 3.1 degrees up and sees only 43 degrees
+# vertically, so it covers 18.4 below the horizontal to 24.6 above and nothing
+# else; a look through the gimbal only carries a range where the two overlap. The
+# overlap is a fixed band of the room, so tilting does not shrink it -- a quarter
+# of the gimbal's picture has depth behind it at every tilt from 0 to 30 -- but
+# it does slide that band down the frame, and what runs out is the headroom above
+# the middle of the picture. Something centred in the frame keeps its range up to
+# a tilt of 35 degrees, or 28 at arm's length once the 110 mm the OAK sits below
+# this camera is spent. Twenty leaves a comfortable margin; forty-five would not,
+# and that is worth knowing before this number is raised again.
 #
 # The sweep is unaffected and stays at SCAN_TILT, which is 45: looking for a
 # face is a different job from resting, and it is argued where that number is.
@@ -186,7 +199,7 @@ TILT_LIMITS = (-30, 90)
 # count_faces, the world state's own inspections -- because all of them read
 # whatever frame the camera happens to be giving, and off the tracking loop
 # that is this one.
-REST_TILT_DEG = 10
+REST_TILT_DEG = 20
 
 
 # Servo speed, and the reason the camera used to step from pose to pose.

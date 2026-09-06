@@ -256,7 +256,7 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
     def centre_gimbal(self) -> bool:
         """Back to rest: straight ahead, and REST_TILT_DEG above level.
 
-        Ten degrees up rather than level, for the reason argued where that
+        Twenty degrees up rather than level, for the reason argued where that
         number is defined -- the camera is low, and level fills most of the
         frame with the floor just in front of the wheels.
         """
