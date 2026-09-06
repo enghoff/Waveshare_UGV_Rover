@@ -46,6 +46,10 @@ things move it:
   navigation stack a different map identity; `follow_map` notices within seconds
   and moves the session. The rows stay, shown as measured against a map that has
   gone rather than drawn in this room.
+- **The things an older map stranded can be carried onto this one in a block**,
+  which is what clears a backlog: two maps of one room differ by a turn and a
+  shift, and the things that appear in both are enough to find it. See
+  `reanchor.py`, which is run by hand rather than on a schedule.
 - **A thing whose map was replaced is recognised when it is seen again, rather
   than met as a stranger.** The coordinates expired; the crops did not. So the
   first crossing in the new map that plainly looks like something the rover
@@ -143,6 +147,9 @@ Useful replay and measurement tools remain beside the component:
 - `replay.py` reruns stored observations through current resolution logic,
   following the map changes the recording itself went through (`--session`
   pins it to one), and reports how much survived them;
+- `reanchor.py` lines an old map up with the one the rover is on and carries
+  the things it stranded across, folding away the copies of them that were
+  found again in the meantime; it writes nothing without `--apply`;
 - `bench_oak.py` measures the relationship between the two cameras;
 - `bench_bearing.py`, `bench_height.py` and `bench_cluster.py` compare geometry;
 - `bench_perceive.py` and `bench_still.py` inspect model and capture behavior.

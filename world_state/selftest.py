@@ -34,13 +34,14 @@ from test_inspect import TESTS as INSPECT_TESTS
 from test_locate import TESTS as LOCATE_TESTS
 from test_oak import TESTS as OAK_TESTS
 from test_perceive import TESTS as PERCEIVE_TESTS
+from test_reanchor import TESTS as REANCHOR_TESTS
 from test_resolve import TESTS as RESOLVE_TESTS
 from test_search import TESTS as SEARCH_TESTS
 from test_store import TESTS as STORE_TESTS
 
 TESTS = (*STORE_TESTS, *LOCATE_TESTS, *CLUSTER_TESTS, *PERCEIVE_TESTS,
          *INSPECT_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS,
-         *OAK_TESTS)
+         *OAK_TESTS, *REANCHOR_TESTS)
 
 
 def main() -> int:

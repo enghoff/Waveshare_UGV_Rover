@@ -446,6 +446,74 @@ class WorldStore:
             found.append(entity)
         return found
 
+    def merge(self, keep_id: str, gone_id: str) -> dict[str, Any]:
+        """Two rows that are one thing become one row, keeping all the evidence.
+
+        **Only ever called where something outside this file has established that
+        they are the same thing**, and on this rover that means a map change
+        discovered the same furniture twice: the copies cannot be told apart by
+        the resolver, because the whole reason there are two is that the second
+        was found while the first stood in coordinates that had stopped meaning
+        anything. See `reanchor.py`, which pairs them by appearance and then
+        confirms it against a transform fitted from other pairs entirely.
+
+        The observations move rather than being copied, so nothing is duplicated
+        and nothing is lost; the counts and the two dates are recomputed from what
+        actually ends up attached rather than added together, because the two rows
+        may already share a look. The kept row's placement is left exactly as it
+        is -- the caller chooses which of the two positions is the one measured in
+        the map the rover is on, and this must not second-guess it.
+
+        A thing may hold one region of any one picture, and that rule is checked
+        here rather than assumed: where both rows have a region in the same frame
+        they are two different things by the region finder's own suppression, and
+        the merge is refused rather than quietly breaking the rule the resolver
+        relies on.
+        """
+        if keep_id == gone_id:
+            return {"ok": False, "why": "a thing cannot be merged with itself"}
+        with self._lock, self.db:
+            rows = self.db.execute(
+                "SELECT entity_id, inference_id FROM observations"
+                " WHERE entity_id IN (?, ?) AND inference_id IS NOT NULL",
+                (keep_id, gone_id)).fetchall()
+            frames: dict[Any, set] = {}
+            for row in rows:
+                frames.setdefault(row["inference_id"], set()).add(row["entity_id"])
+            shared = [frame for frame, who in frames.items() if len(who) > 1]
+            if shared:
+                return {"ok": False,
+                        "why": (f"{keep_id} and {gone_id} both have a region in "
+                                f"look {shared[0]}, so they are two things")}
+            gone = self.db.execute("SELECT * FROM entities WHERE id = ?",
+                                   (gone_id,)).fetchone()
+            keep = self.db.execute("SELECT * FROM entities WHERE id = ?",
+                                   (keep_id,)).fetchone()
+            if gone is None or keep is None:
+                return {"ok": False, "why": "one of them is no longer there"}
+            moved = self.db.execute(
+                "UPDATE observations SET entity_id = ? WHERE entity_id = ?",
+                (keep_id, gone_id)).rowcount
+            # The kept row's own exemplars first, so that what survives the
+            # window is what this thing has looked like most recently rather
+            # than whichever row happened to be second.
+            width = 1536
+            blobs = (gone["exemplars"] or b"") + (keep["exemplars"] or b"")
+            if len(blobs) % width:
+                blobs = keep["exemplars"] or b""
+            self.db.execute(
+                "UPDATE entities SET exemplars = ?,"
+                " observation_count = (SELECT COUNT(*) FROM observations"
+                "                       WHERE entity_id = ?),"
+                " created_at = MIN(created_at, ?),"
+                " last_seen_at = MAX(last_seen_at, ?)"
+                " WHERE id = ?",
+                (blobs[-width * EXEMPLARS:], keep_id,
+                 gone["created_at"] or keep["created_at"],
+                 gone["last_seen_at"] or keep["last_seen_at"], keep_id))
+            self.db.execute("DELETE FROM entities WHERE id = ?", (gone_id,))
+        return {"ok": True, "kept": keep_id, "gone": gone_id, "observations": moved}
+
     def create_entity(self, kind: str = "object") -> str:
         """A lasting thing, identified by this application and nothing else.
 
