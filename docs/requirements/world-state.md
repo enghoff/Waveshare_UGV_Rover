@@ -226,10 +226,30 @@ counting unresolved cases separately rather than as failures.
 Identity came out of the 2026-09-07 review better than the plan assumed: around
 250 decisions were reviewed with no error at or above 0.70 appearance similarity.
 The four errors found all sit in the 0.55-to-0.70 band and every one is a thing
-standing behind another thing, which is where an elevation or range gate earns
-its place. Until that band is treated as geometry-only, the requirement is not
-met. Six identical dining chairs in the test room are beyond what this component
-can distinguish at all, and the honest record says so rather than guessing.
+standing behind another thing. Six identical dining chairs in the test room are
+beyond what this component can distinguish at all, and the honest record says so
+rather than guessing.
+
+**The remedy this record used to propose does not work, and the
+[acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md) is why.** It
+said that a thing standing behind another thing is where an elevation or range
+gate earns its place, and that treating the 0.55-to-0.70 band as geometry-only
+would settle it. On a fresh driven recording, 16 of 394 reviewed attachments were
+plainly wrong and every one is the same case — a dining chair merged with the
+framed picture on the wall behind it — and neither gate separates them. The wrong
+look places the thing 0.21 m from the centre of the fourteen correct ones, inside
+their own 0.40 m spread, so any tolerance that keeps the correct looks admits it.
+Raw range does no better: the picture reads 1.52 m where the chairs read 0.67 to
+2.90. Elevation does not either, since the affected entities span 12 to 37
+degrees of it and so do entities nobody faulted.
+
+The reason sits upstream of any gate. The box drawn round the picture had the
+chair in front of it inside the same box, so the depth patch may have sampled the
+chair — which means **a range measured through a box holding two objects at
+different depths makes the wrong merge look geometrically consistent.**
+Separating a region by its own depth before a range is taken from it is what this
+requirement now needs, and the recording is preserved so it can be tried without
+driving again.
 
 <a id="r-ws-14"></a>
 ### R-WS-14 — A thing whose map was replaced is recognised when it is seen again
