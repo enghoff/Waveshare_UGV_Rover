@@ -135,28 +135,50 @@ widening a match tolerance does not satisfy the requirement. See the
 [bounded P0 protocol](../plans/autonomous-curiosity.md#bounded-calibration-protocol)
 and [current review](../progress/2026-09-07-m0-review.md).
 
-The baseline measured a roughly 1.3-1.6-degree difference between approach
-directions at pan -20, 0 and +20, against 0.03-0.05-degree same-direction fit
-variation. This is evidence of a direction-dependent error at the tested positions,
-not a full-travel guarantee, a standard deviation or the remaining error after
-compensation. Approach history was not recorded, so the old observations cannot
-be corrected for it after the fact.
+**The mechanism this asked for now exists; the measurement that condemned it has
+not been retaken.** That is the whole of why this is still `failing`. What
+follows is where each piece stands.
 
-Two further faults ride with it: a gain-like walk somewhere between four and
-eight per cent, which vanishes straight ahead and reaches one to two degrees at
-thirty degrees of pan, and a roll that moves with pan and that neither of the
-other faults can produce. The bench cannot pin the gain down more closely because
-the room moves while it measures.
+*The direction-dependent error is measured and represented.* Approaching one
+commanded angle from opposite sides puts the camera 1.19 to 2.23 degrees apart,
+and across seven campaign sessions on 2026-09-07 — two tilts, three board
+distances — that figure held between 1.59 and 1.72 degrees, a spread of 0.13.
+It is the most stable thing the bench measures. Since 2026-09-07 the rover
+records which way the pan servo last travelled, so a look reached from the
+descending side is charged 2.3 degrees of bearing error instead of being
+silently believed to 1.5. Observations recorded before that date carry no
+approach and cannot be corrected after the fact.
 
-Nothing has been re-tuned to hide this. The OAK's mount constant has deliberately
-been left at a value known to be about six degrees out rather than moved to one of
-several numbers that disagree, because the gimbal it would be measured against is
-not yet independently calibrated. The next step is a bounded measurement of
-actual pointing and repeatability against an independent reference, separating
-correctable bias from remaining physical and measurement variation. The reported
-gain-like slope alone does not identify a unique servo correction. Re-measure the
-mount only within the supported gimbal envelope, then verify depth attribution to
-known objects; stop tuning when the agreed budget or measurable benefit is exhausted.
+*There is a declared envelope and unsupported conditions are refused.*
+Commanded pan -20 to +20, validated at tilt zero and at tilt +20 — the two
+values that account for 98.8% of the looks this rover has taken. A look outside
+that pan range keeps its picture and records no direction at all. See
+[the tilt-20 result](../progress/2026-09-07-gimbal-tilt20-passes.md).
+
+*The gain is bounded inside the envelope and depends on tilt.* Ascending-only
+gain error came out +0.48% at tilt zero and -0.92% at tilt +20, both inside the
+1.0% the protocol allows, which at pan 20 is under 0.2 degrees of pointing. The
+earlier "four to eight per cent" walk, and the claim that the bench could not
+pin it down because the room moves while it measures, were an artefact of
+measuring with the board too far away: every repeatability figure improved three
+to four fold when it came in from 0.70 m to 0.47 m. The 1.5-point difference
+between the two tilts is real and means the gain must be measured at each tilt
+rather than interpolated.
+
+*A roll that moves with pan is still unexplained*, and neither of the other two
+faults can produce it.
+
+*Nothing has been re-tuned to hide any of this*, and no gain correction has been
+applied — the candidate rule is to leave the gain alone. The OAK's mount
+constant was measured against the printed board and adopted on 2026-09-07, so
+the note that used to stand here about deliberately leaving it six degrees out
+is history; see
+[the mount entry](../progress/2026-09-07-p0-oak-mount.md).
+
+**What is left is the acceptance measurement.** The baseline that set this to
+`failing` was taken on a driven recording, where half the bearings fell outside
+the 1.5 degrees the resolver expects. Only another driven recording, taken
+through the current envelope and the current gates, can lift it.
 
 <a id="r-ws-11"></a>
 ### R-WS-11 — A thing's height above the floor is known

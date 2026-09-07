@@ -39,8 +39,15 @@ from mechanical variation.
   put glossy tape over the board.
 - Mount it vertically, with the printed text upright, in a well-lit stationary
   part of the room without glare.
-- Put the centre roughly level with the gimbal camera and initially 0.6-0.8 m from
-  its lens. This distance is setup guidance, not a calibration input.
+- Put the centre roughly level with the gimbal camera and **0.45-0.55 m from its
+  lens**. This distance decides whether the campaign can certify anything, so it
+  is a calibration input and not setup guidance -- which is what it was called
+  until 2026-09-07, at 0.6-0.8 m. Measured across seven sessions that day, every
+  repeatability figure improved by a factor of three to four as the board came in
+  from 0.70 m to 0.47 m, and two sessions failed at 0.70 m purely on measurement
+  scatter. The board subtends 28.6 degrees of the frame at 0.47 m and 19.3 at
+  0.70, and a target that small determines its own pose poorly. See
+  [the tilt-20 result](../progress/2026-09-07-gimbal-tilt20-passes.md).
 - Park the rover squarely in front of it on level floor. Leave enough clearance for
   the gimbal to pan at least 30 degrees in both directions without obstruction.
 - Do not move the rover, target or backing once capture starts. Keep people and
@@ -103,8 +110,9 @@ and marked invalid rather than repeated until it happens to pass.
 ## Current gimbal result
 
 The 1280 x 960 held-out run on 2026-09-07 passed. Within commanded pan -20 to +20
-degrees at tilt zero, use unchanged gain and finish placement from the ascending
-direction. The ascending gain error was -0.34% and absolute residual p95 was 0.297
+degrees, at tilt zero and at tilt +20, use unchanged gain and finish placement
+from the ascending direction. The tilt-zero figures follow; tilt +20 was measured
+later the same day and is below. The ascending gain error was -0.34% and absolute residual p95 was 0.297
 degrees. Stationary duplicates differed by 0.074 degrees median and 0.225 degrees
 p95. Opposite approaches still differ by 1.19-2.23 degrees, so a capture reached
 from another direction is outside this demonstrated state. These are measured
@@ -114,6 +122,17 @@ Those four figures are from the re-analysis after the pose fit was corrected on
 2026-09-07; the same run first read -0.535%, 0.457, 0.117 and 0.423 degrees. The
 verdict did not change, only its margin. See
 [the mount entry](../progress/2026-09-07-p0-oak-mount.md) for what was wrong.
+
+**The envelope now covers tilt +20 as well as tilt zero**, which matters because
+1828 of the rover's 2165 recorded looks were taken at tilt 20 and only 310 at
+zero. `tilt20-held-out-02` passed the unchanged rule with an ascending gain error
+of -0.92% and a residual p95 of 0.193 degrees. Read that as sitting *on* the rule
+rather than inside it: the margin is 0.08 of a point and the development session
+at the same tilt read -1.04%. The pan gain genuinely depends on tilt -- about 1.5
+percentage points between level and 20 up, against 0.12 points of scatter -- so
+**measure at the tilt you will use and never interpolate between tilts**, which
+is what `--tilt` is for. The backlash does not depend on tilt: it held between
+-1.59 and -1.72 degrees across all seven sessions.
 
 **The capture path enforces this envelope rather than trusting it.** A look
 taken at a commanded pan outside ±20 degrees keeps its picture and records no
@@ -126,10 +145,9 @@ envelope is a measurement and not an edit**: run the campaign at the angles
 wanted, pass its gates, then move the constant and say where the number came
 from. Of the 2162 observations the rover had recorded by 2026-09-07, about 92%
 were taken at a pan inside the current envelope and 1952 of them at pan zero,
-so the envelope costs the recording under a tenth of its looks — but only the
-pan axis has been characterised, and only at tilt zero, while 1825 of those
-looks were taken at the tilt-20 rest position. Repeating the pan campaign at
-tilt 20 is the cheapest thing that would close that gap.
+so the envelope costs the recording under a tenth of its looks. The tilt gap
+that stood here on the morning of 2026-09-07 is closed: tilt 20 was measured the
+same day and passed.
 
 The camera's advertised maximum is 2592 x 1944 MJPEG at 30 fps, but this campaign
 stays at 1280 x 960. A live comparison found the same field of view and more corner
