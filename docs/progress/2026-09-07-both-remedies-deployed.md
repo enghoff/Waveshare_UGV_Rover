@@ -122,7 +122,10 @@ suite now runs to the same number four times running.
 
 ## Next
 
-1. Make a bare wall or window patch ineligible as somewhere worth driving to.
+1. ~~Make a bare wall or window patch ineligible as somewhere worth driving
+   to.~~ Withdrawn: the fault does not reproduce on this recording and the two
+   entities it was to be written against turn out to be a ceiling light and a
+   doorway. See [the re-review](2026-09-07-no-bare-patches.md).
 2. Count splits, which nothing reports the way a merge is reported.
 3. Widen the recorded position uncertainty to what the drive measured: the
    sideways miss is flat at about 15 cm from half a metre out to five, while the

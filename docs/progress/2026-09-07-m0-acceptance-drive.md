@@ -28,6 +28,15 @@
 > carries it to the thing, so "this entity has never had its distance measured"
 > is recorded nowhere and reportable nowhere.
 >
+> **Two entity labels were misread the same way, and this is the larger of the
+> two errors.** `object:2` and `object:24`, called blown-out wall and window
+> patches both in the section below and in the requirements record, are a ceiling
+> light panel and a doorway through to the next room. Re-reviewed at a readable
+> size, the recording holds no clear instance of
+> [R-WS-12](../requirements/world-state.md#r-ws-12) at all: one entity of 43 is
+> arguably a patch of nothing and it was seen twice. See
+> [the re-review](2026-09-07-no-bare-patches.md).
+>
 > **Two observation identifiers were misread** off a downscaled contact sheet.
 > The look whose crop is a framed painting is `34333` in `object:3` (not 34555,
 > which belongs to `object:30`) and `34235` in `object:9` (not 34236). Re-running

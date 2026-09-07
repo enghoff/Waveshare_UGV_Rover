@@ -218,10 +218,26 @@ window the camera has turned white. **A rug, a mat or a ceiling fan is an
 object** and belongs in the store like any other — floor-level and ceiling-level
 things are things, and the owner may well want the rover to know about them. The
 [acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md) first counted a
-patterned rug and a ceiling fan against this requirement and that was wrong; on
-that recording the genuine instances are two blown-out wall and window patches
-out of 33 entities reviewed. A rug appearing twice is a different fault
-altogether — a split, not an eligibility question.
+patterned rug and a ceiling fan against this requirement and that was wrong. A
+rug appearing twice is a different fault altogether — a split, not an eligibility
+question.
+
+**It then named two more that were also wrong, and correcting them leaves the
+requirement with no instance on that recording.** `object:2` and `object:24`,
+recorded here as blown-out wall and window patches, are a ceiling light panel and
+a doorway through to the next room; the bare crops inside them are wrong
+attachments, which is a merge and not an eligibility question either. Re-reviewed
+at a size where the labels can be trusted, one entity of 43 is arguably a patch
+of nothing and it was seen twice, which is below what the resolver will place.
+See [the re-review](../progress/2026-09-07-no-bare-patches.md).
+
+**That is not grounds to settle this.** One recording that fails to reproduce a
+fault is not a demonstration that it is gone, and the earlier baseline that
+opened this requirement found two of fourteen entities to be floor. What changed
+between them — the corrected mount, the capture gates, or `perceive._blank`
+refusing crops with no picture in them — is not established. The held-out drive
+is what would settle it, and until then nothing should be built to filter a fault
+nobody can currently reproduce.
 
 <a id="r-ws-13"></a>
 ### R-WS-13 — No association eligible to influence movement is knowingly wrong
