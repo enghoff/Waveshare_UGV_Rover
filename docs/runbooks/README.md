@@ -10,6 +10,7 @@ disagree, the runbook is a bug.
 | [deploy.md](deploy.md) | getting committed work onto the rover, restarting what needs it, and proving it runs |
 | [hosts.md](hosts.md) | which machine is the rover, how to reach it, and what lives where on it |
 | [scripting.md](scripting.md) | running short programs on the rover that compose its existing tools |
+| [p0-gimbal-calibration.md](p0-gimbal-calibration.md) | printing and mounting the measured reference for the bounded P0 camera test |
 | [rover-unresponsive.md](rover-unresponsive.md) | a rover that has dropped off the network |
 
 ## What a runbook owes

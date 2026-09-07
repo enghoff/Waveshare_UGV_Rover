@@ -16,6 +16,10 @@ oak_depth/** text eol=lf
 # file edits that evidence.
 docs/reference/datasheets/** -text
 
+# Generated PDFs are binary artifacts.  Some Git installations otherwise infer
+# them as text and offer CRLF conversion, which corrupts page streams on checkout.
+output/pdf/** -text
+
 # wifi_roam/ is installed and run on the rover's Pi, and both shell scripts have
 # shebangs -- a CRLF checkout would make the kernel look for an interpreter with a
 # carriage return in its name, the same trap lidar_slam/build.sh fell into.

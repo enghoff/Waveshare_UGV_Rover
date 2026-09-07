@@ -268,12 +268,13 @@ next physical session needs the rover parked with camera clearance, both cameras
 unobstructed, a well-lit stationary scene and exclusive use of the gimbal (no face
 tracking, voice aiming or other calibration run). The owner places the reference
 target and confirms the setup; the experiment operator handles capture and analysis.
-Confirm whether a printer, flat backing and ruler are available before selecting
-the target. Supply its exact layout, measured scale, placement and capture sequence
-before asking the owner to set it up; do not ask them to invent a calibration jig or
-buy a sensor. If no suitable target/reference is available, choose and validate an
-alternative before claiming actual-angle measurements. A later driven acceptance
-run still needs the owner present in the pre-cleared test area.
+The owner has confirmed that a printer is available. The exact A4 target, dimension
+checks and mounting instructions are in the
+[P0 gimbal calibration runbook](../runbooks/p0-gimbal-calibration.md). No calibration
+jig or new sensor is requested. If the printed reference does not meet its scale and
+flatness checks, choose and validate an alternative before claiming actual-angle
+measurements. A later driven acceptance run still needs the owner present in the
+pre-cleared test area.
 
 ### Work
 
