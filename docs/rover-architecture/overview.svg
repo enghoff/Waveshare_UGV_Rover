@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="960" height="460" role="img" aria-labelledby="title desc">
+  <title id="title">How the rover finds its way and remembers what it has seen</title>
+  <desc id="desc">Two flows run on the Jetson Orin Nano. Lidar scans and wheel and IMU odometry feed SLAM, Nav2 plans and follows routes, and the rover's motor bridge drives the wheels. Camera images pass through YOLOE, DINOv2 and SigLIP2; world state combines measurements to estimate positions and lets a text description search stored observations. Map and pose also support visual memory.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#8C8371"/>
+    </marker>
+    <style>
+      text { font-family: 'Segoe UI', Arial, sans-serif; }
+      .heading { font-size: 23px; font-weight: 600; fill: #232019; }
+      .label { font-size: 17px; font-weight: 600; }
+      .body { font-size: 15px; fill: #514B40; }
+      .source { font-size: 12px; fill: #736B5D; }
+      .hardware { fill: #F2EFE8; stroke: #BEB6A4; stroke-dasharray: 4 3; }
+      .ours { fill: #EAF0F6; stroke: #9FB7CE; }
+      .library { fill: #F8F0E5; stroke: #D7AE7D; }
+      .edge { fill: none; stroke: #8C8371; stroke-width: 1.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="960" height="460" rx="6" fill="#FCFAF6"/>
+  <text x="28" y="37" class="heading">How the rover finds its way</text>
+  <text x="932" y="35" text-anchor="end" class="source">Runs onboard · Jetson Orin Nano</text>
+
+  <g transform="translate(28 58)">
+    <rect width="205" height="120" rx="3" class="hardware"/>
+    <text x="14" y="28" class="label" fill="#4A443A">Measures the room</text>
+    <text x="14" y="54" class="body">Laser scans and</text>
+    <text x="14" y="75" class="body">wheel / IMU odometry</text>
+    <text x="14" y="104" class="source">D500 · driver board</text>
+  </g>
+  <path d="M234 118H259" class="edge"/>
+  <g transform="translate(261 58)">
+    <rect width="205" height="120" rx="3" class="library"/>
+    <text x="14" y="28" class="label" fill="#92520A">Draws the map</text>
+    <text x="14" y="54" class="body">Maps the surroundings</text>
+    <text x="14" y="75" class="body">and estimates the pose</text>
+    <text x="14" y="104" class="source">slam_toolbox</text>
+  </g>
+  <path d="M467 118H492" class="edge"/>
+  <g transform="translate(494 58)">
+    <rect width="205" height="120" rx="3" class="library"/>
+    <text x="14" y="28" class="label" fill="#92520A">Finds a way there</text>
+    <text x="14" y="54" class="body">Plans and follows a</text>
+    <text x="14" y="75" class="body">route to the destination</text>
+    <text x="14" y="104" class="source">Nav2</text>
+  </g>
+  <path d="M700 118H725" class="edge"/>
+  <g transform="translate(727 58)">
+    <rect width="205" height="120" rx="3" class="ours"/>
+    <text x="14" y="28" class="label" fill="#2F5D8C">Turns the wheels</text>
+    <text x="14" y="54" class="body">Converts speed requests</text>
+    <text x="14" y="75" class="body">into motor commands</text>
+    <text x="14" y="104" class="source">base_node · rover_daemon</text>
+  </g>
+
+  <text x="28" y="227" class="heading">What the rover has seen</text>
+  <g transform="translate(28 248)">
+    <rect width="205" height="120" rx="3" class="hardware"/>
+    <text x="14" y="28" class="label" fill="#4A443A">Takes a look</text>
+    <text x="14" y="54" class="body">Images, with depth</text>
+    <text x="14" y="75" class="body">where available</text>
+    <text x="14" y="104" class="source">Gimbal camera · OAK-D-Lite</text>
+  </g>
+  <path d="M234 308H259" class="edge"/>
+  <g transform="translate(261 248)">
+    <rect width="205" height="120" rx="3" class="library"/>
+    <text x="14" y="28" class="label" fill="#92520A">Measures the picture</text>
+    <text x="14" y="54" class="body">Finds regions and</text>
+    <text x="14" y="75" class="body">records visual features</text>
+    <text x="14" y="104" class="source">YOLOE · DINOv2 · SigLIP2</text>
+  </g>
+  <path d="M467 308H492" class="edge"/>
+  <g transform="translate(494 248)">
+    <rect width="205" height="120" rx="3" class="ours"/>
+    <text x="14" y="28" class="label" fill="#2F5D8C">Works out where</text>
+    <text x="14" y="54" class="body">Combines viewpoints to</text>
+    <text x="14" y="75" class="body">estimate object positions</text>
+    <text x="14" y="104" class="source">world_state · resolve</text>
+  </g>
+  <path d="M700 308H725" class="edge"/>
+  <g transform="translate(727 248)">
+    <rect width="205" height="120" rx="3" class="ours"/>
+    <text x="14" y="28" class="label" fill="#2F5D8C">Recalls what it saw</text>
+    <text x="14" y="54" class="body">Matches a description</text>
+    <text x="14" y="75" class="body">against stored images</text>
+    <text x="14" y="104" class="source">world_state · search</text>
+  </g>
+
+  <text x="28" y="398" class="body">Map and pose also support visual memory; source images stay available for inspection.</text>
+  <path d="M28 416H932" stroke="#DDD6C8"/>
+  <rect x="28" y="432" width="12" height="12" rx="1" class="hardware"/>
+  <text x="49" y="443" class="source">Hardware</text>
+  <rect x="182" y="432" width="12" height="12" rx="1" class="ours"/>
+  <text x="203" y="443" class="source">Software in this repository</text>
+  <rect x="434" y="432" width="12" height="12" rx="1" class="library"/>
+  <text x="455" y="443" class="source">Navigation libraries and perception models</text>
+</svg>

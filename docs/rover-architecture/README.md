@@ -9,6 +9,10 @@ shape:
 | 1 | [`Main.dc.html`](Main.dc.html) | how the rover finds its way: the hardware and the program that owns it, the three pieces written here, the mapper and the seven Nav2 servers |
 | 2 | [`WorldState.dc.html`](WorldState.dc.html) | what the rover has seen: a look through the gimbal camera, the three models that measure it, and how two of those looks become a thing with a place on the map |
 
+The [root README](../../README.md) uses [`overview.svg`](overview.svg), a compact
+summary of these two flows with the same colours and purpose-first labels. It is
+a standalone SVG; the artboards and PDF carry the detailed architecture.
+
 **These pages are for somebody who does not know the rover.** They answer "what
 is this and how does it work", in plain English, once. Everything a reader
 cannot use at that altitude belongs somewhere else and not here: port numbers

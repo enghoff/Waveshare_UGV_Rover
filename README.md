@@ -38,18 +38,10 @@ connection and gimbal camera, and exposes tools used by the console and voice
 session. ROS owns mapping and route execution; the visual-memory service stores
 observations and estimates where things are.
 
-```mermaid
-flowchart LR
-    Browser["Browser: controls, camera, map and audio"] <--> Console["Web console on Jetson"]
-    Console <--> Qwen["Qwen Omni on Alibaba DashScope"]
-    Console <--> Daemon["Rover daemon on Jetson"]
-    Daemon <--> Board["Driver board: motors, gimbal and telemetry"]
-    Camera["Gimbal camera"] --> Daemon
-    Daemon <--> ROS["ROS 2: SLAM and Nav2"]
-    Lidar["D500 lidar"] --> ROS
-    Daemon <--> World["Visual memory and onboard perception"]
-    OAK["OAK-D-Lite depth"] --> World
-```
+[![Two onboard flows: lidar and odometry feed mapping, route planning and motor control; camera observations feed perception, object placement and visual search.](docs/rover-architecture/overview.svg)](docs/rover-architecture/rover-architecture.pdf)
+
+The [full architecture drawing](docs/rover-architecture/rover-architecture.pdf)
+expands these two views: **how the rover finds its way** and **what it has seen**.
 
 World-state perception uses YOLOE regions with DINOv2 and SigLIP2 appearance
 vectors, accelerated through TensorRT on the Orin. Geometry supplies placement
