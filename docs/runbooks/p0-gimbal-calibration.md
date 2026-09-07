@@ -104,11 +104,16 @@ and marked invalid rather than repeated until it happens to pass.
 
 The 1280 x 960 held-out run on 2026-09-07 passed. Within commanded pan -20 to +20
 degrees at tilt zero, use unchanged gain and finish placement from the ascending
-direction. The ascending gain error was -0.535% and absolute residual p95 was 0.457
-degrees. Stationary duplicates differed by 0.117 degrees median and 0.423 degrees
+direction. The ascending gain error was -0.34% and absolute residual p95 was 0.297
+degrees. Stationary duplicates differed by 0.074 degrees median and 0.225 degrees
 p95. Opposite approaches still differ by 1.19-2.23 degrees, so a capture reached
 from another direction is outside this demonstrated state. These are measured
 limits, not a reason to tune toward unattainable mechanical precision.
+
+Those four figures are from the re-analysis after the pose fit was corrected on
+2026-09-07; the same run first read -0.535%, 0.457, 0.117 and 0.423 degrees. The
+verdict did not change, only its margin. See
+[the mount entry](../progress/2026-09-07-p0-oak-mount.md) for what was wrong.
 
 The camera's advertised maximum is 2592 x 1944 MJPEG at 30 fps, but this campaign
 stays at 1280 x 960. A live comparison found the same field of view and more corner
@@ -154,9 +159,15 @@ at most 0.5 px, each angular estimate spans no more than 0.75 degrees, each offs
 component spans no more than 15 mm, and the runtime pinhole approximation differs
 from the stored OAK lens by no more than 0.75 degrees across the sampled frame grid.
 
-The development capture passed these gates. Its frozen candidate is yaw +0.116,
-pitch +7.488 and roll -0.976 degrees, with offset +0.089 m forward, -0.014 m left
-and -0.103 m up. Do not deploy it until the held-out comparison below passes.
+A seventh gate joins those six: `pose_converged`. It nudges each fitted pose a
+tenth of a degree about each axis and fails if that recovers more than 0.5% of the
+reprojection residual, which is what an unconverged fit looks like from the
+outside. It exists because the bench had one -- see the mount result below.
+
+The development capture passed these gates. Its candidate, after the corrected
+fit, is yaw +1.492, pitch +6.256 and roll -1.200 degrees, with offset +0.0872 m
+forward, -0.0031 m left and -0.0937 m up. Do not deploy a candidate until the
+held-out comparison below passes.
 
 The first held-out move placed the gimbal camera 0.880 m from the target, where the
 OAK stream could resolve no markers; that attempt is invalid and retained. For the
@@ -190,10 +201,22 @@ runtime calibration.
 
 ## Current OAK mount result
 
-The replacement held-out set was captured at a 0.686 m gimbal-to-target distance,
-0.130 m beyond development. Coverage, reprojection, offsets, runtime lens-model error
-and the comparison with the frozen development median all passed. Its internal yaw
-range was 0.863 degrees, above the unchanged 0.75-degree repeatability limit, so the
-overall result is inconclusive and no mount transform is adopted.
-Do not move the rover or repeat the capture until the
-saved 25 pair estimates have been attributed by source frame.
+**Adopted on 2026-09-07 and deployed.** `world_state/oak.py` carries yaw +1.492,
+pitch +6.256, roll -1.200 degrees and offset +0.0872 m forward, -0.0031 m left and
+-0.0937 m up, and the running daemon reports them over TCP 8769.
+
+The held-out set at 0.686 m -- 0.130 m beyond development -- first failed on an
+internal yaw range of 0.863 degrees against the 0.75 limit. Attributing its 25 pair
+estimates to their source frames put 99.2% of that spread on the five gimbal frames
+and 0.8% on the five OAK frames, and the cause turned out to be the pose fit rather
+than any frame: it used the analytic planar solution without minimising it. With
+both cameras' fits refined, the held-out yaw range is 0.357 degrees and every gate
+passes.
+
+**That set was re-analysed, not re-captured.** A clean second trial is still owed.
+When it is taken, use a third distance at least 0.10 m from both 0.555 m and
+0.686 m, and **turn the target 20 to 30 degrees off face-on about its vertical
+axis**. Very nearly face-on is what makes a planar target determine its own
+out-of-plane tilt badly, which is the whole difficulty here; simulation predicts
+roughly a three- to fourfold improvement from the turn, which the capture will
+test. Keep the sheet flat and the gimbal inside its demonstrated envelope.
