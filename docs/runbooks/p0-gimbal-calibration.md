@@ -110,6 +110,14 @@ p95. Opposite approaches still differ by 1.19-2.23 degrees, so a capture reached
 from another direction is outside this demonstrated state. These are measured
 limits, not a reason to tune toward unattainable mechanical precision.
 
+The camera's advertised maximum is 2592 x 1944 MJPEG at 30 fps, but this campaign
+stays at 1280 x 960. A live comparison found the same field of view and more corner
+detections at the maximum mode, but 1280 x 960 already passed the reference and
+held-out accuracy gates. A resolution change would require refitting the lens and
+repeating held-out validation. Use the maximum mode only if later evidence shows
+the gimbal reference is the limiting measurement; it does not improve the OAK's
+target coverage. Normal face tracking remains at its validated 640 x 480 mode.
+
 ## Frame the target for both cameras
 
 The fixed OAK is lower than the gimbal camera and has a narrower view. In the first
