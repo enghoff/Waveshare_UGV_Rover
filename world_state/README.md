@@ -89,7 +89,14 @@ The resolver:
 
 A single viewpoint cannot locate a thing. Several objects on the same lines of
 sight can still form a false crossing when ranges are absent. Range-assisted
-association is implemented but has not yet been validated by a new driven run.
+association was validated on the driven run of 2026-09-07 and it does help: of
+100 things bearings alone placed, 11 had no counterpart once the ranges were
+carried, and the two that were checked by eye were plainly false -- a pool of
+blown-out floor placed below the floor, and a blue case pooled with a red wooden
+surface near the ceiling. It refuses more than it invents. See
+[`docs/m0-semantic-world-state-baseline.md`](../docs/m0-semantic-world-state-baseline.md),
+which also says why the ranges themselves are not yet trustworthy as ranges *to*
+anything: the mount constant the boxes are placed through is 6.2 degrees out.
 
 ## Install and run
 
@@ -163,5 +170,10 @@ Useful replay and measurement tools remain beside the component:
 - `bench_bearing.py`, `bench_height.py` and `bench_cluster.py` compare geometry;
 - `bench_perceive.py` and `bench_still.py` inspect model and capture behavior.
 
-The next hardware proof is a driven run with the OAK awake. It should establish
-whether measured range prevents the false crossings seen in bearing-only runs.
+That proof was taken on 2026-09-07 and measured range does prevent false
+crossings. The next hardware proof is a different one: `bench_oak.py --pan -20 0
+20` fits four and a half degrees of different yaw for a camera bolted to the
+chassis, which cannot be a property of the mount and points at the gimbal
+camera's own model away from its axis. Until that is fixed the OAK's mount cannot
+honestly be re-measured, and `oak.MOUNT` has been left alone rather than moved to
+one of three numbers that disagree.

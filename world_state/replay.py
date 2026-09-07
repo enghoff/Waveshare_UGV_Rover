@@ -69,9 +69,25 @@ COLUMNS = (
     "observer_pan_deg observer_tilt_deg observer_pose_json map_session "
     "model_id raw_json bearing_deg span_deg origin_sigma_m bearing_sigma_deg "
     "elevation_deg elevation_span_deg "
+    "range_m range_sigma_m camera "
     "region_source region_score "
     "dino_blob siglip_blob vectors_from"
 ).split()
+
+#: What the depth camera measured, and the only columns this harness will drop on
+#: purpose. `--no-ranges` blanks them, which is the whole of how one recording
+#: taken with the OAK awake is replayed as though it had been taken without it.
+#: That comparison is what M0 of `docs/task-autonomous-curiosity.md` asks for,
+#: and it is the only honest way to ask whether measured distance helps or harms
+#: identity: two different drives differ by the room as well as by the camera.
+#:
+#: **They were missing from `COLUMNS` until 2026-09-07**, which is worth saying
+#: plainly rather than quietly adding: every replay result quoted before that
+#: date is a bearing-only result whatever the rover was doing when it recorded
+#: the run. The drive of 2026-09-07 carries 583 ranges and replayed without one
+#: of them, so "an unchanged build reproduces the entities the rover ended up
+#: with" was a claim about a resolver running on less evidence than the rover's.
+RANGE_COLUMNS = ("range_m", "range_sigma_m")
 
 #: What two crops have to score to be called the same thing when the entities are
 #: being marked. Between the two numbers this rover measured -- two regions of one
@@ -254,7 +270,8 @@ def reach_from(path: str):
 
 def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
            verbose: bool = False, reach=None,
-           groups: list[list[dict]] | None = None
+           groups: list[list[dict]] | None = None,
+           drop_ranges: bool = False
            ) -> tuple[list[dict], list[dict]]:
     """Feed a recording back through the live resolver, from an empty world.
 
@@ -272,6 +289,11 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
     full of things is not a rare case on this rover, and it was the one case the
     harness could not show. `--session` replays a single map where that is what
     is wanted.
+
+    `drop_ranges` throws away what the depth camera measured, so that a single
+    recording can be replayed both ways. Bearing-only is the harder problem and
+    the one every entity this store held before the OAK was wired in was built
+    under; carrying the ranges is what the rover itself does.
     """
     skip = skip or set()
     groups = inspections(path) if groups is None else groups
@@ -293,6 +315,10 @@ def replay(path: str, skip: set | None = None, drop_untrusted: bool = False,
                 store.db.commit()
             with store._lock, store.db:
                 for row in wanted:
+                    if drop_ranges:
+                        row = dict(row)
+                        for column in RANGE_COLUMNS:
+                            row[column] = None
                     store.db.execute(
                         "INSERT INTO observations(entity_id, "
                         + ",".join(COLUMNS) + ") VALUES(NULL, "
@@ -517,6 +543,10 @@ def main() -> int:
                         help="replay only the looks taken under this map "
                              "session; the default follows the map changes the "
                              "recording itself went through")
+    parser.add_argument("--no-ranges", action="store_true",
+                        help="replay as though the depth camera had been off, "
+                             "dropping every range the rover measured; the "
+                             "bearing-only half of the M0 comparison")
     parser.add_argument("--detail", action="store_true",
                         help="one line per entity")
     parser.add_argument("--verbose", action="store_true",
@@ -540,10 +570,19 @@ def main() -> int:
         count, median = remeasure(groups, (width, height))
         print(f"  {count} bearings worked out again, median move "
               f"{median:.2f} deg")
+    carried = sum(1 for group in groups for row in group
+                  if row.get("range_m") is not None)
+    if args.no_ranges:
+        print(f"  bearing-only: the {carried} ranges in this recording are "
+              f"being dropped")
+    else:
+        print(f"  range-assisted: {carried} of "
+              f"{sum(len(group) for group in groups)} regions carry a measured "
+              f"distance")
     entities, observations = replay(args.database, skip=skip,
                                     drop_untrusted=args.no_untrusted_pose,
                                     verbose=args.verbose, reach=reach,
-                                    groups=groups)
+                                    groups=groups, drop_ranges=args.no_ranges)
     score(entities, observations, detail=args.detail)
     return 0
 

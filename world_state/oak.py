@@ -136,6 +136,49 @@ class Mount:
 #: is -2.1. Two degrees mixes a ray's bearing into its elevation by the roll
 #: times how far off the axis the ray is, so at the edge of this camera's field
 #: it is worth more than a degree.
+#: **Measured again on 2026-09-07, and it did not reproduce. Nothing below has
+#: been changed, and that is the decision rather than an oversight.** Three fresh
+#: runs in a textured living room, points fitted 3.0 to 5.2 m out, agree with each
+#: other to a tenth of a degree and disagree with what is written here:
+#:
+#:     run     yaw    pitch    roll   residual median
+#:      1    +4.59   +2.17   -1.70   1.19 deg
+#:      2    +4.72   +2.28   -1.63   1.16
+#:      3    +4.67   +2.25   -1.57   1.17
+#:     here  -1.53   +3.11   -2.12
+#:
+#: Six point two degrees of yaw, which is four times what a bearing on this rover
+#: is believed to. The prediction written above also failed: given the ruler's
+#: offset the pitch was to fall by about 1.9 degrees and it rose by 2.09, to
+#: +4.26.
+#:
+#: **What settles it is the consistency check, and it is why no number here
+#: moved.** This camera is bolted to the chassis, so what the bench fits for it
+#: must not change when the *gimbal* moves. Across three gimbal positions:
+#:
+#:     pan      yaw    pitch    roll
+#:     -20    +1.14   +2.06   -2.99
+#:       0    +4.71   +2.19   -1.67
+#:     +20    +5.59   +2.02   +0.43
+#:           spread    0.18   spread
+#:             4.45             3.42
+#:
+#: Pitch holds. Yaw and roll do not, and no property of this mount can depend on
+#: where the other camera is pointed. So what is wrong is the gimbal camera's own
+#: model away from its axis -- the fisheye fit or the pan servo's commanded
+#: against actual -- and the roll moving is what points at the lens, a roll being
+#: exactly how a bearing error bleeds into an elevation one off-axis.
+#:
+#: Adopting the pan-0 fit would replace one number with another that three
+#: positions disagree about, which is this file's own warning turned on itself:
+#: half of a consistent pair is worse than neither half. **Fix the gimbal
+#: camera's off-axis model first; this mount cannot be settled before it.** The
+#: cost of leaving it is written down in
+#: `docs/m0-semantic-world-state-baseline.md`: every look in the run of
+#: 2026-09-07 was taken at pan 0, where this is out by 8.6 per cent of the OAK's
+#: picture width, and the ranges it produced are unbiased against independent
+#: bearing crossings but scatter far too widely -- only 48 per cent within half a
+#: metre -- which is what a box landing on a neighbouring surface looks like.
 MOUNT = Mount(
     yaw_deg=-1.53,
     pitch_deg=3.11,
