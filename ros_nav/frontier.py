@@ -392,7 +392,14 @@ def clump(grid, cells):
 
 
 def split(grid, group, max_cells, min_cells=0):
-    """One clump cut into pieces, none of them longer than `max_cells`.
+    """One clump divided into pieces, each of about `max_cells` at most.
+
+    **"About" is load-bearing rather than vague, and the summary said "none of
+    them longer than `max_cells`" for a while after it had stopped being true.**
+    Folding a pocket into a neighbour, which is the last thing this does and the
+    thing that makes it safe, can carry that neighbour over the cap -- 2.10 m
+    against a 2.00 m cap on the recorded rim. What is exact is the other half:
+    **a split divides a frontier and never drops one.**
 
     **A frontier gets one goal and is written off by one arrival, and that is
     only safe while a frontier is small enough for one arrival to have dealt
@@ -429,21 +436,25 @@ def split(grid, group, max_cells, min_cells=0):
     are under `MIN_FRONTIER_M`, so half a metre of real boundary was quietly
     dropped rather than divided. Taking the cell with the fewest unclaimed
     neighbours puts every seed after the first at an end of the remaining arc, so
-    it eats along in one direction and strands nothing. Ties go to the lowest
-    index, so two runs over one map choose the same goals; a rover that reorders
-    its own frontiers between surveys is the dithering `HYSTERESIS_M` exists to
-    stop.
+    it eats along in one direction instead of outwards from the middle. That
+    reduces the stranding; it does not end it, and the paragraph after next is
+    there because measuring it showed as much. Ties go to the lowest index, so
+    two runs over one map choose the same goals; a rover that reorders its own
+    frontiers between surveys is the dithering `HYSTERESIS_M` exists to stop.
 
-    Sizes come out even -- how many pieces first, then a target from that --
-    because taking `max_cells` off the front until the clump runs out leaves a
-    runt at the end. On the 209-cell rim at the shipped 40-cell cap that runt is
-    nine cells, which is 0.45 m, which is under `MIN_FRONTIER_M` and so would be
-    dropped rather than driven to. Six pieces of thirty-five keeps all of it.
+    How many pieces is decided before how big, so that the intended sizes come
+    out even: taking `max_cells` off the front until the clump runs out leaves a
+    runt at the end instead. On the 209-cell rim at the shipped 40-cell cap that
+    runt would be nine cells, which is 0.45 m, which is under `MIN_FRONTIER_M`
+    and so would be dropped rather than driven to; six pieces of thirty-five
+    keeps all of it. Those are the sizes aimed at rather than the sizes got --
+    what the rim actually yields is 24, 35, 35, 35, 38 and 42, because the flood
+    strands pockets and the fold below puts them back.
 
     **`min_cells` is what makes cutting safe, and it is not decoration.** The
-    seeding above stops a run being stranded but cannot help where the clump is
-    a blob rather than a curve, and the real rim is both: a fifth of its cells
-    have four or more neighbours. Flooding a blob leaves pockets, and on this rim
+    seeding above helps where the clump is a curve and cannot help where it is a
+    blob, and the real rim is both: a fifth of its cells have four or more
+    neighbours. Flooding a blob leaves pockets, and on this rim
     it left one of three cells and one of seven, which are under
     `MIN_FRONTIER_M` and would be dropped -- so cutting a frontier up would have
     quietly lost half a metre of it. Anything under `min_cells` is therefore
