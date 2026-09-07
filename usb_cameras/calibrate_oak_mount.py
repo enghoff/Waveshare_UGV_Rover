@@ -96,7 +96,7 @@ def save_oak_jpeg(folder: Path, number: int, data: bytes, detector) -> dict:
     frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
         raise RuntimeError(f"OpenCV could not decode {path}")
-    found = gimbal.detect(frame, detector)
+    found = detect_best(frame, detector)
     if found["charuco_corners"] < 4:
         raise RuntimeError(f"only {found['charuco_corners']} corners in {path}")
     return {
@@ -106,6 +106,27 @@ def save_oak_jpeg(folder: Path, number: int, data: bytes, detector) -> dict:
         "width": int(frame.shape[1]),
         "height": int(frame.shape[0]),
         "detection": found,
+    }
+
+
+def detect_best(frame: np.ndarray, detector) -> dict:
+    """Use whichever of native or enlarged detection finds more board corners.
+
+    Enlargement recovers this board in a 640 x 480 frame, but at 1280 x 960 its
+    resampling can erase marker cells: one preserved frame fell from 54 corners
+    at native resolution to 39 at 3x.  Pose fitting should use the observation
+    with more printed reference, not a fixed preprocessing scale.
+    """
+    best = gimbal.detect(frame, detector)
+    corners, ids, marker_corners, marker_ids = detector.detectBoard(frame)
+    native_count = 0 if ids is None else len(ids)
+    if native_count <= best["charuco_corners"]:
+        return best
+    return {
+        "markers": 0 if marker_ids is None else len(marker_ids),
+        "charuco_corners": native_count,
+        "ids": [int(value) for value in ids.reshape(-1)],
+        "image_points_px": np.asarray(corners, float).reshape(-1, 2).round(5).tolist(),
     }
 
 
@@ -151,6 +172,8 @@ def capture(folder: Path, rover: RoverClient, oak_host: str, settle: float) -> N
             row = gimbal.save_frame(
                 folder, f"gimbal-{number}", data, reply, detector
             )
+            frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            row["detection"] = detect_best(frame, detector)
             meta["gimbal"].append(row)
             save_json(folder / "mount-campaign.json", meta)
             time.sleep(0.25)
@@ -202,7 +225,7 @@ def detected_pose(path: Path, board, detector, matrix: np.ndarray,
     frame = cv2.imread(str(path))
     if frame is None:
         raise RuntimeError(f"could not read {path}")
-    found = gimbal.detect(frame, detector)
+    found = detect_best(frame, detector)
     ids = np.asarray(found["ids"], dtype=np.int32)
     images = np.asarray(found["image_points_px"], dtype=np.float64)
     objects = np.asarray(board.getChessboardCorners(), dtype=np.float64)[ids]

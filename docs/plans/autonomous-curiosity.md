@@ -177,8 +177,8 @@ P0 remains in progress and M0 has not passed. The
 [latest review](../progress/2026-09-07-m0-review.md) separates the recorded evidence
 from the calibration work still to do. The gimbal measurement has passed its
 held-out gate at tilt zero and pan -20 to +20 degrees when every placement finishes
-from the ascending direction. The fixed-OAK mount still needs a full-board fit and
-a second-distance held-out check. The baseline's historical pass counts and "before
+from the ascending direction. The fixed-OAK full-board development fit has passed
+and still needs its second-distance held-out check. The baseline's historical pass counts and "before
 Phase 1" heading are not the current gate: read-only M1/M2 may proceed.
 
 The agreed target is useful, demonstrated accuracy within a declared operating
@@ -268,13 +268,10 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 
 ### Owner preparation and next handoff
 
-The owner printed, measured and mounted the reference, and the gimbal campaign is
-complete. The OAK preflight saw only 24 of 54 corners because the upper part of the
-portrait target is outside its lower, narrower camera view. Lower the target about
-120 mm without moving the rover, keeping it vertical and flat. The experiment
-operator will verify at least 45 OAK corners, capture the development transform, and
-then request a 0.25-0.35 m increase in rover-to-target distance for the held-out
-capture. The exact sequence is in the
+The owner printed, measured, mounted and lowered the reference as requested. Both
+cameras now pass their board-coverage gates and the development transform is frozen.
+Move the rover 0.25-0.35 m straight backward without changing the target for the
+held-out capture. The exact sequence is in the
 [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md). No calibration
 jig, new sensor or attempt to remove the measured backlash is requested. A later
 driven acceptance run still needs the owner present in the pre-cleared test area.

@@ -127,12 +127,13 @@ fit is retained as inconclusive even though repeated estimates and pixel residua
 looked precise; its pitch changed by 2.44 degrees when the exact OAK distortion was
 used, which shows that the partial planar view does not constrain pose adequately.
 
-Lower the target by **about 120 mm**, keeping the sheet vertical, flat and in the
-same orientation. Do not move the rover for this adjustment. This amount follows
+The target was lowered by **about 120 mm** on 2026-09-07, keeping the sheet vertical,
+flat and in the same orientation. This amount follows
 from the observed 25-pixel spacing of the 24 mm squares and should put the missing
 five columns into view while keeping the full board inside the gimbal image. Exact
-centering is unnecessary. The operator will run a detection preflight and will ask
-for a smaller adjustment only if fewer than 45 corners remain visible to the OAK.
+centering is unnecessary. The resulting development capture had 48 OAK corners in
+every frame and 50-54 gimbal corners after native/enlarged detector selection, so
+the coverage gate passes.
 
 ## Measure the fixed OAK mount
 
@@ -152,6 +153,10 @@ fit is usable only when both cameras have enough board coverage, reprojection RM
 at most 0.5 px, each angular estimate spans no more than 0.75 degrees, each offset
 component spans no more than 15 mm, and the runtime pinhole approximation differs
 from the stored OAK lens by no more than 0.75 degrees across the sampled frame grid.
+
+The development capture passed these gates. Its frozen candidate is yaw +0.116,
+pitch +7.488 and roll -0.976 degrees, with offset +0.089 m forward, -0.014 m left
+and -0.103 m up. Do not deploy it until the held-out comparison below passes.
 
 For held-out validation, move the rover approximately 0.25-0.35 m farther from the
 target without changing the target, then capture a new folder and compare it with
