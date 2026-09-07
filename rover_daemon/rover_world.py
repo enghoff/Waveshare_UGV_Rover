@@ -401,7 +401,7 @@ class RoverWorld:
         learning with nobody seeing a failure -- and that argument applies just as
         well to the person at the console, who had the same switch and no reason
         to want it. See "Authority boundaries" in
-        docs/task-semantic-world-state.md.
+        docs/plans/semantic-world-state.md.
         """
         return {"ok": True, "building": self.world_building(),
                 "looks": getattr(self, "_world_build_looks", 0),

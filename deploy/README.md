@@ -2,7 +2,7 @@
 
 `deploy.py` is the preferred way to move committed source from this checkout to
 the rover. It replaces the repeated `scp`/`rsync`/restart sequence in
-[`docs/deploy.md`](../docs/deploy.md); the manual commands there remain the
+[`docs/runbooks/deploy.md`](../docs/runbooks/deploy.md); the manual commands there remain the
 recovery path and the detailed map of what lands where.
 
 There is one deployment host in the current system: `orin`, the Jetson Orin Nano
@@ -15,7 +15,7 @@ On the workstation:
 
 - Python 3.10+
 - `git`, `ssh` and `scp` on `PATH`
-- the `orin` SSH entry described in [`docs/hosts.md`](../docs/hosts.md)
+- the `orin` SSH entry described in [`docs/runbooks/hosts.md`](../docs/runbooks/hosts.md)
 
 On the rover, `python3`, `tar` and `rsync` are part of the working installation. `rsync` runs on the remote side, so a Windows workstation does not
 need a local rsync installation. The deployer itself has no third-party Python
@@ -174,5 +174,5 @@ Any agent or editor can call them. Two wirings exist: `git config core.hooksPath
 [../.claude/settings.json](../.claude/settings.json) runs both as Claude Code
 hooks, where the command is refused before it executes. A command that genuinely
 must touch the deploy tree -- manual recovery per
-[../docs/rover-unresponsive.md](../docs/rover-unresponsive.md) -- carries the
+[../docs/runbooks/rover-unresponsive.md](../docs/runbooks/rover-unresponsive.md) -- carries the
 comment `# deploy-guard: allow`.

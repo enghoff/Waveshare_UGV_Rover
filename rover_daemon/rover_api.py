@@ -6,7 +6,7 @@ any other client does -- a line of JSON to `rover_daemon.py` on the loopback por
 whole isolation story: a script can ask for things and cannot touch anything, so
 however badly one is written it cannot take the UART or the camera away from the
 daemon that owns them, and stopping it is a signal rather than a language
-feature. See [docs/scripting.md](../docs/scripting.md).
+feature. See [docs/runbooks/scripting.md](../docs/runbooks/scripting.md).
 
     gimbal.look_at(pan=0, tilt=0)
     for _ in every(2.0, for_s=60):
@@ -481,7 +481,7 @@ class _Camera:
         Only on a daemon started with `--vision`, and it does not answer the
         question -- it puts the picture where whoever is holding the conversation
         can see it. A script cannot yet ask about a picture and get an answer
-        back; see the open question in docs/scripting.md.
+        back; see the open question in docs/runbooks/scripting.md.
         """
         return _call("look")
 

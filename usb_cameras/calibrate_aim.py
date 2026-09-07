@@ -69,7 +69,7 @@ import aiming                                                      # noqa: E402
 # They agree on the scale to half a percent, which is the part this file leans on.
 # The centre is taken one axis from each, because a sweep pins the coordinate it
 # moves along and says almost nothing about the other: cx from the pan run, cy from
-# the tilt run. See docs/usb-cameras.md.
+# the tilt run. See docs/reference/usb-cameras.md.
 LENS = {"arcmin_per_px": 11.82, "bend": 0.030, "centre": (315.9, 227.4)}
 
 # Where in the frame to try, as fractions of a half frame from the middle: +1 is the

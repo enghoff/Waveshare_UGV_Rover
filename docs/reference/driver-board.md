@@ -2,7 +2,7 @@
 
 The rover's *General Driver for Robots* board carries an ESP32 that owns the
 motors, the headlights and the pan/tilt servos, and speaks JSON over either WiFi
-or its USB serial port. Exercised by [`driver_board/`](../driver_board), whose
+or its USB serial port. Exercised by [`driver_board/`](../../driver_board), whose
 one script `drive_gamepad.py` is the only thing in this repository that makes the
 rover move; everything else is sensing, with the rover pushed by hand.
 
@@ -122,4 +122,4 @@ connection and covers nothing else.
 
 Gimbal commands deliberately do not feed that timer, which is why aiming the
 camera is not mistaken for driving — see
-[face tracking](face-tracking.md), which commands the servos and never the wheels.
+[face tracking](../../face_tracking/README.md), which commands the servos and never the wheels.

@@ -199,7 +199,7 @@ The detector's scoring thresholds and the gimbal control policy are shared throu
 tracking feed. If tracking already owns the feed, tools use its newest current
 frame rather than trying to open the camera a second time.
 
-See [`../docs/face-tracking.md`](../docs/face-tracking.md) for detector timing,
+See [`../face_tracking/README.md`](../face_tracking/README.md) for detector timing,
 frame-age and calibration details.
 
 ## Camera and `look`
@@ -365,5 +365,5 @@ print(json.loads(f.readline()))
 PY
 ```
 
-See [`../docs/deploy.md`](../docs/deploy.md) for the deployment/restart rules and
-[`../docs/hosts.md`](../docs/hosts.md) for current ports/hardware facts.
+See [`../docs/runbooks/deploy.md`](../docs/runbooks/deploy.md) for the deployment/restart rules and
+[`../docs/runbooks/hosts.md`](../docs/runbooks/hosts.md) for current ports/hardware facts.

@@ -249,7 +249,7 @@ class Mount:
 #: half of a consistent pair is worse than neither half. **Fix the gimbal
 #: camera's off-axis model first; this mount cannot be settled before it.** The
 #: cost of leaving it is written down in
-#: `docs/m0-semantic-world-state-baseline.md`: every look in the run of
+#: `docs/progress/2026-09-07-m0-semantic-world-state.md`: every look in the run of
 #: 2026-09-07 was taken at pan 0, where this is out by 8.6 per cent of the OAK's
 #: picture width, and the ranges it produced are unbiased against independent
 #: bearing crossings but scatter far too widely -- only 48 per cent within half a

@@ -36,7 +36,7 @@ from depth_colour import colourise
 MONO_RES = dai.MonoCameraProperties.SensorResolution.THE_480_P
 FPS = 15
 DEFAULT_FADE_S = 1.0
-# USB2-only firmware; the USB3 build usually fails to boot on this link. See docs/oak-usb-link.md.
+# USB2-only firmware; the USB3 build usually fails to boot on this link. See docs/reference/oak-d-lite.md.
 MAX_USB_SPEED = dai.UsbSpeed.HIGH
 
 WINDOW = "OAK-D-Lite depth"

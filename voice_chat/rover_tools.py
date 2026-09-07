@@ -53,7 +53,7 @@ DEFAULT_PORT = 8769
 # turns marginal, as `_connect` below explains at length.
 #
 # The name stays as the fallback, for a LAN where the rover does not hold its
-# service address. See docs/hosts.md.
+# service address. See docs/runbooks/hosts.md.
 DEFAULT_CANDIDATES = ("192.168.1.80", "jetson-orin.local")
 
 # Long enough for the slowest tool. `count_faces` with the camera cold has to
@@ -150,7 +150,7 @@ class RoverClient:
 
         So the name is asked once and the answer kept. It is kept *as well as*
         the name and never instead of it: the wifi address can move, and
-        dialling where it used to be is the bug docs/hosts.md exists to warn
+        dialling where it used to be is the bug docs/runbooks/hosts.md exists to warn
         about. A remembered address that stops answering is how this finds
         out it moved, and it is the only occasion that needs a lookup. Being wrong
         costs one refused connection before the lookup that would have happened

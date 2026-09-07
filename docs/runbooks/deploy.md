@@ -3,9 +3,9 @@
 A commit changes nothing on the rover by itself. The repository remains the
 source of truth: edit and commit here, deploy to the rover, restart the
 affected service and prove the running system there. The working rules are in
-[`CLAUDE.md`](../CLAUDE.md).
+[`CLAUDE.md`](../../CLAUDE.md).
 
-For ordinary committed work use [`deploy/deploy.py`](../deploy/README.md):
+For ordinary committed work use [`deploy/deploy.py`](../../deploy/README.md):
 
 ```bash
 python deploy/deploy.py --plan
@@ -57,7 +57,7 @@ address written into each of its three network profiles rather than anything tha
 moves or is managed -- so it is there whichever house network the rover is on.
 The radio's own DHCP lease, `192.168.1.88` at the time of writing, and the name
 `jetson-orin.local` both work and are the way back in if `.80` ever does not. See
-[`hosts.md`](hosts.md) and [`wifi_roam/README.md`](../wifi_roam/README.md).
+[`hosts.md`](hosts.md) and [`wifi_roam/README.md`](../../wifi_roam/README.md).
 
 The browser console is:
 
@@ -194,7 +194,7 @@ worktree afterwards.
 Ask the other agent first, and tell it afterwards: two deploys at once, or a
 restart landing in the middle of somebody's verification, is the thing this is
 meant to avoid rather than cause. See
-[the concurrency rules](../AGENTS.md#another-agent-may-be-working-here-at-the-same-time).
+[the concurrency rules](../../AGENTS.md#another-agent-may-be-working-here-at-the-same-time).
 
 ## Cross-cutting traps
 

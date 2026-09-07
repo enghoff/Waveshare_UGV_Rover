@@ -1,6 +1,6 @@
 # M0 baseline: is semantic state safe enough to steer the rover?
 
-Phase 0 of [`task-autonomous-curiosity.md`](task-autonomous-curiosity.md) exists to
+Phase 0 of [the autonomy plan](../plans/autonomous-curiosity.md) exists to
 stop semantic state choosing where the rover drives while persistent identity is
 still unproven. This is what the drive of 2026-09-07 says about that.
 

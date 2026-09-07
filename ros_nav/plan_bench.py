@@ -42,7 +42,7 @@ re-measuring after anything that makes the map bigger.
 
 **A warning worth heeding.** The board dropped off the network twice while this
 bench was running long sweeps on it, both times needing a power cycle -- see
-docs/rover-unresponsive.md. A second planner_server is a real load on four
+docs/runbooks/rover-unresponsive.md. A second planner_server is a real load on four
 cores that are already busy. Keep sweeps short, and do not leave one running
 unattended.
 """

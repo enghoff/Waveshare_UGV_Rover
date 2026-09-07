@@ -9,7 +9,7 @@
 # and the host uploads firmware out of this wheel on every open, so choosing the
 # wheel is choosing the firmware. 2.32.0.0 is pinned because 3.x kills this
 # camera's left mono sensor and therefore its stereo depth -- measured twice, on
-# two hosts, see README.md and docs/depthai-version-pin.md. Do not move it without
+# two hosts, see README.md and docs/decisions/depthai-version-pin.md. Do not move it without
 # re-running selftest.py and reading both.
 #
 # Unpacked rather than installed for the same reason OpenCV is beside yunet.py:

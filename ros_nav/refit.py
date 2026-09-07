@@ -33,7 +33,7 @@ worst this can do to a rover is the same order as the error it exists to remove.
 Finding a rover that genuinely does not know where it is means searching the
 whole house, and on a 2D lidar in a building where one corridor looks much like
 another that is a coin toss dressed as an answer. See "Saved-map localization" in
-docs/jetson-orin-navigation.md.
+docs/decisions/jetson-orin-navigation.md.
 
 **It does not decide whether the answer is worth having on its own.** It reports
 one, and it reports the two numbers that say whether to believe it: how well the

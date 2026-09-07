@@ -1,6 +1,6 @@
 # The host's USB cameras
 
-Exercised by [`usb_cameras/`](../usb_cameras). Two scripts, both needing only
+Exercised by [`usb_cameras/`](../../usb_cameras). Two scripts, both needing only
 OpenCV — no depthai, no pyserial. `preview_usb_cameras.py` covers every UVC device on
 the machine driving the rover: the host's own webcams and, since it plugs in over USB
 like any other, the rover's camera module too. The OAK-D-Lite is the exception — it is
@@ -122,7 +122,7 @@ python usb_cameras/calibrate_fov.py sweep/ --axis tilt
 python usb_cameras/calibrate_fov.py sweep/ --fit-only  # re-measure saved frames
 ```
 
-It talks to [`rover_daemon`](../rover_daemon/README.md) over TCP, using the same
+It talks to [`rover_daemon`](../../rover_daemon/README.md) over TCP, using the same
 `RoverClient` the voice stack uses, and keeps every frame it took beside a
 `sweep.json` of the angles — so a sweep can be re-fitted later without going back to
 the hardware.
@@ -169,14 +169,14 @@ comes from the pan run and `cy` from the tilt run. **Run both.** An earlier pan-
 run put the centre 97 px off in `cy` and nobody would have known.
 
 The centre is the row worth reading twice. The lens axis is not the middle of the
-picture, and [`face_tracking/aiming.py`](../face_tracking/aiming.py) needs it to be
+picture, and [`face_tracking/aiming.py`](../../face_tracking/aiming.py) needs it to be
 told apart from the middle, because the thing it is trying to do is put a face in the
 *middle* — aiming at the axis instead would leave everyone two and a half degrees
 high in every frame the rover took.
 
 ## Whether the aiming can actually use it
 
-[`calibrate_aim.py`](../usb_cameras/calibrate_aim.py) asks the question the tracking
+[`calibrate_aim.py`](../../usb_cameras/calibrate_aim.py) asks the question the tracking
 loop depends on, which the field of view does not answer: given a face at some pixel,
 do the degrees `aiming.py` works out put it in the middle **in one move**?
 

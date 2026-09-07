@@ -1,7 +1,7 @@
 # The OAK-D-Lite
 
-Exercised by [`oak_camera/`](../oak_camera). The finding that most constrains how
-these scripts are written is the [depthai version pin](depthai-version-pin.md).
+Exercised by [`oak_camera/`](../../oak_camera). The finding that most constrains how
+these scripts are written is the [depthai version pin](../decisions/depthai-version-pin.md).
 The USB-link measurements they also rest on had their own document, removed on
 2026-08-25 once the OAK stopped being a candidate for the old rover; the numbers
 that still matter are repeated where they are used, and the rest is in git
@@ -69,7 +69,7 @@ the cause under `crashReports[].errorSourceInfo` and 3.x flattens it into
 Run it after any device-side crash to get the actual cause, and to clear stale
 dumps that would otherwise keep `hasCrashDump()` true and point the next
 diagnostic at an old crash. On depthai 3.x clearing is not optional — see the
-[crash-dump trap](depthai-version-pin.md#the-crash-dump-trap-on-3x).
+[crash-dump trap](../decisions/depthai-version-pin.md#the-crash-dump-trap-on-3x).
 
 ### `preview_depth.py`
 

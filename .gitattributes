@@ -11,10 +11,10 @@ lidar_slam/** text eol=lf
 # face detection moved onto the board's own cores; it is in the history.)
 oak_depth/** text eol=lf
 
-# docs/refs/ is vendor material kept verbatim -- a datasheet or a CAD export is
+# docs/reference/datasheets/ is vendor material kept verbatim -- a datasheet or a CAD export is
 # evidence for numbers quoted elsewhere, and rewriting the line endings of a STEP
 # file edits that evidence.
-docs/refs/** -text
+docs/reference/datasheets/** -text
 
 # wifi_roam/ is installed and run on the rover's Pi, and both shell scripts have
 # shebangs -- a CRLF checkout would make the kernel look for an interpreter with a

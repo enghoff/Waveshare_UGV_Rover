@@ -87,14 +87,14 @@ The web console uses HTTPS and assumes a trusted local network; it has no login.
 | [World state](world_state/README.md) | Observation storage, perception, association and text search |
 | [Web console](drive_web/README.md) | Browser controls, maps, observation inspection and audio bridge |
 | [Voice](voice_chat/README.md) | Qwen realtime protocol, prompts and rover client |
-| [Face tracking](docs/face-tracking.md) | YuNet detection, aiming geometry and calibration |
+| [Face tracking](face_tracking/README.md) | YuNet detection, aiming geometry and calibration |
 | [Stereo depth](oak_depth/README.md) | OAK-D-Lite depth service |
 | [Deployment](deploy/README.md) | Component manifest, source deployment and service verification |
 
 ## Getting started
 
 For the system overview, start with the [architecture guide](docs/rover-architecture/README.md).
-To set up rover services, follow the [deployment guide](docs/deploy.md) and the
+To set up rover services, follow the [deployment guide](docs/runbooks/deploy.md) and the
 component READMEs. Installation depends on the attached devices, chassis
 calibration, model assets and host configuration.
 
@@ -109,7 +109,17 @@ python -m venv .venv
 
 Additional bench tools cover [lidar](lidar/), [USB cameras](usb_cameras/) and
 [driver-board control](driver_board/). Their hardware connections and calibration
-procedures are documented under [`docs/`](docs/).
+procedures are in [`docs/reference/`](docs/reference/README.md).
+
+[`docs/`](docs/README.md) is organized by the question a document answers: what
+has to be true of the rover ([requirements](docs/requirements/README.md)), what
+is planned ([plans](docs/plans/README.md)), what was measured
+([progress](docs/progress/README.md)), why it is this way
+([decisions](docs/decisions/README.md)), what the hardware is
+([reference](docs/reference/README.md)) and what to type
+([runbooks](docs/runbooks/README.md)). The requirement summary in
+[`docs/README.md`](docs/README.md) is the quickest read of how much of the rover
+is actually settled.
 
 For console development without hardware, the [voice component guide](voice_chat/README.md)
 includes a mock rover. Navigation recordings and replay tools are described in

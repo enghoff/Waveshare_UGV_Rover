@@ -1,6 +1,10 @@
 # The rover locked up pivoting in a doorway, and the fix that looked right, wasn't
 
-A Nav2 failure on this rover, recorded in [`ros_nav/`](../ros_nav). Not the
+Status: closed. The cause was found and the configuration that came out of it
+runs; what remains open about the controller is
+[R-NAV-10](../requirements/navigation.md#r-nav-10).
+
+A Nav2 failure on this rover, recorded in [`ros_nav/`](../../ros_nav). Not the
 zig-zag of a route the chassis cannot follow — a harder failure, in passages
 around a metre wide, where the rover stops advancing at all and pivots left
 and right for up to ninety seconds before anything intervenes. Two fixes were
@@ -27,7 +31,7 @@ recording, made after 0.8 was deployed and the rover locked up again in the same
 doorway, it said the reverse: 0 of 14 at 0.8, 14 of 14 at 0.1. The test condemns
 whatever the rover happens to be running, every time, and would have done the
 same to the next number tried.
-[`dwb_replay.py`](../ros_nav/dwb_replay.py)'s `closed_loop` now says so in its
+[`dwb_replay.py`](../../ros_nav/dwb_replay.py)'s `closed_loop` now says so in its
 own docstring, in words meant to stop this happening a third time.
 
 Both look-aheads went back to Nav2's stock 0.1 at the time, and both sit at
@@ -47,8 +51,8 @@ its body is. The fix moved a 30 cm `BackUp` into `FollowPath`'s own context
 recovery, gated on the three failures where being somewhere else is the answer.
 It was written as a behaviour-tree override at the time; what carries the idea on
 the rover today is the `EscapeBackUpAction` plugin in
-[`ros_nav/behaviors/`](../ros_nav/behaviors), configured in
-[`ros_nav/config/nav2.yaml`](../ros_nav/config/nav2.yaml). Checked against the
+[`ros_nav/behaviors/`](../../ros_nav/behaviors), configured in
+[`ros_nav/config/nav2.yaml`](../../ros_nav/config/nav2.yaml). Checked against the
 true footprint on the recorded costmaps, the reverse was clear with room to
 spare at every locked-up moment in two separate recordings, and afterwards the
 controller had a legal forward candidate again every time. Sent to the rover
@@ -70,7 +74,7 @@ seconds). It is `1.05` rad now.
 **What finally answered it was asking DWB, not modelling it.** `publish_evaluation`
 is one parameter, and it turns `FollowPath` into something that reports every
 candidate it scored, each critic's contribution, and which one it refused —
-whether or not anyone is listening. [`nav_record.py`](../ros_nav/nav_record.py)
+whether or not anyone is listening. [`nav_record.py`](../../ros_nav/nav_record.py)
 now subscribes to `/evaluation` and saves it with the rest of a drive, so a
 recording carries the controller's own working rather than a replay's
 reconstruction of it. Two things this session's own offline model had gotten

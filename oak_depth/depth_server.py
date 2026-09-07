@@ -229,7 +229,7 @@ class Depth:
             # USB2, always. depthai asks for USB3 by default and uploads the
             # USB3-enabled firmware, which on this camera's link usually fails to
             # come back on the bus after boot -- 5 opens in 13 against 13 in 13,
-            # measured. See docs/oak-usb-link.md.
+            # measured. See docs/reference/oak-d-lite.md.
             with dai.Device(self._pipeline(), maxUsbSpeed=dai.UsbSpeed.HIGH) as device:
                 self._describe(device)
                 queues = {name: device.getOutputQueue(name, maxSize=4,

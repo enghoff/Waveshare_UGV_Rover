@@ -77,7 +77,7 @@ COLUMNS = (
 #: What the depth camera measured, and the only columns this harness will drop on
 #: purpose. `--no-ranges` blanks them, which is the whole of how one recording
 #: taken with the OAK awake is replayed as though it had been taken without it.
-#: That comparison is what M0 of `docs/task-autonomous-curiosity.md` asks for,
+#: That comparison is what M0 of `docs/plans/autonomous-curiosity.md` asks for,
 #: and it is the only honest way to ask whether measured distance helps or harms
 #: identity: two different drives differ by the room as well as by the camera.
 #:

@@ -726,7 +726,7 @@ planner_server:
       # option leaves the line, and the rover pivots. Recorded: 44 to 67 deg
       # in the first 1.2 m of plan against 36 deg in 0.32 m of rollout; a
       # legal forward candidate lost to a pivot on all 617 ticks of one
-      # drive, by a median 1.21 points. See docs/doorway-pivot.md.
+      # drive, by a median 1.21 points. See docs/decisions/doorway-pivot.md.
       #
       # SimpleSmoother cannot see this. Called on the four sharpest recorded
       # corners it returned the input unchanged, because tightness is not

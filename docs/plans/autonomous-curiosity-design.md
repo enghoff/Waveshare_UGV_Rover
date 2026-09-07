@@ -3,7 +3,7 @@
 Status: design proposal; Phase 0 (P0) validation is already in progress. Nothing in
 this document gives the autonomy layer movement authority yet. The staged acceptance
 plan is in
-[`task-autonomous-curiosity.md`](task-autonomous-curiosity.md).
+[the implementation plan](autonomous-curiosity.md).
 
 ## Goal
 
@@ -49,7 +49,7 @@ This proposal builds on the current boundaries rather than replacing them.
   to assign persistent identity merely by naming something.
 - `rover_daemon` already exposes bounded navigation, exploration, inspection and
   semantic recall operations.
-- `docs/scripting.md` provides a useful composition mechanism, but scripts are
+- `docs/runbooks/scripting.md` provides a useful composition mechanism, but scripts are
   ordinary Python under the `jetson` account. That is process isolation, not a
   sandbox, and therefore is not the representation for autonomously learned
   skills.
@@ -57,7 +57,7 @@ This proposal builds on the current boundaries rather than replacing them.
   rover. It need not become the always-on executive.
 
 P0 already has a fresh driven recording and a
-[`baseline report`](m0-semantic-world-state-baseline.md). That report does not pass
+[`baseline report`](../progress/2026-09-07-m0-semantic-world-state.md). That report does not pass
 M0: camera geometry and range-to-object alignment remain unproven, and the review
 also found lower-confidence association errors and floor patches treated as objects.
 Continue that work under P0; this proposal does not restart it or prescribe a

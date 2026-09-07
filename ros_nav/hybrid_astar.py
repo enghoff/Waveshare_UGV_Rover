@@ -4,7 +4,7 @@
 NavFn is a grid Dijkstra. It has no turning radius, so the path it traces around
 a doorway is a polyline whose first metre can bend more than one DWB rollout can
 follow. DWB then prefers a pivot -- standing still stays on the line -- and the
-rover locks up in the passage. See docs/doorway-pivot.md.
+rover locks up in the passage. See docs/decisions/doorway-pivot.md.
 
 Nav2's live answer on this rover is SmacPlannerLattice (see lattice.py): the
 same costmap, searched over a differential control set that can pivot and

@@ -5,7 +5,7 @@
     python3 smac_replay.py episode.json     # the rover's own recorded plans
     python3 smac_replay.py episode.json --dwb
 
-**Why this exists.** docs/doorway-pivot.md ends on an open question: NavFn
+**Why this exists.** docs/decisions/doorway-pivot.md ends on an open question: NavFn
 draws corners this chassis cannot follow while driving, SimpleSmoother cannot
 see curvature, and SmacPlannerLattice would. That last claim is not allowed to
 ship on the strength of the plugin's name. This scores both searches on the

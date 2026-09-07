@@ -103,7 +103,7 @@ REQUEST_SIZE = (1280, 720)
 # Ask for the size first and MJPG second. That order is not cosmetic: this camera
 # offers 1280x720 as MJPG at 30 fps and YUY2 at 10 fps, runs no auto-exposure at
 # all in the YUY2 one, and DirectShow picks uncompressed unless asked otherwise.
-# Setting FOURCC before the size is silently ignored. See docs/usb-cameras.md --
+# Setting FOURCC before the size is silently ignored. See docs/reference/usb-cameras.md --
 # a black picture from this camera is nearly always this, not the sensor.
 PREFERRED_FOURCC = cv2.VideoWriter_fourcc(*"MJPG")
 MAX_PROBE = 8

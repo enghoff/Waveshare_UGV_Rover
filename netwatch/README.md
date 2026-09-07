@@ -69,7 +69,7 @@ becomes a tally of crashes, the board starts looking like failing hardware, and
 attention goes to the end of a run when the thing that needs explaining is in
 the samples before it — a healthy, still-scheduling board that had stopped
 being reachable. See
-[`docs/rover-unresponsive.md`](../docs/rover-unresponsive.md).
+[`docs/runbooks/rover-unresponsive.md`](../docs/runbooks/rover-unresponsive.md).
 
 ## Why it writes under `/var/lib`
 

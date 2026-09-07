@@ -94,7 +94,7 @@ association was validated on the driven run of 2026-09-07 and it does help: of
 carried, and the two that were checked by eye were plainly false -- a pool of
 blown-out floor placed below the floor, and a blue case pooled with a red wooden
 surface near the ceiling. It refuses more than it invents. See
-[`docs/m0-semantic-world-state-baseline.md`](../docs/m0-semantic-world-state-baseline.md),
+[`docs/progress/2026-09-07-m0-semantic-world-state.md`](../docs/progress/2026-09-07-m0-semantic-world-state.md),
 which also says why the ranges themselves are not yet trustworthy as ranges *to*
 anything: the mount constant the boxes are placed through is 6.2 degrees out.
 

@@ -2,7 +2,7 @@
 
 Status: Phase 0 (P0) is in progress; later phases remain proposed. This is the
 implementation and acceptance plan for
-[`autonomous-curiosity-architecture.md`](autonomous-curiosity-architecture.md).
+[the architecture it implements](autonomous-curiosity-design.md).
 
 The plan is gated by capability dependencies, not a requirement to finish every
 phase before starting the next. M1 recording and M2 shadow decisions may proceed
@@ -13,7 +13,7 @@ recorded evidence for the primitives, semantics and execution substrate they use
 code existing is not acceptance. Physical criteria must be observed on the rover.
 
 P0 is tracked through the existing
-[`M0 baseline`](m0-semantic-world-state-baseline.md) and its follow-up work. The
+[`M0 baseline`](../progress/2026-09-07-m0-semantic-world-state.md) and its follow-up work. The
 September 7 recording already exists; do not restart that investigation or count
 this document revision as a pass. The additions below clarify the acceptance
 contract for the ongoing work, rather than prescribe a separate calibration fix.
@@ -169,7 +169,7 @@ first autonomy episode so later learning can be evaluated retrospectively.
 
 Do not let semantic state choose motion while persistent identity/range behaviour is
 still unvalidated. This phase is mostly existing work from
-`docs/task-semantic-world-state.md`, but it is an explicit dependency of autonomy.
+`docs/plans/semantic-world-state.md`, but it is an explicit dependency of autonomy.
 
 ### Work
 
@@ -634,7 +634,7 @@ stored, tested and reused.
 
 ### Do not use arbitrary Python as the learned representation
 
-`docs/scripting.md` correctly notes that current scripts are not filesystem-sandboxed.
+`docs/runbooks/scripting.md` correctly notes that current scripts are not filesystem-sandboxed.
 Model-written Python therefore must not become the lifelong-learning mechanism.
 
 Implement a small typed DSL, behaviour tree or graph with only admitted nodes.

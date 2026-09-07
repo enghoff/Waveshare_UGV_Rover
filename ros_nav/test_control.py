@@ -288,7 +288,7 @@ def test_lattice_respects_the_dwb_envelope():
     speed. The differential lattice is given a 0.5 m control set (this
     chassis's max_vel_x / max_vel_theta, to a centimetre) and has to stay
     inside that envelope on the driving stretches. This is the reproduction
-    docs/doorway-pivot.md asked for before SmacPlanner replaced NavFn: the
+    docs/decisions/doorway-pivot.md asked for before SmacPlanner replaced NavFn: the
     same costmap, both searches, the path geometry -- not a closed loop
     started from a NavFn deadlock.
     """

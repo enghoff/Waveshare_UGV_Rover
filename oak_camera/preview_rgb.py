@@ -21,7 +21,7 @@ Two consequences worth knowing:
 * The mono pair sees 73 deg horizontally against the colour camera's 69, so the
   warp covers the whole colour frame. Aligning the other way would not.
 
-Sizing is set by the USB2 link, which saturates near 40 MB/s -- see docs/oak-usb-link.md.
+Sizing is set by the USB2 link, which saturates near 40 MB/s -- see docs/reference/oak-d-lite.md.
 960x540 at 15 fps fills it with both streams intact; asking for 25 fps or 720p
 gets throttled back to the same ceiling for no gain. Colour on its own has the
 link to itself and holds 30.
@@ -39,7 +39,7 @@ PREVIEW_SIZE = (960, 540)
 RGB_FPS = 30
 RGBD_FPS = 15  # both streams over one USB2 link; see the note above
 # This link only ever negotiates USB2, and the USB3-enabled firmware fails to
-# come back up on the bus after boot roughly six times in seven. See docs/oak-usb-link.md.
+# come back up on the bus after boot roughly six times in seven. See docs/reference/oak-d-lite.md.
 MAX_USB_SPEED = dai.UsbSpeed.HIGH
 # OV7251 mono sensors run at 640x480 natively; 400_P would crop.
 MONO_RES = dai.MonoCameraProperties.SensorResolution.THE_480_P

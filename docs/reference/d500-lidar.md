@@ -1,7 +1,7 @@
 # The D500 lidar
 
 The lidar mounted on the Waveshare UGV Rover, wired to its driver board. Exercised
-by [`lidar/`](../lidar). One script, `lidar_view.py`, which validates the
+by [`lidar/`](../../lidar). One script, `lidar_view.py`, which validates the
 whole chain at once: the rover's 5 V rail, the driver board's USB-UART, and the
 sensor itself. It needs pyserial and nothing from depthai.
 

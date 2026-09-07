@@ -179,7 +179,7 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         `NameError` several seconds later with nothing to show for it. Handing it
         `list_api` instead would need the model to ask before it writes, and a
         catalogue a model has only read is not reliably one it uses; see
-        [docs/scripting.md](../docs/scripting.md).
+        [docs/runbooks/scripting.md](../docs/runbooks/scripting.md).
 
         So the surface is generated from `rover_api` and pasted in, which keeps
         the one rule this repository has about descriptions: the thing that owns a

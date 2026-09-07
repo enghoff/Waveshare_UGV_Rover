@@ -19,7 +19,7 @@ SigLIP2 vectors, identity constrained by pose, bearings, map visibility,
 elevation and optional OAK range. Alibaba Qwen Omni remains the conversational
 model and uses the rover's controlled tool boundary.
 
-See [`world_state/README.md`](../world_state/README.md) for current operation and
-[`task-semantic-world-state.md`](task-semantic-world-state.md) for the remaining
+See [`world_state/README.md`](../../world_state/README.md) for current operation and
+[the world-state plan](../plans/semantic-world-state.md) for the remaining
 acceptance work. Detailed Cosmos experiments remain in Git history; reviving a
 local VLM should start from new evidence that addresses the failures above.

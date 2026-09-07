@@ -5,7 +5,7 @@ client sends source, this writes it to a file, starts a `python3` on it with
 [rover_api.py](rover_api.py) importable, and watches it -- capturing what it
 prints, bounding how long it may run and how much memory it may take, and
 killing the whole process group when either runs out. See
-[docs/scripting.md](../docs/scripting.md) for why this is a process rather than
+[docs/runbooks/scripting.md](../docs/runbooks/scripting.md) for why this is a process rather than
 an interpreter inside the daemon.
 
 The short version of that argument is in the limits below. Stopping a runaway is

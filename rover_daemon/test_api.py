@@ -89,7 +89,7 @@ def test_schemas():
                # reason about correctly. What a model is offered instead is
                # `find_thing` and `go_to_thing`, which are the same store in
                # metres and words. See rover_recall.py, and
-               # docs/task-semantic-world-state.md under "Authority boundaries".
+               # docs/plans/semantic-world-state.md under "Authority boundaries".
                "world_building", "world_inspect",
                "world_state_clear",
                "world_state_entities", "world_state_entity", "world_state_frame",

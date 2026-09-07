@@ -103,7 +103,7 @@ def test_rover_client() -> None:
     # A remembered address is not a hardcoded one. The wifi address can move,
     # so an address that stops answering is exactly how a client finds out it
     # has moved, and it has to ask the name again rather than go on dialling
-    # where the rover used to be. That is the bug docs/hosts.md is about;
+    # where the rover used to be. That is the bug docs/runbooks/hosts.md is about;
     # remembering an address without this would be a fresh way of writing it.
     first = Server(("127.0.0.1", 0), Fake)
     threading.Thread(target=first.serve_forever, daemon=True).start()

@@ -97,7 +97,7 @@ MAX_TICK_STEP = 5000
 #   a caller draining, this at 250 ms        see the README
 TELEMETRY_POLL_S = 0.25
 
-# Three 18650 cells in series -- the UPS in docs/d500-lidar.md -- reported as
+# Three 18650 cells in series -- the UPS in docs/reference/d500-lidar.md -- reported as
 # hundredths of a volt.
 BATTERY_CELLS = 3
 # Volts per cell against percentage left. A table rather than a straight line

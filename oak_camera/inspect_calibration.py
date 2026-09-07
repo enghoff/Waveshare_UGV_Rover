@@ -39,7 +39,7 @@ def summarise(label: str, calib: dai.CalibrationHandler) -> None:
 
 
 def main() -> int:
-    # USB2-only firmware; the USB3 build usually fails to boot here. See docs/oak-usb-link.md.
+    # USB2-only firmware; the USB3 build usually fails to boot here. See docs/reference/oak-d-lite.md.
     with dai.Device(dai.Pipeline(), maxUsbSpeed=dai.UsbSpeed.HIGH) as device:
         print(f"device {device.getMxId()} -- {device.getProductName()}")
         for cam in device.getConnectedCameraFeatures():

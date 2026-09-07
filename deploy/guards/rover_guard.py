@@ -77,7 +77,7 @@ def objection(cmd):
     if secret:
         return ("This contains the contents of secrets/%s. A credential must not "
                 "appear in a command, a transcript or a commit -- pass it on stdin "
-                "instead (docs/deploy.md has the sudo -S mechanics)." % secret)
+                "instead (docs/runbooks/deploy.md has the sudo -S mechanics)." % secret)
 
     if ESCAPE in cmd:
         return None
@@ -95,7 +95,7 @@ def objection(cmd):
                     "and deployed, never changed in place -- the recorded commit "
                     "must describe the bytes that were sent. Edit the repository "
                     "copy and run deploy/deploy.py. If this really is manual "
-                    "recovery (docs/rover-unresponsive.md), add the comment "
+                    "recovery (docs/runbooks/rover-unresponsive.md), add the comment "
                     "'# %s' to the command." % (what, ESCAPE))
     return None
 

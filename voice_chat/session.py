@@ -81,7 +81,7 @@ MODEL = os.environ.get(
 #
 # Read what follows as the price of being here, not as a reason to stay. Plus
 # costs about three times flash and the two are indistinguishable in
-# docs/omni-step0.md -- both 90/90 typed and spoken, both 30/30 on the five extra
+# the step-0 chat-completions bench under `omni_bench/runs/` -- both 90/90 typed and spoken, both 30/30 on the five extra
 # tools. That was the *chat completions* pair. Their realtime namesakes are not
 # the same models and do not behave alike, measured here against the mock rover,
 # three samples a phrase:

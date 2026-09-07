@@ -1,13 +1,17 @@
 # Why depthai is pinned to `<3`
 
+Status: standing, last retested on 3.9.0 and still required. The pin is
+[R-PLAT-10](../requirements/platform.md#r-plat-10); a newer release gets a new
+dated section below rather than a rewrite of this one.
+
 `requirements.txt` pins `depthai>=2.32,<3`, and so does
-[`oak_depth/install.sh`](../oak_depth/install.sh) on the rover. Do not relax
+[`oak_depth/install.sh`](../../oak_depth/install.sh) on the rover. Do not relax
 either without re-running `preview_depth.py` and a CAM_B-only capture.
 
 **This is now the rover's firmware version and not only a desk dependency.** The
 OAK is the rover's depth camera, its Myriad X has no flash, and the host uploads
 firmware out of the wheel on every open — so the pin below decides what the camera
-runs. See [oak_depth/README.md](../oak_depth/README.md).
+runs. See [oak_depth/README.md](../../oak_depth/README.md).
 
 ## Retested on the rover, on 3.9.0, and it is not fixed
 

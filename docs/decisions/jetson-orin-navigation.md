@@ -1,7 +1,7 @@
 # Jetson Orin navigation decision
 
 Status: implemented. Current operation and unresolved faults are in
-[`ros_nav/README.md`](../ros_nav/README.md).
+[`ros_nav/README.md`](../../ros_nav/README.md).
 
 The rover runs ROS 2 Jazzy, `slam_toolbox` and Nav2 on the Jetson Orin Nano. The
 driver-board UART remains owned by `rover_daemon`; ROS receives odometry and

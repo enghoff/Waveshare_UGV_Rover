@@ -257,7 +257,7 @@ class RoverCamera:
         #
         # The 18 MB/s had a second cost that settles the question on its own: it
         # starved the wlan adapter off the same USB controller and took the rover
-        # off the network, which is the failure docs/oak-on-the-pi.md feared.
+        # off the network, which is the failure that drove the OAK off the old Pi host.
         camera = Camera(self.device, self.size, "MJPG")
         self._camera = camera
         self._camera_used = time.monotonic()
