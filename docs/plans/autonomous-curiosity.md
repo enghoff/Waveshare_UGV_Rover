@@ -175,8 +175,11 @@ still unvalidated. This phase is mostly existing work from
 
 P0 remains in progress and M0 has not passed. The
 [latest review](../progress/2026-09-07-m0-review.md) separates the recorded evidence
-from the calibration work still to do. The baseline's historical pass counts and
-"before Phase 1" heading are not the current gate: read-only M1/M2 may proceed.
+from the calibration work still to do. The gimbal measurement has passed its
+held-out gate at tilt zero and pan -20 to +20 degrees when every placement finishes
+from the ascending direction. The fixed-OAK mount still needs a full-board fit and
+a second-distance held-out check. The baseline's historical pass counts and "before
+Phase 1" heading are not the current gate: read-only M1/M2 may proceed.
 
 The agreed target is useful, demonstrated accuracy within a declared operating
 envelope. The current 1.5-degree bearing uncertainty is not an accuracy demand on
@@ -208,7 +211,9 @@ against an independent reference can proceed without trusting that map pose.
    optics/pose estimation, or a validated external angle reference. Do not use the
    same unvalidated lens/servo fit as ground truth for itself. First confirm that
    the reference can resolve the task-relevant error; otherwise report the test as
-   inconclusive rather than blaming the hardware.
+   inconclusive rather than blaming the hardware. Require enough reference coverage
+   to constrain a planar pose, compare the camera's stored lens model with the model
+   used at runtime, and repeat cross-camera geometry at a different target placement.
 3. **Measure repeatability before correction.** With the chassis stationary and
    the scene fixed, sample pan -20, -10, 0, +10 and +20 degrees at tilt 0, if these
    positions are mechanically available. Approach each from both directions using
@@ -263,26 +268,26 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 
 ### Owner preparation and next handoff
 
-No hardware modification is needed for the documentation/offline preparation. The
-next physical session needs the rover parked with camera clearance, both cameras
-unobstructed, a well-lit stationary scene and exclusive use of the gimbal (no face
-tracking, voice aiming or other calibration run). The owner places the reference
-target and confirms the setup; the experiment operator handles capture and analysis.
-The owner printed the A4 target and reported all five reference measurements spot
-on on 2026-09-07, so its scale check passes. The target, dimension checks and
-mounting instructions are in the
-[P0 gimbal calibration runbook](../runbooks/p0-gimbal-calibration.md). No calibration
-jig or new sensor is requested. Flat mounting and camera detection still need to be
-checked before capture; the print-scale result alone is not an actual-angle
-measurement. A later driven acceptance run still needs the owner present in the
-pre-cleared test area.
+The owner printed, measured and mounted the reference, and the gimbal campaign is
+complete. The OAK preflight saw only 24 of 54 corners because the upper part of the
+portrait target is outside its lower, narrower camera view. Lower the target about
+120 mm without moving the rover, keeping it vertical and flat. The experiment
+operator will verify at least 45 OAK corners, capture the development transform, and
+then request a 0.25-0.35 m increase in rover-to-target distance for the held-out
+capture. The exact sequence is in the
+[P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md). No calibration
+jig, new sensor or attempt to remove the measured backlash is requested. A later
+driven acceptance run still needs the owner present in the pre-cleared test area.
 
 ### Work
 
-- Continue the P0 investigation already in progress using the September 7 recording
-  and baseline; preserve them as the before-change evidence.
-- After the calibration/association changes under P0, collect the fresh hardware
-  evidence needed to validate them, with the OAK awake and ranges recorded.
+- Preserve the September 7 baseline, both gimbal campaigns and the inconclusive
+  partial-board OAK preflight as before-change evidence.
+- Complete the full-board OAK development and held-out transform measurements, then
+  adopt geometry only if every predeclared gate passes.
+- Enforce the validated ascending placement and settling state in the deployed
+  semantic capture path; reject movement eligibility outside that state.
+- Collect fresh foreground/background depth-alignment evidence with the OAK awake.
 - Independently review a representative set of placed entities and their source
   observations.
 - Replay the same recording through bearing-only and range-assisted association.

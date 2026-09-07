@@ -140,6 +140,13 @@ surfaces. Those are measured limits, not promises that the entire gimbal travel
 will be usable. Larger residuals may justify honest uncertainty or fewer eligible
 goals; they must not make incompatible observations easier to merge.
 
+Reference quality includes observability as well as print scale and repeatability.
+A clipped planar target can return a small pixel residual and closely repeated pose
+while leaving one rotation weakly constrained. Require enough target coverage, test
+the lens model stored on the camera against any simpler runtime model, and repeat
+the transform at a different target placement. Treat a model-sensitive fit as
+inconclusive even when its reprojection score looks good.
+
 Stop calibration when the agreed experiment budget is spent or improvements cannot
 be distinguished from measurement uncertainty. Then accept a useful demonstrated
 envelope, narrow and retest it, or name the specific hardware limitation preventing

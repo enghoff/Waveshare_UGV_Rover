@@ -1,8 +1,8 @@
-# P0 gimbal calibration: prepare the printed reference
+# P0 camera geometry calibration
 
-This prepares the independent printed reference for the bounded P0 measurement.
-It does not change a calibration constant or authorize semantic movement. The
-experiment and stopping rules are in the
+This prepares and uses the independent printed reference for the bounded P0
+measurement. It does not authorize semantic movement. The experiment and stopping
+rules are in the
 [autonomy plan](../plans/autonomous-curiosity.md#bounded-calibration-protocol).
 
 ## Print and verify the target
@@ -99,3 +99,66 @@ backlash are reported. Do not change this rule after seeing the held-out result.
 Stop immediately if the target or rover moves, the sheet lifts from its backing,
 the gimbal touches anything, or another process aims the camera. That run is kept
 and marked invalid rather than repeated until it happens to pass.
+
+## Current gimbal result
+
+The 1280 x 960 held-out run on 2026-09-07 passed. Within commanded pan -20 to +20
+degrees at tilt zero, use unchanged gain and finish placement from the ascending
+direction. The ascending gain error was -0.535% and absolute residual p95 was 0.457
+degrees. Stationary duplicates differed by 0.117 degrees median and 0.423 degrees
+p95. Opposite approaches still differ by 1.19-2.23 degrees, so a capture reached
+from another direction is outside this demonstrated state. These are measured
+limits, not a reason to tune toward unattainable mechanical precision.
+
+## Frame the target for both cameras
+
+The fixed OAK is lower than the gimbal camera and has a narrower view. In the first
+mounted preflight it detected 24 of 54 ChArUco corners: all six rows but only four
+of nine columns. The upper part of the portrait target was outside its frame. That
+fit is retained as inconclusive even though repeated estimates and pixel residuals
+looked precise; its pitch changed by 2.44 degrees when the exact OAK distortion was
+used, which shows that the partial planar view does not constrain pose adequately.
+
+Lower the target by **about 120 mm**, keeping the sheet vertical, flat and in the
+same orientation. Do not move the rover for this adjustment. This amount follows
+from the observed 25-pixel spacing of the 24 mm squares and should put the missing
+five columns into view while keeping the full board inside the gimbal image. Exact
+centering is unnecessary. The operator will run a detection preflight and will ask
+for a smaller adjustment only if fewer than 45 corners remain visible to the OAK.
+
+## Measure the fixed OAK mount
+
+Once both cameras see at least 45 corners, capture the development measurement:
+
+```bash
+python usb_cameras/calibrate_oak_mount.py \
+  captures/p0-gimbal-YYYY-MM-DD/oak-mount-dev \
+  --gimbal-analysis captures/p0-gimbal-YYYY-MM-DD/held-out-01/analysis.json \
+  --rover 192.168.1.80:8769
+```
+
+The tool gives the gimbal the validated ascending approach to zero, records five
+stationary frames from each camera, reads the OAK's stored intrinsics and distortion,
+and returns the gimbal to zero. It never writes `world_state/oak.py`. A development
+fit is usable only when both cameras have enough board coverage, reprojection RMS is
+at most 0.5 px, each angular estimate spans no more than 0.75 degrees, each offset
+component spans no more than 15 mm, and the runtime pinhole approximation differs
+from the stored OAK lens by no more than 0.75 degrees across the sampled frame grid.
+
+For held-out validation, move the rover approximately 0.25-0.35 m farther from the
+target without changing the target, then capture a new folder and compare it with
+the frozen development result:
+
+```bash
+python usb_cameras/calibrate_oak_mount.py \
+  captures/p0-gimbal-YYYY-MM-DD/oak-mount-held-out \
+  --gimbal-analysis captures/p0-gimbal-YYYY-MM-DD/held-out-01/analysis.json \
+  --rover 192.168.1.80:8769 \
+  --compare captures/p0-gimbal-YYYY-MM-DD/oak-mount-dev/mount-analysis.json
+```
+
+The held-out transform must agree within 0.75 degrees on every angle and 15 mm on
+every offset component. Adopt the frozen development transform only after that
+pass. If board coverage or agreement fails, report the result as inconclusive and
+adjust the measurement geometry; do not tune thresholds or average a biased fit
+into the runtime calibration.
