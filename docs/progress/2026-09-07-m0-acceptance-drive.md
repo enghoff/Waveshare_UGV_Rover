@@ -16,6 +16,18 @@
 > split rather than an eligibility question, and it belongs with the splitting
 > section.
 >
+> **"Nothing reported as missing" is too strong.** The section on the depth
+> camera's coverage says a named target went unranged for a whole drive with
+> nothing reporting it. The rover does report the shortfall, per look and in
+> aggregate: 70 of the 89 inferences carry a line like "4 of 9 ranged by the
+> depth camera", and five looks whose regions were *all* outside the depth
+> picture say so outright — "none of it was in the depth camera's picture", which
+> is a message this code has had all along. The shoe's own five looks reported
+> "5 of 11", "4 of 9" and "8 of 12" ranged. What is actually missing is narrower
+> and still worth fixing: nothing says *which* regions missed out, and nothing
+> carries it to the thing, so "this entity has never had its distance measured"
+> is recorded nowhere and reportable nowhere.
+>
 > **Two observation identifiers were misread** off a downscaled contact sheet.
 > The look whose crop is a framed painting is `34333` in `object:3` (not 34555,
 > which belongs to `object:30`) and `34235` in `object:9` (not 34236). Re-running
