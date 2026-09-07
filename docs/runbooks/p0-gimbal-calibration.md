@@ -260,6 +260,8 @@ and the OAK's reprojection crosses 0.5 px somewhere between 0.6 and 0.8 m. Since
 whole working band. **Print the target on A3 before attempting a third
 distance**, and re-verify its printed dimensions the same way. See
 [the four captures](../progress/2026-09-07-no-third-mount-distance.md).
+This bites on a *third* distance only. The clean second trial still owed
+below needs no new print.
 
 **The rover's own headlights make this procedure independent of daylight.** On
 the depth camera's picture of the board after dusk: no lights gave brightness 32
@@ -288,9 +290,18 @@ than any frame: it used the analytic planar solution without minimising it. With
 both cameras' fits refined, the held-out yaw range is 0.357 degrees and every gate
 passes.
 
-**That set was re-analysed, not re-captured.** A clean second trial is still owed.
-When it is taken, use a third distance at least 0.10 m from both 0.555 m and
-0.686 m, and **turn the target 20 to 30 degrees off face-on about its vertical
+**That set was re-analysed, not re-captured, and a clean second trial is still
+owed.** It does not need a third distance and so does not need a bigger sheet:
+photograph a fresh development set at 0.555 m and a fresh held-out set at
+0.686 m, both after the pose-fit correction, and the 0.10 m separation rule is
+satisfied by the 0.130 m between them. Adopt the fresh development transform
+only if it agrees with the deployed one inside the same 0.75-degree and 15 mm
+gates; if it does not, the deployed value is what is in question and not the
+gates. A third distance is a separate and larger question -- it would say
+whether the 12 mm forward-offset walk keeps growing with distance -- and that
+one does need A3.
+
+Either way, **turn the target 20 to 30 degrees off face-on about its vertical
 axis**. Very nearly face-on is what makes a planar target determine its own
 out-of-plane tilt badly, which is the whole difficulty here; simulation predicts
 roughly a three- to fourfold improvement from the turn, which the capture will

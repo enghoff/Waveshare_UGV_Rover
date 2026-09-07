@@ -177,9 +177,14 @@ P0 remains in progress and M0 has not passed. The
 [latest review](../progress/2026-09-07-m0-review.md) separates the recorded evidence
 from the calibration work still to do. The gimbal measurement has passed its
 held-out gate at tilt zero and pan -20 to +20 degrees when every placement finishes
-from the ascending direction. The fixed-OAK full-board development fit has passed
-and still needs its second-distance held-out check. The baseline's historical pass counts and "before
-Phase 1" heading are not the current gate: read-only M1/M2 may proceed.
+from the ascending direction, and the envelope now extends to tilt +20. The
+fixed-OAK mount has passed its development fit and its second-distance held-out
+check and is deployed; what it still owes is a *cleanly captured* confirmation,
+because the confirming set was re-analysed rather than re-photographed after a
+correction to the pose fit. That is a loose end on a working measurement and not
+an M0 criterion, and it needs no larger printed target. The baseline's historical
+pass counts and "before Phase 1" heading are not the current gate: read-only
+M1/M2 may proceed.
 
 The agreed target is useful, demonstrated accuracy within a declared operating
 envelope. The current 1.5-degree bearing uncertainty is not an accuracy demand on
@@ -269,33 +274,58 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 ### Owner preparation and next handoff
 
 The owner printed, measured, mounted and lowered the reference as requested. Both
-cameras pass their board-coverage gates and the development transform is frozen.
-A 0.325 m backward held-out move put the target beyond the OAK stream's marker
-resolution and was retained as an invalid attempt. The rover was then moved about
-0.20 m forward without changing the target, leaving at least 0.10 m more distance
-than development for the replacement held-out capture. A
-calibration-only 1920 x 1080 OAK preflight sees all 54 corners without changing the
-normal 640 x 360 colour/depth stream. The exact sequence is in the
-[P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md). No calibration
-jig, new sensor or attempt to remove the measured backlash is requested. A later
-driven acceptance run still needs the owner present in the pre-cleared test area.
+cameras pass their board-coverage gates.
+The mount was then measured at 0.555 m and confirmed at 0.686 m, using a
+calibration-only 1920 x 1080 OAK preflight that sees all 54 corners without
+changing the normal 640 x 360 colour/depth stream, and it is deployed. The exact
+sequence is in the
+[P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md).
+
+**What is asked of the owner now is one board setup, not a purchase.** Both
+cameras only see the A4 target well between about 0.55 and 0.69 m, so no third
+distance qualifies and the owed clean confirmation is instead a fresh pair at
+those same two distances, turned 20 to 30 degrees off face-on. The rover's own
+headlights at half brightness make that independent of daylight. No calibration
+jig, new sensor, larger print or attempt to remove the measured backlash is
+requested. A later driven acceptance run still needs the owner present in the
+pre-cleared test area.
 
 ### Work
 
-- Preserve the September 7 baseline, both gimbal campaigns and the inconclusive
-  partial-board OAK preflight as before-change evidence.
-- Complete the full-board OAK development and held-out transform measurements, then
-  adopt geometry only if every predeclared gate passes.
-- Enforce the validated ascending placement and settling state in the deployed
-  semantic capture path; reject movement eligibility outside that state.
-- Collect fresh foreground/background depth-alignment evidence with the OAK awake.
-- Independently review a representative set of placed entities and their source
-  observations.
-- Replay the same recording through bearing-only and range-assisted association.
-- Validate the remaining camera-to-rover geometry that materially affects the
-  planned active-perception calculations.
-- Keep ambiguous evidence unresolved; do not lower thresholds simply to increase
-  placed count.
+What has landed is recorded where it was measured, not here: the mount
+([the mount measurement](../progress/2026-09-07-p0-oak-mount.md)), the
+demonstrated pointing envelope and its ascending approach
+([tilt +20](../progress/2026-09-07-gimbal-tilt20-passes.md)), the two capture
+gates in the deployed path
+([the capture gates](../progress/2026-09-07-capture-state-gates.md)), and the
+driven evidence for depth attribution and identity
+([the acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md)). What is
+still ahead:
+
+- **Sample a range on the object's own pixels, not its whole box.** A box holding
+  a chair in front of a picture corrupts the range and the identity together, and
+  the region model's own masks separate them; validate on the preserved
+  acceptance recording before changing the rover. Addresses R-WS-13 and
+  criteria 3 and 8.
+- **Refuse or flag a region outside the depth camera's coverage.** It sees the
+  central two thirds of the gimbal's frame; count the refusals and carry "never
+  ranged" to the entity, so a target that can never be ranged is reported rather
+  than silently absent. Addresses criteria 2 and 10.
+- **Make a bare patch ineligible as an inspection goal** without excluding real
+  floor-level and ceiling-level objects. Addresses R-WS-12 and criterion 9.
+- **Demonstrate the confirmed-pose gate on hardware** through one navigation
+  restart, with the images retained. Addresses R-WS-16 and criterion 11.
+- **Take the clean second mount confirmation**, a fresh pair at 0.555 m and
+  0.686 m. Not an M0 criterion; a loose end on a measurement that passed.
+- **Measure where the gimbal camera sits relative to the pose SLAM reports**,
+  which is the half of R-WS-11 still missing and what keeps absolute height above
+  the floor unavailable.
+- **Then a second driven acceptance run**, with the same named targets plus
+  something at the frame edges to exercise the coverage reporting.
+
+Two rules hold throughout: preserve the recordings as before-change evidence, and
+keep ambiguous evidence unresolved rather than lowering a threshold to raise the
+placed count.
 
 ### Verification
 
