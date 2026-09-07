@@ -163,6 +163,30 @@ class Frame:
 
 
 @dataclass
+class DepthMap:
+    """The depth map itself, kept as evidence rather than read as a measurement.
+
+    `millimetres` is the device's own buffer, one unsigned 16-bit value per
+    pixel, row by row, with zero meaning "nothing measured here" rather than
+    "touching the lens". Nothing in a look decodes it; it is saved beside the
+    frame so that a question about a distance can be asked again of a recording
+    long after the room has changed.
+    """
+
+    millimetres: bytes = b""
+    width: int = 0
+    height: int = 0
+    dtype: str = ""
+    age_s: float = 0.0
+    apart_s: float = 0.0
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.millimetres) and self.width > 0 and self.height > 0
+
+
+@dataclass
 class Power:
     """Whether the depth camera is switched on, and how long it has been that way.
 
@@ -225,6 +249,10 @@ class Ranger:
     def frame(self) -> Frame:
         raise NotImplementedError
 
+    def depth_map(self) -> DepthMap:
+        """The depth map as bytes, for keeping. Empty where there is none."""
+        return DepthMap(error="this camera keeps no depth map")
+
     def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
         raise NotImplementedError
 
@@ -281,6 +309,13 @@ class FakeRanger(Ranger):
             return self.frames.pop(0)
         return Frame(ok=True, jpeg=b"\xff\xd8fake", width=640, height=360,
                      taken_at=time.time())
+
+    def depth_map(self) -> DepthMap:
+        if self.fail:
+            return DepthMap(error=self.fail)
+        # Four pixels of nothing: enough to be saved and read back, and small
+        # enough that no test has to care what is in it.
+        return DepthMap(millimetres=bytes(8), width=2, height=2, dtype="uint16")
 
     def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
         self.asked.append([list(box) for box in boxes])
@@ -404,6 +439,42 @@ class SidecarRanger(Ranger):
                                    or "the depth camera would not switch"))
         return Power(state=str(payload.get("power") or ""),
                      since_s=_number(payload.get("since_s"), 0.0) or 0.0)
+
+    def depth_map(self) -> DepthMap:
+        """The newest depth map itself, in millimetres, for keeping.
+
+        **Evidence rather than a measurement.** Nothing in a look reads this: the
+        ranges come back from the service, which does the sampling next to the
+        data. What this is for is the question that cannot be asked otherwise --
+        the acceptance recording of 2026-09-07 kept every picture and every
+        distance computed from one, and none of the depth behind them, so when
+        a better way of sampling a box turned up there was nothing on disk to try
+        it against and the only route to an answer was to drive the room again.
+
+        Empty rather than raising, like everything else here. A rover whose depth
+        camera is off keeps no depth map and records exactly what it recorded
+        before this existed.
+        """
+        connection = None
+        try:
+            connection = http.client.HTTPConnection(self.host, self.port,
+                                                    timeout=self.timeout_s)
+            connection.request("GET", "/depth.raw")
+            reply = connection.getresponse()
+            body = reply.read()
+            headers, status = reply.headers, reply.status
+        except Exception as error:                     # never past here
+            return DepthMap(error=f"{type(error).__name__}: {error}")
+        finally:
+            if connection is not None:
+                connection.close()
+        if status != 200 or not body:
+            return DepthMap(error=_why(status, body))
+        width, height = _size_of(headers.get("X-Depth-Size"))
+        return DepthMap(millimetres=body, width=width, height=height,
+                        dtype=str(headers.get("X-Depth-Dtype") or ""),
+                        age_s=_number(headers.get("X-Frame-Age"), 0.0) or 0.0,
+                        apart_s=_number(headers.get("X-Depth-Apart"), 0.0) or 0.0)
 
     def frame(self) -> Frame:
         """The newest colour picture, or a sentence saying why not.

@@ -610,8 +610,78 @@ def test_the_reason_there_is_no_distance_is_kept_on_the_row() -> None:
         check("...and says why not", row["range_absent"], OUTSIDE_VIEW)
         store.close()
 
+def test_the_depth_behind_a_look_is_kept_and_reads_back() -> None:
+    """What the acceptance recording of 2026-09-07 did not have.
+
+    It kept every picture and every distance computed from one, and none of the
+    depth behind them -- so when a better way of sampling a box turned up there
+    was nothing on disk to try it against. The file carries its own shape and
+    units, because in a year the file is the only thing that will still be here.
+    """
+    from world_state.depth_client import DepthMap
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        frame_id = store.save_frame(JPEG, 640, 480)
+        millimetres = bytes(range(256)) * 8
+        written = store.save_depth(frame_id, DepthMap(
+            millimetres=millimetres, width=64, height=16, dtype="uint16",
+            age_s=0.1, apart_s=0.002))
+        check("the depth map was written", written > len(millimetres), True)
+
+        body, described = store.depth(frame_id)
+        check("...and reads back exactly", body, millimetres)
+        check("...carrying its own shape",
+              (described["width"], described["height"]), (64, 16))
+        check("...its units", (described["dtype"], described["unit"]),
+              ("uint16", "mm"))
+        check("...and how far it stood from the picture", described["apart_s"],
+              0.002)
+        store.close()
+
+
+def test_a_look_with_no_depth_camera_keeps_no_depth_and_says_nothing() -> None:
+    """Silence, not a file of zeroes and not an error.
+
+    A rover whose depth camera is off, or absent, records exactly what it
+    recorded before any of this existed.
+    """
+    from world_state.depth_client import DepthMap
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        frame_id = store.save_frame(JPEG, 640, 480)
+        check("nothing is written for a camera that answered nothing",
+              store.save_depth(frame_id, DepthMap(error="switched off")), 0)
+        check("...and nothing is written for no answer at all",
+              store.save_depth(frame_id, None), 0)
+        body, why = store.depth(frame_id)
+        check("...so reading it back says so rather than raising", body, None)
+        check("...in a sentence", "no depth map kept" in why, True)
+        store.close()
+
+
+def test_clearing_the_world_takes_the_depth_maps_with_it() -> None:
+    """They are evidence, and they are big. Emptying the store empties them."""
+    from world_state.depth_client import DepthMap
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        frame_id = store.save_frame(JPEG, 640, 480)
+        store.save_depth(frame_id, DepthMap(millimetres=bytes(128), width=8,
+                                            height=8, dtype="uint16"))
+        check("the depth map is on disk",
+              os.path.exists(store.depth_path(frame_id)), True)
+        store.clear()
+        check("...and is gone with the frames",
+              os.path.exists(store.depth_path(frame_id)), False)
+        store.close()
+
 
 TESTS = (
+    test_the_depth_behind_a_look_is_kept_and_reads_back,
+    test_a_look_with_no_depth_camera_keeps_no_depth_and_says_nothing,
+    test_clearing_the_world_takes_the_depth_maps_with_it,
     test_a_thing_remembers_whether_its_distance_was_ever_measured,
     test_a_thing_only_ever_seen_outside_the_depth_view_says_so,
     test_the_reason_there_is_no_distance_is_kept_on_the_row,

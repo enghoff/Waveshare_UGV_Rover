@@ -543,6 +543,23 @@ class Depth:
                 return None, 0.0
             return self.frame, time.monotonic() - self.frame_at
 
+    def newest_with_gap(self):
+        """The newest depth map, how old it is, and how far its colour frame was
+        exposed from it.
+
+        `newest` with the third number `newest_jpeg` carries, so that a saved
+        depth map can be read back later knowing how well it lined up with the
+        picture the boxes were drawn on -- which on a moving rover is the whole
+        question about whether the two describe the same room. See `/depth.raw`.
+        """
+        frame, age = self.newest()
+        if frame is None:
+            return None, 0.0, 0.0
+        with self._lock:
+            apart = (abs(self.jpeg_stamp - self.frame_stamp)
+                     if self.jpeg_stamp and self.frame_stamp else 0.0)
+        return frame, age, apart
+
     def newest_jpeg(self):
         """The newest colour frame, how old it is, and how far the depth it goes
         with was taken from it.
@@ -859,6 +876,29 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(png)))
             self.end_headers()
             return self.wfile.write(png)
+        if path == "/depth.raw":
+            # **The measurement rather than a picture of it.** `/depth.png` is
+            # for looking at and throws the millimetres away in the shading; this
+            # is the map as the device produced it, so that a question about a
+            # distance can be asked again of a recording months later instead of
+            # needing the rover driven round the room a second time. Raw because
+            # nothing here can write a 16-bit PNG and inventing a second encoder
+            # to store evidence would be the wrong trade -- the caller compresses.
+            frame, age, apart = self.depth.newest_with_gap()
+            if frame is None:
+                return self._reply(503, {"ok": False, "error": self.depth.no_frame()})
+            body = frame.tobytes()
+            height, width = frame.shape
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("X-Depth-Size", f"{width}x{height}")
+            self.send_header("X-Depth-Dtype", str(frame.dtype))
+            self.send_header("X-Depth-Unit", "mm")
+            self.send_header("X-Frame-Age", f"{age:.3f}")
+            self.send_header("X-Depth-Apart", f"{apart:.3f}")
+            self.end_headers()
+            return self.wfile.write(body)
         if path == "/power":
             return self._reply(200, dict(self.depth.power(), ok=True))
         if path == "/frame":

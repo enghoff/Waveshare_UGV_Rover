@@ -185,6 +185,73 @@ class WorldStore:
     def frame_path(self, frame_id: str) -> str:
         return os.path.join(self.frames_dir, f"{frame_id}.jpg")
 
+    def depth_path(self, frame_id: str) -> str:
+        return os.path.join(self.frames_dir, f"{frame_id}.depth.gz")
+
+    def save_depth(self, frame_id: str, depth) -> int:
+        """Keep the depth map that went with a frame. Returns bytes written.
+
+        **The evidence a recording could not answer a question without.** The
+        acceptance drive of 2026-09-07 kept every picture and every distance
+        computed from one, and none of the depth behind them -- so when a better
+        way of sampling a box turned up there was nothing on disk to try it
+        against, and the only route to an answer was to drive the room again.
+
+        Gzipped, because a depth map is 460 kB of 16-bit millimetres and
+        compresses to a fraction of that: large stretches of it are the same wall
+        or the same nothing. Beside the frame rather than in the database, for
+        the reason the frames are: a row is small and a picture is not.
+
+        Zero, quietly, for a rover with no depth camera or one switched off. A
+        look that keeps no depth map records exactly what it recorded before this
+        existed.
+        """
+        if not frame_id or not _plain_name(frame_id) or depth is None:
+            return 0
+        if not getattr(depth, "ok", False):
+            return 0
+        import gzip
+
+        # The shape and the units go in with the buffer, because a bare block of
+        # 16-bit numbers is unreadable in a year without them and the file is the
+        # only thing that will still be around.
+        header = json.dumps({"width": depth.width, "height": depth.height,
+                             "dtype": depth.dtype or "uint16", "unit": "mm",
+                             "age_s": round(depth.age_s, 3),
+                             "apart_s": round(depth.apart_s, 3)}).encode()
+        body = len(header).to_bytes(4, "little") + header + depth.millimetres
+        try:
+            with gzip.open(self.depth_path(frame_id), "wb", compresslevel=6) as f:
+                f.write(body)
+        except OSError:
+            return 0
+        return len(body)
+
+    def depth(self, frame_id: str):
+        """A saved depth map as (millimetres, description), or (None, why).
+
+        The counterpart of `save_depth`, and the reason the header is written
+        alongside: a reader months later gets the shape and the units from the
+        file rather than from whatever the code happens to emit that day.
+        """
+        if not frame_id or not _plain_name(frame_id):
+            return None, "that is not a frame name"
+        import gzip
+
+        try:
+            with gzip.open(self.depth_path(frame_id), "rb") as handle:
+                body = handle.read()
+        except OSError as error:
+            return None, f"no depth map kept for {frame_id} ({error.strerror})"
+        if len(body) < 4:
+            return None, "the depth map is truncated"
+        size = int.from_bytes(body[:4], "little")
+        try:
+            described = json.loads(body[4:4 + size].decode())
+        except (ValueError, UnicodeDecodeError):
+            return None, "the depth map's description would not read"
+        return body[4 + size:], described
+
     def frame(self, frame_id: str) -> bytes | None:
         """The stored JPEG, or None if it is not there any more.
 
@@ -967,7 +1034,7 @@ class WorldStore:
         # an inference that then failed to write its row would otherwise stay
         # behind for ever, pointed at by nothing.
         for name in os.listdir(self.frames_dir):
-            if name.endswith(".jpg"):
+            if name.endswith(".jpg") or name.endswith(".depth.gz"):
                 try:
                     os.remove(os.path.join(self.frames_dir, name))
                     removed += 1

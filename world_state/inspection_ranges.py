@@ -67,6 +67,29 @@ class InspectionRanges:
         return answers, (f"{got} of {len(regions)} ranged"
                          if got else "nothing in the frame could be ranged")
 
+    def _keep_depth(self, frame_id: str, ranges) -> int:
+        """Save the depth map behind this look, where there was one.
+
+        **Only where a range was actually measured**, which is the cheap and
+        correct condition: a parked rover with the camera switched off, a look
+        taken over the rover's shoulder, and a board with no depth camera at all
+        each ask for nothing and store nothing. What it costs when it does fire
+        is one loopback fetch of half a megabyte and a gzip, against a look
+        already spending half a second.
+
+        Returns the bytes written, zero for every ordinary reason. Nothing here
+        may raise: a look whose evidence could not be kept is still a look.
+        """
+        if self.ranger is None or not frame_id:
+            return 0
+        if not any(one is not None and one.range_m is not None
+                   for one in (ranges or [])):
+            return 0
+        try:
+            return self.store.save_depth(frame_id, self.ranger.depth_map())
+        except Exception:                          # never past here
+            return 0
+
     @staticmethod
     def _aged_sigma(one, speed_mps: float) -> float:
         """What a range is worth once its own staleness is charged to it.

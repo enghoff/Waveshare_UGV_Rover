@@ -625,6 +625,11 @@ class Inspector(InspectionRanges):
         # boxes exist, and before the write because a range is part of what the
         # look measured rather than something added to it afterwards.
         ranges, ranged_note = self._ranges(capture, look.regions)
+        # And the depth behind those ranges, kept beside the frame. Nothing reads
+        # it here; it is what lets a question about a distance be asked again of
+        # this look after the room has changed, which the recording of
+        # 2026-09-07 could not answer for want of exactly this.
+        self._keep_depth(frame_id, ranges)
 
         try:
             stored = self.store.record(
