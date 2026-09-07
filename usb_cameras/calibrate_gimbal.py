@@ -162,7 +162,20 @@ def take_view(rover: RoverClient, folder: Path, detector, name: str,
 
 def capture(folder: Path, rover: RoverClient, settle: float,
             size: tuple[int, int], pan_samples: tuple[int, ...] = PAN_SAMPLES,
-            candidate: str | None = None) -> dict:
+            candidate: str | None = None, pan_tilt_deg: int = 0) -> dict:
+    """Record one campaign. `pan_tilt_deg` is the tilt the pan sweeps are taken
+    at, and it is a measurement input rather than a convenience.
+
+    **The pan result belongs to the tilt it was measured at, and the first
+    campaign measured only tilt zero.** The rover rests at tilt 20, because the
+    camera is low and level fills the frame with floor, and 1828 of the 2165
+    looks in its store were taken there -- so the servo behaviour that matters
+    most in service is the behaviour at a tilt no campaign had visited. The
+    optics views already span tilt 0 to 20 and the lens fit is unaffected; what
+    is tilt-specific is the servo's own backlash and gain, which is what the
+    sweeps measure. It is written into the campaign metadata so an analysis
+    cannot silently compare two tilts.
+    """
     if folder.exists():
         raise RuntimeError(f"refusing to overwrite existing attempt: {folder}")
     folder.mkdir(parents=True)
@@ -183,6 +196,7 @@ def capture(folder: Path, rover: RoverClient, settle: float,
         "settle_s": settle,
         "requested_frame_size": list(size),
         "pan_samples_deg": list(pan_samples),
+        "pan_sweep_tilt_deg": pan_tilt_deg,
         "candidate": candidate,
         "initial_status": status,
         "optics": [],
@@ -221,15 +235,17 @@ def capture(folder: Path, rover: RoverClient, settle: float,
                     reversed(pan_samples)
                 )
                 overshoot = -30 if approach == "ascending" else 30
-                sent = rover.call("look_at", {"pan": overshoot, "tilt": 0})
+                sent = rover.call("look_at",
+                                  {"pan": overshoot, "tilt": pan_tilt_deg})
                 if not sent.get("ok"):
                     raise RuntimeError(f"gimbal refused overshoot {overshoot}: {sent}")
                 time.sleep(settle)
                 for pan in values:
                     stem = f"pair{pair}_{approach[:3]}_{pan:+03d}".replace("+", "p").replace("-", "m")
                     rows = take_view(
-                        rover, folder, detector, stem, pan, 0, settle,
-                        size, {"kind": "pan", "pair": pair, "approach": approach},
+                        rover, folder, detector, stem, pan, pan_tilt_deg,
+                        settle, size,
+                        {"kind": "pan", "pair": pair, "approach": approach},
                     )
                     meta["samples"].extend(rows)
                     write_meta(folder, meta)
@@ -450,6 +466,11 @@ def analyse(folder: Path) -> dict:
             "distortion": distortion.reshape(-1).tolist(),
         },
         "pan": {
+            # Carried through from the campaign, because a pan result is only
+            # true of the tilt it was measured at and two campaigns at
+            # different tilts must not be compared as if they were repeats.
+            # Older campaigns predate the option and were all taken at zero.
+            "sweep_tilt_deg": int(meta.get("pan_sweep_tilt_deg") or 0),
             "accepted_frames": len(pose_rows),
             "total_frames": len(meta["samples"]),
             "dominant_axis_in_board_frame": axis.tolist(),
@@ -520,7 +541,8 @@ def print_result(result: dict) -> None:
         f"{optics['fisheye_reprojection_rms_px']:.3f} px RMS"
     )
     print(
-        f"pan: {pan['accepted_frames']}/{pan['total_frames']} frames; "
+        f"pan at tilt {pan.get('sweep_tilt_deg', 0):+d}: "
+        f"{pan['accepted_frames']}/{pan['total_frames']} frames; "
         f"gain error {pan['gain_error_percent']:+.2f}%; "
         f"ascending-descending {pan['ascending_minus_descending_model_deg']:+.2f} deg"
     )
@@ -552,6 +574,10 @@ def main() -> int | str:
         metavar="DEG,...", help="ordered ascending pan samples",
     )
     parser.add_argument("--candidate", choices=("consistent-ascending",))
+    parser.add_argument(
+        "--tilt", type=int, default=0, metavar="DEG",
+        help="tilt the pan sweeps are taken at; the pan result belongs to it",
+    )
     parser.add_argument("--fit-only", action="store_true")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
@@ -574,13 +600,18 @@ def main() -> int | str:
             raise ValueError
     except ValueError:
         parser.error("--angles must be at least three unique ascending integers inside -30..30")
+    # The gimbal's own travel, and the sweeps must stay well inside it: the
+    # overshoot needs room and a servo against its stop is not a measurement.
+    if not -20 <= args.tilt <= 80:
+        parser.error("--tilt must be between -20 and 80 degrees")
     if not args.fit_only:
         rover = RoverClient(args.rover) if args.rover else discover()
         if rover is None or not rover.probe():
             return "no rover daemon found; name one with --rover"
         rover.timeout = 30.0
         try:
-            capture(args.folder, rover, args.settle, size, pan_samples, args.candidate)
+            capture(args.folder, rover, args.settle, size, pan_samples,
+                    args.candidate, args.tilt)
         finally:
             rover.close()
     result = analyse(args.folder)
