@@ -255,7 +255,11 @@ degree, so a small difference there would have meant something. It is not small.
 gimbal's travel**, thirty times the floor, not a property of pan 0. That is the
 worse of the two readings: no pan angle is repeatable, rather than one.
 
-### Three faults, and they are separable
+### Three faults, two of them identified
+
+All three are measured behaviours. Only the first two have a cause attached; the third is a real effect whose mechanism is still open, and
+the heading is worded that way deliberately -- a summary line written when
+a finding looked settled is exactly what outlives the finding.
 
 Within a single sweep the fitted yaw also walks steadily with pan, the same way in
 both directions -- ascending 2.65, 3.20, 4.35 across -20, 0, +20 and descending
@@ -368,8 +372,10 @@ are honest depth readings of the wrong thing.
    in the recording is measured against a map that had gone.
 6. **a concise baseline report** -- this document.
 7. **validate the remaining camera-to-rover geometry** -- **no.** The OAK mount
-   does not reproduce its own 2026-09-04 measurement, and fails its own
-   pan-consistency check by 4.45 degrees of yaw.
+   does not reproduce its own 2026-09-04 measurement, and the gimbal it is
+   measured against carries about 1.5 degrees of backlash at every angle plus a
+   pan-dependent gain error of about 7 per cent. Neither is corrected, and the
+   mount constant cannot honestly be re-measured until the servo is.
 
 ## What has to happen before Phase 1
 

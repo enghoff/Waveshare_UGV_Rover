@@ -92,7 +92,10 @@ class Mount:
 #: went. What survives misses by 0.3 to 0.9 degrees against the 1.5
 #: `locate.BEARING_SIGMA_DEG` allows a bearing, and -- the part that matters --
 #: **it comes out the same whatever offset it is given**, within about half a
-#: degree across everything from nothing to half a metre.
+#: degree across everything from nothing to half a metre. (That last claim held
+#: for yaw and not for the rest: on 2026-09-07 the ruler's offset moved the
+#: fitted pitch by 2.09 degrees and the roll by about 0.9. See the 2026-09-07
+#: note below.)
 #:
 #: **The offset is known and is deliberately still at nothing, which wants
 #: explaining.** The rover's owner has held a ruler to it: the OAK's lens sits
