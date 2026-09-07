@@ -204,3 +204,98 @@ determined.
 Settling it means deciding what the window should be, on more than one room, and
 saying what protects a symmetric room once the search can reach round it. Until
 then the widened fit stays a thing a person asks for by hand.
+
+**Both halves of that case have since moved, and against the proposal.** Two
+measurements on 2026-09-07, after this record was written:
+
+The evidence *for* widening is largely gone, because the errors it was sized
+against were manufactured. A parked rover was integrating the residue of its own
+gyro zero-offset at 0.6 degrees a minute — half a turn across a working day —
+and [R-NAV-13](#r-nav-13) has stopped it. The large heading errors quoted above
+were mostly that bug accumulating, not the localization this rover does when it
+is working properly, so sizing a search window against them would be sizing it
+against a fault that no longer exists.
+
+The evidence *against* is now concrete and measured on this rover rather than
+argued from a README. In its actual parking spot the room is symmetric enough
+that a full-circle search finds 98% of the scan on a wall half a turn away
+against 94% where the rover really stands. A wide search there does not merely
+risk preferring the wrong of two similar rooms; it does prefer it, and the fit
+correctly refuses to choose because nothing in a planar scan can separate them.
+
+What survives is narrower and worth keeping: a 180-degree fit asked for by hand
+is what recovered the rover from 174 degrees out, so the wide window earns its
+place as a recovery tool a person reaches for knowingly. Making it the default is
+now the harder argument, not the easier one. Anyone settling this should also
+weigh [R-NAV-14](#r-nav-14), which closes the half of the problem that actually
+kept the rover wrong for a working day — not that the window could not reach the
+error, but that nothing was looking for it.
+
+<a id="r-nav-13"></a>
+### R-NAV-13 — A rover that is standing still does not accumulate heading
+
+- **State:** settled
+- **Evidence:** `ad76f0c`; `python ros_nav/selftest.py` — the offline odometry
+  model asks for none of the invented rotation; deployed to the rover at
+  `0f53e12`
+
+The gyro's zero-offset is estimated and subtracted while the wheels are still,
+and what that leaves behind is a rate, so it integrates. Measured hours after
+boot with the estimate converged, the gyro read 0.443 degrees per second against
+a still rate near 0.433: the hundredth left over came to 0.6 degrees a minute, 36
+an hour, half a turn across a working day of standing in one place.
+
+Nothing was going to catch it either. The mapper is asked for a scan only after
+0.2 m or 0.2 rad of apparent motion, so a rover that never appears to move is
+never corrected, and the manual fit searches 45 degrees, which is no use against
+174.
+
+Past the settle grace that already keeps a coast out of the average, a still
+interval now contributes nothing to the pose at all — the wheels say the rover is
+not turning, so it has not turned. The bias is still learned there, because that
+is what corrects the intervals the rover is moving through.
+
+What this gives up is a rover rotated while its wheels do not turn: carried, or
+lifted and set down facing another way. Dead reckoning never measured that
+rover's position either, so it removes half of a measurement that was already
+missing rather than a working one, and being moved while switched on is what the
+fit in [R-NAV-3](#r-nav-3) is for.
+
+The offline check this got past used to ask that *most* of the invented rotation
+be removed, and 75% of 0.46 degrees per second is still 7 degrees an hour. A
+threshold that permits a rate permits an unbounded error given time.
+
+<a id="r-nav-14"></a>
+### R-NAV-14 — A parked rover checks its belief against the lidar and says when the two disagree
+
+- **State:** settled
+- **Evidence:** `8d8b6b2`, `0f53e12`; `map_drift` in `nav_status` and the
+  console's `vs lidar` row; `python ros_nav/selftest.py` at 546 checks; deployed
+  at `0f53e12`
+
+"The rover drifts" and "the rover cannot tell that it is wrong" are different
+faults, and only the second explains how a heading stayed 174 degrees out for a
+working day with somebody in the house. [R-NAV-13](#r-nav-13) fixed the first.
+
+Nothing used to consult the lidar while the rover was parked: the mapper corrects
+`map -> odom` only when it folds a scan into the graph and will not fold one
+until the rover has apparently moved, so a stationary rover had the walls in
+plain sight and asked nobody. Meanwhile the console read `position: trusted`
+throughout, because that is the mapper's confidence in a match it made hours ago
+rather than a statement about now — the same gap between *fresh* and *right* that
+[R-WS-16](world-state.md#r-ws-16) is about.
+
+So every five minutes, when no move is running, the scan is matched against the
+whole map and the disagreement is reported: `agrees`, `cannot say`, or `OFF BY
+43 cm, 174 deg`. It is logged once when it starts disagreeing and once when it
+stops, because a line every five minutes is how a log stops being read.
+
+**It measures and reports; it does not act.** No pose is written, no graph
+touched, `map_settled` is not moved and the rover is not driven. That is what
+keeps [R-NAV-3](#r-nav-3) true — deciding the rover has been moved is still a
+person's call, and this only makes sure the person is told.
+
+A refusal now carries the score where the rover believes it is, because "the
+lidar cannot say" on its own does not distinguish a rover standing where the map
+explains 94% of what it sees from one standing where it explains 30%, and only
+the second is worth getting up for.

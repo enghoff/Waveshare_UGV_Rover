@@ -27,11 +27,11 @@ the rover's behaviour that a plan can aim at and a measurement can move.
 | Area | `settled` | `failing` | `open` | `proposed` | Total |
 |---|---|---|---|---|---|
 | [Safety and authority](requirements/safety.md) | 6 | -- | 1 | 8 | 15 |
-| [Mapping and movement](requirements/navigation.md) | 9 | -- | 2 | 1 | 12 |
+| [Mapping and movement](requirements/navigation.md) | 11 | -- | 2 | 1 | 14 |
 | [Visual memory](requirements/world-state.md) | 11 | 1 | 4 | -- | 16 |
 | [Control surface](requirements/control.md) | 10 | -- | -- | -- | 10 |
 | [Host and deployment](requirements/platform.md) | 11 | -- | -- | -- | 11 |
-| **All** | **47** | **1** | **7** | **9** | **64** |
+| **All** | **49** | **1** | **7** | **9** | **66** |
 
 Currently failing: [R-WS-10](requirements/world-state.md#r-ws-10).
 
