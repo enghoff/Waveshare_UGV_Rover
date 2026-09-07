@@ -230,8 +230,9 @@ marked as belonging to the map that has gone rather than left looking current.
 ### R-WS-16 — An observation is only given a direction when the rover's place on the map has been confirmed
 
 - **State:** open
-- **Blocked by:** nothing in `world_state` or `rover_world.py` consults
-  navigation's `map_settled`, so an unconfirmed restore still produces bearings
+- **Blocked by:** [2026-09-07 refit window](../progress/2026-09-07-refit-window.md)
+  — nothing in `world_state` or `rover_world.py` consults navigation's
+  `map_settled`, so an unconfirmed restore still produces bearings
 
 This is [R-WS-5](#r-ws-5)'s neighbour and the gap between them is easy to miss:
 R-WS-5 keeps evidence from being read against the wrong *map*, while this one is
@@ -247,11 +248,12 @@ anchor that landed somewhere else is neither confirmed nor disproved.
 
 So a rover that came up on a restored map it could not place has a fresh
 transform, a real map identity and a confidently wrong heading, and every look it
-takes is recorded with a bearing measured from that heading. Another session
-reports 34 observations stamped this way on the morning of 2026-09-07, with a
-heading later shown to be 152 degrees out. The code gap is confirmed here; those
-counts are that session's measurement and are not yet written up as a progress
-entry, which is what this requirement is still owed.
+takes is recorded with a bearing measured from that heading. Measured on
+2026-09-07: 34 observations were stamped this way between a restart and the fit
+that corrected it, from a heading then shown to be 152.5 degrees out. None was
+placed, because a parked rover cannot cross bearings for want of parallax — so
+the placed record survived by [R-WS-2](#r-ws-2) holding for a reason unrelated to
+the pose being wrong, and the rows stay crossable once the rover drives.
 
 The fix is not to discard the look. The picture is worth keeping — the same
 reasoning as R-WS-5, where the coordinates expire but the crops do not. What

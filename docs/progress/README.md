@@ -14,6 +14,7 @@ Newest first. "Moved" names the requirements whose state this entry changed;
 
 | Date | Entry | Moved | Held |
 |---|---|---|---|
+| 2026-09-07 | [Why a refit could not find a rover whose heading was 152 degrees out](2026-09-07-refit-window.md) | none; supplies the measurement [R-WS-16](../requirements/world-state.md#r-ws-16) was owed, and evidence toward [R-NAV-9](../requirements/navigation.md#r-nav-9) | [R-NAV-2](../requirements/navigation.md#r-nav-2), [R-NAV-3](../requirements/navigation.md#r-nav-3), [R-WS-2](../requirements/world-state.md#r-ws-2) |
 | 2026-09-07 | [M0 baseline: is semantic state safe enough to steer the rover?](2026-09-07-m0-semantic-world-state.md) | [R-WS-10](../requirements/world-state.md#r-ws-10) to `failing`; [R-WS-12](../requirements/world-state.md#r-ws-12), [R-WS-13](../requirements/world-state.md#r-ws-13) opened with measured detail | [R-WS-1](../requirements/world-state.md#r-ws-1) through [R-WS-9](../requirements/world-state.md#r-ws-9), [R-NAV-4](../requirements/navigation.md#r-nav-4) |
 
 Measurements made before this log existed are in Git history, in the component
