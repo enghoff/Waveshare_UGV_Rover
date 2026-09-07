@@ -61,13 +61,18 @@ def ssh_bytes(host: str, command: str) -> bytes:
     return subprocess.check_output(["ssh", host, command], timeout=40)
 
 
-def oak_power_on(host: str) -> dict:
+def oak_set_power(host: str, on: bool) -> dict:
+    value = "true" if on else "false"
     raw = ssh_bytes(
         host,
         "curl -sS -X POST -H 'Content-Type: application/json' "
-        "--data-binary '{\"on\":true}' http://127.0.0.1:8770/power",
+        f"--data-binary '{{\"on\":{value}}}' http://127.0.0.1:8770/power",
     )
     return json.loads(raw)
+
+
+def oak_power_on(host: str) -> dict:
+    return oak_set_power(host, True)
 
 
 def oak_health(host: str) -> dict:
@@ -89,6 +94,19 @@ def wait_for_oak(host: str) -> dict:
             pass
         time.sleep(2)
     raise RuntimeError(f"OAK did not become ready: {last}")
+
+
+def wait_for_oak_off(host: str) -> dict:
+    last = None
+    for _ in range(20):
+        try:
+            last = oak_health(host)
+            if last.get("power") == "off":
+                return last
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+        time.sleep(1)
+    raise RuntimeError(f"OAK did not release the device: {last}")
 
 
 def save_oak_jpeg(folder: Path, number: int, data: bytes, detector) -> dict:
@@ -131,7 +149,53 @@ def detect_best(frame: np.ndarray, detector) -> dict:
     }
 
 
-def capture(folder: Path, rover: RoverClient, oak_host: str, settle: float) -> None:
+def capture_highres_oak(folder: Path, host: str,
+                        size: tuple[int, int], detector) -> tuple[dict, list[dict]]:
+    """Temporarily release the OAK service and run the reviewable RGB bench."""
+    runtime_health = oak_health(host)
+    save_json(folder / "runtime-health.json", runtime_health)
+    remote = f"/tmp/p0-oak-mount-{time.time_ns()}"
+    remote_script = "/tmp/p0-capture-rgb.py"
+    try:
+        if runtime_health.get("power") != "off":
+            switched = oak_set_power(host, False)
+            if not switched.get("ok"):
+                raise RuntimeError(f"OAK refused power-off: {switched}")
+            wait_for_oak_off(host)
+        # Closing the Myriad handle trails the HTTP state by several seconds.
+        time.sleep(5)
+        subprocess.run([
+            "scp", str(HERE.parent / "oak_camera" / "capture_rgb.py"),
+            f"{host}:{remote_script}",
+        ], check=True, timeout=40)
+        width, height = size
+        command = (
+            f"PYTHONPATH=~/ugv/oak_depth/vendor python3 {remote_script} {remote} "
+            f"--size {width}x{height} --frames {FRAMES}"
+        )
+        subprocess.run(["ssh", host, command], check=True, timeout=90)
+        for name in ([f"oak-{number}.jpg" for number in range(1, FRAMES + 1)]
+                     + ["calibration-health.json"]):
+            subprocess.run([
+                "scp", f"{host}:{remote}/{name}", str(folder / name)
+            ], check=True, timeout=40)
+        calibration_health = json.loads(
+            (folder / "calibration-health.json").read_text(encoding="utf-8")
+        )
+        rows = []
+        for number in range(1, FRAMES + 1):
+            data = (folder / f"oak-{number}.jpg").read_bytes()
+            rows.append(save_oak_jpeg(folder, number, data, detector))
+        return calibration_health, rows
+    finally:
+        switched = oak_set_power(host, True)
+        if not switched.get("ok"):
+            raise RuntimeError(f"OAK service did not accept power-on: {switched}")
+        wait_for_oak(host)
+
+
+def capture(folder: Path, rover: RoverClient, oak_host: str, settle: float,
+            oak_size: tuple[int, int]) -> None:
     if folder.exists():
         raise RuntimeError(f"refusing to overwrite existing attempt: {folder}")
     folder.mkdir(parents=True)
@@ -145,6 +209,7 @@ def capture(folder: Path, rover: RoverClient, oak_host: str, settle: float) -> N
         "opencv_version": cv2.__version__,
         "rover": rover.describe(),
         "oak_host": oak_host,
+        "oak_capture_size": list(oak_size),
         "settle_s": settle,
         "approach": "ascending",
         "gimbal": [],
@@ -179,15 +244,21 @@ def capture(folder: Path, rover: RoverClient, oak_host: str, settle: float) -> N
             save_json(folder / "mount-campaign.json", meta)
             time.sleep(0.25)
 
-        power = oak_power_on(oak_host)
-        if not power.get("ok"):
-            raise RuntimeError(f"OAK refused power-on: {power}")
-        meta["health"] = wait_for_oak(oak_host)
-        for number in range(1, FRAMES + 1):
-            row = save_oak_jpeg(folder, number, oak_frame(oak_host), detector)
-            meta["oak"].append(row)
+        if oak_size == (640, 360):
+            power = oak_power_on(oak_host)
+            if not power.get("ok"):
+                raise RuntimeError(f"OAK refused power-on: {power}")
+            meta["health"] = wait_for_oak(oak_host)
+            for number in range(1, FRAMES + 1):
+                row = save_oak_jpeg(folder, number, oak_frame(oak_host), detector)
+                meta["oak"].append(row)
+                save_json(folder / "mount-campaign.json", meta)
+                time.sleep(0.5)
+        else:
+            meta["health"], meta["oak"] = capture_highres_oak(
+                folder, oak_host, oak_size, detector
+            )
             save_json(folder / "mount-campaign.json", meta)
-            time.sleep(0.5)
         meta["status"] = "complete"
     except Exception as error:
         meta["status"] = "invalid"
@@ -287,9 +358,19 @@ def analyse(folder: Path, gimbal_analysis: Path,
     calibration = json.loads(gimbal_analysis.read_text(encoding="utf-8"))
     kg = np.asarray(calibration["optics"]["camera_matrix"], dtype=np.float64)
     dg = np.asarray(calibration["optics"]["distortion"], dtype=np.float64)
-    health = json.loads((folder / "health.json").read_text(encoding="utf-8")) \
-        if (folder / "health.json").exists() else json.loads(
-            (folder / "mount-campaign.json").read_text(encoding="utf-8"))["health"]
+    if (folder / "calibration-health.json").exists():
+        health = json.loads(
+            (folder / "calibration-health.json").read_text(encoding="utf-8")
+        )
+    elif (folder / "health.json").exists():
+        health = json.loads((folder / "health.json").read_text(encoding="utf-8"))
+    else:
+        health = json.loads(
+            (folder / "mount-campaign.json").read_text(encoding="utf-8")
+        )["health"]
+    runtime_health = json.loads(
+        (folder / "runtime-health.json").read_text(encoding="utf-8")
+    ) if (folder / "runtime-health.json").exists() else health
     lens = health["colour"]["intrinsics"]
     ko = np.asarray([[lens["fx"], 0, lens["cx"]],
                      [0, lens["fy"], lens["cy"]],
@@ -323,7 +404,19 @@ def analyse(folder: Path, gimbal_analysis: Path,
     keys = ("yaw_deg", "pitch_deg", "roll_deg",
             "forward_m", "left_m", "up_m")
     transform = {key: stats([row[key] for row in fits]) for key in keys}
-    ray_error = pinhole_ray_error(ko, do, lens["width"], lens["height"])
+    runtime_lens = runtime_health["colour"]["intrinsics"]
+    runtime_matrix = np.asarray([
+        [runtime_lens["fx"], 0, runtime_lens["cx"]],
+        [0, runtime_lens["fy"], runtime_lens["cy"]],
+        [0, 0, 1],
+    ], dtype=np.float64)
+    runtime_distortion = np.asarray(
+        runtime_health["colour"]["distortion"], dtype=np.float64
+    )
+    ray_error = pinhole_ray_error(
+        runtime_matrix, runtime_distortion,
+        runtime_lens["width"], runtime_lens["height"]
+    )
     gates = {
         "gimbal_board_coverage": min(row["corners"] for row in gimbals)
         >= MIN_GIMBAL_CORNERS,
@@ -422,16 +515,19 @@ def main() -> int | str:
     parser.add_argument("--compare", type=Path)
     parser.add_argument("--rover", metavar="HOST[:PORT]")
     parser.add_argument("--oak-host", default="orin")
+    parser.add_argument("--oak-size", default="640x360",
+                        choices=("640x360", "1920x1080"))
     parser.add_argument("--settle", type=float, default=gimbal.SETTLE_S)
     parser.add_argument("--fit-only", action="store_true")
     args = parser.parse_args()
     if not args.fit_only:
+        oak_size = tuple(int(value) for value in args.oak_size.split("x"))
         rover = RoverClient(args.rover) if args.rover else discover()
         if rover is None or not rover.probe():
             return "no rover daemon found; name one with --rover"
         rover.timeout = 30.0
         try:
-            capture(args.folder, rover, args.oak_host, args.settle)
+            capture(args.folder, rover, args.oak_host, args.settle, oak_size)
         finally:
             rover.close()
     result = analyse(args.folder, args.gimbal_analysis, args.compare)

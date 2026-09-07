@@ -271,9 +271,11 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 The owner printed, measured, mounted and lowered the reference as requested. Both
 cameras pass their board-coverage gates and the development transform is frozen.
 A 0.325 m backward held-out move put the target beyond the OAK stream's marker
-resolution and was retained as an invalid attempt. Move the rover about 0.20 m
-forward from that position, without changing the target, for a replacement held-out
-capture at least 0.10 m farther than development. The exact sequence is in the
+resolution and was retained as an invalid attempt. The rover was then moved about
+0.20 m forward without changing the target, leaving at least 0.10 m more distance
+than development for the replacement held-out capture. A
+calibration-only 1920 x 1080 OAK preflight sees all 54 corners without changing the
+normal 640 x 360 colour/depth stream. The exact sequence is in the
 [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md). No calibration
 jig, new sensor or attempt to remove the measured backlash is requested. A later
 driven acceptance run still needs the owner present in the pre-cleared test area.

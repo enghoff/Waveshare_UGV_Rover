@@ -165,11 +165,19 @@ From the failed distant position this means moving the rover about **0.20 m stra
 forward**, without changing the target. Verify OAK detection before creating a new
 acceptance folder, then compare it with the frozen development result:
 
+The normal 640 x 360 OAK frame still cannot resolve the markers at this distance.
+Calibration-only preflights with continuous autofocus found 42 corners at 1280 x 720
+and all 54 at 1920 x 1080. Use the latter with its size-specific factory intrinsics.
+The bench temporarily releases the resident OAK service, captures five settled
+frames and restores the service. This does not change its normal 640 x 360 paired
+colour/depth stream.
+
 ```bash
 python usb_cameras/calibrate_oak_mount.py \
   captures/p0-gimbal-YYYY-MM-DD/oak-mount-held-out-02 \
   --gimbal-analysis captures/p0-gimbal-YYYY-MM-DD/held-out-01/analysis.json \
   --rover 192.168.1.80:8769 \
+  --oak-size 1920x1080 \
   --compare captures/p0-gimbal-YYYY-MM-DD/oak-mount-dev/mount-analysis.json
 ```
 
