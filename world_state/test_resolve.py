@@ -972,8 +972,112 @@ def test_two_things_side_by_side_are_not_cut_down_the_wrong_seam() -> None:
                   (store.observations(nearer, limit=1)[0]["note"] or ""), True)
             store.close()
 
+def test_a_picture_with_a_chair_in_front_of_it_is_not_that_chair() -> None:
+    """The fault the acceptance drive of 2026-09-07 found, four times.
+
+    A box drawn round a framed picture on the wall had the chair standing in
+    front of it inside the same box, so the crop resembled an entity of dining
+    chairs partly because it contained one. Here the third look points at the
+    placed thing and looks like it on the plain crop -- the geometry and the
+    appearance gate both pass it -- and looks nothing like it once everything
+    but the thing itself is blanked out. That collapse is the whole signal.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        chair = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, vector=chair, alone=chair, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=chair, alone=chair, inference=2)
+        resolve.resolve(store)
+        check("two looks at the chair place it", len(store.placed()), 1)
+
+        # Points at it, looks like it, and is a picture with a chair in it.
+        observe(store, 3.0, -1.0, 90.0, vector=chair,
+                alone=a_vector(0.0, 1.0), inference=3)
+        result = resolve.resolve(store)
+        check("the look is refused although the plain crop matches",
+              result["matched"], 0)
+        check("...and is not quietly made into a second thing",
+              result["created"], 0)
+        check("...it waits for a bearing of its own instead",
+              len(store.unplaced()), 1)
+        store.close()
+
+
+def test_a_look_that_still_matches_on_its_own_pixels_is_kept() -> None:
+    """The other side of it, which is what stops the gate emptying the world.
+
+    The same arrangement with a third look that really is the chair: masked and
+    unmasked agree, so nothing collapses and the match goes through.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        chair = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, vector=chair, alone=chair, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=chair, alone=chair, inference=2)
+        resolve.resolve(store)
+
+        observe(store, 3.0, -1.0, 90.0, vector=chair, alone=chair, inference=3)
+        result = resolve.resolve(store)
+        check("a look that survives having its background removed is matched",
+              result["matched"], 1)
+        check("...and joins the thing it points at",
+              store.placed()[0]["observation_count"], 3)
+        store.close()
+
+
+def test_a_look_with_no_mask_is_not_refused_for_having_none() -> None:
+    """Silence is not a low score, and this is the case that matters.
+
+    Every look the rover took before the masks were decoded carries no masked
+    vector at all, and a rover whose region model returns no prototypes takes
+    only such looks. If a missing second opinion counted as a collapse, the
+    resolver would refuse every candidate on those rovers and the world would
+    stay empty.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        chair = a_vector(1.0, 0.0)
+        observe(store, 0.0, 0.0, 45.0, vector=chair, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=chair, inference=2)
+        resolve.resolve(store)
+        observe(store, 3.0, -1.0, 90.0, vector=chair, inference=3)
+        result = resolve.resolve(store)
+        check("a look carrying no mask is matched on the plain crop alone",
+              result["matched"], 1)
+        store.close()
+
+
+def test_the_collapse_is_measured_against_masked_crops_on_both_sides() -> None:
+    """A masked vector must never be compared with a plain one.
+
+    The two are pictures of different images, so the difference between them
+    would measure the masking rather than the thing -- which would make every
+    look collapse. Here the entity holds a masked exemplar quite unlike its
+    plain one, and a look whose own masked vector matches it is kept.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        plain, masked = a_vector(1.0, 0.0), a_vector(0.0, 1.0)
+        observe(store, 0.0, 0.0, 45.0, vector=plain, alone=masked, inference=1)
+        observe(store, 6.0, 0.0, 135.0, vector=plain, alone=masked, inference=2)
+        resolve.resolve(store)
+        placed = store.placed()[0]["id"]
+        check("the thing keeps its two exemplar sets apart",
+              (len(store.exemplars(placed, width=32)),
+               len(store.exemplars(placed, width=32, alone=True))), (2, 2))
+
+        observe(store, 3.0, -1.0, 90.0, vector=plain, alone=masked, inference=3)
+        result = resolve.resolve(store)
+        check("nothing collapses when both sides are masked",
+              result["matched"], 1)
+        store.close()
+
 
 TESTS = (
+    test_a_picture_with_a_chair_in_front_of_it_is_not_that_chair,
+    test_a_look_that_still_matches_on_its_own_pixels_is_kept,
+    test_a_look_with_no_mask_is_not_refused_for_having_none,
+    test_the_collapse_is_measured_against_masked_crops_on_both_sides,
     test_two_looks_from_two_places_make_one_lasting_thing,
     test_two_things_side_by_side_are_not_cut_down_the_wrong_seam,
     test_a_rover_that_only_turned_on_the_spot_places_nothing,

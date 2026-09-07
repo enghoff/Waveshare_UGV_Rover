@@ -62,6 +62,15 @@ class Sighting:
     area: float = 0.0
     dino: bytes = b""
     siglip: bytes = b""
+    #: The same crop with everything but this region's own pixels blanked out,
+    #: through the same model as `dino`, and how much of the crop survived. What
+    #: they are for is a box holding two things at different depths: a picture
+    #: with a chair in front of it resembles an entity of chairs partly because
+    #: the crop contains one, and that resemblance collapses here while a genuine
+    #: one does not. Empty when the region finder returned no mask prototypes,
+    #: which is silence rather than a low score -- see `resolve.collapsed`.
+    dino_alone: bytes = b""
+    mask_share: float | None = None
     #: Perception has no categories, so everything it finds is an object. The
     #: field exists because the store records a kind and because a later phase may
     #: want openings kept apart from furniture.
@@ -226,7 +235,10 @@ class SidecarEyes(Eyes):
                     region_score=float(region.get("region_score") or 0.0),
                     area=float(region.get("area") or 0.0),
                     dino=base64.b64decode(region.get("dino") or ""),
-                    siglip=base64.b64decode(region.get("siglip") or "")))
+                    siglip=base64.b64decode(region.get("siglip") or ""),
+                    dino_alone=base64.b64decode(region.get("dino_alone") or ""),
+                    mask_share=(None if region.get("mask_share") is None
+                                else float(region["mask_share"]))))
             except (KeyError, TypeError, ValueError) as bad:
                 # One malformed region does not throw the frame away. The rest of
                 # it is still a measurement, and the count that is short says so.

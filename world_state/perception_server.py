@@ -218,9 +218,14 @@ class Server(ThreadingHTTPServer):
         # rather than a list of numbers it would have to pack again.
         regions = []
         for region in answer["regions"]:
+            alone = region.get("dino_alone")
             regions.append({**region,
                             "dino": base64.b64encode(region["dino"]).decode(),
-                            "siglip": base64.b64encode(region["siglip"]).decode()})
+                            "siglip": base64.b64encode(region["siglip"]).decode(),
+                            # Absent rather than empty when the backend produced
+                            # no masks, so the client's own default applies.
+                            "dino_alone": (base64.b64encode(alone).decode()
+                                           if alone else None)})
         return {**answer, "regions": regions}
 
     def embed(self, phrases: list) -> list:

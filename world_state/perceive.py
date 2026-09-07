@@ -93,6 +93,19 @@ YOLOE_CONF = 0.15
 #: about which model proposed it.
 YOLOE_OVERLAP = 0.8
 
+#: The region engine's second output: 32 mask prototypes at a quarter of the
+#: input resolution, which with a row's own 32 coefficients make that region's
+#: mask. It is copied back from the GPU on every look whether anything wants it
+#: or not, so decoding one costs the arithmetic and nothing else.
+MASK_PROTOTYPES = "output1"
+#: Above this a prototype-weighted pixel belongs to the region. The standard
+#: YOLO cut, and the masks it produces were checked by eye on this rover's own
+#: frames before anything was built on them.
+MASK_INSIDE = 0.5
+#: What the letterbox pads with, and therefore what a masked-out pixel is set
+#: to: absent reads as padding rather than as a black object.
+LETTERBOX_GREY = 114
+
 #: What DINOv2 and SigLIP2 are shown, from their own preprocessor configs.
 DINO_SIZE = 224
 SIGLIP_SIZE = 256
@@ -278,7 +291,8 @@ class _CpuModels:
                                   dtype=numpy.float32)
 
     def regions(self, blob):
-        return self._regions.run(None, {"images": blob})[0]
+        got = self._regions.run(None, {"images": blob})
+        return got[0], (got[1] if len(got) > 1 else None)
 
     def appearance(self, batch):
         return self._dino.run(None, {"pixel_values": batch})[0][:, 0]
@@ -376,7 +390,8 @@ class _GpuModels:
             self._text_engine = None
 
     def regions(self, blob):
-        return self._regions.run({"images": blob})["regions"]
+        got = self._regions.run({"images": blob})
+        return got["regions"], got.get(MASK_PROTOTYPES)
 
     def appearance(self, batch):
         return self._dino.run({"pixel_values": batch})["last_hidden_state"][:, 0]
@@ -555,16 +570,19 @@ class Perception:
                                     "siglip_ms": 0},
                         "took_s": round(time.monotonic() - began, 2)}
 
-            boxes, scores, region_s = self._regions(image)
-            kept = [(box, score) for box, score in zip(boxes, scores)
+            boxes, scores, masks, region_s = self._regions(image)
+            # The index rides along because the masks are still in the order the
+            # region finder produced, and what follows reorders and thins.
+            kept = [(box, score, index)
+                    for index, (box, score) in enumerate(zip(boxes, scores))
                     if _worth_keeping(box)]
             # Largest first, then cut. The cut is a cost ceiling and the order is
             # what makes it defensible: what falls off the end is the smallest
             # thing in the room, which is also the hardest to place from a bearing.
-            kept.sort(key=lambda pair: -_area(pair[0]))
+            kept.sort(key=lambda one: -_area(one[0]))
             cropped = []
             blank = 0
-            for box, score in kept[:MAX_REGIONS]:
+            for box, score, index in kept[:MAX_REGIONS]:
                 patch = self._crop(image, box)
                 if patch is None:
                     continue
@@ -574,7 +592,7 @@ class Perception:
                 if _blank(np, patch):
                     blank += 1
                     continue
-                cropped.append((box, score, patch))
+                cropped.append((box, score, patch, index))
 
             if not cropped:
                 return {"regions": [], "found": len(boxes), "kept": len(kept),
@@ -583,18 +601,25 @@ class Perception:
                                     "dino_ms": 0, "siglip_ms": 0},
                         "took_s": round(time.monotonic() - began, 2)}
 
-            patches = [patch for _, _, patch in cropped]
+            patches = [patch for _, _, patch, _ in cropped]
             dino, dino_s = self._appearance(patches)
             siglip, siglip_s = self._semantic(patches)
+            alone, shares, alone_s = self._appearance_alone(image, cropped, masks)
 
             regions = []
-            for index, (box, score, _) in enumerate(cropped):
+            for index, (box, score, _, _) in enumerate(cropped):
                 regions.append({
                     "bbox": [round(float(value), 4) for value in box],
                     "region_score": round(float(score), 3),
                     "area": round(_area(box), 4),
                     "dino": dino[index].astype("float32").tobytes(),
                     "siglip": siglip[index].astype("float32").tobytes(),
+                    # The same crop with everything but this region's own pixels
+                    # blanked out, and how much of the crop that left. None when
+                    # the backend returned no prototypes; see `_appearance_alone`.
+                    "dino_alone": (None if alone is None else
+                                   alone[index].astype("float32").tobytes()),
+                    "mask_share": None if shares is None else shares[index],
                 })
             return {
                 "regions": regions,
@@ -605,6 +630,7 @@ class Perception:
                 "backend": self.backend,
                 "timings": {"regions_ms": round(region_s * 1000),
                             "dino_ms": round(dino_s * 1000),
+                            "dino_alone_ms": round(alone_s * 1000),
                             "siglip_ms": round(siglip_s * 1000)},
                 "took_s": round(time.monotonic() - began, 2),
             }
@@ -617,9 +643,12 @@ class Perception:
         YOLOE is a YOLO11 segmentation head, so what comes back is one row per
         anchor of four box numbers, a score and thirty-two mask coefficients --
         the same shape FastSAM produced, because the export folds the 4,585 class
-        scores down to their maximum before the graph ends. The masks are not
-        decoded: the box is all that a bearing and a crop need, and the
-        prototypes are the expensive half.
+        scores down to their maximum before the graph ends. Alongside it comes a
+        tensor of 32 mask prototypes, and the two together say which *pixels* of
+        a box belong to the thing the box is around. That matters because a box
+        drawn round a picture on the wall can have the chair in front of it
+        inside the same box, which is how a picture comes to look like a chair;
+        see `_Masks` and `look`.
 
         **The score is therefore a class score and not an objectness.** It is how
         strongly the best of 4,585 tags fits, which is why the threshold sits
@@ -634,20 +663,24 @@ class Perception:
         raw = self._models.regions(blob)
         took = time.monotonic() - began
 
+        raw, protos = raw
         rows = raw[0].T
         scores = rows[:, 4]
         rows, scores = rows[scores >= YOLOE_CONF], scores[scores >= YOLOE_CONF]
         if not len(rows):
-            return np.zeros((0, 4)), np.zeros(0), took
+            return np.zeros((0, 4)), np.zeros(0), None, took
         cx, cy, w, h = rows[:, 0], rows[:, 1], rows[:, 2], rows[:, 3]
         boxes = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1)
         keep = _suppress(np, boxes, scores, YOLOE_OVERLAP)
         boxes, scores = boxes[keep], scores[keep]
+        masks = (None if protos is None else
+                 _Masks(np, self._cv2, rows[keep, 5:37], protos[0],
+                        image.shape[:2], scale, left, top))
 
         height, width = image.shape[:2]
         boxes[:, [0, 2]] = (boxes[:, [0, 2]] - left) / scale / width
         boxes[:, [1, 3]] = (boxes[:, [1, 3]] - top) / scale / height
-        return np.clip(boxes, 0.0, 1.0), scores, took
+        return np.clip(boxes, 0.0, 1.0), scores, masks, took
 
     def _appearance(self, patches):
         """DINOv2's class token per crop: is this the same *instance*.
@@ -678,6 +711,50 @@ class Perception:
         began = time.monotonic()
         out = self._models.appearance(batch)
         return _unit(np, out), time.monotonic() - began
+
+    def _appearance_alone(self, image, cropped, masks):
+        """The same crops again, with everything but each region blanked out.
+
+        **The second opinion the resolver needs to catch a picture that only
+        looks like a chair because a chair is standing in front of it.** A box
+        round a framed picture with a chair inside it produces a crop of both,
+        and part of what makes that crop resemble an entity of chairs is that it
+        literally contains one. Blanking the rest leaves the picture on its own,
+        and a look that was only matching on the intruder collapses; a look that
+        was matching on the thing itself barely moves. `resolve` compares the
+        two and refuses on the difference -- see `resolve.COLLAPSED_ALONE`.
+
+        Measured on the acceptance recording of 2026-09-07: the four wrong
+        attachments its review found scored 0.561 to 0.698 on the plain crop and
+        0.203 to 0.469 on this one, against a gate of 0.55, while ordinary looks
+        fell by a median of 0.061. Replacing the plain vector with this one
+        instead was measured and is worse: it loses 73 correct attachments of
+        394 to catch the same four.
+
+        Blanked to the same grey the letterbox pads with, so a removed pixel
+        reads as absent rather than as a black object.
+
+        `(None, None, 0.0)` when the region finder returned no prototypes, which
+        is what a backend whose export lacks that output does. Everything
+        downstream treats a missing second vector as no second opinion rather
+        than as a low score.
+        """
+        if masks is None or not cropped:
+            return None, None, 0.0
+        np = self._np
+        patches, shares = [], []
+        for box, _score, patch, index in cropped:
+            window = self._window(image, box)
+            piece = masks.of(index)[window[1]:window[3], window[0]:window[2]]
+            alone = patch.copy()
+            if piece.shape[:2] == alone.shape[:2]:
+                alone[~piece] = LETTERBOX_GREY
+                shares.append(round(float(piece.mean()), 3))
+            else:                                  # never seen; keep the crop
+                shares.append(None)
+            patches.append(alone)
+        vectors, took = self._appearance(patches)
+        return vectors, shares, took
 
     def _semantic(self, patches):
         """SigLIP2's image embedding per crop: what a description would match.
@@ -711,7 +788,7 @@ class Perception:
         scale = min(size / width, size / height)
         new_w, new_h = int(round(width * scale)), int(round(height * scale))
         resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-        canvas = np.full((size, size, 3), 114, dtype=np.uint8)
+        canvas = np.full((size, size, 3), LETTERBOX_GREY, dtype=np.uint8)
         top, left = (size - new_h) // 2, (size - new_w) // 2
         canvas[top:top + new_h, left:left + new_w] = resized
         return canvas, scale, left, top
@@ -719,13 +796,23 @@ class Perception:
     def _square(self, patch, size):
         return self._letterbox(patch, size)[0]
 
+    @staticmethod
+    def _window(image, box):
+        """One box as a pixel window into the frame, padded by `CROP_PAD`.
+
+        Separate from `_crop` because two things need to agree about it: the
+        crop itself, and the region's mask, which is indexed with the same
+        window so that the two line up pixel for pixel.
+        """
+        height, width = image.shape[:2]
+        return (int(max(0.0, box[0] - CROP_PAD) * width),
+                int(max(0.0, box[1] - CROP_PAD) * height),
+                int(min(1.0, box[2] + CROP_PAD) * width),
+                int(min(1.0, box[3] + CROP_PAD) * height))
+
     def _crop(self, image, box):
         """The picture inside one box, or None if it is too small to be one."""
-        height, width = image.shape[:2]
-        left = int(max(0.0, box[0] - CROP_PAD) * width)
-        top = int(max(0.0, box[1] - CROP_PAD) * height)
-        right = int(min(1.0, box[2] + CROP_PAD) * width)
-        bottom = int(min(1.0, box[3] + CROP_PAD) * height)
+        left, top, right, bottom = self._window(image, box)
         if right - left < 8 or bottom - top < 8:
             return None
         return image[top:bottom, left:right]
@@ -816,6 +903,58 @@ def _blank(np, patch) -> bool:
     if float(grey.std()) < MIN_CONTRAST:
         return True
     return float((grey > 250).mean()) > MAX_BLOWN
+
+
+class _Masks:
+    """The region model's masks, decoded one at a time and only when wanted.
+
+    **Held rather than decoded up front, because `look` throws most of the boxes
+    away.** It keeps the largest `MAX_REGIONS` and then drops the ones with no
+    picture in them, so decoding every survivor of suppression would pay for
+    masks nobody asks for. The prototypes are 2 MB and arrive in host memory on
+    every look regardless; what this defers is the arithmetic.
+
+    `of` answers in the frame's own pixels, so a caller with a crop taken from
+    the frame can index it with the same window.
+    """
+
+    def __init__(self, np, cv2, coefficients, prototypes, shape,
+                 scale, left, top) -> None:
+        self._np, self._cv2 = np, cv2
+        self._coefficients = coefficients
+        self._flat = prototypes.reshape(prototypes.shape[0], -1)
+        self._grid = prototypes.shape[1:]
+        self._shape = shape
+        self._scale, self._left, self._top = scale, left, top
+
+    def __len__(self) -> int:
+        return len(self._coefficients)
+
+    def of(self, index: int):
+        """One region's mask, as a boolean array the size of the frame.
+
+        The prototypes are a quarter of the model's input, and the model's input
+        is the letterboxed square, so this comes back through both: up to the
+        square, out of the padding, and down to the frame. Nearest-neighbour on
+        the way out, because the value being resized is already a yes or a no.
+        """
+        np, cv2 = self._np, self._cv2
+        weighted = self._coefficients[index] @ self._flat
+        mask = 1.0 / (1.0 + np.exp(-weighted))
+        mask = cv2.resize(mask.reshape(self._grid), (YOLOE_SIZE, YOLOE_SIZE),
+                          interpolation=cv2.INTER_LINEAR) > MASK_INSIDE
+        height, width = self._shape
+        # Where the frame actually sits inside the square, worked out the same
+        # way `_letterbox` put it there rather than by assuming the padding is
+        # symmetric: an odd number of rows to pad leaves one more at the bottom
+        # than the top, and taking the top's figure for both would carry a row
+        # of grey into the mask.
+        inner = mask[self._top:self._top + int(round(height * self._scale)),
+                     self._left:self._left + int(round(width * self._scale))]
+        if inner.size == 0:                        # nothing survived the crop
+            inner = mask
+        return cv2.resize(inner.astype(np.uint8), (width, height),
+                          interpolation=cv2.INTER_NEAREST) > 0
 
 
 def _suppress(np, boxes, scores, threshold):

@@ -13,7 +13,7 @@ import tempfile
 import time
 
 from test_harness import FAIL, check
-from test_fakes import JPEG, a_sighting, a_store, observe
+from test_fakes import JPEG, a_sighting, a_store, a_vector, observe
 
 
 # --- the store --------------------------------------------------------------
@@ -505,8 +505,31 @@ def test_a_look_remembers_which_things_it_has_already_named() -> None:
         finally:
             store.close()
 
+def test_the_masked_exemplars_are_kept_in_their_own_column() -> None:
+    """Two sets, never mixed, and one may be shorter than the other.
+
+    A look whose backend returned no mask contributes to the plain set and not
+    to the masked one, so the two are read separately rather than zipped
+    together -- and a masked vector is never handed back as a plain one, which
+    would compare pictures of different images.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        entity = store.create_entity("object")
+        plain, masked = a_vector(1.0, 0.0), a_vector(0.0, 1.0)
+        store.add_exemplar(entity, plain, alone=masked)
+        store.add_exemplar(entity, plain)          # this one could not be masked
+        check("the plain set grew twice",
+              len(store.exemplars(entity, width=32)), 2)
+        check("...and the masked set once",
+              len(store.exemplars(entity, width=32, alone=True)), 1)
+        check("...with the masked vector kept apart from the plain one",
+              store.exemplars(entity, width=32, alone=True)[0], masked)
+        store.close()
+
 
 TESTS = (
+    test_the_masked_exemplars_are_kept_in_their_own_column,
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,
     test_an_inspection_claims_no_identity_at_all,

@@ -220,18 +220,25 @@ def a_look(store, x, y, bearings, vectors=None, inference=1):
                  a_vector(0.5, 0.5), "fake"))
 
 
-def observe(store, x, y, bearing, vector=None, inference=None, fov_deg=100.0):
+def observe(store, x, y, bearing, vector=None, inference=None, fov_deg=100.0,
+            alone=None):
     """One look at something, from a place, along a bearing.
 
     The box sits on the lens axis, so the bearing really is the pose's heading
     minus the gimbal's pan and nothing else -- which keeps these tests about the
     resolver rather than about `view.ray`, which has its own.
+
+    `alone` is the same crop with everything but the thing blanked out, which is
+    what `resolve.collapsed` compares. Absent means the look carried no mask,
+    which is the state every recording before 2026-09-07 is in and is silence
+    rather than a low score.
     """
     from world_state.perception_client import Sighting
 
     seen = [Sighting(bbox=a_box(),
                      dino=vector if vector is not None else a_vector(1.0, 0.0),
-                     siglip=a_vector(0.5, 0.5))]
+                     siglip=a_vector(0.5, 0.5),
+                     dino_alone=alone if alone is not None else b"")]
     store.record(seen, capture={"frame_id": "f", "pan": 0.0,
                                 "pose": {"x_m": x, "y_m": y,
                                          "heading_deg": bearing}},

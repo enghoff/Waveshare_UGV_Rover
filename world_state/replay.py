@@ -71,7 +71,7 @@ COLUMNS = (
     "elevation_deg elevation_span_deg "
     "range_m range_sigma_m camera "
     "region_source region_score "
-    "dino_blob siglip_blob vectors_from"
+    "dino_blob siglip_blob vectors_from dino_alone_blob mask_share"
 ).split()
 
 #: What the depth camera measured, and the only columns this harness will drop on

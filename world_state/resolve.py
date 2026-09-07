@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import cluster, locate, view
-from .appearance import _UNIT, any_of, appearance, similarity
+from .appearance import _UNIT, alone, any_of, appearance, similarity
 
 MATCH = "match"
 NEW = "new"
@@ -20,6 +20,23 @@ AMBIGUOUS = "ambiguous"
 # These gates were measured on room recordings, not calibrated probabilities.
 DIFFERENT_THING = 0.55
 APPEARANCE_LEAD = 0.05
+#: How far a look's appearance score may fall when everything but the thing
+#: itself is blanked out of its crop, before the match is refused as having been
+#: made on the intruder rather than on the thing. See `collapsed`.
+#:
+#: **Measured on the acceptance recording of 2026-09-07, and a development
+#: candidate rather than a settled number.** Its review found four attachments
+#: that were plainly a framed picture joined to an entity of dining chairs, each
+#: because the box round the picture had a chair inside it. Those four scored
+#: 0.561 to 0.698 on the plain crop and 0.203 to 0.469 on the masked one, while
+#: the 360 correct attachments fell by a median of 0.061 and a 95th percentile
+#: of 0.222. At 0.20 this catches four of four and refuses 25 of the 360.
+#:
+#: It was chosen after seeing those four, which is the thing the acceptance plan
+#: forbids counting as independent evidence, so it is frozen here and owed a
+#: held-out recording. Replacing the plain vector with the masked one instead was
+#: measured and is worse: it loses 73 of the 394 to catch the same four.
+COLLAPSED_ALONE = 0.20
 #: What a new position's own crops have to score against a thing the rover knows
 #: but cannot place here, for the two to be called the same thing. See `_adopt`.
 #:
@@ -358,7 +375,10 @@ def _by_look(store, group, entities, session, taken_in,
             used = _allowance_used(placement, ray)
             seen = None if used is None else appearance(store, entity["id"],
                                                         vector)
-            if used is None or (seen is not None and seen < DIFFERENT_THING):
+            fell = (None if used is None else
+                    collapsed(store, entity["id"], observation, seen))
+            if (used is None or (seen is not None and seen < DIFFERENT_THING)
+                    or (fell is not None and fell >= COLLAPSED_ALONE)):
                 row_costs.append(_FORBIDDEN)
                 row_looks.append(None)
                 continue
@@ -409,7 +429,8 @@ def _by_look(store, group, entities, session, taken_in,
                f"allowed to be off by")
         store.attach(entity_id, [observation["id"]], why)
         if observation.get("dino_blob"):
-            store.add_exemplar(entity_id, observation["dino_blob"])
+            store.add_exemplar(entity_id, observation["dino_blob"],
+                               alone=observation.get("dino_alone_blob") or b"")
         if entity_id not in touched:
             touched.append(entity_id)
         decisions.append(Decision(observation["id"], MATCH, entity_id, why=why,
@@ -492,6 +513,12 @@ def _against_known(store, observation, entities, session,
         # chair across a change of viewpoint at 0.696.
         if looks is not None and looks < DIFFERENT_THING:
             continue
+        # And whether that resemblance survives having the rest of the picture
+        # taken away, which is what tells a chair from a picture with a chair in
+        # front of it. See `collapsed`.
+        fell = collapsed(store, entity["id"], observation, looks)
+        if fell is not None and fell >= COLLAPSED_ALONE:
+            continue
         surviving.append({
             "entity_id": entity["id"],
             "distance_m": round(math.hypot(
@@ -524,10 +551,40 @@ def _against_known(store, observation, entities, session,
            f"{chosen['distance_m']} m away, appearance {_says(chosen)}")
     store.attach(chosen["entity_id"], [observation["id"]], why)
     if vector:
-        store.add_exemplar(chosen["entity_id"], vector)
+        store.add_exemplar(chosen["entity_id"], vector,
+                           alone=observation.get("dino_alone_blob") or b"")
     _replace_placement(store, chosen["entity_id"], session, reach)
     return Decision(observation["id"], MATCH, chosen["entity_id"], why=why,
                     candidates=surviving)
+
+
+def collapsed(store, entity_id: str, observation: dict[str, Any],
+              seen: float | None) -> float | None:
+    """How far this look's resemblance falls when only the thing itself is left.
+
+    **The one gate that can tell "this is that chair" from "this has that chair
+    in it".** A box drawn round a picture on the wall can contain the chair
+    standing in front of it, and the crop then resembles an entity of chairs
+    partly because it holds one. Asking the same question of the crop with
+    everything but the region blanked out separates the two: a look that was
+    matching on the thing barely moves, and one that was matching on the
+    intruder collapses.
+
+    `seen` is the score already computed from the plain crop, passed in rather
+    than recomputed because both callers already have it.
+
+    **None means the question could not be asked, and is not a low score.** A
+    look whose backend returned no masks, an entity holding no masked exemplar,
+    or a candidate nothing could be compared against on the plain crop either --
+    all of them say nothing about whether this is the same thing, and refusing
+    them would empty the world on any rover whose masks had not arrived.
+    """
+    if seen is None:
+        return None
+    apart = alone(store, entity_id, observation.get("dino_alone_blob") or b"")
+    if apart is None:
+        return None
+    return round(seen - apart, 3)
 
 
 def _looks(candidate: dict[str, Any]) -> float:
@@ -692,9 +749,11 @@ def _cluster_up(store, leftover, session, entities, taken_in,
                f"{placement['uncertainty_m']} m{again}")
         store.attach(entity_id, kept, why)
         for observation_id in kept:
-            vector = (by_id.get(observation_id) or {}).get("dino_blob") or b""
+            one = by_id.get(observation_id) or {}
+            vector = one.get("dino_blob") or b""
             if vector:
-                store.add_exemplar(entity_id, vector)
+                store.add_exemplar(entity_id, vector,
+                                   alone=one.get("dino_alone_blob") or b"")
             frame = frame_of.get(observation_id)
             if frame in taken_in:
                 taken_in[frame].add(entity_id)
@@ -832,7 +891,8 @@ def _place_one(store, available, session, reach=None):
     for observation in (first_observation, second_observation):
         vector = observation.get("dino_blob") or b""
         if vector:
-            store.add_exemplar(entity_id, vector)
+            store.add_exemplar(entity_id, vector,
+                               alone=observation.get("dino_alone_blob") or b"")
 
     # Anything else in the group that also points at the new position joins it
     # now rather than waiting for the next pass -- except another region from a
@@ -875,7 +935,8 @@ def _place_one(store, available, session, reach=None):
                      f"points at {entity_id} as well, from the same group"
                      + ("" if looks is None else f", appearance {looks:.2f}"))
         if vector:
-            store.add_exemplar(entity_id, vector)
+            store.add_exemplar(entity_id, vector,
+                               alone=observation.get("dino_alone_blob") or b"")
 
     return Decision(
         first_observation["id"], NEW, entity_id,

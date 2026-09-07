@@ -591,44 +591,73 @@ class WorldStore:
                 (json.dumps(placement), placement.get("uncertainty_m"),
                  int(map_session), time.time(), entity_id))
 
-    def exemplars(self, entity_id: str, width: int = 0) -> list[bytes]:
+    #: The two exemplar columns. `exemplars` holds the crop as the camera framed
+    #: it; `exemplars_alone` holds the same crops with everything but the thing
+    #: itself blanked out. They are kept apart rather than mixed because a
+    #: masked vector and a plain one are pictures of different images, so a
+    #: comparison across the two measures the masking and not the thing.
+    EXEMPLAR_COLUMNS = {False: "exemplars", True: "exemplars_alone"}
+
+    def exemplars(self, entity_id: str, width: int = 0,
+                  alone: bool = False) -> list[bytes]:
         """The appearance vectors kept for this thing, as raw float32.
 
         Several rather than one averaged vector, because the average of a chair
         seen from the front and the same chair seen from the side is a picture of
         neither.
+
+        `alone` asks for the masked set instead. It may be shorter than the plain
+        one, because a look whose backend returned no mask contributes to the one
+        and not the other; what it is is still "the middle of what this thing has
+        shown", over the looks that could be masked.
         """
+        column = self.EXEMPLAR_COLUMNS[bool(alone)]
         with self._lock:
-            row = self.db.execute("SELECT exemplars FROM entities WHERE id = ?",
-                                  (entity_id,)).fetchone()
-        blob = None if row is None else row["exemplars"]
+            row = self.db.execute(
+                f"SELECT {column} AS kept FROM entities WHERE id = ?",
+                (entity_id,)).fetchone()
+        blob = None if row is None else row["kept"]
         if not blob or width <= 0:
             return []
         return [blob[start:start + width]
                 for start in range(0, len(blob) - width + 1, width)]
 
     def add_exemplar(self, entity_id: str, vector: bytes,
-                     keep: int = EXEMPLARS) -> int:
+                     keep: int = EXEMPLARS, alone: bytes = b"") -> int:
         """Keep one more appearance vector, dropping the oldest beyond `keep`.
 
         Bounded because this is evidence for a comparison rather than a history:
         an entity seen two hundred times does not become better identified by
         holding two hundred vectors, and the column is read on every candidate.
+
+        `alone` is the same crop with everything but the thing blanked out, and
+        goes into its own column on the same terms. Empty when the look could
+        not be masked, and then only the plain set grows -- which is why the two
+        are read separately and never zipped together.
         """
         if not vector:
             return 0
+        kept = self._extend(entity_id, "exemplars", vector, keep)
+        if alone:
+            self._extend(entity_id, "exemplars_alone", alone, keep)
+        return kept
+
+    def _extend(self, entity_id: str, column: str, vector: bytes,
+                keep: int) -> int:
+        """Append one vector to one exemplar column and return how many it holds."""
         width = len(vector)
         with self._lock, self.db:
-            row = self.db.execute("SELECT exemplars FROM entities WHERE id = ?",
-                                  (entity_id,)).fetchone()
-            blob = (row["exemplars"] if row is not None else None) or b""
+            row = self.db.execute(
+                f"SELECT {column} AS kept FROM entities WHERE id = ?",
+                (entity_id,)).fetchone()
+            blob = (row["kept"] if row is not None else None) or b""
             if len(blob) % width:
                 # A vector of a different width means a different model produced
                 # it, and mixing the two would compare numbers that mean
                 # different things. The older ones go.
                 blob = b""
             blob = (blob + vector)[-width * max(1, keep):]
-            self.db.execute("UPDATE entities SET exemplars = ? WHERE id = ?",
+            self.db.execute(f"UPDATE entities SET {column} = ? WHERE id = ?",
                             (blob, entity_id))
         return len(blob) // width
 
@@ -826,8 +855,9 @@ class WorldStore:
                     " elevation_deg, elevation_span_deg,"
                     " range_m, range_sigma_m, camera,"
                     " region_source, region_score,"
-                    " dino_blob, siglip_blob, vectors_from)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " dino_blob, siglip_blob, vectors_from,"
+                    " dino_alone_blob, mask_share)"
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
@@ -842,7 +872,9 @@ class WorldStore:
                      getattr(item, "region_score", None) or None,
                      getattr(item, "dino", b"") or None,
                      getattr(item, "siglip", b"") or None,
-                     vectors_from or None))
+                     vectors_from or None,
+                     getattr(item, "dino_alone", b"") or None,
+                     getattr(item, "mask_share", None)))
                 stored += 1
         # `matched` and `created` are reported as zero rather than dropped, because
         # the console's diagnostics table and the deployed database's older rows
@@ -1011,7 +1043,9 @@ def _readable(row: dict[str, Any], vectors: bool = False) -> dict[str, Any]:
             row[name] = json.loads(text)
         except (ValueError, TypeError):
             row[name] = {"unreadable": str(text)[:400]}
-    for column, name in (("dino_blob", "dino_bytes"), ("siglip_blob", "siglip_bytes")):
+    for column, name in (("dino_blob", "dino_bytes"),
+                         ("siglip_blob", "siglip_bytes"),
+                         ("dino_alone_blob", "dino_alone_bytes")):
         blob = row.get(column)
         row[name] = 0 if blob is None else len(blob)
         if not vectors:

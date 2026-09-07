@@ -90,6 +90,26 @@ def appearance(store, entity_id: str, vector: bytes) -> float | None:
     return any_of(store, entity_id, [vector])
 
 
+def alone(store, entity_id: str, vector: bytes) -> float | None:
+    """The same question asked of the masked crops on both sides.
+
+    `vector` must be the look's *masked* vector, and it is compared against the
+    entity's masked exemplars -- never against its plain ones, because a masked
+    crop and a plain one are pictures of different images and the difference
+    between them would measure the masking rather than the thing.
+
+    None for the usual reason: the question could not be asked, because this
+    look carried no mask or because the entity holds no masked exemplar. That is
+    silence and not a low score, which is what `resolve.collapsed` needs it to
+    be -- an entity nothing can be compared against must not have its candidates
+    refused.
+    """
+    if not vector:
+        return None
+    return between(store.exemplars(entity_id, width=len(vector), alone=True),
+                   [vector])
+
+
 def any_of(store, entity_id: str, vectors: list[bytes]) -> float | None:
     """The best `appearance` any of these crops scores, for one read of the row.
 

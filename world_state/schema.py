@@ -74,6 +74,18 @@ ADDED_COLUMNS = {
         # whole of the design's answer to "where is the vector database".
         "dino_blob": "BLOB",
         "siglip_blob": "BLOB",
+        # The appearance vector again, from the same crop with everything but
+        # this region's own pixels blanked out, and how much of the crop that
+        # left. **What they are for is a box that holds two things.** A picture
+        # on the wall with a chair in front of it is one box round both, so the
+        # crop resembles an entity of chairs partly because it contains one --
+        # and that resemblance collapses when the chair is taken out while a
+        # genuine one does not. Null on every row written before the region
+        # model's masks were decoded, and on every row since whose backend
+        # returned no prototypes; null means no second opinion rather than a low
+        # score. See `resolve.collapsed`.
+        "dino_alone_blob": "BLOB",
+        "mask_share": "REAL",
         # **Which backend produced those two vectors, and it is load-bearing.**
         # The GPU engines and the CPU int8 graphs agree with full precision to
         # 1.000 and 0.86 respectively, which is far too wide a gap to compare
@@ -93,6 +105,12 @@ ADDED_COLUMNS = {
         # Several appearance vectors rather than one averaged one, because an
         # average of two viewpoints of a chair is a picture of neither.
         "exemplars": "BLOB",
+        # The same exemplars from the masked crop -- the thing with
+        # everything around it blanked out. A separate column rather than
+        # mixed in, because a masked vector and a plain one are pictures of
+        # different images and comparing across the two measures the masking.
+        # Shorter than `exemplars` where a look could not be masked.
+        "exemplars_alone": "BLOB",
     },
 }
 
