@@ -1,7 +1,8 @@
 # Curiosity-driven autonomy and lifelong learning
 
-Status: design proposal. Nothing in this document gives the autonomy layer movement
-authority yet. The staged acceptance plan is in
+Status: design proposal; Phase 0 (P0) validation is already in progress. Nothing in
+this document gives the autonomy layer movement authority yet. The staged acceptance
+plan is in
 [`task-autonomous-curiosity.md`](task-autonomous-curiosity.md).
 
 ## Goal
@@ -55,10 +56,13 @@ This proposal builds on the current boundaries rather than replacing them.
 - The realtime voice model is currently a conversational/tool-using client of the
   rover. It need not become the always-on executive.
 
-The current semantic-world-state work also has an important unresolved gate:
-range-assisted association still needs a fresh driven validation. Semantic
-frontier selection was intentionally deferred until identity is reliable enough to
-let semantic state influence movement. This proposal keeps that gate.
+P0 already has a fresh driven recording and a
+[`baseline report`](m0-semantic-world-state-baseline.md). That report does not pass
+M0: camera geometry and range-to-object alignment remain unproven, and the review
+also found lower-confidence association errors and floor patches treated as objects.
+Continue that work under P0; this proposal does not restart it or prescribe a
+calibration fix. M0 remains a prerequisite for semantic movement. Read-only episodic
+recording and shadow decisions may be developed while P0 is in progress.
 
 ## Design principles
 
@@ -67,6 +71,15 @@ let semantic state influence movement. This proposal keeps that gate.
 The autonomy layer may request a goal. It does not command wheel PWM, bypass Nav2,
 weaken collision checks, or create a new hardware-control path. A learned skill is
 only a composition of capabilities already admitted by the daemon.
+
+Before autonomous execution, the daemon must enforce a short-lived permission to
+move that the executive renews, together with run-wide time, travel and battery
+limits. An executive crash, hang or lost connection must revoke its motion even if
+Nav2 is still healthy. These are proposed requirements, not claims about current
+daemon behaviour. Human stop and manual takeover pre-empt autonomy; voice may submit
+goals but cannot silently restore revoked authority. Explicit human re-enable is
+required after a stop or takeover. Map identity, pose validity and applicable safety
+conditions are checked again at dispatch and monitored during execution.
 
 The present lidar cannot see steps, drops, table edges or obstacles outside its
 scan plane. Until the rover gains independently validated drop/edge sensing,
@@ -110,23 +123,28 @@ The executive should not receive a vague instruction to "wander around and be
 curious". It should generate candidate goals from explicit knowledge gaps and rank
 them with a utility function.
 
-A starting form is:
+A starting form, evaluated only for candidates that pass hard constraints, is:
 
 ```text
 utility(goal) =
-    w_information * expected_information_gain
-  + w_novelty     * novelty
-  + w_uncertainty * resolvable_uncertainty
-  + w_learning    * expected_competence_progress
-  + w_purpose     * long_term_relevance
-  - w_risk        * physical_risk
+    purpose_relevance * expected_useful_knowledge_gain
   - w_energy      * energy_cost
   - w_travel      * travel_cost
   - w_time        * time_cost
+  - switching_cost
 ```
 
-Every term should be logged separately. A decision that cannot explain why it
-won is difficult to debug and impossible to evaluate.
+Novelty, staleness and uncertainty are inputs to the gain estimate, not separate
+rewards for the same knowledge gap. Define units, scales and missing-cost handling,
+and log every term and its configuration version. Add a competence-progress reward
+only once a measured skill metric exists; retain extra terms only when comparisons
+show that they improve choices.
+
+Idle has zero utility. A candidate must exceed a configured minimum worthwhile gain;
+being safe and reachable is not enough. Charge for switching unfinished goals and
+apply bounded retries and cooldowns after unproductive inspections. Resume a cooled
+gap when new evidence or changed conditions justify it. Repeated views of the same
+unresolvable ambiguity must not manufacture progress.
 
 Weights are configuration, not hidden model behaviour. Hard safety constraints
 veto candidates before scoring; a high curiosity score never buys permission to
@@ -240,6 +258,22 @@ The existing distinction between observation and entity should remain. New
 semantics must not weaken the geometry and ambiguity rules already established in
 `world_state`.
 
+### Evidence lifetime and map changes
+
+Current map-clear behaviour deletes world-state observations, entities and frames,
+and resets entity counters. An episode that keeps only those local IDs would lose
+its evidence or later refer to a different entity. Before accepting M1, define
+globally unique references (or a durable store-generation namespace), immutable
+decision snapshots and an archive of referenced evidence outside the deploy tree.
+Entity merges need recorded aliases/history, not dangling references.
+
+The proposed lifelong-memory behaviour separates invalidating current placement
+from deleting historical evidence. A map reset must not make old coordinates
+actionable, but prior episodes must still resolve their evidence. Explicit user
+deletion remains available; record that evidence was deleted and that dependent
+episodes can no longer be fully replayed. Document retention and storage budgets
+rather than promising unlimited raw-frame retention.
+
 ### Episodic memory: what happened
 
 Autonomy needs an append-only record of attempts, including failures:
@@ -268,6 +302,11 @@ This is the material used for replay, evaluation, reflection and later learning.
 It should be possible to explain an autonomous decision from stored data without
 asking the model that made it to remember why.
 
+Replay proves what follows from recorded inputs. It does not reveal the image from
+an unvisited viewpoint or the outcome of an untried action. Alternative procedures
+need matching recorded coverage or a simulator validated against hardware; missing
+outcomes remain unknown. New supervised trials establish physical performance.
+
 ### Procedural memory: what the rover knows how to do
 
 A skill is a versioned, constrained procedure with explicit semantics:
@@ -287,7 +326,11 @@ limits:
   max_travel_m: 4
   max_duration_s: 120
 success:
-  - information_gain >= threshold OR no_useful_viewpoint_remains
+  - independently_verified_information_gain >= threshold
+other_outcomes:
+  - unresolved_no_useful_viewpoint
+  - unresolved_budget_exhausted
+  - navigation_or_perception_failure
 ```
 
 The stored representation should be a small behaviour-tree/DSL or similarly
@@ -298,6 +341,9 @@ mandatory, and unsupported operations fail validation before execution.
 The existing scripting API remains useful as an implementation reference and
 possibly as an execution backend for hand-authored code, but autonomous skill
 creation should not hand model-generated Python to the rover account.
+
+Stopping correctly is distinct from resolving the question. Report all attempts,
+including safe but unresolved termination, when evaluating a skill.
 
 ## Goal generation
 
@@ -372,6 +418,11 @@ moving closer only when the expected image scale is currently too small.
 The planner should predict its intended gain before moving. The evaluator compares
 that prediction with what actually changed. That produces learning data for better
 viewpoint selection later.
+
+Small, versioned updates to viewpoint parameters may be evaluated at this stage,
+before autonomous skill discovery exists. Compare them on held-out runs with fixed
+safety bounds and a frozen baseline; a better parameter choice is already useful
+learning without a new skill language.
 
 ## Skill lifecycle
 
@@ -493,7 +544,8 @@ These are architectural requirements, not tuning preferences.
 3. No autonomous procedure emits raw wheel or gimbal control loops.
 4. Every autonomous run has a time, travel and battery budget.
 5. A human stop request pre-empts autonomy and prevents immediate self-restart.
-6. Model outage or malformed model output must fail closed for new actions.
+6. Model outage or malformed output must fail closed for actions that depend on it;
+   fully validated model-independent operations remain available within policy.
 7. Unsupported/unknown skill operations are rejected before execution.
 8. New skills cannot promote themselves.
 9. Semantic uncertainty may cause the rover to gather evidence; it cannot grant
@@ -502,6 +554,10 @@ These are architectural requirements, not tuning preferences.
 11. Unsupervised motion remains confined to a pre-cleared flat environment until
     drop/edge sensing is independently validated.
 12. Every autonomous decision and physical action is attributable to an episode.
+13. Daemon-enforced permission expiry and budgets stop autonomy independently of
+    executive health; restart never restores revoked authority automatically.
+14. Map changes invalidate placement without silently destroying the evidence used
+    by retained episodes; explicit deletion is recorded.
 
 ## What success would look like
 
@@ -521,8 +577,11 @@ and, with no sequence of human waypoints:
 9. propose and verify reusable procedural skills from repeated behaviour;
 10. demonstrate improved task success or lower cost from learned experience.
 
-That is a meaningful form of embodied lifelong learning without requiring the rover
-to become an unconstrained self-modifying agent.
+Demonstrate these benefits over several days, including restarts, changed objects
+and unchanged controls. Compare against frontier-only exploration and scheduled
+revisits under equal travel/time budgets. Measure answers to useful questions,
+change detection, retained knowledge and inspection cost across all attempts.
+More observations or higher confidence alone do not establish lifelong learning.
 
 ## Research influences
 

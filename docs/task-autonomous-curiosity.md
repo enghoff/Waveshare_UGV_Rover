@@ -1,12 +1,22 @@
 # Development plan: curiosity-driven autonomy
 
-Status: proposal. This is the implementation and acceptance plan for
+Status: Phase 0 (P0) is in progress; later phases remain proposed. This is the
+implementation and acceptance plan for
 [`autonomous-curiosity-architecture.md`](autonomous-curiosity-architecture.md).
 
-The plan is intentionally gated. A later phase does not begin merely because the
-code for the earlier phase exists; it begins after the earlier phase has produced
-recorded evidence that its acceptance criteria hold on replay and, where the
-criterion is physical, on the rover.
+The plan is gated by capability dependencies, not a requirement to finish every
+phase before starting the next. M1 recording and M2 shadow decisions may proceed
+alongside the existing P0 work, with no action authority. M3 movement requires M0,
+M1 and M2 acceptance plus offline control-boundary tests; supervised stop/failure
+trials precede its autonomy sessions. Later capabilities require
+recorded evidence for the primitives, semantics and execution substrate they use;
+code existing is not acceptance. Physical criteria must be observed on the rover.
+
+P0 is tracked through the existing
+[`M0 baseline`](m0-semantic-world-state-baseline.md) and its follow-up work. The
+September 7 recording already exists; do not restart that investigation or count
+this document revision as a pass. The additions below clarify the acceptance
+contract for the ongoing work, rather than prescribe a separate calibration fix.
 
 The existing repository rule still applies: reproduce failures before fixing them,
 validate on recordings before changing the running rover, and treat hardware as
@@ -29,6 +39,11 @@ environment:
   tasks or environments;
 - remain interruptible and unable to bypass the existing daemon/Nav2 safety
   boundary.
+
+Useful autonomy through M5 must also pass the multi-day benchmark below. Full
+procedural learning additionally requires M6-M8; reflection and predictive models
+are extensions whose value must be measured, not prerequisites for recording or
+the first useful inspection loop.
 
 The target is not online self-modification of arbitrary code or continual neural
 fine-tuning on the physical rover.
@@ -69,6 +84,25 @@ Simulation/replay proves logic. It does not prove camera geometry, wheel behavio
 USB reliability, collision sensing or stopping distance. Physical acceptance items
 must be observed on the rover.
 
+### Count every attempt and separate termination from success
+
+Predeclare applicable cases, success predicates, minimum improvement and trial
+counts before acceptance. Report successes, unresolved outcomes, precondition
+refusals, failures and aborts separately, with the full attempt count. Do not drop
+failed inspections after seeing their outcomes or count exhausted viewpoints as a
+resolved question. Report uncertainty in estimated rates and group correlated
+observations by object/run; 20 trials or 50 decisions are minimum checks, not a
+general reliability guarantee.
+
+### Replay has a coverage boundary
+
+Stored outcomes may be reused only for matching action parameters and relevant
+context. An unvisited viewpoint or untried action has an unknown outcome, not the
+outcome of the recorded alternative. Decision replay can show a changed choice;
+performance comparisons need matching recorded coverage, a simulator validated
+against hardware, or new supervised trials. Report unsupported alternatives and
+simulation predictions separately from observed physical results.
+
 ## Metrics to collect from the beginning
 
 The exact dashboard can evolve, but these quantities should be recorded from the
@@ -78,7 +112,9 @@ first autonomy episode so later learning can be evaluated retrospectively.
 
 - autonomous distance travelled;
 - autonomous time moving;
-- manual-stop requests and time to acknowledged stop;
+- manual-stop requests, acknowledgement latency, and measured time/distance to
+  physical standstill;
+- permission expiry, executive failure and manual-takeover stops;
 - navigation refusals/failures by reason;
 - safety-vetoed candidate goals;
 - unexpected physical contacts;
@@ -137,7 +173,10 @@ still unvalidated. This phase is mostly existing work from
 
 ### Work
 
-- Run a fresh driven recording with the OAK awake and range values being recorded.
+- Continue the P0 investigation already in progress using the September 7 recording
+  and baseline; preserve them as the before-change evidence.
+- After the calibration/association changes under P0, collect the fresh hardware
+  evidence needed to validate them, with the OAK awake and ranges recorded.
 - Independently review a representative set of placed entities and their source
   observations.
 - Replay the same recording through bearing-only and range-assisted association.
@@ -158,7 +197,8 @@ Pass when all are true:
 
 1. the normal world-state offline suite passes;
 2. a fresh hardware recording contains usable OAK ranges for the regions where
-   range is expected;
+   range is expected, and annotated targets confirm that ranges belong to the
+   intended objects rather than neighbouring surfaces;
 3. independent review finds **zero known incorrect high-confidence entity merges**
    in an acceptance sample of at least 50 association decisions; ambiguous cases
    may remain unresolved;
@@ -168,6 +208,19 @@ Pass when all are true:
 5. map clear/map-session behaviour still keeps old coordinates from being treated
    as current placement;
 6. a concise baseline report records duplicate, unresolved and false-merge counts.
+
+The baseline predates these clarified gates. M0 also requires:
+
+7. camera-to-rover geometry passes predeclared alignment tolerances across the pan
+   angles, approach directions and distances intended for active perception;
+8. review covers every association confidence band eligible to influence movement,
+   with zero known incorrect movement-eligible associations in the acceptance
+   sample; appearance similarity alone is not calibrated identity confidence;
+9. floor/background patches are not eligible as object-inspection goals. Deliberate
+   geometric coverage of a floor region remains a distinct goal type.
+
+These gates remain part of the existing P0 work. Until they pass, semantic motion
+stays disabled; read-only M1/M2 development can continue.
 
 If a 50-decision acceptance sample cannot be obtained from one room/run, accumulate
 it across multiple runs without reusing the same physical association as multiple
@@ -213,6 +266,20 @@ Record:
 The store should be append-first. Corrections/annotations refer to prior records
 rather than silently rewriting history.
 
+### Durable evidence contract
+
+Current map clears delete the world-state records and frames and reset entity
+counters. Before M1 acceptance, define globally unique evidence/entity references
+or a durable store-generation namespace, snapshot the decision inputs, and preserve
+referenced evidence outside the deploy tree before it can be cleared. Record entity
+merge aliases and map/calibration versions. A mutable database path alone is not a
+snapshot. Coordinate any required world-state changes with the ongoing P0 work.
+
+Map reset invalidates current placement while retained episodes remain replayable
+from archived evidence. Explicit user deletion must remove the requested evidence
+and mark affected episodes as no longer fully replayable. Document retention and
+disk limits, including how pinned acceptance recordings are protected.
+
 ### Milestone M1: every future autonomous action can be reconstructed
 
 Pass when all are true:
@@ -226,7 +293,11 @@ Pass when all are true:
    the autonomy component has no movement-capable API path;
 5. deleting/restarting the autonomy process does not alter ROS map or world-state
    data;
-6. database growth and retention policy are documented.
+6. database growth and retention policy are documented;
+7. map clear, entity merge, process restart and local-ID reuse cannot break or
+   redirect retained episode references; replay uses the original snapshot/evidence;
+8. explicit deletion and retention expiry are reported honestly as missing evidence,
+   never silently replaced by newer records with the same local ID.
 
 ## Phase 2 -- candidate goals and curiosity scoring in shadow mode
 
@@ -236,16 +307,22 @@ Make "curiosity" explicit and measurable before allowing it to move the rover.
 
 ### Candidate goal types
 
-Implement at least:
+For M2, implement:
 
 - `explore_frontier` -- reachable unknown map boundary;
-- `inspect_uncertain_entity` -- unresolved/weak semantic evidence;
 - `improve_geometry` -- another bearing/range likely to improve placement;
+
+Add the following when their evidence and outcome tests exist, with shadow
+acceptance before enabling each type for movement:
+
+- `inspect_uncertain_entity` -- explicit semantic gaps and claims from M4;
 - `revisit_stale_entity` -- knowledge old relative to expected mobility;
 - `investigate_change` -- current evidence conflicts with a prior stable belief;
 - `search_for_missing_entity` -- bounded search for something expected but absent.
 
-Skill-practice goals wait until a skill metric exists.
+The last three depend on M5 temporal/visibility semantics. M2 may test their schema
+with fixtures, but does not require pretending that the live rover has those
+semantics. Skill-practice goals wait until a skill metric exists.
 
 Each candidate contains:
 
@@ -266,6 +343,13 @@ score terms
 
 Implement the score from the architecture as deterministic code. Log every term
 and the configuration version used to compute it.
+
+Start with purpose-weighted useful knowledge gain minus time, travel, energy and
+switching costs. Specify units/scales and conservative handling of missing estimates.
+Novelty and uncertainty inform the gain estimate rather than earning duplicate
+rewards. Idle has zero utility; a safe candidate must still clear the configured
+minimum worthwhile gain. Test cooldowns, bounded retries and switching costs so an
+unresolvable gap or small score fluctuation cannot keep the rover busy indefinitely.
 
 Hard vetoes run before scoring. Initial vetoes should include at least:
 
@@ -293,8 +377,9 @@ Pass when all are true:
 2. every selected candidate records a full score decomposition;
 3. hard-veto tests show that increasing information-gain weights cannot override a
    veto;
-4. at least 40 curated scenarios cover all goal types, ties, no-action cases,
-   low-battery and unavailable-hardware states;
+4. at least 40 curated scenarios cover the enabled goal types, ties, no-action cases
+   despite reachable candidates, cooldowns, switching, low battery and unavailable
+   hardware; extend the fixed acceptance set before enabling later goal types;
 5. expected ordering is correct in at least 95% of the curated acceptance cases;
    disagreements are reviewed and the expected set is changed only with a written
    reason, not merely to make the metric pass;
@@ -343,6 +428,22 @@ A run has hard budgets:
 A stop latch remains set until an explicit human re-enable; the executive must not
 interpret "idle" after a stop as permission to choose another goal.
 
+### Daemon-enforced movement permission
+
+Before any M3 movement, implement a short-lived permission owned by the daemon and
+renewed by the executive. The daemon enforces expiry and cumulative run budgets
+independently of executive health, including during background exploration and
+nested actions. Granting or renewing permission never clears a human stop latch.
+Restart defaults to autonomy disabled and invalidates earlier permissions.
+
+Human stop has highest priority. Manual takeover cancels autonomy and requires
+explicit re-enable before autonomy can resume. Voice submits goals through the same
+arbitration; it cannot silently unstop the rover. Revalidate permission, map identity,
+pose validity, boundary and hardware requirements at dispatch and monitor relevant
+conditions during execution. Reject stale or duplicate action requests using stable
+episode/action IDs. A healthy Nav2 process must not keep an orphaned autonomy run
+moving after the executive fails.
+
 ### Physical test environment
 
 Because current sensing does not detect drops/steps reliably, unattended execution
@@ -366,7 +467,15 @@ Pass when all are true:
 6. every movement is attributable to one episode/goal ID;
 7. after any action failure, the next action is either an explicitly recorded
    recovery candidate or idle -- never an unlogged implicit retry loop;
-8. normal daemon/Nav2 verification remains healthy after the sessions.
+8. normal daemon/Nav2 verification remains healthy after the sessions;
+9. executive kill/hang, connection loss and permission expiry stop physical motion
+   while Nav2 remains running; daemon/executive restart cannot restore authority;
+10. stop and takeover trials meet predeclared physical stopping time/distance limits
+    at the permitted speeds; an acknowledged request alone is not a pass;
+11. run budgets hold across background and nested actions, duplicate requests cannot
+    repeat a move, and stale map/permission requests are refused at dispatch;
+12. concurrent voice/manual requests follow the declared priority, and map changes
+    or loss of valid pose during execution revoke the affected movement.
 
 The 20-session count is deliberately about repeated opportunities for timing,
 interrupt and recovery faults rather than distance travelled.
@@ -415,6 +524,11 @@ a placed entity and filtered through reachability/safety. Score them using predi
 
 The planner records the predicted gain before travel.
 
+Versioned learning of bounded viewpoint parameters can begin here once enough
+episodes exist. Compare learned parameter choices with a frozen baseline on held-out
+runs, retaining the same safety bounds. This does not require autonomous skill
+discovery or a new neural policy.
+
 ### Acceptance dataset
 
 Build a physically annotated set of at least 30 entities/questions across multiple
@@ -430,9 +544,11 @@ Pass when all are true:
 3. active viewpoint selection beats a defined baseline (same-pose re-look or nearest
    reachable viewpoint) on the held-out acceptance set for the chosen metric --
    attribute correctness, association resolution or calibrated uncertainty;
-4. at least 20 hardware active-inspection episodes produce useful second viewpoints;
-5. the median realised information gain of accepted active-inspection episodes is
-   positive and the system records cases where the predicted gain was wrong;
+4. a predeclared set of at least 20 applicable hardware active-inspection attempts
+   is completed, reporting useful viewpoints, unresolved outcomes and failures;
+5. median realised information gain across that full attempt set is positive;
+   no-evidence attempts count as zero, incorrect changes are penalised, and cases
+   where predicted gain was wrong remain in the report;
 6. false high-confidence semantic claims are reported separately and do not exceed
    the baseline single-view system;
 7. failure to find a useful safe viewpoint leaves the gap unresolved rather than
@@ -479,13 +595,35 @@ Pass when all are true:
 2. at least 8/10 changed scenes generate the intended change/missing/moved
    hypothesis;
 3. no more than 1/10 unchanged controls generates a high-confidence change alarm;
-4. a moved previously known entity retains its identity/history in at least 8/10
-   applicable trials, or remains unresolved -- an incorrect confident merge is a
-   failure;
+4. on at least 10 predeclared applicable moved-entity trials, at least 80% correctly
+   retain identity/history; unresolved outcomes are reported but do not count as
+   successes, and any incorrect confident merge fails this criterion;
 5. the revisit scorer demonstrably ranks a recently changed/stale area above an
    equally distant recently-confirmed static area under the configured policy;
 6. repeated revisits reduce utility after the knowledge has been refreshed, so the
    rover does not become trapped by one formerly novel object.
+
+### Multi-day usefulness benchmark
+
+Before claiming useful lifelong memory, compare autonomy through M5 with both
+frontier-only exploration and fixed-schedule revisits over at least three separate
+days. Use matched initial knowledge, scripted scene changes and unchanged controls,
+equal time/travel budgets, and independent annotations. Counterbalance comparison
+order or reset matched scenes so one policy does not inherit another's observations.
+Keep acceptance objects/runs separate from tuning data.
+
+Include a process/rover restart and a controlled map reset with retained historical
+evidence. Predeclare question sets such as "what moved?", "where was this last
+seen?" and "what remains uncertain?", plus a useful minimum improvement before the
+run. Report answer correctness, false claims, unresolved answers, change detection,
+inspection cost and interventions across all attempts.
+
+Pass when retained evidence remains resolvable after those interruptions, stale
+coordinates cannot drive movement, and autonomy meets the predeclared improvement
+over both baselines without increasing false confident claims or weakening safety
+limits. Failure leaves the individual M5 results intact but the programme's
+multi-day usefulness claim unproven. Repeat the relevant comparison with M7/M8
+learning enabled against frozen skills/parameters to show the benefit of learning.
 
 ## Phase 6 -- restricted procedural skill library
 
@@ -547,8 +685,9 @@ Pass when all are true:
    parameter types and movement bounds outside policy;
 2. a deliberately malicious model-like payload attempting code/file/shell access is
    rejected as data, not executed;
-3. the hand-authored reference skill completes 18/20 supervised acceptance trials
-   in cases where its preconditions are satisfied;
+3. the hand-authored reference skill satisfies its independent success predicate
+   in at least 18/20 predeclared applicable supervised trials; stopping with an
+   unresolved question is reported separately, not counted as success;
 4. failure cases correctly classify precondition failure, navigation failure,
    perception failure and timeout rather than reporting generic success;
 5. skill execution remains interruptible through the ordinary stop path;
@@ -601,8 +740,10 @@ Pass when all are true:
    episodes rather than copying one recorded action sequence verbatim;
 2. the proposed skill references only admitted primitives/verified skills;
 3. static validation catches seeded invalid proposals;
-4. replay evaluation shows the candidate succeeds on held-out applicable episodes
-   at least as often as the unabstracted baseline procedure;
+4. offline evaluation shows the candidate succeeds at least as often as the
+   unabstracted baseline on held-out applicable cases whose action outcomes are
+   covered by recordings or a hardware-validated simulator; uncovered alternatives
+   remain unknown and require supervised evidence before performance is claimed;
 5. supervised physical trials meet a pre-declared promotion threshold, initially
    suggested as at least 18/20 successes when preconditions hold;
 6. promotion is performed by evaluator policy, not by the model that proposed the
@@ -761,8 +902,10 @@ Pass when all are true:
 3. the learned predictor beats the baseline on declared held-out metrics (for
    example Brier score for success and absolute error for duration/information
    gain);
-4. replayed planning with the predictor selects lower expected-cost successful
-   plans than the pre-learning ranking on a fixed scenario set;
+4. a fixed comparison with covered action outcomes or a hardware-validated simulator
+   shows lower-cost successful plans than the pre-learning ranking; supervised
+   hardware comparison confirms improvement before claiming physical benefit.
+   Re-scoring an untried plan with the same predictor does not prove it succeeds;
 5. calibration is checked -- predicted 80% success cases should be approximately
    80% successful over a sufficiently populated bin rather than merely ranked
    correctly;
@@ -831,6 +974,11 @@ Replay should support at least:
 - comparing planner decisions before/after a learned predictor;
 - generating a concise difference report.
 
+Each comparison records its action/context coverage and labels outcomes as recorded,
+simulated or unknown. The harness must reject attempts to attach the recorded result
+of one viewpoint/action to a different, unsupported choice. Fixed model responses
+reproduce decisions; they do not establish that newly proposed observations exist.
+
 ### Physical acceptance manifest
 
 For each important hardware run record outside Git:
@@ -863,7 +1011,10 @@ The mock rover should eventually support deliberate:
 - low battery;
 - impossible knowledge gap;
 - skill timeout;
-- manual stop during action.
+- manual stop during action;
+- executive crash/hang, lost connection and expired movement permission;
+- restart, manual/voice contention, duplicate requests and map changes during action;
+- map clear, entity merge, evidence deletion and local-ID reuse during later replay.
 
 A system that only learns from successes will create optimistic skills and brittle
 plans.
@@ -920,9 +1071,9 @@ Movement authority should be exposed gradually:
 |---|---|
 | M1 | none; event recording only |
 | M2 | none; shadow decisions only |
-| M3 | bounded existing operations in supervised safe area |
+| M3 | after M0/M1/M2 and control tests; daemon-enforced bounded operations in supervised safe area |
 | M4-M5 | bounded semantic inspection/revisit in same safe area |
-| M6-M7 | verified skill interpreter; candidate skills remain non-executable until gates pass |
+| M6-M7 | validated interpreter; candidates only in supervised trials after offline gates, verified skills eligible for autonomous reuse |
 | M8-M9 | executive chooses practice/reflection goals; same physical boundary |
 | M10+ | learned ranking/prediction only; hard constraints unchanged |
 
@@ -934,7 +1085,7 @@ not require deployment.
 
 Pause expansion of autonomy and investigate if any of these occurs:
 
-- an incorrect high-confidence world-state merge causes a movement decision;
+- an incorrect movement-eligible world-state association causes a movement decision;
 - an autonomous action cannot be attributed to an episode/goal;
 - manual stop is ignored or autonomy restarts without explicit re-enable;
 - skill execution reaches an operation not present in its validated graph;
@@ -952,12 +1103,13 @@ the problem.
 
 | Milestone | Capability | Proof |
 |---|---|---|
-| M0 | semantic identity safe enough for goal selection | fresh ranged drive + reviewed associations + replay |
-| M1 | episodic memory | deterministic reconstruction, no authority |
+| M0 (P0 in progress) | semantic identity/geometry safe enough for goal selection | existing baseline + validated alignment + reviewed eligible associations + replay |
+| M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + one-hour no-action rover shadow |
-| M3 | bounded autonomous loop | 20 supervised sessions / >=120 min, stop and failure tests |
+| M3 | bounded autonomous loop | 20 supervised sessions / >=120 min, measured stops, permission expiry and failure tests |
 | M4 | active perception | held-out multi-view gain + >=20 hardware inspections |
 | M5 | temporal curiosity | scripted changed/unchanged scene benchmark |
+| M1-M5 usefulness | memory improves useful answers over days | >=3 days, two equal-budget baselines, restarts/reset, all attempts counted |
 | M6 | restricted skill substrate | malicious/invalid rejection + 18/20 reference-skill trials |
 | M7 | autonomous skill acquisition | proposed -> replayed -> physically verified -> reused skill |
 | M8 | self-generated curriculum | competence-progress beats random baseline |
@@ -967,17 +1119,21 @@ the problem.
 
 ## First implementation slice
 
-Do not start by writing a planner or calling an LLM. The highest-value first slice
-is M0 -> M1 -> M2:
+P0 is already underway. Continue it on its existing track; the next independent
+implementation slice is M1 -> M2, without movement authority:
 
-1. finish the current ranged world-state acceptance run;
-2. add append-only episodic storage and deterministic replay;
+1. use the current P0 baseline and follow-up recordings as versioned inputs, clearly
+   marked with their unresolved calibration/association limitations;
+2. define durable evidence references and retention, then add append-only episodic
+   storage and deterministic replay; coordinate shared world-state changes with P0;
 3. define the candidate-goal record and hard-veto interface;
-4. implement geometric-frontier, uncertain-entity and stale-entity generators in
-   shadow mode;
+4. implement geometric-frontier and geometric-uncertainty generators in shadow mode;
+   semantic and temporal generators follow their M4/M5 evidence dependencies;
 5. add score decomposition and a fixed scenario harness;
 6. run the shadow executive on real rover state without action authority;
-7. inspect the resulting choices before allowing M3 movement.
+7. inspect the resulting choices; M3 movement remains blocked until M0, M1, M2 and
+   offline daemon-enforced control tests pass, then begin with supervised physical
+   stop/failure trials. Starting read-only work does not waive P0.
 
 At the end of that slice the project will already answer a useful empirical
 question: **given what the rover actually knows today, does an explicit curiosity
