@@ -225,3 +225,35 @@ direction is [R-NAV-4](navigation.md#r-nav-4).
 
 A clear is refused while a look is in flight, and rows that survive a refusal are
 marked as belonging to the map that has gone rather than left looking current.
+
+<a id="r-ws-16"></a>
+### R-WS-16 — An observation is only given a direction when the rover's place on the map has been confirmed
+
+- **State:** open
+- **Blocked by:** nothing in `world_state` or `rover_world.py` consults
+  navigation's `map_settled`, so an unconfirmed restore still produces bearings
+
+This is [R-WS-5](#r-ws-5)'s neighbour and the gap between them is easy to miss:
+R-WS-5 keeps evidence from being read against the wrong *map*, while this one is
+about the wrong *pose within the right map*.
+
+Capture already refuses a direction when there is no map identity or no fresh
+transform — `rover_world._world_pose` gates on `position_trusted`, which is the
+question of whether a pose exists and is recent. That is not the question of
+whether it is correct. The navigation stack answers the second one separately in
+`map_settled` ([R-NAV-2](navigation.md#r-nav-2)): after a restore, the rover's
+place on its map is the mapper's anchor until something confirms it, and an
+anchor that landed somewhere else is neither confirmed nor disproved.
+
+So a rover that came up on a restored map it could not place has a fresh
+transform, a real map identity and a confidently wrong heading, and every look it
+takes is recorded with a bearing measured from that heading. Another session
+reports 34 observations stamped this way on the morning of 2026-09-07, with a
+heading later shown to be 152 degrees out. The code gap is confirmed here; those
+counts are that session's measurement and are not yet written up as a progress
+entry, which is what this requirement is still owed.
+
+The fix is not to discard the look. The picture is worth keeping — the same
+reasoning as R-WS-5, where the coordinates expire but the crops do not. What
+should be withheld is the direction, exactly as it already is when the map
+identity is missing.
