@@ -17,6 +17,7 @@ import base64
 import hashlib
 import json
 import math
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -45,6 +46,15 @@ OPTICS_VIEWS = (
 
 def now() -> str:
     return datetime.now().astimezone().isoformat()
+
+
+def repository_head() -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def board_and_detector():
@@ -151,7 +161,8 @@ def take_view(rover: RoverClient, folder: Path, detector, name: str,
 
 
 def capture(folder: Path, rover: RoverClient, settle: float,
-            size: tuple[int, int]) -> dict:
+            size: tuple[int, int], pan_samples: tuple[int, ...] = PAN_SAMPLES,
+            candidate: str | None = None) -> dict:
     if folder.exists():
         raise RuntimeError(f"refusing to overwrite existing attempt: {folder}")
     folder.mkdir(parents=True)
@@ -161,6 +172,8 @@ def capture(folder: Path, rover: RoverClient, settle: float,
         "schema": 1,
         "status": "running",
         "started_at": now(),
+        "repository_head": repository_head(),
+        "opencv_version": cv2.__version__,
         "rover": rover.describe(),
         "board": {
             "squares_x": SQUARES[0], "squares_y": SQUARES[1],
@@ -169,6 +182,8 @@ def capture(folder: Path, rover: RoverClient, settle: float,
         },
         "settle_s": settle,
         "requested_frame_size": list(size),
+        "pan_samples_deg": list(pan_samples),
+        "candidate": candidate,
         "initial_status": status,
         "optics": [],
         "samples": [],
@@ -202,8 +217,8 @@ def capture(folder: Path, rover: RoverClient, settle: float,
                 "descending", "ascending"
             )
             for approach in approaches:
-                values = PAN_SAMPLES if approach == "ascending" else tuple(
-                    reversed(PAN_SAMPLES)
+                values = pan_samples if approach == "ascending" else tuple(
+                    reversed(pan_samples)
                 )
                 overshoot = -30 if approach == "ascending" else 30
                 sent = rover.call("look_at", {"pan": overshoot, "tilt": 0})
@@ -362,7 +377,8 @@ def analyse(folder: Path) -> dict:
         row["model_residual_deg"] = float(error)
 
     gaps = []
-    for command in PAN_SAMPLES:
+    sample_commands = tuple(sorted({int(value) for value in commanded}))
+    for command in sample_commands:
         up = measured[(commanded == command) & (direction == 1)]
         down = measured[(commanded == command) & (direction == -1)]
         gaps.append({
@@ -385,6 +401,28 @@ def analyse(folder: Path) -> dict:
     duplicate_median = float(np.median(duplicate_differences))
     duplicate_p95 = float(np.percentile(duplicate_differences, 95))
     reference_resolves = duplicate_median <= 0.25 and duplicate_p95 <= 0.75
+    approach_models = {}
+    for name, sign in (("ascending", 1.0), ("descending", -1.0)):
+        mask = direction == sign
+        slope, intercept = np.polyfit(commanded[mask], measured[mask], 1)
+        errors = measured[mask] - (intercept + slope * commanded[mask])
+        approach_models[name] = {
+            "gain_actual_per_commanded": float(slope),
+            "gain_error_percent": float((slope - 1.0) * 100),
+            "residual_rms_deg": float(np.sqrt(np.mean(errors ** 2))),
+            "absolute_residual_p95_deg": float(np.percentile(np.abs(errors), 95)),
+        }
+
+    candidate = meta.get("candidate")
+    candidate_pass = None
+    if candidate == "consistent-ascending":
+        chosen = approach_models["ascending"]
+        candidate_pass = (
+            reference_resolves
+            and abs(chosen["gain_error_percent"]) <= 1.0
+            and chosen["absolute_residual_p95_deg"] <= 0.5
+        )
+
     result = {
         "analysed_at": now(),
         "source": str(folder),
@@ -409,12 +447,19 @@ def analyse(folder: Path) -> dict:
                 np.max(duplicate_differences)
             ),
             "direction_gap_by_command": gaps,
+            "approach_models": approach_models,
             "poses": pose_rows,
         },
         "verdict": {
             "reference_resolves_task_error": reference_resolves,
             "status": "development measurement" if reference_resolves else "inconclusive",
             "rule": "stationary duplicate median <= 0.25 deg and p95 <= 0.75 deg",
+            "candidate": candidate,
+            "candidate_pass": candidate_pass,
+            "candidate_rule": (
+                "ascending-only gain error <= 1.0% and absolute residual p95 <= 0.5 deg"
+                if candidate == "consistent-ascending" else None
+            ),
         },
     }
     (folder / "analysis.json").write_text(
@@ -470,6 +515,14 @@ def print_result(result: dict) -> None:
         f"max {pan['stationary_duplicate_difference_max_deg']:.3f} deg"
     )
     print(f"verdict: {result['verdict']['status']}")
+    if result["verdict"]["candidate"]:
+        chosen = pan["approach_models"]["ascending"]
+        print(
+            f"candidate {result['verdict']['candidate']}: "
+            f"gain error {chosen['gain_error_percent']:+.2f}%, "
+            f"residual p95 {chosen['absolute_residual_p95_deg']:.3f} deg; "
+            + ("PASS" if result["verdict"]["candidate_pass"] else "FAIL")
+        )
 
 
 def main() -> int | str:
@@ -478,6 +531,11 @@ def main() -> int | str:
     parser.add_argument("--rover", default=None, metavar="HOST[:PORT]")
     parser.add_argument("--settle", type=float, default=SETTLE_S, metavar="SECONDS")
     parser.add_argument("--size", default="1280x960", metavar="WIDTHxHEIGHT")
+    parser.add_argument(
+        "--angles", default=",".join(str(value) for value in PAN_SAMPLES),
+        metavar="DEG,...", help="ordered ascending pan samples",
+    )
+    parser.add_argument("--candidate", choices=("consistent-ascending",))
     parser.add_argument("--fit-only", action="store_true")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
@@ -492,13 +550,21 @@ def main() -> int | str:
         size = (int(width), int(height))
     except ValueError:
         parser.error("--size must look like 1280x960")
+    try:
+        pan_samples = tuple(int(value) for value in args.angles.split(","))
+        if len(pan_samples) < 3 or tuple(sorted(set(pan_samples))) != pan_samples:
+            raise ValueError
+        if pan_samples[0] <= -30 or pan_samples[-1] >= 30:
+            raise ValueError
+    except ValueError:
+        parser.error("--angles must be at least three unique ascending integers inside -30..30")
     if not args.fit_only:
         rover = RoverClient(args.rover) if args.rover else discover()
         if rover is None or not rover.probe():
             return "no rover daemon found; name one with --rover"
         rover.timeout = 30.0
         try:
-            capture(args.folder, rover, args.settle, size)
+            capture(args.folder, rover, args.settle, size, pan_samples, args.candidate)
         finally:
             rover.close()
     result = analyse(args.folder)

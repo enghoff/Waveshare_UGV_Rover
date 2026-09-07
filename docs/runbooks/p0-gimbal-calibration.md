@@ -78,6 +78,24 @@ differences have a median no greater than 0.25 degrees and a 95th percentile no
 greater than 0.75 degrees. A run outside that bound is reported as inconclusive,
 not as a servo failure or a calibration result.
 
+The first development result selects a single candidate only if the reference gate
+passes: leave pan gain unchanged and finish every supported pan placement from the
+ascending direction. Validate it in a new folder without changing those decisions:
+
+```bash
+python usb_cameras/calibrate_gimbal.py \
+  captures/p0-gimbal-YYYY-MM-DD/held-out-01 \
+  --rover 192.168.1.80:8769 --size 1280x960 \
+  --angles=-20,-15,-5,5,15,20 --candidate consistent-ascending
+```
+
+The four intermediate angles are held out; the endpoints check the supported
+envelope in the new session. The candidate passes only when the independent
+reference passes again, the ascending-only gain error is no greater than 1.0% and
+the 95th percentile of its absolute linear-fit residual is no greater than 0.5
+degrees. Both directions are still captured so the control condition and remaining
+backlash are reported. Do not change this rule after seeing the held-out result.
+
 Stop immediately if the target or rover moves, the sheet lifts from its backing,
 the gimbal touches anything, or another process aims the camera. That run is kept
 and marked invalid rather than repeated until it happens to pass.
