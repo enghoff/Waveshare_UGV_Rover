@@ -37,7 +37,7 @@ and what would make it false.
 |---|---|---|
 | `settled` | Required, implemented, and shown to hold on the rover | **Evidence:** what shows it |
 | `open` | Required and agreed, but not shown to hold — or known not to | **Blocked by:** the plan, milestone or measurement that would settle it |
-| `proposed` | Not yet agreed; may be dropped or rewritten | **Proposed in:** the plan or design that proposes it |
+| `proposed` | Not yet agreed; may be dropped or rewritten | **Proposed in:** the plan, design or progress entry that proposes it |
 | `failing` | Was settled, and a measurement has since shown it false | **Broken by:** the progress entry that found it |
 | `retired` | No longer required | **Superseded by:** the decision record that dropped it |
 
@@ -46,6 +46,11 @@ observed on the rover, or an offline suite that stands in for it where the
 requirement is about logic rather than hardware. A passing unit test is evidence
 for a rule about how the store behaves and is not evidence for a rule about where
 the camera points.
+
+A measurement is a legitimate origin for a requirement, which is why a progress
+entry may propose one. Something the rover was found doing wrong is the most
+common way a new requirement arrives here, and parking it as `proposed` keeps it
+in the spine without pretending it has been agreed.
 
 `failing` exists because this is a rover. A requirement that a measurement has
 disproved should not quietly become `open`, as though it had never been believed
