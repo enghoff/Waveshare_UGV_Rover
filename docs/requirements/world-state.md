@@ -263,16 +263,40 @@ different depths makes the wrong merge look geometrically consistent.**
 region model is a segmentation model: its engine returns 32 mask coefficients per
 anchor alongside the box, and a 32-channel prototype tensor, and both are copied
 back from the GPU on every look before `perceive.py` keeps the boxes and drops
-the rest. Decoded on the three looks that caused this room's merges, the mask
-covers 54% to 74% of its box and the part it excludes is the chair — verified by
-eye, including one case of two chair backs in front of one picture where the mask
-comes out as a clean "T". It costs 6 ms against a 550 ms look. See
+the rest. Decoded on the looks that caused this room's merges, the mask covers
+about half of its box and the part it excludes is the chair — verified by eye,
+including one case of two chair backs in front of one picture where the mask
+comes out as a clean "T". See
 [the masks entry](../progress/2026-09-07-masks-are-already-there.md).
 
-Sampling the range on the masked pixels, and computing the appearance vectors
-from the masked crop, are both testable on the preserved recording without
-driving again. That the mask separates the objects is shown; that it fixes the
-merge is not yet.
+**The remedy is to ask the appearance question twice, and it prevents all four
+measured faults.** A look that only resembles its entity because of what is
+standing in front of it is the look whose score collapses when the intruder is
+removed. Scored against the middle of the entity's other looks, the four wrong
+attachments read 0.561 to 0.698 as the rover computed them and 0.203 to 0.469
+from the masked crop; the gate is 0.55, so all four cross it. Ordinary looks fall
+by a median of 0.061 and a 95th percentile of 0.222. **Refusing an attachment
+whose score drops by 0.20 or more catches four of four and costs 25 of 360
+correct attachments**, and a refusal is a split rather than a merge, which is the
+direction acceptance asks for. Replacing the vector outright instead is the wrong
+way to use the same mask: it would lose 73 correct attachments to catch the same
+four. Costed at 84 ms on a look whose median is 550. See
+[the collapse test](../progress/2026-09-07-masking-the-crop.md).
+
+**0.20 is a development candidate and not a settled threshold.** It was chosen
+after seeing four positives, which is the thing acceptance forbids counting as
+independent evidence, so it is owed a held-out recording with the threshold frozen
+first. Two of the six faulted entities — `object:5` and `object:29`, which mix in
+a cabinet, a window, a television and a person — have wrong looks that were never
+individually identified, so the rule is untested on them.
+
+**Sampling the range on the masked pixels cannot be tested on the recording**,
+because the recording keeps each box's computed distance and never the depth map
+it came from. Keeping the depth evidence is a prerequisite for testing any range
+remedy offline. Live, the mask does separate the two objects — a picture's box
+read 1.760 m where the largest rectangle inside its mask read 3.801 m — but both
+figures came from a sliver at the top of the depth camera's picture, because the
+picture in this room sits above its 43-degree vertical field.
 
 <a id="r-ws-14"></a>
 ### R-WS-14 — A thing whose map was replaced is recognised when it is seen again

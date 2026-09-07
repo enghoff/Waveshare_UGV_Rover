@@ -1,5 +1,18 @@
 # The masks the rover already computes and throws away
 
+> **Correction, 2026-09-07.** This entry says twice that sampling the range on
+> the masked pixels is testable on the preserved recording. **It is not.** The
+> recording keeps each box's computed distance and never the depth map that
+> distance came from, so there is nothing offline to re-sample. The text below is
+> left as written, per [the log's conventions](README.md).
+>
+> The other half -- computing the appearance vectors from the masked crop -- was
+> testable, was tested, and works on all four measured faults, though not in the
+> form proposed here: replacing the vector loses 73 correct attachments to catch
+> four, while refusing an attachment whose score *collapses* when the crop is
+> masked catches all four for 25. See
+> [the collapse test](2026-09-07-masking-the-crop.md).
+
 The region model is a segmentation model and its masks separate a chair from the
 picture on the wall behind it. **They are computed on every look, copied back to
 host memory, and discarded.** Decoding them costs 6 ms against a 550 ms look, so

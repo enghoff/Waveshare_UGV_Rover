@@ -302,11 +302,20 @@ driven evidence for depth attribution and identity
 ([the acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md)). What is
 still ahead:
 
-- **Sample a range on the object's own pixels, not its whole box.** A box holding
-  a chair in front of a picture corrupts the range and the identity together, and
-  the region model's own masks separate them; validate on the preserved
-  acceptance recording before changing the rover. Addresses R-WS-13 and
-  criteria 3 and 8.
+- **Ask the appearance question twice and refuse a look whose score collapses.**
+  A box holding a chair in front of a picture makes the picture resemble an
+  entity of chairs, and removing everything but the object's own pixels is what
+  exposes that. Measured on the recording: refusing a drop of 0.20 or more
+  catches four of four wrong attachments for 25 of 360 correct ones, at 84 ms on
+  a 550 ms look. Freeze the threshold in the run manifest before collecting
+  acceptance data, because it was chosen after seeing those four. Addresses
+  R-WS-13 and criteria 3 and 8.
+- **Keep the depth evidence, then test the range remedy.** Sampling the range on
+  the object's own pixels rather than its whole box cannot be tested offline at
+  all today: the recording never saved a depth map. Save each region's depth
+  patch, or the frame's depth map beside its JPEG, before the next drive. The
+  range remedy itself also needs a foreground/background pair inside the depth
+  camera's 43-degree vertical field, which a framed picture on a wall is not.
 - **Refuse or flag a region outside the depth camera's coverage.** It sees the
   central two thirds of the gimbal's frame; count the refusals and carry "never
   ranged" to the entity, so a target that can never be ranged is reported rather
