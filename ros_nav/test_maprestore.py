@@ -742,6 +742,9 @@ def test_the_lidar_says_when_the_rover_is_wrong_without_moving_it() -> None:
           node.map_drift["trusted"], False)
     check("...and is not complained about, because it is not news about the "
           "rover", node.warned, [])
+    check("...but still says how well the scan lies on the map where the rover "
+          "is, which is the only thing left that means anything",
+          "24% of the scan lies on a wall" in node.map_drift["why"], True)
 
 
 def test_the_lidar_is_asked_at_once_and_then_rarely() -> None:

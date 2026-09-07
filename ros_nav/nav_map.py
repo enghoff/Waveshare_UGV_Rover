@@ -813,8 +813,17 @@ class NavMap:
         off_m, off_deg = answer["moved_m"], answer["turned_deg"]
         agrees = abs(off_m) < DRIFT_M and abs(off_deg) < DRIFT_DEG
         if not fit.ok:
-            why = ("the lidar cannot say where the rover is well enough to "
-                   "check it: %s" % (fit.why,))
+            # With the scan's own answer refused, how well it lies on the map
+            # *here* is the only thing left that says anything, and it says
+            # plenty: a rover standing where the map explains 94% of what it can
+            # see is not a rover to worry about, and one at 30% is, and "cannot
+            # say" on its own does not tell those apart. Measured on the rover on
+            # 2026-09-07 in its parking spot, where the room is symmetric enough
+            # that a full-circle search finds 98% half a turn away against 94%
+            # where the rover stands, and rightly refuses to choose.
+            why = ("the lidar cannot say where the rover is: %s. Where the rover "
+                   "thinks it is, %.0f%% of the scan lies on a wall"
+                   % (fit.why, 100.0 * fit.guess_score))
         elif agrees:
             why = ("the scan agrees with where the rover thinks it is, to "
                    "within %.0f cm and %.1f degrees" % (100.0 * abs(off_m),
