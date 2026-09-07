@@ -16,6 +16,9 @@ takes several seconds.
 - 640x360 MJPEG colour and 320x180 aligned depth at 15 fps.
 - Valid stereo range: 0.2 to 6 m.
 - Colour field of view from device intrinsics: 70.1 degrees by 43.0 degrees.
+- `/health` publishes the colour matrix and stored distortion coefficients so a
+  calibration bench can measure the error from treating this near-pinhole lens
+  as a pinhole.
 - Stereo baseline: 7.5 cm.
 
 Depth is aligned to the colour camera. A normalized box from `/frame` can be sent

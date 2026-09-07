@@ -144,13 +144,15 @@ def main():
         return report()
 
     def calibrated():
-        if depth.hfov_deg is None or not depth.colour_intrinsics:
+        if (depth.hfov_deg is None or not depth.colour_intrinsics
+                or not depth.colour_distortion):
             raise RuntimeError("the stored calibration would not read, so no "
                                "angle this service quotes can be trusted -- and "
                                "nothing can draw a bearing through this camera")
         lens = depth.colour_intrinsics
         return (f"{depth.hfov_deg} x {depth.vfov_deg} deg, fx={lens['fx']} "
                 f"cx={lens['cx']} cy={lens['cy']}, "
+                f"{len(depth.colour_distortion)} distortion coefficients, "
                 f"{depth.baseline_cm} cm baseline")
 
     def colour():

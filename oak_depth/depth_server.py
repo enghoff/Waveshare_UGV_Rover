@@ -120,6 +120,11 @@ class Depth:
         #: device says it has instead of a copy that can drift. Null if the
         #: stored calibration would not read, and null means no bearings.
         self.colour_intrinsics = None
+        # OpenCV-order coefficients for the colour camera at the stored
+        # calibration: k1, k2, p1, p2, k3, k4, k5, k6, ... . Published beside
+        # the matrix so calibration benches can quantify whether the pinhole
+        # approximation is inside their error budget rather than assuming it.
+        self.colour_distortion = None
         self.baseline_cm = None
         self.focal_px = None         # CAM_C's, which is what the depth is made of
         self.started_at = time.monotonic()
@@ -363,6 +368,11 @@ class Depth:
                 "cx": round(float(matrix[0][2]), 2),
                 "cy": round(float(matrix[1][2]), 2),
                 "width": width, "height": height}
+            self.colour_distortion = [
+                round(float(value), 8) for value in
+                calibration.getDistortionCoefficients(
+                    dai.CameraBoardSocket.CAM_A)
+            ]
             self.hfov_deg = round(math.degrees(2 * math.atan(width / (2 * fx))), 1)
             self.vfov_deg = round(math.degrees(2 * math.atan(height / (2 * fy))), 1)
             self.baseline_cm = round(calibration.getBaselineDistance(), 2)
@@ -591,6 +601,7 @@ class Depth:
                 "age_s": round(jpeg_age, 2) if jpeg else None,
                 "depth_apart_s": round(apart, 3),
                 "intrinsics": self.colour_intrinsics,
+                "distortion": self.colour_distortion,
             },
             "uptime_s": round(time.monotonic() - self.started_at, 1),
             "errors": self.errors,
