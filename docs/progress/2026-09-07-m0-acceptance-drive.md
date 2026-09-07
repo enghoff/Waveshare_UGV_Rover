@@ -1,5 +1,32 @@
 # The acceptance drive: depth is much better, identity is not, and the floor is still a thing
 
+> **Correction, 2026-09-07.** Two things in this entry were wrong about their own
+> data and the text below is left as written, per the rule in
+> [the log's conventions](README.md).
+>
+> **The rug and the ceiling fan are objects, not floor and not background.** The
+> section headed "The floor is still a thing to go and look at" counted
+> `object:11` and `object:6` (a patterned rug) and `object:26` (a ceiling fan) as
+> instances of [R-WS-12](../requirements/world-state.md#r-ws-12). The owner's
+> call, and the right one: those are real things that could be worth knowing
+> about, and R-WS-12 is about *bare* floor and blown-out background with no
+> object in it. On this recording that leaves `object:2` and `object:24` — blown-out
+> wall and window patches — as the genuine instances, two of the 33 entities
+> reviewed rather than five. That the rug is placed twice is a separate fault, a
+> split rather than an eligibility question, and it belongs with the splitting
+> section.
+>
+> **Two observation identifiers were misread** off a downscaled contact sheet.
+> The look whose crop is a framed painting is `34333` in `object:3` (not 34555,
+> which belongs to `object:30`) and `34235` in `object:9` (not 34236). Re-running
+> the separation test with the corrected identifiers leaves the conclusion
+> unchanged and better supported: `object:1`'s painting look sits 0.21 m from the
+> centre of its eight correct ranged looks, whose own spread is 0.40 m, and
+> `object:9`'s sits 0.45 m from its six, whose spread is 0.65 m. Both are inside,
+> so neither is separable by position. `object:3`'s painting look carries no range
+> at all and `object:21` has only one correct ranged look, so neither of those two
+> can judge it either way.
+
 A driven recording through the corrected mount and the new capture gates. **M0
 does not pass.** Depth attribution improved from 48% to 66% and the mount change
 is vindicated; identity is worse than the software suite can see, the floor is

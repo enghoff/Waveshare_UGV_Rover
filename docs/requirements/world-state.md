@@ -212,6 +212,17 @@ distance and battery on them. Deliberate geometric coverage of a floor area
 remains a legitimate goal — it is simply a different kind of goal from
 inspecting an object.
 
+**"Bare" is the load-bearing word, and it is easy to over-read.** This is about
+a patch with no object in it: blown-out floor, a featureless stretch of wall, a
+window the camera has turned white. **A rug, a mat or a ceiling fan is an
+object** and belongs in the store like any other — floor-level and ceiling-level
+things are things, and the owner may well want the rover to know about them. The
+[acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md) first counted a
+patterned rug and a ceiling fan against this requirement and that was wrong; on
+that recording the genuine instances are two blown-out wall and window patches
+out of 33 entities reviewed. A rug appearing twice is a different fault
+altogether — a split, not an eligibility question.
+
 <a id="r-ws-13"></a>
 ### R-WS-13 — No association eligible to influence movement is knowingly wrong
 
