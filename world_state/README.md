@@ -78,6 +78,36 @@ An observation keeps its frame, region, capture time, camera, pose, bearing,
 elevation, uncertainty, optional OAK range, and appearance vectors. It stays
 unplaced until the resolver has enough independent evidence.
 
+**Four conditions take the direction off a look while keeping everything else it
+measured.** They are all the same shape -- the picture, the regions and the
+vectors are written down, and what is withheld is the one thing that was not
+measured well enough to keep:
+
+- no pose, no map identity, or a pose the navigator does not trust;
+- a pose in a map the rover has not been confirmed to be placed in, which the
+  navigator answers separately from whether a pose exists. A restore whose
+  anchor landed somewhere else looks perfectly healthy from here, and on
+  2026-09-07 it produced 34 looks from a heading 152.5 degrees out. Confirming
+  the rover afterwards does not make those bearings true and nothing back-fills
+  them. See `rover_daemon/rover_world.py` and
+  [R-WS-16](../docs/requirements/world-state.md#r-ws-16);
+- more travel during the shutter bracket than `MOVED_WHILE_LOOKING_M`, or a turn
+  that widens the bearing past `MAX_BEARING_SIGMA_DEG`;
+- a commanded pan outside `inspector.DEMONSTRATED_PAN_DEG`, which is the range
+  the gimbal's pan campaign actually validated. Past it the servo's gain error
+  is unmeasured rather than merely larger, and the store holds looks taken at
+  pan 145.
+
+**One condition widens the bearing instead of withholding it**: an angle reached
+from the descending side of the servo's backlash, or by a gimbal that has not
+moved since the daemon started. That error is measured -- 1.19 to 2.23 degrees
+between opposite approaches -- so it is carried as `bearing_sigma_deg` and spent
+by `locate`, the same treatment a look taken while turning gets. Refusing these
+would cost every bearing taken while tracking a face, which moves the gimbal both
+ways by its nature. `Rover.centre_gimbal` undershoots and comes back up so that
+rest, where nearly every look is taken from, is the approach the calibration
+measured.
+
 The resolver:
 
 1. rejects evidence from another map session, while still offering a new
@@ -180,8 +210,11 @@ needs an overshoot, or the approach is only ever opposed at pan 0 -- shows the
 gimbal camera **carries about a degree and a half of backlash at every angle in
 its travel**, against a same-direction floor of five hundredths. The OAK is bolted
 to the chassis, so nothing but the gimbal's own pointing can account for it. That
-alone is the whole of the 1.5 degrees a bearing here is believed to, and which way
-the gimbal last moved is recorded nowhere, so it cannot be corrected afterwards.
+alone is the whole of the 1.5 degrees a bearing here is believed to. **Which way
+the gimbal last moved is recorded now**, which it was not when this paragraph was
+first written: `Rover.pan_approach` is set as each servo command goes out and
+travels on the capture, because the moment the command is sent is the only moment
+it is knowable. What consults it is below.
 Two more faults ride with it: a gain-like walk somewhere between four and eight
 per cent -- the bench cannot pin it closer, because the room moves while it
 measures -- which vanishes straight ahead and reaches one to two degrees at pan 30,

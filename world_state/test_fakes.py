@@ -42,16 +42,24 @@ def a_store(directory):
 
 
 def a_capture(pan=0.0, tilt=0.0, ok=True, error="", live=False,
-              taken_at=None, delay_s=0.0):
+              taken_at=None, delay_s=0.0, approach=1):
     """A camera. `taken_at` is what the real one now says about when the shutter
     opened, and `delay_s` is how long the grab takes, which is what makes the
-    two pose readings either side of it different."""
+    two pose readings either side of it different.
+
+    `approach` is which way the pan servo last travelled, and it defaults to the
+    ascending arrival the real rover leaves itself in after `centre_gimbal` --
+    the ordinary state, in which the calibration applies and a bearing is worth
+    what `locate.BEARING_SIGMA_DEG` says. Tests about the other two states pass
+    it explicitly.
+    """
     def capture():
         if delay_s:
             time.sleep(delay_s)
         if not ok:
             return {"ok": False, "error": error}
         frame = {"ok": True, "jpeg": JPEG, "pan": pan, "tilt": tilt,
+                 "pan_approach": approach,
                  "live": live, "width": 640, "height": 480}
         if taken_at is not None:
             frame["taken_at"] = taken_at() if callable(taken_at) else taken_at

@@ -245,9 +245,13 @@ marked as belonging to the map that has gone rather than left looking current.
 ### R-WS-16 — An observation is only given a direction when the rover's place on the map has been confirmed
 
 - **State:** open
-- **Blocked by:** [2026-09-07 refit window](../progress/2026-09-07-refit-window.md)
-  — nothing in `world_state` or `rover_world.py` consults navigation's
-  `map_settled`, so an unconfirmed restore still produces bearings
+- **Blocked by:** the gate is written and deployed —
+  `rover_world._world_pose` refuses a direction unless navigation's
+  `map_settled` says the rover's place on its map has been confirmed, and
+  `python rover_daemon/selftest.py` covers both the withholding and the fact
+  that a later confirmation does not give an earlier bearing back. What is
+  owed is the hardware half the criterion asks for: a restart or refit on the
+  rover shown to withhold directions while keeping the pictures
 
 This is [R-WS-5](#r-ws-5)'s neighbour and the gap between them is easy to miss:
 R-WS-5 keeps evidence from being read against the wrong *map*, while this one is
@@ -273,4 +277,10 @@ the pose being wrong, and the rows stay crossable once the rover drives.
 The fix is not to discard the look. The picture is worth keeping — the same
 reasoning as R-WS-5, where the coordinates expire but the crops do not. What
 should be withheld is the direction, exactly as it already is when the map
-identity is missing.
+identity is missing. That is what the capture path now does.
+
+The half worth stating separately is that the withholding is permanent. An
+observation's row is written once and nothing ever puts a pose back onto it, so
+confirming the rover an hour later cannot retroactively validate a bearing
+recorded before the confirmation — which is the trap this requirement names and
+the reason the fix is a gate at capture rather than a filter at read time.

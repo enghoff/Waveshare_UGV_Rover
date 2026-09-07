@@ -611,14 +611,16 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
         class slam:
             pose = (0.0, 0.0, 0.0)
 
-        def __init__(self, trusted=True, pose=None, map_id="map-one"):
+        def __init__(self, trusted=True, pose=None, map_id="map-one",
+                     settled=True):
             self._trusted = trusted
             self._pose = pose
             self._map_id = map_id
+            self._settled = settled
 
         def status(self):
             return {"position_trusted": self._trusted, "pose": self._pose,
-                    "map_id": self._map_id}
+                    "map_id": self._map_id, "map_settled": self._settled}
 
     class Asking:
         _world_pose = rover_world.RoverWorld._world_pose
@@ -654,6 +656,29 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
     check("...and an empty name is the same silence",
           rover._world_pose(), None)
 
+    # **A pose in the right map, in the wrong place in it.** Recorded on the
+    # rover on 2026-09-07: a restored map the mapper could not place, and 34
+    # observations taken between the restart and the fit that corrected it, all
+    # from a heading shown afterwards to be 152.5 degrees out. Every test above
+    # passed throughout -- the transform was fresh, the position was trusted and
+    # the map had a name. What was missing was the navigator's own answer to
+    # whether the rover's place on that map had been confirmed. R-WS-16.
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0},
+                    settled=False)
+    check("an unconfirmed place on a restored map gives no direction",
+          rover._world_pose(), None)
+
+    class Silent:
+        """A navigator too old to have been asked this question."""
+
+        def status(self):
+            return {"position_trusted": True, "map_id": "map-one",
+                    "pose": {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0}}
+
+    rover.nav = Silent()
+    check("...and a navigator that does not answer it counts as unconfirmed",
+          rover._world_pose(), None)
+
     class Broken:
         def status(self):
             raise OSError("the bridge is not answering")
@@ -661,6 +686,96 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
     rover.nav = Broken()
     check("a bridge that is down leaves the observation without a bearing",
           rover._world_pose(), None)
+
+
+def test_a_look_taken_before_the_rover_is_placed_never_gets_a_direction() -> None:
+    """R-WS-16 end to end: the picture is kept, the bearing is withheld, and the
+    withholding does not expire when the rover is finally placed.
+
+    The fault is the one measured on 2026-09-07. A restore left the mapper's
+    anchor 152.5 degrees away from where the rover actually stood, and until
+    somebody asked for a fit nothing in the daemon could tell: the transform was
+    fresh, the position was trusted and the map had a name, so every look taken
+    in that window was written down with a confident and wrong direction. None
+    of those 34 observations was placed, but only because a parked rover has no
+    parallax to cross bearings with -- they stayed crossable the moment it drove.
+
+    The half that is easy to get wrong is the second one. Confirming the rover's
+    place later says nothing about where it was standing an hour ago, so a
+    bearing recorded before the confirmation must not become usable because of
+    it. That holds here because nothing ever writes a pose onto a stored
+    observation -- the row is written once -- and this is what says so.
+    """
+    import tempfile
+
+    import rover_daemon
+    import world_state
+    import world_state.view
+
+    class Nav:
+        """The navigator across a restore that is later put right by a fit."""
+
+        def __init__(self):
+            self.map_id = "map-one"
+            self.settled = False
+
+        def status(self, since_seq=None):
+            return {"position_trusted": True, "map_id": self.map_id,
+                    "map_settled": self.settled,
+                    "pose": {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0}}
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            rover.nav = Nav()
+            jpeg = bytes.fromhex("ffd8ffe0") + bytes(40) + bytes.fromhex("ffd9")
+            rover._whole_jpeg = lambda when=False: (
+                (jpeg, "", time.time()) if when else (jpeg, ""))
+            rover.pan, rover.tilt = 0.0, 0.0
+            seen = [world_state.Sighting(bbox=[0.1, 0.3, 0.5, 0.9],
+                                         dino=b"", siglip=b"")]
+
+            rover._world_inspector_cache.eyes.looks.append(list(seen))
+            unplaced = rover.call("world_inspect", {})
+            check("a look taken on an unconfirmed map is still recorded",
+                  unplaced["stored"], 1)
+            during = rover.call("world_state_entities", {})["recent"][0]
+            check("...but it is recorded without a place to have been seen from",
+                  during["pose"], None)
+            check("...so there is no ray it could ever be crossed on",
+                  world_state.view.ray(during, rover.camera_fov_deg), None)
+            check("...and the picture itself was kept, which is the point",
+                  rover.call("world_state_frame",
+                             {"frame_id": during["frame_id"]})["bytes"],
+                  len(jpeg))
+
+            # Somebody asks for a fit and it succeeds. From here the rover knows
+            # where it is standing, and looks taken from now on say so.
+            rover.nav.settled = True
+            rover._world_inspector_cache.eyes.looks.append(list(seen))
+            rover._world_inspector().forget_picture()
+            after = rover.call("world_inspect", {})
+            check("once the rover's place is confirmed a look gets a direction",
+                  after["stored"], 1)
+            rows = rover.call("world_state_entities", {})["recent"]
+            latest = max(rows, key=lambda row: row["id"])
+            check("...and it is the pose the navigator was holding",
+                  (latest["pose"] or {}).get("heading_deg"), 44.0)
+
+            earlier = [row for row in rows if row["id"] == during["id"]][0]
+            check("...while the look taken before it still has none",
+                  earlier["pose"], None)
+            check("...which no later confirmation can give back to it",
+                  world_state.view.ray(earlier, rover.camera_fov_deg), None)
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
 def test_how_far_the_rover_could_see_comes_off_its_own_map() -> None:
@@ -776,7 +891,8 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
 
         def status(self):
             return {"position_trusted": self._pose is not None,
-                    "pose": self._pose, "map_id": "map-one"}
+                    "pose": self._pose, "map_id": "map-one",
+                    "map_settled": True}
 
         def ask(self, request, timeout_s):
             return payload

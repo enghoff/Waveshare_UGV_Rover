@@ -670,6 +670,121 @@ def test_a_picture_that_cannot_be_compared_is_recorded() -> None:
         store.close()
 
 
+# --- the state the camera was aimed in ---------------------------------------
+#
+# A bearing is only as good as the gimbal state it was taken in, and this
+# rover's gimbal has states its calibration does not describe. Two of them, and
+# they are answered differently: past the calibrated pan range the error is
+# unmeasured and the direction is withheld, while an angle reached from the
+# wrong side of the servo's backlash is measured, worse than the promise, and
+# carried as a wider bearing.
+
+
+def test_a_pan_beyond_the_calibration_keeps_the_picture_and_no_bearing() -> None:
+    """M0 criterion 10: the deployed capture path refuses unsupported conditions.
+
+    The campaign of 2026-09-07 validated commanded pan -20 to +20 and nothing
+    outside it. The store already holds looks taken at pan 145, where the
+    servo's gain error is not known at all -- so this is the same answer a pose
+    in a map with no name gets, for the same reason: keep everything that was
+    measured, record no direction, and say which it was.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspecting = a_seeing_inspector(
+            directory, [[a_sighting()]],
+            capture=a_capture(pan=35.0, tilt=0.0, approach=1),
+            pose=a_pose())
+        answer = inspecting.inspect()
+        check("the look still happened", answer["ok"], True)
+        check("...and what it saw was still recorded", answer["stored"], 1)
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        check("...with the picture kept", bool(row["frame_id"]), True)
+        check("...and no direction claimed for it", row["bearing_deg"], None)
+        check("...nor a precision claimed for a direction there is not",
+              row["bearing_sigma_deg"], None)
+        check("...and the reason named, which is the one an operator can fix",
+              "outside the 20 its calibration covers" in (answer["detail"] or ""),
+              True)
+        store.close()
+
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspecting = a_seeing_inspector(
+            directory, [[a_sighting()]],
+            capture=a_capture(pan=20.0, tilt=0.0, approach=1),
+            pose=a_pose())
+        answer = inspecting.inspect()
+        row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+        check("the edge of the calibrated range is inside it, not outside",
+              row["bearing_deg"] is not None, True)
+        store.close()
+
+
+def test_an_angle_reached_from_above_is_a_wider_bearing_not_a_lost_one() -> None:
+    """The backlash is measured, so it is spent rather than refused.
+
+    Opposite approaches to the same commanded pan differ by 1.19 to 2.23
+    degrees, which is worse than the 1.5 the geometry is promised -- but it is a
+    number, and this file's rule for a known error is to carry it on the
+    observation and let `locate` spend it. Refusing these looks instead would
+    cost the rover every bearing it takes while tracking a face, which moves the
+    gimbal both ways by its nature.
+    """
+    kept = {}
+    for name, approach in (("ascending", 1), ("descending", -1), ("unknown", 0)):
+        with tempfile.TemporaryDirectory() as directory:
+            store, _eyes, inspecting = a_seeing_inspector(
+                directory, [[a_sighting()]],
+                capture=a_capture(pan=10.0, tilt=0.0, approach=approach),
+                pose=a_pose())
+            answer = inspecting.inspect()
+            row = dict(store.db.execute("SELECT * FROM observations").fetchone())
+            kept[name] = (row["bearing_deg"], row["bearing_sigma_deg"],
+                          answer["detail"] or "")
+            store.close()
+
+    check("an angle reached the calibrated way claims no extra error",
+          kept["ascending"][1], None)
+    check("...and the same angle reached from above keeps its bearing",
+          kept["descending"][0] is not None, True)
+    check("...at the width the two approaches were measured to differ by",
+          kept["descending"][1], inspector.UNSEATED_APPROACH_SIGMA_DEG)
+    check("...pointing the same way, because backlash widens and does not aim",
+          kept["descending"][0], kept["ascending"][0])
+    check("...and saying so where somebody reads it",
+          "reached that angle from above" in kept["descending"][2], True)
+
+    # A servo nobody has moved is on neither side of its own backlash, and there
+    # is no feedback to ask. That is the descending case, not the ascending one.
+    check("a gimbal that has not moved since boot is not assumed to be right",
+          kept["unknown"][1], inspector.UNSEATED_APPROACH_SIGMA_DEG)
+    check("...and says that rather than blaming an approach it never made",
+          "has not been moved since the daemon started" in kept["unknown"][2],
+          True)
+
+
+def test_the_aim_gate_leaves_alone_what_it_cannot_judge() -> None:
+    """The gate is one term among several and must not swallow the others."""
+    where = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 30.0}
+    check("a look that already lost its bearing is not given one back",
+          inspector.aimed_where_it_was_calibrated(0.0, 1, None, None)[0], None)
+    check("a look with no gimbal angle is left to the path that reports that",
+          inspector.aimed_where_it_was_calibrated(None, 0, where, None),
+          (where, None, None))
+    check("...as is an angle that is not a number",
+          inspector.aimed_where_it_was_calibrated("sideways", 0, where, None),
+          (where, None, None))
+
+    # The turn the rover was making and the side of the backlash it arrived on
+    # are independent errors, so they add in quadrature rather than replacing
+    # one another. The alternative -- taking the larger -- would let a fast turn
+    # hide the backlash and the backlash hide a fast turn.
+    _, widened, _ = inspector.aimed_where_it_was_calibrated(0.0, -1, where, 3.0)
+    check("a turning look reached from above carries both errors, not the worse",
+          widened > max(3.0, inspector.UNSEATED_APPROACH_SIGMA_DEG), True)
+    check("...and both are still inside what a bearing may be worth",
+          widened <= inspector.MAX_BEARING_SIGMA_DEG, True)
+
+
 TESTS = (
     test_the_heading_is_taken_at_the_shutter_rather_than_averaged,
     test_a_turning_look_keeps_a_wide_bearing_instead_of_none,
@@ -693,4 +808,7 @@ TESTS = (
     test_a_look_that_failed_is_not_a_picture_the_rover_has,
     test_clearing_the_store_makes_the_rover_record_the_room_again,
     test_a_picture_that_cannot_be_compared_is_recorded,
+    test_a_pan_beyond_the_calibration_keeps_the_picture_and_no_bearing,
+    test_an_angle_reached_from_above_is_a_wider_bearing_not_a_lost_one,
+    test_the_aim_gate_leaves_alone_what_it_cannot_judge,
 )

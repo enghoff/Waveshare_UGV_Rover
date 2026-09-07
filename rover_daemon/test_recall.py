@@ -47,7 +47,7 @@ class Nav:
 
     def status(self):
         return {"position_trusted": self._pose is not None, "pose": self._pose,
-                "map_id": "map-one"}
+                "map_id": "map-one", "map_settled": True}
 
     def ask(self, request, timeout_s):
         return self._grid

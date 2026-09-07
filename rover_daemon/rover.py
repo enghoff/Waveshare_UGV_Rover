@@ -22,6 +22,17 @@ from tool_schemas import (
     STOP_SCRIPT_TOOL, TOOLS, WORLD_TOOLS,
 )
 
+#: How far below an angle the gimbal drops before coming back up to it, so that
+#: it arrives from the direction the pan calibration was measured in. Thirty
+#: degrees because that is what `usb_cameras/calibrate_gimbal.py` uses, and
+#: because the backlash is only certainly re-seated by a move bigger than it.
+APPROACH_UNDERSHOOT_DEG = 30
+#: How long to let the servo get there. The bench waits 2.5 s before it
+#: photographs anything, most of which is for the picture rather than the servo;
+#: nothing is measured here, so this only has to be longer than a 30-degree
+#: move, which on these serial servos at full speed is well under a tenth of it.
+APPROACH_SETTLE_S = 0.6
+
 
 class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth):
     """The rover's state and everything that may be done to it.
@@ -49,6 +60,28 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         # before it serves anything: the servos have no feedback, so where the
         # camera points is only known by having put it there.
         self.tilt = float(REST_TILT_DEG)
+        # Which way the pan servo last travelled to get where it is: +1 arrived
+        # from below, -1 from above, 0 nobody knows.
+        #
+        # **The gimbal carries about a degree and a half of backlash at every
+        # angle in its travel**, so the same commanded pan points in two
+        # different directions depending on which side it was approached from,
+        # and the calibration of 2026-09-07 is only good for one of them. Until
+        # now this was the one fact needed to use that calibration that the
+        # rover did not keep: `world_state/README.md` recorded it as "which way
+        # the gimbal last moved is recorded nowhere, so it cannot be corrected
+        # afterwards". It is kept here rather than worked out later because it
+        # is only knowable at the moment the command is sent -- nothing
+        # downstream can recover it from an angle.
+        #
+        # Zero at startup and after a reconnect is the honest answer and not a
+        # placeholder: the servo was last driven by whoever had the rover
+        # before the process did.
+        self.pan_approach = 0
+        #: What the board was last told, which is what the next command is
+        #: compared against. `self.pan` is not that: it is written before the
+        #: send and would compare a value against itself.
+        self._pan_sent: float | None = None
 
         self._camera = None
         self._camera_used = 0.0
@@ -250,8 +283,22 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         # T:133 is the simple absolute form, and deliberately does not feed the
         # firmware's heartbeat: aiming is not driving, and must not be mistaken
         # for it by a base that stops itself when commands stop arriving.
-        return self.link.send({"T": 133, "X": round(self.pan), "Y": round(self.tilt),
-                               "SPD": 0, "ACC": 0})
+        target = round(self.pan)
+        # Recorded from the command rather than from `self.pan`, because the
+        # board is told whole degrees: a sweep of tenths that never changes the
+        # rounded value never moves the servo, so it cannot have re-seated the
+        # backlash either and the approach it was last left with still stands.
+        # A command that fails is not a move, so the approach is only updated
+        # once the board has taken it.
+        moved = 0 if self._pan_sent is None or target == self._pan_sent else (
+            1 if target > self._pan_sent else -1)
+        if not self.link.send({"T": 133, "X": target, "Y": round(self.tilt),
+                               "SPD": 0, "ACC": 0}):
+            return False
+        if moved:
+            self.pan_approach = moved
+        self._pan_sent = float(target)
+        return True
 
     def centre_gimbal(self) -> bool:
         """Back to rest: straight ahead, and REST_TILT_DEG above level.
@@ -259,8 +306,29 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         Twenty degrees up rather than level, for the reason argued where that
         number is defined -- the camera is low, and level fills most of the
         frame with the floor just in front of the wheels.
+
+        **Reached from below, deliberately, which is what makes rest a state the
+        calibration covers.** The pan servo has about a degree and a half of
+        backlash, so straight ahead approached from the right and straight ahead
+        approached from the left are a degree and a half apart, and the
+        calibration of 2026-09-07 measured only the ascending one. Rest is where
+        this rover looks from almost all the time -- of the 2162 observations it
+        had recorded by 2026-09-07, 1952 were taken at pan zero -- so leaving the
+        approach to chance would leave nearly every bearing it records outside
+        the state its own calibration describes. Undershooting and coming back up
+        is the same manoeuvre `usb_cameras/calibrate_gimbal.py` uses before every
+        sample it takes.
+
+        The wait is for the servos and not for a picture, so it is much shorter
+        than the bench's 2.5 s imaging settle. A board that will not take the
+        undershoot is not a failure: the centring itself still happens, and what
+        is lost is only the claim to know which way the servo arrived.
         """
         with self._lock:
+            if self.link.send({"T": 133, "X": -APPROACH_UNDERSHOOT_DEG,
+                               "Y": round(REST_TILT_DEG), "SPD": 0, "ACC": 0}):
+                self._pan_sent = float(-APPROACH_UNDERSHOOT_DEG)
+                time.sleep(APPROACH_SETTLE_S)
             self.pan, self.tilt = 0.0, float(REST_TILT_DEG)
             return self._send_gimbal()
 

@@ -481,6 +481,91 @@ def test_what_the_camera_does_with_nobody_in_view():
           isinstance(rover._searching(moving, gimbal), Scan), True)
 
 
+# --- which way the servo arrived ---------------------------------------------
+
+
+def test_the_gimbal_remembers_which_way_it_last_travelled() -> None:
+    """The one fact needed to use the pan calibration that the rover did not keep.
+
+    The pan servo has about a degree and a half of backlash at every angle in
+    its travel, so the same commanded pan points two different ways depending on
+    the side it was approached from, and the calibration of 2026-09-07 measured
+    only the ascending one. `world_state/README.md` recorded the gap as "which
+    way the gimbal last moved is recorded nowhere, so it cannot be corrected
+    afterwards" -- it is knowable only as the command goes out, and this is where
+    it is now written down.
+    """
+    import rover_daemon
+
+    rover = rover_daemon.Rover(FakeLink(), "unused", device=None)
+    check("a rover that has not aimed yet claims neither side of the backlash",
+          rover.pan_approach, 0)
+
+    rover.call("look_at", {"pan": 10, "tilt": 0})
+    check("the first command is not an approach either, having no previous angle",
+          rover.pan_approach, 0)
+    rover.call("look_at", {"pan": 20, "tilt": 0})
+    check("panning further right is an ascending arrival", rover.pan_approach, 1)
+    rover.call("look_at", {"pan": 5, "tilt": 0})
+    check("...and coming back left is a descending one", rover.pan_approach, -1)
+
+    # The board is told whole degrees, so a nudge that rounds to the same
+    # command never moves the servo and cannot have re-seated the backlash. The
+    # approach it was left with is still the truth about where it is standing.
+    rover.call("look_at", {"pan": 5.4, "tilt": 0})
+    check("a nudge too small to reach the servo leaves the approach alone",
+          rover.pan_approach, -1)
+    rover.call("look_at", {"pan": 6, "tilt": 0})
+    check("...and the next real move records itself", rover.pan_approach, 1)
+
+    # Tilt is a different servo and its own axis; nothing about it says which
+    # way the pan arrived.
+    rover.call("look_at", {"tilt": 30})
+    check("tilting does not change what is known about the pan",
+          rover.pan_approach, 1)
+
+
+def test_centring_the_gimbal_arrives_from_below_on_purpose() -> None:
+    """Rest is where nearly every look is taken from, so rest has to be a state
+    the calibration covers.
+
+    Of the 2162 observations this rover had recorded by 2026-09-07, 1952 were
+    taken at pan zero. Reaching zero from wherever the gimbal happened to be
+    would leave most of those bearings on the unmeasured side of the backlash,
+    so centring undershoots and comes back up -- the same manoeuvre
+    `usb_cameras/calibrate_gimbal.py` makes before every sample it takes.
+    """
+    import rover
+    import rover_daemon
+
+    was = rover.APPROACH_SETTLE_S
+    rover.APPROACH_SETTLE_S = 0.0
+    try:
+        link = FakeLink()
+        machine = rover_daemon.Rover(link, "unused", device=None)
+        machine.call("look_at", {"pan": 20, "tilt": 0})
+        link.sent.clear()
+
+        check("centring answers", machine.call("center_camera", {})["ok"], True)
+        pans = [command["X"] for command in link.sent if command.get("T") == 133]
+        check("it undershoots before it settles, rather than driving straight down",
+              pans, [-rover.APPROACH_UNDERSHOOT_DEG, 0])
+        check("...ending where it always did", machine.pan, 0.0)
+        check("...and knowing it got there from below", machine.pan_approach, 1)
+
+        # A board that will not take the undershoot must still centre. Losing
+        # the claim to know the approach is the cost; not centring would be a
+        # camera left pointing at a wall.
+        deaf = FakeLink(works=False)
+        stubborn = rover_daemon.Rover(deaf, "unused", device=None)
+        check("a board that refuses everything reports the failure",
+              stubborn.centre_gimbal(), False)
+        check("...and claims no approach it cannot have made",
+              stubborn.pan_approach, 0)
+    finally:
+        rover.APPROACH_SETTLE_S = was
+
+
 TESTS = (
     test_no_camera,
     test_default_camera,
@@ -492,4 +577,6 @@ TESTS = (
     test_the_local_detector_scales_its_boxes_back_up,
     test_camera_cone,
     test_what_the_camera_does_with_nobody_in_view,
+    test_the_gimbal_remembers_which_way_it_last_travelled,
+    test_centring_the_gimbal_arrives_from_below_on_purpose,
 )

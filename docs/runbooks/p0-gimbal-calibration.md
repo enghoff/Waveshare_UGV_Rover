@@ -115,6 +115,22 @@ Those four figures are from the re-analysis after the pose fit was corrected on
 verdict did not change, only its margin. See
 [the mount entry](../progress/2026-09-07-p0-oak-mount.md) for what was wrong.
 
+**The capture path enforces this envelope rather than trusting it.** A look
+taken at a commanded pan outside ±20 degrees keeps its picture and records no
+direction, and a look that reached its angle from the descending side of the
+backlash keeps a bearing widened to 2.3 degrees. Both numbers live beside each
+other in `world_state/inspector.py` as `DEMONSTRATED_PAN_DEG` and
+`UNSEATED_APPROACH_SIGMA_DEG`, and `Rover.centre_gimbal` now undershoots by 30
+degrees before settling so that rest is an ascending arrival. **Widening the
+envelope is a measurement and not an edit**: run the campaign at the angles
+wanted, pass its gates, then move the constant and say where the number came
+from. Of the 2162 observations the rover had recorded by 2026-09-07, about 92%
+were taken at a pan inside the current envelope and 1952 of them at pan zero,
+so the envelope costs the recording under a tenth of its looks — but only the
+pan axis has been characterised, and only at tilt zero, while 1825 of those
+looks were taken at the tilt-20 rest position. Repeating the pan campaign at
+tilt 20 is the cheapest thing that would close that gap.
+
 The camera's advertised maximum is 2592 x 1944 MJPEG at 30 fps, but this campaign
 stays at 1280 x 960. A live comparison found the same field of view and more corner
 detections at the maximum mode, but 1280 x 960 already passed the reference and

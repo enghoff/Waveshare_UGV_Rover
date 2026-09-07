@@ -140,6 +140,30 @@ FRAME_TIME_SIGMA_S = 0.03
 #: is there for the case that recording did not contain.
 MAX_BEARING_SIGMA_DEG = 6.0
 
+#: How far off straight ahead the gimbal's pan calibration reaches, in degrees.
+#:
+#: **The envelope is this narrow because that is what was measured, and the
+#: rover spends most of its time inside it anyway.** The campaign of 2026-09-07
+#: sampled commanded pan -20 to +20 at tilt zero, from both directions, and
+#: passed there. Of the 2162 observations this rover had recorded by that date,
+#: about 92% were taken at a pan inside it and 1952 of them at pan zero exactly,
+#: so holding the line here costs the recording under a tenth of its looks.
+#: Beyond it the servo's gain error is unmeasured -- one to two degrees by pan
+#: 30 on the only sweep that reached that far, and nothing at all is known about
+#: the pan 145 the store contains eleven looks at.
+#:
+#: Widening this is a measurement rather than an edit: run the campaign at the
+#: angles wanted, then move the number. See
+#: `docs/runbooks/p0-gimbal-calibration.md`.
+DEMONSTRATED_PAN_DEG = 20.0
+
+#: What a pan reached from the wrong side of the servo's backlash is worth, in
+#: degrees. The two approaches differed by 1.19 to 2.23 degrees across the
+#: validated range, so this is the worst of that rather than its middle: the
+#: point of carrying it is that it exceeds the 1.5 `locate.BEARING_SIGMA_DEG`
+#: floors every bearing at, and a value inside the floor would be invisible.
+UNSEATED_APPROACH_SIGMA_DEG = 2.3
+
 #: How much of the picture has to be different from the last one recorded before
 #: this look is worth recording at all, as a share of the frame.
 #:
@@ -267,6 +291,63 @@ def _speed(moved_m: float, before_at, after_at) -> float:
     except (TypeError, ValueError):
         return 0.0
     return 0.0 if span <= 0.0 else max(0.0, float(moved_m)) / span
+
+
+def aimed_where_it_was_calibrated(pan_deg, approach, where, sigma_deg):
+    """Whether the gimbal was somewhere its calibration describes, and what the
+    bearing is worth if it was not. Answers `(where, sigma_deg, note)`.
+
+    **A bearing is only as good as the state the camera was aimed in, and this
+    rover's camera has a state its calibration does not cover.** Two separate
+    faults, and they deserve different answers.
+
+    *Beyond the calibrated pan range the direction is withheld.* The pan
+    campaign of 2026-09-07 validated commanded pan -20 to +20 degrees and
+    nothing outside it; past that the servo's gain error is not merely larger
+    but unmeasured, reaching one to two degrees by pan 30 on the one sweep that
+    went that far and unknown at the pan 145 this rover has actually recorded
+    looks at. That is the same situation as a pose in a map with no name, so it
+    gets the same answer: keep the picture, keep the regions, keep the vectors,
+    and record no direction. Widening the cone instead would be inventing a
+    number for something nobody measured.
+
+    *Reached from the wrong side of the backlash the direction is widened.* The
+    pan servo carries about a degree and a half of backlash at every angle, and
+    the calibration measured the ascending side. Opposite approaches differ by
+    1.19 to 2.23 degrees, so a descending arrival is not unmeasured -- it is
+    measured and worse than the 1.5 degrees `locate.BEARING_SIGMA_DEG` promises.
+    Carrying that as a wider bearing is what this file already does with a look
+    taken while turning, and it is why `Rover.centre_gimbal` now undershoots
+    before it settles: rest is where nearly every look is taken from, so making
+    rest an ascending arrival is what keeps the ordinary case inside the
+    calibration rather than outside it.
+
+    An unknown approach is treated as the wrong one. The servos have no
+    feedback, so a rover that has not moved its pan since it started has no
+    claim on either side of the backlash.
+
+    `None` for `pan_deg` leaves everything alone: a look with no gimbal angle
+    already has no bearing, and the existing path says so better than this could.
+    """
+    if where is None or pan_deg is None:
+        return where, sigma_deg, None
+    try:
+        pan = abs(float(pan_deg))
+    except (TypeError, ValueError):
+        return where, sigma_deg, None
+    if pan > DEMONSTRATED_PAN_DEG:
+        return None, None, (
+            f"the camera was panned {pan:.0f} deg, outside the "
+            f"{DEMONSTRATED_PAN_DEG:.0f} its calibration covers")
+    if approach == 1:
+        return where, sigma_deg, None
+    # In quadrature with whatever the turn already cost, because the two are
+    # independent: how far the servo is from where it was told is not affected
+    # by how fast the rover was spinning underneath it.
+    widened = math.hypot(float(sigma_deg or 0.0), UNSEATED_APPROACH_SIGMA_DEG)
+    return where, round(widened, 2), (
+        "the camera reached that angle from above" if approach == -1 else
+        "the camera has not been moved since the daemon started")
 
 
 class Inspector(InspectionRanges):
@@ -479,6 +560,8 @@ class Inspector(InspectionRanges):
         where, moved, turned, sigma_deg = self._where(
             before, after, before_at=before_at, after_at=after_at,
             taken_at=frame.get("taken_at"))
+        where, sigma_deg, aimed = aimed_where_it_was_calibrated(
+            frame.get("pan"), frame.get("pan_approach"), where, sigma_deg)
         # Which camera this picture came from, and where that camera actually
         # is. A ray has to start where the lens is, and the two cameras on this
         # rover are not in the same place -- ten centimetres between them is
@@ -568,7 +651,7 @@ class Inspector(InspectionRanges):
         # one must leave the measurement untouched.
         settled = self._settle() if settle else {}
         detail = self._measured_detail(look, stored, settled, moved, turned,
-                                       sigma_deg, ranged_note)
+                                       sigma_deg, ranged_note, aimed)
         self.store.update_inference(
             inference_id, duration_s=round(time.time() - began, 2), status="ok",
             detail=detail or None, model_id=look.backend,
@@ -675,7 +758,8 @@ class Inspector(InspectionRanges):
             return {"error": f"{type(error).__name__}: {error}"}
 
     def _measured_detail(self, look, stored, settled, moved=0.0,
-                         turned=0.0, sigma_deg=None, ranged_note="") -> str:
+                         turned=0.0, sigma_deg=None, ranged_note="",
+                         aimed=None) -> str:
         """One sentence a person can act on, in the popup's own column.
 
         The numbers that matter are how many regions were kept, how many got a
@@ -696,7 +780,14 @@ class Inspector(InspectionRanges):
                          f"(a blown-out window, a bare wall)")
         if stored["placed"] < stored["stored"]:
             missing = stored["stored"] - stored["placed"]
-            if not (moved or turned):
+            # Asked before the travel terms, because it is the one that names a
+            # state the rover can be put back into: the others report what the
+            # drive happened to do, and this one says the camera was pointed
+            # somewhere nobody has calibrated. See
+            # `aimed_where_it_was_calibrated`.
+            if aimed:
+                why = aimed
+            elif not (moved or turned):
                 why = "no pose, no gimbal angle, or no field of view"
             elif moved > MOVED_WHILE_LOOKING_M:
                 why = (f"the rover moved {moved:.2f} m while the shutter was "
@@ -720,6 +811,14 @@ class Inspector(InspectionRanges):
             parts.append(f"the rover turned {turned:.1f} deg while the shutter "
                          f"was open, leaving the bearing good to "
                          f"{spent:.1f} deg")
+        elif aimed and sigma_deg:
+            # The bearing survived but is worth less than the calibration
+            # promises, and saying so is the whole point of carrying it: a
+            # console that reported these looks the same as any other would hide
+            # the one thing an operator can fix, which is to approach the angle
+            # from the other side.
+            parts.append(f"{aimed}, leaving the bearing good to "
+                         f"{max(locate.BEARING_SIGMA_DEG, sigma_deg):.1f} deg")
         if ranged_note:
             parts.append(ranged_note)
         if not settled:

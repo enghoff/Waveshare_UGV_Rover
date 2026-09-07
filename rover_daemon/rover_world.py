@@ -580,11 +580,19 @@ class RoverWorld:
         if jpeg is None:
             return {"ok": False, "error": why}
         with self._lock:
+            # Read under the same lock as the angles, because the pair only
+            # means anything together: which way the servo arrived is a fact
+            # about the angle it arrived at, and a move landing between the two
+            # reads would put one look's approach on another look's pan.
             pan, tilt = self.pan, self.tilt
+            approach = getattr(self, "pan_approach", 0)
         width, height = self.size
         return {"ok": True, "jpeg": jpeg, "camera": world_state.oak.GIMBAL,
                 "pan": round(pan, 1),
                 "tilt": round(tilt, 1), "live": self._tracking.is_set(),
+                # Which side of the backlash this pan was reached from. See
+                # `Rover.pan_approach`; the inspector decides what it is worth.
+                "pan_approach": approach,
                 "width": width, "height": height, "taken_at": taken_at}
 
     def _world_pose(self) -> dict[str, Any] | None:
@@ -623,6 +631,24 @@ class RoverWorld:
         this room that have never been in it, stamped with a session that looks
         like the current one. So the picture is still taken and still kept; what
         it does not get is a direction. See `nav_map.map_restore`.
+
+        **And a pose in the right map can still be in the wrong place in it.**
+        The three tests above all ask whether a pose exists, is recent and
+        belongs to a named graph. None of them asks whether it is *correct*, and
+        the navigator answers that separately: after a restore the rover's place
+        on its map is the mapper's anchor until something confirms it, and an
+        anchor that landed somewhere else is neither confirmed nor disproved.
+        `map_settled` is that answer, and it is true for a map this session drew
+        itself, where the rover made the coordinates as it went and there is
+        nothing to doubt. Measured on 2026-09-07: a rover came up on a restored
+        map it could not place and recorded 34 observations between the restart
+        and the fit that corrected it, every one of them from a heading later
+        shown to be 152.5 degrees out. It had a fresh transform, a real map
+        identity and a confidently wrong direction, so nothing above caught it.
+        The fix is the same one as for a map with no name -- keep the picture,
+        withhold the direction -- and the withholding is permanent, because
+        nothing back-fills a pose onto a stored observation: confirming the rover
+        later does not make a bearing recorded before it true. R-WS-16.
         """
         navigator = getattr(self, "nav", None)
         if navigator is None:
@@ -632,6 +658,11 @@ class RoverWorld:
         except Exception:
             return None
         if not status.get("position_trusted") or not status.get("map_id"):
+            return None
+        # Absent as well as false, so a navigator too old to answer the question
+        # is read as not having confirmed anything. This is the direction that
+        # loses looks rather than the one that invents bearings.
+        if not status.get("map_settled"):
             return None
         where = status.get("pose")
         if not isinstance(where, dict):
