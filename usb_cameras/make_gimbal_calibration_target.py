@@ -25,11 +25,12 @@ from reportlab.lib.utils import ImageReader
 
 SQUARES_X = 10
 SQUARES_Y = 7
-SQUARE_MM = 25.0
-MARKER_MM = 18.0
+SQUARE_MM = 24.0
+MARKER_MM = 17.0
 DICTIONARY_NAME = "DICT_4X4_50"
 RASTER_DPI = 600
 OUTPUT = Path("output/pdf/p0-gimbal-charuco-a4.pdf")
+MIN_CONTENT_MARGIN_MM = 20.0
 
 
 def board_png() -> bytes:
@@ -58,11 +59,17 @@ def make_pdf(path: Path) -> None:
     board_h = SQUARES_Y * SQUARE_MM * mm
     left = (page_w - board_w) / 2
     bottom = (page_h - board_h) / 2
+    assert min(left, bottom, page_w - left - board_w, page_h - bottom - board_h) \
+        >= MIN_CONTENT_MARGIN_MM * mm
 
     canvas = Canvas(
         str(path), pagesize=(page_w, page_h), pageCompression=1, invariant=1
     )
     canvas.setTitle("P0 gimbal calibration ChArUco target - A4")
+    canvas.setSubject(
+        "10 x 7 ChArUco board; 24.0 mm squares; 17.0 mm markers; "
+        "OpenCV DICT_4X4_50"
+    )
     canvas.drawImage(
         ImageReader(io.BytesIO(board_png())),
         left,
@@ -73,28 +80,29 @@ def make_pdf(path: Path) -> None:
         mask="auto",
     )
 
-    # The board dimensions are the primary scale check.  This independent bar
-    # catches print-dialog scaling before the target is mounted.
-    bar_y = page_h - 6.0 * mm
-    bar_x = (page_w - 100.0 * mm) / 2
+    # Keep every mark beyond 20 mm from every page edge.  Canon specifies a
+    # 16.7 mm trailing margin for the MG2577S, and a landscape driver may rotate
+    # which PDF edge becomes the trailing edge.  The board dimensions are the
+    # primary scale check; this independent bar catches print-dialog scaling.
+    bar_x = 22.0 * mm
+    bar_y = (page_h - 100.0 * mm) / 2
+    assert bar_x - 1.1 * mm >= MIN_CONTENT_MARGIN_MM * mm
     canvas.setLineWidth(0.35)
-    canvas.line(bar_x, bar_y, bar_x + 100.0 * mm, bar_y)
+    canvas.line(bar_x, bar_y, bar_x, bar_y + 100.0 * mm)
     for step in range(0, 101, 10):
         tick = 2.2 * mm if step in (0, 100) else 1.3 * mm
-        x = bar_x + step * mm
-        canvas.line(x, bar_y - tick / 2, x, bar_y + tick / 2)
+        y = bar_y + step * mm
+        canvas.line(bar_x - tick / 2, y, bar_x + tick / 2, y)
     canvas.setFont("Helvetica", 6.5)
+    canvas.saveState()
+    canvas.translate(25.5 * mm, page_h / 2)
+    canvas.rotate(90)
     canvas.drawCentredString(
-        page_w / 2,
-        page_h - 11.0 * mm,
-        "100 mm check - print A4 landscape at Actual size / 100% (no Fit or Shrink)",
+        0,
+        0,
+        "100 mm check | P0 10x7 | square 24 mm | marker 17 mm | 4X4_50 | print 100%",
     )
-    canvas.setFont("Helvetica", 6.0)
-    canvas.drawCentredString(
-        page_w / 2,
-        5.0 * mm,
-        "10 x 7 squares; 25.0 mm square; 18.0 mm marker; OpenCV DICT_4X4_50",
-    )
+    canvas.restoreState()
     canvas.showPage()
     canvas.save()
 

@@ -10,14 +10,21 @@ experiment and stopping rules are in the
 Use [the A4 ChArUco target](../../output/pdf/p0-gimbal-charuco-a4.pdf), page size A4
 in landscape orientation.
 
+Canon specifies A4 printable margins of 3.0 mm at the leading edge, 16.7 mm at the
+trailing edge and 3.4 mm at each side for the MG2577S. The target keeps every mark
+at least 20.5 mm from every PDF edge, so it remains inside the printable area even
+if the landscape driver rotates which edge trails. See
+[Canon's MG2577S specification](https://in.canon/en/consumer/pixma-mg2577s/main/specification?category=printing&subCategory=).
+
 1. Print in black and white at **Actual size** or **100%**. Disable Fit, Shrink,
    Scale to printable area and borderless expansion. Use normal or high quality,
    print one side only, and do not photograph the PDF from a screen.
-2. Measure the 100 mm line before mounting it. It should be 100.0 mm within the
-   practical reading accuracy of the ruler, and no more than 0.5 mm different.
-3. Measure the checkerboard's outside width and height: 250.0 x 175.0 mm. Accept
+2. Measure the vertical 100 mm line before mounting it. It should be 100.0 mm
+   within the practical reading accuracy of the ruler, and no more than 0.5 mm
+   different.
+3. Measure the checkerboard's outside width and height: 240.0 x 168.0 mm. Accept
    up to 1.0 mm error on either dimension. Also check one five-square span in each
-   direction is 125.0 mm within 0.5 mm. If it is outside those limits, keep the
+   direction is 120.0 mm within 0.5 mm. If it is outside those limits, keep the
    sheet and record the measurements, but do not use it as the reference.
 4. Check that every black square and marker is sharp and complete. Reprint if ink
    gaps, clipping or banding damage a marker.
@@ -42,7 +49,7 @@ from mechanical variation.
 ## Hand over for capture
 
 Send the five measured print dimensions: the 100 mm bar, outside width, outside
-height and both 125 mm five-square spans. Then say the target is mounted and the
+height and both 120 mm five-square spans. Then say the target is mounted and the
 rover is ready.
 
 The capture operator will first verify detection without writing calibration. The
