@@ -280,19 +280,45 @@ across the frame as the camera pans. What would choose between them is linearity
 tilted axis gives a straight line, a bad distortion model gives a curve. The
 measured roll slope falls across the sweep -- 0.153, 0.087, 0.080 degrees per
 degree in one run and 0.139, 0.093, 0.096 in the next, reproduced well above the
-0.05 floor -- which looks like a curve and would favour the lens. But the steep
-interval is the one nearest -30, which is exactly where the servo under-travels
-most, and the horizontal axis of that plot is *commanded* pan. **The curvature
-cannot be read until commanded pan is measured against actual pan**, so the tilt
-stays a leading suspicion and no more.
+0.05 floor -- which looks like a curve and would favour the lens.
+
+The obvious escape is that the horizontal axis of that plot is *commanded* pan
+while the servo under-travels, so the curve might be an artefact of the axis. **It
+cannot be, at least not from a constant gain error.** If actual pan is some fixed
+fraction of commanded, then roll stays linear in commanded and only its slope
+changes: rescaling an axis does not bend a straight line. Manufacturing this curve
+needs the under-travel itself to *worsen with deflection*, which is plausible for a
+servo but is a stronger claim than "it under-travels" and is not in evidence. So
+either the servo is non-linear or the lens model is wrong, and the same
+commanded-against-actual sweep decides which, because it shows whether the gain is
+flat or bends. The tilt stays a leading suspicion and no more.
 
 ### What it costs the world state
 
-**Every look this rover has ever taken is at pan 0**, and 1.5 degrees of backlash
-is about the whole of the 1.5 a bearing here is believed to. Which way the gimbal
-last moved is not recorded anywhere, so the error is not even correctable after the
-fact. Under the earlier reading only pan 0 was affected; under this one every angle
-is, so nothing is gained by looking elsewhere.
+**The store sits almost entirely at pan 0, but nothing makes it so.** Of the 1549
+observations the rover holds, 1451 were taken at pan 0, and every one of the 98
+that was not falls inside the half hour of bench runs described above -- which is
+to say the rover's own looks have all been taken straight ahead. That is luck
+rather than design: `rover_world` never aims the camera, it captures wherever the
+gimbal happens to be pointing, and `look_at` is a model tool, face tracking drives
+the gimbal, and a script can. The instant anything aims it, world-state looks are
+taken at that angle.
+
+That distinction decides how bad the error is, because the two faults behave
+differently with pan. Backlash is flat: about 1.5 degrees wherever the camera is,
+which at pan 0 is already the whole of the 1.5 a bearing here is believed to, and
+which way the gimbal last moved is recorded nowhere, so it cannot be corrected
+after the fact. The gain error vanishes at pan 0 and grows from there -- at 7 per
+cent it is about 2 degrees at pan 30. **So a bearing taken straight ahead can be
+out by 1.5 degrees against a budget of 1.5, and one taken at wide pan by about 3.5
+against the same budget.**
+
+That is worth holding next to the standing measurement that half of every bearing
+this rover records already falls outside the accuracy the resolver is told to
+expect. At pan 0 backlash alone accounts for it. The consolation is that the term
+which grows with pan is the correctable one: a gain is a systematic function of
+commanded angle, so measuring commanded against actual removes it in software.
+Backlash is harder, and the tilt does not touch bearing at all.
 
 The order of work follows from the arithmetic. **Measure the pan servo's commanded
 angle against its actual one first** -- at both signs, several magnitudes, and

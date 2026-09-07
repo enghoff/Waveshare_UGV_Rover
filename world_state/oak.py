@@ -206,18 +206,35 @@ class Mount:
 #: Linearity would choose: a tilt gives a line, bad distortion gives a curve. The
 #: measured slope does fall across the sweep, 0.153/0.087/0.080 in one run and
 #: 0.139/0.093/0.096 in the next, reproduced above the floor, which looks like a
-#: curve and would favour the lens -- except that the steep interval is the one
-#: nearest -30 where the servo under-travels most, and this plot's horizontal axis
-#: is *commanded* pan. It cannot be read until commanded is measured against
-#: actual.
+#: curve and would favour the lens.
 #:
-#: **What it costs: every look this component has ever taken is at pan 0**, a
-#: degree and a half of backlash is about the whole of the 1.5 a bearing here is
-#: believed to, and which way the gimbal last moved is recorded nowhere, so it
-#: cannot be corrected after the fact either. Measure the pan servo
-#: commanded-against-actual first -- both signs, several magnitudes, both approach
-#: directions, and no single gain fitted to it. The fisheye model and the axis
-#: tilt are both still open behind that.
+#: **The obvious escape does not work.** It is tempting to blame the axis of the
+#: plot -- it is *commanded* pan and the servo under-travels -- but a constant
+#: gain cannot bend a straight line, only tilt it: if actual is a fixed fraction of
+#: commanded, roll stays linear in commanded. Producing this curve needs the
+#: under-travel to worsen with deflection, which a servo may well do but which is
+#: a stronger claim than the one in evidence. So it is a non-linear servo or the
+#: lens, and the commanded-against-actual sweep decides it by showing whether the
+#: gain is flat or bends.
+#:
+#: **What it costs.** The store sits almost entirely at pan 0 -- 1451 of its 1549
+#: observations, with every one of the other 98 falling inside the half hour of
+#: bench runs that produced these numbers -- but nothing makes that so. This
+#: component never aims the camera; `rover_world` captures wherever the gimbal is
+#: pointing, and `look_at` is a model tool, face tracking drives the gimbal and a
+#: script can. The moment anything aims it, looks are taken at that angle.
+#:
+#: The two faults then behave differently. Backlash is flat at about 1.5 degrees
+#: wherever the camera is, which at pan 0 is already the whole of the 1.5 a
+#: bearing here is believed to, and which way the gimbal last moved is recorded
+#: nowhere so it cannot be corrected afterwards. The gain vanishes at pan 0 and
+#: grows from there -- about 2 degrees at pan 30. So a bearing straight ahead can
+#: be out by 1.5 against a budget of 1.5, and one at wide pan by about 3.5.
+#:
+#: Measure the pan servo commanded-against-actual first -- both signs, several
+#: magnitudes, both approach directions, and no single gain fitted to it. It is
+#: the largest correctable term, it settles the curvature above, and the fisheye
+#: model and the axis tilt are both still open behind it.
 #:
 #: Adopting the pan-0 fit would replace one number with another that three
 #: positions disagree about, which is this file's own warning turned on itself:
