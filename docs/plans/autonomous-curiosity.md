@@ -269,9 +269,11 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 ### Owner preparation and next handoff
 
 The owner printed, measured, mounted and lowered the reference as requested. Both
-cameras now pass their board-coverage gates and the development transform is frozen.
-Move the rover 0.25-0.35 m straight backward without changing the target for the
-held-out capture. The exact sequence is in the
+cameras pass their board-coverage gates and the development transform is frozen.
+A 0.325 m backward held-out move put the target beyond the OAK stream's marker
+resolution and was retained as an invalid attempt. Move the rover about 0.20 m
+forward from that position, without changing the target, for a replacement held-out
+capture at least 0.10 m farther than development. The exact sequence is in the
 [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md). No calibration
 jig, new sensor or attempt to remove the measured backlash is requested. A later
 driven acceptance run still needs the owner present in the pre-cleared test area.

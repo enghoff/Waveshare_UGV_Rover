@@ -46,6 +46,7 @@ MAX_OFFSET_RANGE_M = 0.015
 MAX_PINHOLE_RAY_ERROR_DEG = 0.75
 MAX_HELD_OUT_ANGLE_CHANGE_DEG = 0.75
 MAX_HELD_OUT_OFFSET_CHANGE_M = 0.015
+MIN_HELD_OUT_DISTANCE_CHANGE_M = 0.10
 
 
 def now() -> str:
@@ -344,10 +345,21 @@ def analyse(folder: Path, gimbal_analysis: Path,
         prior = json.loads(compare.read_text(encoding="utf-8"))
         delta = {key: transform[key]["median"]
                  - prior["transform"][key]["median"] for key in keys}
+        current_distance = float(np.median([
+            row["target_distance_m"] for row in gimbals
+        ]))
+        prior_distance = float(np.median([
+            row["target_distance_m"] for row in prior["frames"]["gimbal"]
+        ]))
         comparison = {
             "source": str(compare),
             "delta": delta,
             "development_pass": bool(prior["verdict"]["all_gates_pass"]),
+            "gimbal_target_distance_m": current_distance,
+            "development_gimbal_target_distance_m": prior_distance,
+            "target_distance_change_m": abs(current_distance - prior_distance),
+            "distance_change_pass": abs(current_distance - prior_distance)
+            >= MIN_HELD_OUT_DISTANCE_CHANGE_M,
             "angle_change_pass": max(abs(delta[key]) for key in
                                      ("yaw_deg", "pitch_deg", "roll_deg"))
             <= MAX_HELD_OUT_ANGLE_CHANGE_DEG,
@@ -358,6 +370,7 @@ def analyse(folder: Path, gimbal_analysis: Path,
         gates["held_out_agreement"] = (
             comparison["development_pass"] and comparison["angle_change_pass"]
             and comparison["offset_change_pass"]
+            and comparison["distance_change_pass"]
         )
 
     result = {

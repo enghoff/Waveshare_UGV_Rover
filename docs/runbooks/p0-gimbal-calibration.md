@@ -158,20 +158,24 @@ The development capture passed these gates. Its frozen candidate is yaw +0.116,
 pitch +7.488 and roll -0.976 degrees, with offset +0.089 m forward, -0.014 m left
 and -0.103 m up. Do not deploy it until the held-out comparison below passes.
 
-For held-out validation, move the rover approximately 0.25-0.35 m farther from the
-target without changing the target, then capture a new folder and compare it with
-the frozen development result:
+The first held-out move placed the gimbal camera 0.880 m from the target, where the
+OAK stream could resolve no markers; that attempt is invalid and retained. For the
+replacement held-out validation, use a gimbal-target distance of **0.65-0.70 m**.
+From the failed distant position this means moving the rover about **0.20 m straight
+forward**, without changing the target. Verify OAK detection before creating a new
+acceptance folder, then compare it with the frozen development result:
 
 ```bash
 python usb_cameras/calibrate_oak_mount.py \
-  captures/p0-gimbal-YYYY-MM-DD/oak-mount-held-out \
+  captures/p0-gimbal-YYYY-MM-DD/oak-mount-held-out-02 \
   --gimbal-analysis captures/p0-gimbal-YYYY-MM-DD/held-out-01/analysis.json \
   --rover 192.168.1.80:8769 \
   --compare captures/p0-gimbal-YYYY-MM-DD/oak-mount-dev/mount-analysis.json
 ```
 
-The held-out transform must agree within 0.75 degrees on every angle and 15 mm on
-every offset component. Adopt the frozen development transform only after that
-pass. If board coverage or agreement fails, report the result as inconclusive and
-adjust the measurement geometry; do not tune thresholds or average a biased fit
-into the runtime calibration.
+The held-out distance must differ from the 0.555 m development distance by at least
+0.10 m. The transform must agree within 0.75 degrees on every angle and 15 mm on
+every offset component. Adopt the frozen development transform only after that pass.
+If board coverage or agreement fails, report the result as inconclusive and adjust
+the measurement geometry; do not tune thresholds or average a biased fit into the
+runtime calibration.
