@@ -171,6 +171,110 @@ Do not let semantic state choose motion while persistent identity/range behaviou
 still unvalidated. This phase is mostly existing work from
 `docs/plans/semantic-world-state.md`, but it is an explicit dependency of autonomy.
 
+### Current approach and progress
+
+P0 remains in progress and M0 has not passed. The
+[latest review](../progress/2026-09-07-m0-review.md) separates the recorded evidence
+from the calibration work still to do. The baseline's historical pass counts and
+"before Phase 1" heading are not the current gate: read-only M1/M2 may proceed.
+
+The agreed target is useful, demonstrated accuracy within a declared operating
+envelope. The current 1.5-degree bearing uncertainty is not an accuracy demand on
+the hardware. Finite backlash, flex and settling variation may remain; correcting
+the bias and representing those limits honestly is a valid outcome.
+
+This phase addresses R-WS-10 (bearing uncertainty), R-WS-11 (geometry), R-WS-12
+(background eligibility), R-WS-13 (movement-eligible identity) and R-WS-16
+(confirmed capture pose). None is marked settled by this plan revision.
+
+The new [refit report](../progress/2026-09-07-refit-window.md) records observations
+stamped from an unconfirmed pose. Before driven acceptance, reproduce and close
+that capture gate and prevent the affected evidence from entering association as
+valid geometry, preserving its images and provenance. Stationary calibration
+against an independent reference can proceed without trusting that map pose.
+
+### Bounded calibration protocol
+
+1. **Declare the task and limits before fitting.** Start with inspecting large,
+   well-separated static objects. Record the tested pan/tilt range, distances,
+   minimum angular object size and clearance from neighbouring surfaces, approach
+   directions, settling rule and camera mode. Choose numerical alignment and
+   task-success tolerances before acceptance, from whether the sampled patch stays
+   on the intended object and whether identity remains correct. Do not select a
+   universal degree target merely because it is already configured.
+2. **Establish an independent reference and its uncertainty.** The current lens
+   was fitted using commanded gimbal angles, and the OAK bench reads commanded
+   angles too. Use a measured calibration target with independently calibrated
+   optics/pose estimation, or a validated external angle reference. Do not use the
+   same unvalidated lens/servo fit as ground truth for itself. First confirm that
+   the reference can resolve the task-relevant error; otherwise report the test as
+   inconclusive rather than blaming the hardware.
+3. **Measure repeatability before correction.** With the chassis stationary and
+   the scene fixed, sample pan -20, -10, 0, +10 and +20 degrees at tilt 0, if these
+   positions are mechanically available. Approach each from both directions using
+   overshoot beyond the sampled endpoints. Use three paired repetitions per
+   position, alternating order, and record command history, capture/settle times,
+   measured orientation and reference uncertainty. Include repeated same-direction
+   approaches to distinguish measurement variation from direction-dependent error.
+   Wider pan or nonzero tilt remain outside this initial envelope until tested.
+4. **Try only simple, justified remedies.** Evaluate a versioned bias/angle mapping
+   and, if practical, a consistent final approach direction with a settling rule.
+   A consistent approach is a candidate policy, not an assumed cure. Permit at
+   most two correction candidates in this initial campaign, using development
+   data; do not fit a single gain unless the measurements support one.
+5. **Validate independently.** Freeze the selected candidate and test at held-out
+   intermediate angles such as -15, -5, +5 and +15 degrees, repeating both approach
+   directions, plus endpoint checks in a separate session. Report bias, residual
+   spread/tails, reference uncertainty, abstentions and task failures by condition.
+   Propagate residual uncertainty to bearings and depth-region selection. A wider
+   uncertainty must result in unresolved/rejected ambiguous matches, not a wider
+   permission to attach them to the nearest entity.
+6. **Validate the complete path.** Within the supported envelope, validate the
+   gimbal/OAK transform and offsets, then test depth-to-object alignment using known
+   foreground/background targets at the intended working distances. Check the
+   deployed capture path uses the validated approach and settling state; a bench
+   result is insufficient if face tracking, voice or scripts can leave it elsewhere.
+   Outside that state, reject semantic movement eligibility and unsafe depth
+   attribution. Preserve the existing recordings as evidence; they cannot recover
+   unrecorded approach history or depth patches never captured.
+
+The initial budget is one baseline campaign, at most two simple correction
+candidates, and one independent acceptance campaign. Freeze trial counts, numeric
+task tolerances and the minimum worthwhile improvement in the run manifest before
+collecting acceptance data. If a comparison's improvement does not exceed the
+reference/repeatability uncertainty or does not change task eligibility, stop that
+line of tuning. A failed acceptance set is not reused as held-out evidence after
+further fitting. Further experiments require a named unresolved question and a new
+bounded protocol, rather than repeating sweeps until a favourable fit appears.
+
+### Exit decisions
+
+- **Accept a useful envelope:** held-out geometry, range attribution and identity
+  checks pass, and runtime eligibility checks enforce the documented limits. M0
+  can pass within that scope once every criterion below is met.
+- **Narrow and retest:** adequate performance is limited to fewer angles, larger
+  objects or better-separated surfaces. Declare that narrower scope before fresh
+  acceptance; report excluded and unresolved cases. Rejecting every useful task
+  cannot count as a pass.
+- **Stop at a physical or measurement limit:** the bounded campaign cannot support
+  the useful task. State the remaining error, its evidence and what specific
+  reference/hardware change would enable a meaningful next test. M0 remains open;
+  read-only M1/M2 continue. No hardware purchase follows automatically.
+
+### Owner preparation and next handoff
+
+No hardware modification is needed for the documentation/offline preparation. The
+next physical session needs the rover parked with camera clearance, both cameras
+unobstructed, a well-lit stationary scene and exclusive use of the gimbal (no face
+tracking, voice aiming or other calibration run). The owner places the reference
+target and confirms the setup; the experiment operator handles capture and analysis.
+Confirm whether a printer, flat backing and ruler are available before selecting
+the target. Supply its exact layout, measured scale, placement and capture sequence
+before asking the owner to set it up; do not ask them to invent a calibration jig or
+buy a sensor. If no suitable target/reference is available, choose and validate an
+alternative before claiming actual-angle measurements. A later driven acceptance
+run still needs the owner present in the pre-cleared test area.
+
 ### Work
 
 - Continue the P0 investigation already in progress using the September 7 recording
@@ -196,9 +300,10 @@ replayed by path/manifest.
 Pass when all are true:
 
 1. the normal world-state offline suite passes;
-2. a fresh hardware recording contains usable OAK ranges for the regions where
-   range is expected, and annotated targets confirm that ranges belong to the
-   intended objects rather than neighbouring surfaces;
+2. within the predeclared operating envelope, a fresh hardware recording contains
+   usable OAK ranges where expected, and annotated targets confirm that ranges
+   belong to the intended objects; unsupported/ambiguous patches are refused and
+   counted separately;
 3. independent review finds **zero known incorrect high-confidence entity merges**
    in an acceptance sample of at least 50 association decisions; ambiguous cases
    may remain unresolved;
@@ -211,13 +316,21 @@ Pass when all are true:
 
 The baseline predates these clarified gates. M0 also requires:
 
-7. camera-to-rover geometry passes predeclared alignment tolerances across the pan
-   angles, approach directions and distances intended for active perception;
+7. camera-to-rover geometry and its residual uncertainty meet predeclared
+   task-derived tolerances within the accepted envelope on held-out trials;
+   mechanical repeatability need not improve beyond what those tasks require;
 8. review covers every association confidence band eligible to influence movement,
    with zero known incorrect movement-eligible associations in the acceptance
    sample; appearance similarity alone is not calibrated identity confidence;
 9. floor/background patches are not eligible as object-inspection goals. Deliberate
-   geometric coverage of a floor region remains a distinct goal type.
+   geometric coverage of a floor region remains a distinct goal type;
+10. the tested envelope supports the predeclared useful inspection cases, and the
+    deployed capture/goal path refuses unsupported conditions. Record coverage and
+    unresolved counts so abstaining from everything cannot satisfy M0;
+11. unconfirmed map poses cannot give observations usable directions; a later pose
+    confirmation does not retroactively validate bearings recorded before it.
+    Replay and hardware restart/refit checks demonstrate this with images retained
+    and affected observations withheld from geometric association (R-WS-16).
 
 These gates remain part of the existing P0 work. Until they pass, semantic motion
 stays disabled; read-only M1/M2 development can continue.
@@ -359,7 +472,9 @@ Hard vetoes run before scoring. Initial vetoes should include at least:
 - autonomy disabled or manually stopped;
 - navigation/world-state service unhealthy;
 - candidate requiring unavailable hardware;
-- candidate requiring unsupported drop/edge assumptions.
+- candidate requiring unsupported drop/edge assumptions;
+- semantic candidate outside the validated calibration envelope or with unknown
+  approach/settling state required by that envelope.
 
 ### Scenario harness
 
@@ -1103,7 +1218,7 @@ the problem.
 
 | Milestone | Capability | Proof |
 |---|---|---|
-| M0 (P0 in progress) | semantic identity/geometry safe enough for goal selection | existing baseline + validated alignment + reviewed eligible associations + replay |
+| M0 (P0 in progress) | useful semantic goals within measured operating limits | bounded calibration + held-out alignment/identity + envelope refusals + confirmed-pose capture |
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + one-hour no-action rover shadow |
 | M3 | bounded autonomous loop | 20 supervised sessions / >=120 min, measured stops, permission expiry and failure tests |

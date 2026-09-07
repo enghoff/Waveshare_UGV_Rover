@@ -63,6 +63,10 @@ also found lower-confidence association errors and floor patches treated as obje
 Continue that work under P0; this proposal does not restart it or prescribe a
 calibration fix. M0 remains a prerequisite for semantic movement. Read-only episodic
 recording and shadow decisions may be developed while P0 is in progress.
+The [current review](../progress/2026-09-07-m0-review.md) records the bounded
+calibration scope and the additional requirement to withhold usable bearings when
+the rover's map pose is unconfirmed. Calibration accuracy cannot compensate for a
+wrong observer pose.
 
 ## Design principles
 
@@ -117,6 +121,31 @@ The rover needs to know, for example, that an entity is well placed geometricall
 but poorly characterised semantically, or that a previously confident fact is now
 stale because the object is movable and has not been seen recently.
 
+### Calibration has a physical limit
+
+M0 means accuracy and uncertainty are demonstrated adequate within declared
+operating limits, with unsupported cases refused. It does not require perfect
+pointing, identifying every object, or removing every mechanical error.
+
+Separate repeatable bias, physical variation from backlash/flex/settling, and the
+uncertainty of the measurement itself. The current 1.5-degree bearing setting is an
+assumption to validate, not a hardware specification. The measured difference
+between approach directions is not automatically the residual error after a
+correction, nor is it a standard deviation.
+
+Use a bounded experiment to establish repeatability, test a simple correction and
+measure held-out residuals. The initial useful envelope may restrict pan/tilt,
+approach direction, settling, range, object angular size and separation from other
+surfaces. Those are measured limits, not promises that the entire gimbal travel
+will be usable. Larger residuals may justify honest uncertainty or fewer eligible
+goals; they must not make incompatible observations easier to merge.
+
+Stop calibration when the agreed experiment budget is spent or improvements cannot
+be distinguished from measurement uncertainty. Then accept a useful demonstrated
+envelope, narrow and retest it, or name the specific hardware limitation preventing
+the task. Expanding the envelope requires fresh validation. The bounded P0 protocol
+and its exit decisions are in the development plan.
+
 ### Curiosity is scored, not prompted
 
 The executive should not receive a vague instruction to "wander around and be
@@ -148,7 +177,8 @@ unresolvable ambiguity must not manufacture progress.
 
 Weights are configuration, not hidden model behaviour. Hard safety constraints
 veto candidates before scoring; a high curiosity score never buys permission to
-cross a safety boundary.
+cross a safety boundary. Candidates outside the validated calibration envelope
+are ineligible for semantic movement even when navigation itself can reach them.
 
 ### Active perception beats passive description
 

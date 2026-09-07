@@ -127,13 +127,20 @@ to be wrong.
 - **State:** failing
 - **Broken by:** [2026-09-07 M0 baseline](../progress/2026-09-07-m0-semantic-world-state.md)
 
-The resolver crosses bearings on the assumption that each is good to about a
-degree and a half. Measuring the gimbal by sweeping through the same angle from
-either side shows that it carries roughly a degree and a half of *backlash alone*
-at every angle in its travel, against a same-direction floor of five hundredths
-of a degree — so the entire error budget is spent before anything else is
-counted, and which way the gimbal last moved is recorded nowhere, so it cannot be
-corrected after the fact.
+The resolver currently crosses bearings using an uncertainty setting of about
+a degree and a half. This is an assumption to validate, not a mechanical accuracy
+target. Acceptance means measured residual uncertainty is represented honestly
+within a useful declared envelope, and unsupported conditions are refused; merely
+widening a match tolerance does not satisfy the requirement. See the
+[bounded P0 protocol](../plans/autonomous-curiosity.md#bounded-calibration-protocol)
+and [current review](../progress/2026-09-07-m0-review.md).
+
+The baseline measured a roughly 1.3-1.6-degree difference between approach
+directions at pan -20, 0 and +20, against 0.03-0.05-degree same-direction fit
+variation. This is evidence of a direction-dependent error at the tested positions,
+not a full-travel guarantee, a standard deviation or the remaining error after
+compensation. Approach history was not recorded, so the old observations cannot
+be corrected for it after the fact.
 
 Two further faults ride with it: a gain-like walk somewhere between four and
 eight per cent, which vanishes straight ahead and reaches one to two degrees at
@@ -144,9 +151,12 @@ the room moves while it measures.
 Nothing has been re-tuned to hide this. The OAK's mount constant has deliberately
 been left at a value known to be about six degrees out rather than moved to one of
 several numbers that disagree, because the gimbal it would be measured against is
-what is broken. The first step is measuring the pan servo's commanded angle
-against its actual one — the largest correctable term — and only then
-re-measuring the mount.
+not yet independently calibrated. The next step is a bounded measurement of
+actual pointing and repeatability against an independent reference, separating
+correctable bias from remaining physical and measurement variation. The reported
+gain-like slope alone does not identify a unique servo correction. Re-measure the
+mount only within the supported gimbal envelope, then verify depth attribution to
+known objects; stop tuning when the agreed budget or measurable benefit is exhausted.
 
 <a id="r-ws-11"></a>
 ### R-WS-11 — A thing's height above the floor is known
