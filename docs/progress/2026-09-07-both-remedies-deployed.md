@@ -1,8 +1,8 @@
 # Both remedies are on the rover, and the depth camera's blind edge is now visible
 
-Two changes deployed at `16621ea` and proved on the Orin. Neither is an
-acceptance result — the recording that will judge them has not been driven yet —
-but both do on the rover what they did on the bench.
+Three changes deployed, at `16621ea` and `ed2a7eb`, and proved on the Orin.
+None is an acceptance result — the recording that will judge them has not been
+driven yet — but each does on the rover what it did on the bench.
 
 ## The rover asks the appearance question twice
 
@@ -61,6 +61,34 @@ edge — and its row reads `outside the depth camera's view`. That is the geomet
 the acceptance drive measured, now reported at the moment it happens instead of
 being recoverable only by arithmetic afterwards.
 
+## The depth behind a look is kept now, and it reads back true
+
+Deployed at `ed2a7eb`. The depth service gained `GET /depth.raw`, which hands
+back the map as the device made it -- one unsigned 16-bit millimetre per pixel,
+with the shape, the units and the frame's age on the headers -- and a look saves
+it gzipped beside its frame, description first so the file can be read in a year
+without the code that wrote it.
+
+**The claim is that a distance can be recomputed later, so that is what was
+checked** rather than merely that a file appeared. Running the depth service's
+own arithmetic over the saved buffer -- its percentile, its band, its off-axis
+correction, its constants -- against what the rover actually recorded:
+
+| observation | recorded | recomputed from the saved map | apart |
+|---|---:|---:|---:|
+| 34827 | 1.808 m | 1.815 m | 0.007 |
+| 34826 | 1.723 m | 1.727 m | 0.004 |
+| 34825 | 1.750 m | 1.755 m | 0.005 |
+| 34824 | 2.957 m | 2.982 m | 0.025 |
+
+The residual is the map being one frame newer than the one the service sampled,
+which is 67 ms at 15 fps. A first attempt that skipped the off-axis correction
+disagreed by 20% and would have been the wrong thing to report as agreement.
+
+It costs 39 kB gzipped for a 320x180 map -- the depth stream runs at half the
+colour camera's width -- against a 38 kB frame, and only where a range was
+actually measured. A parked rover with the camera off keeps nothing.
+
 ## Nothing is refused for being outside the view, and that is deliberate
 
 Refusing a range drawn from a box the depth camera can barely see looked
@@ -88,16 +116,15 @@ suite now runs to the same number four times running.
 - M0 criterion 2's "unsupported patches are refused and counted separately" is
   now half met: they are counted and named per look and per thing. Criteria 3 and
   8 have a deployed remedy and no fresh evidence.
-- Counts: world_state 787 passed 0 failed over four runs, rover_daemon 856,
-  drive_web 582.
+- M0 criterion 2 also asked for the evidence a later question could be put to,
+  which the acceptance recording did not keep. It is kept now.
+- Counts: world_state 798 passed 0 failed, rover_daemon 856, drive_web 582.
 
 ## Next
 
-1. Save the depth evidence — each region's depth patch, or the frame's depth map
-   beside its JPEG — so a range remedy can be tested offline at all.
-2. Make a bare wall or window patch ineligible as somewhere worth driving to.
-3. Count splits, which nothing reports the way a merge is reported.
-4. Widen the recorded position uncertainty to what the drive measured: the
+1. Make a bare wall or window patch ineligible as somewhere worth driving to.
+2. Count splits, which nothing reports the way a merge is reported.
+3. Widen the recorded position uncertainty to what the drive measured: the
    sideways miss is flat at about 15 cm from half a metre out to five, while the
    rover records its own position as good to 4 cm.
-5. The navigation-restart demonstration, then the held-out drive.
+4. The navigation-restart demonstration, then the held-out drive.
