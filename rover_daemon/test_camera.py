@@ -200,6 +200,37 @@ def test_snapshot_splitting():
           [a, b])
 
 
+def test_high_resolution_diagnostic_snapshot():
+    """Calibration may ask for one bounded native-size frame through the owner."""
+    import rover_daemon
+
+    whole = b"\xff\xd8" + b"high resolution" + b"\xff\xd9"
+    rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/video0")
+    asked = []
+
+    def grab(frames=3, size=None):
+        asked.append((frames, size))
+        return [(whole, 1.0)], ""
+
+    rover._snapshot = grab
+    got = rover.call("camera_jpeg", {"width": 1280, "height": 960})
+    check("a calibration snapshot uses the native 4:3 mode", asked[-1], (3, (1280, 960)))
+    check("...and reports that size", (got["width"], got["height"]), (1280, 960))
+    check("...without claiming it came from the tracking feed", got["live"], False)
+
+    before = len(asked)
+    refused = rover.call("camera_jpeg", {"width": 2592, "height": 1944})
+    check("an unbounded diagnostic size is refused", refused["ok"], False)
+    check("...without opening the camera", len(asked), before)
+
+    rover._tracking.set()
+    refused = rover.call("camera_jpeg", {"width": 1280, "height": 960})
+    check("a high-resolution grab refuses to race tracking", refused["ok"], False)
+    check("...and says who owns the camera", "tracking" in refused["error"], True)
+    rover._tracking.clear()
+    rover.close()
+
+
 def test_two_pictures_at_once_do_not_share_the_camera():
     """Only one thing may have this camera, because the loser gets nothing.
 
@@ -455,6 +486,7 @@ TESTS = (
     test_default_camera,
     test_look,
     test_snapshot_splitting,
+    test_high_resolution_diagnostic_snapshot,
     test_two_pictures_at_once_do_not_share_the_camera,
     test_counting_faces_does_not_hold_the_board,
     test_the_local_detector_scales_its_boxes_back_up,

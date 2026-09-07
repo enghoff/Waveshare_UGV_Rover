@@ -75,6 +75,12 @@ CAMERA_IDLE_S = 20.0
 # How many frames a one-shot picture asks the camera for. Named here as well as in
 # track_face_pi because it is in two error messages the model reads out loud.
 SNAPSHOT_FRAMES = 3
+# The native 4:3 mode used only by the camera_jpeg diagnostic when a calibration
+# instrument asks for it. Normal pictures and tracking stay at self.size: changing
+# those would also change the detector and lens model. Keep this bounded rather
+# than turning a control call into an arbitrary high-bandwidth camera stream.
+DIAGNOSTIC_SNAPSHOT_SIZES = {(1280, 960)}
+
 
 class VisionLink:
     """The voice service's `/frame`, over one kept-open connection.
@@ -263,7 +269,8 @@ class RoverCamera:
         self._camera_used = time.monotonic()
         return camera
 
-    def _snapshot(self, frames: int = SNAPSHOT_FRAMES):
+    def _snapshot(self, frames: int = SNAPSHOT_FRAMES,
+                  size: tuple[int, int] | None = None):
         """A few whole frames from a camera that is shut again straight away.
 
         The seam the self-test replaces, and the reason it is a method rather than a
@@ -292,7 +299,7 @@ class RoverCamera:
         from track_face_pi import snapshot
 
         with self._camera_lock:
-            return snapshot(self.device, self.size, frames=frames)
+            return snapshot(self.device, size or self.size, frames=frames)
 
     def _close_camera(self) -> None:
         if self._camera is not None:
@@ -561,7 +568,7 @@ class RoverCamera:
         # is said once. See voice_chat/README.md.
         return {"ok": True, "image": sent["image"]}
 
-    def _tool_camera_jpeg(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+    def _tool_camera_jpeg(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """One frame, as base64 JPEG in the reply. A control call, not a model tool.
 
         `look` is the model's version and posts the picture to the model's host,
@@ -584,15 +591,38 @@ class RoverCamera:
         """
         if self.device is None:
             return {"ok": False, "error": "this rover has no camera attached"}
-        jpeg, why = self._whole_jpeg()
+        try:
+            size = (int(arguments.get("width", self.size[0])),
+                    int(arguments.get("height", self.size[1])))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "camera width and height must be integers"}
+        if size != self.size and size not in DIAGNOSTIC_SNAPSHOT_SIZES:
+            return {"ok": False,
+                    "error": f"diagnostic camera size {size[0]}x{size[1]} is not supported"}
+        if size != self.size and self._tracking.is_set():
+            return {"ok": False,
+                    "error": "a high-resolution snapshot is unavailable while face tracking "
+                             "owns the camera"}
+
+        if size == self.size:
+            jpeg, why = self._whole_jpeg()
+            live = self._tracking.is_set()
+        else:
+            got, why = self._snapshot(size=size)
+            jpeg = next((frame for frame, _at in reversed(got)
+                         if frame.startswith(b"\xff\xd8")), None)
+            if jpeg is None and got:
+                why = f"the camera gave {len(got)} frames that were not whole pictures"
+            live = False
         if jpeg is None:
-            return {"ok": False, "error": why}
-        width, height = self.size
+            error = why if size == self.size else f"the camera gave nothing: {why}"
+            return {"ok": False, "error": error}
+        width, height = size
         return {"ok": True, "bytes": len(jpeg), "width": width, "height": height,
                 # Which of the two paths it came off, because they mean different
                 # things: the loop's newest frame is what the camera is pointing at
                 # while it sweeps, and a fresh grab is a camera opened for this call.
-                "live": self._tracking.is_set(),
+                "live": live,
                 "pan": round(self.pan), "tilt": round(self.tilt),
                 "jpeg_base64": base64.b64encode(jpeg).decode("ascii")}
 
@@ -916,4 +946,3 @@ class RoverCamera:
             if (self._camera is not None and not self._tracking.is_set()
                     and time.monotonic() - self._camera_used > CAMERA_IDLE_S):
                 self._close_camera()
-

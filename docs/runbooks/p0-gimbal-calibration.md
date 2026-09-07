@@ -59,6 +59,25 @@ Face tracking, voice aiming and other gimbal users must remain off during captur
 The current calibration stays unchanged until development data supports a simple
 candidate and a separate held-out session validates it.
 
+The operator records the development campaign through the daemon, which remains the
+camera and UART owner:
+
+```bash
+python usb_cameras/calibrate_gimbal.py captures/p0-gimbal-YYYY-MM-DD/campaign \
+  --rover 192.168.1.80:8769 --size 1280x960
+```
+
+The tool first takes separate pan/tilt views to fit the fisheye from the printed
+geometry without treating servo commands as measurements. It then records three
+paired pan sweeps in alternating order, two stationary frames at each stop, raw
+corner detections and every command response. It writes progress after every stop,
+marks an interrupted run invalid, returns the camera to pan/tilt zero and never
+writes a deployed calibration constant. Reanalyse preserved frames with `--fit-only`.
+The reference resolves the expected error only when stationary duplicate pose
+differences have a median no greater than 0.25 degrees and a 95th percentile no
+greater than 0.75 degrees. A run outside that bound is reported as inconclusive,
+not as a servo failure or a calibration result.
+
 Stop immediately if the target or rover moves, the sheet lifts from its backing,
 the gimbal touches anything, or another process aims the camera. That run is kept
 and marked invalid rather than repeated until it happens to pass.
