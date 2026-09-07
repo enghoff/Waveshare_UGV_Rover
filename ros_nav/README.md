@@ -74,6 +74,27 @@ anchor is still unconfirmed, that fit searches around the pose the map was left
 at rather than around the anchor, which is what lets it undo a large error at
 all.
 
+**But the rover does check, and says so.** Every five minutes, while it is not
+driving, it matches the current scan against the whole map and reports the
+disagreement as `map_drift` in `nav_status` — shown on the console's navigation
+panel as `vs lidar`, reading `agrees`, `cannot say`, or `OFF BY 43 cm, 174 deg`.
+Nothing acts on it: it writes no pose, touches no graph and does not move the
+rover, and pressing "refit to map" is still what corrects one. The gap it fills
+is that nothing else asks. `slam_toolbox` corrects `map -> odom` only when it
+folds a scan into the graph, and it will not fold one until the rover has
+apparently moved `minimum_travel_distance` or turned `minimum_travel_heading`
+(0.2 m and 0.2 rad in `config/slam_toolbox.yaml`), so a parked rover has the
+walls in plain sight and consults nobody. On 2026-09-07 that let the believed
+heading creep 174 degrees round over a working day with `position` still reading
+"trusted", because slam_toolbox was confident in a match it had made hours
+earlier.
+
+The creeping itself is fixed at the source — `base_node.debias` integrates
+nothing at all while the wheels report the rover still, rather than subtracting
+an estimated gyro offset and leaving whatever the estimate was wrong by. The
+check remains, because "the rover cannot tell whether it is wrong" is a separate
+fault from "the rover drifts".
+
 Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
 treated as current positions.

@@ -285,6 +285,27 @@ def or_dash(value, spec="{}"):
     return "-" if value is None else spec.format(value)
 
 
+def drift_verdict(drift):
+    """What the lidar last said about where the rover thinks it is.
+
+    Three answers and they are genuinely different. "agrees" is the scan lying
+    on the map where the rover believes it is standing. "cannot say" is a scan
+    that fits nowhere well enough to be evidence -- a room with the furniture
+    moved, or a rover facing a wall a metre away -- and it is not an accusation.
+    Anything else is the rover being wrong about itself by a stated amount, which
+    is the one a person has to see.
+    """
+    if not drift:
+        return "-"
+    if not drift.get("trusted"):
+        return "cannot say"
+    if drift.get("agrees"):
+        return "agrees"
+    return "OFF BY {:.0f} cm, {:.0f} deg".format(
+        100.0 * abs(drift.get("off_m") or 0.0),
+        abs(drift.get("off_deg") or 0.0))
+
+
 # The fields of nav_status that get a permanent place on screen, in reading order.
 STATUS_FIELDS = (
     # Two lidar rows, because they mean different things and the difference is the
@@ -305,6 +326,15 @@ STATUS_FIELDS = (
     ("remaining_m", "to go", lambda v: or_dash(v, "{:.2f} m")),
     ("match_score", "match", lambda v: or_dash(v, "{:.3f}")),
     ("position_trusted", "position", lambda v: "trusted" if v else "NOT TRUSTED"),
+    # And what the lidar independently says about that position, which nothing
+    # else on this panel can tell you: `match` and `position` above are
+    # slam_toolbox's confidence in its own last match, and a rover it has not
+    # matched anything for in hours is confidently wrong rather than unsure. This
+    # is a fresh search of the whole map every few minutes while the rover is
+    # parked. It is the row that would have caught a rover sitting 174 degrees
+    # round for a working day on 2026-09-07, and it moves nothing -- "refit to
+    # map" is what acts on it.
+    ("map_drift", "vs lidar", drift_verdict),
     ("scans", "scans", lambda v: or_dash(v)),
     ("dropped_scans", "dropped", lambda v: or_dash(v)),
     # How many times this rover has had to replug its own lidar in software. Shown
@@ -320,6 +350,13 @@ STATUS_FIELDS = (
 # "False" among a dozen other rows.
 ALARM_WHEN_FALSE = ("lidar_live", "position_trusted")
 ALARM_WHEN_TRUE = ("estop",)
+# And the ones whose alarm is a question about the value rather than about
+# whether it is true. A lidar that cannot place the rover is not an alarm --
+# rooms change -- but a lidar that can, and puts it somewhere else, is.
+ALARM_WHEN = {
+    "map_drift": lambda v: bool(v) and bool(v.get("trusted"))
+                           and not v.get("agrees"),
+}
 
 def asked_for(move):
     """The request, in the units it was made in: what to put after "planning a

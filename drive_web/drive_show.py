@@ -7,7 +7,8 @@ from typing import Any
 
 import _paths  # noqa: F401 — console_model
 from console_model import (
-    ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES, BATTERY_STALE_S, Reply,
+    ALARM_WHEN, ALARM_WHEN_FALSE, ALARM_WHEN_TRUE, BATTERY_NOTES,
+    BATTERY_STALE_S, Reply,
     STATUS_FIELDS, WIFI_POLL_S, move_sentence, or_dash, wifi_verdict,
 )
 
@@ -79,7 +80,8 @@ class SessionShow:
         for key, label, fmt in STATUS_FIELDS:
             value = body.get(key)
             alarm = ((key in ALARM_WHEN_FALSE and not value)
-                     or (key in ALARM_WHEN_TRUE and bool(value)))
+                     or (key in ALARM_WHEN_TRUE and bool(value))
+                     or (key in ALARM_WHEN and ALARM_WHEN[key](value)))
             rows.append([label, fmt(value), bool(alarm)])
         self.status_rows = rows
         pose = body.get("pose") or {}

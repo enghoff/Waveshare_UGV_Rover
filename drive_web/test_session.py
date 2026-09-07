@@ -47,6 +47,35 @@ def test_web_console() -> None:
     check("and the pose reads as a place",
           session.pose_text, "x +1.00  y -0.50  +90.0 deg")
 
+    # What the lidar independently says about that pose, which is the row that
+    # would have caught the rover of 2026-09-07: 174 degrees round for a working
+    # day, with `position` above reading "trusted" the whole time because
+    # slam_toolbox was confident in a match it had made hours earlier.
+    base = {"ok": True, "lidar_live": True, "lidar_ok": True, "estop": False,
+            "position_trusted": True, "pose": {"x_m": 0.0, "y_m": 0.0,
+                                               "heading_deg": 0.0}}
+    session.show_status(dict(base, map_drift=None))
+    rows = dict((row[0], row) for row in session.status_rows)
+    check("with no check run yet the lidar row is a dash",
+          rows["vs lidar"][1], "-")
+    session.show_status(dict(base, map_drift={
+        "trusted": True, "agrees": True, "off_m": 0.02, "off_deg": 0.4}))
+    rows = dict((row[0], row) for row in session.status_rows)
+    check("a scan that agrees says so quietly",
+          (rows["vs lidar"][1], rows["vs lidar"][2]), ("agrees", False))
+    session.show_status(dict(base, map_drift={
+        "trusted": True, "agrees": False, "off_m": 0.43, "off_deg": -174.1}))
+    rows = dict((row[0], row) for row in session.status_rows)
+    check("a rover the scan puts somewhere else says how far, in capitals",
+          rows["vs lidar"][1], "OFF BY 43 cm, 174 deg")
+    check("...and is flagged, because a trusted position can still be wrong",
+          rows["vs lidar"][2], True)
+    session.show_status(dict(base, map_drift={
+        "trusted": False, "agrees": False, "off_m": 0.8, "off_deg": 30.0}))
+    rows = dict((row[0], row) for row in session.status_rows)
+    check("a scan that fits nowhere is not an accusation",
+          (rows["vs lidar"][1], rows["vs lidar"][2]), ("cannot say", False))
+
     # A status the rover could not answer must blank the numbers rather than leave
     # the last good ones on screen looking current.
     session.show_status({"ok": False, "error": "no navigator"})

@@ -489,6 +489,7 @@ class RosNavigator:
                     # to worry about where "there is nothing to confirm" is not.
                     "map_id": None, "map_kept": False, "map_settled": None,
                     "map_note": "", "map_saved_age_s": None, "map_fit": None,
+                    "map_drift": None,
                     "pwm": None, "lidar_ok": False, "lidar_live": False,
                     "lidar_port": self._lidar_port, "scan_age_s": None,
                     "lidar_resets": self._resets,

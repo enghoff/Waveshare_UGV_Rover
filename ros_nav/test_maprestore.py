@@ -635,6 +635,131 @@ def test_a_mapper_that_never_answers_is_reported_as_itself() -> None:
     check("...and lands nowhere, so no map is claimed from it", landed, None)
 
 
+class Fit(types.SimpleNamespace):
+    """What `refit.fit` hands back, as much of it as `check_drift` reads."""
+
+
+class Watcher:
+    """A node whose search answers whatever the test says, and whose every way
+    of changing something raises.
+
+    The point of `check_drift` is that it looks and does not touch, so the ways
+    of touching are booby-trapped rather than merely unused: `save_graph`,
+    `keep_pose` and `load_graph` are the three that write, and a test that only
+    checked the reported sentence would not notice one creeping back in.
+    """
+
+    def __init__(self, off_m, off_deg, ok=True, score=0.93, here=0.24):
+        self.map_lock = threading.RLock()
+        self.move_mutex = threading.Lock()
+        self.map_settled = False
+        self.map_restored = True
+        self.map_drift = None
+        self._map_drift_at = None
+        self._map_drift_said = False
+        self.said = []
+        self.warned = []
+        self.asked = []
+        self._answer = ({"moved_m": off_m, "turned_deg": off_deg,
+                         "score": score, "guess_score": here, "rival": 0.71,
+                         "took_s": 1.1},
+                        Fit(ok=ok, why="the room has changed", score=score,
+                            guess_score=here))
+
+    def map_measure(self, window_m=None, window_deg=None, min_score=None,
+                    around=None):
+        self.asked.append((window_m, window_deg, min_score, around))
+        answer, fit = self._answer
+        return dict(answer), fit, (0.0, 0.0, 0.0)
+
+    def get_logger(self):
+        return types.SimpleNamespace(info=self.said.append,
+                                     warn=self.warned.append)
+
+    def save_graph(self, *a, **k):
+        raise AssertionError("check_drift wrote the graph")
+
+    def keep_pose(self, *a, **k):
+        raise AssertionError("check_drift wrote the pose")
+
+    def load_graph(self, *a, **k):
+        raise AssertionError("check_drift moved the rover")
+
+    def check_drift(self):
+        return nav_map.NavMap.check_drift(self)
+
+    def drift_due(self):
+        return nav_map.NavMap.drift_due(self)
+
+
+def test_the_lidar_says_when_the_rover_is_wrong_without_moving_it() -> None:
+    """**A rover can be wrong about itself with no way to find out.**
+
+    Nothing consults the lidar while the rover is parked: slam_toolbox corrects
+    `map -> odom` only when it folds a scan into the graph, and it will not fold
+    one until the rover has apparently moved 0.2 m or turned 0.2 rad. So on
+    2026-09-07 the heading crept 174 degrees round over a working day with the
+    walls in plain sight the whole time, and the console's refit -- 45 degrees
+    wide -- could not reach the truth once it got there.
+
+    The check closes that, and it closes it by *noticing*. Moving the rover
+    unasked was considered and refused: a rover that corrects itself can also
+    relocate itself into the wrong one of two rooms that look alike, and that
+    trade was already decided the other way.
+    """
+    section("what the lidar says about where the rover thinks it is")
+    node = Watcher(off_m=0.43, off_deg=-174.1)
+    node.check_drift()
+    drift = node.map_drift
+    check("a rover half a turn out is reported as such",
+          drift["agrees"], False)
+    check("...with the disagreement in it", drift["off_deg"], -174.1)
+    check("...and both scores, which is what says which one to believe",
+          (drift["score"], drift["here_score"]), (0.93, 0.24))
+    check("...in a sentence that names the refit as what would act on it",
+          "a refit would move it" in drift["why"], True)
+    check("...said out loud once, because a person has to notice",
+          len(node.warned), 1)
+    check("and nothing was moved, written or confirmed by looking",
+          node.map_settled, False)
+
+    check("the search is the full circle, since it only has to be right about "
+          "a number", node.asked[0][1], nav_map.DRIFT_WINDOW_DEG)
+
+    node.check_drift()
+    check("a second look at the same disagreement says nothing again",
+          len(node.warned), 1)
+    node._answer[0].update({"moved_m": 0.02, "turned_deg": 0.4})
+    node.check_drift()
+    check("coming back into agreement is worth one line too", len(node.said), 1)
+    check("...and reads as agreement", node.map_drift["agrees"], True)
+
+    # A room that has changed is not a rover that has moved, and the difference
+    # is the whole reason `trusted` is reported next to `agrees`.
+    node = Watcher(off_m=0.8, off_deg=30.0, ok=False)
+    node.check_drift()
+    check("a scan that fits nowhere well is not called a disagreement",
+          node.map_drift["trusted"], False)
+    check("...and is not complained about, because it is not news about the "
+          "rover", node.warned, [])
+
+
+def test_the_lidar_is_asked_at_once_and_then_rarely() -> None:
+    """A rover that came up wrong should not wait five minutes to say so."""
+    section("when the lidar gets asked")
+    node = Watcher(off_m=0.0, off_deg=0.0)
+    check("the first check is due immediately", node.drift_due(), True)
+    node.check_drift()
+    check("...and having just run, is not due again", node.drift_due(), False)
+    node._map_drift_at -= nav_map.DRIFT_EVERY_S + 1.0
+    check("...until the gap has passed", node.drift_due(), True)
+
+    # The gap has to be long enough that the check is not the rover's main
+    # occupation: measured on the Orin, one full-circle search is 1.1 s.
+    check("and the gap is minutes rather than seconds",
+          nav_map.DRIFT_EVERY_S >= 60.0, True)
+
+
 TESTS = (
     test_a_restore_that_lands_is_a_restore,
     test_a_cold_boot_is_not_a_map_that_could_not_be_read,
@@ -650,4 +775,6 @@ TESTS = (
     test_a_fit_asked_for_looks_where_the_map_was_left,
     test_an_unsettled_map_is_never_written_over_the_saved_one,
     test_a_mapper_that_never_answers_is_reported_as_itself,
+    test_the_lidar_says_when_the_rover_is_wrong_without_moving_it,
+    test_the_lidar_is_asked_at_once_and_then_rarely,
 )

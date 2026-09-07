@@ -204,6 +204,39 @@ RESTORE_RETRY_S = 30.0
 STILL_M = 0.25
 STILL_DEG = 10.0
 
+#: How often the rover's belief about where it is gets checked against what the
+#: lidar can actually see, and how big a disagreement is worth saying out loud.
+#:
+#: **This measures and says so. It moves nothing.** Which is the whole design:
+#: the fit that moves the rover is something a person asks for, and this exists
+#: because a rover can be quietly wrong for hours with nobody watching -- which
+#: it was, on 2026-09-07, by 174 degrees. Noticing is not moving, and only one of
+#: those needs permission.
+#:
+#: Nothing else asks the question while the rover is parked, and that is why the
+#: gap existed. slam_toolbox corrects `map -> odom` only when it folds a scan
+#: into its graph, and it will not fold one until the rover has apparently
+#: travelled `minimum_travel_distance` or turned `minimum_travel_heading` -- 0.2
+#: m and 0.2 rad in config/slam_toolbox.yaml. A rover standing still crosses
+#: neither, so the walls are in plain sight and nobody consults them.
+#:
+#: Five minutes because the thing it is watching for is slow by nature, and the
+#: check is not free: a full-circle search is about 116,000 candidate poses and
+#: 1.1 seconds on the Orin, measured. Once every five minutes is under half a
+#: percent of one core.
+DRIFT_EVERY_S = 300.0
+DRIFT_M = 0.15
+DRIFT_DEG = 5.0
+
+#: The window it searches, which is deliberately far wider than a fit somebody
+#: asked for. It can afford to be, because nothing is applied: the risk a wide
+#: window carries is placing the rover confidently in the wrong one of two rooms
+#: that look alike, and here that costs a wrong sentence rather than a rover in
+#: the wrong room. A 45-degree window is exactly what could not see the fault
+#: this exists to catch.
+DRIFT_WINDOW_M = 1.5
+DRIFT_WINDOW_DEG = 180.0
+
 
 class NavMap:
     """The half of `NavBridge` that owns the map on disk."""
@@ -238,6 +271,15 @@ class NavMap:
         #: there is a restored map to have them.
         self.map_parked_at = None
         self.map_anchored_at = None
+        #: What the lidar last said about where the rover is, and when it was
+        #: asked. None until the first check has run. Reported, never acted on --
+        #: see `check_drift`.
+        self.map_drift = None
+        self._map_drift_at = None
+        #: Whether the last thing said out loud was a complaint, so that a rover
+        #: which is quietly wrong is logged once rather than every five minutes,
+        #: and coming back into agreement is logged too.
+        self._map_drift_said = False
         #: When the last attempt at a saved map began, and how many there have
         #: been. A saved map that will not load is asked for again rather than
         #: written over, so this is what spaces those attempts out and what lets
@@ -284,6 +326,12 @@ class NavMap:
             "map_saved_age_s": (None if self.map_saved_at is None
                                 else round(time.time() - self.map_saved_at, 1)),
             "map_fit": self.map_fit,
+            # What the lidar last said about where the rover is, which is a view
+            # and not an act: nothing has moved on the strength of it. `agrees`
+            # false with `trusted` true is the one worth reacting to -- the scan
+            # places the rover somewhere else and is confident about it, which
+            # means pressing refit. See `check_drift`.
+            "map_drift": self.map_drift,
         }
 
     def map_forgotten(self):
@@ -329,6 +377,12 @@ class NavMap:
                     # is -- see `SavedMap.restored`, which is the rule that keeps
                     # the parked pose from being overwritten by the anchor.
                     self.saved.restored(odom)
+                    continue
+                if self.drift_due():
+                    # Before the trustworthiness gate on purpose: a rover whose
+                    # place on the map nothing has confirmed is exactly the one
+                    # worth asking the lidar about. It writes nothing either way.
+                    self.check_drift()
                     continue
                 if not self.map_trustworthy():
                     continue
@@ -705,23 +759,115 @@ class NavMap:
         finally:
             self.move_mutex.release()
 
-    def map_fit_now(self, window_m=None, window_deg=None, min_score=None,
+    def drift_due(self):
+        """Whether it is time to ask the lidar again.
+
+        The first check is due as soon as there is a map to check against, so a
+        rover that came up wrong says so within a tick or two rather than in
+        five minutes.
+        """
+        if self._map_drift_at is None:
+            return True
+        return time.monotonic() - self._map_drift_at >= DRIFT_EVERY_S
+
+    def check_drift(self):
+        """Ask the lidar where the rover is, and say so. **Moves nothing.**
+
+        The rover can be wrong about its own heading and have no way to find
+        out. Nothing consults the lidar while it is parked -- see
+        `DRIFT_EVERY_S` for why -- so an error that creeps in creeps in
+        unopposed, and on 2026-09-07 that reached 174 degrees over a working day
+        with nobody watching. Odometry no longer manufactures that particular
+        error, since `base_node.debias` stopped integrating a still rover's gyro
+        the same day, but "the rover cannot tell" is a separate fault from "the
+        rover drifts", and this is the answer to it: the scan is matched against
+        the map every few minutes and the disagreement is reported.
+
+        **Reported, and nothing else.** No pose is written, no graph is touched,
+        `map_settled` is not moved and the rover is not driven -- the search runs
+        through `map_measure`, which has none of `map_fit_now`'s consequences.
+        Acting on it is a person pressing "refit to map", because a rover that
+        corrects itself unasked is a rover that can also relocate itself into
+        the wrong room unasked, and that trade was already decided.
+
+        Skipped rather than queued while a move is running, for `refit`'s reason:
+        a moving rover cannot be measured against the map, and the mapper is
+        folding scans and correcting the pose itself while it drives, so this is
+        watching the case that nothing else covers.
+        """
+        self._map_drift_at = time.monotonic()
+        if not self.move_mutex.acquire(blocking=False):
+            return
+        try:
+            with self.map_lock:
+                answer, fit, _where = self.map_measure(
+                    window_m=DRIFT_WINDOW_M, window_deg=DRIFT_WINDOW_DEG)
+        finally:
+            self.move_mutex.release()
+        if fit is None:
+            # No map, no scan or no pose yet. Not a disagreement, and saying
+            # nothing is right: the restore's own note already covers a stack
+            # that is still coming up.
+            self.map_drift = None
+            return
+        off_m, off_deg = answer["moved_m"], answer["turned_deg"]
+        agrees = abs(off_m) < DRIFT_M and abs(off_deg) < DRIFT_DEG
+        if not fit.ok:
+            why = ("the lidar cannot say where the rover is well enough to "
+                   "check it: %s" % (fit.why,))
+        elif agrees:
+            why = ("the scan agrees with where the rover thinks it is, to "
+                   "within %.0f cm and %.1f degrees" % (100.0 * abs(off_m),
+                                                        abs(off_deg)))
+        else:
+            why = ("the rover thinks it is %.0f cm and %.1f degrees from where "
+                   "the scan fits the map -- %.0f%% of it lies on a wall there "
+                   "against %.0f%% here, so a refit would move it"
+                   % (100.0 * abs(off_m), off_deg, 100.0 * fit.score,
+                      100.0 * fit.guess_score))
+        self.map_drift = {
+            "agrees": bool(fit.ok and agrees), "trusted": bool(fit.ok),
+            "off_m": off_m, "off_deg": off_deg, "score": answer["score"],
+            "here_score": answer["guess_score"], "rival": answer["rival"],
+            "took_s": answer["took_s"], "at": time.time(), "why": why,
+        }
+        # Said once when it starts disagreeing and once when it stops, because
+        # the point is a person noticing, and a line every five minutes for ever
+        # is how a log stops being read.
+        wrong = bool(fit.ok and not agrees)
+        if wrong != self._map_drift_said:
+            self._map_drift_said = wrong
+            if wrong:
+                self.get_logger().warn(why)
+            else:
+                self.get_logger().info(why)
+
+    def map_measure(self, window_m=None, window_deg=None, min_score=None,
                     around=None):
-        """The fit and its consequence, with the mutex already held."""
+        """Where the scan says the rover is. Returns `(answer, fit, where)`.
+
+        **The search and nothing else: this changes no state, moves no rover and
+        writes no file.** Split out from `map_fit_now` so that the periodic drift
+        check can ask the question without any of the consequences of answering
+        it -- `fit` is None when there was nothing to search, and `answer` then
+        says which of the three things was missing. `where` is the unrounded pose
+        the search was measured against, which the apply path needs and
+        `answer["was"]` has already rounded for reporting.
+        """
         with self._lock:
             grid_msg, scan = self.map_msg, self.scan_msg
         where = self.pose_deg()
         if grid_msg is None:
             return {"fitted": False,
-                    "why": "there is no map yet, so there is nothing to fit to"}
+                    "why": "there is no map yet, so there is nothing to fit to"}, None, None
         if scan is None:
             return {"fitted": False,
-                    "why": "no scan has arrived, so there is nothing to fit"}
+                    "why": "no scan has arrived, so there is nothing to fit"}, None, None
         if where is None:
             return {"fitted": False,
                     "why": "the rover has no position, so there is nowhere to "
                            "look for it -- this searches around where the rover "
-                           "thinks it is rather than the whole house"}
+                           "thinks it is rather than the whole house"}, None, None
         grid = frontier.Grid(
             grid_msg.info.width, grid_msg.info.height, grid_msg.info.resolution,
             grid_msg.info.origin.position.x, grid_msg.info.origin.position.y,
@@ -741,6 +887,15 @@ class NavMap:
         answer["took_s"] = round(time.monotonic() - started, 2)
         answer["was"] = {"x_m": round(where[0], 3), "y_m": round(where[1], 3),
                          "heading_deg": round(where[2], 1)}
+        return answer, fit, where
+
+    def map_fit_now(self, window_m=None, window_deg=None, min_score=None,
+                    around=None):
+        """The fit and its consequence, with the mutex already held."""
+        answer, fit, where = self.map_measure(window_m, window_deg, min_score,
+                                              around)
+        if fit is None:
+            return answer
         if not fit.ok or fit.settled:
             answer["fitted"] = False
             # A fit that agrees with where the rover already is has confirmed the
