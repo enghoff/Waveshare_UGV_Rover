@@ -258,9 +258,21 @@ The reason sits upstream of any gate. The box drawn round the picture had the
 chair in front of it inside the same box, so the depth patch may have sampled the
 chair — which means **a range measured through a box holding two objects at
 different depths makes the wrong merge look geometrically consistent.**
-Separating a region by its own depth before a range is taken from it is what this
-requirement now needs, and the recording is preserved so it can be tried without
-driving again.
+
+**What this needs is the region's mask, and the rover already computes one.** The
+region model is a segmentation model: its engine returns 32 mask coefficients per
+anchor alongside the box, and a 32-channel prototype tensor, and both are copied
+back from the GPU on every look before `perceive.py` keeps the boxes and drops
+the rest. Decoded on the three looks that caused this room's merges, the mask
+covers 54% to 74% of its box and the part it excludes is the chair — verified by
+eye, including one case of two chair backs in front of one picture where the mask
+comes out as a clean "T". It costs 6 ms against a 550 ms look. See
+[the masks entry](../progress/2026-09-07-masks-are-already-there.md).
+
+Sampling the range on the masked pixels, and computing the appearance vectors
+from the masked crop, are both testable on the preserved recording without
+driving again. That the mask separates the objects is shown; that it fixes the
+merge is not yet.
 
 <a id="r-ws-14"></a>
 ### R-WS-14 — A thing whose map was replaced is recognised when it is seen again
