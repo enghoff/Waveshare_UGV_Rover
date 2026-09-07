@@ -179,8 +179,10 @@ its travel**, against a same-direction floor of five hundredths. The OAK is bolt
 to the chassis, so nothing but the gimbal's own pointing can account for it. That
 alone is the whole of the 1.5 degrees a bearing here is believed to, and which way
 the gimbal last moved is recorded nowhere, so it cannot be corrected afterwards.
-Two more faults ride with it: a gain-like walk of about 7 per cent, which vanishes
-straight ahead and reaches about 2 degrees at pan 30, and a roll that moves with
+Two more faults ride with it: a gain-like walk somewhere between four and eight
+per cent -- the bench cannot pin it closer, because the room moves while it
+measures -- which vanishes straight ahead and reaches one to two degrees at pan 30,
+and a roll that moves with
 pan and that neither of the other two can produce. This component never aims the
 camera -- it captures wherever the gimbal is -- so its looks have happened to be
 straight ahead so far, but a face being tracked or a `look_at` puts them out at

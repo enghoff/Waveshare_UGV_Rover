@@ -194,9 +194,13 @@ class Mount:
 #: thirty times the floor, and not a property of pan 0.
 #:
 #: **Three separable faults, separated by arithmetic rather than by a story.**
-#: Backlash is the offset above. Riding under it the fitted yaw walks about 0.07
-#: degrees per degree of pan, a gain-like error near 7 per cent, in the region of
-#: the 10 the known pan under-travel implies. And the roll walks about 0.09
+#: Backlash is the offset above. Riding under it the fitted yaw walks with pan, a
+#: gain-like error in the region of the 10 per cent the known under-travel
+#: implies -- but far less well determined than the backlash: over the ten runs
+#: of that sitting the slope ranges 3.7 to 7.6 per cent, mean 5.6, sd 1.4. A
+#: quarter of its own value, because it is a difference *across* positions while
+#: the scene drifts about a degree, where the backlash compares two runs minutes
+#: apart. Read it as "four to eight per cent", not as a number. And the roll walks about 0.09
 #: degrees per degree, which neither of those can do, a pan gain error being
 #: unable to move roll at all. A pan axis leaning fore-and-aft would, and the
 #: direction is pinned by pitch staying flat at 2.1 throughout -- a sideways lean
@@ -231,8 +235,9 @@ class Mount:
 #: wherever the camera is, which at pan 0 is already the whole of the 1.5 a
 #: bearing here is believed to, and which way the gimbal last moved is recorded
 #: nowhere so it cannot be corrected afterwards. The gain vanishes at pan 0 and
-#: grows from there -- about 2 degrees at pan 30. So a bearing straight ahead can
-#: be out by 1.5 against a budget of 1.5, and one at wide pan by about 3.5.
+#: grows from there -- 1.1 to 2.3 degrees at pan 30 across the measured range of
+#: slopes, about 1.7 at the mean. So a bearing straight ahead can be out by 1.5
+#: against a budget of 1.5, and one at wide pan by roughly 3.
 #:
 #: Measure the pan servo commanded-against-actual first -- both signs, several
 #: magnitudes, both approach directions, and no single gain fitted to it. It is

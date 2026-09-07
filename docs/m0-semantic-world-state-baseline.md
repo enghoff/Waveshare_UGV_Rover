@@ -263,10 +263,18 @@ a finding looked settled is exactly what outlives the finding.
 
 Within a single sweep the fitted yaw also walks steadily with pan, the same way in
 both directions -- ascending 2.65, 3.20, 4.35 across -20, 0, +20 and descending
-0.95, 1.89, 2.85. That is about 0.07 degrees of yaw per degree of pan, a **gain-like
-error near 7 per cent**, which sits close to the 10 per cent the known under-travel
-implies. Backlash is an offset; this is a slope; they are different faults and the
-sweep shows both at once. A two-point calibration would have averaged them into one
+0.95, 1.89, 2.85. That is a **gain-like error**, and unlike the backlash it is
+poorly determined. Taken over all ten runs of the sitting the slope ranges from 3.7
+to 7.6 per cent, mean 5.6 with a standard deviation of 1.4 -- so a quarter of its
+own value, because it is a difference *across* positions in a scene that drifts
+about a degree over a sitting, where the backlash is a difference between two runs
+minutes apart. It is real and it is in the region of the 10 per cent the known
+under-travel implies, but the honest figure is "four to eight" rather than a number.
+(An earlier draft of this document said 7 per cent throughout; that was the
+descending runs of one block, which happen to sit at the top of the range.)
+
+Backlash is an offset; this is a slope; they are different faults and the sweep
+shows both at once. A two-point calibration would have averaged them into one
 number that fits neither.
 
 The roll is a third thing and neither of the first two can produce it: it walks
@@ -312,10 +320,10 @@ That distinction decides how bad the error is, because the two faults behave
 differently with pan. Backlash is flat: about 1.5 degrees wherever the camera is,
 which at pan 0 is already the whole of the 1.5 a bearing here is believed to, and
 which way the gimbal last moved is recorded nowhere, so it cannot be corrected
-after the fact. The gain error vanishes at pan 0 and grows from there -- at 7 per
-cent it is about 2 degrees at pan 30. **So a bearing taken straight ahead can be
-out by 1.5 degrees against a budget of 1.5, and one taken at wide pan by about 3.5
-against the same budget.**
+after the fact. The gain error vanishes at pan 0 and grows from there -- across the
+measured range of slopes it is 1.1 to 2.3 degrees at pan 30, about 1.7 at the mean.
+**So a bearing taken straight ahead can be out by 1.5 degrees against a budget of
+1.5, and one taken at wide pan by roughly 3 against the same budget.**
 
 That is worth holding next to the standing measurement that half of every bearing
 this rover records already falls outside the accuracy the resolver is told to
@@ -327,8 +335,9 @@ Backlash is harder, and the tilt does not touch bearing at all.
 The order of work follows from the arithmetic. **Measure the pan servo's commanded
 angle against its actual one first** -- at both signs, several magnitudes, and
 approached from both directions, without fitting a single gain to it. That settles
-the 7 per cent, and it is also the thing that has to be known before the roll curve
-can be read at all. The fisheye model and the pan-axis tilt are both still open
+the gain -- which the bench cannot pin down better than "four to eight per cent"
+because the scene moves under it -- and it is also the thing that has to be known
+before the roll curve can be read at all. The fisheye model and the pan-axis tilt are both still open
 behind it.
 
 **`oak.MOUNT` has deliberately not been changed.** Adopting the pan-0 fit would
@@ -374,7 +383,8 @@ are honest depth readings of the wrong thing.
 7. **validate the remaining camera-to-rover geometry** -- **no.** The OAK mount
    does not reproduce its own 2026-09-04 measurement, and the gimbal it is
    measured against carries about 1.5 degrees of backlash at every angle plus a
-   pan-dependent gain error of about 7 per cent. Neither is corrected, and the
+   pan-dependent gain error somewhere between 4 and 8 per cent. Neither is
+   corrected, and the
    mount constant cannot honestly be re-measured until the servo is.
 
 ## What has to happen before Phase 1
