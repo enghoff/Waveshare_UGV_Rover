@@ -182,7 +182,8 @@ def path_over(seen, from_cell, to_cell):
     return route
 
 
-def run(room, start, min_frontier_m=frontier.MIN_FRONTIER_M, verbose=True):
+def run(room, start, min_frontier_m=frontier.MIN_FRONTIER_M, verbose=True,
+        max_frontier_m=frontier.MAX_FRONTIER_M):
     """Explore the room from `start`, and report what happened.
 
     The loop is `explore` in `nav_bridge.py` with the ROS taken out: choose,
@@ -191,7 +192,8 @@ def run(room, start, min_frontier_m=frontier.MIN_FRONTIER_M, verbose=True):
     about the rover.
     """
     seen = blank_map(room)
-    explorer = frontier.Explorer(min_frontier_m=min_frontier_m)
+    explorer = frontier.Explorer(min_frontier_m=min_frontier_m,
+                                 max_frontier_m=max_frontier_m)
     col, row = room_cell(room, start)
     reveal(room, seen, col, row)
 
@@ -342,6 +344,10 @@ def main(argv=None):
     ap.add_argument("--resolution", type=float, default=0.05)
     ap.add_argument("--min-frontier", type=float,
                     default=frontier.MIN_FRONTIER_M)
+    ap.add_argument("--max-frontier", type=float,
+                    default=frontier.MAX_FRONTIER_M,
+                    help="the most boundary one goal may claim, in metres; "
+                         "a large number leaves every clump uncut")
     ap.add_argument("--picture", help="write PNGs to this path prefix")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
@@ -368,7 +374,8 @@ def main(argv=None):
           "%.2f, %.2f" % (args.map, room.width * room.resolution,
                           room.height * room.resolution, len(floor),
                           start[0], start[1]))
-    result = run(room, start, args.min_frontier, verbose=not args.quiet)
+    result = run(room, start, args.min_frontier, verbose=not args.quiet,
+                 max_frontier_m=args.max_frontier)
     known, total = coverage(room, result["seen"])
 
     print("%s after %d goals: %d arrived, %d unreachable, %.1f m driven"

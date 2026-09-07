@@ -103,6 +103,13 @@ Exploration chooses reachable frontiers and abandons a goal that makes no useful
 progress. It stops when the time budget expires, no useful frontier remains, or
 the user cancels it. Status reports why it stopped and how much it drove.
 
+A frontier is written off once the rover has driven to it, so no frontier may be
+longer than one arrival can account for. Boundaries over `MAX_FRONTIER_M` are cut
+into pieces with a goal each. Without that, a rover ringed by unknown ground
+treats the whole rim as one frontier, is sent to its centre — which is where the
+rover already is — and retires the lot on arriving without having moved.
+`fixtures/ringed-2026-09-07.json.gz` is a map that did exactly that.
+
 ## Known limits
 
 - The local controller can aim around a corner into an inflated wall. Shorter
