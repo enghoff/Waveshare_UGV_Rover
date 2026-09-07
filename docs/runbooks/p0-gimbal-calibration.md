@@ -187,3 +187,14 @@ every offset component. Adopt the frozen development transform only after that p
 If board coverage or agreement fails, report the result as inconclusive and adjust
 the measurement geometry; do not tune thresholds or average a biased fit into the
 runtime calibration.
+
+## Current OAK mount result
+
+The replacement held-out set was captured at a 0.686 m gimbal-to-target distance,
+0.130 m beyond development. Coverage, reprojection, offsets, runtime lens-model error
+and the comparison with the frozen development median all passed. Its internal yaw
+range was 0.863 degrees, above the unchanged 0.75-degree repeatability limit, so the
+overall result is inconclusive and no mount transform is adopted. See the
+[P0 calibration handover](../progress/2026-09-07-p0-calibration-handover.md) for the
+measurements and next steps. Do not move the rover or repeat the capture until the
+saved 25 pair estimates have been attributed by source frame.
