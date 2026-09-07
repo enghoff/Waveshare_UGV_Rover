@@ -85,6 +85,8 @@ def debias_run(samples, gain=0.001, settle=1.0, still_ticks=0.5):
             still_for += dt
             if still_for > settle:
                 bias = rate if bias is None else bias + gain * (rate - bias)
+                last_ticks = ticks
+                continue                # still, so it has not turned at all
         else:
             still_for = 0.0
         total += d_yaw if bias is None else d_yaw - bias * dt
@@ -107,8 +109,28 @@ def test_gyro_bias():
     check("the offset is found", bias is not None, True)
     check("...to within a twentieth of a degree per second",
           math.degrees(bias), math.degrees(drift), tolerance=0.05)
-    check("...and most of the invented rotation is removed",
-          abs(math.degrees(total)) < abs(math.degrees(raw)) * 0.25, True)
+    check("...and none of the invented rotation reaches the pose",
+          abs(math.degrees(total)) < 1.0, True)
+
+    # **The fault of 2026-09-07, and the reason a still interval contributes
+    # nothing rather than being corrected.** Subtracting an estimate leaves a
+    # rate, and a rate has all day. On the rover the estimate sat 0.01 deg/s
+    # above the still rate it was tracking, which is 36 degrees an hour, and a
+    # working day parked left the heading 174 degrees round -- past saving by a
+    # refit, whose window is 45 degrees wide.
+    #
+    # Modelled here as the estimate being wrong by that much and staying wrong,
+    # which is what a slow average does against an offset that drifts with
+    # temperature. What is checked is that being wrong costs nothing while the
+    # rover is still.
+    lag_dps, hours = 0.01, 8
+    check("an estimate %.2f deg/s out invents %.0f degrees in %d hours parked"
+          % (lag_dps, lag_dps * 3600 * hours, hours),
+          lag_dps * 3600 * hours > 170.0, True)
+    parked = [(drift * dt, dt, 100.0, False) for _ in range(18 * 600)]
+    total, _ = debias_run(parked)
+    check("...while a still rover that integrates nothing invents none of it, "
+          "however wrong the estimate is", abs(math.degrees(total)) < 1.0, True)
 
     # A real turn must survive. The rover is commanded and the wheels are moving,
     # so nothing is learned during it and the rotation passes through.

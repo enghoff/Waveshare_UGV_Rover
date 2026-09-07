@@ -446,12 +446,12 @@ def test_the_graph_is_written_for_driving_rather_than_for_time():
     rule, one layer down.
 
     And it is the wheels that are asked, not the rover's belief about where it is
-    on the map. Those differ for a parked rover: `map -> odom` is only corrected
-    when a scan is folded in, so between scans the gyro's residual bias walks the
-    believed heading round at 0.8 degrees a minute -- measured on the rover -- and
-    half an hour of standing still would otherwise look like a rover that had
-    turned twenty degrees and get the drifted heading written down as where the
-    map was left.
+    on the map. `map -> odom` is only corrected when a scan is folded in, which
+    needs motion, so the belief carries whatever has accumulated since the last
+    one. On 2026-09-05 that was a parked rover's heading walking 0.8 degrees a
+    minute, so half an hour of standing still looked like a rover that had turned
+    twenty degrees and got the drift written down as where the map was left;
+    `base_node.debias` stopped that at the source on 2026-09-07.
     """
     section("when the graph is worth writing again")
     with tempfile.TemporaryDirectory() as directory:

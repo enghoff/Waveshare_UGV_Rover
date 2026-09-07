@@ -196,11 +196,11 @@ RESTORE_RETRY_S = 30.0
 #: That pose is a prior about a rover standing where somebody left it, and it
 #: stops being one the moment the rover drives: a fit asked for after a lap of
 #: the house has to look around where the rover is now, wrong as that may be. A
-#: quarter of a metre and ten degrees is well above what a parked rover's
-#: believed pose drifts with the gyro over the minutes it takes somebody to open
-#: the console, and well below a deliberate move. A rover that was driven while
-#: badly anchored is past what any window can find, and the wide-window call in
-#: the README is what it needs.
+#: quarter of a metre and ten degrees is comfortably more than a parked rover's
+#: pose moves at all -- since 2026-09-07 `base_node.debias` integrates nothing
+#: while the wheels are still, so it does not move -- and comfortably less than a
+#: deliberate move. A rover that was driven while badly anchored is past what any
+#: window can find, and the wide-window call in the README is what it needs.
 STILL_M = 0.25
 STILL_DEG = 10.0
 

@@ -502,9 +502,38 @@ class BaseNode(Node):
         with temperature over minutes and a fast one would chase the noise it is
         supposed to be averaging out.
 
+        ## While it is still, it has not turned, and that is not the same as
+        ## subtracting an estimate
+
+        **Correcting a still rover's rotation is not good enough; the answer is
+        that there is no rotation.** Subtracting an estimate leaves whatever the
+        estimate is wrong by, and that residual is a rate, so it integrates
+        without bound while the rover does nothing at all. Measured on the rover
+        on 2026-09-07, hours after boot with the estimate converged and still
+        updating: the bias read 0.443 deg/s against a still rate of about 0.433,
+        and the ten-thousandths left over walked the believed heading 0.6 degrees
+        a minute -- 36 an hour, and after a working day parked the rover was
+        174 degrees round from where it stood. The console's refit could not save
+        it either, because a search 45 degrees wide around a heading half a turn
+        out has the truth nowhere inside it. That is the fault this paragraph
+        exists to prevent, and no amount of tuning the average prevents it: a
+        percent of 0.44 deg/s is still a rate.
+
+        So past the settle grace, a still interval contributes nothing. The bias
+        is still learned there, because it is what corrects the intervals the
+        rover is *moving* through, and it is still worth having for those.
+
+        **What this gives up**, and it is worth being plain about: a rover rotated
+        while its wheels do not turn -- carried, or lifted and set down facing
+        another way -- is no longer noticed. Dead reckoning never measured that
+        rover's *position* either, since the encoders see nothing, so this takes
+        away half of a measurement that was already missing rather than a
+        working one. Being moved while switched on is what the refit is for.
+
         This is what `robot_localization` would do properly, with a filter that
-        also knows about the accelerometer. Until that is fitted, this is the part
-        of it that matters.
+        also knows about the accelerometer; a zero-velocity update is one of the
+        things it would do. Until that is fitted, this is the part of it that
+        matters.
         """
         if not dt or dt <= 0:
             return d_yaw
@@ -523,6 +552,10 @@ class BaseNode(Node):
                 else:
                     self._bias += BIAS_GAIN * (rate - self._bias)
                 self._bias_samples += 1
+                # And it has not turned, so nothing is integrated. See the
+                # docstring: what is left over from subtracting an estimate is a
+                # rate, and a rate turns a parked rover right round in a day.
+                return 0.0
         else:
             self._still_for = 0.0
         if self._bias is None:

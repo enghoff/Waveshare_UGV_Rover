@@ -289,13 +289,14 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
         moves in steps whenever slam_toolbox matches a scan.
 
         The trap is that slam_toolbox only adds a scan once the rover has
-        travelled `minimum_travel_distance`, so a rover standing still
-        accumulates gyro drift in `odom` with nothing correcting it -- measured
-        here at about 0.1 deg/s while the bias estimate is still converging. The
-        correction for all of it then lands in one step on the first scan after
-        the rover moves. Measured in the map frame, a 0.3 m straight drive
-        therefore reported 19 degrees of turn: the drive was being charged with
-        several minutes of standing still.
+        travelled `minimum_travel_distance`, so whatever `odom` accumulates
+        between scans has nothing correcting it, and the correction for all of it
+        lands in one step on the first scan after the rover moves. Measured in
+        the map frame, a 0.3 m straight drive reported 19 degrees of turn: the
+        drive was being charged with several minutes of standing still, which at
+        the time was gyro drift running at about 0.1 deg/s. `base_node.debias`
+        integrates nothing while the wheels are still as of 2026-09-07, so
+        standing still no longer contributes to that; driving still does.
 
         So a move is measured against dead reckoning, which is what the rover did
         relative to itself, and the map frame is used for where the rover *is*.

@@ -110,12 +110,13 @@ SAVE_AFTER_DEG = 20.0
 #: within, and a second is below the time it takes this chassis to cross that.
 #:
 #: **Dead reckoning gates this exactly as it gates the graph**, for the reason
-#: `due` gives at length: a parked rover's believed heading walks with the gyro's
-#: residual bias, and gating on the belief would write that drift down as though
-#: the rover had turned. Three degrees rather than twenty only because this is
-#: the cheap write; a rover left standing still crosses it on drift alone every
-#: few minutes, and what lands is the same drifted heading the graph's own gate
-#: would have recorded later.
+#: `due` gives at length: it is the wheels that say whether the rover has moved,
+#: and the belief is not. Three degrees rather than twenty only because this is
+#: the cheap write. Until 2026-09-07 a rover left standing still crossed three
+#: degrees on gyro drift alone every few minutes and had the drifted heading
+#: written down as where it was parked; `base_node.debias` now integrates nothing
+#: at all while the wheels are still, so a parked rover crosses neither of these
+#: and the note it was parked with is the note the next boot reads.
 POSE_EVERY_S = 1.0
 POSE_AFTER_M = 0.10
 POSE_AFTER_DEG = 3.0
@@ -365,15 +366,22 @@ class SavedMap(object):
         """Whether it is worth writing the graph again, given what the wheels did.
 
         **Dead reckoning and not the rover's belief about where it is on the map,
-        and that distinction was measured rather than reasoned about.** A parked
-        rover's map pose is not still: `map -> odom` is only corrected when the
-        mapper folds in a scan, which needs motion, so between scans the gyro's
-        residual bias walks the believed heading round. Measured on the rover on
-        2026-09-05, standing still: 0.8 degrees a minute, and no position drift at
-        all. Judged on that, a rover left alone for half an hour would look like a
-        rover that had turned twenty degrees, and the graph would be written with
-        a heading that had drifted rather than one the rover had. The wheels are
-        the honest witness -- they are also what slam_toolbox counts nodes by.
+        and that distinction was measured rather than reasoned about.** `map ->
+        odom` is only corrected when the mapper folds in a scan, which needs
+        motion, so the belief carries whatever has accumulated since the last one
+        and hands it over in a step on the first scan after the rover moves --
+        measured in the map frame, a 0.3 m straight drive reported 19 degrees of
+        turn. The wheels are the honest witness, and they are also what
+        slam_toolbox counts nodes by.
+
+        On 2026-09-05 that accumulation was a parked rover's heading walking at
+        0.8 degrees a minute, so a rover left alone for half an hour looked like
+        one that had turned twenty degrees, and the graph was written with the
+        drift rather than with a turn. `base_node.debias` stopped that at the
+        source on 2026-09-07 by integrating nothing while the wheels are still,
+        which is why a parked rover now crosses neither gate. This is still asked
+        of the wheels, because the reason to prefer them was never only the
+        drift.
 
         Answers False on no reading at all: with nothing to say the rover has
         moved, the older graph is the better one to keep.
