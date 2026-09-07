@@ -853,7 +853,12 @@ class RoverWorld:
             return {"ok": False, "error": why}
         store = self._world_store()
         entities = store.entities()
+        # Whether each thing has ever had its distance measured, and where it
+        # has not, whether looking again could ever change that. One query for
+        # the whole list; see `WorldStore.ranging`.
+        ranging = store.ranging([entity["id"] for entity in entities])
         for entity in entities:
+            entity["ranging"] = ranging.get(entity["id"])
             observations = store.observations(entity["id"], limit=RAY_LIMIT)
             # With the placement, each ray also carries how it stands to it --
             # the range, how far off the bearing is and whether that is inside
@@ -885,6 +890,7 @@ class RoverWorld:
         if entity is None:
             return {"ok": False, "error": f"no such entity: {entity_id}"}
         observations = store.observations(entity_id, limit=DETAIL_LIMIT)
+        entity["ranging"] = store.ranging([entity_id]).get(entity_id)
         return {"ok": True, "entity": entity, "observations": observations,
                 "rays": world_view.rays(observations, self.camera_fov_deg,
                                         limit=SELECTED_RAY_LIMIT,

@@ -85,6 +85,14 @@ FRAME_MAX_AGE_S = 2.0
 MAX_APART_S = 0.30
 
 
+#: The reasons a box comes back without a range, as `Ranged.absent` holds
+#: them. Written once here because the store keeps these words and a reader
+#: counting them later has to be able to match on something stable.
+OUTSIDE_VIEW = "outside the depth camera's view"
+NOTHING_TO_MEASURE = "nothing in the box could be measured"
+NO_DEPTH_ANSWER = "the depth camera did not answer"
+
+
 @dataclass
 class Ranged:
     """How far away one box is, as measured.
@@ -119,6 +127,19 @@ class Ranged:
     #: both are time the rover was moving through between the two halves of one
     #: measurement.
     apart_s: float = 0.0
+    #: Why there is no range, in the words the console and the store keep. Empty
+    #: whenever there is one.
+    #:
+    #: **"No range" is three different situations and they were indistinguishable
+    #: until this existed.** The depth camera sees about 70 degrees across where
+    #: the gimbal sees 99, so roughly a third of a centred frame has no depth
+    #: behind it at all -- and a region out there was never going to be measured,
+    #: however many times the rover looks. That is a fact about the rover and not
+    #: about the thing, and it is why a named object sat in the store through a
+    #: whole drive with no distance and nothing able to say why. The other two
+    #: are ordinary: a box the camera could see into and found nothing in, and a
+    #: service that was not answering.
+    absent: str = ""
 
 
 @dataclass

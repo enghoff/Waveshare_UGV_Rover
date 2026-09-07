@@ -32,6 +32,7 @@ import uuid
 from typing import Any
 
 from . import view
+from .depth_client import OUTSIDE_VIEW
 from .schema import ADDED_COLUMNS, INFERENCE_COLUMNS, SCHEMA
 
 #: Where the database and the frames go. Overridable so the tests can run against
@@ -446,6 +447,53 @@ class WorldStore:
             found.append(entity)
         return found
 
+    def ranging(self, entity_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """How each thing's looks stand for distance, in one query for all of them.
+
+        **The question this exists to answer is "has this thing ever had its
+        distance measured, and if not why not".** On the acceptance drive of
+        2026-09-07 a named object the owner had put out went a whole drive
+        without one and nothing anywhere could say so: the per-look counts were
+        reported and then thrown away, and an entity carried no memory of them.
+
+        `never_ranged` and `only_outside_view` are the two worth acting on, and
+        they mean different things. The first says no look has produced a
+        distance yet; the second says no look ever will from where the rover has
+        been standing, because the depth camera's view is much narrower than the
+        one the boxes are drawn on -- so another look from the same place is
+        wasted and a different viewpoint is the only remedy.
+        """
+        found = {entity_id: {"looks": 0, "ranged": 0, "outside_view": 0,
+                             "unmeasurable": 0}
+                 for entity_id in entity_ids if entity_id}
+        if not found:
+            return {}
+        names = list(found)
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT entity_id, range_m, range_absent FROM observations"
+                f" WHERE entity_id IN ({','.join('?' * len(names))})",
+                names).fetchall()
+        for row in rows:
+            mine = found.get(row["entity_id"])
+            if mine is None:
+                continue
+            mine["looks"] += 1
+            if row["range_m"] is not None:
+                mine["ranged"] += 1
+            elif row["range_absent"] == OUTSIDE_VIEW:
+                mine["outside_view"] += 1
+            else:
+                mine["unmeasurable"] += 1
+        for mine in found.values():
+            mine["never_ranged"] = mine["looks"] > 0 and mine["ranged"] == 0
+            # Every look that failed did so for the one reason no amount of
+            # looking again from here can fix.
+            mine["only_outside_view"] = (
+                mine["never_ranged"]
+                and mine["outside_view"] == mine["looks"])
+        return found
+
     def merge(self, keep_id: str, gone_id: str) -> dict[str, Any]:
         """Two rows that are one thing become one row, keeping all the evidence.
 
@@ -836,9 +884,15 @@ class WorldStore:
                 # goes on recording, and a range is a second measurement that
                 # some looks have and most do not.
                 range_m = range_sigma_m = None
+                range_absent = None
                 if index < len(ranged) and ranged[index] is not None:
                     range_m = getattr(ranged[index], "range_m", None)
                     range_sigma_m = getattr(ranged[index], "sigma_m", None)
+                    # And when there is none, why -- because "never measured"
+                    # and "can never be measured from anywhere the rover has
+                    # stood" are different facts about a thing.
+                    range_absent = (getattr(ranged[index], "absent", "")
+                                    or None) if range_m is None else None
                 # A row carries no name, no scene sentence, no prompt version and
                 # no warning about any of them. Those four columns belonged to a
                 # language model describing the picture in words; nothing writes
@@ -853,11 +907,11 @@ class WorldStore:
                     " bearing_deg, span_deg, origin_sigma_m,"
                     " bearing_sigma_deg,"
                     " elevation_deg, elevation_span_deg,"
-                    " range_m, range_sigma_m, camera,"
+                    " range_m, range_sigma_m, range_absent, camera,"
                     " region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from,"
                     " dino_alone_blob, mask_share)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
@@ -867,7 +921,7 @@ class WorldStore:
                      bearing, span, capture.get("origin_sigma_m"),
                      capture.get("bearing_sigma_deg"),
                      elevation, elevation_span,
-                     range_m, range_sigma_m, camera,
+                     range_m, range_sigma_m, range_absent, camera,
                      region_source or None,
                      getattr(item, "region_score", None) or None,
                      getattr(item, "dino", b"") or None,
@@ -1010,6 +1064,7 @@ def _shown(entity: dict[str, Any]) -> dict[str, Any]:
     """
     blob = entity.pop("exemplars", None)
     entity["exemplar_count"] = 0 if not blob else max(1, len(blob) // 1536)
+    entity.pop("exemplars_alone", None)
     text = entity.get("placement_json")
     try:
         entity["placement"] = json.loads(text) if text else None

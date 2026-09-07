@@ -527,8 +527,94 @@ def test_the_masked_exemplars_are_kept_in_their_own_column() -> None:
               store.exemplars(entity, width=32, alone=True)[0], masked)
         store.close()
 
+def test_a_thing_remembers_whether_its_distance_was_ever_measured() -> None:
+    """The question the acceptance drive of 2026-09-07 could not answer.
+
+    A named object went a whole drive with no distance and nothing anywhere
+    could say so, because the per-look counts were reported and thrown away.
+    Two silences are recorded now and they mean different things: a box the
+    depth camera looked into and found nothing in may work next time, and a box
+    outside its view never will from where the rover was standing.
+    """
+    from world_state.depth_client import (NOTHING_TO_MEASURE, OUTSIDE_VIEW,
+                                          Ranged)
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        entity = store.create_entity("object")
+        for ranged in (Ranged(absent=OUTSIDE_VIEW),
+                       Ranged(absent=OUTSIDE_VIEW),
+                       Ranged(range_m=1.5, sigma_m=0.1)):
+            store.record([a_sighting()], capture={"frame_id": "f"},
+                         ranges=[ranged], region_source="yoloe")
+        rows = [row["id"] for row in store.observations(limit=9)]
+        store.attach(entity, rows, "for the test")
+
+        seen = store.ranging([entity])[entity]
+        check("it counts the looks that carried a distance",
+              (seen["looks"], seen["ranged"]), (3, 1))
+        check("...and how many were somewhere the depth camera cannot see",
+              seen["outside_view"], 2)
+        check("...so a thing with one distance is not 'never ranged'",
+              seen["never_ranged"], False)
+        store.close()
+
+
+def test_a_thing_only_ever_seen_outside_the_depth_view_says_so() -> None:
+    """And that is the case worth acting on differently.
+
+    Looking again from the same place cannot help, because the camera's view is
+    where the region was not. A different viewpoint is the only remedy, and
+    something choosing where to go next needs to be able to tell that from a
+    thing that simply has not been measured yet.
+    """
+    from world_state.depth_client import (NOTHING_TO_MEASURE, OUTSIDE_VIEW,
+                                          Ranged)
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        blind = store.create_entity("object")
+        dark = store.create_entity("object")
+        for entity, absent in ((blind, OUTSIDE_VIEW), (dark, NOTHING_TO_MEASURE)):
+            before = {row["id"] for row in store.observations(limit=99)}
+            for _ in range(2):
+                store.record([a_sighting()], capture={"frame_id": "f"},
+                             ranges=[Ranged(absent=absent)],
+                             region_source="yoloe")
+            fresh = [row["id"] for row in store.observations(limit=99)
+                     if row["id"] not in before]
+            store.attach(entity, fresh, "for the test")
+
+        seen = store.ranging([blind, dark])
+        check("a thing only ever seen where the depth camera cannot look "
+              "says another look from here is pointless",
+              seen[blind]["only_outside_view"], True)
+        check("...while one the camera looked at and could not measure does not",
+              seen[dark]["only_outside_view"], False)
+        check("...though neither has ever been ranged",
+              (seen[blind]["never_ranged"], seen[dark]["never_ranged"]),
+              (True, True))
+        store.close()
+
+
+def test_the_reason_there_is_no_distance_is_kept_on_the_row() -> None:
+    """Not just counted: the row itself says which silence it was."""
+    from world_state.depth_client import OUTSIDE_VIEW, Ranged
+
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        store.record([a_sighting()], capture={"frame_id": "f"},
+                     ranges=[Ranged(absent=OUTSIDE_VIEW)], region_source="yoloe")
+        row = store.observations(limit=1)[0]
+        check("the row carries no distance", row["range_m"], None)
+        check("...and says why not", row["range_absent"], OUTSIDE_VIEW)
+        store.close()
+
 
 TESTS = (
+    test_a_thing_remembers_whether_its_distance_was_ever_measured,
+    test_a_thing_only_ever_seen_outside_the_depth_view_says_so,
+    test_the_reason_there_is_no_distance_is_kept_on_the_row,
     test_the_masked_exemplars_are_kept_in_their_own_column,
     test_an_empty_database_is_an_ordinary_thing_to_open,
     test_the_application_owns_the_identifiers,

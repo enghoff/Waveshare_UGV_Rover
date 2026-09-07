@@ -69,7 +69,7 @@ COLUMNS = (
     "observer_pan_deg observer_tilt_deg observer_pose_json map_session "
     "model_id raw_json bearing_deg span_deg origin_sigma_m bearing_sigma_deg "
     "elevation_deg elevation_span_deg "
-    "range_m range_sigma_m camera "
+    "range_m range_sigma_m range_absent camera "
     "region_source region_score "
     "dino_blob siglip_blob vectors_from dino_alone_blob mask_share"
 ).split()

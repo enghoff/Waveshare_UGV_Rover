@@ -48,6 +48,15 @@ ADDED_COLUMNS = {
         # distance was nothing; see `locate.stands_at_range`.
         "range_m": "REAL",
         "range_sigma_m": "REAL",
+        # And when there is none, which of three quite different silences it
+        # was. **A region outside the depth camera's view can never be ranged,
+        # however often the rover looks at it**, because that camera sees 70
+        # degrees across where the gimbal sees 99 -- so it is a fact about the
+        # rover rather than about the thing, and it reads nothing like a box the
+        # camera looked into and found nothing in. Null where there is a range,
+        # and null on every row written before the distinction existed. See
+        # `depth_client.OUTSIDE_VIEW`.
+        "range_absent": "TEXT",
         # And which of the rover's two cameras took the picture, because a pixel
         # does not mean the same thing in both. The bearing is worked out once,
         # when the look is taken, through whichever lens that camera has -- so

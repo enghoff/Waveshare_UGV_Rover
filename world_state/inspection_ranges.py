@@ -5,6 +5,8 @@ import math
 from typing import Any
 
 from . import oak, view
+from .depth_client import (NO_DEPTH_ANSWER, NOTHING_TO_MEASURE, OUTSIDE_VIEW,
+                           Ranged)
 
 # Redraw projected boxes when the first measured range differs by over 40%.
 REASK_RANGE_FRAC = 0.40
@@ -50,8 +52,15 @@ class InspectionRanges:
             return [], f"no ranges ({error})"
         speed = capture.get("speed_mps") or 0.0
         got = 0
-        for one in answers:
-            if one is None or one.range_m is None:
+        for index, one in enumerate(answers):
+            if one is None:
+                answers[index] = Ranged(absent=NO_DEPTH_ANSWER)
+                continue
+            if one.range_m is None:
+                # A box on this camera's own picture is inside its view by
+                # construction, so the only silence available here is a surface
+                # it could not measure.
+                one.absent = one.absent or NOTHING_TO_MEASURE
                 continue
             one.sigma_m = self._aged_sigma(one, speed)
             got += 1
@@ -115,12 +124,19 @@ class InspectionRanges:
             corners.append(found)
             boxes.append(None if found is None else oak.box_for(found, lens))
         asked = [index for index, box in enumerate(boxes) if box is not None]
+        # Every region that never reached the camera says so on its own row,
+        # rather than being indistinguishable from one the camera looked at and
+        # found nothing in. A thing only ever seen out here can never be ranged
+        # however often the rover looks, and that is worth being able to report.
+        outside = [Ranged(absent=OUTSIDE_VIEW) if box is None else None
+                   for box in boxes]
         if not asked:
-            return [], "none of it was in the depth camera's picture"
+            return outside, "none of it was in the depth camera's picture"
         answers, error = self.ranger.ranges([boxes[index] for index in asked])
         if error:
-            return [], f"no ranges ({error})"
-        found: list[Any] = [None] * len(regions)
+            return ([one or Ranged(absent=NO_DEPTH_ANSWER) for one in outside],
+                    f"no ranges ({error})")
+        found: list[Any] = list(outside)
         again: list[int] = []
         for slot, index in enumerate(asked):
             if slot >= len(answers):
@@ -173,18 +189,35 @@ class InspectionRanges:
         """
         ranged = 0
         for index, one in enumerate(found):
-            if one is None or one.range_m is None:
+            if one is None:
+                found[index] = Ranged(absent=OUTSIDE_VIEW)
+                continue
+            if one.range_m is None:
+                if not one.absent:
+                    one.absent = NOTHING_TO_MEASURE
                 continue
             corrected = oak.range_from_gimbal(corners[index], one.range_m)
             if corrected is None or corrected <= 0.0:
-                found[index] = None
+                # A range shorter than the two lenses are apart describes nothing
+                # the gimbal camera could have been looking at, so it is dropped
+                # -- and saying which of the three silences this is matters as
+                # much here as anywhere.
+                found[index] = Ranged(absent=NOTHING_TO_MEASURE)
                 continue
             one.range_m = round(corrected, 3)
             one.sigma_m = self._aged_sigma(one, speed_mps)
             ranged += 1
-        return found, (f"{ranged} of {total} ranged by the depth camera"
-                       if ranged else
-                       "the depth camera saw none of it well enough to range")
+        blind = sum(1 for one in found if one.absent == OUTSIDE_VIEW)
+        note = (f"{ranged} of {total} ranged by the depth camera"
+                if ranged else
+                "the depth camera saw none of it well enough to range")
+        if blind:
+            # The one number the acceptance drive of 2026-09-07 wanted and could
+            # not have: how much of what the rover just looked at was somewhere
+            # this camera cannot see at all.
+            note += (f", {blind} outside its view"
+                     if ranged else f" ({blind} of them outside its view)")
+        return found, note
 
     @staticmethod
     def _corners_of(bbox, pan_deg: float, tilt_deg: float, size):

@@ -545,6 +545,11 @@ def test_a_room_that_has_not_changed_is_recorded_once() -> None:
         check("...having never asked the encoders", len(eyes.calls), 1)
         check("...nor kept the frame", store.summary()["observations"], 1)
 
+        # Far enough apart for the clock to notice. This machine's wall clock
+        # ticks about every 16 ms, so three inspections in a row can share a
+        # timestamp and the restamping check below would fail on the clock
+        # rather than on the behaviour.
+        time.sleep(0.05)
         inspector_.inspect()
         rows = store.inferences()
         check("a run of them is one line in the log rather than a line each",
