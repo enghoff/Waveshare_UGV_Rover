@@ -19,9 +19,9 @@ backends are not comparable.
 
 `rover_daemon/rover_world.py` owns capture and background scheduling. It records
 through the gimbal camera by default. The OAK can supply ranges for regions that
-fall inside its narrower fixed view. The OAK mount rotation is measured; its
-translation and the gimbal camera's position relative to the SLAM pose remain
-unmeasured.
+fall inside its narrower fixed view. The OAK mount is measured, rotation and
+translation together, against a printed board both cameras see at once; the
+gimbal camera's own position relative to the SLAM pose remains unmeasured.
 
 Runtime data lives outside the deploy tree:
 
@@ -95,8 +95,11 @@ carried, and the two that were checked by eye were plainly false -- a pool of
 blown-out floor placed below the floor, and a blue case pooled with a red wooden
 surface near the ceiling. It refuses more than it invents. See
 [`docs/progress/2026-09-07-m0-semantic-world-state.md`](../docs/progress/2026-09-07-m0-semantic-world-state.md),
-which also says why the ranges themselves are not yet trustworthy as ranges *to*
-anything: the mount constant the boxes are placed through is 6.2 degrees out.
+which also says why the ranges on that run are not trustworthy as ranges *to*
+anything: the mount constant the boxes were placed through was 6.2 degrees out at
+the time. It was re-measured and replaced on 2026-09-07 -- see
+[`docs/progress/2026-09-07-p0-oak-mount.md`](../docs/progress/2026-09-07-p0-oak-mount.md)
+-- so the depth attribution wants checking again before it is believed.
 
 ## Install and run
 
@@ -187,6 +190,10 @@ pan and that neither of the other two can produce. This component never aims the
 camera -- it captures wherever the gimbal is -- so its looks have happened to be
 straight ahead so far, but a face being tracked or a `look_at` puts them out at
 wide pan where the gain is worst. Measure the pan servo's commanded angle against
-its actual one before anything else; it is the largest correctable term. Until
-then the OAK's mount cannot honestly be re-measured, and `oak.MOUNT` has been left
-alone rather than moved to one of several numbers that disagree.
+its actual one before anything else; it is the largest correctable term.
+
+That measurement has since been made, within a bounded envelope, and it freed the
+mount: `oak.MOUNT` now holds a rotation and an offset measured against a printed
+board that both cameras see at the same moment, which never asks the gimbal which
+way it is pointed and so cannot inherit these faults. The faults themselves are
+untouched and still belong to every bearing the gimbal camera records.

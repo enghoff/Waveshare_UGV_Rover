@@ -81,186 +81,69 @@ class Mount:
     up_m: float = 0.0
 
 
-#: Where this rover's OAK is. **Which way it points was measured on 2026-09-04
-#: by `bench_oak.py`; where it sits was not, and the two have very different
-#: standing.**
+#: Where this rover's OAK is, measured on 2026-09-07 by
+#: `usb_cameras/calibrate_oak_mount.py`. **Both halves are measurements now**:
+#: which way the camera points and where it sits, taken together from the same
+#: observations, held out at a second target distance before being adopted.
 #:
-#: The rotation is what this bench is for and it is solid. Both cameras looked at
-#: a dining table, the OAK's picture was warped into the fisheye's geometry, ORB
-#: matched them, the depth camera ranged every match, and the rotation lining the
-#: two sets of directions up was solved with its own inliers re-selected as it
-#: went. What survives misses by 0.3 to 0.9 degrees against the 1.5
-#: `locate.BEARING_SIGMA_DEG` allows a bearing, and -- the part that matters --
-#: **it comes out the same whatever offset it is given**, within about half a
-#: degree across everything from nothing to half a metre. (That last claim held
-#: for yaw and not for the rest: on 2026-09-07 the ruler's offset moved the
-#: fitted pitch by 2.09 degrees and the roll by about 0.9. See the 2026-09-07
-#: note below.)
+#: The method is a printed ChArUco board that both cameras see at the same time,
+#: with the gimbal parked at pan 0 and tilt 0 and reached from the ascending
+#: direction, which is the state the gimbal's own campaign demonstrated. Each
+#: camera solves the board's pose in its own frame through its own lens model --
+#: the gimbal's from the calibration that passed the same day, the OAK's from the
+#: colour distortion it stores itself -- and the mount is what is left between the
+#: two. Nothing about where the gimbal is *pointed* enters it, which is what
+#: separates this from the bench that came before: the two cameras are compared to
+#: a common object rather than to each other's idea of a direction, so the gimbal
+#: pointing faults recorded in `docs/requirements/world-state.md#r-ws-10` cannot
+#: reach this number.
 #:
-#: **The offset is known and is deliberately still at nothing, which wants
-#: explaining.** The rover's owner has held a ruler to it: the OAK's lens sits
-#: **40 mm in front of the gimbal camera's and 110 mm below it**, with both on the
-#: rover's centre axis, so
+#: Five frames from each camera give twenty-five pairings. The values below are
+#: the development set's medians, at a target 0.555 m from the gimbal camera:
 #:
-#:     bench_oak.py --offset 0.040 0 -0.110
+#:     component    adopted     spread over the 25 pairs
+#:     yaw         +1.492 deg          0.137 deg
+#:     pitch       +6.256 deg          0.067 deg
+#:     roll        -1.200 deg          0.026 deg
+#:     forward     +0.0872 m           0.0004 m
+#:     left        -0.0031 m           0.0008 m
+#:     up          -0.0937 m           0.0008 m
 #:
-#: is the run that finishes this. It has not been made yet because the rotation
-#: above was solved with the offset taken as nothing, and **half of a consistent
-#: pair is worse than neither half**: the fitted pitch is absorbing the vertical
-#: parallax those 110 mm cause, so putting the offset in beside it would count the
-#: same effect twice. Measured against the working range, the consistent pair is
-#: out by 1.25 degrees at two metres and 0.85 at six; the mixture would be out by
-#: 1.9 everywhere.
+#: **A second set 0.130 m further out confirmed it before it was adopted**, which
+#: is the check that catches an offset and a rotation trading against each other:
+#: at one distance they are hard to tell apart, and at two they are not. That set
+#: read yaw +1.763, pitch +6.230, roll -1.233, forward +0.0996, left -0.0008 and
+#: up -0.0940 -- inside the 0.75 degree and 15 mm agreement declared before it was
+#: captured, and its pitch, roll and height agree to within 0.04 degrees and
+#: 0.4 mm.
 #:
-#: **What that run should find, which is a prediction rather than a hope**: the
-#: yaw and the roll unchanged, since a purely vertical offset moves neither, and
-#: the pitch down by roughly the parallax the fit was absorbing -- about 1.9
-#: degrees at the median range of the points it used, so near +1.2 rather than
-#: +3.1. A pitch that comes back near +3.1 would mean the offset is not what is
-#: being absorbed and something else is wrong.
+#: **What is weakest here is the forward offset.** It moved 12.4 mm between the
+#: two distances while repeating to under half a millimetre within each of them,
+#: so the disagreement is systematic and not noise, and it survives every corner
+#: detection path the bench can use. Read the forward figure as good to about a
+#: centimetre and the other five as good to their spreads. A centimetre of it is
+#: worth about a third of a degree of bearing at two metres, well inside the 1.5
+#: degrees `locate.BEARING_SIGMA_DEG` allows.
 #:
-#: It needs the rover pointed at a textured room, which is the one thing nothing
-#: here can arrange: the scene that produced the rotation above was a dining
-#: table, and by the time the ruler had been found the rover was nose-up against
-#: an air purifier at 36 cm with nothing to match at all. `bench_oak.py --points`
-#: exists because of that -- it keeps what it matched, so the offset and the
-#: scene no longer have to be right at the same moment.
-#:
-#: Until then nothing is the honest placeholder rather than a part-measurement:
-#: it is what every bearing before this was worked out as. The earlier claim of
-#: 0.571 m forward and 0.181 m to the right -- fitted, repeatable to a
-#: centimetre, four times better than co-locating the lenses, and wrong -- is
-#: what this note exists to stop somebody walking into again.
-#:
-#: **The roll is carried, because it turned out to be two degrees.** It was left
-#: out at first on the argument that a bracket bolted to a flat plate has none,
-#: and it read as half a degree -- but that reading came from the fit that was
-#: also inventing half a metre of offset, and with the offset held at nothing it
-#: is -2.1. Two degrees mixes a ray's bearing into its elevation by the roll
-#: times how far off the axis the ray is, so at the edge of this camera's field
-#: it is worth more than a degree.
-#: **Measured again on 2026-09-07, and it did not reproduce. Nothing below has
-#: been changed, and that is the decision rather than an oversight.** Three fresh
-#: runs in a textured living room, points fitted 3.0 to 5.2 m out, agree with each
-#: other to a tenth of a degree and disagree with what is written here:
-#:
-#:     run     yaw    pitch    roll   residual median
-#:      1    +4.59   +2.17   -1.70   1.19 deg
-#:      2    +4.72   +2.28   -1.63   1.16
-#:      3    +4.67   +2.25   -1.57   1.17
-#:     here  -1.53   +3.11   -2.12
-#:
-#: Six point two degrees of yaw, which is four times what a bearing on this rover
-#: is believed to. The prediction written above also failed: given the ruler's
-#: offset the pitch was to fall by about 1.9 degrees and it rose by 2.09, to
-#: +4.26.
-#:
-#: **What settles it is the consistency check, and it is why no number here
-#: moved.** This camera is bolted to the chassis, so what the bench fits for it
-#: must not change when the *gimbal* moves. Across three gimbal positions:
-#:
-#:     pan      yaw    pitch    roll
-#:     -20    +1.14   +2.06   -2.99
-#:       0    +4.71   +2.19   -1.67
-#:     +20    +5.59   +2.02   +0.43
-#:           spread    0.18   spread
-#:             4.45             3.42
-#:
-#: Pitch holds. Yaw and roll do not, and no property of this mount can depend on
-#: where the other camera is pointed. So what is wrong is the gimbal camera's own
-#: pointing.
-#:
-#: **Which part of it was then measured, and the first attempt was designed
-#: wrongly.** Running `-20 0 +20` against `+20 0 -20` opposes the approach
-#: direction only at pan 0: each end is the first stop of one order and the last
-#: of the other, and both approaches move the same way. It said the ends were
-#: immune and pan 0 was out by 1.76 degrees -- which is also exactly what uniform
-#: backlash produces. That reading, and the restoring-forces mechanism written to
-#: explain it, are withdrawn.
-#:
-#: Done properly every sampled position is interior -- sweep `-30 -20 0 20`
-#: against `30 20 0 -20` -- with runs paired adjacently in alternating order so
-#: the sitting's drift cancels, and the floor measured per position by two runs
-#: back to back in the *same* direction, because an insensitive fit and an honest
-#: zero look identical:
-#:
-#:     pan    floor (same direction)   backlash (drift-cancelled)
-#:     -20            0.03                     +1.58
-#:       0            0.03                     +1.58
-#:     +20            0.05                     +1.32
-#:
-#: The fit sees equally well at the ends as in the middle, so those differences
-#: are real: **about a degree and a half of backlash, everywhere in the travel**,
-#: thirty times the floor, and not a property of pan 0.
-#:
-#: **Three separable faults, separated by arithmetic rather than by a story.**
-#: Backlash is the offset above. Riding under it the fitted yaw walks with pan, a
-#: gain-like error in the region of the 10 per cent the known under-travel
-#: implies -- but far less well determined than the backlash: over the ten runs
-#: of that sitting the slope ranges 3.7 to 7.6 per cent, mean 5.6, sd 1.4. A
-#: quarter of its own value, because it is a difference *across* positions while
-#: the scene drifts about a degree, where the backlash compares two runs minutes
-#: apart. Read it as "four to eight per cent", not as a number. And the roll walks about 0.09
-#: degrees per degree, which neither of those can do, a pan gain error being
-#: unable to move roll at all. A pan axis leaning fore-and-aft would, and the
-#: direction is pinned by pitch staying flat at 2.1 throughout -- a sideways lean
-#: would move pitch instead. But the tilt that explains the roll is 5.6 degrees,
-#: and by its own cosine that shortens the yaw by half a per cent, a fourteenth of
-#: the 7, so the tilt cannot be the cause of the gain.
-#:
-#: Whether the roll is the axis at all is open, because a wrong lens model also
-#: puts roll into this fit -- features sweep across the frame as the camera pans.
-#: Linearity would choose: a tilt gives a line, bad distortion gives a curve. The
-#: measured slope does fall across the sweep, 0.153/0.087/0.080 in one run and
-#: 0.139/0.093/0.096 in the next, reproduced above the floor, which looks like a
-#: curve and would favour the lens.
-#:
-#: **The obvious escape does not work.** It is tempting to blame the axis of the
-#: plot -- it is *commanded* pan and the servo under-travels -- but a constant
-#: gain cannot bend a straight line, only tilt it: if actual is a fixed fraction of
-#: commanded, roll stays linear in commanded. Producing this curve needs the
-#: under-travel to worsen with deflection, which a servo may well do but which is
-#: a stronger claim than the one in evidence. So it is a non-linear servo or the
-#: lens, and the commanded-against-actual sweep decides it by showing whether the
-#: gain is flat or bends.
-#:
-#: **What it costs.** The store sits almost entirely at pan 0 -- 1451 of its 1549
-#: observations, with every one of the other 98 falling inside the half hour of
-#: bench runs that produced these numbers -- but nothing makes that so. This
-#: component never aims the camera; `rover_world` captures wherever the gimbal is
-#: pointing, and `look_at` is a model tool, face tracking drives the gimbal and a
-#: script can. The moment anything aims it, looks are taken at that angle.
-#:
-#: The two faults then behave differently. Backlash is flat at about 1.5 degrees
-#: wherever the camera is, which at pan 0 is already the whole of the 1.5 a
-#: bearing here is believed to, and which way the gimbal last moved is recorded
-#: nowhere so it cannot be corrected afterwards. The gain vanishes at pan 0 and
-#: grows from there -- 1.1 to 2.3 degrees at pan 30 across the measured range of
-#: slopes, about 1.7 at the mean. So a bearing straight ahead can be out by 1.5
-#: against a budget of 1.5, and one at wide pan by roughly 3.
-#:
-#: Measure the pan servo commanded-against-actual first -- both signs, several
-#: magnitudes, both approach directions, and no single gain fitted to it. It is
-#: the largest correctable term, it settles the curvature above, and the fisheye
-#: model and the axis tilt are both still open behind it.
-#:
-#: Adopting the pan-0 fit would replace one number with another that three
-#: positions disagree about, which is this file's own warning turned on itself:
-#: half of a consistent pair is worse than neither half. **Fix the gimbal
-#: camera's off-axis model first; this mount cannot be settled before it.** The
-#: cost of leaving it is written down in
-#: `docs/progress/2026-09-07-m0-semantic-world-state.md`: every look in the run of
-#: 2026-09-07 was taken at pan 0, where this is out by 8.6 per cent of the OAK's
-#: picture width, and the ranges it produced are unbiased against independent
-#: bearing crossings but scatter far too widely -- only 48 per cent within half a
-#: metre -- which is what a box landing on a neighbouring surface looks like.
+#: **What this replaced, and why none of it should be revived.** Until this
+#: measurement the rotation came from `bench_oak.py` matching ORB features between
+#: the two cameras' pictures of a room, and the offset was held at nothing because
+#: the rotation had been solved with it at nothing and half of a consistent pair
+#: is worse than neither half. That bench was answering a question it could not:
+#: what it fitted moved by 4.5 degrees of yaw and 3.4 of roll depending on where
+#: the *gimbal* was pointed, and no property of a camera bolted to the chassis can
+#: do that. A ruler reading of 40 mm forward and 110 mm below was recorded here as
+#: the run that would finish it; the board puts the OAK 87 mm forward and 94 mm
+#: below, so the ruler had the height about right and the reach wrong by more than
+#: twice. The full history is in
+#: `docs/progress/2026-09-07-p0-oak-mount.md`.
 MOUNT = Mount(
-    yaw_deg=-1.53,
-    pitch_deg=3.11,
-    roll_deg=-2.12,
-    forward_m=0.0,
-    left_m=0.0,
-    up_m=0.0,
+    yaw_deg=1.492,
+    pitch_deg=6.256,
+    roll_deg=-1.200,
+    forward_m=0.0872,
+    left_m=-0.0031,
+    up_m=-0.0937,
 )
 
 #: Whether `MOUNT` above holds measurements. **Everything this module can do is
@@ -272,9 +155,11 @@ MOUNT = Mount(
 #: A flag rather than a check for zeros, because zero is a perfectly possible
 #: measurement -- a camera mounted straight ahead has a yaw of zero, and the
 #: difference between "measured as zero" and "never measured" is the whole point.
-#: It is on because the rotation is measured, which is the half that swings every
-#: bearing; the offset sitting at nothing costs about a degree at two metres and
-#: is a known, bounded, written-down gap rather than an unknown one.
+#: It is on because both halves are now measured together and confirmed at a
+#: second distance. It was already on when only the rotation was, on the argument
+#: that the rotation is the half that swings every bearing while an offset left at
+#: nothing costs about a degree at two metres -- a known, bounded, written-down
+#: gap rather than an unknown one. That gap is closed.
 MEASURED = True
 
 #: How far off the OAK's own axis a direction may lie before it is not in its

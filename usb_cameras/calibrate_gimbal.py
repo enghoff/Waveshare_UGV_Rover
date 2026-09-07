@@ -291,6 +291,17 @@ def fit_intrinsics(objects: list[np.ndarray], images: list[np.ndarray],
 
 def pose(object_points: np.ndarray, image_points: np.ndarray,
          matrix: np.ndarray, distortion: np.ndarray):
+    """Solve the board pose, then finish the fit by least squares.
+
+    IPPE is an analytic planar solution, not a minimiser.  On a board that is
+    small in frame and close to face-on it stops short of the least-squares
+    optimum by enough to matter: across the five still frames of one mount
+    capture it left 0.22 px of reprojection where the refined fit leaves 0.18,
+    and it turned that shortfall into 0.79 degrees of frame-to-frame
+    disagreement about the board's out-of-plane tilt against 0.36 refined.
+    Refining every branch before choosing also puts this fit where the
+    iterative and SQPNP solvers already agree, to within 0.001 degrees.
+    """
     undistorted = cv2.fisheye.undistortPoints(
         image_points.reshape(1, -1, 2), matrix, distortion
     ).reshape(-1, 1, 2)
@@ -302,14 +313,19 @@ def pose(object_points: np.ndarray, image_points: np.ndarray,
         raise RuntimeError("IPPE could not solve board pose")
     candidates = []
     for rvec, tvec in zip(rvecs, tvecs):
+        if float(tvec.reshape(-1)[2]) <= 0:
+            continue
+        rvec, tvec = cv2.solvePnPRefineLM(
+            object_points.reshape(-1, 1, 3), undistorted,
+            np.eye(3), None, rvec.copy(), tvec.copy(),
+        )
         projected, _ = cv2.fisheye.projectPoints(
             object_points.reshape(1, -1, 3), rvec, tvec, matrix, distortion
         )
         residual = np.linalg.norm(
             projected.reshape(-1, 2) - image_points.reshape(-1, 2), axis=1
         )
-        if float(tvec.reshape(-1)[2]) > 0:
-            candidates.append((float(np.sqrt(np.mean(residual ** 2))), rvec, tvec))
+        candidates.append((float(np.sqrt(np.mean(residual ** 2))), rvec, tvec))
     if not candidates:
         raise RuntimeError("board pose was behind the camera")
     reprojection, rvec, tvec = min(candidates, key=lambda item: item[0])

@@ -47,6 +47,8 @@ MAX_PINHOLE_RAY_ERROR_DEG = 0.75
 MAX_HELD_OUT_ANGLE_CHANGE_DEG = 0.75
 MAX_HELD_OUT_OFFSET_CHANGE_M = 0.015
 MIN_HELD_OUT_DISTANCE_CHANGE_M = 0.10
+POSE_NUDGE_DEG = 0.1
+MAX_RECOVERABLE_RESIDUAL_PERCENT = 0.5
 
 
 def now() -> str:
@@ -272,6 +274,12 @@ def capture(folder: Path, rover: RoverClient, oak_host: str, settle: float,
 
 def opencv_pose(objects: np.ndarray, images: np.ndarray, matrix: np.ndarray,
                 distortion: np.ndarray):
+    """The OAK's side of the same fit, refined for the same reason as the gimbal's.
+
+    See `calibrate_gimbal.pose`: the analytic planar solution is not the
+    least-squares one, and both cameras have to be fitted the same way or the
+    difference between them carries whichever shortfall is larger.
+    """
     ok, rvecs, tvecs, _ = cv2.solvePnPGeneric(
         objects.reshape(-1, 1, 3), images.reshape(-1, 1, 2), matrix,
         distortion, flags=cv2.SOLVEPNP_IPPE,
@@ -280,16 +288,57 @@ def opencv_pose(objects: np.ndarray, images: np.ndarray, matrix: np.ndarray,
         raise RuntimeError("OAK IPPE could not solve board pose")
     candidates = []
     for rvec, tvec in zip(rvecs, tvecs):
+        if float(tvec.reshape(-1)[2]) <= 0:
+            continue
+        rvec, tvec = cv2.solvePnPRefineLM(
+            objects.reshape(-1, 1, 3), images.reshape(-1, 1, 2), matrix,
+            distortion, rvec.copy(), tvec.copy(),
+        )
         projected, _ = cv2.projectPoints(
             objects, rvec, tvec, matrix, distortion
         )
         residual = np.linalg.norm(projected.reshape(-1, 2) - images, axis=1)
-        if float(tvec.reshape(-1)[2]) > 0:
-            candidates.append((float(np.sqrt(np.mean(residual ** 2))), rvec, tvec))
+        candidates.append((float(np.sqrt(np.mean(residual ** 2))), rvec, tvec))
     if not candidates:
         raise RuntimeError("board pose was behind the OAK")
     reprojection, rvec, tvec = min(candidates, key=lambda item: item[0])
     return cv2.Rodrigues(rvec)[0].T, tvec.reshape(-1), reprojection
+
+
+def convergence_margin(objects: np.ndarray, images: np.ndarray,
+                       camera: np.ndarray, translation: np.ndarray,
+                       reprojection: float, matrix: np.ndarray,
+                       distortion: np.ndarray, fisheye: bool) -> float:
+    """How much reprojection a small turn of the fitted pose could still remove.
+
+    A pose that really has been minimised cannot be improved by nudging it.
+    The analytic planar solve this bench used until 2026-09-07 could be: across
+    the two mount captures it left between 1.4 and 4.4 percent of the residual
+    on the table, as a coherent shear down the board that a fifth of a degree
+    of tilt absorbed.  Measuring the margin every time keeps a pose fit that has
+    stopped short from passing as a measurement again.
+    """
+    rotation = camera.T
+    tvec = np.asarray(translation, dtype=np.float64).reshape(3, 1)
+    best = reprojection
+    for axis in range(3):
+        for sign in (1.0, -1.0):
+            turn = np.zeros(3)
+            turn[axis] = sign * np.radians(POSE_NUDGE_DEG)
+            nudged = cv2.Rodrigues(cv2.Rodrigues(turn)[0] @ rotation)[0]
+            if fisheye:
+                projected, _ = cv2.fisheye.projectPoints(
+                    objects.reshape(1, -1, 3), nudged, tvec, matrix, distortion
+                )
+            else:
+                projected, _ = cv2.projectPoints(
+                    objects, nudged, tvec, matrix, distortion
+                )
+            residual = np.linalg.norm(
+                projected.reshape(-1, 2) - images, axis=1
+            )
+            best = min(best, float(np.sqrt(np.mean(residual ** 2))))
+    return float(100.0 * (1.0 - best / reprojection))
 
 
 def detected_pose(path: Path, board, detector, matrix: np.ndarray,
@@ -315,6 +364,10 @@ def detected_pose(path: Path, board, detector, matrix: np.ndarray,
         "corners": found["charuco_corners"],
         "ids": found["ids"],
         "reprojection_rms_px": reprojection,
+        "recoverable_residual_percent": convergence_margin(
+            objects, images, camera, translation, reprojection,
+            matrix, distortion, fisheye
+        ),
         "target_distance_m": float(np.linalg.norm(translation)),
         "camera": camera,
         "translation": translation,
@@ -424,6 +477,9 @@ def analyse(folder: Path, gimbal_analysis: Path,
         >= MIN_OAK_CORNERS,
         "reprojection": max(row["reprojection_rms_px"]
                             for row in gimbals + oaks) <= MAX_REPROJECTION_RMS_PX,
+        "pose_converged": max(row["recoverable_residual_percent"]
+                              for row in gimbals + oaks)
+        <= MAX_RECOVERABLE_RESIDUAL_PERCENT,
         "angular_repeatability": max(transform[key]["range"] for key in
                                      ("yaw_deg", "pitch_deg", "roll_deg"))
         <= MAX_ANGLE_RANGE_DEG,
@@ -500,6 +556,11 @@ def print_result(result: dict) -> None:
         f"{key}={transform[key]['range']:.3f}" for key in
         ("yaw_deg", "pitch_deg", "roll_deg", "forward_m", "left_m", "up_m")
     ))
+    frames = result["frames"]["gimbal"] + result["frames"]["oak"]
+    print(f"pose fits: worst reprojection "
+          f"{max(row['reprojection_rms_px'] for row in frames):.3f} px, "
+          f"worst still recoverable by a {POSE_NUDGE_DEG} deg turn "
+          f"{max(row['recoverable_residual_percent'] for row in frames):.2f}%")
     ray = result["runtime_pinhole_ray_error"]
     print(f"pinhole ray approximation: p95 {ray['p95_deg']:.3f} deg, "
           f"max {ray['max_deg']:.3f} deg")

@@ -162,14 +162,19 @@ known objects; stop tuning when the agreed budget or measurable benefit is exhau
 ### R-WS-11 — A thing's height above the floor is known
 
 - **State:** open
-- **Blocked by:** the translation between the OAK and the gimbal camera, and the
-  gimbal camera's offset from the SLAM pose, are unmeasured — see
-  [../plans/semantic-world-state.md](../plans/semantic-world-state.md)
+- **Blocked by:** the gimbal camera's offset from the SLAM pose is unmeasured —
+  see [../plans/semantic-world-state.md](../plans/semantic-world-state.md)
 
-The OAK-to-gimbal *rotation* is measured. Without the translations, elevation is
-usable as a relative constraint between observations but absolute height above
-the floor is unavailable, which is why elevation can reject a crossing but cannot
-say a thing is on a table.
+Both the rotation and the translation between the OAK and the gimbal camera are
+measured, as of the [2026-09-07 mount
+measurement](../progress/2026-09-07-p0-oak-mount.md): the OAK sits 87 mm forward,
+3 mm to the right and 94 mm below the gimbal camera's optical centre, with the
+forward figure good to about a centimetre. That closes half of what blocked this.
+
+What is left is where the gimbal camera itself sits relative to the pose SLAM
+reports. Until that is known, elevation is usable as a relative constraint between
+observations but absolute height above the floor is unavailable, which is why
+elevation can reject a crossing but cannot say a thing is on a table.
 
 <a id="r-ws-12"></a>
 ### R-WS-12 — Bare floor and background are not eligible as things to go and look at
