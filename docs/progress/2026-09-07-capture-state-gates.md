@@ -66,20 +66,24 @@ where it is captured, and it rides on the frame to the inspector.
 
 **Rest is now an ascending arrival on purpose.** `Rover.centre_gimbal`
 undershoots by 30 degrees and comes back up, the same manoeuvre the calibration
-bench makes before every sample it takes. Of the 2162 observations this rover had
-recorded, 1952 were taken at pan zero — leaving the approach to chance would have
+bench makes before every sample it takes. Of the 2165 observations this rover had
+recorded, 1955 were taken at pan zero — leaving the approach to chance would have
 put nearly every bearing it records on the unmeasured side of the backlash.
 
 ### What it costs, counted on the rover's own store
 
+Counted on `world-2026-09-07-pre-clear.db`, the archived copy described below,
+so the figures can be re-checked rather than taken on trust. 2165 observations
+in all:
+
 | | observations | share |
 |---|---:|---:|
-| pan inside ±20 | 1998 | 92.4% |
-| pan outside it | 164 | 7.6% |
-| of those, pan 30 | 126 | |
-| of those, pan 52 to 145 | 20 | |
+| pan inside ±20 | 2019 | 93.3% |
+| pan outside it | 146 | 6.7% |
+| of those, exactly pan 30 | 126 | |
+| of those, beyond pan 30 | 20 | |
 
-So the envelope costs the existing recording under a tenth of its looks. That is
+So the envelope costs the existing recording about one look in fifteen. That is
 the good news and it is not the whole picture.
 
 ## The envelope does not cover where the rover actually looks
@@ -90,14 +94,14 @@ the store:
 
 | gimbal tilt | observations |
 |---|---:|
-| +20 (rest) | 1825 |
+| +20 (rest) | 1828 |
 | 0 | 310 |
 | +45 | 20 |
 | +10 | 7 |
 
 **84% of every look this rover has taken was at a tilt the pan campaign never
-visited.** The lens itself is fitted across tilts up to 20 and the bearing
-arithmetic undoes the tilt properly, so this is not an uncorrected geometric
+visited** — 1828 of 2165. The lens itself is fitted across tilts up to 20 and
+the bearing arithmetic undoes the tilt properly, so this is not an uncorrected geometric
 error; what is uncharacterised is the *servo's* behaviour — its backlash and its
 gain — at the tilt the rover actually uses. It is the same pan axis and the same
 gearing, so it is likely to carry, but likely is not measured, and the point of
