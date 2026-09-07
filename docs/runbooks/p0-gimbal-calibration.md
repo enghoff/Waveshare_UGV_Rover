@@ -251,6 +251,22 @@ camera coordinates is its third row and not its third column; reading the column
 gives the camera's axis in the board's frame, which stayed at 8-10 degrees while
 the board was actually turned to 44.
 
+**With the A4 target there is no qualifying third distance, and that is
+measured rather than suspected.** Both cameras only see the board well enough
+between about 0.55 and 0.69 m: closer, the OAK cannot hold a slanted board in
+focus; further, the gimbal cannot find 40 corners in a 130-degree fisheye frame
+and the OAK's reprojection crosses 0.5 px somewhere between 0.6 and 0.8 m. Since
+0.555 and 0.686 are used, the rule below excludes 0.455 to 0.786 — which is the
+whole working band. **Print the target on A3 before attempting a third
+distance**, and re-verify its printed dimensions the same way. See
+[the four captures](../progress/2026-09-07-no-third-mount-distance.md).
+
+**The rover's own headlights make this procedure independent of daylight.** On
+the depth camera's picture of the board after dusk: no lights gave brightness 32
+of 255 and **zero** of 54 corners; `set_lights` at 128 gave 141 and all 54. Full
+brightness added nothing and risks the glare the mounting section warns about, so
+use half. Measured 2026-09-07.
+
 The held-out distance must differ from the 0.555 m development distance by at least
 0.10 m. The transform must agree within 0.75 degrees on every angle and 15 mm on
 every offset component. Adopt the frozen development transform only after that pass.
