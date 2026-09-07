@@ -226,6 +226,31 @@ python usb_cameras/calibrate_oak_mount.py \
   --compare captures/p0-gimbal-YYYY-MM-DD/oak-mount-dev/mount-analysis.json
 ```
 
+**A steep slant and a close board cannot be had together, because of the depth
+camera.** Turning the board off face-on is what fixes the ill-conditioning of a
+nearly fronto-parallel target, and for the gimbal camera it works well: at
+0.371 m and 44 degrees off face-on, `oak-mount-held-out-03` found all 54 corners
+on all five frames at 0.30 px, the best any mount capture has managed. The OAK
+failed the same capture. It sits 87 mm ahead of the gimbal camera, so it was
+0.287 m from the board, and at 44 degrees the board's near and far edges are
+0.167 m apart in depth -- more than its lens can hold at that range. Its
+autofocus settled rather than hunted (all five frames equally soft, and the
+capture already discards 45 frames before keeping any), and the corners it lost
+were entirely at one edge: six in each of board columns 0 to 5, then 1, 0 and 0.
+Image sharpness over the board fell to 1030 from the 1700 of the 0.60 m capture
+even though the board was larger in frame, which is what defocus looks like.
+
+So aim for **0.80-0.85 m from the gimbal camera with 25-30 degrees of slant**.
+Depth of field grows quickly with distance and a gentler slant roughly halves
+the near-to-far spread. Going closer instead makes it worse, which together with
+the separation rule below rules the near side out. Measure the obliquity rather
+than eyeballing it -- and measure it as the angle between the board's normal and
+the line of sight, not as where the board sits in the frame. `gimbal.pose`
+returns the *transpose* of the board-to-camera rotation, so the board's normal in
+camera coordinates is its third row and not its third column; reading the column
+gives the camera's axis in the board's frame, which stayed at 8-10 degrees while
+the board was actually turned to 44.
+
 The held-out distance must differ from the 0.555 m development distance by at least
 0.10 m. The transform must agree within 0.75 degrees on every angle and 15 mm on
 every offset component. Adopt the frozen development transform only after that pass.
