@@ -165,9 +165,35 @@ class Mount:
 #:
 #: Pitch holds. Yaw and roll do not, and no property of this mount can depend on
 #: where the other camera is pointed. So what is wrong is the gimbal camera's own
-#: model away from its axis -- the fisheye fit or the pan servo's commanded
-#: against actual -- and the roll moving is what points at the lens, a roll being
-#: exactly how a bearing error bleeds into an elevation one off-axis.
+#: pointing.
+#:
+#: **Which part of it was then measured, by running the same three positions in
+#: both orders.** This camera cannot move, so anything that changes between two
+#: such runs is the gimbal's actual pointing and nothing else. Six runs
+#: interleaved in one sitting, yaw fitted at each commanded pan:
+#:
+#:     pan    from the left   from the right   difference
+#:     -20        +1.16           +1.25          -0.09
+#:       0        +4.28           +2.52          +1.76
+#:     +20        +5.38           +5.35          +0.02
+#:
+#: The ends do not care which way the gimbal arrived. **Pan 0 is out by 1.76
+#: degrees depending on which way it got there** -- three interleaved pairs giving
+#: 1.67, 1.97 and 1.64, against repeat runs at one pan approached the same way
+#: that agree to 0.13. That is backlash, not a fixed one-sided offset, since a
+#: fixed offset would not move with approach direction. Why the ends are immune is
+#: a guess worth writing down and not more: at a large deflection the servo is
+#: loaded consistently and settles the same way, while at zero the restoring
+#: forces balance and the slack leaves the horn wherever it arrived.
+#:
+#: **Every world-state look is taken at pan 0**, which is the one position where
+#: this gimbal does not repeat, and 1.76 degrees is more than the 1.5 a bearing
+#: here is believed to. So the pan servo comes before the fisheye fit: measure
+#: commanded against actual at both signs and several magnitudes, approached from
+#: both directions, and do not fit a single gain -- a one-sided error is what a
+#: symmetric two-point fit averages away into a plausible number that then fails
+#: to close the spread. The roll swinging 3.4 degrees across pan is still
+#: unexplained by any of this, so the lens model is not cleared.
 #:
 #: Adopting the pan-0 fit would replace one number with another that three
 #: positions disagree about, which is this file's own warning turned on itself:

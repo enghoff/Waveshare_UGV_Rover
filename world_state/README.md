@@ -171,9 +171,13 @@ Useful replay and measurement tools remain beside the component:
 - `bench_perceive.py` and `bench_still.py` inspect model and capture behavior.
 
 That proof was taken on 2026-09-07 and measured range does prevent false
-crossings. The next hardware proof is a different one: `bench_oak.py --pan -20 0
-20` fits four and a half degrees of different yaw for a camera bolted to the
-chassis, which cannot be a property of the mount and points at the gimbal
-camera's own model away from its axis. Until that is fixed the OAK's mount cannot
-honestly be re-measured, and `oak.MOUNT` has been left alone rather than moved to
-one of three numbers that disagree.
+crossings. The next hardware proof is a different one, and it is not about this
+camera at all. Running `bench_oak.py` at three gimbal positions in both orders
+shows the gimbal camera **misses pan 0 by 1.76 degrees depending on which
+direction it arrived from**, while the two ends repeat perfectly -- and this
+camera is bolted to the chassis, so nothing else can account for the difference.
+Every look the world state takes is at pan 0, and 1.76 degrees is more than the
+1.5 a bearing here is believed to. Measure the pan servo's commanded angle
+against its actual one, from both directions, before anything else; until then
+the OAK's mount cannot honestly be re-measured, and `oak.MOUNT` has been left
+alone rather than moved to one of three numbers that disagree.

@@ -213,11 +213,51 @@ gimbal positions:
 
 Pitch is stable. Yaw and roll are not: the same bolted-down camera fits four and a
 half degrees of different yaw, and three and a half of different roll, depending on
-where the *other* camera is pointed. That cannot be a property of the mount. It is
-the gimbal camera's own model going wrong away from its axis -- either the fisheye
-fit, or the pan servo's commanded-against-actual error, and the roll varying is
-what points at the lens, since a roll is exactly how a bearing error bleeds into an
-elevation one off-axis.
+where the *other* camera is pointed. That cannot be a property of the mount; it is
+the gimbal camera's own pointing.
+
+### The gimbal does not come back to the same place
+
+The shape of that spread says which part. Taken as deviations from the pan-0 fit
+the three positions are -3.57, 0, +0.88, and no symmetric error does that: a pure
+gain error on the pan servo -- the obvious suspect, since this rover's pan is known
+to under-travel, told -30 and landing near -27 -- would walk the fit equally and
+oppositely either side of zero. Nearly all of this is on one side.
+
+So the bench was run again with the pan positions **in both orders**, six runs
+interleaved in one sitting, which asks a different question: does the fit depend on
+which direction the gimbal arrived from? The OAK is bolted down and cannot move, so
+anything that changes between two such runs is the gimbal camera's actual pointing
+and nothing else.
+
+| commanded pan | arriving from the left | arriving from the right | difference |
+|---:|---:|---:|---:|
+| -20 | +1.16 | +1.25 | -0.09 |
+| **0** | **+4.28** | **+2.52** | **+1.76** |
+| +20 | +5.38 | +5.35 | +0.02 |
+
+The two ends do not care at all. **Pan 0 is out by 1.76 degrees depending on which
+way the gimbal got there**, and the three interleaved pairs give 1.67, 1.97 and
+1.64, so it is not a fluke -- against repeat runs at one pan approached the same way
+that agree to 0.13 degrees. This is backlash or hysteresis, not a fixed one-sided
+offset, because a fixed offset would not change with approach direction.
+
+That the ends are immune and the middle is not has a plausible mechanism: at a
+large deflection the servo is loaded consistently and settles the same way whichever
+side it came from, while at zero the restoring forces are balanced and the slack is
+free to leave the horn wherever it arrived. That part is a hypothesis. The 1.76
+degrees is a measurement.
+
+**Every look in this recording was taken at pan 0**, which is precisely the position
+where the gimbal is least repeatable, and 1.76 degrees is larger than the 1.5 a
+bearing on this rover is believed to. So the pan servo is the better candidate than
+the fisheye model and should be measured first -- commanded against actual, at both
+signs and several magnitudes, and explicitly approached from both directions. Do
+not fit a single gain to it: a one-sided error is exactly what a symmetric two-point
+fit averages away into a plausible number that then fails to close the spread.
+
+None of this yet explains the roll swinging 3.4 degrees across pan, so the lens
+model is not cleared.
 
 **`oak.MOUNT` has deliberately not been changed.** Adopting the pan-0 fit would
 replace one number with another that three positions disagree about, which is the
@@ -268,10 +308,13 @@ are honest depth readings of the wrong thing.
 The identity work is in better shape than the phase assumed and the geometry is in
 worse shape. In order:
 
-1. **Fix the gimbal camera's off-axis model, then re-measure the OAK mount.**
-   Nothing else here can be settled first, because every OAK number is expressed
-   relative to that camera. `bench_oak.py --pan` is already the test that fails, so
-   it is also the test that passes when this is right.
+1. **Measure the pan servo's commanded angle against its actual one, from both
+   directions, and then re-measure the OAK mount.** Nothing else here can be
+   settled first, because every OAK number is expressed relative to the gimbal
+   camera. The gimbal misses pan 0 by 1.76 degrees depending on which way it
+   arrived, and pan 0 is where every world-state look is taken. `bench_oak.py
+   --pan -20 0 20` against `--pan 20 0 -20` is the cheap version of the test, and
+   it is the one that should stop disagreeing when this is right.
 2. **Refuse entities made of bare floor.** Two of fourteen reviewed entities are
    floor, one of them confident to 0.18 m. An executive choosing where to look next
    would spend real distance on them.
