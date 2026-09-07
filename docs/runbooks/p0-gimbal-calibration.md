@@ -41,7 +41,7 @@ from mechanical variation.
 
 ## Hand over for capture
 
-Send the four measured print dimensions: the 100 mm bar, outside width, outside
+Send the five measured print dimensions: the 100 mm bar, outside width, outside
 height and both 125 mm five-square spans. Then say the target is mounted and the
 rover is ready.
 
