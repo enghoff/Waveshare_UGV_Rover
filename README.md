@@ -1,210 +1,124 @@
 # Waveshare UGV Rover
 
-This repository is the source of truth for the software running on a Waveshare
-UGV Rover built around the General Driver for Robots board and an NVIDIA Jetson
-Orin Nano. It also contains small bench tools used to bring up and diagnose the
-individual sensors and actuators.
+A rover that maps its surroundings, keeps a visual memory of what it has seen,
+and connects conversation to physical actions. This repository brings together
+browser control, ROS 2 navigation, onboard perception and realtime voice on a
+Waveshare UGV Rover powered by an NVIDIA Jetson Orin Nano.
 
-The current system is deliberately simple about where work happens:
+The browser is the cockpit: drive the rover, watch its camera, choose a destination
+on the map, inspect recorded observations or start a voice conversation. Hardware
+control, mapping and visual memory run onboard. Conversation uses Alibaba
+DashScope's hosted Qwen Omni model.
 
-- the **Jetson Orin Nano** owns the rover hardware and runs the daemon, local
-  YuNet face detection, ROS 2 mapping/navigation, the OAK depth service, the
-  semantic world state and its perception sidecar, the web console and the
-  network scripts;
-- a **browser** supplies the microphone and speaker for voice interaction;
-- **Alibaba DashScope** supplies the realtime Qwen Omni model;
-- no separate GPU/MEDIA host is part of the running system; world-state
-  perception uses the Orin's GPU through TensorRT.
+## What it does
 
-The Orin replaced a Banana Pi M4 Zero on 2026-08-31. The chassis, driver board,
-lidar and gimbal camera all came across unchanged; what moved is the computer
-they are wired to, and with it every device name. Constants in this repository
-that were "measured on the rover" were measured through one of the earlier
-boards, and the mechanics are the same rover, so they stand.
-[`docs/hosts.md`](docs/hosts.md) records the current host.
+- **Drive from a browser.** Manual driving, a live camera view, gimbal and
+  headlight controls, battery status and a map share one web console.
+- **Map and navigate.** ROS 2 Jazzy, `slam_toolbox` and Nav2 turn lidar scans and
+  wheel/IMU odometry into a map and routes to selected destinations. Frontier
+  exploration chooses reachable edges of the map to extend it, with a time limit
+  and a stop control.
+- **Talk and look.** Use the browser's microphone and speaker for realtime
+  conversation. The model can call rover tools and request camera images to
+  answer visual questions.
+- **Track faces locally.** YuNet detects faces on the rover; a shared aiming
+  controller moves the gimbal to follow a selected face.
+- **Search visual memory.** Recorded image regions can be searched with a text
+  description. Observations retain their source images and measurements; the
+  resolver combines evidence from different viewpoints to estimate object
+  positions. Tools expose search and navigation to a viewpoint near a match.
+- **Inspect and reproduce.** The console exposes the observations behind a
+  placement. Sensor probes, recorded-run replay and controller simulations support
+  diagnosis and testing against real rover recordings.
 
-Superseded implementations are not kept beside the live ones merely as history.
-Git already holds that history. A file in the current tree should either run,
-help diagnose what runs, or document a current hardware fact or failure mode.
+## How it fits together
 
-## What runs on the rover
+The Jetson runs the rover services. A single daemon owns the driver-board serial
+connection and gimbal camera, and exposes tools used by the console and voice
+session. ROS owns mapping and route execution; the visual-memory service stores
+observations and estimates where things are.
 
-| Directory | Current role |
+```mermaid
+flowchart LR
+    Browser["Browser: controls, camera, map and audio"] <--> Console["Web console on Jetson"]
+    Console <--> Qwen["Qwen Omni on Alibaba DashScope"]
+    Console <--> Daemon["Rover daemon on Jetson"]
+    Daemon <--> Board["Driver board: motors, gimbal and telemetry"]
+    Camera["Gimbal camera"] --> Daemon
+    Daemon <--> ROS["ROS 2: SLAM and Nav2"]
+    Lidar["D500 lidar"] --> ROS
+    Daemon <--> World["Visual memory and onboard perception"]
+    OAK["OAK-D-Lite depth"] --> World
+```
+
+World-state perception uses YOLOE regions with DINOv2 and SigLIP2 appearance
+vectors, accelerated through TensorRT on the Orin. Geometry supplies placement
+evidence; text search compares a description with stored visual features. Face
+tracking uses a separate local YuNet detector.
+
+Voice requires internet access and a DashScope API key held on the rover. The
+browser supplies audio; manual driving and status are available independently
+of the voice service.
+
+## Hardware
+
+| Part | Role |
 |---|---|
-| [`rover_daemon/`](rover_daemon) | owns the driver-board UART and gimbal camera; exposes hardware and navigation as tools on TCP 8769 |
-| [`face_tracking/`](face_tracking) | shared aiming law plus **local YuNet** detection on the rover; the rover daemon imports this code |
-| [`ros_nav/`](ros_nav) | ROS 2 Jazzy, `slam_toolbox` and Nav2; lidar in, odometry/motor commands through the daemon, navigation back to it; keeps the map between sessions and puts the rover back on it |
-| [`world_state/`](world_state) | what the rover has seen in the room, kept apart from where things are: segmented regions, the picture each look was read from, and a search that compares a description against what was actually seen |
-| [`lidar_slam/`](lidar_slam) | the fast LD19 parser, room description, map renderer and USB recovery code still used by the ROS stack and daemon |
-| [`oak_depth/`](oak_depth) | keeps the OAK-D-Lite open as a stereo depth sensor and serves depth locally |
-| [`drive_web/`](drive_web) | HTTPS browser console, map, camera view and microphone/speaker bridge |
-| [`voice_chat/`](voice_chat) | Alibaba realtime Qwen Omni session protocol, rover client helpers, prompts and console model shared with `drive_web` |
-| [`wifi_roam/`](wifi_roam) | the rover's three NetworkManager profiles -- one it joins at boot, two it joins only when asked -- and the privileged helper the console scans and switches through |
-| [`dongle_driver/`](dongle_driver) | builds and DKMS-registers the USB Wi-Fi dongle's kernel driver, which NVIDIA's L4T kernel does not ship |
-| [`netwatch/`](netwatch) | persistent evidence for network/board failures; **staged but not installed** on the Orin, because it reads `wpa_supplicant`'s control socket and this host runs NetworkManager |
+| Waveshare UGV Rover chassis and General Driver for Robots board | Motors, encoders, IMU, lights, gimbal and battery telemetry |
+| NVIDIA Jetson Orin Nano | Rover services and GPU perception |
+| D500 2D lidar | Scans for mapping and navigation |
+| Gimbal-mounted UVC camera | Camera view, face tracking and visual observations |
+| OAK-D-Lite | Stereo depth measurements |
 
-The driver board is the physical owner of the motors, lights, gimbal, encoders,
-IMU and battery telemetry. The daemon keeps that UART open and lends the ROS stack
-the odometry and motor path over loopback rather than letting two processes race
-for the serial port.
+The repository also includes [parametric CAD for the OAK rail mount](cad/README.md).
 
-Face tracking uses `face_tracking/yunet.py` on the rover itself. There is no
-remote face-detection service in the current system. The detector and the aiming
-loop are separate concerns: `yunet.py` finds faces; `aiming.py` decides where the
-gimbal should move.
+## Current limits
 
-Voice interaction is also one current path. `drive_web/omni_bridge.py` runs the
-session on the rover and `voice_chat/session.py` speaks Alibaba's realtime API.
-Audio crosses the rover's Wi-Fi between browser and rover; tool calls stay on
-loopback; a `look` frame is handed to the same cloud session through a loopback
-frame server. See [`voice_chat/README.md`](voice_chat/README.md).
+Navigation uses a horizontal lidar scan: it cannot detect drops or obstacles
+entirely above or below that scan plane. Maps and the last trusted pose persist
+between sessions; restoring a map does not guarantee correct localization if the
+rover has been moved while off. The console provides a manual refit control.
 
-## Bench and diagnostic tools
+Visual memory is experimental. Gimbal pointing error and camera alignment limit
+placement accuracy, and repeated appearances or ambiguous geometry can produce
+incorrect associations. The stored images and uncertainty are available for
+inspection. See [world-state measurements and limitations](world_state/README.md).
 
-These are intentionally kept even though they are not long-running rover
-services. Each answers a useful question about the hardware without requiring the
-whole stack to be healthy.
+The web console uses HTTPS and assumes a trusted local network; it has no login.
 
-| Directory | What it is for |
+## Explore the code
+
+| Component | Contains |
 |---|---|
-| [`oak_camera/`](oak_camera) | probe the OAK, inspect calibration/crash state and preview colour/depth on a workstation |
-| [`lidar/`](lidar) | live top-down lidar view from a desk |
-| [`usb_cameras/`](usb_cameras) | UVC camera preview plus lens/FOV and aiming calibration |
-| [`driver_board/`](driver_board) | direct gamepad/board bring-up tools |
-| [`face_tracking/track_face.py`](face_tracking/track_face.py) | workstation face-tracking loop using the same YuNet/aiming model |
-| [`voice_chat/mock_rover.py`](voice_chat/mock_rover.py) | invented rover for exercising the console and conversation plumbing without hardware |
-| diagnostic scripts in [`ros_nav/`](ros_nav) | recordings, replay, controller simulations and chassis calibration used to reproduce navigation faults before changing the real rover |
+| [Rover daemon](rover_daemon/README.md) | Hardware ownership, tool API and navigation integration |
+| [Navigation](ros_nav/README.md) | ROS 2 stack, map persistence, exploration, calibration and replay |
+| [World state](world_state/README.md) | Observation storage, perception, association and text search |
+| [Web console](drive_web/README.md) | Browser controls, maps, observation inspection and audio bridge |
+| [Voice](voice_chat/README.md) | Qwen realtime protocol, prompts and rover client |
+| [Face tracking](docs/face-tracking.md) | YuNet detection, aiming geometry and calibration |
+| [Stereo depth](oak_depth/README.md) | OAK-D-Lite depth service |
+| [Deployment](deploy/README.md) | Component manifest, source deployment and service verification |
 
-A diagnostic remains worth keeping when it can answer a current question such as
-"is the lidar producing valid packets?", "does YuNet see this face?" or "does
-this controller reproduce the recorded doorway fault?". Historical alternatives
-that no longer answer a current question belong in Git history instead.
+## Getting started
 
-## Workstation setup
+For the system overview, start with the [architecture guide](docs/rover-architecture/README.md).
+To set up rover services, follow the [deployment guide](docs/deploy.md) and the
+component READMEs. Installation depends on the attached devices, chassis
+calibration, model assets and host configuration.
 
-One environment covers the ordinary workstation bench scripts:
+For workstation sensor tools, create a Python environment and install
+[`requirements.txt`](requirements.txt). On Windows PowerShell:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe oak_camera/probe_device.py
 ```
 
-Examples:
+Additional bench tools cover [lidar](lidar/), [USB cameras](usb_cameras/) and
+[driver-board control](driver_board/). Their hardware connections and calibration
+procedures are documented under [`docs/`](docs/).
 
-```powershell
-python oak_camera\probe_device.py
-python oak_camera\preview_depth.py
-python lidar\lidar_view.py
-python usb_cameras\preview_usb_cameras.py
-python driver_board\drive_gamepad.py
-python face_tracking\track_face.py
-```
-
-The rover does not use this venv. Its OpenCV and DepthAI dependencies are pinned
-wheels unpacked beside the code by the component installers. The Orin does have
-`pip` and could install them properly -- the Banana Pi before it had neither
-`pip` nor `python3-venv` -- but the version is the thing being pinned, DepthAI's
-wheel *is* the OAK's firmware, and one install path that worked on both boards is
-worth more than a second that works only here. See
-[`docs/deploy.md`](docs/deploy.md).
-
-## Deploying the rover
-
-A commit changes nothing on the rover until it is deployed. Normal committed-code
-workflow:
-
-```bash
-python deploy/deploy.py --plan
-python deploy/deploy.py
-```
-
-The deployer copies only affected registered components, uses their existing
-restart/verification paths and advances per-component deployment state only after
-that proof succeeds. Privileged network installs are deliberately a separate
-`--system` step.
-
-See:
-
-- [`deploy/README.md`](deploy/README.md) for deployer behaviour and failure semantics;
-- [`docs/deploy.md`](docs/deploy.md) for what runs where and the manual recovery path;
-- [`docs/hosts.md`](docs/hosts.md) for this rover's host/network facts;
-- [`CLAUDE.md`](CLAUDE.md) for working rules in this repository.
-
-## Current data paths
-
-### Driving and mapping
-
-```text
-D500 lidar -> ros_nav/lidar_node.py -> /scan -> slam_toolbox + Nav2  
-                                                    |
-driver board UART <- rover_daemon <- loopback 8772 -+
-       ^                                            |
-       +-------------- motor commands --------------+
-
-Nav2 result/status -> loopback 8773 -> rover_daemon -> tools / web console
-```
-
-`lidar_slam/` keeps its historical name, but its old scan matcher/planner/controller
-are gone. What remains is still used: the C parser, room-description helpers, map
-renderer and USB reset path.
-
-### Face tracking
-
-```text
-gimbal UVC camera -> MJPEG -> local YuNet -> aiming.py -> gimbal command -> driver board
-```
-
-The camera is kept as MJPEG because the host can decode a frame cheaply and
-uncompressed capture needlessly consumes the shared USB path. Tracking runs while
-the rover drives; with nobody in view it stops sweeping and watches the way it is
-going until the wheels stop. The measured detector details and calibration
-procedure are in [`docs/face-tracking.md`](docs/face-tracking.md).
-
-### Voice
-
-```text
-browser mic/speaker
-        |
-        |  wss://rover:8771/audio
-        v
- drive_web/omni_bridge.py
-        |
-        +-- 127.0.0.1:8769 -> rover tools
-        +-- 127.0.0.1:8774 <- camera frames for `look`
-        |
-        +-- wss://dashscope-intl.aliyuncs.com/... -> Qwen realtime Omni
-```
-
-The DashScope key lives on the rover at `~/.ugv/alibaba.key`, outside the deploy
-tree, and does not reach the browser. It does not belong in Git.
-
-## Documentation
-
-`docs/` is for current hardware facts, deployment instructions and focused
-investigations whose evidence remains useful to the current system. Component
-READMEs describe the component as it exists now.
-
-Useful starting points:
-
-| Document | Covers |
-|---|---|
-| [`docs/rover-architecture/`](docs/rover-architecture) | the rover on two pages: the ROS 2 graph, and the semantic world state |
-| [`docs/deploy.md`](docs/deploy.md) | deployment, restart and verification paths |
-| [`docs/hosts.md`](docs/hosts.md) | current Jetson Orin, network facts, services and ports |
-| [`docs/face-tracking.md`](docs/face-tracking.md) | local YuNet, aiming geometry and calibration |
-| [`docs/driver-board.md`](docs/driver-board.md) | what the ESP32 board owns, and driving it from a game pad |
-| [`docs/d500-lidar.md`](docs/d500-lidar.md) | lidar power/data/protocol facts |
-| [`docs/oak-d-lite.md`](docs/oak-d-lite.md) | OAK-D-Lite hardware and depth semantics |
-| [`docs/depthai-version-pin.md`](docs/depthai-version-pin.md) | why the rover pins DepthAI 2.x |
-| [`docs/usb-cameras.md`](docs/usb-cameras.md) | UVC cameras from a workstation, and measuring a lens's field of view |
-| [`docs/i2c.md`](docs/i2c.md) | why the 40-pin header's I2C is the ESP32's bus and not a free one |
-| [`docs/jetson-orin-navigation.md`](docs/jetson-orin-navigation.md) | why Waveshare's Orin navigation stack was not adopted wholesale |
-| [`docs/doorway-pivot.md`](docs/doorway-pivot.md) | a focused navigation-fault investigation; current config in `ros_nav/config/` remains authoritative |
-| [`docs/rover-unresponsive.md`](docs/rover-unresponsive.md) | why the rover disappears from the network, and how to get in without the power switch |
-| [`docs/scripting.md`](docs/scripting.md) | rover-side scripts exposed through the daemon |
-| [`docs/task-semantic-world-state.md`](docs/task-semantic-world-state.md) | the plan the semantic world state is built to, and what replaying real runs found |
-| [`docs/cosmos-reason2-integration.md`](docs/cosmos-reason2-integration.md) | closed: the local vision-language model that was tried and removed, and the measurements that ruled it out |
-
-When a document disagrees with executable code or configuration, the code/config
-is authoritative and the document should be corrected rather than the runtime
-changed to match history.
+For console development without hardware, the [voice component guide](voice_chat/README.md)
+includes a mock rover. Navigation recordings and replay tools are described in
+the [navigation guide](ros_nav/README.md).
