@@ -189,9 +189,17 @@ real and is already documented in
 [ros_nav/README.md](../../ros_nav/README.md): a wide search can place the rover
 confidently in the wrong one of two rooms that look alike, which is why measuring
 first with a score floor above 1 is the advised habit. The wider window has so
-far been demonstrated on one scan in one room, and over about a metre of
-translation the candidate chosen barely changes the score, so position is the
-weaker half of the fit either way.
+far been demonstrated on one scan in one room.
+
+What made this particular error findable is that it was almost purely a heading
+error: the accepted fit moved the rover 152.5 degrees and 0.149 m. That is not a
+general property of the search. The score varies strongly with position — a scan
+lying half a metre off the walls scores near zero, which is what makes the search
+work at all — so a fit is not cheap in position merely because this one was.
+`refit.py`'s narrower claim about a metre of translation is that it barely
+changes *which points land on mapped ground*, which is the argument for leaving
+unmapped returns out of the average, not a claim that position is weakly
+determined.
 
 Settling it means deciding what the window should be, on more than one room, and
 saying what protects a symmetric room once the search can reach round it. Until
