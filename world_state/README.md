@@ -172,12 +172,16 @@ Useful replay and measurement tools remain beside the component:
 
 That proof was taken on 2026-09-07 and measured range does prevent false
 crossings. The next hardware proof is a different one, and it is not about this
-camera at all. Running `bench_oak.py` at three gimbal positions in both orders
-shows the gimbal camera **misses pan 0 by 1.76 degrees depending on which
-direction it arrived from**, while the two ends repeat perfectly -- and this
-camera is bolted to the chassis, so nothing else can account for the difference.
-Every look the world state takes is at pan 0, and 1.76 degrees is more than the
-1.5 a bearing here is believed to. Measure the pan servo's commanded angle
-against its actual one, from both directions, before anything else; until then
-the OAK's mount cannot honestly be re-measured, and `oak.MOUNT` has been left
-alone rather than moved to one of three numbers that disagree.
+camera at all. Sweeping the gimbal through a position from either side -- which
+needs an overshoot, or the approach is only ever opposed at pan 0 -- shows the
+gimbal camera **carries about a degree and a half of backlash at every angle in
+its travel**, against a same-direction floor of five hundredths. The OAK is bolted
+to the chassis, so nothing but the gimbal's own pointing can account for it. Every
+look the world state takes is at pan 0, a degree and a half is about the whole of
+the 1.5 a bearing here is believed to, and which way the gimbal last moved is
+recorded nowhere. Two more faults ride with it: a gain-like walk of about 7 per
+cent, and a roll that moves with pan and that neither of the other two can
+produce. Measure the pan servo's commanded angle against its actual one before
+anything else; until then the OAK's mount cannot honestly be re-measured, and
+`oak.MOUNT` has been left alone rather than moved to one of several numbers that
+disagree.

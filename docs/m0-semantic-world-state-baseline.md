@@ -222,42 +222,84 @@ The shape of that spread says which part. Taken as deviations from the pan-0 fit
 the three positions are -3.57, 0, +0.88, and no symmetric error does that: a pure
 gain error on the pan servo -- the obvious suspect, since this rover's pan is known
 to under-travel, told -30 and landing near -27 -- would walk the fit equally and
-oppositely either side of zero. Nearly all of this is on one side.
+oppositely either side of zero.
 
-So the bench was run again with the pan positions **in both orders**, six runs
-interleaved in one sitting, which asks a different question: does the fit depend on
-which direction the gimbal arrived from? The OAK is bolted down and cannot move, so
-anything that changes between two such runs is the gimbal camera's actual pointing
-and nothing else.
+So the bench was run again with the pan positions in both orders. **The first
+attempt at that was designed wrongly and its answer was thrown away**, and it is
+worth saying how, because the wrong answer was a tidy one. Running `-20 0 +20`
+against `+20 0 -20` opposes the approach direction only at pan 0: each end is the
+first stop of one order and the last stop of the other, and both of those
+approaches move the same way. The ends duly showed no difference and pan 0 showed
+1.76 degrees, and that table is exactly what *uniform* backlash also produces. The
+"ends are immune" reading, and the mechanism invented to explain it, were artefacts
+of the design.
 
-| commanded pan | arriving from the left | arriving from the right | difference |
-|---:|---:|---:|---:|
-| -20 | +1.16 | +1.25 | -0.09 |
-| **0** | **+4.28** | **+2.52** | **+1.76** |
-| +20 | +5.38 | +5.35 | +0.02 |
+The test that separates them overshoots, so that every sampled position is
+interior: sweep -30 to +20 sampling at -20, 0 and +20, then +30 to -20 sampling the
+same three. Now each has a genuine approach from either side. Runs are paired
+adjacently and in alternating order, so the drift that runs through a sitting
+falls on opposite sides of successive pairs and cancels. And the floor is measured
+per position rather than assumed, by two runs back to back **in the same
+direction** -- because an insensitive fit and an honest zero look identical, and
+the two ends do not see the same scene as the middle:
 
-The two ends do not care at all. **Pan 0 is out by 1.76 degrees depending on which
-way the gimbal got there**, and the three interleaved pairs give 1.67, 1.97 and
-1.64, so it is not a fluke -- against repeat runs at one pan approached the same way
-that agree to 0.13 degrees. This is backlash or hysteresis, not a fixed one-sided
-offset, because a fixed offset would not change with approach direction.
+| commanded pan | floor, same direction | backlash, drift-cancelled |
+|---:|---:|---:|
+| -20 | 0.03 | **+1.58** |
+| 0 | 0.03 | **+1.58** |
+| +20 | 0.05 | **+1.32** |
 
-That the ends are immune and the middle is not has a plausible mechanism: at a
-large deflection the servo is loaded consistently and settles the same way whichever
-side it came from, while at zero the restoring forces are balanced and the slack is
-free to leave the horn wherever it arrived. That part is a hypothesis. The 1.76
-degrees is a measurement.
+The fit is equally sensitive at the ends as in the middle, to a twentieth of a
+degree, so a small difference there would have meant something. It is not small.
+**The backlash is about one and a half degrees and it is everywhere in the
+gimbal's travel**, thirty times the floor, not a property of pan 0. That is the
+worse of the two readings: no pan angle is repeatable, rather than one.
 
-**Every look in this recording was taken at pan 0**, which is precisely the position
-where the gimbal is least repeatable, and 1.76 degrees is larger than the 1.5 a
-bearing on this rover is believed to. So the pan servo is the better candidate than
-the fisheye model and should be measured first -- commanded against actual, at both
-signs and several magnitudes, and explicitly approached from both directions. Do
-not fit a single gain to it: a one-sided error is exactly what a symmetric two-point
-fit averages away into a plausible number that then fails to close the spread.
+### Three faults, and they are separable
 
-None of this yet explains the roll swinging 3.4 degrees across pan, so the lens
-model is not cleared.
+Within a single sweep the fitted yaw also walks steadily with pan, the same way in
+both directions -- ascending 2.65, 3.20, 4.35 across -20, 0, +20 and descending
+0.95, 1.89, 2.85. That is about 0.07 degrees of yaw per degree of pan, a **gain-like
+error near 7 per cent**, which sits close to the 10 per cent the known under-travel
+implies. Backlash is an offset; this is a slope; they are different faults and the
+sweep shows both at once. A two-point calibration would have averaged them into one
+number that fits neither.
+
+The roll is a third thing and neither of the first two can produce it: it walks
+about 0.09 degrees per degree of pan, and a gain error in pan cannot move roll at
+all. A pan axis leaning fore-and-aft would -- and the direction is already pinned,
+because a sideways lean would move pitch instead and pitch is flat at 2.1
+throughout. The tilt that would explain the roll is about 5.6 degrees, and by
+`cos(5.6)` that same tilt shortens the yaw by only half a per cent, so it accounts
+for about a fourteenth of the 7 and cannot be the cause of it. Three independent
+faults, by arithmetic rather than by assumption.
+
+Whether the roll is really the axis is **not settled**, and the reason to doubt it
+is that a wrong lens model also puts roll into this fit, since features sweep
+across the frame as the camera pans. What would choose between them is linearity: a
+tilted axis gives a straight line, a bad distortion model gives a curve. The
+measured roll slope falls across the sweep -- 0.153, 0.087, 0.080 degrees per
+degree in one run and 0.139, 0.093, 0.096 in the next, reproduced well above the
+0.05 floor -- which looks like a curve and would favour the lens. But the steep
+interval is the one nearest -30, which is exactly where the servo under-travels
+most, and the horizontal axis of that plot is *commanded* pan. **The curvature
+cannot be read until commanded pan is measured against actual pan**, so the tilt
+stays a leading suspicion and no more.
+
+### What it costs the world state
+
+**Every look this rover has ever taken is at pan 0**, and 1.5 degrees of backlash
+is about the whole of the 1.5 a bearing here is believed to. Which way the gimbal
+last moved is not recorded anywhere, so the error is not even correctable after the
+fact. Under the earlier reading only pan 0 was affected; under this one every angle
+is, so nothing is gained by looking elsewhere.
+
+The order of work follows from the arithmetic. **Measure the pan servo's commanded
+angle against its actual one first** -- at both signs, several magnitudes, and
+approached from both directions, without fitting a single gain to it. That settles
+the 7 per cent, and it is also the thing that has to be known before the roll curve
+can be read at all. The fisheye model and the pan-axis tilt are both still open
+behind it.
 
 **`oak.MOUNT` has deliberately not been changed.** Adopting the pan-0 fit would
 replace one number with another that three positions disagree about, which is the
@@ -311,10 +353,13 @@ worse shape. In order:
 1. **Measure the pan servo's commanded angle against its actual one, from both
    directions, and then re-measure the OAK mount.** Nothing else here can be
    settled first, because every OAK number is expressed relative to the gimbal
-   camera. The gimbal misses pan 0 by 1.76 degrees depending on which way it
-   arrived, and pan 0 is where every world-state look is taken. `bench_oak.py
-   --pan -20 0 20` against `--pan 20 0 -20` is the cheap version of the test, and
-   it is the one that should stop disagreeing when this is right.
+   camera. The gimbal carries about 1.5 degrees of backlash at every angle in its
+   travel, which is the whole of what a bearing here is believed to, and pan 0 --
+   where every world-state look is taken -- is no better than the rest. The cheap
+   version of the test is `bench_oak.py --pan -30 -20 0 20` against `--pan 30 20 0
+   -20`, paired adjacently in alternating order, with two same-direction runs for
+   the floor. Do not use `--pan -20 0 20` against `--pan 20 0 -20`: it opposes the
+   approach only at pan 0 and will tell you the ends are clean when they are not.
 2. **Refuse entities made of bare floor.** Two of fourteen reviewed entities are
    floor, one of them confident to 0.18 m. An executive choosing where to look next
    would spend real distance on them.

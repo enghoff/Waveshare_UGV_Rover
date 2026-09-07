@@ -167,33 +167,57 @@ class Mount:
 #: where the other camera is pointed. So what is wrong is the gimbal camera's own
 #: pointing.
 #:
-#: **Which part of it was then measured, by running the same three positions in
-#: both orders.** This camera cannot move, so anything that changes between two
-#: such runs is the gimbal's actual pointing and nothing else. Six runs
-#: interleaved in one sitting, yaw fitted at each commanded pan:
+#: **Which part of it was then measured, and the first attempt was designed
+#: wrongly.** Running `-20 0 +20` against `+20 0 -20` opposes the approach
+#: direction only at pan 0: each end is the first stop of one order and the last
+#: of the other, and both approaches move the same way. It said the ends were
+#: immune and pan 0 was out by 1.76 degrees -- which is also exactly what uniform
+#: backlash produces. That reading, and the restoring-forces mechanism written to
+#: explain it, are withdrawn.
 #:
-#:     pan    from the left   from the right   difference
-#:     -20        +1.16           +1.25          -0.09
-#:       0        +4.28           +2.52          +1.76
-#:     +20        +5.38           +5.35          +0.02
+#: Done properly every sampled position is interior -- sweep `-30 -20 0 20`
+#: against `30 20 0 -20` -- with runs paired adjacently in alternating order so
+#: the sitting's drift cancels, and the floor measured per position by two runs
+#: back to back in the *same* direction, because an insensitive fit and an honest
+#: zero look identical:
 #:
-#: The ends do not care which way the gimbal arrived. **Pan 0 is out by 1.76
-#: degrees depending on which way it got there** -- three interleaved pairs giving
-#: 1.67, 1.97 and 1.64, against repeat runs at one pan approached the same way
-#: that agree to 0.13. That is backlash, not a fixed one-sided offset, since a
-#: fixed offset would not move with approach direction. Why the ends are immune is
-#: a guess worth writing down and not more: at a large deflection the servo is
-#: loaded consistently and settles the same way, while at zero the restoring
-#: forces balance and the slack leaves the horn wherever it arrived.
+#:     pan    floor (same direction)   backlash (drift-cancelled)
+#:     -20            0.03                     +1.58
+#:       0            0.03                     +1.58
+#:     +20            0.05                     +1.32
 #:
-#: **Every world-state look is taken at pan 0**, which is the one position where
-#: this gimbal does not repeat, and 1.76 degrees is more than the 1.5 a bearing
-#: here is believed to. So the pan servo comes before the fisheye fit: measure
-#: commanded against actual at both signs and several magnitudes, approached from
-#: both directions, and do not fit a single gain -- a one-sided error is what a
-#: symmetric two-point fit averages away into a plausible number that then fails
-#: to close the spread. The roll swinging 3.4 degrees across pan is still
-#: unexplained by any of this, so the lens model is not cleared.
+#: The fit sees equally well at the ends as in the middle, so those differences
+#: are real: **about a degree and a half of backlash, everywhere in the travel**,
+#: thirty times the floor, and not a property of pan 0.
+#:
+#: **Three separable faults, separated by arithmetic rather than by a story.**
+#: Backlash is the offset above. Riding under it the fitted yaw walks about 0.07
+#: degrees per degree of pan, a gain-like error near 7 per cent, in the region of
+#: the 10 the known pan under-travel implies. And the roll walks about 0.09
+#: degrees per degree, which neither of those can do, a pan gain error being
+#: unable to move roll at all. A pan axis leaning fore-and-aft would, and the
+#: direction is pinned by pitch staying flat at 2.1 throughout -- a sideways lean
+#: would move pitch instead. But the tilt that explains the roll is 5.6 degrees,
+#: and by its own cosine that shortens the yaw by half a per cent, a fourteenth of
+#: the 7, so the tilt cannot be the cause of the gain.
+#:
+#: Whether the roll is the axis at all is open, because a wrong lens model also
+#: puts roll into this fit -- features sweep across the frame as the camera pans.
+#: Linearity would choose: a tilt gives a line, bad distortion gives a curve. The
+#: measured slope does fall across the sweep, 0.153/0.087/0.080 in one run and
+#: 0.139/0.093/0.096 in the next, reproduced above the floor, which looks like a
+#: curve and would favour the lens -- except that the steep interval is the one
+#: nearest -30 where the servo under-travels most, and this plot's horizontal axis
+#: is *commanded* pan. It cannot be read until commanded is measured against
+#: actual.
+#:
+#: **What it costs: every look this component has ever taken is at pan 0**, a
+#: degree and a half of backlash is about the whole of the 1.5 a bearing here is
+#: believed to, and which way the gimbal last moved is recorded nowhere, so it
+#: cannot be corrected after the fact either. Measure the pan servo
+#: commanded-against-actual first -- both signs, several magnitudes, both approach
+#: directions, and no single gain fitted to it. The fisheye model and the axis
+#: tilt are both still open behind that.
 #:
 #: Adopting the pan-0 fit would replace one number with another that three
 #: positions disagree about, which is this file's own warning turned on itself:
