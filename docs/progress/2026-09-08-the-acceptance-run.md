@@ -2,7 +2,9 @@
 
 **Three of M0's four declared tolerances pass and the fourth fails on identity,
 which is where it has always failed.** The owner put out three measured objects
-and drove the room for thirty-five minutes.
+and drove the room for thirty-five minutes: 1208 looks from 196 standing places
+across 10.4 by 11 m, 117 things, 917 attachment decisions, archived as
+`~/.ugv/archive/world-2026-09-08-acceptance.db`.
 
 **Correction, found after this entry was first written: the map was not kept.**
 The runbook asks for the store cleared and the map preserved, and that is what
@@ -12,9 +14,7 @@ run the map was replaced and the rover built a fresh one as it drove. The store'
 own `map_session` still reads 67, which is stale rather than wrong-headed: the
 store was cleared at the same moment, so no old coordinates survived to be
 crossed with new ones. What it cost is stated in *Did the frame hold still?*
-below, and the answer is: less than expected. 1208 looks from 196
-standing places across 10.4 by 11 m, 117 things, 917 attachment decisions,
-archived as `~/.ugv/archive/world-2026-09-08-acceptance.db`.
+below, and the answer is: less than expected.
 
 This is the first run taken against
 [a manifest written before the rover moved](../runbooks/m0-acceptance-drive.md),
