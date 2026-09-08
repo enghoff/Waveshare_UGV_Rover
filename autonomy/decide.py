@@ -229,9 +229,7 @@ def render(got: dict[str, Any]) -> str:
                      f"{terms['travel_cost']} - switching "
                      f"{terms['switching_cost']} (weights "
                      f"{terms['weights_version']})")
-    for one in decision["refused_above_it"]:
-        lines.append(f"  {one['id']} scored higher at {one['utility']} and was "
-                     f"refused -- {one['why']}")
+    lines.extend(_refused_above(decision["refused_above_it"]))
     for one in decision["gate"]:
         lines.append(f"  cannot act: {one['gate']} -- {one['why']}")
     counts = (f"{len(decision['considered'])} candidates, "
@@ -239,6 +237,34 @@ def render(got: dict[str, Any]) -> str:
               f"vetoed, in {got['deliberation_s']:.2f} s")
     lines.append("  " + counts)
     return "\n".join(lines)
+
+
+def _refused_above(refused: list[dict[str, Any]]) -> list[str]:
+    """The better-looking options and why they were refused, grouped by reason.
+
+    Grouped because on the real map they come in families: six things placed
+    where the rover cannot get a viewpoint produce six candidates with the same
+    two-sentence refusal, and printing each in full buries the one line a reader
+    is looking for. The interesting fact is the group -- *a quarter of the
+    things this rover holds are somewhere it cannot stand to look at them* --
+    and the reason is said once, with the things named.
+    """
+    families: dict[str, list[dict[str, Any]]] = {}
+    for one in refused:
+        families.setdefault(one["why"], []).append(one)
+    lines = []
+    for why, group in families.items():
+        if len(group) == 1:
+            lines.append(f"  {group[0]['id']} scored higher at "
+                         f"{group[0]['utility']} and was refused -- {why}")
+            continue
+        named = ", ".join(one["id"].split("@")[0].split(":", 1)[-1]
+                          for one in group[:6])
+        lines.append(f"  {len(group)} scored higher and were refused for the "
+                     f"same reason -- {why}")
+        lines.append(f"    they are {named}"
+                     + (" and others" if len(group) > 6 else ""))
+    return lines
 
 
 def _dumps(value: Any) -> str:

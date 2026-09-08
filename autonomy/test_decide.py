@@ -197,6 +197,32 @@ def test_reading_the_rover_and_deciding_are_separate_things() -> None:
           len(rover.asked), asked)
 
 
+def test_a_family_of_refusals_is_reported_once_with_its_members() -> None:
+    """On the real map, things placed where the rover cannot stand come in
+    families, and six copies of the same two-sentence refusal bury the one line
+    a reader wants."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = EpisodeStore(directory)
+        shut_in = [a_thing(f"object:{n}", 0.45 + 0.05 * n, 0.30,
+                           uncertainty_m=1.2, major_deg=90.0)
+                   for n in (1, 2, 3)]
+        reachable = a_thing("object:9", 1.35, 0.55, uncertainty_m=0.5,
+                            major_deg=90.0)
+        got = decide.deliberate(store, _here(CLOSET,
+                                             entities=[*shut_in, reachable]))
+        said = decide.render(got)
+        check("it still chooses the one it can reach",
+              got["decision"]["preferred"]["candidate"]["target"], "object:9")
+        check("...and the three it cannot are reported as one family",
+              "3 scored higher and were refused for the same reason" in said,
+              True)
+        check("...with the things named",
+              "they are object:1, object:2, object:3" in said, True)
+        check("...and the reason given once",
+              said.count("there is no route to it"), 1)
+        store.close()
+
+
 TESTS = (
     test_a_deliberation_is_recorded_whole,
     test_the_ranking_can_be_recomputed_from_the_record_alone,
@@ -206,4 +232,5 @@ TESTS = (
     test_one_deliberation_tells_the_next_what_it_wanted,
     test_a_thing_that_took_looks_and_got_no_better_is_put_aside_by_the_next_one,
     test_reading_the_rover_and_deciding_are_separate_things,
+    test_a_family_of_refusals_is_reported_once_with_its_members,
 )

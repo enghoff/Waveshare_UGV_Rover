@@ -1,16 +1,18 @@
 # Development plan: curiosity-driven autonomy
 
-Status: Phase 0 (P0) is in progress. Phase 1 (P1) passed its milestone on
-2026-09-08 and has no action authority; later phases remain proposed. This is
-the
+Status: Phase 0 (P0) is in progress. Phases 1 and 2 (P1, P2) passed their
+milestones on 2026-09-08 and have no action authority -- the rover records what
+it did and can say what it would do next, and nothing there can move anything.
+Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
 The plan is gated by capability dependencies, not a requirement to finish every
-phase before starting the next. M1 recording and M2 shadow decisions may proceed
-alongside the existing P0 work, with no action authority. M3 movement requires M0,
-M1 and M2 acceptance plus offline control-boundary tests; supervised stop/failure
-trials precede its autonomy sessions. Later capabilities require
+phase before starting the next. M1 recording and M2 shadow decisions proceeded
+alongside the existing P0 work, with no action authority, and both have now
+passed. **M3 movement still requires M0**, which has not passed, as well as
+offline control-boundary tests; supervised stop/failure trials precede its
+autonomy sessions. Later capabilities require
 recorded evidence for the primitives, semantics and execution substrate they use;
 code existing is not acceptance. Physical criteria must be observed on the rover.
 
@@ -470,71 +472,43 @@ Pass when all are true:
 
 Make "curiosity" explicit and measurable before allowing it to move the rover.
 
-### Candidate goal types
+### Milestone M2 passed on 2026-09-08
 
-For M2, implement:
+Every criterion is met. What was built is described where it runs -- in
+[the component's own README](../../autonomy/README.md) -- and what it is required
+to do is in [the autonomy requirements](../requirements/autonomy.md),
+[R-AUT-8](../requirements/autonomy.md#r-aut-8) to
+[R-AUT-10](../requirements/autonomy.md#r-aut-10). The measurement is
+[the shadow decisions entry](../progress/2026-09-08-shadow-decisions.md).
 
-- `explore_frontier` -- reachable unknown map boundary;
-- `improve_geometry` -- another bearing/range likely to improve placement;
+**Two of the six goal types exist**, which is what this milestone asked for:
+`explore_frontier` and `improve_geometry`. The scoring is arithmetic over a
+snapshot with every term recorded, refusals are gates and vetoes that run before
+the score rather than terms inside it, and the acceptance set is 49 curated
+rooms with the expected outcome written beside each.
 
-Add the following when their evidence and outcome tests exist, with shadow
-acceptance before enabling each type for movement:
+### What is still ahead
 
-- `inspect_uncertain_entity` -- explicit semantic gaps and claims from M4;
-- `revisit_stale_entity` -- knowledge old relative to expected mobility;
-- `investigate_change` -- current evidence conflicts with a prior stable belief;
-- `search_for_missing_entity` -- bounded search for something expected but absent.
-
-The last three depend on M5 temporal/visibility semantics. M2 may test their schema
-with fixtures, but does not require pretending that the live rover has those
-semantics. Skill-practice goals wait until a skill metric exists.
-
-Each candidate contains:
-
-```text
-id
-type
-target/evidence IDs
-expected observation/action
-estimated travel/time/energy
-risk class
-expected information gain or uncertainty reduction
-purpose relevance
-hard constraints
-score terms
-```
-
-### Curiosity scorer
-
-Implement the score from the architecture as deterministic code. Log every term
-and the configuration version used to compute it.
-
-Start with purpose-weighted useful knowledge gain minus time, travel, energy and
-switching costs. Specify units/scales and conservative handling of missing estimates.
-Novelty and uncertainty inform the gain estimate rather than earning duplicate
-rewards. Idle has zero utility; a safe candidate must still clear the configured
-minimum worthwhile gain. Test cooldowns, bounded retries and switching costs so an
-unresolvable gap or small score fluctuation cannot keep the rover busy indefinitely.
-
-Hard vetoes run before scoring. Initial vetoes should include at least:
-
-- outside configured safe/geofenced region if one is active;
-- no known reachable pose for a movement-requiring goal;
-- battery below autonomy threshold;
-- autonomy disabled or manually stopped;
-- navigation/world-state service unhealthy;
-- candidate requiring unavailable hardware;
-- candidate requiring unsupported drop/edge assumptions;
-- semantic candidate outside the validated calibration envelope or with unknown
-  approach/settling state required by that envelope.
-
-### Scenario harness
-
-Create a small deterministic scenario format that supplies a synthetic map/world
-summary and expected candidate properties. It should test score ordering without
-needing ROS or a cloud model.
-
-Include ambiguous cases where **no** candidate is acceptable.
+- **Nothing acts on any of it.** The executive, the daemon-enforced movement
+  permission and the stop latch are M3, and none of them exists. Every
+  deliberation closes `abandoned` for the same reason: there is no authority.
+- **Four goal types are missing**, and they are the semantic ones:
+  `inspect_uncertain_entity` (explicit gaps and claims from M4),
+  `revisit_stale_entity`, `investigate_change` and `search_for_missing_entity`
+  (the last three need M5 temporal and visibility semantics). Each needs shadow
+  acceptance of its own, and the fixed acceptance set must be extended before
+  any of them is enabled for movement. Skill-practice goals wait until a skill
+  metric exists.
+- **A thing seen once and never placed is never proposed**, because one bearing
+  gives no position to plan a viewpoint around. The pool of unplaced sightings
+  is invisible to the choosing, and closing that needs the observation history
+  rather than the entity listing.
+- **The purpose term is 1.0 everywhere**, because the owner has not declared
+  one. It is configuration and not code; until it is set, the rover weighs
+  exploring and inspecting equally and says so.
+- **Nothing measures whether a chosen goal would have paid off.** Predicted gain
+  against realised gain is what M4's evaluator needs and what any learned
+  ranking later rests on, and it cannot be measured until something acts.
 
 ### Milestone M2: the rover can explain what it would investigate next
 
