@@ -370,11 +370,17 @@ class Recorder:
             self.recorded["missed_moves"] += said[0]["seq"] - last - 1
         opened = 0
         for one in said:
-            opened += self._one_sentence(one, live)
+            # **Only the last sentence was seen; the rest are being read back.**
+            # The pose and the battery come from one reading of the rover taken
+            # now, so attaching them to a sentence the loop said before we
+            # looked would be recording a measurement nobody made. The sentence
+            # keeps its own fields either way.
+            opened += self._one_sentence(one, live, watched=one is said[-1])
             self.store.mark(MOVE_MARK, one["seq"])
         return opened
 
-    def _one_sentence(self, said: dict[str, Any], live: dict[str, Any]) -> int:
+    def _one_sentence(self, said: dict[str, Any], live: dict[str, Any], *,
+                      watched: bool) -> int:
         """Fold one sentence into the move it belongs to. Returns 1 if it began one."""
         phase = said.get("phase")
         open_ref = self.store.marked(OPEN_MOVE)
@@ -418,8 +424,13 @@ class Recorder:
             route_m=said.get("route_m"), waypoints=said.get("waypoints"),
             replans=said.get("replans"), reason=said.get("reason"),
             frontiers_left=said.get("frontiers_left"),
-            pose=live.get("pose"), battery_v=live.get("battery_v"),
-            map_settled=live.get("map_settled")))
+            # Where the rover was and what its battery read, on the one sentence
+            # that was actually watched. Absent on the rest rather than filled
+            # in from this reading -- see `_record_move`.
+            watched=True if watched else None,
+            pose=live.get("pose") if watched else None,
+            battery_v=live.get("battery_v") if watched else None,
+            map_settled=live.get("map_settled") if watched else None))
 
         if phase == "ended":
             self._close_move(open_ref, said.get("reason"), said.get("why") or "")

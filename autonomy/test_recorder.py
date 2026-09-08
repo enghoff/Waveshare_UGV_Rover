@@ -516,6 +516,63 @@ def test_pruning_never_takes_a_pinned_run() -> None:
               store.evidence_state(refs.digest(PICTURE))["state"], "held")
         store.close()
 
+
+def test_only_the_sentence_that_was_watched_carries_a_pose() -> None:
+    """The pose comes from one reading of the rover taken now. Attaching it to a
+    sentence the loop said before we looked would record a measurement nobody
+    made -- seen on the drive of 2026-09-08, where six phases of one turn all
+    carried the same heading because they arrived in a single poll."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[
+            {"seq": 1, "phase": "turning", "kind": "turn_in_place"},
+            {"seq": 2, "phase": "planning", "kind": "turn_in_place"},
+            {"seq": 3, "phase": "turning", "kind": "turn_in_place"},
+        ])
+        Recorder(store, rover).poll()
+        steps = store.episode(store.episodes()[0]["ref"])["events"]
+        check("three sentences", len(steps), 3)
+        check("...and only the last one has a pose",
+              [bool(one["body"].get("pose")) for one in steps],
+              [False, False, True])
+        check("...which is also the only one marked as watched",
+              [one["body"].get("watched") for one in steps],
+              [None, None, True])
+        check("...while every one keeps its own phase",
+              [one["body"]["phase"] for one in steps],
+              ["turning", "planning", "turning"])
+        store.close()
+
+
+def test_a_moves_summary_shows_the_move() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[
+            {"seq": 1, "phase": "choosing", "kind": "drive_to",
+             "asked": {"x_m": 1.5}},
+            {"seq": 2, "phase": "driving", "kind": "drive_to",
+             "route_m": 3.24, "waypoints": 7},
+            {"seq": 3, "phase": "driving", "kind": "drive_to", "route_m": 3.24},
+            {"seq": 4, "phase": "replanning", "kind": "drive_to",
+             "why": "something moved into the path", "replans": 1},
+            {"seq": 5, "phase": "ended", "kind": "drive_to", "reason": "arrived"},
+        ])
+        Recorder(store, rover).poll()
+        said = summary.of(store, store.episodes()[0]["ref"],
+                          live_world_generation=WORLD)
+        check("what was asked for",
+              "drive_to(x_m=1.5), and it went" in said, True)
+        check("...the phases, with repeats collapsed",
+              "choosing -> driving x2 -> replanning -> ended" in said, True)
+        check("...what provoked the replan",
+              "replanning: something moved into the path" in said, True)
+        check("...the route and the replan count",
+              "3.24 m of route, 7 waypoints, 1 replan" in said, True)
+        check("...and how much of it was actually watched",
+              "1 of 5 steps seen as they happened" in said, True)
+        check("...and how it ended", "closed: succeeded -- arrived" in said, True)
+        store.close()
+
 TESTS = (
     test_a_recorder_cannot_move_the_rover,
     test_world_state_inspect_is_not_a_call_a_recorder_may_make,
@@ -531,6 +588,8 @@ TESTS = (
     test_a_summary_of_a_shadow_episode_says_what_the_look_found,
     test_a_shadow_episode_decides_nothing_and_says_so,
     test_a_move_is_one_episode_however_many_things_it_says,
+    test_only_the_sentence_that_was_watched_carries_a_pose,
+    test_a_moves_summary_shows_the_move,
     test_a_move_closes_with_the_navigators_own_word_for_how_it_went,
     test_a_move_that_was_blocked_is_not_recorded_as_fine,
     test_an_ending_nothing_recognises_does_not_close_as_fine,

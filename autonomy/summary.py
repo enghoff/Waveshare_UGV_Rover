@@ -68,6 +68,23 @@ def render(got: dict[str, Any]) -> str:
         if step["kind"] == "world_change":
             lines.append(f"  {step['body'].get('what')}")
 
+    # What a move actually did. On a move episode the phases are the whole of
+    # the content, the way the world_change line is on a look -- without them a
+    # move reads as four lines saying nothing happened.
+    phases = [step["body"] for step in got["steps"]
+              if step["kind"] == "measured" and step["body"].get("phase")]
+    if phases:
+        asked = (got["trigger_detail"] or {}).get("asked")
+        kind = (got["trigger_detail"] or {}).get("kind")
+        lines.append(f"  {kind}{_params(asked)}, and it went "
+                     + " -> ".join(_runs([one["phase"] for one in phases])))
+        for one in phases:
+            if one.get("why"):
+                lines.append(f"    {one['phase']}: {one['why']}")
+        shape = _shape(phases)
+        if shape:
+            lines.append("  " + shape)
+
     for body in got["models"]:
         lines.append(f"  asked {body.get('provider')}/{body.get('model')} "
                      f"for {body.get('purpose')}")
@@ -141,6 +158,41 @@ def _params(params: Any) -> str:
         return ""
     inside = ", ".join(f"{k}={v}" for k, v in sorted(params.items()))
     return f"({inside})"
+
+
+def _runs(phases: list) -> list[str]:
+    """Collapse repeats, so eleven polls of "driving" read as one step."""
+    out: list[str] = []
+    for phase in phases:
+        if out and out[-1].split(" x")[0] == phase:
+            first = out[-1].split(" x")[0]
+            times = int(out[-1].split(" x")[1]) if " x" in out[-1] else 1
+            out[-1] = f"{first} x{times + 1}"
+        else:
+            out.append(str(phase))
+    return out
+
+
+def _shape(phases: list) -> str:
+    """The numbers a move leaves behind, where it left any."""
+    said = []
+    route = next((one["route_m"] for one in reversed(phases)
+                  if one.get("route_m")), None)
+    if route:
+        said.append(f"{route:.2f} m of route")
+    points = next((one["waypoints"] for one in reversed(phases)
+                   if one.get("waypoints")), None)
+    if points:
+        said.append(f"{points} waypoints")
+    replans = max([one.get("replans") or 0 for one in phases] or [0])
+    if replans:
+        said.append(f"{replans} replan{'' if replans == 1 else 's'}")
+    watched = sum(1 for one in phases if one.get("watched"))
+    said.append(f"{watched} of {len(phases)} steps seen as they happened, "
+                f"the rest read back afterwards"
+                if watched < len(phases) else
+                f"all {len(phases)} steps seen as they happened")
+    return ", ".join(said)
 
 
 def _count(number: int, thing: str) -> str:

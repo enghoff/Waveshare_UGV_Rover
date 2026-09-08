@@ -117,7 +117,7 @@ class FakeRover(client.ReadOnly):
         #: The driving loop's running commentary, oldest first. The last is what
         #: it is saying now; the ones before it are what a poller that named a
         #: sequence number gets back under `missed`.
-        self.said = list(said or [{"seq": 0, "phase": "idle"}])
+        self.said = _commentary(said or [{"seq": 0, "phase": "idle"}])
         self.frames = dict(frames or {})
         self.entities = list(entities or [])
         self.asked: list[str] = []
@@ -186,6 +186,26 @@ class FakeRover(client.ReadOnly):
 
     def _battery(self, _arguments):
         return {"ok": True, "volts": 12.07, "percent": 85}
+
+
+def _commentary(said: list) -> list:
+    """Carry a sentence's fields into the next, the way the real loop does.
+
+    `MoveReport.say` copies the whole state and updates it, so `kind` and what
+    was asked for persist through a move and only change when `begin` starts a
+    new one; `why` is cleared unless the new phase gives a reason, because a
+    reason left over from the previous phase is a lie about this one. A fake
+    that dropped them instead would split one move into several, and the test
+    written against it would be testing the fake.
+    """
+    out: list = []
+    for one in said:
+        carried = dict(out[-1]) if out else {}
+        carried.pop("reason", None)
+        carried["why"] = ""
+        carried.update(one)
+        out.append(carried)
+    return out
 
 
 def a_look(inference_id: int, first_row_id: int, *, regions: int = 2,
