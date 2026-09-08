@@ -5,18 +5,27 @@ was looking at when it decided. It is the evidence trail that has to exist befor
 anything is allowed to choose where the rover drives, and it is
 [Phase 1](../docs/plans/autonomous-curiosity.md) of the curiosity plan.
 
-**It has no authority over anything.** There is no path from here to the driver
-board, the gimbal or the navigator. Nothing on the rover writes to it yet either:
-the executive that will is Phase 2 work, and until then this is a library with a
-test suite.
+**It has no authority over anything, and that is structural rather than
+careful.** Everything here reaches the rover through `client.ReadOnly`, which
+holds a list of the reads it may make and raises on anything else — so a call
+that would move the rover is not merely unused, it is unavailable. The test that
+proves it does so by trying every one.
+
+Nothing *decides* anything yet. The executive that will is Phase 2 work, so the
+episodes recorded today contain no decision and no call, and a replay reports
+them as "decided nothing", which is the honest reading.
 
 ## What an episode is
 
-One occasion of the rover deciding something. It opens with a trigger, collects
-the goals that were considered, the choice and why, the calls that were made and
-what came back, what changed in the world state, and closes with an outcome. A
-shadow run — deciding and having no authority to act — closes `abandoned`, which
-is a result and not a failure.
+One occasion of the rover doing something. It opens with a trigger, collects
+whatever the occasion produced — the goals considered, the choice and why, the
+calls made and what came back, what changed in the world state — and closes with
+an outcome. `abandoned` is a result and not a failure: it is what a look that
+attached to nothing closes with, and what a decision taken with no authority to
+act will close with.
+
+Today two things trigger one: the rover taking a look, and the rover moving.
+Both are recorded by the shadow run below, which watches and decides nothing.
 
 ```text
 episode:1 -- opened 2026-09-08 14:31:02, triggered by nothing_to_do
@@ -79,24 +88,74 @@ A correction is a later event naming the earlier one it corrects; both are kept,
 and a reader is shown both. An annotation added after the episode closed is
 marked as such, so hindsight cannot be mistaken for what was known at the time.
 
+## The shadow run
+
+    ssh orin 'cd ~/ugv/autonomy && python3 recorder.py --seconds 1800'
+
+`recorder.py` watches the rover work and writes down what happened. It is not a
+service: nothing starts it at boot, and it is run by hand for as long as somebody
+wants a recording.
+
+**Looks come from the world state's numbered history, not from watching for
+events.** The daemon has no event stream, so something has to poll, and polling
+for *state* would drop whatever happened between two polls — a recording with
+silent holes in it reads exactly like a rover that did nothing. So the recorder
+remembers the last observation it recorded and walks back from the newest until
+it meets it. Nothing between polls can be missed, and a recorder that was stopped
+for an hour catches up when it starts again.
+
+**Moves cannot be read that way**, because there is no history of moves, only
+what the driving loop is doing now. So a move is polled and diffed on its
+sequence number, and a move that began and ended inside one poll interval is
+counted and reported as missed rather than left as an absence the reader would
+take for a rover sitting still.
+
+`--no-frames` records the looks without copying their pictures, which is how the
+cost of keeping them gets measured.
+
 ## Runtime
 
-Nothing runs this on the rover yet. When something does, its data belongs outside
-the deploy tree, in the place the store already defaults to:
+Data lives outside the deploy tree, so that a deploy replaces the code and never
+the recording:
 
 ```text
 ~/.ugv/autonomy/episodes.db
 ~/.ugv/autonomy/evidence/<first two characters>/<digest>
 ```
 
-`UGV_AUTONOMY_DIR` overrides it, and the only thing that ever overrides it is the
-test suite.
+`UGV_AUTONOMY_DIR` overrides it, and the only things that ever override it are
+the test suite and `recorder.py --dir`.
+
+## Keeping it off the disk
+
+A look costs a copied frame and a rover left switched on looks all day, so
+`retention.py` removes evidence in three passes, in this order:
+
+1. **A pinned episode's evidence is never touched.** An acceptance recording is
+   what this is for; a full disk with a loud reason is a better outcome than a
+   quietly deleted recording somebody was arguing from. `store.pin` and
+   `store.unpin` are both rows, so "pinned in September, released in October" is
+   answerable.
+2. **Anything past the age limit goes**, so that a rover switched off for a month
+   does not come back and delete a week of recent looks because the total is
+   over.
+3. **Then oldest-first until the store is under its size limit.**
+
+Every removal goes through `store.delete_evidence`, so an episode whose pictures
+have gone reports itself as no longer fully replayable, with the reason, instead
+of being summarised as though it could still be checked. `retention.would_fill`
+measures the growth rate from what is actually in the store rather than from an
+assumed frame size. The policy's numbers live in `retention.DEFAULT` and nowhere
+else.
 
 ## The modules
 
 | File | What it holds |
 |---|---|
 | [`refs.py`](refs.py) | the names: minting, parsing, and whether one may be looked up |
+| [`client.py`](client.py) | the only way to the rover, and the calls it refuses |
+| [`recorder.py`](recorder.py) | the shadow run: watch, write down, decide nothing |
+| [`retention.py`](retention.py) | what is removed when the record grows, and what never is |
 | [`schema.py`](schema.py) | the tables, and why there is no mutable one |
 | [`store.py`](store.py) | episodes, events, snapshots, evidence, deletions and aliases |
 | [`events.py`](events.py) | what an episode may say, and the fields each kind carries |

@@ -199,6 +199,25 @@ def test_a_look_that_attached_to_nothing_is_not_a_failure() -> None:
         store.close()
 
 
+def test_a_summary_of_a_shadow_episode_says_what_the_look_found() -> None:
+    """An episode with no decision in it has one piece of content, and a summary
+    that omitted it would be four lines saying nothing happened."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+        said = summary.of(store, store.episodes()[0]["ref"],
+                          live_world_generation=WORLD)
+        check("it says how many regions the look found",
+              "a look found 2 regions" in said, True)
+        check("...how many attached to something known",
+              "2 of them attached to a thing the rover already knows" in said,
+              True)
+        check("...and how many had a distance",
+              "1 with a measured distance" in said, True)
+        store.close()
+
+
 def test_a_shadow_episode_decides_nothing_and_says_so() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
@@ -333,6 +352,7 @@ TESTS = (
     test_what_a_look_saw_is_named_durably,
     test_a_rover_that_cannot_say_which_world_it_is_still_gets_recorded,
     test_a_look_that_attached_to_nothing_is_not_a_failure,
+    test_a_summary_of_a_shadow_episode_says_what_the_look_found,
     test_a_shadow_episode_decides_nothing_and_says_so,
     test_a_move_is_recorded_once,
     test_a_move_that_began_and_ended_between_polls_is_counted,

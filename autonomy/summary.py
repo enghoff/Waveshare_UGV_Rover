@@ -61,6 +61,13 @@ def render(got: dict[str, Any]) -> str:
     if not got["calls"]:
         lines.append("  called nothing")
 
+    # What the occasion did to the world. On an episode with no decision in it
+    # -- every episode a shadow run records -- this is the whole of the content,
+    # and a summary that left it out would say almost nothing.
+    for step in got["steps"]:
+        if step["kind"] == "world_change":
+            lines.append(f"  {step['body'].get('what')}")
+
     for body in got["models"]:
         lines.append(f"  asked {body.get('provider')}/{body.get('model')} "
                      f"for {body.get('purpose')}")
