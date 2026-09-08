@@ -638,6 +638,14 @@ def _pair_up(store, leftover, session, entities, taken_in,
             break
         placed = _place_one(store, available, session, reach)
         if placed is None:
+            # **Only when no crossing is left, and that ordering is the whole of
+            # why this is safe to have at all.** A thing agreed by two viewpoints
+            # is better evidence than a thing asserted by one, so the pool is
+            # emptied of crossings first and what follows is the leftovers --
+            # the looks at something the rover only ever saw from one place.
+            placed = _place_from_range(store, available, session, entities,
+                                       reach)
+        if placed is None:
             break
         decision, taken = placed
         used.update(taken)
@@ -944,6 +952,91 @@ def _place_one(store, available, session, reach=None):
         candidates=[{"entity_id": entity_id,
                      "from_observations": taken,
                      "uncertainty_m": placement["uncertainty_m"]}]), taken
+
+
+def _already_there(placement: dict[str, Any], entities: list[dict]) -> bool:
+    """Is there a thing here already, as far as either of them can tell?
+
+    The two uncertainties added, because the question is whether the two
+    positions can be told apart at all, and each of them is only as sharp as its
+    own worst axis. A thing agreed by six rays to within 0.2 m and a point
+    asserted by one look to within 0.2 m are the same place unless they are more
+    than 0.4 m apart.
+    """
+    for entity in entities:
+        known = entity.get("placement") or {}
+        if "x_m" not in known or "y_m" not in known:
+            continue
+        apart = math.hypot(float(known["x_m"]) - placement["x_m"],
+                           float(known["y_m"]) - placement["y_m"])
+        if apart <= (float(known.get("uncertainty_m") or 0.0)
+                     + placement["uncertainty_m"]):
+            return True
+    return False
+
+
+def _place_from_range(store, available, session, entities, reach=None):
+    """The best-measured single look that can stand a thing up on its own.
+
+    `_place_one`'s neighbour, and deliberately the plainer of the two: one ray
+    that measured its distance, placed where it says, with no support to count
+    and nothing to contest it. What it does share is the tail -- a thing the
+    rover already knows may adopt the position, the exemplars are stored, and
+    the caller offers everything still waiting to the result -- so a thing born
+    this way is an ordinary thing from the moment it exists.
+
+    **It records that one look made it**, in `rays_agreeing` and `viewpoints`,
+    because that is the difference a reader has to be able to see. The second
+    look at the same object joins it through `_against_known` like any other and
+    takes those numbers up with it.
+
+    The best is the smallest uncertainty, which on one ray is dominated by how
+    far away the thing is: a bearing worth 1.5 degrees is worth 3 cm at a metre
+    and 16 cm at six. So this reaches for the near things first, which are also
+    the ones the depth camera measures best.
+    """
+    offered = []
+    for observation in available:
+        ray = ray_of(observation, reach)
+        if ray is None:
+            continue
+        placement = locate.at_range(ray)
+        if placement is None:
+            continue
+        # **Not where something already is.** This look has already been offered
+        # to every thing the rover knows and was not taken by any of them, so
+        # standing a second thing up inside the first one's uncertainty invents
+        # a duplicate rather than a discovery -- and a duplicate is worse than
+        # the silence it replaces, because it looks like knowledge. Measured on
+        # the drive of 2026-09-08 without this: 57 of 100 things placed this way
+        # sat within half a metre of one placed by a crossing.
+        if _already_there(placement, entities):
+            continue
+        offered.append((placement["uncertainty_m"], placement, observation))
+    if not offered:
+        return None
+    offered.sort(key=lambda one: one[0])
+    _uncertainty, placement, observation = offered[0]
+    placement = dict(placement, rays_agreeing=1, viewpoints=1)
+
+    known = _adopt(store, session, [observation])
+    entity_id, again = known if known else (store.create_entity(), "")
+    store.place(entity_id, placement, session)
+    why = (f"one look measured {placement['from_range_m']} m to it, placing "
+           f"{entity_id} to within {placement['uncertainty_m']} m from a single "
+           f"viewpoint{again}")
+    store.attach(entity_id, [observation["id"]], why)
+    vector = observation.get("dino_blob") or b""
+    if vector:
+        store.add_exemplar(entity_id, vector,
+                           alone=observation.get("dino_alone_blob") or b"")
+    return Decision(
+        observation["id"], NEW, entity_id,
+        why=why,
+        candidates=[{"entity_id": entity_id,
+                     "from_observations": [observation["id"]],
+                     "uncertainty_m": placement["uncertainty_m"]}]), [
+        observation["id"]]
 
 
 def _contested(found_fixes: list, index: int) -> bool:

@@ -575,13 +575,84 @@ def stands_as_high(point: dict[str, Any], ray: dict[str, Any]) -> bool:
 # about it (`range_disagreement`, spent by `fix`), and whether a later look agrees
 # with a thing already placed (`stands_at_range`, spent by `agrees`).
 #
-# It is a gate and a residual and deliberately **not** a third way of placing
-# something. One ranged ray is a point in the room and it would be easy to let it
-# found an entity, but everything this component knows about what identity costs
-# was learnt from crossings, and a rule that lets one look place a thing is a
-# different application from the one that was measured. `residuals` spends the
-# range in the fit, where it pins the position along the sight line -- exactly
-# where two bearings are weakest -- and that is the whole of the change.
+# It was a gate and a residual and deliberately **not** a third way of placing
+# something, on the reasoning that everything this component knows about what
+# identity costs was learnt from crossings. `at_range` is now that third way, and
+# the caution behind the old rule is answered by keeping the two apart rather
+# than by refusing: a thing placed from one ranged look records one ray and one
+# viewpoint, so nothing downstream has to take it for a thing agreed by several.
+#
+# What changed the argument is the drive of 2026-09-08. A spray can on the floor
+# was seen twice, four seconds apart, from standing places 0.37 m apart with 1.1
+# degrees between the bearings -- no crossing exists there at any tolerance --
+# and both looks measured the distance to it. 38 of that drive's 104 things were
+# never ranged at all and 387 of its 1328 looks attached to nothing, so a rover
+# that can only learn from crossings is throwing away the one measurement that
+# does not need a second viewpoint.
+
+
+def at_range(ray: dict[str, Any]) -> dict[str, Any] | None:
+    """Where one look puts a thing, when it measured the distance as well.
+
+    **The one placement that needs no second viewpoint, and the one that has
+    nothing to check it.** A crossing is agreed by two rays and can be wrong in
+    a way both of them see; this is one ray asserting a point, so what it earns
+    is a position and not a confirmation. The caller records `rays_agreeing` 1
+    and `viewpoints` 1 with it, which is how anything downstream tells the two
+    apart.
+
+    The uncertainty is honest about being lopsided. Along the sight line it is
+    what the depth camera is worth, which is centimetres; across it, it is the
+    bearing's own error opened out over the whole distance, which at three
+    metres and 1.5 degrees is already 8 cm and at 2.3 degrees is 12. So the
+    error is reported as the ellipse it actually is, pointed across the line of
+    sight, rather than as a radius that would be far too generous in one
+    direction and slightly mean in the other.
+
+    None when the range is missing, absurd, or lands somewhere the rover could
+    not have seen -- the same reach guard `fix` uses, and for the same reason.
+    """
+    measured = ray.get("range_m")
+    if measured is None:
+        return None
+    try:
+        measured = float(measured)
+    except (TypeError, ValueError):
+        return None
+    if measured < MIN_RANGE_M or measured > MAX_RANGE_M:
+        return None
+    dx, dy = _unit(float(ray["bearing_deg"]))
+    point = (float(ray["x_m"]) + measured * dx,
+             float(ray["y_m"]) + measured * dy)
+    # Not through a wall. One ray cannot be talked out of a position by a second
+    # ray disagreeing, so the map is the only thing left that can refuse it.
+    if beyond_reach(ray, point):
+        return None
+
+    origin_m = float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M)
+    along = range_noise_m({"x_m": point[0], "y_m": point[1]}, ray)
+    across = measured * math.tan(math.radians(sigma_of(ray))) + origin_m
+    axis_deg = _wrap(float(ray["bearing_deg"]) + 90.0)
+    placed = {
+        "x_m": round(point[0], 3),
+        "y_m": round(point[1], 3),
+        # What a person means by "to within", which is the worse of the two.
+        "uncertainty_m": round(max(along, across), 3),
+        "error_major_m": round(max(along, across), 3),
+        "error_minor_m": round(min(along, across), 3),
+        # Across the line of sight when the bearing is the weaker of the two,
+        # along it when the depth reading is.
+        "error_major_deg": round(axis_deg if across >= along
+                                 else float(ray["bearing_deg"]), 1),
+        # No second viewpoint took part, and saying so in the numbers the
+        # console already prints is better than leaving them absent.
+        "baseline_m": 0.0,
+        "parallax_deg": 0.0,
+        "extent_m": round(extent_of(point, ray), 3),
+        "from_range_m": round(measured, 3),
+    }
+    placed.update(height_fields(placed, [ray]))
+    return placed
 
 
 def range_noise_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
