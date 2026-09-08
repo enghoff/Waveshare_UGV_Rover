@@ -75,9 +75,13 @@ def test_the_things_that_would_stop_a_decision_are_named() -> None:
     unsettled = situation_mod.Situation(a_situation(ROOM, map_settled=False))
     check("a map that has not settled is named",
           "map" in unsettled.health(), True)
+    parked = situation_mod.Situation(a_situation(
+        ROOM, world={"last_at": 1757320800.0 - 300.0}))
+    check("a parked rover looking every five minutes is not unfit",
+          "looking" in parked.health(), False)
     stale = situation_mod.Situation(a_situation(
-        ROOM, world={"last_at": 1757320800.0 - 600.0}))
-    check("a perception loop that has stopped is named",
+        ROOM, world={"last_at": 1757320800.0 - 1200.0}))
+    check("...but a perception loop that has stopped is named",
           "looking" in stale.health(), True)
     failing = situation_mod.Situation(a_situation(
         ROOM, world={"last_status": "error", "last_detail": "the camera died"}))

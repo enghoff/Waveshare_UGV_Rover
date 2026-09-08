@@ -36,7 +36,14 @@ import refs
 #: not a rover that has seen nothing; it is a rover whose looking has stopped,
 #: and a decision to go and inspect something rests on a look that will never
 #: come.
-WORLD_STALE_S = 180.0
+#:
+#: **Ten minutes, because a parked rover looks every five.** The daemon holds a
+#: gate that stops a stationary rover recording the same wall every second --
+#: rightly, since observations from one spot can never be triangulated against
+#: each other -- and the interval it falls back to is five minutes. Three
+#: minutes was the first number here and it called a perfectly healthy parked
+#: rover unfit within four minutes of it stopping.
+WORLD_STALE_S = 600.0
 
 #: The fields of an entity a decision may use. A short list rather than the
 #: whole row, because the row carries the appearance vectors' sizes, the console's

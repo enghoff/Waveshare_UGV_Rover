@@ -94,7 +94,7 @@
     },
     {
       "name": "a perception loop that has stopped is a reason not to plan a look",
-      "why": "A goal whose point is to take a look rests on a look that will never come if nothing is looking.",
+      "why": "A goal whose point is to take a look rests on a look that will never come if nothing is looking. The threshold has to sit above the five-minute cadence a parked rover falls back to, or it condemns a healthy one.",
       "map": "room",
       "rover": {"world": {"last_at": 1757320000.0}},
       "entities": [
