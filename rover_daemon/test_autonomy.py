@@ -175,6 +175,11 @@ def test_a_run_is_opened_by_a_person_and_bounded_before_it_starts():
           wide["ok"], False)
     check("...naming the limit", wide["error"],
           f"seconds may be at most {permission_mod.RUN_MAX_S}")
+    off = rover.call("autonomy_enable",
+                     {"by": "the owner", "budget": {"failures": 0}})
+    check("...nor switched off by asking for none of one", off["ok"], False)
+    check("...which is what zero would otherwise mean", off["error"],
+          "failures must be a positive number")
 
 
 def test_only_the_three_admitted_operations_are_dispatched():

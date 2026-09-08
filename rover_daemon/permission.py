@@ -330,8 +330,12 @@ class Permission:
         # Every budget is a ceiling as well as a default. A person may ask for a
         # shorter run than the standing limit and not a longer one, so that the
         # limits argued for above cannot be talked out of by whoever is typing.
-        for name in ("seconds", "travel_m", "actions", "permit_ttl_s"):
+        for name in ("seconds", "travel_m", "actions", "failures",
+                     "permit_ttl_s"):
             if asked[name] is None or float(asked[name]) <= 0:
+                # Zero is refused rather than read as "no limit", which is what
+                # `Run.over` would make of it: a budget that can be switched off
+                # by asking for none of it is not a limit at all.
                 return {"ok": False,
                         "error": f"{name} must be a positive number"}
             if float(asked[name]) > float(DEFAULT_BUDGET[name]):
