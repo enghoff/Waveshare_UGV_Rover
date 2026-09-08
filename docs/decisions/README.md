@@ -11,6 +11,7 @@ the reasoning being redone.
 | [cosmos-reason2.md](cosmos-reason2.md) | closed 2026-09-02 | why there is no local vision-language model in the inspection path |
 | [doorway-pivot.md](doorway-pivot.md) | closed | why the rover locked up pivoting in narrow passages, and why two plausible fixes were wrong |
 | [depthai-version-pin.md](depthai-version-pin.md) | standing, retested | why the depth camera's driver is pinned below 3.x |
+| [rim-frontiers-are-not-cut-up.md](rim-frontiers-are-not-cut-up.md) | closed 2026-09-08 | why a rover ringed by unknown floor is not fixed by cutting the rim into pieces, and what a next attempt has to show |
 
 ## What a record owes
 

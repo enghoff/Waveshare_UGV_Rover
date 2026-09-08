@@ -247,15 +247,6 @@ class NavExplore:
         occasional pocket left unexplored behind a corner the rover stood next to
         -- which a second `explore` picks up, because the blacklist lives as long
         as one call and no longer.
-
-        **What that rule assumes is that a frontier is small enough for one
-        arrival to have dealt with it, and `frontier.MAX_FRONTIER_M` is what
-        holds the assumption up.** A doorway is. Ten metres of boundary running
-        all the way round the rover is not, and on 2026-09-07 this loop retired
-        exactly that on one arrival it had driven 3.5 cm to reach, then reported
-        a finished map with 97% of it unknown. Boundaries are cut to the cap
-        before they are offered, so what a goal writes off is now a piece of a
-        rim rather than the whole of one.
         """
         if min_frontier_m is None:
             min_frontier_m = frontier.MIN_FRONTIER_M

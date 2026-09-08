@@ -75,16 +75,22 @@ See [R-SAFE-7](safety.md#r-safe-7) for the bounds it runs under.
 <a id="r-nav-6"></a>
 ### R-NAV-6 — No frontier is longer than one arrival can account for
 
-- **State:** settled
-- **Evidence:** `ros_nav/fixtures/ringed-2026-09-07.json.gz` replayed through
-  `python ros_nav/selftest.py`
+- **State:** failing
+- **Broken by:** [2026-09-08-rim-frontiers-pirouette.md](../progress/2026-09-08-rim-frontiers-pirouette.md)
 
 A frontier is written off once the rover has driven to it, so an over-long one
 retires ground the rover never saw. A rover ringed by unknown floor treats the
 whole rim as a single frontier, is sent to its centre — which is where it already
-is — and retires the lot on arriving without having moved. Boundaries past the
-configured maximum are cut into pieces with a goal each; the fixture is a map
-that failed this way.
+is — and retires the lot on arriving without having moved.
+`ros_nav/fixtures/ringed-2026-09-07.json.gz` is a map that failed this way, and
+replaying it through `python ros_nav/selftest.py` still shows the failure.
+
+Cutting over-long boundaries into pieces with a goal each was implemented on
+2026-09-07 and reverted on 2026-09-08: on this geometry the pieces are all
+within a metre of the rover and point in six directions, so the rover turned 869
+degrees to get 44 cm from where it started and reported a finished house anyway.
+[rim-frontiers-are-not-cut-up.md](../decisions/rim-frontiers-are-not-cut-up.md)
+has what would reopen it. The requirement stands; nothing currently meets it.
 
 <a id="r-nav-7"></a>
 ### R-NAV-7 — The chassis refuses to drive without its measured calibration

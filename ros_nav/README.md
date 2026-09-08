@@ -124,15 +124,18 @@ Exploration chooses reachable frontiers and abandons a goal that makes no useful
 progress. It stops when the time budget expires, no useful frontier remains, or
 the user cancels it. Status reports why it stopped and how much it drove.
 
-A frontier is written off once the rover has driven to it, so no frontier may be
-longer than one arrival can account for. Boundaries over `MAX_FRONTIER_M` are cut
-into pieces with a goal each. Without that, a rover ringed by unknown ground
-treats the whole rim as one frontier, is sent to its centre — which is where the
-rover already is — and retires the lot on arriving without having moved.
-`fixtures/ringed-2026-09-07.json.gz` is a map that did exactly that.
-
 ## Known limits
 
+- A rover standing on a small island of mapped floor — which is what a cleared
+  map leaves — treats the whole rim of unknown around it as one frontier, is sent
+  to its centre, and retires the lot on arriving without having moved. Exploring
+  then reports a finished house it has not driven in.
+  `fixtures/ringed-2026-09-07.json.gz` is such a map and `selftest.py` replays
+  it. Cutting the rim into pieces with a goal each was tried and reverted,
+  because the pieces are all within a metre of the rover and point every way at
+  once: 869 degrees of turning for 44 cm of progress. See
+  [R-NAV-6](../docs/requirements/navigation.md#r-nav-6) and
+  [the decision](../docs/decisions/rim-frontiers-are-not-cut-up.md).
 - The local controller can aim around a corner into an inflated wall. Shorter
   plan pruning reduces this, but a full controller fix remains open.
 - The minimum pivot response is coarser than the smallest angular velocity DWB

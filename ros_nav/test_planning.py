@@ -229,72 +229,52 @@ def test_frontiers_are_found_on_a_real_map():
     # Ranking. The nearest frontier is not automatically the best one, and the
     # far one being preferred is the behaviour that gets a rover out of the room
     # it is in -- but only when it is enough bigger to be worth the drive.
-    #
-    # **This used to be checked by which frontier won on the map above, and that
-    # stopped being the right way to ask.** Uncut, the winner there was 11.75 m
-    # of boundary six metres off, and it won because at `SIZE_WEIGHT` an
-    # eleven-metre frontier is worth twenty-three metres of driving -- which is
-    # not a trade so much as a frontier big enough to outrank the whole map.
-    # `MAX_FRONTIER_M` bounds what size can buy, so on that map the winner is now
-    # the 1.15 m opening 1.20 m away, and asking "is the winner the nearest one"
-    # gets the answer "yes" without anything being wrong. The trade is still
-    # there and is worth pinning down, so it is pinned down where it can be:
-    # a small opening at the rover's feet against a whole room's worth of
-    # boundary three metres off, which is the choice the rule exists to make.
-    check("the best frontier is the cheapest one, on the real map",
-          found[0] is min(found, key=lambda c: c["cost"]), True)
-
-    twin = [0] * (100 * 100)
-    for i in range(100):
-        twin[i] = twin[99 * 100 + i] = 100
-    for row in range(100):
-        twin[row * 100] = twin[row * 100 + 99] = 100
-    for row in range(47, 52):               # a notch, 0.60 m of edge, 0.70 m off
-        twin[row * 100 + 20] = -1
-    for row in range(31, 69):               # a room, 1.95 m of edge, 2.95 m off
-        for col in range(60, 99):
-            twin[row * 100 + col] = -1
-    pair = frontier.Grid(100, 100, 0.05, 0.0, 0.0, twin)
-    offered, _ = frontier.survey(pair, pair.point_of(5, 49))
-    nearest = min(offered, key=lambda c: c["distance_m"])
-    check("a bigger frontier further off still beats a small one underfoot",
-          offered[0]["distance_m"] > nearest["distance_m"], True)
-    check("...by the trade rather than by accident -- nearer, and still dearer",
-          (round(nearest["distance_m"], 2), round(nearest["cost"], 2),
-           round(offered[0]["distance_m"], 2), round(offered[0]["cost"], 2)),
-          (0.70, -0.50, 2.95, -0.95))
+    near = {"x": 0.0, "y": 0.0}
+    cheap = min(found, key=lambda c: c["cost"])
+    check("what wins is the trade between distance and size, not distance",
+          cheap is found[0] and any(c["distance_m"] < found[0]["distance_m"]
+                                    for c in found), True)
+    del near
 
 
-def test_a_ring_of_frontier_is_more_than_one_goal():
-    """The rim that had exploring announce a finished house it had not driven in.
+def test_a_rim_of_unknown_round_the_rover_is_still_open():
+    """The rim that has exploring announce a finished house it has not driven in.
 
-    **This is a recording, not a story.** `fixtures/ringed-2026-09-07.json.gz` is
-    the occupancy grid off the running bridge on the Orin on 2026-09-07, taken
-    while the console was showing "there is nothing left on the map worth driving
-    to -- 1 frontier tried, 1 reached, 0.0 m driven -- 97% of the map is still
-    unknown". The rover was standing in about two square metres of mapped floor
-    with unknown ground on every side of it and one cell of unknown right at its
-    elbow, so the whole boundary -- the rim at arm's length and the hole beside
-    the wheel alike -- was a single eight-connected clump of 209 cells.
+    **This is a recording, and it is an open fault rather than a fixed one.**
+    `fixtures/ringed-2026-09-07.json.gz` is the occupancy grid off the running
+    bridge on the Orin on 2026-09-07, taken while the console was showing "there
+    is nothing left on the map worth driving to -- 1 frontier tried, 1 reached,
+    0.0 m driven -- 97% of the map is still unknown". The rover was standing in
+    about two square metres of mapped floor with unknown ground on every side of
+    it and one cell of unknown right at its elbow, so the whole boundary -- the
+    rim at arm's length and the hole beside the wheel alike -- is a single
+    eight-connected clump of 209 cells.
 
-    That is where the fault was, and it was not in the clumping: 10.45 m of
-    boundary really is one boundary. It was in what `survey` then did with it.
-    A clump gets one goal, at the member cell nearest the clump's centre of
-    mass; the centre of mass of a ring is the middle of the ring, which is where
-    the rover was; so the goal came out 3.5 cm away. The rover drove nothing,
-    arrived, and `Explorer.committed` wrote off all 10.45 m on the strength of
-    that arrival -- which is the rule that stops a rover re-driving the same
-    30 cm for ever, and is right for a doorway. The next survey had nothing left
-    to offer.
+    The clumping is not the fault: 10.45 m of boundary really is one boundary.
+    The fault is what `survey` then does with it. A clump gets one goal, at the
+    member cell nearest the clump's centre of mass; the centre of mass of a ring
+    is the middle of the ring, which is where the rover is; so the goal comes out
+    3.5 cm away. The rover drives nothing, arrives, and `Explorer.committed`
+    writes off all 10.45 m on the strength of that arrival -- which is the rule
+    that stops a rover re-driving the same 30 cm for ever, and is right for a
+    doorway. The next survey has nothing left to offer.
 
-    So the check that matters is not "more than one goal is offered" but that the
-    loop keeps going after each is written off, which is the thing that failed.
-    `explore_sim.py` cannot stand in for this: its mapper marks a cell free or
-    wall for ever and never leaves unknown beside the rover, so it cannot build
-    the geometry at all. Reduced-sight runs of it finish the house at every range
-    down to 1.5 m.
+    **Cutting the rim into pieces with a goal each was tried, shipped and taken
+    back out**, because on the rover it turned this into a pirouette: six arcs
+    all within 1.15 m of the rover pointing six different ways, five goals and
+    3.9 m of path to finish 0.44 m from the start, still on the same two square
+    metres. `docs/decisions/rim-frontiers-are-not-cut-up.md` has the numbers and
+    the map they were taken on. What is wanted is a rule that stops one arrival
+    retiring a whole rim *without* turning the rim into a handful of sub-metre
+    goals, and neither behaviour is that -- so what this checks is the fault as
+    it stands, which is the honest thing to have in front of whoever fixes it.
+
+    `explore_sim.py` cannot stand in for any of this: its mapper marks a cell
+    free or wall for ever and never leaves unknown beside the rover, so it cannot
+    build the geometry at all. Reduced-sight runs of it finish the house at every
+    range down to 1.5 m.
     """
-    section("a rim of frontier all the way round the rover")
+    section("a rim of unknown all the way round the rover")
     sys.path.insert(0, HERE)
     saved = os.path.join(HERE, "fixtures", "ringed-2026-09-07.json.gz")
     if not os.path.exists(saved):                       # pragma: no cover
@@ -330,59 +310,37 @@ def test_a_ring_of_frontier_is_more_than_one_goal():
     check("...of 10.45 m, far more than one arrival can have dealt with",
           round(len(edge) * grid.resolution, 2), 10.45)
 
-    # Uncut, that clump is one goal, and it is under the rover. This is the
-    # behaviour being fixed, kept here because a fix whose fault cannot be
-    # reproduced beside it is a fix nobody can check.
-    uncut, _summary = frontier.survey(grid, where, max_frontier_m=1e6)
-    check("uncut, the whole rim is a single goal", len(uncut), 1)
+    found, summary = frontier.survey(grid, where)
+    check("the whole rim is offered as a single goal", len(found), 1)
     check("...and it is where the rover is already standing, so driving to it "
           "reveals nothing",
-          round(math.hypot(uncut[0]["x"] - where[0],
-                           uncut[0]["y"] - where[1]), 2) <= 0.05, True)
+          round(math.hypot(found[0]["x"] - where[0],
+                           found[0]["y"] - where[1]), 2) <= 0.05, True)
+    check("...and the summary counts the one", summary["frontiers"], 1)
 
-    # Cut, the same rim is several, and none of them claims more boundary than
-    # one arrival can be said to have dealt with.
-    found, summary = frontier.survey(grid, where)
-    check("cut at MAX_FRONTIER_M, the rim offers several ways off it",
-          len(found) >= 4, True)
-    check("...no one of them claiming much more than the cap -- a fold can "
-          "carry a piece over it, and 2.10 m against 2.00 m is what that costs",
-          round(max(c["size_m"] for c in found), 2), 2.10)
-    check("...none under the floor either, so nothing was cut into slivers",
-          min(c["size_m"] for c in found) >= frontier.MIN_FRONTIER_M, True)
-    check("...they add up to the rim rather than replacing it",
-          round(sum(c["size_m"] for c in found), 2), 10.45)
-    check("...and the summary counts them", summary["frontiers"], len(found))
-    check("...and the rover is sent somewhere it is not already",
-          round(min(math.hypot(c["x"] - where[0], c["y"] - where[1])
-                    for c in found), 2) > 0.05, True)
-
-    # The fault itself: one arrival used to end the run. Driving is not modelled
-    # here -- the map cannot grow, which is the pessimistic case, since on the
-    # rover every arrival redraws it -- so this is the loop asked to keep finding
-    # somewhere to go on a map that never improves.
-    def ways_off(**kwargs):
-        explorer = frontier.Explorer(**kwargs)
-        goals = []
-        for _ in range(40):
-            offered = explorer.choose(grid, where)
-            if not offered:
-                break
-            goals.append(offered[0])
-            explorer.committed(offered[0]["x"], offered[0]["y"])
-        return goals
-
-    before = ways_off(max_frontier_m=1e6)
-    after = ways_off()
-    check("the run used to end after one goal and 0.0 m of driving",
-          len(before), 1)
-    check("...and now keeps finding somewhere, on a map that never improves",
-          len(after) >= 4, True)
-    check("...each of them somewhere the rover has to drive to get to",
-          round(min(math.hypot(c["x"] - where[0], c["y"] - where[1])
-                    for c in after), 2) >= 0.3, True)
-    check("...and it still stops rather than going round for ever",
-          len(after) < 40, True)
+    # Driving the policy, which is what makes it a fault rather than an oddity:
+    # one arrival ends the run. The map cannot grow here, which is the
+    # pessimistic case, since on the rover every arrival redraws it -- and on
+    # the rover it did not save the run either.
+    explorer = frontier.Explorer()
+    at = where
+    path_m = 0.0
+    goals = 0
+    for _ in range(40):
+        offered = explorer.choose(grid, at)
+        if not offered:
+            break
+        best = offered[0]
+        path_m += math.hypot(best["x"] - at[0], best["y"] - at[1])
+        explorer.committed(best["x"], best["y"])
+        at = (best["x"], best["y"])
+        goals += 1
+    check("the run ends after one goal", goals, 1)
+    check("...having driven 3.5 cm, with 10.45 m of boundary written off",
+          round(path_m, 2), 0.03)
+    check("...and the rover still standing on its island",
+          round(math.hypot(at[0] - where[0], at[1] - where[1]), 2) <= 0.05,
+          True)
 
 
 def test_a_goal_that_goes_nowhere_is_given_up():
@@ -687,7 +645,7 @@ def test_exploring_finishes_and_covers_the_house():
 TESTS = (
     test_goal_fits_before_it_is_sent,
     test_frontiers_are_found_on_a_real_map,
-    test_a_ring_of_frontier_is_more_than_one_goal,
+    test_a_rim_of_unknown_round_the_rover_is_still_open,
     test_a_goal_that_goes_nowhere_is_given_up,
     test_a_rover_it_cannot_plan_from_is_not_a_finished_house,
     test_exploring_finishes_and_covers_the_house,

@@ -30,18 +30,6 @@ and a wall reports a frontier the rover cannot actually reach. The walk is the
 cheap ranking of fifty candidates and the planner is the expensive check of the
 one that won -- see `explore` in `nav_bridge.py`.
 
-**A boundary is grouped by what the map says and then divided by what the rover
-can do about it.** Which cells belong to one gap in the map is a question about
-the map, and `clump` answers it generously: a boundary running diagonally is one
-boundary, and the rim of an island of mapped floor is one rim however far round
-the rover it goes. But the caller writes a frontier off once it has driven to
-it, so a frontier has to be small enough that one arrival can be said to have
-dealt with it -- and a ten-metre rim is not. `split` cuts anything over
-`MAX_FRONTIER_M` into pieces with a goal each, which is the difference between
-"the map says this is one boundary" and "the rover can finish this in one go".
-Getting that wrong is not a near miss: the rover reported a finished house it
-had driven 3.5 cm in. The account is in `split`.
-
 ## What this deliberately does not do
 
 **It does not check whether the rover's body fits at the goal.** `goal_fit.py`
@@ -98,45 +86,6 @@ OCCUPIED_AT = 65
 #: not lost either way: what is left is reported, and a second `explore` starts
 #: with an empty blacklist.
 MIN_FRONTIER_M = 0.50
-
-#: The most boundary one goal may claim, in metres of cells along it. A clump
-#: longer than this is cut into arcs by `split`, each with a goal and a blacklist
-#: entry of its own; the reason it has to be cut at all is in that function.
-#:
-#: **Measured the way `MIN_FRONTIER_M` was, round the same recorded house, and
-#: then against the map the rover was actually stuck on.** `explore_sim.py` over
-#: `kitchen-loop` from twelve starting spots -- one start flatters a number that
-#: another exposes, and six were not enough to tell these apart -- with the
-#: totals of all twelve, beside the ways off the rim a survey offers on
-#: `fixtures/ringed-2026-09-07.json.gz`:
-#:
-#:      cap       goals    driven   worst coverage   ways off the rim
-#:      none        164   939.0 m       99.3%               1
-#:      3.00 m      202   927.0 m       99.3%               4
-#:      2.50 m      216   947.8 m       99.5%               6
-#:      2.00 m      211   923.2 m       99.3%               6
-#:      1.50 m      233   885.2 m       99.1%               7
-#:
-#: **Every cap fixes the rim, so the house decides the number and the house
-#: barely cares.** Coverage does not move at all, and the driving moves by less
-#: than one map's geometry is worth -- 923 m against 948 m is two long detours
-#: out of twelve runs, not a policy being better. What does move steadily is the
-#: goal count, which climbs as the cap falls, and each goal on the rover is a
-#: plan, a drive and an arrival manoeuvre.
-#:
-#: So it is chosen on what the cap is *for*: it bounds how much boundary one
-#: arrival is allowed to retire, and the tighter that bound the less a wrongly
-#: confident arrival can throw away. 2.00 m is the tightest value that costs
-#: nothing to hold -- it has the least driving in the flat band, and it still
-#: leaves 2 m of boundary, which is a wall's edge and the smallest thing worth
-#: calling one frontier, uncut. 1.50 m drives less again but wants twenty-two
-#: more goals for it and is the first cap where the worst run's coverage slips.
-#:
-#: Cutting also takes the size bonus out of the ranking's saddle, which is worth
-#: knowing when reading the driving above: at `SIZE_WEIGHT` an uncut ten-metre
-#: clump is worth twenty metres of driving, so it outranks everything on the map
-#: however far off it is, and the uncut column pays for that in detours.
-MAX_FRONTIER_M = 2.00
 
 #: What a metre of driving costs against what a metre of new boundary is worth.
 #: `explore_lite`'s two scales under different names, and the ratio is what
@@ -391,161 +340,10 @@ def clump(grid, cells):
     return out
 
 
-def split(grid, group, max_cells, min_cells=0):
-    """One clump divided into pieces, each of about `max_cells` at most.
-
-    **"About" is load-bearing rather than vague, and the summary said "none of
-    them longer than `max_cells`" for a while after it had stopped being true.**
-    Folding a pocket into a neighbour, which is the last thing this does and the
-    thing that makes it safe, can carry that neighbour over the cap -- 2.10 m
-    against a 2.00 m cap on the recorded rim. What is exact is the other half:
-    **a split divides a frontier and never drops one.**
-
-    **A frontier gets one goal and is written off by one arrival, and that is
-    only safe while a frontier is small enough for one arrival to have dealt
-    with it.** A doorway is. The rim of a small island of mapped floor, with
-    unknown on every side of it, is not: on the rover on 2026-09-07 that rim was
-    a single eight-connected clump of 209 cells -- 10.45 m of boundary running
-    all the way round the rover -- and `survey` offers a clump one goal, at the
-    member cell nearest the clump's centre of mass. The centre of mass of a ring
-    is the middle of the ring, which is where the rover was standing, so the
-    goal came out 3.5 cm away. The rover set off, arrived without having moved,
-    and `Explorer.committed` retired all 10.45 m of unexplored edge on the
-    strength of it. The next survey had nothing to offer and exploring reported
-    a finished map with 97% of it unknown. `fixtures/ringed-2026-09-07.json.gz`
-    is that map and the test drives this against it.
-
-    Cutting the rim into arcs fixes it at the point where the fault is, which is
-    the assumption that one point can stand for a whole clump: each piece gets
-    its own goal and its own blacklist entry, so writing one off leaves the rest.
-    It also takes the size bonus back out of the ranking's saddle -- at
-    `SIZE_WEIGHT` a ten-metre clump is worth twenty metres of driving, so an
-    uncut rim outranks everything on the map whatever it costs to reach.
-
-    Pieces are grown rather than sliced: flood out from a seed through cells
-    nothing has claimed yet until the piece is full, then seed again from what is
-    left. On a rim that yields arcs of it, which is what is wanted -- a straight
-    cut through the middle of a ring would put two goals on opposite sides of one
-    piece.
-
-    **Each piece is seeded at a loose end of what is left, and that is not
-    cosmetic.** A seed in the middle of a run grows both ways at once and stops
-    when it is full, which strands whatever lies between its far end and the
-    piece cut before it. Seeded from the lowest index instead, the 209-cell rim
-    came out as 35, 35, 35, 35, 35, 24, 7 and 3 -- and the seven and the three
-    are under `MIN_FRONTIER_M`, so half a metre of real boundary was quietly
-    dropped rather than divided. Taking the cell with the fewest unclaimed
-    neighbours puts every seed after the first at an end of the remaining arc, so
-    it eats along in one direction instead of outwards from the middle. That
-    reduces the stranding; it does not end it, and the paragraph after next is
-    there because measuring it showed as much. Ties go to the lowest index, so
-    two runs over one map choose the same goals; a rover that reorders its own
-    frontiers between surveys is the dithering `HYSTERESIS_M` exists to stop.
-
-    How many pieces is decided before how big, so that the intended sizes come
-    out even: taking `max_cells` off the front until the clump runs out leaves a
-    runt at the end instead. On the 209-cell rim at the shipped 40-cell cap that
-    runt would be nine cells, which is 0.45 m, which is under `MIN_FRONTIER_M`
-    and so would be dropped rather than driven to; six pieces of thirty-five
-    keeps all of it. Those are the sizes aimed at rather than the sizes got --
-    what the rim actually yields is 24, 35, 35, 35, 38 and 42, because the flood
-    strands pockets and the fold below puts them back.
-
-    **`min_cells` is what makes cutting safe, and it is not decoration.** The
-    seeding above helps where the clump is a curve and cannot help where it is a
-    blob, and the real rim is both: a fifth of its cells have four or more
-    neighbours. Flooding a blob leaves pockets, and on this rim
-    it left one of three cells and one of seven, which are under
-    `MIN_FRONTIER_M` and would be dropped -- so cutting a frontier up would have
-    quietly lost half a metre of it. Anything under `min_cells` is therefore
-    folded into the smallest piece it touches, and only a fragment touching
-    nothing is left to be judged on its own size. **A split may divide a
-    frontier; it may not discard one**, and the test adds the pieces back up
-    against the whole to say so. Folding can carry a piece a little over
-    `max_cells` -- 2.10 m against a 2.00 m cap on this rim -- which is the right
-    way round: the cap is how finely the boundary is divided, and a goal claiming
-    a tenth of a metre more than it is worth costs nothing, where dropping real
-    boundary is the fault this whole function exists to fix.
-    """
-    if len(group) <= max_cells:
-        return [group]
-    parts = int(math.ceil(len(group) / float(max_cells)))
-    target = int(math.ceil(len(group) / float(parts)))
-    width = grid.width
-    left = set(group)
-
-    def neighbours(here):
-        row, col = divmod(here, width)
-        for drow in (-1, 0, 1):
-            for dcol in (-1, 0, 1):
-                col2, row2 = col + dcol, row + drow
-                if (dcol or drow) and grid.inside(col2, row2):
-                    yield row2 * width + col2
-
-    # Kept as a count per cell and decremented as cells are claimed, rather than
-    # recounted for every seed: recounting is the whole clump re-walked once per
-    # piece, which on a map with a few thousand frontier cells is the slowest
-    # thing in the survey.
-    degree = dict((here, sum(1 for other in neighbours(here) if other in left))
-                  for here in left)
-    out = []
-    while left:
-        seed = min(left, key=lambda here: (degree[here], here))
-        piece = []
-        queue = collections.deque((seed,))
-        left.discard(seed)
-        while queue and len(piece) < target:
-            here = queue.popleft()
-            piece.append(here)
-            for other in neighbours(here):
-                if other in left:
-                    left.discard(other)
-                    queue.append(other)
-                    if len(piece) + len(queue) >= target:
-                        break
-        # Whatever the piece did not reach goes back, so the next seed can start
-        # from an end of it rather than from wherever this one happened to stop.
-        for here in queue:
-            left.add(here)
-        for here in piece:
-            for other in neighbours(here):
-                if other in degree and other in left:
-                    degree[other] -= 1
-        out.append(piece)
-
-    # --- and then the pockets the flood could not fill, folded back in.
-    home = {}
-    for index, piece in enumerate(out):
-        for here in piece:
-            home[here] = index
-    while True:
-        runts = sorted((index for index, piece in enumerate(out)
-                        if 0 < len(piece) < min_cells),
-                       key=lambda index: (len(out[index]), index))
-        for index in runts:
-            touching = set()
-            for here in out[index]:
-                for other in neighbours(here):
-                    into = home.get(other)
-                    if into is not None and into != index and out[into]:
-                        touching.add(into)
-            if not touching:
-                continue
-            into = min(touching, key=lambda other: (len(out[other]), other))
-            out[into].extend(out[index])
-            for here in out[index]:
-                home[here] = into
-            out[index] = []
-            break
-        else:
-            break
-    return [piece for piece in out if piece]
-
-
 def survey(grid, where, min_frontier_m=MIN_FRONTIER_M, blacklist=(),
            previous=None, distance_weight=DISTANCE_WEIGHT,
            size_weight=SIZE_WEIGHT, hysteresis_m=HYSTERESIS_M,
-           blacklist_m=BLACKLIST_M, max_frontier_m=MAX_FRONTIER_M):
+           blacklist_m=BLACKLIST_M):
     """Everywhere worth driving to next, best first.
 
     `where` is the rover's `(x, y)` in the map frame; `blacklist` is the points
@@ -585,15 +383,7 @@ def survey(grid, where, min_frontier_m=MIN_FRONTIER_M, blacklist=(),
     summary["reachable_cells"] = sum(1 for d in distance if d >= 0)
 
     cells = frontier_cells(grid, free, unknown, distance)
-    # Clumped first and cut afterwards, in that order and not the other way
-    # round: what counts as one boundary is a question about the map, and how
-    # much of one boundary a single goal may be asked to stand for is a question
-    # about the rover. Cutting first would answer the second question with the
-    # first one's tool and chop diagonals into single cells again.
-    max_cells = max(1, int(round(max_frontier_m / grid.resolution)))
-    min_cells = max(0, int(round(min_frontier_m / grid.resolution)))
-    groups = [piece for group in clump(grid, cells)
-              for piece in split(grid, group, max_cells, min_cells)]
+    groups = clump(grid, cells)
 
     out = []
     for group in groups:
@@ -741,11 +531,10 @@ class Explorer(object):
     """
 
     def __init__(self, min_frontier_m=MIN_FRONTIER_M, blacklist_m=BLACKLIST_M,
-                 hysteresis_m=HYSTERESIS_M, max_frontier_m=MAX_FRONTIER_M):
+                 hysteresis_m=HYSTERESIS_M):
         self.min_frontier_m = min_frontier_m
         self.blacklist_m = blacklist_m
         self.hysteresis_m = hysteresis_m
-        self.max_frontier_m = max_frontier_m
         self.blacklist = []
         self.previous = None
         self.summary = {}
@@ -755,8 +544,7 @@ class Explorer(object):
         found, self.summary = survey(
             grid, where, min_frontier_m=self.min_frontier_m,
             blacklist=self.blacklist, previous=self.previous,
-            hysteresis_m=self.hysteresis_m, blacklist_m=self.blacklist_m,
-            max_frontier_m=self.max_frontier_m)
+            hysteresis_m=self.hysteresis_m, blacklist_m=self.blacklist_m)
         return found
 
     def wrote_off(self, x, y):
@@ -864,9 +652,6 @@ def main(argv=None):
                                  "defaults to the middle of the known floor")
     ap.add_argument("--resolution", type=float, default=0.05)
     ap.add_argument("--min-frontier", type=float, default=MIN_FRONTIER_M)
-    ap.add_argument("--max-frontier", type=float, default=MAX_FRONTIER_M,
-                    help="the most boundary one goal may claim, in metres; "
-                         "a large number leaves every clump uncut")
     args = ap.parse_args(argv)
 
     grid = read_pgm(args.map, args.resolution)
@@ -882,8 +667,7 @@ def main(argv=None):
             int(sum(i % grid.width for i in seen) / len(seen)),
             int(sum(i // grid.width for i in seen) / len(seen)))
 
-    found, summary = survey(grid, where, min_frontier_m=args.min_frontier,
-                            max_frontier_m=args.max_frontier)
+    found, summary = survey(grid, where, min_frontier_m=args.min_frontier)
     share = unknown_share(summary)
     print("%s: %.1f x %.1f m at %.0f cm, rover at %.2f, %.2f"
           % (args.map, grid.width * grid.resolution,
