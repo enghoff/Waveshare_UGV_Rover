@@ -314,6 +314,30 @@ read 1.760 m where the largest rectangle inside its mask read 3.801 m — but bo
 figures came from a sliver at the top of the depth camera's picture, because the
 picture in this room sits above its 43-degree vertical field.
 
+**The collapse test is deployed and the merges are still there, at a rate that
+is now measured rather than sampled.** Every thing built from the drive of
+2026-09-08 was given a written verdict by eye — 76 of them, in
+[world_state/labels/m0-2026-09-08.json](../../world_state/labels/m0-2026-09-08.json)
+— and 17 hold looks at two different physical objects, against a criterion that
+allows none. Ten more real objects are split across several things, which
+nothing in the component reports at all. That labelled set is now the instrument
+every candidate remedy is scored against, because the three faults spotted by
+eye that preceded it were too few to tell a remedy from noise: one attempt
+separated a chair from a painting and merged a person into a sofa in the same
+change. See [the labelling](../progress/2026-09-08-every-thing-labelled.md).
+
+**Placement uncertainty was the most promising lead and it cannot gate.** A
+thing holding two objects is placed between them and says so — 0.60 m of stated
+uncertainty against 0.36 m for a real object — but the tightest threshold
+admitting no merge sits at 0.135 m and leaves one of fifty-two real objects
+eligible, and an arbitrary control (how many looks a thing holds) produces a
+nominally better gate. The reason is not the threshold: a person on a sofa or a
+chair in front of a painting is a few tens of centimetres from what it was
+merged with, so the rays cross where they would have crossed anyway and the
+geometry has nothing to notice. The number remains useful for *ranking* what to
+re-look at, which is what `autonomy/goals.py` already does with it. See
+[the measurement](../progress/2026-09-08-uncertainty-cannot-gate.md).
+
 <a id="r-ws-14"></a>
 ### R-WS-14 — A thing whose map was replaced is recognised when it is seen again
 

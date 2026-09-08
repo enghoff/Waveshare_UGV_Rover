@@ -1,0 +1,1672 @@
+{
+ "about": "Every thing the resolver built from the drive of 2026-09-08, given one written verdict by eye from a contact sheet of its own crops. This is the instrument any change to identity is scored against, and it is checked in because it cannot be recomputed: the sheets were read by a person, and the recording they were built from stays outside Git. See docs/progress/2026-09-08-every-thing-labelled.md for how it was made and world_state/bench_identity.py for what scores against it.",
+ "verdict_meanings": {
+  "object": "every look in this thing is the same real object",
+  "mixed": "this thing holds looks at two or more different physical objects",
+  "surface": "floor, wall, ceiling or glare rather than an object at all"
+ },
+ "recording": "~/.ugv/archive/world-2026-09-08-drive.db on the rover; captures/m0-2026-09-08/world.db here",
+ "rebuilt_with": "the resolver as deployed on the evening of 2026-09-08 -- the collapse test, the ratio test, conservative learning and single-viewpoint range placement -- which makes 152 things from 1013 attached looks. Every thing holding four looks or more was reviewed; the rest are not in this file.",
+ "as_reported": "`uncertainty_m` is the resolver's own placement_uncertainty_m and is the number to score against. `viewpoints` and `rays_agreeing` are copied from the review's working file and their exact definitions were not recovered -- rays_agreeing exceeds the look count on four things, so it is not a count of looks -- which is why bench_identity.py scores neither. They are kept because throwing away a recorded number is worse than labelling it unexplained.",
+ "reviewed_on": "2026-09-08",
+ "counts": {
+  "mixed": 17,
+  "object": 52,
+  "surface": 7
+ },
+ "splits_about": "One real object spread across several things -- the mirror image of a merge, and nothing in the component reports it. Six identical dining chairs are not a fault; one rug in three pieces is.",
+ "splits": {
+  "a ceiling fan": [
+   "object:87",
+   "object:84"
+  ],
+  "a dark door": [
+   "object:39",
+   "object:104"
+  ],
+  "a pendant lamp": [
+   "object:110",
+   "object:42",
+   "object:142",
+   "object:115"
+  ],
+  "dining chairs": [
+   "object:41",
+   "object:106",
+   "object:40",
+   "object:5",
+   "object:80",
+   "object:44"
+  ],
+  "the black cabinet": [
+   "object:79",
+   "object:143"
+  ],
+  "the cow painting": [
+   "object:83",
+   "object:86"
+  ],
+  "the green landscape painting": [
+   "object:37",
+   "object:128"
+  ],
+  "the rug": [
+   "object:15",
+   "object:2",
+   "object:120"
+  ],
+  "the sofa and armchairs": [
+   "object:9",
+   "object:21",
+   "object:10",
+   "object:22",
+   "object:27",
+   "object:35"
+  ],
+  "the teal door": [
+   "object:13",
+   "object:47"
+  ]
+ },
+ "things": {
+  "object:1": {
+   "verdict": "mixed",
+   "what": "a blurred picture with a person among it",
+   "uncertainty_m": 0.209,
+   "viewpoints": 2,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    34843,
+    34847,
+    34856,
+    34862,
+    34868,
+    34872,
+    34879,
+    35904
+   ]
+  },
+  "object:2": {
+   "verdict": "object",
+   "what": "the rug",
+   "uncertainty_m": 0.804,
+   "viewpoints": 13,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    34840,
+    34845,
+    34851,
+    34857,
+    34865,
+    34869,
+    35410,
+    35419,
+    35604,
+    35727,
+    35749,
+    35755,
+    35761,
+    35768,
+    35792,
+    35809,
+    35829,
+    35834,
+    35948,
+    35978,
+    35987,
+    35994,
+    36023,
+    36108,
+    36118
+   ]
+  },
+  "object:5": {
+   "verdict": "object",
+   "what": "dining chairs and table",
+   "uncertainty_m": 0.514,
+   "viewpoints": 12,
+   "rays_agreeing": 18,
+   "from_range_m": null,
+   "looks": [
+    34839,
+    34850,
+    34858,
+    34864,
+    35014,
+    35023,
+    35227,
+    35387,
+    35405,
+    35599,
+    35676,
+    35688,
+    35752,
+    35756,
+    35767,
+    35838,
+    35986,
+    36107
+   ]
+  },
+  "object:9": {
+   "verdict": "mixed",
+   "what": "the sofa with a seated person among it",
+   "uncertainty_m": 0.339,
+   "viewpoints": 14,
+   "rays_agreeing": 21,
+   "from_range_m": null,
+   "looks": [
+    34882,
+    34922,
+    34931,
+    35413,
+    35421,
+    35428,
+    35439,
+    35449,
+    35458,
+    35592,
+    35603,
+    35625,
+    35665,
+    35812,
+    35820,
+    35973,
+    35990,
+    36007,
+    36013,
+    36124,
+    36130
+   ]
+  },
+  "object:10": {
+   "verdict": "object",
+   "what": "the blue armchair",
+   "uncertainty_m": 0.762,
+   "viewpoints": 7,
+   "rays_agreeing": 8,
+   "from_range_m": null,
+   "looks": [
+    34885,
+    34894,
+    34899,
+    34924,
+    34976,
+    35847,
+    35939,
+    36025
+   ]
+  },
+  "object:11": {
+   "verdict": "mixed",
+   "what": "two different framed pictures",
+   "uncertainty_m": 0.785,
+   "viewpoints": 13,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    34887,
+    34895,
+    34903,
+    34937,
+    34945,
+    34952,
+    34977,
+    34999,
+    35370,
+    35418,
+    35424,
+    35437,
+    35446,
+    35454,
+    35462,
+    35468,
+    35825,
+    35852,
+    35858,
+    35867,
+    35875,
+    36022,
+    36030,
+    36037,
+    36043,
+    36051,
+    36070,
+    36134
+   ]
+  },
+  "object:12": {
+   "verdict": "surface",
+   "what": "glare, no object in it",
+   "uncertainty_m": 0.368,
+   "viewpoints": 3,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    34890,
+    34942,
+    34949,
+    35668
+   ]
+  },
+  "object:13": {
+   "verdict": "object",
+   "what": "the teal door",
+   "uncertainty_m": 0.39,
+   "viewpoints": 7,
+   "rays_agreeing": 15,
+   "from_range_m": null,
+   "looks": [
+    34893,
+    34902,
+    35032,
+    35114,
+    35430,
+    35824,
+    35849,
+    35855,
+    35866,
+    35878,
+    36040,
+    36046,
+    36055,
+    36061,
+    36068
+   ]
+  },
+  "object:15": {
+   "verdict": "object",
+   "what": "the rug",
+   "uncertainty_m": 1.453,
+   "viewpoints": 15,
+   "rays_agreeing": 23,
+   "from_range_m": null,
+   "looks": [
+    34901,
+    34906,
+    34907,
+    35031,
+    35037,
+    35216,
+    35223,
+    35233,
+    35246,
+    35257,
+    35268,
+    35278,
+    35361,
+    35367,
+    35377,
+    35403,
+    35472,
+    35483,
+    35704,
+    35715,
+    35879,
+    35886,
+    35897,
+    35915,
+    36054,
+    36060
+   ]
+  },
+  "object:17": {
+   "verdict": "object",
+   "what": "a framed picture",
+   "uncertainty_m": 0.358,
+   "viewpoints": 8,
+   "rays_agreeing": 16,
+   "from_range_m": null,
+   "looks": [
+    34884,
+    34926,
+    34980,
+    35631,
+    35840,
+    35862,
+    35870,
+    36019,
+    36028,
+    36035,
+    36041,
+    36048,
+    36059,
+    36066,
+    36076,
+    36133
+   ]
+  },
+  "object:19": {
+   "verdict": "object",
+   "what": "a framed picture",
+   "uncertainty_m": 0.254,
+   "viewpoints": 9,
+   "rays_agreeing": 16,
+   "from_range_m": null,
+   "looks": [
+    34900,
+    34928,
+    34934,
+    34944,
+    34951,
+    35013,
+    35433,
+    35443,
+    35453,
+    35460,
+    35467,
+    35593,
+    35816,
+    35843,
+    35851,
+    35861
+   ]
+  },
+  "object:20": {
+   "verdict": "object",
+   "what": "a framed picture",
+   "uncertainty_m": 0.378,
+   "viewpoints": 14,
+   "rays_agreeing": 21,
+   "from_range_m": null,
+   "looks": [
+    34892,
+    34925,
+    34935,
+    35242,
+    35255,
+    35267,
+    35432,
+    35442,
+    35452,
+    35597,
+    35609,
+    35618,
+    35627,
+    35639,
+    35739,
+    35935,
+    35958,
+    35964,
+    35985,
+    35992,
+    36132
+   ]
+  },
+  "object:21": {
+   "verdict": "object",
+   "what": "the dark armchair",
+   "uncertainty_m": 0.34,
+   "viewpoints": 12,
+   "rays_agreeing": 15,
+   "from_range_m": null,
+   "looks": [
+    34883,
+    34933,
+    34943,
+    34948,
+    35248,
+    35423,
+    35429,
+    35440,
+    35450,
+    35459,
+    35611,
+    35662,
+    35814,
+    35821,
+    35856,
+    35950
+   ]
+  },
+  "object:22": {
+   "verdict": "object",
+   "what": "the blue armchair",
+   "uncertainty_m": 0.263,
+   "viewpoints": 6,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    34932,
+    35262,
+    35416,
+    35622,
+    35799,
+    35961,
+    36015,
+    36031
+   ]
+  },
+  "object:23": {
+   "verdict": "mixed",
+   "what": "blown-out table and chairs",
+   "uncertainty_m": 0.432,
+   "viewpoints": 5,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    34950,
+    35461,
+    35608,
+    35667,
+    35911,
+    35967
+   ]
+  },
+  "object:26": {
+   "verdict": "mixed",
+   "what": "a shelf edge with a framed picture",
+   "uncertainty_m": 0.332,
+   "viewpoints": 4,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    34946,
+    34971,
+    34979,
+    35471,
+    35670
+   ]
+  },
+  "object:27": {
+   "verdict": "mixed",
+   "what": "the sofa with a seated person among it",
+   "uncertainty_m": 0.906,
+   "viewpoints": 6,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    34962,
+    35614,
+    35628,
+    35954,
+    35981,
+    36135
+   ]
+  },
+  "object:35": {
+   "verdict": "mixed",
+   "what": "the sofa with a seated person among it",
+   "uncertainty_m": 0.716,
+   "viewpoints": 8,
+   "rays_agreeing": 14,
+   "from_range_m": null,
+   "looks": [
+    34988,
+    35601,
+    35613,
+    35629,
+    35634,
+    35638,
+    35910,
+    35921,
+    35930,
+    35941,
+    35945,
+    35952,
+    35963,
+    35965
+   ]
+  },
+  "object:36": {
+   "verdict": "object",
+   "what": "a dark frame edge-on",
+   "uncertainty_m": 0.312,
+   "viewpoints": 3,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    34910,
+    34991,
+    35000,
+    35434
+   ]
+  },
+  "object:37": {
+   "verdict": "object",
+   "what": "the green landscape painting",
+   "uncertainty_m": 0.91,
+   "viewpoints": 11,
+   "rays_agreeing": 21,
+   "from_range_m": null,
+   "looks": [
+    34993,
+    35006,
+    35030,
+    35224,
+    35235,
+    35247,
+    35259,
+    35270,
+    35476,
+    35484,
+    35566,
+    35577,
+    35587,
+    35678,
+    35702,
+    35724,
+    35885,
+    35899,
+    35918,
+    36147,
+    36153,
+    36161
+   ]
+  },
+  "object:39": {
+   "verdict": "mixed",
+   "what": "a dark door with chairs among it",
+   "uncertainty_m": 1.191,
+   "viewpoints": 6,
+   "rays_agreeing": 10,
+   "from_range_m": null,
+   "looks": [
+    34992,
+    35004,
+    35473,
+    35675,
+    35697,
+    35710,
+    35720,
+    36140,
+    36149,
+    36158
+   ]
+  },
+  "object:40": {
+   "verdict": "object",
+   "what": "dining chairs, blurred",
+   "uncertainty_m": 0.251,
+   "viewpoints": 2,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    34853,
+    34860,
+    34874,
+    34880,
+    35018
+   ]
+  },
+  "object:41": {
+   "verdict": "object",
+   "what": "dining chairs",
+   "uncertainty_m": 0.333,
+   "viewpoints": 13,
+   "rays_agreeing": 20,
+   "from_range_m": null,
+   "looks": [
+    34897,
+    35019,
+    35024,
+    35035,
+    35211,
+    35229,
+    35234,
+    35260,
+    35274,
+    35583,
+    35711,
+    35718,
+    35729,
+    35917,
+    35928,
+    36058,
+    36144,
+    36152,
+    36159,
+    36163
+   ]
+  },
+  "object:42": {
+   "verdict": "object",
+   "what": "a pendant lamp",
+   "uncertainty_m": 0.242,
+   "viewpoints": 5,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    34873,
+    35027,
+    35034,
+    35479,
+    35909,
+    35947,
+    36112
+   ]
+  },
+  "object:43": {
+   "verdict": "mixed",
+   "what": "a bright window or mirror, unclear",
+   "uncertainty_m": 1.62,
+   "viewpoints": 4,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35020,
+    35271,
+    35701,
+    35714,
+    35726
+   ]
+  },
+  "object:44": {
+   "verdict": "mixed",
+   "what": "chairs with a framed painting among them",
+   "uncertainty_m": 0.325,
+   "viewpoints": 16,
+   "rays_agreeing": 22,
+   "from_range_m": null,
+   "looks": [
+    35015,
+    35025,
+    35029,
+    35219,
+    35245,
+    35258,
+    35372,
+    35475,
+    35485,
+    35561,
+    35567,
+    35580,
+    35600,
+    35674,
+    35685,
+    35695,
+    35810,
+    35836,
+    35936,
+    35949,
+    35969,
+    35979
+   ]
+  },
+  "object:46": {
+   "verdict": "mixed",
+   "what": "a dark doorway and the kitchen beyond",
+   "uncertainty_m": 0.525,
+   "viewpoints": 8,
+   "rays_agreeing": 11,
+   "from_range_m": null,
+   "looks": [
+    35003,
+    35028,
+    35232,
+    35269,
+    35276,
+    35298,
+    35466,
+    35482,
+    35883,
+    35891,
+    35895
+   ]
+  },
+  "object:47": {
+   "verdict": "object",
+   "what": "the teal door",
+   "uncertainty_m": 0.36,
+   "viewpoints": 1,
+   "rays_agreeing": 1,
+   "from_range_m": 5.723,
+   "looks": [
+    35038,
+    35041,
+    35486,
+    35887,
+    35892,
+    36034
+   ]
+  },
+  "object:52": {
+   "verdict": "object",
+   "what": "the office chair",
+   "uncertainty_m": 0.2,
+   "viewpoints": 4,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35051,
+    35057,
+    35067,
+    35112
+   ]
+  },
+  "object:54": {
+   "verdict": "object",
+   "what": "the keyboard on the desk",
+   "uncertainty_m": 0.469,
+   "viewpoints": 4,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35073,
+    35077,
+    35079,
+    35082
+   ]
+  },
+  "object:60": {
+   "verdict": "object",
+   "what": "a white door",
+   "uncertainty_m": 0.711,
+   "viewpoints": 6,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    35110,
+    35113,
+    35117,
+    35125,
+    35871,
+    35876,
+    36018
+   ]
+  },
+  "object:61": {
+   "verdict": "object",
+   "what": "a small picture on green",
+   "uncertainty_m": 0.675,
+   "viewpoints": 7,
+   "rays_agreeing": 8,
+   "from_range_m": null,
+   "looks": [
+    35106,
+    35111,
+    35115,
+    35119
+   ]
+  },
+  "object:65": {
+   "verdict": "object",
+   "what": "the portrait on the green wall",
+   "uncertainty_m": 0.957,
+   "viewpoints": 4,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    35136,
+    35140,
+    35503,
+    35507,
+    35518,
+    35524
+   ]
+  },
+  "object:67": {
+   "verdict": "object",
+   "what": "the dark wardrobe",
+   "uncertainty_m": 0.74,
+   "viewpoints": 5,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    35074,
+    35139,
+    35504,
+    35516,
+    35520,
+    35526
+   ]
+  },
+  "object:70": {
+   "verdict": "object",
+   "what": "the bed",
+   "uncertainty_m": 0.145,
+   "viewpoints": 5,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35157,
+    35505,
+    35515,
+    35522,
+    35534
+   ]
+  },
+  "object:72": {
+   "verdict": "object",
+   "what": "the floor lamp",
+   "uncertainty_m": 0.384,
+   "viewpoints": 4,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35159,
+    35166,
+    35176,
+    35182,
+    35185
+   ]
+  },
+  "object:75": {
+   "verdict": "surface",
+   "what": "blown-out ceiling",
+   "uncertainty_m": 0.362,
+   "viewpoints": 3,
+   "rays_agreeing": 3,
+   "from_range_m": null,
+   "looks": [
+    35133,
+    35193,
+    35200,
+    35203
+   ]
+  },
+  "object:77": {
+   "verdict": "surface",
+   "what": "bare floor",
+   "uncertainty_m": 0.214,
+   "viewpoints": 1,
+   "rays_agreeing": 1,
+   "from_range_m": 0.932,
+   "looks": [
+    35130,
+    35206,
+    35209,
+    35494,
+    35496
+   ]
+  },
+  "object:79": {
+   "verdict": "object",
+   "what": "the black cabinet",
+   "uncertainty_m": 0.267,
+   "viewpoints": 16,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    35212,
+    35220,
+    35230,
+    35238,
+    35251,
+    35261,
+    35391,
+    35406,
+    35411,
+    35420,
+    35427,
+    35563,
+    35572,
+    35582,
+    35590,
+    35602,
+    35612,
+    35624,
+    35672,
+    35694,
+    35703,
+    35734,
+    35741,
+    35793,
+    35811,
+    35819,
+    35980,
+    35988,
+    35995,
+    36000,
+    36006,
+    36012,
+    36104,
+    36114
+   ]
+  },
+  "object:80": {
+   "verdict": "object",
+   "what": "dining chairs",
+   "uncertainty_m": 0.586,
+   "viewpoints": 17,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    35022,
+    35217,
+    35225,
+    35236,
+    35249,
+    35250,
+    35256,
+    35360,
+    35378,
+    35481,
+    35560,
+    35569,
+    35578,
+    35698,
+    35706,
+    35717,
+    35728,
+    35751,
+    35760,
+    35830,
+    35835,
+    35882,
+    35916,
+    35927,
+    36024,
+    36053,
+    36141
+   ]
+  },
+  "object:81": {
+   "verdict": "mixed",
+   "what": "several different framed pictures pooled",
+   "uncertainty_m": 0.694,
+   "viewpoints": 12,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    35017,
+    35222,
+    35231,
+    35239,
+    35252,
+    35263,
+    35392,
+    35394,
+    35422,
+    35564,
+    35574,
+    35584,
+    35594,
+    35605,
+    35615,
+    35626,
+    35636,
+    35673,
+    35684,
+    35690,
+    35707,
+    35721,
+    35736,
+    35742,
+    35813,
+    35902,
+    35907,
+    35922,
+    35931,
+    35942,
+    35953,
+    35974,
+    35982,
+    35989,
+    35997,
+    36003,
+    36008,
+    36106,
+    36117,
+    36126,
+    36137
+   ]
+  },
+  "object:82": {
+   "verdict": "object",
+   "what": "dark frames edge-on",
+   "uncertainty_m": 0.196,
+   "viewpoints": 9,
+   "rays_agreeing": 22,
+   "from_range_m": null,
+   "looks": [
+    35039,
+    35213,
+    35218,
+    35228,
+    35376,
+    35382,
+    35435,
+    35445,
+    35562,
+    35570,
+    35827,
+    35833,
+    35844,
+    35853,
+    35860,
+    35864,
+    36020,
+    36036,
+    36042,
+    36050,
+    36069,
+    36078
+   ]
+  },
+  "object:83": {
+   "verdict": "object",
+   "what": "a gold-framed painting",
+   "uncertainty_m": 0.102,
+   "viewpoints": 12,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    34844,
+    34848,
+    34854,
+    34861,
+    34867,
+    34871,
+    34876,
+    34878,
+    35016,
+    35026,
+    35243,
+    35385,
+    35389,
+    35404,
+    35412,
+    35585,
+    35595,
+    35607,
+    35700,
+    35713,
+    35722,
+    35731,
+    35737,
+    35743,
+    35747,
+    35753,
+    35758,
+    35764,
+    35772,
+    35797,
+    35984,
+    35991,
+    35998,
+    36002,
+    36009,
+    36110,
+    36121,
+    36145
+   ]
+  },
+  "object:84": {
+   "verdict": "object",
+   "what": "a ceiling fan",
+   "uncertainty_m": 0.472,
+   "viewpoints": 11,
+   "rays_agreeing": 19,
+   "from_range_m": null,
+   "looks": [
+    35221,
+    35226,
+    35237,
+    35326,
+    35331,
+    35358,
+    35362,
+    35366,
+    35368,
+    35407,
+    35415,
+    35568,
+    35581,
+    35591,
+    35682,
+    35725,
+    35796,
+    35842,
+    35880
+   ]
+  },
+  "object:86": {
+   "verdict": "object",
+   "what": "the cow painting",
+   "uncertainty_m": 0.274,
+   "viewpoints": 9,
+   "rays_agreeing": 11,
+   "from_range_m": null,
+   "looks": [
+    35254,
+    35266,
+    35426,
+    35616,
+    35712,
+    35818,
+    35908,
+    35925,
+    35934,
+    35943,
+    35955
+   ]
+  },
+  "object:87": {
+   "verdict": "object",
+   "what": "a ceiling fan",
+   "uncertainty_m": 0.466,
+   "viewpoints": 13,
+   "rays_agreeing": 24,
+   "from_range_m": null,
+   "looks": [
+    34891,
+    34927,
+    34936,
+    35264,
+    35417,
+    35425,
+    35431,
+    35441,
+    35451,
+    35606,
+    35617,
+    35815,
+    35822,
+    35850,
+    35859,
+    35924,
+    35933,
+    35944,
+    35957,
+    35966,
+    35983,
+    35993,
+    36010,
+    36016,
+    36026,
+    36033,
+    36039,
+    36049,
+    36128
+   ]
+  },
+  "object:88": {
+   "verdict": "surface",
+   "what": "bare floor",
+   "uncertainty_m": 0.581,
+   "viewpoints": 4,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35244,
+    35554,
+    35845,
+    36065
+   ]
+  },
+  "object:89": {
+   "verdict": "mixed",
+   "what": "a picture, a doorframe and a gold arc",
+   "uncertainty_m": 0.999,
+   "viewpoints": 6,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    35036,
+    35283,
+    35288,
+    35308,
+    35474,
+    35575,
+    35877,
+    35914
+   ]
+  },
+  "object:91": {
+   "verdict": "object",
+   "what": "framed pictures",
+   "uncertainty_m": 0.407,
+   "viewpoints": 5,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35123,
+    35128,
+    35284,
+    35293,
+    35889
+   ]
+  },
+  "object:94": {
+   "verdict": "object",
+   "what": "a white door",
+   "uncertainty_m": 0.211,
+   "viewpoints": 1,
+   "rays_agreeing": 1,
+   "from_range_m": 3.516,
+   "looks": [
+    35294,
+    35303,
+    35311,
+    35344
+   ]
+  },
+  "object:95": {
+   "verdict": "object",
+   "what": "the chest of drawers",
+   "uncertainty_m": 0.143,
+   "viewpoints": 1,
+   "rays_agreeing": 1,
+   "from_range_m": 2.395,
+   "looks": [
+    35280,
+    35289,
+    35300,
+    35309,
+    35341
+   ]
+  },
+  "object:97": {
+   "verdict": "object",
+   "what": "a dark box on a shelf",
+   "uncertainty_m": 0.442,
+   "viewpoints": 5,
+   "rays_agreeing": 12,
+   "from_range_m": null,
+   "looks": [
+    35282,
+    35291,
+    35301,
+    35312,
+    35319,
+    35343
+   ]
+  },
+  "object:101": {
+   "verdict": "object",
+   "what": "a framed picture",
+   "uncertainty_m": 0.438,
+   "viewpoints": 4,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    34913,
+    35369,
+    35681,
+    35975
+   ]
+  },
+  "object:103": {
+   "verdict": "object",
+   "what": "a framed picture",
+   "uncertainty_m": 0.152,
+   "viewpoints": 4,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    34863,
+    35286,
+    35381,
+    35384
+   ]
+  },
+  "object:104": {
+   "verdict": "object",
+   "what": "the front door",
+   "uncertainty_m": 0.485,
+   "viewpoints": 6,
+   "rays_agreeing": 10,
+   "from_range_m": null,
+   "looks": [
+    35397,
+    35730,
+    35750,
+    35757,
+    35762,
+    35769,
+    35774,
+    35780,
+    35787,
+    35831
+   ]
+  },
+  "object:106": {
+   "verdict": "object",
+   "what": "dining chairs",
+   "uncertainty_m": 0.31,
+   "viewpoints": 10,
+   "rays_agreeing": 14,
+   "from_range_m": null,
+   "looks": [
+    35021,
+    35379,
+    35409,
+    35573,
+    35588,
+    35679,
+    35687,
+    35696,
+    35705,
+    35716,
+    35719,
+    35970,
+    35977,
+    36105
+   ]
+  },
+  "object:109": {
+   "verdict": "object",
+   "what": "a lampshade",
+   "uncertainty_m": 0.501,
+   "viewpoints": 5,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    34904,
+    34970,
+    35438,
+    35447,
+    35455,
+    35464
+   ]
+  },
+  "object:110": {
+   "verdict": "object",
+   "what": "a pendant lamp",
+   "uncertainty_m": 0.894,
+   "viewpoints": 6,
+   "rays_agreeing": 10,
+   "from_range_m": null,
+   "looks": [
+    34889,
+    34905,
+    35040,
+    35042,
+    35436,
+    35478,
+    35488,
+    35828,
+    36021,
+    36029
+   ]
+  },
+  "object:113": {
+   "verdict": "object",
+   "what": "a picture on the green wall",
+   "uncertainty_m": 0.234,
+   "viewpoints": 5,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    35137,
+    35201,
+    35204,
+    35207,
+    35502,
+    35508,
+    35547,
+    35550
+   ]
+  },
+  "object:114": {
+   "verdict": "object",
+   "what": "the gold-framed painting on green",
+   "uncertainty_m": 0.589,
+   "viewpoints": 5,
+   "rays_agreeing": 7,
+   "from_range_m": null,
+   "looks": [
+    35154,
+    35158,
+    35164,
+    35517,
+    35523,
+    35528,
+    35531
+   ]
+  },
+  "object:115": {
+   "verdict": "object",
+   "what": "a pendant lamp",
+   "uncertainty_m": 0.669,
+   "viewpoints": 3,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35141,
+    35161,
+    35509,
+    35519
+   ]
+  },
+  "object:118": {
+   "verdict": "surface",
+   "what": "bare floor",
+   "uncertainty_m": 0.372,
+   "viewpoints": 7,
+   "rays_agreeing": 13,
+   "from_range_m": null,
+   "looks": [
+    35044,
+    35049,
+    35055,
+    35116,
+    35120,
+    35490,
+    35553
+   ]
+  },
+  "object:120": {
+   "verdict": "object",
+   "what": "the rug",
+   "uncertainty_m": 0.263,
+   "viewpoints": 4,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35275,
+    35373,
+    35586,
+    35846,
+    35926,
+    35937,
+    35968
+   ]
+  },
+  "object:122": {
+   "verdict": "surface",
+   "what": "bare floor and the rover's own shadow",
+   "uncertainty_m": 0.213,
+   "viewpoints": 1,
+   "rays_agreeing": 1,
+   "from_range_m": 0.971,
+   "looks": [
+    34941,
+    35621,
+    35633,
+    35671
+   ]
+  },
+  "object:124": {
+   "verdict": "mixed",
+   "what": "a blue bin with glare and floor among it",
+   "uncertainty_m": 0.135,
+   "viewpoints": 3,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    35632,
+    35664,
+    35869,
+    35873,
+    36074,
+    36083
+   ]
+  },
+  "object:128": {
+   "verdict": "object",
+   "what": "the green landscape painting",
+   "uncertainty_m": 0.337,
+   "viewpoints": 7,
+   "rays_agreeing": 10,
+   "from_range_m": null,
+   "looks": [
+    35279,
+    35732,
+    35770,
+    35776,
+    35781,
+    35788,
+    35832,
+    35837,
+    35893,
+    36119
+   ]
+  },
+  "object:131": {
+   "verdict": "object",
+   "what": "the green tissue box (a named target)",
+   "uncertainty_m": 0.227,
+   "viewpoints": 3,
+   "rays_agreeing": 6,
+   "from_range_m": null,
+   "looks": [
+    35740,
+    35745,
+    35754,
+    35759,
+    35763,
+    36005
+   ]
+  },
+  "object:133": {
+   "verdict": "object",
+   "what": "a shoe (a named target)",
+   "uncertainty_m": 0.158,
+   "viewpoints": 3,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35393,
+    35779,
+    35784,
+    35790
+   ]
+  },
+  "object:134": {
+   "verdict": "object",
+   "what": "a dark mirror",
+   "uncertainty_m": 0.169,
+   "viewpoints": 3,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35386,
+    35778,
+    35783,
+    35789
+   ]
+  },
+  "object:136": {
+   "verdict": "mixed",
+   "what": "a white fixture with cabling, unclear",
+   "uncertainty_m": 0.688,
+   "viewpoints": 6,
+   "rays_agreeing": 11,
+   "from_range_m": null,
+   "looks": [
+    34898,
+    35456,
+    35826,
+    35839,
+    35848,
+    35857,
+    35863,
+    35874,
+    36067,
+    36075,
+    36082
+   ]
+  },
+  "object:137": {
+   "verdict": "mixed",
+   "what": "an archway with a doorway among it",
+   "uncertainty_m": 0.395,
+   "viewpoints": 2,
+   "rays_agreeing": 4,
+   "from_range_m": null,
+   "looks": [
+    35549,
+    35868,
+    36027,
+    36073,
+    36081
+   ]
+  },
+  "object:141": {
+   "verdict": "mixed",
+   "what": "two different framed pictures",
+   "uncertainty_m": 0.596,
+   "viewpoints": 3,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35202,
+    35205,
+    35548,
+    35551,
+    35905
+   ]
+  },
+  "object:142": {
+   "verdict": "object",
+   "what": "a pendant lamp",
+   "uncertainty_m": 0.333,
+   "viewpoints": 4,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35241,
+    35265,
+    35596,
+    35923,
+    36072
+   ]
+  },
+  "object:143": {
+   "verdict": "object",
+   "what": "the black cabinet with the spray bottle",
+   "uncertainty_m": 0.561,
+   "viewpoints": 5,
+   "rays_agreeing": 8,
+   "from_range_m": null,
+   "looks": [
+    35683,
+    35708,
+    35906,
+    35919,
+    35929,
+    35938,
+    35951,
+    35971
+   ]
+  },
+  "object:144": {
+   "verdict": "surface",
+   "what": "a painted stripe on a bare wall",
+   "uncertainty_m": 1.206,
+   "viewpoints": 4,
+   "rays_agreeing": 5,
+   "from_range_m": null,
+   "looks": [
+    35765,
+    35771,
+    35777,
+    35785,
+    35946
+   ]
+  },
+  "object:149": {
+   "verdict": "object",
+   "what": "the cardboard box on the floor",
+   "uncertainty_m": 0.175,
+   "viewpoints": 3,
+   "rays_agreeing": 8,
+   "from_range_m": null,
+   "looks": [
+    35865,
+    35881,
+    35884,
+    35960,
+    36052,
+    36057,
+    36062,
+    36071,
+    36080
+   ]
+  }
+ }
+}

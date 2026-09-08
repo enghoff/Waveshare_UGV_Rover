@@ -201,7 +201,15 @@ Useful replay and measurement tools remain beside the component:
   found again in the meantime; it writes nothing without `--apply`;
 - `bench_oak.py` measures the relationship between the two cameras;
 - `bench_bearing.py`, `bench_height.py` and `bench_cluster.py` compare geometry;
-- `bench_perceive.py` and `bench_still.py` inspect model and capture behavior.
+- `bench_perceive.py` and `bench_still.py` inspect model and capture behavior;
+- `bench_identity.py` scores a candidate identity remedy against
+  [labels/m0-2026-09-08.json](labels/m0-2026-09-08.json), which is 76 things
+  from one drive with a written verdict each: whether every look in the thing is
+  the same object, or two, or bare floor. **Identity is the criterion this
+  component fails**, and it is failed by 17 of those 76, so a change to
+  association has somewhere to be measured rather than argued about. Verdicts
+  join to a rebuilt thing by which looks it holds, because every entity
+  identifier in the room changes when the resolver does.
 
 That proof was taken on 2026-09-07 and measured range does prevent false
 crossings. The next hardware proof is a different one, and it is not about this
