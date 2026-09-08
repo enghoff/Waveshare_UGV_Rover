@@ -31,6 +31,16 @@ back on, because enabling is not.
 from __future__ import annotations
 
 from typing import Any
+from functools import wraps
+
+
+def serialized(method):
+    """Serialize permission transitions with dispatch, never an entire drive."""
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        with self._autonomy_lock:
+            return method(self, *args, **kwargs)
+    return locked
 
 #: The calls a person makes that end a run. Stopping is the obvious one; the
 #: rest are a person taking the rover back by doing something with it. Driving
@@ -63,6 +73,7 @@ class RoverAutonomy:
 
     # --- what a person calls ------------------------------------------------
 
+    @serialized
     def _tool_autonomy_enable(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Open a bounded autonomous run. A person's act, not the executive's.
 
@@ -87,6 +98,7 @@ class RoverAutonomy:
                   flush=True)
         return {**answer, "autonomy": self.permission.status()}
 
+    @serialized
     def _tool_autonomy_stop(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Stop the rover and latch autonomy off until somebody re-enables it.
 
@@ -104,6 +116,7 @@ class RoverAutonomy:
 
     # --- what the executive calls -------------------------------------------
 
+    @serialized
     def _tool_autonomy_permit(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Ask for permission to act, or renew it. Never opens a run.
 
@@ -120,6 +133,7 @@ class RoverAutonomy:
         answer = self.permission.grant(run, None if ttl is None else float(ttl))
         return {**answer, "autonomy": self.permission.status()}
 
+    @serialized
     def _tool_autonomy_release(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Hand the run back. The executive saying it has finished.
 
@@ -162,6 +176,13 @@ class RoverAutonomy:
         params = dict(arguments.get("params") or {})
 
         facts = self.autonomy_conditions()
+        # Gather slow telemetry before taking the transition lock. A stop that
+        # arrived during the read is then seen by check, not overwritten by it.
+        with self._autonomy_lock:
+            return self._autonomy_dispatch(permit, action, action_id, episode,
+                                           params, facts)
+
+    def _autonomy_dispatch(self, permit, action, action_id, episode, params, facts):
         verdict = self.permission.check(
             permit=permit, action=action, action_id=action_id,
             episode=episode, params=params, conditions=facts)
@@ -172,6 +193,10 @@ class RoverAutonomy:
                 answer["already"] = verdict.already
             return answer
 
+        if action == "drive_to" and facts.get("stop_seq") is None:
+            return {"ok": False, "refused": "navigation guard unavailable",
+                    "error": "navigation cannot invalidate a delayed autonomous goal"}
+
         self.permission.began(action_id, action, params, episode=episode)
         # Where the rover is standing as the action begins, so that the travel
         # budget is spent from the start of the move rather than from the
@@ -179,7 +204,19 @@ class RoverAutonomy:
         # but an under-count that happens once per goal adds up over a run.
         self.permission.moved(facts.get("where"), facts.get("map_id"))
         try:
-            result = self._autonomy_do(action, params, action_id, episode)
+            if action == "drive_to":
+                params = {**params, "stop_seq": facts.get("stop_seq"),
+                          "geofence": self.permission.run.budget.get("geofence")}
+            if action == "world_inspect":
+                # Inspection does not drive; let a person's stop through while
+                # the camera/resolver works. It has already been reserved once.
+                self._autonomy_lock.release()
+                try:
+                    result = self._autonomy_do(action, params, action_id, episode)
+                finally:
+                    self._autonomy_lock.acquire()
+            else:
+                result = self._autonomy_do(action, params, action_id, episode)
         except Exception as error:      # a bug here must not leave a run open
             self.permission.finished(action_id, ok=False,
                                      detail=f"{type(error).__name__}: {error}")
@@ -228,6 +265,8 @@ class RoverAutonomy:
             started = self.nav.drive_to_in_background(
                 float(params["x_m"]), float(params["y_m"]),
                 heading_deg=None if heading is None else float(heading),
+                guard={"stop_seq": params.get("stop_seq"),
+                       "geofence": params.get("geofence")},
                 for_what={"autonomy_action": action_id, "episode": episode,
                           "said": str(params.get("said") or "")})
             if not started.get("started"):
@@ -281,6 +320,7 @@ class RoverAutonomy:
             "map_id": status.get("map_id"),
             "map_settled": status.get("map_settled"),
             "driving": bool(status.get("driving")),
+            "stop_seq": status.get("stop_seq"),
             "where": (None if not pose else
                       (float(pose["x_m"]), float(pose["y_m"]))),
         })
@@ -306,6 +346,13 @@ class RoverAutonomy:
         now = self.permission.clock()
         self._autonomy_ticked = now
         facts = self.autonomy_conditions()
+        with self._autonomy_lock:
+            # The run may have been replaced while telemetry was being read.
+            if self.permission.run is not run or run.ended:
+                return ""
+            return self._autonomy_tick_checked(facts, was, now)
+
+    def _autonomy_tick_checked(self, facts, was, now):
         fault = self.permission.moved(facts.get("where"), facts.get("map_id"),
                                       elapsed_s=None if was is None else now - was)
         why = fault or self.permission.due(facts)
@@ -314,6 +361,7 @@ class RoverAutonomy:
         self.autonomy_end(why)
         return why
 
+    @serialized
     def autonomy_end(self, why: str) -> dict[str, Any]:
         """Stop the wheels and close the run. Not a latch: nobody asked.
 
@@ -321,7 +369,9 @@ class RoverAutonomy:
         other, because everything after the stop is a record of something that
         has already been made safe.
         """
-        if self.nav is not None and self.nav.driving:
+        # A background trip may be queued but not have taken the wheel mutex
+        # yet. Send stop even then: its bridge sequence invalidates that goal.
+        if self.nav is not None:
             try:
                 self.nav.stop()
             except Exception as error:                         # pragma: no cover
@@ -332,16 +382,20 @@ class RoverAutonomy:
             print(f"[autonomy] {ended['ended_run']} ended: {why}", flush=True)
         return ended
 
+    @serialized
     def autonomy_taken(self, by: str, why: str = "") -> dict[str, Any]:
         """A person took the rover back. Latch autonomy off and end any run."""
         run = self.permission.run
         running = run is not None and not run.ended
         answer = self.permission.stop(by=by, why=why)
+        if running and self.nav is not None:
+            self.nav.stop()
         if running:
             print(f"[autonomy] {answer.get('ended_run')} ended: "
                   f"{answer.get('why')}", flush=True)
         return answer
 
+    @serialized
     def autonomy_notice(self, name: str) -> None:
         """Called for every tool the daemon dispatches, and does nothing for
         almost all of them.
@@ -366,6 +420,7 @@ class RoverAutonomy:
         self.autonomy_taken("a person", TAKEOVER.get(name)
                             or f"somebody drove the rover by hand ({name})")
 
+    @serialized
     def autonomy_trip_ended(self, asked: dict[str, Any], outcome: Any) -> None:
         """How an autonomous move ended, heard from the thread that ran it.
 

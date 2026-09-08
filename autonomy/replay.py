@@ -57,6 +57,7 @@ def reconstruct(store: store_mod.EpisodeStore, episode_ref: str, *,
         "steps": steps,
         "decision": decision,
         "calls": [step["body"] for step in steps if step["kind"] == "call"],
+        "dispatches": [step["body"] for step in steps if step["kind"] == "dispatch"],
         "candidates": [step["body"] for step in steps
                        if step["kind"] == "candidate"],
         "models": [step["body"] for step in steps if step["kind"] == "model"],
@@ -106,6 +107,12 @@ def selected_action(store: store_mod.EpisodeStore,
         return {"action": chose, "called": True, "call": body.get("call"),
                 "params": body.get("params"), "ok": body.get("ok"),
                 "result": body.get("result"), "error": body.get("error", ""),
+                "outcome": got["outcome"]}
+    if got["dispatches"]:
+        body = got["dispatches"][0]
+        return {"action": chose, "called": None, "call": body["call"],
+                "params": body["params"], "ok": None, "result": None,
+                "error": "dispatch was prepared but its outcome was not recorded",
                 "outcome": got["outcome"]}
     # Chosen and never called. A shadow run does this every time, and it is a
     # result rather than a gap: the rover decided what it would do and had no

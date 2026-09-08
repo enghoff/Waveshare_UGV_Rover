@@ -330,9 +330,17 @@ class Executive:
         # this side: naming what was assumed.
         params.setdefault("map_id", self._map_id)
         began = self.now()
-        answer = self.rover.call("autonomy_act", {
-            "permit": self.permit, "action": step["action"],
-            "action_id": action_id, "episode": episode, "params": params})
+        # Commit intent before the socket write: a kill or lost reply must not
+        # erase the fact that this episode may have dispatched a physical move.
+        self.store.append(episode, events.make("dispatch", {
+            "action_id": action_id, "call": step["action"], "params": params}))
+        try:
+            answer = self.rover.call("autonomy_act", {
+                "permit": self.permit, "action": step["action"],
+                "action_id": action_id, "episode": episode, "params": params})
+        except client_mod.Unreachable as exc:
+            self._lost_action(episode, step, params, action_id, began, str(exc))
+            raise Aborted(str(exc), "connection lost") from exc
         self.acted += 1
         self.actions.append({"id": action_id, "action": step["action"],
                              "ok": bool(answer.get("ok"))})
@@ -340,6 +348,7 @@ class Executive:
         if not answer.get("ok"):
             self.store.append(episode, events.call(
                 step["action"], params, ok=False,
+                result={"action_id": action_id},
                 error=str(answer.get("error") or "refused"),
                 duration_s=round(self.now() - began, 2)))
             raise Aborted(f"{step['action']} was refused: "
@@ -348,12 +357,18 @@ class Executive:
 
         result = answer
         if answer.get("running"):
-            result = self.wait(action_id, step["action"])
+            try:
+                result = self.wait(action_id, step["action"])
+            except (Aborted, client_mod.Unreachable) as exc:
+                self._lost_action(episode, step, params, action_id, began, str(exc))
+                if isinstance(exc, client_mod.Unreachable):
+                    raise Aborted(str(exc), "connection lost") from exc
+                raise
         self.store.append(episode, events.call(
             step["action"], params, ok=bool(result.get("ok")),
-            result={k: v for k, v in result.items()
+            result={"action_id": action_id, **{k: v for k, v in result.items()
                     if k in ("note", "detail", "regions", "attached",
-                             "placed", "ranged", "stopped", "going")},
+                             "placed", "ranged", "stopped", "going")}},
             error=str(result.get("error") or ""),
             duration_s=round(self.now() - began, 2)))
         if not result.get("ok"):
@@ -361,6 +376,12 @@ class Executive:
                           f"{result.get('error') or result.get('detail')}",
                           "failed")
         return result
+
+    def _lost_action(self, episode, step, params, action_id, began, why):
+        self.store.append(episode, events.call(
+            step["action"], params, ok=False,
+            result={"action_id": action_id, "completion_known": False},
+            error=why, duration_s=round(self.now() - began, 2)))
 
     def wait(self, action_id: str, action: str) -> dict[str, Any]:
         """Poll until the daemon says the action is over, or give up.

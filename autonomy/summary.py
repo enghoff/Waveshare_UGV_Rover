@@ -60,7 +60,13 @@ def render(got: dict[str, Any]) -> str:
         verdict = "ok" if body.get("ok") else f"failed: {body.get('error', '')}"
         lines.append(f"  called {body.get('call')}"
                      f"{_params(body.get('params'))} -- {verdict}")
-    if not got["calls"]:
+    completed = {(body.get("result") or {}).get("action_id")
+                 for body in got["calls"] if isinstance(body.get("result"), dict)}
+    for body in got.get("dispatches", []):
+        if body["action_id"] not in completed:
+            lines.append(f"  prepared {body['call']}{_params(body.get('params'))}"
+                         " -- dispatch/completion unknown; no result was recorded")
+    if not got["calls"] and not got.get("dispatches"):
         lines.append("  called nothing")
 
     # What the occasion did to the world. On an episode with no decision in it

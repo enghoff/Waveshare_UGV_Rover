@@ -212,6 +212,12 @@
             "ros_nav/**"
           ],
           "strip": "ros_nav"
+        },
+        {
+          "patterns": [
+            "rover_daemon/permission.py"
+          ],
+          "strip": "rover_daemon"
         }
       ],
       "commands": [

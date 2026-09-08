@@ -110,6 +110,10 @@ POSE_JUMP_M = 0.5
 #: so the two are declared together.
 TICK_S = 0.5
 
+# Reserve room inside a declared boundary for the body and braking. Hardware
+# acceptance must measure whether this allowance is sufficient at trial speed.
+FENCE_MARGIN_M = 0.5
+
 DEFAULT_BUDGET: dict[str, Any] = {
     "seconds": RUN_MAX_S,
     "travel_m": RUN_MAX_TRAVEL_M,
@@ -176,7 +180,7 @@ class Verdict(NamedTuple):
 
 
 def fence_breach(goal: dict[str, Any] | None,
-                  fence: dict[str, Any] | None) -> str:
+                  fence: dict[str, Any] | None, margin_m: float = 0.0) -> str:
     """Whether a place is outside the configured safe area. '' when it is not.
 
     A circle -- `{"x_m", "y_m", "radius_m"}` -- or a box of any of
@@ -198,7 +202,7 @@ def fence_breach(goal: dict[str, Any] | None,
     if fence.get("radius_m") is not None:
         gap = ((x - float(fence.get("x_m", 0.0))) ** 2
                + (y - float(fence.get("y_m", 0.0))) ** 2) ** 0.5
-        if gap > float(fence["radius_m"]):
+        if gap > float(fence["radius_m"]) - margin_m:
             return (f"it is {gap:.1f} m from the middle of the safe area, "
                     f"which reaches {float(fence['radius_m']):.1f} m")
         return ""
@@ -206,9 +210,9 @@ def fence_breach(goal: dict[str, Any] | None,
                                     x, "x"),
                                    (fence.get("min_y_m"), fence.get("max_y_m"),
                                     y, "y")):
-        if low is not None and value < float(low):
+        if low is not None and value < float(low) + margin_m:
             return f"its {axis} is outside the safe area"
-        if high is not None and value > float(high):
+        if high is not None and value > float(high) - margin_m:
             return f"its {axis} is outside the safe area"
     return ""
 
@@ -534,7 +538,9 @@ class Permission:
             self.doing = {**self.doing, "ok": bool(ok), "detail": detail}
         if self.run is None:
             return
-        self.run.failures = 0 if ok else self.run.failures + 1
+        # Recovery stopping is not progress and cannot forgive the failed goal.
+        if record is not None and record.get("action") != "stop":
+            self.run.failures = 0 if ok else self.run.failures + 1
 
     def moved(self, where: tuple[float, float] | None,
               map_id: str | None = None, elapsed_s: float | None = None) -> str:
@@ -588,6 +594,15 @@ class Permission:
         if run is None or run.ended:
             return ""
         facts = dict(conditions or {})
+        fence = run.budget.get("geofence")
+        if facts.get("driving") and fence:
+            where = facts.get("where")
+            if where is None or not facts.get("pose_trusted"):
+                return "the safe area cannot be checked without a trusted position"
+            breach = fence_breach({"x_m": where[0], "y_m": where[1]}, fence,
+                                  margin_m=FENCE_MARGIN_M)
+            if breach:
+                return "the rover reached the safe area stopping margin: " + breach
         over = run.over(now)
         if over:
             return over

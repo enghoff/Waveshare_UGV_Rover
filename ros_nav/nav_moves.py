@@ -27,6 +27,7 @@ from rcl_interfaces.srv import GetParameters
 # with the checks, not a copy of one.
 import goal_fit
 import route_cost
+import autonomy_guard
 from nav_codes import phrase_for, reason_for
 from nav_limits import (
     COSTMAP_TIMEOUT_S, DEFAULT_SPEED_MS, DEFAULT_TURN_DPS, PROGRESS_S,
@@ -54,7 +55,7 @@ class NavMoves:
         return True
 
     def run_goal(self, kind, goal_msg, limit_s, say, measure, motion="driving",
-                 budget=None, give_up=None):
+                 budget=None, give_up=None, guard=None):
         """Send one Nav2 goal and narrate it until it ends.
 
         `say` publishes a progress line and `measure` turns the action's own
@@ -86,7 +87,12 @@ class NavMoves:
             return {"reason": "refused", "travelled_m": 0.0, "turned_deg": 0.0,
                     "detail": "Nav2 is not running, so the rover will not drive "
                               "itself. Only the mapping half of the stack is up."}
+        guard_pose = self.pose() if guard is not None else None
         with self._lock:
+            blocked = autonomy_guard.refusal(guard, self.stop_seq, pose=guard_pose)
+            if blocked:
+                return {"reason": "stopped", "travelled_m": 0.0,
+                        "turned_deg": 0.0, "detail": blocked}
             if self.estop:
                 return {"reason": "blocked", "travelled_m": 0.0,
                         "turned_deg": 0.0,
@@ -108,7 +114,11 @@ class NavMoves:
             feedback.update(fields)
 
         say("planning", "the goal is with Nav2")
-        send = client.send_goal_async(goal_msg, feedback_callback=on_feedback)
+        with self._lock:
+            if guard is not None and guard.get("stop_seq") != self.stop_seq:
+                return {"reason": "stopped", "travelled_m": 0.0,
+                        "turned_deg": 0.0, "detail": "a stop invalidated this goal"}
+            send = client.send_goal_async(goal_msg, feedback_callback=on_feedback)
         if not self.wait(send, 10.0):
             return {"reason": "failed", "travelled_m": 0.0, "turned_deg": 0.0,
                     "detail": "Nav2 did not answer the goal in ten seconds"}
@@ -122,6 +132,12 @@ class NavMoves:
         with self._lock:
             self.active_goal = handle
             self.driving = True
+            # A stop can land while Nav2 is accepting the goal, before there is
+            # a handle for halt() to cancel. Cancel that handle as soon as it exists.
+            stopped_during_send = (guard is not None and
+                                  guard.get("stop_seq") != self.stop_seq)
+        if stopped_during_send:
+            handle.cancel_goal_async()
         abandoned = None
         try:
             result_future = handle.get_result_async()
@@ -405,7 +421,7 @@ class NavMoves:
                 "stand in, so the goal was moved %d cm to the nearest one it "
                 "fits" % round(placed["moved_m"] * 100))
 
-    def goto(self, where, yaw_deg, say, give_up=None):
+    def goto(self, where, yaw_deg, say, give_up=None, guard=None):
         """Somewhere on the map, with a planner and a costmap between.
 
         `where` is already in map coordinates -- the daemon converts an offset into
@@ -433,6 +449,21 @@ class NavMoves:
             return {"reason": "blocked", "travelled_m": 0.0, "turned_deg": 0.0,
                     "detail": note}
         gx, gy, yaw = placed
+        blocked = autonomy_guard.refusal(guard, self.stop_seq, pose=start,
+                                         goal=(gx, gy))
+        if blocked:
+            return {"reason": "blocked", "travelled_m": 0.0,
+                    "turned_deg": 0.0, "detail": blocked}
+
+        previous_give_up = give_up
+        if guard is not None:
+            def give_up(now, feedback):
+                with self._lock:
+                    plan, seq = self.plan, self.stop_seq
+                return (autonomy_guard.refusal(guard, seq, pose=self.pose(),
+                                               goal=(gx, gy), path=plan)
+                        or (previous_give_up(now, feedback)
+                            if previous_give_up else ""))
 
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
@@ -484,7 +515,7 @@ class NavMoves:
                     "recoveries": int(fb.number_of_recoveries)}
 
         outcome = self.run_goal("goto", goal, limit, say, measure, budget=budget,
-                                give_up=give_up)
+                                give_up=give_up, **({"guard": guard} if guard is not None else {}))
         # **How far the route was, said out loud.** A move that ran out of time on
         # a route three times the length of the straight line is a different event
         # from one that ran out of time going nowhere, and the console could not

@@ -136,6 +136,7 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         # permit and no memory of having had either. See
         # [permission.py](permission.py).
         self.permission = permission_mod.Permission()
+        self._autonomy_lock = threading.RLock()
         #: When the autonomy watchdog last looked, so that a tick delayed by a
         #: slow bridge is not mistaken for the rover teleporting.
         self._autonomy_ticked: float | None = None

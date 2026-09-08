@@ -24,6 +24,7 @@ from typing import Any, Iterable, NamedTuple
 #: and kept: a caller with more to say about a decision should say it, and a
 #: schema that refused would just push the detail into a note nobody parses.
 REQUIRED: dict[str, tuple[str, ...]] = {
+    "dispatch": ("action_id", "call", "params"),
     # A goal the rover considered, whether or not it chose it. Recorded even
     # when it loses, because "why did it not go and look at the thing in the
     # hall" is the question a shadow run exists to answer.

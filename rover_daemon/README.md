@@ -434,3 +434,20 @@ PY
 
 See [`../docs/runbooks/deploy.md`](../docs/runbooks/deploy.md) for the deployment/restart rules and
 [`../docs/runbooks/hosts.md`](../docs/runbooks/hosts.md) for current ports/hardware facts.
+
+## Autonomy review safeguards
+
+Permission transitions and action dispatch share a lock. Telemetry is read before
+that lock and the permission is checked afterwards; inspections release the lock
+while the camera works so a stop can get through. Taking over a run cancels its
+navigation as well as revoking its permission, including a queued background trip.
+An autonomous navigation request carries the bridge's stop sequence: a stop that
+lands before its delayed dispatch invalidates it. A late accepted Nav2 handle is
+cancelled if a stop arrived while acceptance was pending.
+
+The watchdog checks the rover's position against a configured safe area, with
+`permission.FENCE_MARGIN_M` reserved inside it. Navigation also checks adjusted
+goals and planned routes. This is software enforcement; the margin's adequacy for
+the footprint, latency and braking remains a supervised hardware acceptance item
+under R-SAFE-10, R-SAFE-11 and R-SAFE-12. Successful recovery stops do not forgive
+failed goals.

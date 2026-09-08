@@ -11,6 +11,12 @@ system that decide what would be interesting are not the parts that are allowed
 to move the wheels, and everything here exists to keep that true as more
 deciding gets added.
 
+The September 8 code review added serialized dispatch/takeover, cancellation of
+queued and late accepted navigation goals, journey boundary checks and failure
+accounting that excludes recovery stops. Local regressions exercise these paths.
+R-SAFE-9, R-SAFE-10, R-SAFE-11 and R-SAFE-12 remain open: these changes do not
+replace their supervised moving trials.
+
 <a id="r-safe-1"></a>
 ### R-SAFE-1 — One process owns the driver-board UART and the gimbal camera
 

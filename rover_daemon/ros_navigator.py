@@ -695,7 +695,7 @@ class RosNavigator:
     def drive_to(self, ahead_m: float | None = None, left_m: float | None = None,
                  x_m: float | None = None, y_m: float | None = None,
                  speed_ms: float | None = None,
-                 heading_deg: float | None = None) -> Outcome:
+                 heading_deg: float | None = None, guard=None) -> Outcome:
         """Somewhere on the map, given either as an offset or as a point.
 
         The offset is converted here rather than on the ROS side, because that is
@@ -733,7 +733,8 @@ class RosNavigator:
                          {"op": "goto", "x_m": float(x_m),
                           "y_m": float(y_m or 0.0),
                           "yaw_deg": (None if heading_deg is None
-                                      else float(heading_deg))})
+                                      else float(heading_deg)),
+                          **({"autonomy_guard": guard} if guard is not None else {})})
 
     def explore(self, budget_s: float | None = None,
                 min_frontier_m: float | None = None) -> Outcome:
@@ -853,6 +854,7 @@ class RosNavigator:
                                heading_deg: float | None = None,
                                speed_ms: float | None = None,
                                for_what: dict[str, Any] | None = None,
+                               guard=None,
                                ) -> dict[str, Any]:
         """Set the rover off to one place on the map, answering at once.
 
@@ -866,7 +868,7 @@ class RosNavigator:
         return self.in_background(
             "errand",
             lambda: self.drive_to(x_m=x_m, y_m=y_m, heading_deg=heading_deg,
-                                  speed_ms=speed_ms),
+                                  speed_ms=speed_ms, guard=guard),
             asked={**(for_what or {}), "x_m": float(x_m), "y_m": float(y_m)})
 
     def pose_now(self) -> tuple[float, float, float] | None:

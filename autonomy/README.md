@@ -436,3 +436,11 @@ leaves two accounts of the running system with one of them maintained.
   region writes no observation, so "the rover looked and saw nothing" — which is
   itself worth knowing — is invisible to the recorder. Closing that needs the
   daemon to expose its inspection log, which it does not today.
+
+## Interrupted execution
+
+Before sending an action, the executive commits a `dispatch` event with its
+action identifier and parameters. Completion is a separate `call` event. A stop,
+timeout or lost reply leaves the call recorded with completion unknown; a kill
+that prevents even that leaves the intent visible in replay and the summary.
+Recovery stops do not reset the daemon's consecutive-failure budget.

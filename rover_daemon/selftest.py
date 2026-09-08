@@ -32,6 +32,7 @@ from test_aiming import (
 )
 from test_api import TESTS as API_TESTS
 from test_autonomy import TESTS as AUTONOMY_TESTS
+from test_autonomy_regressions import TESTS as AUTONOMY_REGRESSIONS
 from test_board import TESTS as BOARD_TESTS
 from test_camera import TESTS as CAMERA_TESTS
 from test_depth import TESTS as DEPTH_TESTS
@@ -56,7 +57,7 @@ def main():
     for test in (*BOARD_TESTS, *API_TESTS, *CAMERA_TESTS, *EXPOSURE_TESTS,
                  *MAP_TESTS, *WIFI_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
                  *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS,
-                 *DEPTH_TESTS, *AUTONOMY_TESTS):
+                 *DEPTH_TESTS, *AUTONOMY_TESTS, *AUTONOMY_REGRESSIONS):
         try:
             test()
         except Exception as exc:

@@ -420,6 +420,7 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
             "driving": driving,
             "exploring": exploring,
             "estop": estop,
+            "stop_seq": self.stop_seq,
             "pose": None if where is None else {
                 "x_m": round(where[0], 3), "y_m": round(where[1], 3),
                 "heading_deg": round(math.degrees(where[2]), 1)},
@@ -732,8 +733,10 @@ class Handler(socketserver.StreamRequestHandler):
                         None if request.get("min_frontier_m") is None
                         else float(request["min_frontier_m"])))
             else:
+                guard = request.get("autonomy_guard")
                 outcome = node.goto((float(request["x_m"]), float(request["y_m"])),
-                                    request.get("yaw_deg"), say)
+                                    request.get("yaw_deg"), say,
+                                    **({"guard": guard} if guard is not None else {}))
         finally:
             node.move_mutex.release()
         outcome["travelled_m"] = round(float(outcome.get("travelled_m", 0.0)), 3)

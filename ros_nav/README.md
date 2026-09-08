@@ -194,3 +194,16 @@ map thinks it is and refit, or clear the map and start again.
 Logs are under `~/ugv/ros_nav/`. Restart the component through
 `~/ugv/ros_nav/restart.sh`; the deploy manifest defines the required build,
 restart and readiness checks.
+
+## Autonomous journey guards
+
+Autonomous `goto` requests carry a stop sequence and the run's safe area. The
+bridge refuses a stale sequence before dispatch and cancels a goal accepted after
+a stop. It checks the adjusted destination, current position and every published
+route against an inset of the safe area, including replans. `autonomy_guard.py`
+uses the same boundary arithmetic deployed from the daemon's `permission.py`.
+A violation cancels the goal; the daemon independently monitors position.
+
+The inset reserves 0.5 m for the body and stopping. This is not a measured stopping
+distance: R-SAFE-10 and R-SAFE-12 remain open until supervised moving trials prove
+the declared boundary is respected.

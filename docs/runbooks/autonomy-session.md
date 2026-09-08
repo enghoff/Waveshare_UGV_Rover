@@ -134,3 +134,10 @@ distance the rover actually travelled after it was told.
 | `the run ended: ...` | a budget, the battery, or the watchdog closed it — open a new one |
 | `a run is already open` | one is running; stop it before opening another |
 | the executive chooses nothing, every turn | read the refusals it prints: an unsettled map, an untrusted pose or a flat battery gate every goal at once |
+
+## Boundary allowance
+
+Navigation and the watchdog reserve 0.5 m inside a declared safe area for the body
+and stopping. A route or adjusted goal reaching that inset is refused or cancelled.
+Start and goal must fit inside it. Physical braking and latency still require the
+supervised acceptance measurements; this number is not a certified stopping distance.

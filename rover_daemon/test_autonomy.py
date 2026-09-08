@@ -69,6 +69,7 @@ class FakeNav:
                 {"x_m": self.where[0], "y_m": self.where[1],
                  "heading_deg": 0.0})
         return {"driving": self.driving, "exploring": False, "estop": False,
+                "stop_seq": 0,
                 "pose": pose, "map_id": self.map_id,
                 "map_settled": self.settled, "map_kept": True,
                 "position_trusted": self.trusted, "match_score": 0.9}
@@ -79,7 +80,8 @@ class FakeNav:
         return {"stopped": True, "latched": False}
 
     def drive_to_in_background(self, x_m, y_m, heading_deg=None,
-                               speed_ms=None, for_what=None) -> dict[str, Any]:
+                               speed_ms=None, for_what=None, guard=None) -> dict[str, Any]:
+        self.guard = guard
         self.sent.append({"x_m": x_m, "y_m": y_m, "heading_deg": heading_deg,
                           "for_what": dict(for_what or {})})
         if not self.started:
