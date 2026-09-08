@@ -212,6 +212,25 @@ def test_standing_still_is_not_mistaken_for_a_dead_executive():
 
 # --- the ways a turn is cut short --------------------------------------------
 
+def test_a_loop_that_did_what_it_was_asked_says_that_rather_than_a_riddle():
+    """The run is still open when `--turns` runs out, and the report has to say
+    so in those words. Reading the rover's own answer regardless produced "the
+    run ended: a run is open", which is the sort of sentence that makes a person
+    distrust the rest of the record."""
+    session = Session()
+    _arriving(session)
+    summary = session.executive.loop(turns=1)
+    check("it did the turn it was asked for", summary["turns"], 1)
+    check("...and says that is why it stopped", summary["ended"],
+          "the executive finished the turns it was asked for")
+    check("...with the run still open for the next one",
+          session.rover.permission.status()["enabled"], True)
+    session.executive.release()
+    check("...until it is handed back",
+          session.rover.permission.status()["enabled"], False)
+    session.close()
+
+
 def test_a_person_stopping_the_rover_ends_the_turn_and_the_loop():
     session = Session()
     stopped = {}
@@ -488,6 +507,7 @@ TESTS = (
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_turn_with_nothing_worth_doing_idles_without_acting,
     test_standing_still_is_not_mistaken_for_a_dead_executive,
+    test_a_loop_that_did_what_it_was_asked_says_that_rather_than_a_riddle,
     test_a_person_stopping_the_rover_ends_the_turn_and_the_loop,
     test_a_stop_in_any_state_of_the_machine_aborts_the_turn,
     test_permission_running_out_mid_drive_ends_the_turn,

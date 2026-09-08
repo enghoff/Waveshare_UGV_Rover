@@ -554,10 +554,21 @@ class Executive:
         return spent.get("travel_m")
 
     def _why_stopped(self) -> str:
+        """Why the loop is over, when it was not the run that ended it.
+
+        A run still open means the loop stopped for its own reason -- it was
+        asked for a fixed number of turns and has done them. Reading the rover's
+        answer here regardless produced "the run ended: a run is open", which is
+        the sort of sentence that makes a person distrust the rest of the
+        record.
+        """
         try:
-            return str(self._status().get("why") or "the loop finished")
+            status = self._status()
         except client_mod.Unreachable:                         # pragma: no cover
             return "the daemon stopped answering"
+        if status.get("enabled"):
+            return "the executive finished the turns it was asked for"
+        return str(status.get("why") or "the loop finished")
 
 
 # --- the sentences a person reads --------------------------------------------
