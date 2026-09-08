@@ -120,7 +120,7 @@ rather than five copies.
 
 ## Where it is
 
-Deployed to the Orin at `a8a14a8c4221`. 550 offline checks and 49 of 49
-scenarios pass; the run above is the hardware evidence. `python3 decide.py` on
+Deployed to the Orin at `1fc1fb35220c`, the last change being how a family of
+refusals is rendered. 550 offline checks and 49 of 49 scenarios pass; the run above is the hardware evidence. `python3 decide.py` on
 the rover prints what it would do now, `recorder.py` decides once a minute while
 it records, and `review.py --decisions` reads the decisions back.
