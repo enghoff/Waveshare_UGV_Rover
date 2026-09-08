@@ -119,45 +119,81 @@ not the representation for anything the rover writes itself. See
 <a id="r-safe-9"></a>
 ### R-SAFE-9 — Every autonomous decision and physical action is attributable to a recorded episode
 
-- **State:** proposed
-- **Proposed in:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md) (M1)
+- **State:** open
+- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+  (M3) — no autonomous action has yet moved this rover
 
 An action nobody can reconstruct afterwards cannot be reviewed, and a failure
 nobody can replay cannot be fixed under this repository's rules. Episodic
 recording is therefore the first piece of autonomy to be built and carries no
 authority of its own.
 
+The decision half is settled ([R-AUT-1](autonomy.md#r-aut-1) and the M1 pass).
+The action half is now built and unproven on hardware: every autonomous action
+is dispatched through one call carrying the episode it belongs to and an
+identifier beginning with that episode's reference, and the daemon refuses an
+action that names neither. What is owed is a supervised session in which real
+movement is traced back that way.
+
 <a id="r-safe-10"></a>
 ### R-SAFE-10 — Autonomous runs are bounded by time, travel and battery
 
-- **State:** proposed
-- **Proposed in:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md) (M3)
+- **State:** open
+- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+  (M3) — the budgets have never been spent by a rover that was driving
 
 Exploration already has the time half of this ([R-SAFE-7](#r-safe-7)). A general
 executive needs all three, because the failure it protects against is not a
 crash but a rover that keeps making locally reasonable decisions until its
 battery is flat somewhere inconvenient.
 
+All three are declared when a person opens a run, are enforced by the daemon
+rather than by the executive, and end the run when spent; the standing limits
+and the reason for each number are in
+[rover_daemon/permission.py](../../rover_daemon/permission.py). **Travel is
+spent from where the rover actually gets to**, half a second at a time, rather
+than from what each action said it would cost, so a move nobody is waiting for
+is charged for. What is owed is a hardware run in which a budget is what stops
+the rover.
+
 <a id="r-safe-11"></a>
 ### R-SAFE-11 — A stop request prevents autonomy from restarting itself
 
-- **State:** proposed
-- **Proposed in:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md) (M3)
+- **State:** open
+- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+  (M3) — shown against a fake rover, not yet against a moving one
 
 Stopping movement today stops the movement. Once something is choosing goals,
 stopping has to also revoke its authority until a person gives it back, or the
 stop becomes a pause and the person has to keep pressing it.
 
+`stop_driving` now ends any autonomous run and latches autonomy off, and so does
+any other sign of a person taking the rover back: driving it by hand, sending it
+somewhere by voice, running a script, clearing the map, refitting the pose. The
+latch is cleared by exactly one call, and **the executive's own client refuses
+that call** — the same structural refusal that keeps the recorder off the
+wheels, so an executive that crashed and restarted cannot give itself back what
+a person removed.
+
 <a id="r-safe-12"></a>
 ### R-SAFE-12 — The daemon enforces permission expiry and budgets on its own
 
-- **State:** proposed
-- **Proposed in:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md) (M3)
+- **State:** open
+- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+  (M3) — the watchdog has never had to stop a rover that was really moving
 
 The check has to live below the thing being checked. If the executive is what
 notices that its own permission ran out, then an executive that has hung or is
 looping keeps its authority precisely when it should lose it. A restart must not
 restore revoked authority.
+
+Permission is a fifteen-second lease the executive renews as it works, and
+nothing renews it on the executive's behalf — no heartbeat thread, deliberately,
+since a heartbeat that outlives the loop it stands for is the failure this
+exists to prevent. A thread in the daemon ticks twice a second while a run is
+open and stops the wheels when the lease, the budget, the battery, the pose or
+the map says the run is over. None of that state is written to disk, so a
+restart leaves no run and no permit to restore.
 
 <a id="r-safe-13"></a>
 ### R-SAFE-13 — An operation a skill did not declare is refused before it runs

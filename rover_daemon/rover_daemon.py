@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 
+import permission
 import scripting
 
 from board_link import (
@@ -254,7 +255,28 @@ def main() -> int | str:
             time.sleep(5.0)
             rover.idle_tick()
 
+    def watch_autonomy() -> None:
+        """Take the wheels away when an autonomous run is over.
+
+        **The one thing here that has to work when nothing else does.** An
+        executive that has been killed, has hung, or has lost its connection
+        stops renewing its permission, and Nav2 -- perfectly healthy -- would
+        otherwise go on driving to the goal it was last given. This notices,
+        stops the rover and closes the run, on the daemon's own thread.
+
+        It does nothing at all while no run is open, which is almost always.
+        """
+        while True:
+            time.sleep(permission.TICK_S)
+            try:
+                rover.autonomy_tick()
+            except Exception as error:      # never let the watchdog be the bug
+                print(f"[autonomy] the watchdog failed: "
+                      f"{type(error).__name__}: {error}", file=sys.stderr,
+                      flush=True)
+
     threading.Thread(target=release_idle_camera, daemon=True).start()
+    threading.Thread(target=watch_autonomy, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

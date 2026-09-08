@@ -126,6 +126,18 @@ class Situation:
         return dict(self.body.get("building") or {})
 
     @property
+    def authority(self) -> dict[str, Any]:
+        """What the daemon says about the rover moving by itself.
+
+        Read rather than assumed, and part of the situation rather than
+        something the executive keeps in its head, because the gate that refuses
+        a goal has to be reproducible from the record: "it would have gone to
+        the sofa, but a person had stopped the rover" is only checkable a month
+        later if the stop was written down beside the decision it stopped.
+        """
+        return dict(self.body.get("autonomy") or {})
+
+    @property
     def cooled(self) -> list[dict[str, Any]]:
         """Things put aside because looking at them again was getting nowhere.
 
@@ -303,6 +315,18 @@ class Situation:
                              "looks": building.get("looks"),
                              "every_s": building.get("every_s")}
                             if building.get("ok") else {})
+
+        # Whether the rover may move by itself, straight from the thing that
+        # enforces it. A daemon too old to answer this leaves it empty, which
+        # `scoring.gate` reads as no authority -- the safe direction, and the
+        # true one for every daemon that predates the executive.
+        authority = _try(client, "autonomy_status")
+        body["autonomy"] = ({key: authority.get(key) for key in
+                             ("enabled", "latched", "latch", "run", "permit",
+                              "why")}
+                            if authority.get("ok") else
+                            {"error": authority.get("error")
+                                      or "the daemon did not answer"})
 
         body["map"] = _try(client, "nav_grid")
         return cls(body)

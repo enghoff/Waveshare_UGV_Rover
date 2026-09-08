@@ -269,6 +269,67 @@ the same high-level interface used by the daemon tools. A missing ROS stack is
 reported as unavailable rather than silently falling back to an obsolete local
 planner.
 
+## Moving by itself: a permission the daemon can take back
+
+The rover can be given permission to choose where it goes, and the account of
+that permission is kept here rather than in whatever is doing the choosing.
+**That is the whole point of it being here.** An executive that watched its own
+permission expire would keep its authority at the moment it hung, and Nav2 --
+perfectly healthy -- would go on driving to the goal it was last given.
+
+The rules are in [`permission.py`](permission.py), which is a state machine over
+a clock with no rover in it; [`rover_autonomy.py`](rover_autonomy.py) is what
+wires them to the hardware. The same file is deployed into `autonomy/` as well,
+the way `ros_nav/frontier.py` is, so that what the executive expects and what
+the rover enforces cannot come apart.
+
+**Autonomy is off when the daemon starts, and after every restart.** None of
+this state is written to disk, so a crash, a redeploy or a reboot leaves no run,
+no permit and no memory of having had either. Authority that was taken away
+cannot come back by restarting something.
+
+**A person opens a run and nothing else can.** `autonomy_enable` says who is
+enabling it and why, and declares the budget: how many minutes, how many metres,
+how many actions, how many failures in a row, and the battery it keeps in
+reserve. Each of those may be made smaller than the standing limit and never
+larger. Opening a run is also the only thing that clears a stop.
+
+**Permission inside a run is a fifteen-second lease.** The executive renews it
+every couple of seconds as it works; nothing renews it on the executive's
+behalf. So an executive that is killed, hangs, or loses its connection stops
+renewing, and the daemon's own watchdog -- a thread here, ticking twice a second
+-- stops the wheels and closes the run.
+
+**Every autonomous action is dispatched through one call, and re-checked at
+dispatch.** `autonomy_act` carries the permit, the episode it belongs to and an
+identifier for the action; the daemon checks the latch, the run, the lease, the
+budgets, the battery, the pose, the map identity and the safe area before
+anything turns. A repeat of an action already dispatched is answered with what
+happened the first time rather than driven again. Three operations are admitted
+and no others: `drive_to`, `world_inspect` and `stop`.
+
+**Any person touching the rover takes it back.** Driving by hand, sending it
+somewhere by voice, running a script, stopping it, clearing the map or refitting
+the pose all end the run and latch autonomy off until somebody enables it again.
+That check sits in `Rover.call`, which is the one place every caller passes
+through -- autonomy's own actions are dispatched inside `autonomy_act` and do
+not come that way, which is why the rover stopping itself is not mistaken for a
+person stopping it.
+
+Closing the last drive-console tab ends a run too, and that is not an accident of
+the console's shutdown stop: an autonomous run is supervised, and the console
+going away is the supervisor leaving the room.
+
+The watchdog also spends the run's travel budget from where the rover actually
+gets to, tick by tick, rather than from what each action said it would cost --
+so a move nobody is waiting for is charged for, and a pose that jumps further
+than the chassis could have driven ends the run rather than being counted as
+distance.
+
+What is not here: nothing decides anything. The choosing is
+[`../autonomy/`](../autonomy/README.md), and it holds a client that cannot call
+`drive_to` at all.
+
 ## Control calls not shown to the model
 
 The daemon protocol also carries operational calls deliberately absent from
@@ -289,7 +350,13 @@ model choice, for example:
   position" when the position is usually not what is wrong;
 - detector diagnostics such as running YuNet over a supplied known image;
 - the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
-- `get_depth_power`, which reports whether the OAK is awake and cannot set it.
+- `get_depth_power`, which reports whether the OAK is awake and cannot set it;
+- the five autonomy calls above. Enabling autonomy is a person's act, and a
+  model that could ask for it could talk itself into authority it had just been
+  refused; asking for a permit or acting under one belongs to the executive,
+  which is not a model at all. What the model keeps is `stop_driving`, which
+  stops the rover and latches autonomy off -- so the voice can end an autonomous
+  run and has no way whatever to start one.
 
 Keeping them off the model schema avoids giving the model destructive or
 implementation-detail controls simply because the human console needs them.

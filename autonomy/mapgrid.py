@@ -252,3 +252,20 @@ def frontiers(grid: "frontier.Grid", where: tuple[float, float],
 def unknown_share(summary: dict) -> float | None:
     """How much of the map is still unknown, as `frontier.py` measures it."""
     return frontier.unknown_share(summary)
+
+
+def unknown_m2(grid: "frontier.Grid") -> float:
+    """How much floor the map still calls unknown, in square metres.
+
+    One number, for the one question an executive asks after it has driven
+    somewhere to see more of the house: is there less of the house left unseen
+    than there was. It counts every unknown cell rather than only the reachable
+    ones, deliberately -- the cheaper measure moves when the rover's *route*
+    changes as well as when the map does, which would credit a drive with
+    revealing ground that was always there.
+    """
+    _free, unknown = frontier.classify(grid)
+    # A flag per cell rather than a list of them, so this is a sum and not a
+    # length -- `len` here would answer with the whole map, every time, and
+    # would look perfectly reasonable doing it.
+    return sum(unknown) * grid.resolution * grid.resolution

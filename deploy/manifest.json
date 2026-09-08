@@ -25,7 +25,7 @@
         }
       ],
       "commands": [
-        "cd ~/ugv/world_state && python3 selftest.py | tail -2",
+        "cd ~/ugv/world_state && out=$(python3 selftest.py); rc=$?; echo \"$out\" | tail -2; exit $rc",
         "test -f ~/ugv/world_state/vendor/yoloe-11s-seg-objectness.onnx && test -f ~/ugv/world_state/vendor/siglip2-base-patch32-256-int8.onnx || { echo 'no perception models -- run ~/ugv/world_state/install_perception.sh' >&2; exit 1; }",
         "~/ugv/world_state/restart_perception.sh",
         "~/ugv/restart.sh",
@@ -66,10 +66,17 @@
             "ros_nav/frontier.py"
           ],
           "strip": "ros_nav"
+        },
+        {
+          "comment": "The daemon's permission rules, deployed here as well as into the daemon so that what the executive expects and what the rover enforces cannot come apart. Same arrangement as frontier.py above: one file in the repository, editing it marks both components changed.",
+          "patterns": [
+            "rover_daemon/permission.py"
+          ],
+          "strip": "rover_daemon"
         }
       ],
       "commands": [
-        "cd ~/ugv/autonomy && python3 selftest.py | tail -2"
+        "cd ~/ugv/autonomy && out=$(python3 selftest.py); rc=$?; echo \"$out\" | tail -2; exit $rc"
       ],
       "triggers": [
         "deploy/manifest.json"
@@ -104,7 +111,7 @@
         }
       ],
       "commands": [
-        "cd ~/ugv && python3 selftest.py | tail -2",
+        "cd ~/ugv && out=$(python3 selftest.py); rc=$?; echo \"$out\" | tail -2; exit $rc",
         "~/ugv/restart.sh",
         "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),3); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"list_tools\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('daemon:', len(r.get('tools',[])), 'tools')\"",
         "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',8769),5); f=s.makefile('rwb'); f.write(b'{\\\"call\\\":\\\"world_state_summary\\\"}\\n'); f.flush(); r=json.loads(f.readline()); assert r.get('ok'), r; print('world:', r['summary']['entities'], 'entities,', r['summary']['observations'], 'observations,', r['backend'])\""
@@ -145,7 +152,7 @@
         }
       ],
       "commands": [
-        "cd ~/ugv/lidar_slam && ./build.sh && ./selftest | tail -2"
+        "cd ~/ugv/lidar_slam && ./build.sh && out=$(./selftest); rc=$?; echo \"$out\" | tail -2; exit $rc"
       ],
       "triggers": [
         "deploy/manifest.json"
@@ -294,7 +301,7 @@
         }
       ],
       "commands": [
-        "sh ~/ugv/wifi_roam/selftest.sh | tail -1"
+        "out=$(sh ~/ugv/wifi_roam/selftest.sh); rc=$?; echo \"$out\" | tail -1; exit $rc"
       ],
       "system_install": {
         "sudo_password_file": "secrets/jetson-orin.key",

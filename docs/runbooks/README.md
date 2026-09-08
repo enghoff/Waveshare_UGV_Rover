@@ -11,6 +11,7 @@ disagree, the runbook is a bug.
 | [hosts.md](hosts.md) | which machine is the rover, how to reach it, and what lives where on it |
 | [scripting.md](scripting.md) | running short programs on the rover that compose its existing tools |
 | [p0-gimbal-calibration.md](p0-gimbal-calibration.md) | printing and mounting the measured reference for the bounded P0 camera test |
+| [autonomy-session.md](autonomy-session.md) | letting the rover choose where it goes, under supervision, and taking it back |
 | [rover-unresponsive.md](rover-unresponsive.md) | a rover that has dropped off the network |
 
 ## What a runbook owes

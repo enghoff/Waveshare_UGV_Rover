@@ -331,7 +331,12 @@ class RoverNav:
         Nothing waits for this and nothing retries it. A conversation that is not
         running is the ordinary case and costs one refused connection on the move
         thread, after the move.
+
+        The autonomy bookkeeping goes first and unconditionally: a run whose
+        move has ended learns about it here, and it must not depend on there
+        being a conversation to tell.
         """
+        self.autonomy_trip_ended(asked, outcome)
         link = getattr(self, "vision", None)
         if link is None:
             return

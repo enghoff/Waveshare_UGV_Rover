@@ -104,7 +104,17 @@ def test_schemas():
                # point in the map's own frame, and every tool that does is kept
                # from models because nothing a model can see says where the rover
                # is in that frame. See `_tool_drive_to`.
-               "world_state_viewpoint"]
+               "world_state_viewpoint",
+               # Autonomous permission, all five of them, and this is the most
+               # deliberate entry on the list. Enabling autonomy is a person's
+               # act and a model that could ask for it could talk itself into
+               # the authority it was refused; asking for a permit or acting on
+               # one belongs to the executive, which is not a model at all. What
+               # a model keeps is `stop_driving`, which stops the rover and
+               # latches autonomy off -- so the voice can end an autonomous run
+               # and has no way whatever to start one. See rover_autonomy.py.
+               "autonomy_enable", "autonomy_stop", "autonomy_permit",
+               "autonomy_release", "autonomy_act", "autonomy_status"]
     for name in control:
         check(f"{name} is a control call, not a tool", name in handlers, True)
         check(f"...and is not offered to any model", name in names, False)

@@ -46,11 +46,32 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from typing import Any
 
 import cooling
 import goals as goals_mod
 from situation import Situation
+
+# The daemon's own permission rules, so that a candidate this component refuses
+# for leaving the safe area is refused by the same arithmetic the rover would
+# have refused it with. One file in the repository -- `rover_daemon/
+# permission.py` -- deployed into both components, exactly as `ros_nav/
+# frontier.py` is; see the same dance, and the same reason for loading the file
+# rather than adding its directory to the path, in [mapgrid.py](mapgrid.py).
+try:
+    import permission
+except ImportError:                                            # pragma: no cover
+    import importlib.util
+
+    _path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         os.pardir, "rover_daemon", "permission.py")
+    _spec = importlib.util.spec_from_file_location("permission", _path)
+    if _spec is None or _spec.loader is None:
+        raise
+    permission = importlib.util.module_from_spec(_spec)
+    sys.modules["permission"] = permission
+    _spec.loader.exec_module(permission)
 
 #: Where a person's own weights and purpose live, if they have written any. Off
 #: the deploy tree with the rest of the rover's runtime state, so that deploying
@@ -190,17 +211,34 @@ def gate(situation: Situation, weights: Weights = DEFAULT, *,
          authority: bool = False) -> list[dict[str, str]]:
     """Everything about the rover that would refuse any goal at all.
 
-    `authority` is the standing fact of this phase and defaults to false: there
-    is no executive, and the component that records this cannot make a call that
-    moves anything. It is an argument rather than a constant so that the day
-    something does have authority, the test that says an ungated rover chooses
-    is the same test as today's.
+    `authority` is what the caller is: false for the shadow recorder and
+    `decide.py`, which hold a `client.ReadOnly` and could not move the rover if
+    they decided to, and true for the executive, which holds a permit from the
+    daemon. It stays an argument rather than becoming a lookup because the two
+    are different facts -- one is about the code that is deciding, the other is
+    about the rover -- and collapsing them would let a component with no way to
+    act believe it had authority because the daemon said somebody did.
+
+    **What the daemon says is read, not assumed.** When the caller does have
+    authority, the gate that matters is the rover's own account of it: a person
+    who stopped the rover a minute ago has taken it away, and the sentence in
+    the record should be theirs rather than a guess. A daemon too old to answer
+    `autonomy_status` leaves the situation's `autonomy` empty, which reads here
+    as "not enabled" -- the safe direction, and the true one.
     """
     shut: list[dict[str, str]] = []
     if not authority:
         shut.append({"gate": "no movement authority",
                      "why": "nothing in this component can move the rover: "
                             "every call it may make is a read"})
+    else:
+        said = situation.authority
+        if not said.get("enabled"):
+            shut.append({"gate": "stopped" if said.get("latched")
+                                 else "autonomy not enabled",
+                         "why": str(said.get("why") or said.get("error")
+                                    or "the rover has not been enabled to move "
+                                       "by itself")})
     for name, sentence in sorted(situation.health().items()):
         shut.append({"gate": name, "why": sentence})
     volts = situation.battery_v
@@ -246,7 +284,8 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
                            f"{facts.get('range_m')} m, outside the "
                            f"{goals_mod.BAND_NEAR_M} to {goals_mod.BAND_FAR_M} m "
                            f"band this rover's geometry was accepted in"})
-    outside = _outside_geofence(facts.get("goal"), weights.geofence)
+    outside = permission.fence_breach(facts.get("goal"),
+                                      _geofence(situation, weights))
     if outside:
         out.append({"veto": "outside the safe area", "why": outside})
     cool = cooling.cooling(situation.cooled, candidate.target, now=situation.at)
@@ -269,30 +308,20 @@ def _depth_camera(situation: Situation) -> bool:
     return building.get("building") is not False
 
 
-def _outside_geofence(goal: dict[str, Any] | None,
-                      fence: dict[str, Any] | None) -> str:
-    """Whether a goal leaves the configured safe area, if one is configured."""
-    if not fence or not goal:
-        return ""
-    x, y = goal.get("x_m"), goal.get("y_m")
-    if x is None or y is None:
-        return ""
-    if fence.get("radius_m") is not None:
-        gap = ((x - float(fence.get("x_m", 0.0))) ** 2
-               + (y - float(fence.get("y_m", 0.0))) ** 2) ** 0.5
-        if gap > float(fence["radius_m"]):
-            return (f"it is {gap:.1f} m from the middle of the safe area, "
-                    f"which reaches {float(fence['radius_m']):.1f} m")
-        return ""
-    for low, high, value, axis in ((fence.get("min_x_m"), fence.get("max_x_m"),
-                                    x, "x"),
-                                   (fence.get("min_y_m"), fence.get("max_y_m"),
-                                    y, "y")):
-        if low is not None and value < float(low):
-            return f"its {axis} is outside the safe area"
-        if high is not None and value > float(high):
-            return f"its {axis} is outside the safe area"
-    return ""
+def _geofence(situation: Situation,
+              weights: Weights) -> dict[str, Any] | None:
+    """The safe area a candidate is judged against, and where it came from.
+
+    **The run's fence wins over the configured one**, because the run's is the
+    one the rover will actually enforce: a person opening a run declares the
+    area they have cleared by hand that afternoon, and a fence left in a
+    configuration file is last month's room. The configured one is the fallback
+    for a deliberation with no run open -- a shadow decision still has to be
+    able to say a goal would have been out of bounds.
+    """
+    run = situation.authority.get("run") or {}
+    fence = (run.get("budget") or {}).get("geofence")
+    return fence if fence else weights.geofence
 
 
 # --- what a candidate is worth ----------------------------------------------

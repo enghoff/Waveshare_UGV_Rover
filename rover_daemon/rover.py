@@ -10,6 +10,7 @@ from board_link import (
     BATTERY_CELLS, BATTERY_MAX_AGE_S, CMD_LIGHTS, CMD_PROBE, PROBE_WAIT_S,
     _battery_percent, _battery_state, _battery_summary,
 )
+from rover_autonomy import RoverAutonomy
 from rover_camera import RoverCamera, VisionLink
 from rover_depth import RoverDepth
 from rover_nav import CAMERA_FOV_DEG, RoverNav
@@ -17,6 +18,8 @@ from rover_recall import RoverRecall
 from rover_util import _level      # noqa: F401
 from rover_wifi import RoverWifi
 from rover_world import RoverWorld
+
+import permission as permission_mod
 from tool_schemas import (
     LOOK_TOOL, MAP_POINT_TOOL, MAP_TOOL, NAV_TOOLS, SCRIPT_TOOL, START_SCRIPT_TOOL,
     STOP_SCRIPT_TOOL, TOOLS, WORLD_TOOLS,
@@ -34,7 +37,8 @@ APPROACH_UNDERSHOOT_DEG = 30
 APPROACH_SETTLE_S = 0.6
 
 
-class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth):
+class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDepth,
+            RoverAutonomy):
     """The rover's state and everything that may be done to it.
 
     One lock covers the board and the model of where things are pointed. The
@@ -124,6 +128,17 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         # host is no reason a light cannot be switched or the wheels stopped, and
         # this call used to hold the board lock for exactly that wait.
         self._detector_lock = threading.Lock()
+        # Who may move the rover by itself, for how long, and what has taken
+        # that away. Built here rather than lazily because every tool call asks
+        # it whether this one is a person taking the rover back, and because
+        # building it here is what makes a restart start with autonomy off: it
+        # holds no state on disk, so a daemon that comes back has no run, no
+        # permit and no memory of having had either. See
+        # [permission.py](permission.py).
+        self.permission = permission_mod.Permission()
+        #: When the autonomy watchdog last looked, so that a tick delayed by a
+        #: slow bridge is not mistaken for the rover teleporting.
+        self._autonomy_ticked: float | None = None
         # Set by main() once the port is known, since a script reaches the rover
         # by connecting back to this daemon like any other client. None on a
         # daemon that is not running scripts, which is what every call checks.
@@ -338,7 +353,16 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         What comes back goes into the model's context verbatim, so a failure has
         to read as an explanation rather than a traceback -- the model repeats
         the gist of it out loud.
+
+        **A person arriving here takes the rover back.** Every caller that is
+        not autonomy passes through this one method -- the console, the voice
+        model, a script -- so this is where a manual move or a stop ends an
+        autonomous run, rather than in each of the eleven handlers that would
+        otherwise have to remember. Autonomy's own actions do not come this way;
+        they are dispatched inside `_tool_autonomy_act`, which is the whole
+        reason the two roads exist.
         """
+        self.autonomy_notice(name)
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
             return {"ok": False, "error": f"no such tool: {name}"}

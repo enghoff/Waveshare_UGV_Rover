@@ -107,8 +107,17 @@ def deliberate(store: store_mod.EpisodeStore,
                here: situation_mod.Situation,
                weights: scoring.Weights = scoring.DEFAULT, *,
                authority: bool = False,
+               close: bool = True,
                note: str = "") -> dict[str, Any]:
-    """Consider, record, and hand back both the episode and what was decided."""
+    """Consider, record, and hand back both the episode and what was decided.
+
+    `close` is what the executive changes. A shadow deliberation is the whole of
+    its episode and closes here; an executive's deliberation is the *first half*
+    of one, and what follows -- the calls it made, what came back, and how the
+    attempt ended -- belongs in the same episode, because "every movement is
+    attributable to one episode and one goal" is only true if the movement and
+    the goal are in the same record.
+    """
     began = time.time()
     prepare(store, here)
     got = scoring.consider(here, weights, authority=authority)
@@ -168,14 +177,14 @@ def deliberate(store: store_mod.EpisodeStore,
         pose=here.pose,
         world_at=inputs))
 
-    store.close_episode(
-        episode, "succeeded" if got["chose"] else "abandoned",
-        detail=got["why_nothing"] or "acted on")
+    if close:
+        store.close_episode(
+            episode, "succeeded" if got["chose"] else "abandoned",
+            detail=got["why_nothing"] or "acted on")
 
-    # Left for the next deliberation, after the episode is closed rather than
-    # before: a crash between opening and closing should leave the marks where
-    # they were, so that the next one compares against a reading it actually
-    # finished with.
+    # Left for the next deliberation, after the decision is written rather than
+    # before: a crash part-way through should leave the marks where they were,
+    # so that the next one compares against a reading it actually finished with.
     store.mark(SITUATION_MARK, inputs)
     store.mark(COOLED_MARK, _dumps(here.cooled))
     store.mark(GOAL_MARK, _dumps(_goal_of(preferred)))

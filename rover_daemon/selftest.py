@@ -14,7 +14,8 @@ The hardware paths are not covered and cannot be: they need the rover.
 This file is the runner. The checks live beside it, one module per area of the
 daemon, and each exports a `TESTS` tuple: the board and its battery, the gimbal
 camera and its exposure, the map, the radios, the semantic world state,
-scripting, and the tool surface itself. `test_fakes.py` holds the driver board
+scripting, the permission that lets the rover move by itself, and the tool
+surface itself. `test_fakes.py` holds the driver board
 they all stand up and the `sys.path` dance that lets them import the daemon from
 either layout.
 """
@@ -30,6 +31,7 @@ from test_aiming import (
     test_the_camera_settles_ahead_instead_of_sweeping,
 )
 from test_api import TESTS as API_TESTS
+from test_autonomy import TESTS as AUTONOMY_TESTS
 from test_board import TESTS as BOARD_TESTS
 from test_camera import TESTS as CAMERA_TESTS
 from test_depth import TESTS as DEPTH_TESTS
@@ -54,7 +56,7 @@ def main():
     for test in (*BOARD_TESTS, *API_TESTS, *CAMERA_TESTS, *EXPOSURE_TESTS,
                  *MAP_TESTS, *WIFI_TESTS, *WORLD_TESTS, *SCRIPTING_TESTS,
                  *AIMING_TESTS, *ROS_NAV_TESTS, *RECALL_TESTS,
-                 *DEPTH_TESTS):
+                 *DEPTH_TESTS, *AUTONOMY_TESTS):
         try:
             test()
         except Exception as exc:

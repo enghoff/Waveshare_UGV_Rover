@@ -187,3 +187,26 @@ better than the one chosen with the reason each was refused. What would make
 this false is a record of the winner alone: "why did it not go and look at the
 thing in the hall" is the question a shadow run exists to answer, and a rover
 that only writes down what it wanted cannot answer it.
+
+<a id="r-aut-11"></a>
+### R-AUT-11 — An autonomous action request that arrives twice moves the rover once
+
+- **State:** open
+- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+  (M3, criterion 11)
+
+Every autonomous action carries an identifier built from the episode it belongs
+to. A request whose identifier has already been dispatched is refused and
+answered with what happened the first time, rather than performed again.
+
+This is not a hypothetical tidiness. The executive holds one connection to the
+daemon, and a connection that drops after the daemon has started a move but
+before the answer comes back leaves the executive with no way to tell "it did
+not happen" from "it happened and I did not hear". Asking again is the right
+behaviour for it; driving the same leg twice, and attributing both to one goal,
+is not. What would make this false is a second drive, or a second look recorded
+against the same action.
+
+The rule is enforced by the daemon rather than by the caller, and the same
+module the daemon enforces with is what the executive plans against. What is
+owed for `settled` is a hardware session in which it holds.

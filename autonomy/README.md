@@ -1,22 +1,30 @@
-# Episodic memory, and what the rover would do next
+# Episodic memory, what the rover would do next, and the loop that does it
 
 This component records what the rover did, works out what would be worth doing
-next, and writes down what it would have chosen and why it may not. It is the
-evidence trail that has to exist before anything is allowed to choose where the
-rover drives, and it is
-[Phases 1 and 2](../docs/plans/autonomous-curiosity.md) of the curiosity plan.
+next, writes down what it would have chosen and why it may not, and — under a
+permission the daemon issues and can take back — goes and does it. It is
+[Phases 1 to 3](../docs/plans/autonomous-curiosity.md) of the curiosity plan.
 
-**It has no authority over anything, and that is structural rather than
-careful.** Everything here reaches the rover through `client.ReadOnly`, which
-holds a list of the reads it may make and raises on anything else — so a call
-that would move the rover is not merely unused, it is unavailable. The test that
-proves it does so by trying every one.
+**Nothing here can move the rover on its own, and that is structural rather than
+careful.** There are two doors and neither of them is a movement call. The
+recorder and `decide.py` hold `client.ReadOnly`, which is every read and nothing
+else. The executive holds `client.Acting`, which adds exactly three: ask the
+daemon for permission, hand it back, and do one admitted thing *under* it.
+`drive_to` is on neither list, so an autonomous drive is not merely unused here
+— it is unavailable, and the test that proves it does so by trying every one.
 
-So it decides and cannot act. Every deliberation closes `abandoned` with the
-same reason — nothing here may move the rover — and the executive that would
-carry one out is Phase 3 and does not exist. What that gives you today is a
-rover that can be asked what it would go and investigate, and answer with the
-goal, the price and the refusals, without moving.
+The authority itself lives in the daemon, as a bounded run a person opens and a
+fifteen-second lease this component keeps renewing. Stop the rover and the lease
+is gone and cannot be got back from here, because the one call that clears a stop
+is a call no client here may make. Kill this process and the daemon takes the
+wheels back by itself within the lease. See
+[rover_daemon/permission.py](../rover_daemon/permission.py), which is one file
+deployed into both components so that what this expects and what the rover
+enforces cannot come apart.
+
+So: run `decide.py` and the rover says what it would investigate and moves
+nothing. Have somebody open a run, start `executive.py`, and it goes and does it
+— one goal at a time, with every metre attributable to one episode.
 
 ## What an episode is
 
@@ -47,10 +55,12 @@ episode:210 -- opened 2026-09-08 09:59:52, triggered by the rover looked
   1 piece of evidence kept, 31 kB
 ```
 
-A deliberation uses the same shape and fills in the parts this one leaves empty:
-the goals considered with their scores, the choice and why, and — when there is
-an executive — the calls it made. Until there is one, `abandoned` on such an
-episode means a decision taken with no authority to act on it.
+A deliberation uses the same shape and fills in the parts this one leaves
+empty: the goals considered with their scores, the choice and why, and, when
+the executive carried it out, the calls it made and what came back. A
+deliberation that closes `abandoned` is one that chose nothing or was not
+allowed to act; one that closes `interrupted` was stopped part-way, and says
+by what.
 
 ## The one hard problem: a name that still means something next month
 
@@ -200,6 +210,55 @@ It is decided from the two readings rather than remembered, so it survives the
 recorder being stopped and started, and it is part of the inputs a decision is
 snapshotted with.
 
+## Going and doing it
+
+    ssh orin 'cd ~/ugv/autonomy && python3 executive.py'
+
+The loop that carries out what the deliberation chose. It attaches to a run
+somebody has already opened, and if there is none it says so and exits — it
+cannot open one, which is the whole architecture in one sentence.
+
+One turn of it is one episode, and the deliberation above is that episode's
+first half:
+
+```text
+IDLE -> SELECT -> PLAN -> EXECUTE -> EVALUATE -> IDLE
+                            |          |
+                            +-> ABORT <-+
+```
+
+**IDLE** renews the permission and reads the rover. **SELECT** is the same
+`scoring.consider` a shadow run records, differing only in that the answer can
+now be acted on. **PLAN** turns the goal into a short list of admitted
+operations — a frontier goal is a drive, a geometry goal is a drive and then a
+look — and checks every one of them against the daemon's own list before the
+first is dispatched. **EXECUTE** sends them one at a time and waits for the ones
+that are not over when the call returns, renewing the permission as it polls.
+**EVALUATE** reads the rover again and records what actually changed rather than
+what was hoped for. **ABORT** is any of that going wrong, and closes the episode
+`interrupted` with the reason.
+
+**The rover's own frontier `explore` is deliberately not used**, even for a
+frontier goal. Two reasons, and the second is the one that would matter anyway:
+a run that chooses its own next goal produces movement this episode cannot
+attribute, and
+[R-NAV-6](../docs/requirements/navigation.md#r-nav-6) is failing — a rover
+ringed by unmapped floor retires the whole rim on arriving without having moved.
+So the executive drives to one frontier viewpoint at a time and decides again
+when it gets there.
+
+**There is no model in this loop**, and that is not an omission. Nothing here
+asks anything to be curious on its behalf, so a model outage cannot start a
+physical action, cannot stop one and cannot change what is chosen. The check for
+that is written against the record rather than the code: an episode may only say
+a model answered by carrying a `model` event, and a completed autonomous turn
+has none.
+
+**What ends a run.** Its budget — minutes, metres, actions, failures in a row,
+the battery floor — or a person stopping the rover, or the daemon noticing that
+nothing has renewed the lease. The first two end it from outside this loop
+entirely; the third is what happens if this process is killed mid-drive.
+
 ## How a decision reads
 
 ```text
@@ -315,7 +374,7 @@ else.
 | File | What it holds |
 |---|---|
 | [`refs.py`](refs.py) | the names: minting, parsing, and whether one may be looked up |
-| [`client.py`](client.py) | the only way to the rover, and the calls it refuses |
+| [`client.py`](client.py) | the two ways to the rover, and everything both of them refuse |
 | [`recorder.py`](recorder.py) | the shadow run: watch, write down, decide, act on nothing |
 | [`situation.py`](situation.py) | one reading of the rover: everything a decision may look at |
 | [`mapgrid.py`](mapgrid.py) | the occupancy map, and the rover's own frontier chooser reading it |
@@ -323,6 +382,7 @@ else.
 | [`scoring.py`](scoring.py) | what each is worth, what refuses it, and which one wins |
 | [`cooling.py`](cooling.py) | what is not worth looking at again just now, and when that lapses |
 | [`decide.py`](decide.py) | one deliberation, recorded; `python3 decide.py` says what it would do |
+| [`executive.py`](executive.py) | the loop that carries one out, under a permit the daemon can take back |
 | [`scenarios.py`](scenarios.py) | rooms drawn on paper with the expected answer beside each |
 | [`retention.py`](retention.py) | what is removed when the record grows, and what never is |
 | [`schema.py`](schema.py) | the tables, and why there is no mutable one |
@@ -337,10 +397,14 @@ else.
 Named because a plan that quietly absorbs a description of the thing it built
 leaves two accounts of the running system with one of them maintained.
 
-- **Nothing acts.** There is no executive, and nothing here could carry out a
-  goal even if one were chosen for it. That is
-  [Phase 3](../docs/plans/autonomous-curiosity.md), and it needs a
-  daemon-enforced permission and a stop latch before it needs any code here.
+- **Nothing has driven yet.** The executive is built and every way it can go
+  wrong is checked against a fake rover holding the real permission rules, and
+  it has still never moved this rover: M3 asks for twenty supervised sessions in
+  a pre-cleared room and none of them has happened. Until they do, what is
+  proven is the logic and not the rover.
+- **The executive is not a service either.** A person opens a run and starts it;
+  nothing starts it at boot, and a run cannot outlive the person who opened it by
+  more than its budget.
 - **The recorder is not a service.** It is run by hand for as long as somebody
   wants a recording. Nothing starts it at boot, so a rover left alone records
   nothing and decides nothing, and retention is not run on a schedule either.

@@ -18,8 +18,9 @@ which has not run this yet.
 
 This file is the runner. The checks live beside it, one module per part: the
 names, the store, the reconstruction, the few lines a person reads, the shadow
-run that watches the rover, what keeps the record off the rover's disk, and --
-since Phase 2 -- what the rover would choose to do next and why. `test_fakes.py`
+run that watches the rover, what keeps the record off the rover's disk, what
+the rover would choose to do next and why, and -- since Phase 3 -- the loop that
+carries one of those out under a permit the daemon can take away. `test_fakes.py`
 holds the store, the one worked episode and the fake rover they share; the rooms
 the choosing is tested against are drawn in `scenarios/`.
 """
@@ -31,6 +32,7 @@ from test_harness import FAIL, PASS, SKIP
 from test_builds import TESTS as BUILDS_TESTS
 from test_cooling import TESTS as COOLING_TESTS
 from test_decide import TESTS as DECIDE_TESTS
+from test_executive import TESTS as EXECUTIVE_TESTS
 from test_goals import TESTS as GOALS_TESTS
 from test_recorder import TESTS as RECORDER_TESTS
 from test_refs import TESTS as REFS_TESTS
@@ -46,7 +48,8 @@ from test_summary import TESTS as SUMMARY_TESTS
 TESTS = (*REFS_TESTS, *STORE_TESTS, *REPLAY_TESTS, *SUMMARY_TESTS,
          *RECORDER_TESTS, *RETENTION_TESTS, *BUILDS_TESTS,
          *REVIEW_TESTS, *SITUATION_TESTS, *GOALS_TESTS, *SCORING_TESTS,
-         *COOLING_TESTS, *DECIDE_TESTS, *SCENARIO_TESTS)
+         *COOLING_TESTS, *DECIDE_TESTS, *SCENARIO_TESTS,
+         *EXECUTIVE_TESTS)
 
 
 def main() -> int:

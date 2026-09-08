@@ -15,6 +15,8 @@ import client
 import events
 import refs
 import scenarios
+import scoring          # noqa: F401 -- its import is what finds `permission`
+import permission
 from store import EpisodeStore
 
 #: A generation standing in for a world store, and a second one standing in for
@@ -100,6 +102,20 @@ def an_episode(store: EpisodeStore, *, generation: str | None = WORLD,
 
 # --- a rover that answers without being one ---------------------------------
 
+class Clock:
+    """A clock a test winds forward, for the permission's leases and budgets."""
+
+    def __init__(self, at: float = 1757320000.0) -> None:
+        self.at = float(at)
+
+    def __call__(self) -> float:
+        return self.at
+
+    def tick(self, seconds: float) -> float:
+        self.at += float(seconds)
+        return self.at
+
+
 class FakeRover(client.ReadOnly):
     """A daemon's answers, without a daemon.
 
@@ -107,12 +123,39 @@ class FakeRover(client.ReadOnly):
     test does goes through the real allow-list: a check that this refuses
     `drive` is a check about the client the rover actually uses, not about a
     stand-in that happens to agree with it.
+
+    **The permission it answers with is the real one**, not a stand-in: this
+    holds a `permission.Permission` -- the same module the daemon enforces with,
+    deployed beside this component -- and drives it through the same calls in the
+    same order as `rover_daemon/rover_autonomy.py`. So a check that the executive
+    stops when its lease runs out is a check against the rules the rover has,
+    rather than against a fake that agrees with them today. What is faked is
+    only the rover: driving is a flag, a look is a counter, and arriving is
+    something a test says has happened.
     """
 
     def __init__(self, *, generation: str = WORLD, rows: list | None = None,
                  said: list | None = None, frames: dict | None = None,
-                 entities: list | None = None, room: list | None = None) -> None:
+                 entities: list | None = None, room: list | None = None,
+                 clock: Clock | None = None) -> None:
         super().__init__()
+        self.clock = clock or Clock()
+        self.permission = permission.Permission(clock=self.clock,
+                                                wall=self.clock,
+                                                boot="feedface")
+        #: What the fake rover is doing: driving somewhere, how many looks it
+        #: has taken, and where it is standing if a test has moved it.
+        self.driving = False
+        self.moves: list[dict] = []
+        self.looks = 0
+        self.at: tuple[float, float] | None = None
+        self.map_id = "m1"
+        self.volts = 12.07
+        self.trusted = True
+        #: What a look answers with. A test that wants a look to fail replaces
+        #: it; the ordinary one found three regions and attached one.
+        self.inspection: dict = {"ok": True, "regions": 3, "attached": 1,
+                                 "placed": 0}
         self.generation = generation
         self.rows = list(rows or [])
         #: The occupancy map, drawn as a picture. None means the mapper has not
@@ -186,13 +229,16 @@ class FakeRover(client.ReadOnly):
         # Standing where the `R` in the drawn room is, when there is one. A fake
         # whose pose was somewhere else would put the rover off its own map, and
         # every goal would be refused for a reason the test was not about.
-        if self.room:
+        if self.at is not None:
+            x, y = self.at
+        elif self.room:
             x, y = rover_at(self.room)
         else:
             x, y = 1.0, 2.0
-        return {"ok": True, "move": move, "driving": False,
+        return {"ok": True, "move": move, "driving": self.driving,
                 "exploring": False, "estop": False, "map_settled": True,
-                "map_kept": True, "position_trusted": True, "map_id": "m1",
+                "map_kept": True, "position_trusted": self.trusted,
+                "map_id": self.map_id,
                 "match_score": 0.8,
                 "pose": {"x_m": x, "y_m": y, "heading_deg": 90.0}}
 
@@ -203,7 +249,103 @@ class FakeRover(client.ReadOnly):
         return a_map(self.room)
 
     def _battery(self, _arguments):
-        return {"ok": True, "volts": 12.07, "percent": 85}
+        return {"ok": True, "volts": self.volts, "percent": 85}
+
+    # --- the permission, driven exactly as the daemon drives it --------------
+
+    def enable(self, by: str = "the owner", **budget) -> str:
+        """What a person does at the console. Not a call: no client here may
+        make it, which is the point of it being a method on the fake rover
+        rather than one more entry in the allow-list."""
+        return self.permission.enable(by=by, why="a check",
+                                      budget=budget)["run"]["id"]
+
+    def _conditions(self) -> dict:
+        nav = self._nav_status({})
+        pose = nav["pose"]
+        return {"battery_v": self.volts, "map_id": nav["map_id"],
+                "pose_trusted": nav["position_trusted"],
+                "map_settled": nav["map_settled"], "driving": self.driving,
+                "where": (float(pose["x_m"]), float(pose["y_m"]))}
+
+    def _autonomy_status(self, _arguments):
+        return {"ok": True, **self.permission.status()}
+
+    def _autonomy_permit(self, arguments):
+        return self.permission.grant(str(arguments.get("run") or ""),
+                                     arguments.get("ttl_s"))
+
+    def _autonomy_release(self, arguments):
+        why = str(arguments.get("why") or "the executive handed it back")
+        self.driving = False
+        return self.permission.end_run(why)
+
+    def _autonomy_act(self, arguments):
+        params = dict(arguments.get("params") or {})
+        action_id = str(arguments.get("action_id") or "")
+        facts = self._conditions()
+        verdict = self.permission.check(
+            permit=str(arguments.get("permit") or ""),
+            action=str(arguments.get("action") or ""), action_id=action_id,
+            episode=str(arguments.get("episode") or ""), params=params,
+            conditions=facts)
+        if not verdict.ok:
+            answer = {"ok": False, "refused": verdict.code, "error": verdict.why}
+            if verdict.already is not None:
+                answer["already"] = verdict.already
+            return answer
+        action = str(arguments["action"])
+        self.permission.began(action_id, action, params,
+                              episode=str(arguments.get("episode") or ""))
+        self.permission.moved(facts["where"], facts["map_id"])
+        result = self._perform(action, params)
+        running = bool(result.pop("running", False))
+        if not running:
+            self.permission.finished(action_id, ok=bool(result.get("ok")),
+                                     detail=str(result.get("error") or ""))
+        return {**result, "running": running, "action_id": action_id}
+
+    def _perform(self, action: str, params: dict) -> dict:
+        if action == "stop":
+            self.driving = False
+            return {"ok": True, "stopped": True}
+        if action == "world_inspect":
+            self.looks += 1
+            return dict(self.inspection)
+        if self.driving:
+            return {"ok": False, "error": "the rover is already driving"}
+        self.moves.append(dict(params))
+        self.driving = True
+        return {"ok": True, "running": True, "going": True}
+
+    def arrive(self, reason: str = "arrived", *, at=None) -> None:
+        """The wheels stop. What `_trip_ended` does on the real daemon.
+
+        A test says when a move ends, because a fake that ended it on a timer
+        would make every check about the timer.
+        """
+        self.driving = False
+        if at is not None:
+            self.at = at
+            # The real daemon accounts for a leg half a second at a time as the
+            # rover drives it; this accounts for the whole leg on arrival, which
+            # comes to the same total. The generous `elapsed_s` is what stops
+            # that one large step being read as the rover teleporting.
+            self.permission.moved(at, self.map_id, elapsed_s=600.0)
+        doing = self.permission.doing or {}
+        if doing.get("id"):
+            self.permission.finished(doing["id"], ok=reason == "arrived",
+                                     detail=reason)
+
+
+class ActingRover(FakeRover, client.Acting):
+    """The same fake rover, reached through the executive's door.
+
+    Two lines because that is genuinely all the difference is: what the
+    executive may ask for is one frozen set wider, and everything else -- the
+    refusal, the socket that is not there, the rules the permission enforces --
+    is shared with the recorder's client.
+    """
 
 
 def _commentary(said: list) -> list:

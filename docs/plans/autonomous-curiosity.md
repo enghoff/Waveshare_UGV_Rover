@@ -1,18 +1,19 @@
 # Development plan: curiosity-driven autonomy
 
 Status: Phase 0 (P0) is in progress. Phases 1 and 2 (P1, P2) passed their
-milestones on 2026-09-08 and have no action authority -- the rover records what
-it did and can say what it would do next, and nothing there can move anything.
-Later phases remain proposed. This is the
+milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
+daemon-enforced permission it works under are built and checked offline, and
+nothing has yet moved the rover under them. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
 The plan is gated by capability dependencies, not a requirement to finish every
 phase before starting the next. M1 recording and M2 shadow decisions proceeded
 alongside the existing P0 work, with no action authority, and both have now
-passed. **M3 movement still requires M0**, which has not passed, as well as
-offline control-boundary tests; supervised stop/failure trials precede its
-autonomy sessions. Later capabilities require
+passed. The offline control-boundary tests M3 asks for are written and passing,
+which is what allowed P3 to be built alongside P0. **M3 movement still requires
+M0**, which has not passed; supervised stop/failure trials precede its autonomy
+sessions. Later capabilities require
 recorded evidence for the primitives, semantics and execution substrate they use;
 code existing is not acceptance. Physical criteria must be observed on the rover.
 
@@ -546,54 +547,41 @@ Pass when all are true:
 Close the first real loop without yet learning new skills or semantic viewpoint
 strategies.
 
-### Initial action set
+### What has landed, and where it is described
 
-Only wrap operations already bounded and understood by the rover, for example:
+The executive and the permission it works under are built, deployed and checked
+offline; neither has moved this rover. What each of them is belongs to the
+component that holds it rather than to this plan: the permission the daemon
+issues, spends and takes back is in
+[rover_daemon/README.md](../../rover_daemon/README.md) under *Moving by itself*,
+and the loop that uses it — its states, its planning, and why the rover's own
+`explore` is not one of its operations — is in
+[autonomy/README.md](../../autonomy/README.md) under *Going and doing it*.
 
-- existing frontier `explore`;
-- stop;
-- move through Nav2 to an already validated safe goal;
-- `world_inspect` or an equivalent existing inspection path;
-- camera/gimbal actions needed by that inspection.
+Three operations are admitted and no others: `drive_to`, `world_inspect` and
+`stop`. `run_script` and `start_script` are not autonomy primitives and are
+refused by name.
 
-Do not expose arbitrary `run_script`/`start_script` as an autonomy primitive.
+### What is still ahead
 
-### Executive state machine
+Everything physical, which is most of M3:
 
-A minimal state machine is enough:
-
-```text
-IDLE -> SELECT -> PLAN -> EXECUTE -> EVALUATE -> IDLE
-                         |          |
-                         +-> ABORT <-+
-```
-
-A run has hard budgets:
-
-- maximum wall-clock duration;
-- maximum distance/travel goal count;
-- minimum battery reserve;
-- maximum consecutive failures;
-- human stop latch.
-
-A stop latch remains set until an explicit human re-enable; the executive must not
-interpret "idle" after a stop as permission to choose another goal.
-
-### Daemon-enforced movement permission
-
-Before any M3 movement, implement a short-lived permission owned by the daemon and
-renewed by the executive. The daemon enforces expiry and cumulative run budgets
-independently of executive health, including during background exploration and
-nested actions. Granting or renewing permission never clears a human stop latch.
-Restart defaults to autonomy disabled and invalidates earlier permissions.
-
-Human stop has highest priority. Manual takeover cancels autonomy and requires
-explicit re-enable before autonomy can resume. Voice submits goals through the same
-arbitration; it cannot silently unstop the rover. Revalidate permission, map identity,
-pose validity, boundary and hardware requirements at dispatch and monitor relevant
-conditions during execution. Reject stale or duplicate action requests using stable
-episode/action IDs. A healthy Nav2 process must not keep an orphaned autonomy run
-moving after the executive fails.
+- **The twenty supervised sessions**, totalling at least two hours of autonomy
+  time in a pre-cleared area, with the owner present. Nothing below criterion 3
+  can be answered without them.
+- **The stop and takeover trials**, against predeclared stopping time and
+  distance limits at the permitted speeds. An acknowledged stop request is not a
+  pass; what has been shown offline is that the request is issued and the
+  authority revoked, not that the wheels stop within any distance.
+- **A way for the owner to open a run without a shell.** Enabling is a person's
+  act and today it is a call over 8769, which means the supervised sessions
+  start from a terminal. A console control is the obvious home for it, and
+  [drive_web/AGENTS.md](../../drive_web/AGENTS.md) asks for a removal to be
+  proposed alongside any addition.
+- **M0.** Semantic inspection goals aim at things whose identity is still wrong
+  about one time in five, so the geometry goals are the honest half of what the
+  executive can be given to do until
+  [R-WS-13](../requirements/world-state.md#r-ws-13) passes.
 
 ### Physical test environment
 
