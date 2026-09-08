@@ -122,6 +122,14 @@ ACTION_TIMEOUT_S = 240.0
 #: responsiveness -- and the shadow runs already deliberate once a minute.
 IDLE_S = 30.0
 
+#: How long a nap inside that wait may be. **Standing still is not being dead**,
+#: and the difference is a renewal: a single thirty-second sleep outlasts the
+#: fifteen-second lease, so the daemon would take the wheels back from an
+#: executive that was merely waiting for the room to change. Found on the rover
+#: on 2026-09-08, in the first turn the real daemon ever answered: one idle turn
+#: ended the run. A third of the lease leaves two missed naps of margin.
+IDLE_NAP_S = permission.PERMIT_TTL_S / 3.0
+
 
 class Aborted(Exception):
     """Raised inside a turn to end it. Carries the reason the episode closes
@@ -246,7 +254,7 @@ class Executive:
                 episode, "abandoned",
                 detail=decision.get("why_nothing") or "nothing worth doing")
             self.log(f"nothing to do: {decision.get('why_nothing')}")
-            self.sleep(IDLE_S)
+            self.idle(IDLE_S)
             return {"episode": episode, "acted": False,
                     "why": decision.get("why_nothing")}
 
@@ -447,6 +455,30 @@ class Executive:
         raise Aborted(f"the rover would not renew permission: "
                       f"{answer.get('error')}",
                       "latched" if answer.get("latched") else "no permit")
+
+    def idle(self, seconds: float) -> bool:
+        """Wait, without letting the waiting look like a death.
+
+        The permission is renewed through the wait, because it says that this
+        loop is alive and it is: a rover with nothing worth doing is the
+        ordinary state of a parked one, and a run that ended every time the room
+        was uninteresting would end within a minute of starting.
+
+        Returns False when the run went away while waiting, which is not a
+        failure either -- a person stopping the rover, or a budget running out,
+        is the expected way for an idle session to finish.
+        """
+        until = self.now() + seconds
+        while True:
+            left = until - self.now()
+            if left <= 0:
+                return True
+            self.sleep(min(IDLE_NAP_S, left))
+            try:
+                self.renew()
+            except Aborted as stop:
+                self.ended = self.ended or stop.why
+                return False
 
     def stop(self, why: str) -> dict[str, Any]:
         """Stop the rover through the permission, and never mind a refusal."""

@@ -87,6 +87,10 @@ class Session:
         """
         self.slept.append(seconds)
         self.rover.clock.tick(seconds)
+        # And the daemon's watchdog looks, because on the rover it does: the
+        # thing these checks are mostly about is what happens to a run while
+        # this loop is not asking about it.
+        self.rover.watchdog()
 
     def close(self) -> None:
         self.store.close()
@@ -175,7 +179,34 @@ def test_a_turn_with_nothing_worth_doing_idles_without_acting():
     check("...but the turn is still an episode",
           session.store.outcome(got["episode"])["outcome"], "abandoned")
     check("...and it waited rather than spinning",
-          session.slept, [executive_mod.IDLE_S])
+          round(sum(session.slept), 1), executive_mod.IDLE_S)
+    check("...in naps short enough to renew through",
+          max(session.slept) <= executive_mod.IDLE_NAP_S, True)
+    check("...so the run is still alive at the end of the wait",
+          rover.permission.status()["enabled"], True)
+    session.close()
+
+
+def test_standing_still_is_not_mistaken_for_a_dead_executive():
+    """The fault the rover found on the first turn it was ever asked for.
+
+    A parked rover with nothing worth doing is the ordinary case, and the wait
+    that follows is twice the length of the permission's lease. A loop that
+    slept through it in one go stopped renewing, and the daemon -- correctly, by
+    its own rules -- took the wheels back from an executive that was merely
+    waiting for the room to change.
+    """
+    rover = test_fakes.ActingRover(room=["#####",
+                                         "#...#",
+                                         "#.R.#",
+                                         "#####"], entities=[])
+    session = Session(rover=rover)
+    check("the wait is longer than the lease",
+          executive_mod.IDLE_S > permission.PERMIT_TTL_S, True)
+    session.executive.once()
+    check("and the run survives it", rover.permission.status()["enabled"], True)
+    check("...having been renewed several times",
+          (rover.permission.permit or {}).get("renewals", 0) >= 2, True)
     session.close()
 
 
@@ -456,6 +487,7 @@ TESTS = (
     test_one_turn_drives_looks_and_writes_down_what_changed,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_turn_with_nothing_worth_doing_idles_without_acting,
+    test_standing_still_is_not_mistaken_for_a_dead_executive,
     test_a_person_stopping_the_rover_ends_the_turn_and_the_loop,
     test_a_stop_in_any_state_of_the_machine_aborts_the_turn,
     test_permission_running_out_mid_drive_ends_the_turn,

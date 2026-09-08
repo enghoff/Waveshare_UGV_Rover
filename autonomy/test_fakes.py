@@ -318,6 +318,24 @@ class FakeRover(client.ReadOnly):
         self.driving = True
         return {"ok": True, "running": True, "going": True}
 
+    def watchdog(self) -> str:
+        """What the daemon's own thread does twice a second while a run is open.
+
+        The fake has no thread, so whatever winds its clock calls this instead.
+        Without it a lease could expire here and nothing would notice, and the
+        checks about an executive that stops renewing would pass against a fake
+        that had simply stopped caring -- which is the opposite of the rule
+        being checked.
+        """
+        run = self.permission.run
+        if run is None or run.ended:
+            return ""
+        why = self.permission.due(self._conditions())
+        if why:
+            self.driving = False
+            self.permission.end_run(why)
+        return why
+
     def arrive(self, reason: str = "arrived", *, at=None) -> None:
         """The wheels stop. What `_trip_ended` does on the real daemon.
 
