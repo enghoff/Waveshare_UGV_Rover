@@ -1,8 +1,18 @@
 # The acceptance run: geometry passes inside a declared band, identity does not
 
 **Three of M0's four declared tolerances pass and the fourth fails on identity,
-which is where it has always failed.** The owner cleared the store, put out three
-measured objects and drove the room for thirty-five minutes. 1208 looks from 196
+which is where it has always failed.** The owner put out three measured objects
+and drove the room for thirty-five minutes.
+
+**Correction, found after this entry was first written: the map was not kept.**
+The runbook asks for the store cleared and the map preserved, and that is what
+was done at 10:16 — map `3d9b689a1298`, confirmed settled. Both of the day's runs
+carry map `9999362789cf` with `map_kept` false, so between 10:16 and the first
+run the map was replaced and the rover built a fresh one as it drove. The store's
+own `map_session` still reads 67, which is stale rather than wrong-headed: the
+store was cleared at the same moment, so no old coordinates survived to be
+crossed with new ones. What it cost is stated in *Did the frame hold still?*
+below, and the answer is: less than expected. 1208 looks from 196
 standing places across 10.4 by 11 m, 117 things, 917 attachment decisions,
 archived as `~/.ugv/archive/world-2026-09-08-acceptance.db`.
 
@@ -60,6 +70,22 @@ it is the armchair, correctly, with the person as an intruder inside the box; a
 chair at the frame edge and a wide box spanning a table of chairs are both right.
 Reading them off thumbnails would have recorded two false faults, and the zoom is
 what prevented it. That is the third time today the small crops have misled.
+
+## Did the frame hold still?
+
+A map built while driving can drift, and a frame that moves under a static room
+puts the same object in two places. Tested by fitting each thing's position from
+the first half of its looks and again from the second half:
+
+- **the bucket, the cleanest probe available** — small, static, 14 rays over 33
+  minutes — puts itself **0.12 m** from itself between the two halves.
+- across 39 things seen often enough to split, the median gap is 0.46 m and the
+  worst 2.53 m, but that measure is contaminated: `object:1`, one of the two
+  confirmed merges, is fourth worst at 1.88 m, which is a merge showing its two
+  positions rather than a frame moving.
+
+So the new map is not the explanation for the identity failures. It is still a
+departure from the manifest and it is recorded as one.
 
 ## What else the run says
 
