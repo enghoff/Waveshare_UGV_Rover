@@ -122,10 +122,6 @@ three merges the rover made and produces the other two only under changes, which
 is the recording and the live rover disagreeing. Where they disagree the rover is
 right, so a remedy chosen on replay alone would be chosen on the wrong evidence.
 
-A refused pair is not a discarded look. It stays in the pending pool and can
-found a thing later with a better partner, which is why the entity count barely
-moves.
-
 ## The other two criteria this run touched
 
 **Coverage is now reported rather than silent.** 687 of 1328 looks — more than
