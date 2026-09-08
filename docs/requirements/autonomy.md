@@ -31,7 +31,10 @@ would be gone and nothing would say so.
 - **State:** settled
 - **Evidence:** [autonomy/README.md](../../autonomy/README.md) and
   [the decision behind it](../decisions/episode-references-survive-the-world-state.md);
-  `autonomy/selftest.py` and `world_state/selftest.py`
+  `autonomy/selftest.py` and `world_state/selftest.py`; and on the rover in
+  [2026-09-08](../progress/2026-09-08-the-clear-that-proved-it.md), where the
+  semantic world was really cleared and an episode naming nine things resolved
+  none of them
 
 Clearing the semantic world restarts the identifier counters, so `object:8`
 before a clear and `object:8` after it are different objects wearing one name.
