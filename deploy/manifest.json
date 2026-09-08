@@ -59,6 +59,13 @@
             "autonomy/**"
           ],
           "strip": "autonomy"
+        },
+        {
+          "comment": "The rover's own frontier chooser, deployed here as well as into ros_nav so that what autonomy says the rover would explore is what explore would really choose. One file in the repository; editing it marks both components changed.",
+          "patterns": [
+            "ros_nav/frontier.py"
+          ],
+          "strip": "ros_nav"
         }
       ],
       "commands": [

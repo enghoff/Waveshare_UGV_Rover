@@ -13,11 +13,14 @@ from __future__ import annotations
 import tempfile
 
 import client
+import decide
 import refs
 import replay
 import summary
 from recorder import LOOK_MARK, MOVE_MARK, Recorder
-from test_fakes import (CLEARED, PICTURE, WORLD, FakeRover, a_look, a_store)
+from test_fakes import (CLEARED, PICTURE, WORLD, FakeRover, a_look, a_store,
+                        a_thing)
+from test_goals import ROOM
 import retention
 from test_harness import check
 
@@ -573,6 +576,62 @@ def test_a_moves_summary_shows_the_move() -> None:
         check("...and how it ended", "closed: succeeded -- arrived" in said, True)
         store.close()
 
+# --- what it would do next ---------------------------------------------------
+
+def test_a_shadow_run_also_writes_down_what_it_would_do() -> None:
+    """Phase 2 inside the shadow run: a decision, and no way to carry it out."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(room=ROOM, entities=[a_thing("object:8", 1.6, 1.0,
+                                                       uncertainty_m=0.60,
+                                                       major_deg=90.0)])
+        recorder = Recorder(store, rover)
+        got = recorder.consider()
+        check("it wanted something", got["decision"]["preferred"] is not None,
+              True)
+        check("...and could not do it", got["decision"]["chose"], None)
+        check("...which is written down as an episode",
+              store.episode(got["episode"])["trigger"], decide.TRIGGER)
+        check("...counted in the run's own tally",
+              (recorder.recorded["decisions"], recorder.recorded["wanted"]),
+              (1, 1))
+        rebuilt = replay.reconstruct(store, got["episode"])
+        check("...that made no call to the rover", rebuilt["calls"], [])
+        check("...and closed as abandoned rather than as a failure",
+              rebuilt["outcome"]["outcome"], "abandoned")
+        check("every call it made along the way was a read",
+              sorted(set(rover.asked) - client.ALLOWED), [])
+        store.close()
+
+
+def test_a_deliberation_is_not_recorded_when_nobody_answered() -> None:
+    """An episode saying "there was nothing worth doing" when the truth is
+    "nothing answered" is the worst kind of row this record could hold."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(room=ROOM)
+        rover.down = True
+        recorder = Recorder(store, rover)
+        check("nothing is decided", recorder.consider(), None)
+        check("...and nothing is written down", store.summary()["episodes"], 0)
+        check("...but the silence is counted",
+              recorder.recorded["unreachable"], 1)
+        store.close()
+
+
+def test_a_run_can_be_told_only_to_watch() -> None:
+    """Which is what every recording before Phase 2 was, and still a useful one."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(room=ROOM, rows=a_look(1, 100),
+                          frames={"frame-1": PICTURE})
+        recorder = Recorder(store, rover, decide_every_s=None)
+        recorder.run(seconds=0.05, every_s=0.01)
+        check("the look was recorded", recorder.recorded["looks"], 1)
+        check("...and nothing was decided", recorder.recorded["decisions"], 0)
+        store.close()
+
+
 TESTS = (
     test_a_recorder_cannot_move_the_rover,
     test_world_state_inspect_is_not_a_call_a_recorder_may_make,
@@ -604,4 +663,7 @@ TESTS = (
     test_a_run_prunes_the_record_as_it_goes,
     test_a_run_can_be_told_not_to_prune,
     test_pruning_never_takes_a_pinned_run,
+    test_a_shadow_run_also_writes_down_what_it_would_do,
+    test_a_deliberation_is_not_recorded_when_nobody_answered,
+    test_a_run_can_be_told_only_to_watch,
 )

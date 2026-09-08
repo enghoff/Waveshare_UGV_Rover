@@ -1,0 +1,206 @@
+{
+  "about": "Going where the map stops: which gap is worth driving to, and when none is.",
+  "maps": {
+    "room": {
+      "comment": "A room with a doorway onto a small patch of unmapped floor.",
+      "rows": [
+        "##################################",
+        [4, "#................................#"],
+        "#...............R................#",
+        [3, "#................................#"],
+        "############..............########",
+        [2, "???????????................???????"],
+        [18, "??????????????????????????????????"]
+      ]
+    },
+    "open": {
+      "comment": "A room whose whole lower edge gives onto unmapped ground: the largest single thing this rover could be offered.",
+      "rows": [
+        "############################################",
+        [4, "#..........................................#"],
+        "#....................R.....................#",
+        [4, "#..........................................#"],
+        [26, "????????????????????????????????????????????"]
+      ]
+    },
+    "finished": {
+      "comment": "Every cell is floor or wall. There is nothing left to find.",
+      "rows": [
+        "##################################",
+        [2, "#................................#"],
+        "#...............R................#",
+        [2, "#................................#"],
+        "##################################"
+      ]
+    },
+    "twodoors": {
+      "comment": "A narrow way out at the rover's feet and a wide one across the room.",
+      "rows": [
+        "############################################",
+        [3, "#..........................................#"],
+        "#....R.....................................#",
+        [3, "#..........................................#"],
+        "###..........######.......................##",
+        [20, "????????????????????????????????????????????"]
+      ]
+    },
+    "twoequal": {
+      "comment": "Two ways out of the same width, one near and one far.",
+      "rows": [
+        "############################################",
+        [3, "#..........................................#"],
+        "#....R.....................................#",
+        [3, "#..........................................#"],
+        "###..........##################...........##",
+        [20, "????????????????????????????????????????????"]
+      ]
+    },
+    "sealed": {
+      "comment": "A cupboard the scanner has never seen into, shut off from the room.",
+      "rows": [
+        "####################",
+        [2, "#..................#"],
+        "#........R.........#",
+        "#.#######..........#",
+        "#.#.....#..........#",
+        "#.#?????#..........#",
+        "#.#######..........#",
+        "####################"
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "a doorway onto unmapped floor is worth driving to",
+      "why": "The plainest case there is. With nothing else to do, the rover should want to go and see what is through the gap.",
+      "map": "room",
+      "expect": {
+        "chose": {"type": "explore_frontier"},
+        "gate": []
+      }
+    },
+    {
+      "name": "a room with nothing left to find offers nothing",
+      "why": "No frontier, no candidate, and no invented errand. A rover that drives somewhere anyway is the failure this checks for.",
+      "map": "finished",
+      "expect": {
+        "chose": "nothing",
+        "not_offered": {"type": "explore_frontier"}
+      }
+    },
+    {
+      "name": "the wide way out beats the narrow one at the rover's feet",
+      "why": "A metre of frontier two metres away shows more of the house than half a metre right here, and the travel between them is small.",
+      "map": "twodoors",
+      "expect": {
+        "chose": {"type": "explore_frontier", "near": [3.05, 2.05, 1.2]},
+        "order": [
+          {"type": "explore_frontier", "near": [3.05, 2.05, 1.2]},
+          {"type": "explore_frontier", "near": [0.75, 2.05, 0.8]}
+        ]
+      }
+    },
+    {
+      "name": "the near way out wins even though the far one is slightly wider",
+      "why": "A centimetre more frontier three metres away against the one at the rover's feet. The prospects are all but identical, so this case is decided by the walk and by nothing else -- which is what makes it the one that notices a scorer that has stopped charging for travel.",
+      "map": "twoequal",
+      "expect": {
+        "order": [
+          {"type": "explore_frontier", "near": [0.75, 2.05, 0.8]},
+          {"type": "explore_frontier", "near": [3.65, 2.05, 1.0]}
+        ]
+      }
+    },
+    {
+      "name": "a cupboard the scanner never saw into is not somewhere to drive",
+      "why": "Unknown cells with no free floor beside them are not a frontier: there is nowhere to stand that would see in, and the shut door is the reason.",
+      "map": "sealed",
+      "expect": {
+        "chose": "nothing",
+        "not_offered": {"type": "explore_frontier"}
+      }
+    },
+    {
+      "name": "a big frontier is worth crossing the room for",
+      "why": "Four metres of open edge with a room's worth of floor behind it. This is the case where travel should lose the argument.",
+      "map": "open",
+      "expect": {
+        "chose": {"type": "explore_frontier"},
+        "terms": [
+          {"match": {"type": "explore_frontier"}, "field": "gain",
+           "at_least": 0.3}
+        ]
+      }
+    },
+    {
+      "name": "a badly placed thing beats a small patch of unmapped floor",
+      "why": "Half a metre off where something is, is worth more than a square metre of corridor. The two goal types have to be comparable, and this is the comparison.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.6,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"type": "improve_geometry", "target": "object:8"},
+        "order": [
+          {"type": "improve_geometry"},
+          {"type": "explore_frontier"}
+        ]
+      }
+    },
+    {
+      "name": "told the map is what matters, it explores instead",
+      "why": "The owner's purpose is the one term nothing here may invent. With exploring weighted three times, the same situation comes out the other way.",
+      "map": "open",
+      "weights": {"purpose": {"default": 1.0, "explore_frontier": 3.0}},
+      "entities": [
+        {"id": "object:8", "at": [2.0, 3.0], "uncertainty_m": 0.6,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"type": "explore_frontier"},
+        "order": [
+          {"type": "explore_frontier"},
+          {"type": "improve_geometry"}
+        ]
+      }
+    },
+    {
+      "name": "a rover already exploring is charged for changing its mind",
+      "why": "Every goal that completes redraws the map, which reorders the candidates. Without a switching cost that is a rover turning round in the middle of the room.",
+      "map": "room",
+      "rover": {"driving": true, "exploring": true},
+      "expect": {
+        "terms": [
+          {"match": {"type": "explore_frontier"}, "field": "switching_cost",
+           "at_least": 0.1}
+        ]
+      }
+    },
+    {
+      "name": "the same frontier a few centimetres along is still the same goal",
+      "why": "The map is redrawn every time the rover moves, so the cell the chooser picks for one doorway wanders about. Recognising the goal only by its name would lose the hysteresis exactly when it is needed.",
+      "map": "twoequal",
+      "previous_goal": {"type": "explore_frontier",
+                        "goal": {"x_m": 3.45, "y_m": 2.15}},
+      "expect": {
+        "terms": [
+          {"match": {"near": [3.65, 2.05, 1.0]}, "field": "switching_cost",
+           "at_most": 0.0}
+        ]
+      }
+    },
+    {
+      "name": "sticking with the frontier it chose last time is free",
+      "why": "The other half of the same rule: hysteresis is what stops two similar candidates trading places every time the map redraws.",
+      "map": "twoequal",
+      "previous_goal": "explore_frontier@3.65,2.05",
+      "expect": {
+        "terms": [
+          {"match": {"near": [3.65, 2.05, 1.0]}, "field": "switching_cost",
+           "at_most": 0.0}
+        ]
+      }
+    }
+  ]
+}

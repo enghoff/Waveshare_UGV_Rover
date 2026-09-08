@@ -1,0 +1,237 @@
+{
+  "about": "Choosing between things that are all worth doing, and knowing when none of them is.",
+  "maps": {
+    "room": {
+      "comment": "A mapped room, nothing left to explore, so the choosing is between things.",
+      "rows": [
+        "##################################",
+        [4, "#................................#"],
+        "#...............R................#",
+        [4, "#................................#"],
+        "##################################"
+      ]
+    },
+    "long": {
+      "comment": "A long room, so that one thing can be across it and another at the rover's feet.",
+      "rows": [
+        "######################################################################",
+        [4, "#....................................................................#"],
+        "#.....R..............................................................#",
+        [4, "#....................................................................#"],
+        "######################################################################"
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "two things in the same state break the tie the same way twice",
+      "why": "Equal candidates must not come out in whatever order a dictionary happened to be in: a decision that cannot be reproduced cannot be replayed either.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "the near thing wins although the far one is a shade worse placed",
+      "why": "Four metres of walking against two centimetres of prospect. The far thing is the better prize on paper, so a scorer that had stopped charging for travel would go for it -- and the difference between a minute and five is the whole reason not to.",
+      "map": "long",
+      "entities": [
+        {"id": "object:8", "at": [1.2, 0.85], "uncertainty_m": 0.60,
+         "major_deg": 90},
+        {"id": "object:9", "at": [5.5, 0.85], "uncertainty_m": 0.62,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:8"},
+        "order": [{"target": "object:8"}, {"target": "object:9"}]
+      }
+    },
+    {
+      "name": "a much worse placement is worth the walk across the room",
+      "why": "The other side of the same trade. Travel is a cost and not a veto, so a big enough prize has to be able to pay it.",
+      "map": "long",
+      "entities": [
+        {"id": "object:8", "at": [1.2, 0.85], "uncertainty_m": 0.20,
+         "major_deg": 90},
+        {"id": "object:9", "at": [5.5, 0.85], "uncertainty_m": 1.40,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:9"},
+        "order": [{"target": "object:9"}, {"target": "object:8"}]
+      }
+    },
+    {
+      "name": "a thing put aside is refused and the rover does the next thing instead",
+      "why": "Cooling exists so that an ambiguity which does not resolve cannot keep the rover busy all afternoon. What it must not do is stop the rover doing anything at all.",
+      "map": "room",
+      "cooled": [
+        {"target": "object:9", "since": 1757320700.0, "until": 1757321400.0,
+         "uncertainty_m": 0.90,
+         "why": "four more looks at object:9 left it placed to 0.90 m -- no better than before"}
+      ],
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.50,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.90,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "vetoed": [{"target": "object:9", "veto": "cooling off"}],
+        "chose": {"target": "object:8"},
+        "order": [{"target": "object:9"}, {"target": "object:8"}]
+      }
+    },
+    {
+      "name": "a cooling that has run out refuses nothing",
+      "why": "The same situation a quarter of an hour later. Putting a thing aside must be temporary, or it is a rover quietly forgetting half of what it knows.",
+      "map": "room",
+      "cooled": [
+        {"target": "object:9", "since": 1757319000.0, "until": 1757320000.0,
+         "uncertainty_m": 0.90, "why": "it got nowhere, a while ago"}
+      ],
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.50,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.90,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:9"}
+      }
+    },
+    {
+      "name": "having chosen something last time, a near-tie does not overturn it",
+      "why": "Two candidates a few hundredths apart will trade places every time the world state refines a placement. Following the top of that list is a rover that turns round in the middle of the room. The goal is remembered by what it was about rather than by the identifier the viewpoint gave it, because that identifier moves whenever the map does.",
+      "map": "room",
+      "previous_goal": {"type": "improve_geometry", "target": "object:9"},
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.62,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:9"}
+      }
+    },
+    {
+      "name": "a goal that is genuinely better does overturn it",
+      "why": "The switching cost has to be smaller than any real difference, or the rover finishes the first errand it ever picked and nothing else.",
+      "map": "room",
+      "previous_goal": {"type": "improve_geometry", "target": "object:9"},
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 1.40,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.22,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "a goal it wanted last time that has since been settled is simply gone",
+      "why": "The previous goal is a preference and not a commitment: when the thing it was about has been placed properly, there is nothing to stick to.",
+      "map": "room",
+      "previous_goal": {"type": "improve_geometry", "target": "object:9"},
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.55,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.08,
+         "ranged": 4}
+      ],
+      "expect": {
+        "chose": {"target": "object:8"},
+        "not_offered": {"target": "object:9"}
+      }
+    },
+    {
+      "name": "a roomful of well placed things is a rover with nothing to do",
+      "why": "The no-action case that matters most, because everything here is reachable, safe and in front of it. Idle has to be able to win.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.10,
+         "ranged": 4},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.09,
+         "ranged": 6},
+        {"id": "object:10", "at": [1.65, 0.65], "uncertainty_m": 0.11,
+         "ranged": 3}
+      ],
+      "expect": {
+        "chose": "nothing"
+      }
+    },
+    {
+      "name": "with a dozen things to choose between, the worst placed are the ones considered",
+      "why": "The world state holds over a hundred things and scoring all of them would cost seconds of a rover that is deciding every minute. What the bound drops has to be the tail, not a random dozen.",
+      "map": "long",
+      "entities": [
+        {"id": "object:1", "at": [1.0, 0.85], "uncertainty_m": 0.12,
+         "ranged": 4},
+        {"id": "object:2", "at": [1.4, 0.85], "uncertainty_m": 0.13,
+         "ranged": 4},
+        {"id": "object:3", "at": [1.8, 0.85], "uncertainty_m": 0.14,
+         "ranged": 4},
+        {"id": "object:4", "at": [2.2, 0.85], "uncertainty_m": 0.15,
+         "ranged": 4},
+        {"id": "object:5", "at": [2.6, 0.85], "uncertainty_m": 0.16,
+         "ranged": 4},
+        {"id": "object:6", "at": [3.0, 0.85], "uncertainty_m": 0.17,
+         "ranged": 4},
+        {"id": "object:7", "at": [3.4, 0.85], "uncertainty_m": 0.18,
+         "ranged": 4},
+        {"id": "object:8", "at": [3.8, 0.85], "uncertainty_m": 0.19,
+         "ranged": 4},
+        {"id": "object:9", "at": [4.2, 0.85], "uncertainty_m": 0.20,
+         "ranged": 4},
+        {"id": "object:11", "at": [4.6, 0.85], "uncertainty_m": 0.21,
+         "ranged": 4},
+        {"id": "object:12", "at": [5.0, 0.85], "uncertainty_m": 0.22,
+         "ranged": 4},
+        {"id": "object:13", "at": [5.4, 0.85], "uncertainty_m": 0.23,
+         "ranged": 4},
+        {"id": "object:14", "at": [5.8, 0.85], "uncertainty_m": 0.90,
+         "major_deg": 90, "ranged": 4},
+        {"id": "object:15", "at": [6.2, 0.85], "uncertainty_m": 0.95,
+         "major_deg": 90, "ranged": 4}
+      ],
+      "expect": {
+        "offered": [{"target": "object:14"}, {"target": "object:15"}],
+        "not_offered": {"target": "object:1"}
+      }
+    },
+    {
+      "name": "told that things matter more than the map, it goes to the thing",
+      "why": "The purpose term is the owner's policy. Weighting inspection up should change the answer without changing anything else.",
+      "map": "room",
+      "weights": {"purpose": {"default": 1.0, "improve_geometry": 2.0}},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.30,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "an expensive rover does nothing at all",
+      "why": "Turn the costs up far enough and every errand is worse than standing still, which is the answer a scorer should give rather than picking the least bad one.",
+      "map": "room",
+      "weights": {"w_travel": 50.0, "w_time": 50.0},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": "nothing"
+      }
+    }
+  ]
+}

@@ -82,7 +82,12 @@ def apply(store: store_mod.EpisodeStore, policy: Policy = DEFAULT, *,
         if one["digest"] in protected:
             kept_pinned += 1
             continue
-        too_old = one["stored_at"] < oldest_allowed
+        # At or before, not before. With `keep_days` zero -- which is what a
+        # test or a "keep nothing" policy asks for -- a piece of evidence stored
+        # in the same tick of the clock as this pass would otherwise survive it,
+        # and on Windows, where the clock ticks every 16 ms, that happens often
+        # enough to make the check flap.
+        too_old = one["stored_at"] <= oldest_allowed
         too_big = total - freed > policy.max_bytes
         if not (too_old or too_big):
             continue

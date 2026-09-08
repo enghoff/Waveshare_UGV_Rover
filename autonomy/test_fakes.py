@@ -14,6 +14,7 @@ from typing import Any
 import client
 import events
 import refs
+import scenarios
 from store import EpisodeStore
 
 #: A generation standing in for a world store, and a second one standing in for
@@ -110,10 +111,14 @@ class FakeRover(client.ReadOnly):
 
     def __init__(self, *, generation: str = WORLD, rows: list | None = None,
                  said: list | None = None, frames: dict | None = None,
-                 entities: list | None = None) -> None:
+                 entities: list | None = None, room: list | None = None) -> None:
         super().__init__()
         self.generation = generation
         self.rows = list(rows or [])
+        #: The occupancy map, drawn as a picture. None means the mapper has not
+        #: published one, which is a state the rover really has -- for the first
+        #: revolution after a restart -- and one every caller must handle.
+        self.room = list(room) if room else None
         #: The driving loop's running commentary, oldest first. The last is what
         #: it is saying now; the ones before it are what a poller that named a
         #: sequence number gets back under `missed`.
@@ -178,11 +183,24 @@ class FakeRover(client.ReadOnly):
         missed = [] if since is None else [one for one in self.said[:-1]
                                            if one["seq"] > int(since)]
         move = {**self.said[-1], "missed": missed}
+        # Standing where the `R` in the drawn room is, when there is one. A fake
+        # whose pose was somewhere else would put the rover off its own map, and
+        # every goal would be refused for a reason the test was not about.
+        if self.room:
+            x, y = rover_at(self.room)
+        else:
+            x, y = 1.0, 2.0
         return {"ok": True, "move": move, "driving": False,
                 "exploring": False, "estop": False, "map_settled": True,
                 "map_kept": True, "position_trusted": True, "map_id": "m1",
                 "match_score": 0.8,
-                "pose": {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0}}
+                "pose": {"x_m": x, "y_m": y, "heading_deg": 90.0}}
+
+    def _nav_grid(self, _arguments):
+        if self.room is None:
+            return {"ok": False,
+                    "error": "slam_toolbox has not published a map yet"}
+        return a_map(self.room)
 
     def _battery(self, _arguments):
         return {"ok": True, "volts": 12.07, "percent": 85}
@@ -206,6 +224,21 @@ def _commentary(said: list) -> list:
         carried.update(one)
         out.append(carried)
     return out
+
+
+# --- a room drawn as a picture ----------------------------------------------
+#
+# The format and the building of it belong to `scenarios.py`, which is where the
+# curated acceptance set is written and therefore where the drawing has to be
+# defined. These are the names the checks use, so that a test reads as a test
+# rather than as a tour of another module.
+
+a_map = scenarios.occupancy
+rover_at = scenarios.rover_in
+a_thing = scenarios.thing
+a_situation = scenarios.situation
+WALL, FLOOR, UNSEEN, ROVER = (scenarios.WALL, scenarios.FLOOR,
+                              scenarios.UNSEEN, scenarios.ROVER)
 
 
 def a_look(inference_id: int, first_row_id: int, *, regions: int = 2,

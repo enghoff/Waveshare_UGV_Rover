@@ -543,6 +543,24 @@ class RosNavigator:
         return mapimg.render(self._slam, half_extent_m, scale, self._slam.trail,
                              rover_up=rover_up, camera=camera)
 
+    def grid(self):
+        """The occupancy map as numbers rather than as a picture.
+
+        The bridge's own reply, passed through: the occupancy bytes as
+        slam_toolbox published them, zlib'd and base64'd, with the resolution and
+        where the grid's corner sits in the map frame. For a caller that has to
+        *reason* about the map -- which cells are unknown, which floor can be
+        walked to -- and would otherwise have to read the answer back out of a
+        rendered PNG, which is a picture of it rather than it.
+
+        The trail is dropped. It is drawn on the picture and means nothing to
+        arithmetic, and this reply is fetched by a poller.
+        """
+        answer = self.ask({"op": "map"}, MAP_TIMEOUT_S)
+        answer.pop("kind", None)
+        answer.pop("trail", None)
+        return answer
+
     def known_box(self):
         """Where the map is, in map metres, off the grid the last picture used.
 

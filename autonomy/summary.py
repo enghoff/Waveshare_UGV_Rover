@@ -50,6 +50,8 @@ def render(got: dict[str, Any]) -> str:
                    else f"considered {considered} "
                         f"{'goal' if considered == 1 else 'goals'}")
         lines.append(f"  {counted}, chose {decision['chose']}: {decision['why']}")
+        lines.extend(_what_it_would_cost(got))
+        lines.extend(_refused_above(got, decision))
         if decision["inputs"] is None:
             lines.append("  the world it chose from is no longer in this "
                          "database, so the choice cannot be checked")
@@ -118,6 +120,50 @@ def render(got: dict[str, Any]) -> str:
         lines.append(f"  {first['local'] or first['ref']} cannot be looked up: "
                      f"{first['why_not']}{rest}")
     return "\n".join(lines)
+
+
+def _what_it_would_cost(got: dict[str, Any]) -> list[str]:
+    """What the goal it chose would take, off the episode's own measurements.
+
+    Beside the choice rather than among the candidates, because the price of the
+    thing that was wanted is part of the choice and a reader should not have to
+    go looking for it in a list of twenty.
+    """
+    for step in got["steps"]:
+        body = step["body"]
+        if step["kind"] != "measured" or body.get("what") != "the deliberation":
+            continue
+        if body.get("would_travel_m") is None:
+            return []
+        return [f"  it would cost {body['would_travel_m']} m and about "
+                f"{float(body.get('would_take_s') or 0):.0f} s, for a gain of "
+                f"{body.get('would_gain')}"]
+    return []
+
+
+def _refused_above(got: dict[str, Any],
+                   decision: dict[str, Any]) -> list[str]:
+    """The candidates that scored better than the one chosen, and what refused
+    them.
+
+    **This is the half of a decision that is worth reading.** Everybody can see
+    what the rover wanted; the question somebody actually asks a week later is
+    why it did not do the obvious thing instead, and the answer is only in the
+    record if the losing candidates and their refusals were written down.
+    """
+    chose = decision.get("chose")
+    lines: list[str] = []
+    for body in got["candidates"]:
+        if body.get("goal") == chose:
+            break
+        vetoes = (body.get("params") or {}).get("vetoes") or []
+        if not vetoes:
+            continue
+        why = "; ".join(f"{one.get('veto')}: {one.get('why')}"
+                        for one in vetoes)
+        lines.append(f"  {body.get('goal')} scored better and was refused -- "
+                     f"{why}")
+    return lines[:3]
 
 
 def recent(store: store_mod.EpisodeStore, *, limit: int = 10) -> str:

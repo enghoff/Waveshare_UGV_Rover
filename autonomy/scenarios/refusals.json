@@ -1,0 +1,179 @@
+{
+  "about": "What stops the rover, and whether it can say which of the two kinds it is: something wrong with the rover, or something wrong with the goal.",
+  "maps": {
+    "room": {
+      "comment": "A mapped room with a thing in it that is genuinely worth going to look at, so that every refusal below is refusing something real.",
+      "rows": [
+        "##################################",
+        [4, "#................................#"],
+        "#...............R................#",
+        [4, "#................................#"],
+        "##################################"
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "with nothing wrong, the gate is open and it would act",
+      "why": "The control case. Every refusal below is only meaningful against a situation that would otherwise go ahead.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": [],
+        "chose": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "a flat battery stops everything, whatever is on offer",
+      "why": "Deciding to drive across the room on the last fifth of the pack is how a rover ends the day somewhere nobody wanted it.",
+      "map": "room",
+      "rover": {"battery_v": 10.9},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["battery low"],
+        "offered": [{"target": "object:8"}]
+      }
+    },
+    {
+      "name": "a battery nobody can read is not treated as a full one",
+      "why": "The driver board not answering is not the same as a healthy pack, and the safe reading of silence is that there is no telling.",
+      "map": "room",
+      "rover": {"battery_v": null},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["battery unknown"]
+      }
+    },
+    {
+      "name": "a latched stop is not something a good idea can talk past",
+      "why": "Somebody stopped the rover. Nothing in a score is allowed to be an argument against that.",
+      "map": "room",
+      "rover": {"estop": true},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["estop"]
+      }
+    },
+    {
+      "name": "a rover that does not know where it is may not be sent anywhere",
+      "why": "Every goal here is a coordinate in the map frame. Without a trusted pose those coordinates mean nothing, and the drive would be to a place nobody chose.",
+      "map": "room",
+      "rover": {"position_trusted": false},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["pose"]
+      }
+    },
+    {
+      "name": "a map that has not settled since the restart is not one to drive on",
+      "why": "Restarting navigation reloads the graph from disk and the restore may not confirm where the rover is. Until it does, the frame the goals are in is provisional.",
+      "map": "room",
+      "rover": {"map_settled": false},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["map"]
+      }
+    },
+    {
+      "name": "a perception loop that has stopped is a reason not to plan a look",
+      "why": "A goal whose point is to take a look rests on a look that will never come if nothing is looking.",
+      "map": "room",
+      "rover": {"world": {"last_at": 1757320000.0}},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["looking"]
+      }
+    },
+    {
+      "name": "a look that failed is reported as the rover being unfit, not as bad luck",
+      "why": "The last inspection erroring is the perception stack telling you something. Planning the next inspection on top of it is how a fault gets buried under activity.",
+      "map": "room",
+      "rover": {"world": {"last_status": "error",
+                          "last_detail": "the camera did not answer"}},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["world_state"]
+      }
+    },
+    {
+      "name": "with no authority it still says what it would have done",
+      "why": "This is the whole of a shadow decision, and the state the rover is really in today: a want, a reason, and no way to act on it.",
+      "map": "room",
+      "authority": false,
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "gate": ["no movement authority"],
+        "chose": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "a goal outside the safe area is refused however good it looks",
+      "why": "A geofence is a hard constraint, so it is checked before the scoring and not weighed against it.",
+      "map": "room",
+      "weights": {"geofence": {"x_m": 1.65, "y_m": 0.85, "radius_m": 0.2}},
+      "entities": [
+        {"id": "object:8", "at": [2.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "vetoed": [{"target": "object:8", "veto": "outside the safe area"}],
+        "chose": "nothing"
+      }
+    },
+    {
+      "name": "a safe area drawn as a box works the same way",
+      "why": "Rooms are rectangular more often than they are round, and both shapes have to be honoured by the same veto rather than by two code paths.",
+      "map": "room",
+      "weights": {"geofence": {"min_x_m": 0.0, "max_x_m": 1.0}},
+      "entities": [
+        {"id": "object:8", "at": [2.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "vetoed": [{"target": "object:8", "veto": "outside the safe area"}]
+      }
+    },
+    {
+      "name": "raising the stakes does not buy past a refusal",
+      "why": "A hard constraint that a big enough number can outrank is not a constraint. The weight here is a thousand times the ordinary one.",
+      "map": "room",
+      "weights": {"purpose": {"default": 1000.0}, "min_gain": 0.0,
+                  "geofence": {"x_m": 1.65, "y_m": 0.85, "radius_m": 0.2}},
+      "entities": [
+        {"id": "object:8", "at": [2.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "vetoed": [{"target": "object:8", "veto": "outside the safe area"}],
+        "chose": "nothing"
+      }
+    }
+  ]
+}

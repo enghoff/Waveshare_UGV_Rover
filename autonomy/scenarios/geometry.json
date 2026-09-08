@@ -1,0 +1,215 @@
+{
+  "about": "Going back to look at a thing: which viewpoint would sharpen where it is, and when none would.",
+  "maps": {
+    "room": {
+      "comment": "A plain mapped room with a thing or two in it and nothing to explore.",
+      "rows": [
+        "##################################",
+        [4, "#................................#"],
+        "#...............R................#",
+        [4, "#................................#"],
+        "##################################"
+      ]
+    },
+    "closet": {
+      "comment": "A cupboard shut off from the room. Nothing inside it can be looked at from anywhere the rover can walk to.",
+      "rows": [
+        "####################",
+        [2, "#..................#"],
+        "#........R.........#",
+        "#.#######..........#",
+        [2, "#.#.....#..........#"],
+        "#.#######..........#",
+        "####################"
+      ]
+    },
+    "faraway": {
+      "comment": "Mapped floor down the left, and unmapped ground stretching away. A thing out in that ground cannot be approached closer than three metres.",
+      "rows": [
+        "######################################################################",
+        [2, "#....................????????????????????????????????????????????????#"],
+        "#.....R..............????????????????????????????????????????????????#",
+        [2, "#....................????????????????????????????????????????????????#"],
+        "######################################################################"
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "a thing whose distance nobody has measured is worth going to see",
+      "why": "Six looks and not one range: it is placed by crossing bearings alone, and a viewpoint the depth camera can work from is the thing that would settle it.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.55,
+         "major_deg": 90, "looks": 6, "ranged": 0}
+      ],
+      "expect": {
+        "chose": {"type": "improve_geometry", "target": "object:8"},
+        "terms": [
+          {"match": {"target": "object:8"}, "field": "gain", "at_least": 0.4}
+        ]
+      }
+    },
+    {
+      "name": "a thing already placed as well as this rover can place anything",
+      "why": "Eight centimetres is better than the acceptance run's best tape-measured pair. There is nothing left to win, and proposing a drive for it would be the scorer inventing work.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.08,
+         "ranged": 4}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "not_offered": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "the worse placed of two things is the one to go and look at",
+      "why": "Both are reachable and both would improve; the ranking has to follow how badly each is placed rather than which is nearer.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.4, 1.0], "uncertainty_m": 0.25,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.4, 1.0], "uncertainty_m": 0.80,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "chose": {"target": "object:9"},
+        "order": [{"target": "object:9"}, {"target": "object:8"}]
+      }
+    },
+    {
+      "name": "a thing shut in a cupboard is refused, not forgotten",
+      "why": "There is nowhere to stand that can see it. That has to appear in the record as a refusal with a reason, because a thing that is silently never considered looks exactly like a thing nothing wanted.",
+      "map": "closet",
+      "entities": [
+        {"id": "object:8", "at": [0.55, 0.30], "uncertainty_m": 0.60}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "vetoed": [{"target": "object:8", "veto": "unreachable"}]
+      }
+    },
+    {
+      "name": "a thing the rover cannot get within three metres of is refused by the band",
+      "why": "The geometry was accepted between half a metre and two and a half. A look from further out is not forbidden by physics, it is outside what anybody has checked -- and the refusal says the distance.",
+      "map": "faraway",
+      "entities": [
+        {"id": "object:8", "at": [5.0, 0.35], "uncertainty_m": 0.70,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "vetoed": [
+          {"target": "object:8", "veto": "outside the certified band"}
+        ]
+      }
+    },
+    {
+      "name": "with the perception loop stopped, a thing needing a range is refused",
+      "why": "The distance is the whole point of that goal, and the camera that measures it is reached through the loop that is not running.",
+      "map": "room",
+      "rover": {"building": false},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.55,
+         "major_deg": 90, "looks": 6, "ranged": 0}
+      ],
+      "expect": {
+        "vetoed": [{"target": "object:8", "veto": "no depth camera"}],
+        "chose": "nothing"
+      }
+    },
+    {
+      "name": "a thing that has been ranged is not refused for the depth camera",
+      "why": "The other side of the same rule: a second bearing needs no depth camera, so a stopped loop is not a reason to refuse it.",
+      "map": "room",
+      "rover": {"building": false},
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.55,
+         "major_deg": 90, "looks": 8, "ranged": 4}
+      ],
+      "expect": {
+        "chose": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "a placement from a map that has been replaced is not driven to",
+      "why": "Its coordinates belong to a map that no longer exists. The world state keeps such a thing so it can be recognised again, not so the rover can drive to where it used to be.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90, "map_session": 3}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "not_offered": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "a thing seen once and never placed is not proposed at all",
+      "why": "One bearing is a direction and not a position, so there is nowhere to plan a viewpoint around. What that thing needs is for the rover to be somewhere else, which is what exploring is for.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "placed": false, "looks": 1,
+         "ranged": 0}
+      ],
+      "expect": {
+        "chose": "nothing",
+        "not_offered": {"target": "object:8"}
+      }
+    },
+    {
+      "name": "when the height is a guess, the gain is halved and says so",
+      "why": "The validated envelope covers tilt zero and tilt +20, and a thing whose height above the floor is uncertain to a metre could need either. Charging for the ignorance is the conservative direction; pretending to know is the other one.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90, "height_sigma_m": 1.2}
+      ],
+      "expect": {
+        "offered": [{"target": "object:8"}],
+        "terms": [
+          {"match": {"target": "object:8"}, "field": "gain", "at_most": 0.35}
+        ]
+      }
+    },
+    {
+      "name": "the same thing with a known height is worth twice as much",
+      "why": "The pair to the case above, so that the discount is visible as a difference rather than asserted.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90, "height_sigma_m": 0.05}
+      ],
+      "expect": {
+        "terms": [
+          {"match": {"target": "object:8"}, "field": "gain", "at_least": 0.6}
+        ]
+      }
+    },
+    {
+      "name": "a marginal improvement is not worth disturbing the rover for",
+      "why": "Twelve centimetres off a placement that is already at fourteen. Being reachable and safe is not a reason to drive.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.14,
+         "major_deg": 90, "ranged": 4}
+      ],
+      "expect": {
+        "chose": "nothing"
+      }
+    },
+    {
+      "name": "two places to stand are offered when they are a real choice",
+      "why": "The good viewpoint and the cheap one are a trade, and the trade belongs to the scorer. A generator that picked for it would be a scorer nobody could see.",
+      "map": "room",
+      "entities": [
+        {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "candidates": 2,
+        "offered": [{"target": "object:8"}]
+      }
+    }
+  ]
+}

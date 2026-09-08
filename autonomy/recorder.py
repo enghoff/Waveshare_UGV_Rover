@@ -3,16 +3,20 @@
 
     ssh orin 'cd ~/ugv/autonomy && python3 recorder.py --seconds 1800'
 
-**This is a shadow run: it observes and records, and it decides nothing.** There
-is no executive yet, so the episodes it writes contain no decision and no call --
-`replay` reports them as "decided nothing", which is the honest reading. What
-they prove is that the record works against a real rover, which is what has to be
-true before anything is allowed to write a decision into it.
+**This is a shadow run: it watches, it works out what it would do, and it has no
+way to do any of it.** Two kinds of episode come out of it. The ones it takes
+down from the rover's own activity -- a look, a move -- contain no decision,
+because nobody here decided to take that look. Once a minute it also writes one
+of its own: what it would go and do next, what that would cost, what it refused
+and why, closing `abandoned` because there is nothing it may act with. That
+second kind is Phase 2; the executive that would carry one out is Phase 3 and
+does not exist.
 
 It reaches the rover only through `client.ReadOnly`, which refuses every call
 that could move anything. That is the structural half of "the autonomy component
 has no movement-capable path": not a recorder that never calls `drive`, but one
-that cannot.
+that cannot. `--decide-every 0` turns the deliberating off and leaves a run that
+only watches, which is what every recording before Phase 2 was.
 
 ## Why it reads the history rather than watching for events
 
@@ -48,9 +52,12 @@ from typing import Any
 
 import builds as builds_mod
 import client as client_mod
+import decide as decide_mod
 import events
 import refs
 import retention as retention_mod
+import scoring
+import situation as situation_mod
 import store as store_mod
 import summary as summary_mod
 
@@ -81,6 +88,15 @@ ENDINGS = {
 #: no timer to install and forget on a rover nobody is watching.
 RETAIN_EVERY_S = 300.0
 
+#: How often, in seconds, a running recorder works out what the rover would do
+#: next. A minute rather than every poll, and the reason is what it costs rather
+#: than what it is worth: one deliberation reads the whole entity listing and
+#: the occupancy map and walks the map twice, which is a few tenths of a second
+#: on the Orin -- cheap once a minute beside a rover that looks every second,
+#: and not something to do two seconds apart. Nothing acts on the answer, so a
+#: slightly stale one costs nothing at all.
+DECIDE_EVERY_S = 60.0
+
 #: How much of the world to snapshot beside a look. The whole entity listing is
 #: the honest answer and it is also the expensive one, so it is snapshotted at
 #: the summary level per look and in full only when the listing has changed --
@@ -100,8 +116,9 @@ class Recorder:
     def __init__(self, store: store_mod.EpisodeStore,
                  client: client_mod.ReadOnly, *, keep_frames: bool = True,
                  catch_up: int = 200,
-                 policy: retention_mod.Policy | None = retention_mod.DEFAULT
-                 ) -> None:
+                 policy: retention_mod.Policy | None = retention_mod.DEFAULT,
+                 decide_every_s: float | None = DECIDE_EVERY_S,
+                 weights: scoring.Weights | None = None) -> None:
         self.store = store
         self.client = client
         self.keep_frames = keep_frames
@@ -109,13 +126,19 @@ class Recorder:
         #: None turns retention off, which is for measuring what a run would
         #: cost if nothing pruned it. Anything else is enforced as it records.
         self.policy = policy
+        #: None turns the deliberating off, leaving a run that only watches --
+        #: which is what every recording before Phase 2 was.
+        self.decide_every_s = decide_every_s
+        self.weights = weights or scoring.DEFAULT
         self.recorded = {"looks": 0, "moves": 0, "frames": 0, "polls": 0,
                          "missed_moves": 0, "unreachable": 0,
                          "evidence_removed": 0, "bytes_freed": 0,
-                         "redeploys": 0, "world_cleared": 0}
+                         "redeploys": 0, "world_cleared": 0,
+                         "decisions": 0, "wanted": 0}
         self._entities_at = 0.0
         self._entities_digest = ""
         self._retained_at = 0.0
+        self._decided_at = 0.0
         self._builds = builds_mod.builds()
 
     # --- one pass -------------------------------------------------------------
@@ -195,6 +218,9 @@ class Recorder:
                            or got.get("redeployed") or got.get("cleared")
                            or not got.get("ok")):
                 report(got)
+            if (self.decide_every_s is not None
+                    and time.time() - self._decided_at >= self.decide_every_s):
+                self.consider(report=report)
             if (self.policy is not None
                     and time.time() - self._retained_at >= RETAIN_EVERY_S):
                 self.retain(report=report)
@@ -202,6 +228,32 @@ class Recorder:
         if self.policy is not None:
             self.retain(report=report)
         return {**self.recorded, "seconds": round(time.time() - started, 1)}
+
+    def consider(self, *, report: Any = None) -> dict[str, Any] | None:
+        """Work out what the rover would do next, and write it down.
+
+        **It decides and cannot act**, which is the whole of Phase 2: the
+        situation is read through the same read-only door as everything else
+        here, and what comes out is an episode saying what the rover would have
+        chosen and why it may not. An executive is Phase 3 and does not exist.
+
+        A deliberation that cannot read the rover is not recorded at all. An
+        episode saying "it would do nothing" when the truth is "nobody
+        answered" would be the worst kind of entry in this record: wrong, and
+        indistinguishable from a real one.
+        """
+        self._decided_at = time.time()
+        here = situation_mod.Situation.read(self.client)
+        if here.nav.get("error") and here.grid is None and not here.entities:
+            self.recorded["unreachable"] += 1
+            return None
+        got = decide_mod.deliberate(self.store, here, self.weights)
+        self.recorded["decisions"] += 1
+        if got["decision"]["preferred"] is not None:
+            self.recorded["wanted"] += 1
+        if report:
+            report({"ok": True, "decided": got})
+        return got
 
     def retain(self, *, report: Any = None) -> dict[str, Any]:
         """Bring the record back within its policy, and count what went."""
@@ -534,13 +586,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-retention", action="store_true",
                         help="do not prune the record while recording, which is "
                              "how the unpruned cost of a run gets measured")
+    parser.add_argument("--decide-every", type=float, default=DECIDE_EVERY_S,
+                        help="seconds between working out what the rover would "
+                             "do next (default %d); 0 to only watch"
+                             % DECIDE_EVERY_S)
     args = parser.parse_args(argv)
 
     store = store_mod.EpisodeStore(args.dir)
     policy = None if args.no_retention else retention_mod.DEFAULT
+    weights = scoring.Weights.load(args.dir)
     recorder = Recorder(store, client_mod.ReadOnly(),
                         keep_frames=not args.no_frames,
-                        catch_up=args.catch_up, policy=policy)
+                        catch_up=args.catch_up, policy=policy,
+                        decide_every_s=args.decide_every or None,
+                        weights=weights)
     before = store.summary()
     print(f"watching for {args.seconds:.0f}s, polling every {args.every:.0f}s, "
           f"frames {'off' if args.no_frames else 'on'}")
@@ -548,6 +607,12 @@ def main(argv: list[str] | None = None) -> int:
           f"{before['evidence_bytes']} bytes of evidence to begin with")
     print("retention: " + (policy.describe() if policy else
                            "off -- the record will not be pruned"))
+    print("deciding: " + (f"what it would do next, every "
+                          f"{args.decide_every:.0f}s, with weights "
+                          f"{weights.version} from {weights.source} -- and no "
+                          f"way to act on any of it"
+                          if args.decide_every else
+                          "off -- this run only watches"))
     print("running: " + builds_mod.describe(recorder._builds))
 
     def say(got: dict[str, Any]) -> None:
@@ -562,6 +627,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {time.strftime('%H:%M:%S')} redeployed under this run: "
                   f"{', '.join(got['redeployed'])} -- episodes either side of "
                   f"this are not the same experiment")
+        if got.get("decided"):
+            lines = decide_mod.render(got["decided"]).splitlines()
+            print(f"  {time.strftime('%H:%M:%S')} {lines[0]}")
+            for line in lines[1:]:
+                print(f"           {line}")
+            return
         if got.get("retained"):
             kept = got["retained"]
             print(f"  {time.strftime('%H:%M:%S')} retention removed "
@@ -580,6 +651,9 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"recorded {got['looks']} looks and {got['moves']} moves in "
           f"{got['seconds']}s over {got['polls']} polls")
+    if got["decisions"]:
+        print(f"  worked out what it would do next {got['decisions']} time(s), "
+              f"wanted something on {got['wanted']} of them, and moved nothing")
     if got["missed_moves"]:
         print(f"  {got['missed_moves']} move(s) began and ended between polls "
               f"and were not recorded")

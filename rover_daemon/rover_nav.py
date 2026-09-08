@@ -619,6 +619,29 @@ class RoverNav:
             "board_reopens": getattr(self.link, "reopens", 0),
             "board_reopen_note": getattr(self.link, "reopen_note", None)}
 
+    def _tool_nav_grid(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The occupancy map as numbers. A control call, not a model tool.
+
+        `map_png` answers "what does the room look like" and this answers "which
+        cells does the mapper call unknown", which is a different question and
+        the only one a chooser can act on: where the map stops, which floor can
+        be walked to, how much of the house is still unseen. A model has no use
+        for 28 kB of occupancy bytes and every use for the picture, so this is
+        kept out of `tools()` with `nav_status` and `map_png`.
+
+        Written for [autonomy/mapgrid.py](../autonomy/mapgrid.py), which ranks
+        frontiers with `ros_nav/frontier.py` -- the same module the rover's own
+        `explore` ranks with -- so that what the autonomy record says the rover
+        would have driven to is what `explore` would really have chosen.
+        """
+        if self.nav is None:
+            return {"ok": False, "error": NO_DRIVING}
+        grid = getattr(self.nav, "grid", None)
+        if not callable(grid):
+            return {"ok": False,
+                    "error": "this navigator does not publish an occupancy map"}
+        return grid()
+
     def _tool_map_png(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """The map as base64 PNG in the reply. A control call, not a model tool.
 
