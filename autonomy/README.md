@@ -139,6 +139,15 @@ the recording:
 `UGV_AUTONOMY_DIR` overrides it, and the only things that ever override it are
 the test suite and `recorder.py --dir`.
 
+**Stopping it disturbs nothing.** The record is downstream of everything and
+upstream of nothing: killing the recorder outright, deleting its database, or
+removing the component leaves the world state, the map and the rover's own place
+in it exactly as they were. That is what makes it safe to run beside work that
+matters, and safe to throw away a recording that has gone wrong. Killed with
+`SIGKILL` mid-poll on the Orin, every world-state and navigation field read
+identical either side and the record reopened with its place in the history
+unmoved.
+
 ## Keeping it off the disk
 
 A look costs a copied frame and a rover left switched on looks all day, so

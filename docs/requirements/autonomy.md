@@ -110,3 +110,22 @@ second program: the record only grows while something is recording. What would
 make it false is evidence kept by a path that does not go through the recorder,
 or a pinned set large enough to exceed the limit on its own — which is reported
 loudly rather than resolved by deleting the pins.
+
+<a id="r-aut-7"></a>
+### R-AUT-7 — The episode record can be stopped or lost without disturbing the rover
+
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md); on the Orin on
+  2026-09-08 a running recorder was killed with `SIGKILL` mid-poll, and every
+  field of the world state and of navigation — generation, map, map session,
+  settled, kept, position trusted, and the observation and entity counts — was
+  identical either side, while the record itself reopened intact with its place
+  in the history unmoved
+
+The record is downstream of everything and upstream of nothing. Its process
+dying, its database being deleted, or the whole component being removed must
+leave the rover exactly as it was — which is what makes it safe to run beside
+work that matters, and what makes it safe to throw away a recording that has
+gone wrong. What would make this false is any write to a component other than
+its own store, and the only path out of here is a client that can nothing but
+read.
