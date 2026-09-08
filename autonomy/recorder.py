@@ -46,6 +46,7 @@ import sys
 import time
 from typing import Any
 
+import builds as builds_mod
 import client as client_mod
 import events
 import refs
@@ -54,9 +55,11 @@ import store as store_mod
 import summary as summary_mod
 
 #: Where the recorder keeps its place in the world state's history, in the
-#: driving loop's running commentary, and in a move it has opened and not yet
-#: seen the end of.
+#: driving loop's running commentary, in a move it has opened and not yet seen
+#: the end of, and in which build of the rover was producing all of it.
 LOOK_MARK = "last_inference"
+BUILD_MARK = "builds"
+WORLD_MARK = "world_generation"
 MOVE_MARK = "last_move_seq"
 OPEN_MOVE = "open_move_episode"
 OPEN_MOVE_ID = "open_move_identity"
@@ -108,10 +111,12 @@ class Recorder:
         self.policy = policy
         self.recorded = {"looks": 0, "moves": 0, "frames": 0, "polls": 0,
                          "missed_moves": 0, "unreachable": 0,
-                         "evidence_removed": 0, "bytes_freed": 0}
+                         "evidence_removed": 0, "bytes_freed": 0,
+                         "redeploys": 0, "world_cleared": 0}
         self._entities_at = 0.0
         self._entities_digest = ""
         self._retained_at = 0.0
+        self._builds = builds_mod.builds()
 
     # --- one pass -------------------------------------------------------------
 
@@ -126,9 +131,50 @@ class Recorder:
             # the mark, so nothing is lost.
             self.recorded["unreachable"] += 1
             return {"ok": False, "why": str(exc)}
+        redeployed = self._check_builds()
+        cleared = self._check_world(live)
         looks = self._record_looks(live)
         moves = self._record_move(live)
-        return {"ok": True, "looks": looks, "moves": moves}
+        return {"ok": True, "looks": looks, "moves": moves,
+                "redeployed": redeployed, "cleared": cleared}
+
+    def _check_world(self, live: dict[str, Any]) -> str:
+        """Notice the semantic world being emptied under the recording.
+
+        The same kind of event as a deploy and worth marking for the same
+        reason: every identifier the episodes before it hold has been handed to
+        something else, so the two halves of a run either side of a clear are
+        talking about different rooms. Each episode already carries the
+        generation it belongs to; the mark is what makes the moment findable.
+        """
+        now = refs.generation_of(live)
+        if now == refs.UNKNOWN:
+            return ""
+        was = self.store.marked(WORLD_MARK)
+        if now == was:
+            return ""
+        self.store.mark(WORLD_MARK, now)
+        if not was:
+            return ""
+        self.recorded["world_cleared"] += 1
+        return now
+
+    def _check_builds(self) -> list[str]:
+        """Notice a deploy landing under the recording, and write it down.
+
+        A deploy does not only restart the daemon; it can change the rules that
+        decide what a look means. When that happens mid-run, the episodes either
+        side of it are not the same experiment, and the mark is what lets
+        somebody find the moment afterwards.
+        """
+        now = builds_mod.builds()
+        if not now or now == self._builds:
+            return []
+        moved = builds_mod.changed(self._builds, now)
+        self._builds = now
+        self.store.mark(BUILD_MARK, builds_mod.describe(now))
+        self.recorded["redeploys"] += 1
+        return moved
 
     def run(self, *, seconds: float, every_s: float = 2.0,
             report: Any = None) -> dict[str, Any]:
@@ -146,6 +192,7 @@ class Recorder:
         while time.time() < deadline:
             got = self.poll()
             if report and (got.get("looks") or got.get("moves")
+                           or got.get("redeployed") or got.get("cleared")
                            or not got.get("ok")):
                 report(got)
             if (self.policy is not None
@@ -207,7 +254,8 @@ class Recorder:
                     "regions": len(rows),
                     "pan_deg": first.get("observer_pan_deg"),
                     "tilt_deg": first.get("observer_tilt_deg"),
-                    "camera": first.get("camera")},
+                    "camera": first.get("camera"),
+                    "builds": self._builds},
             note="recorded by a shadow run; the rover decided nothing here")
 
         kept = self._keep_frame(first, generation)
@@ -355,7 +403,8 @@ class Recorder:
                                   else None),
                 map_session=live.get("map_session"),
                 detail={"kind": said.get("kind"), "asked": said.get("asked"),
-                        "first_seq": said.get("seq")},
+                        "first_seq": said.get("seq"),
+                        "builds": self._builds},
                 note="recorded by a shadow run; the rover was driven by "
                      "somebody else")
             self.store.mark(OPEN_MOVE, open_ref)
@@ -488,11 +537,20 @@ def main(argv: list[str] | None = None) -> int:
           f"{before['evidence_bytes']} bytes of evidence to begin with")
     print("retention: " + (policy.describe() if policy else
                            "off -- the record will not be pruned"))
+    print("running: " + builds_mod.describe(recorder._builds))
 
     def say(got: dict[str, Any]) -> None:
         if not got.get("ok"):
             print(f"  the daemon did not answer: {got.get('why')}")
             return
+        if got.get("cleared"):
+            print(f"  {time.strftime('%H:%M:%S')} the semantic world was "
+                  f"emptied -- it is now {got['cleared']}, and every thing the "
+                  f"episodes above name has been handed to something else")
+        if got.get("redeployed"):
+            print(f"  {time.strftime('%H:%M:%S')} redeployed under this run: "
+                  f"{', '.join(got['redeployed'])} -- episodes either side of "
+                  f"this are not the same experiment")
         if got.get("retained"):
             kept = got["retained"]
             print(f"  {time.strftime('%H:%M:%S')} retention removed "
@@ -516,6 +574,13 @@ def main(argv: list[str] | None = None) -> int:
               f"and were not recorded")
     if got["unreachable"]:
         print(f"  the daemon did not answer on {got['unreachable']} poll(s)")
+    if got["world_cleared"]:
+        print(f"  the semantic world was emptied {got['world_cleared']} time(s) "
+              f"during this run, so the things named before and after are not "
+              f"the same things")
+    if got["redeploys"]:
+        print(f"  the rover was redeployed {got['redeploys']} time(s) during "
+              f"this run, so it is not one experiment throughout")
     if got["evidence_removed"]:
         print(f"  retention removed {got['evidence_removed']} piece(s) of "
               f"evidence, freeing {got['bytes_freed']} bytes")
