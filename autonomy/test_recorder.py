@@ -236,43 +236,164 @@ def test_a_shadow_episode_decides_nothing_and_says_so() -> None:
 
 # --- moves -------------------------------------------------------------------
 
-def test_a_move_is_recorded_once() -> None:
+def test_a_move_is_one_episode_however_many_things_it_says() -> None:
+    """The driving loop says something each time a move turns a corner, and all
+    of them belong to the one move."""
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        rover = FakeRover(move={"seq": 4, "phase": "driving", "kind": "drive_to",
-                                "asked": {"x_m": 1.0}, "why": "somebody asked",
-                                "route_m": 3.2, "replans": 0})
-        first = Recorder(store, rover).poll()
-        second = Recorder(store, rover).poll()
-        check("recorded once", first["moves"], 1)
-        check("...and not again while it is the same move", second["moves"], 0)
-        check("...with the sequence number marked", store.marked(MOVE_MARK), "4")
-        episode = store.episodes()[0]
-        check("...triggered by the rover moving", episode["trigger"],
-              "the rover moved")
+        rover = FakeRover(said=[
+            {"seq": 1, "phase": "choosing", "kind": "drive_to",
+             "asked": {"x_m": 1.0}, "why": "somebody asked"},
+            {"seq": 2, "phase": "turning", "kind": "drive_to",
+             "asked": {"x_m": 1.0}},
+            {"seq": 3, "phase": "driving", "kind": "drive_to",
+             "asked": {"x_m": 1.0}, "route_m": 3.2},
+        ])
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        check("one episode, not three", store.summary()["episodes"], 1)
+        check("...counted once", recorder.recorded["moves"], 1)
+        episode = store.episode(store.episodes()[0]["ref"])
+        check("...with a step for each thing it said",
+              [one["body"]["phase"] for one in episode["events"]],
+              ["choosing", "turning", "driving"])
+        check("...and still open, because it has not ended",
+              store.outcome(store.episodes()[0]["ref"]), None)
         store.close()
 
 
-def test_a_move_that_began_and_ended_between_polls_is_counted() -> None:
-    """Never silently absent. The recorder polls, so it can miss one, and a
-    reader has to be able to tell that from a rover that sat still."""
+def test_a_move_closes_with_the_navigators_own_word_for_how_it_went() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        rover = FakeRover(move={"seq": 1, "phase": "driving"})
+        rover = FakeRover(said=[{"seq": 1, "phase": "driving",
+                                 "kind": "drive_to"}])
         recorder = Recorder(store, rover)
         recorder.poll()
-        rover.move = {"seq": 4, "phase": "arrived"}
+        rover.said.append({"seq": 2, "phase": "ended", "kind": "drive_to",
+                           "reason": "arrived", "why": "it got there"})
         recorder.poll()
-        check("two recorded", recorder.recorded["moves"], 2)
-        check("...and the two in between counted as missed",
-              recorder.recorded["missed_moves"], 2)
+        episode = store.episodes()[0]["ref"]
+        check("closed", store.outcome(episode)["outcome"], "succeeded")
+        check("...carrying the reason the navigator gave",
+              store.outcome(episode)["detail"], "arrived: it got there")
+        store.close()
+
+
+def test_a_move_that_was_blocked_is_not_recorded_as_fine() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[
+            {"seq": 1, "phase": "driving", "kind": "explore"},
+            {"seq": 2, "phase": "ended", "kind": "explore", "reason": "blocked",
+             "why": "the ROS stack is not answering"}])
+        Recorder(store, rover).poll()
+        check("failed", store.outcome(store.episodes()[0]["ref"])["outcome"],
+              "failed")
+        store.close()
+
+
+def test_an_ending_nothing_recognises_does_not_close_as_fine() -> None:
+    """A move that ended for a reason this build has never heard of is not one
+    to record as having gone well."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[
+            {"seq": 1, "phase": "driving", "kind": "drive_to"},
+            {"seq": 2, "phase": "ended", "kind": "drive_to",
+             "reason": "swallowed_by_a_hole"}])
+        Recorder(store, rover).poll()
+        check("failed rather than succeeded",
+              store.outcome(store.episodes()[0]["ref"])["outcome"], "failed")
+        store.close()
+
+
+def test_a_phase_shorter_than_the_poll_is_still_recorded() -> None:
+    """A replan lasts about a fifth of a second and is the one phase of a move
+    worth knowing about. The loop keeps it and hands it back."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[{"seq": 1, "phase": "driving",
+                                 "kind": "drive_to"}])
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        # Between the two polls: a replan nobody polling could have seen.
+        rover.said += [
+            {"seq": 2, "phase": "replanning", "kind": "drive_to",
+             "why": "something moved into the path"},
+            {"seq": 3, "phase": "driving", "kind": "drive_to", "replans": 1},
+        ]
+        recorder.poll()
+        episode = store.episode(store.episodes()[0]["ref"])
+        check("the replan is in the record",
+              [one["body"]["phase"] for one in episode["events"]],
+              ["driving", "replanning", "driving"])
+        check("...with what provoked it",
+              episode["events"][1]["body"]["why"],
+              "something moved into the path")
+        check("...and nothing counted as missed",
+              recorder.recorded["missed_moves"], 0)
+        store.close()
+
+
+def test_a_gap_longer_than_the_loop_remembers_is_counted() -> None:
+    """The loop keeps thirty-two sentences. A recorder away for longer really
+    has lost some, and the number is reported rather than the gap hidden."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[{"seq": 1, "phase": "driving",
+                                 "kind": "drive_to"}])
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        # A long silence: the loop is now on sentence 90 and remembers none of
+        # the ones between.
+        rover.said = [{"seq": 90, "phase": "driving", "kind": "explore"}]
+        recorder.poll()
+        check("eighty-eight sentences lost, and said so",
+              recorder.recorded["missed_moves"], 88)
+        store.close()
+
+
+def test_a_new_move_closes_one_that_was_never_seen_to_end() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[{"seq": 1, "phase": "driving",
+                                 "kind": "drive_to", "asked": {"x_m": 1.0}}])
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        rover.said.append({"seq": 2, "phase": "driving", "kind": "explore",
+                           "asked": None})
+        recorder.poll()
+        check("two episodes", store.summary()["episodes"], 2)
+        first = [one for one in store.episodes()
+                 if one["trigger_detail"]["kind"] == "drive_to"][0]["ref"]
+        check("...and the first is closed honestly",
+              store.outcome(first)["outcome"], "interrupted")
+        check("...saying why it could not say more",
+              "before this one was seen to end" in store.outcome(first)["detail"],
+              True)
+        store.close()
+
+
+def test_the_loop_going_idle_closes_a_move_that_never_ended() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(said=[{"seq": 1, "phase": "driving",
+                                 "kind": "drive_to"}])
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        rover.said.append({"seq": 2, "phase": "idle"})
+        recorder.poll()
+        got = store.outcome(store.episodes()[0]["ref"])
+        check("closed", got["outcome"], "interrupted")
+        check("...saying the loop simply went quiet",
+              "went idle" in got["detail"], True)
         store.close()
 
 
 def test_an_idle_rover_produces_no_move_episodes() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
-        rover = FakeRover(move={"seq": 0, "phase": "idle"})
+        rover = FakeRover(said=[{"seq": 0, "phase": "idle"}])
         got = Recorder(store, rover).poll()
         check("nothing to record", got["moves"], 0)
         check("...and no episode invented", store.summary()["episodes"], 0)
@@ -354,8 +475,14 @@ TESTS = (
     test_a_look_that_attached_to_nothing_is_not_a_failure,
     test_a_summary_of_a_shadow_episode_says_what_the_look_found,
     test_a_shadow_episode_decides_nothing_and_says_so,
-    test_a_move_is_recorded_once,
-    test_a_move_that_began_and_ended_between_polls_is_counted,
+    test_a_move_is_one_episode_however_many_things_it_says,
+    test_a_move_closes_with_the_navigators_own_word_for_how_it_went,
+    test_a_move_that_was_blocked_is_not_recorded_as_fine,
+    test_an_ending_nothing_recognises_does_not_close_as_fine,
+    test_a_phase_shorter_than_the_poll_is_still_recorded,
+    test_a_gap_longer_than_the_loop_remembers_is_counted,
+    test_a_new_move_closes_one_that_was_never_seen_to_end,
+    test_the_loop_going_idle_closes_a_move_that_never_ended,
     test_an_idle_rover_produces_no_move_episodes,
     test_a_daemon_that_stops_answering_loses_nothing,
     test_a_missing_picture_does_not_lose_the_look,

@@ -413,18 +413,25 @@ as of the same date. What remains open is written into
 
 ### What is still ahead
 
-- **Nothing records an episode on the rover.** The component has no caller, so
-  criterion 4's thirty-minute shadow run has nothing to record. This is the next
-  piece of work and it is what criteria 4 and 5 wait on.
-- **Retention and disk limits**, neither implemented nor measured, which is
-  [R-AUT-6](../requirements/autonomy.md#r-aut-6) and criterion 6. Each look an
-  episode keeps costs a copy of a frame.
+- **Nothing decides anything.** The recorder watches and writes down; the
+  executive that would choose a goal is Phase 2, and until it exists every
+  episode is an occasion of the rover acting rather than of it deciding. The
+  record has been proved against real events; it has not been proved against a
+  decision, because there are none to record.
+- **The recorder is not a service.** It is run by hand for as long as somebody
+  wants a recording. Nothing starts it at boot, so a rover left alone records
+  nothing, and retention is not run on a schedule either.
 - **Nothing tells the record about a merge or a split.** The alias table exists
-  and is tested; the world state does not call it.
-- **A real migration**, which cannot exist until the schema changes; the suite
-  exercises the mechanism against a database built one column short.
-- **Pinned acceptance recordings**, still to be defined: how a recording somebody
-  intends to keep is protected from retention expiry.
+  and is tested; the world state does not call it, so identity changes are
+  recorded only when something puts them there.
+- **A look that found nothing leaves no episode.** The recorder keys an episode
+  to an inspection's observations, and an inspection that found no region writes
+  no observation — so "the rover looked and saw nothing", which is itself worth
+  knowing, is invisible to it. Closing that needs the daemon to expose its
+  inspection log, which it does not today.
+- **Only thirty-two of the driving loop's sentences are retained**, so a
+  recorder away for longer than that loses some. It counts and reports what it
+  lost, which is the honest floor rather than a fix.
 
 ### Milestone M1: every future autonomous action can be reconstructed
 

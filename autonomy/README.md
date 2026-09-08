@@ -104,11 +104,17 @@ remembers the last observation it recorded and walks back from the newest until
 it meets it. Nothing between polls can be missed, and a recorder that was stopped
 for an hour catches up when it starts again.
 
-**Moves cannot be read that way**, because there is no history of moves, only
-what the driving loop is doing now. So a move is polled and diffed on its
-sequence number, and a move that began and ended inside one poll interval is
-counted and reported as missed rather than left as an absence the reader would
-take for a rover sitting still.
+**Moves come from the driving loop's own running commentary.** There is no
+history of moves to walk, but the loop keeps the last thirty-two sentences it
+said and hands back everything said since a sequence number the caller names — so
+the recorder names the last one it recorded and gets the ones in between. That
+matters because a replan lasts about a fifth of a second and is the one phase of
+a move worth knowing about; nothing polling could catch it, and this does. One
+move is one episode with a step per sentence, closed on the sentence saying how
+it ended, using the navigator's own word for it. Only a gap long enough to
+overrun those thirty-two sentences loses anything, and what it lost is counted
+and reported rather than left as an absence a reader would take for a rover
+sitting still.
 
 `--no-frames` records the looks without copying their pictures, which is how the
 cost of keeping them gets measured.

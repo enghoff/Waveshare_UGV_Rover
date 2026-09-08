@@ -24,11 +24,13 @@ recorded and walks back from the newest until it meets it. Nothing between two
 polls can be missed, and a recorder that was stopped for an hour catches up when
 it starts again.
 
-Navigation cannot be read that way -- there is no history, only what the driving
-loop is doing now -- so a move is polled and diffed on its sequence number. A move
-that started and finished inside one poll interval is therefore missed, and the
-recorder says so in its report rather than leaving the reader to assume the rover
-sat still.
+Navigation has no history of *moves*, but the driving loop keeps the last
+thirty-two sentences it said and will hand back everything said since a sequence
+number the caller names. So the recorder names the last sentence it recorded and
+gets the ones in between -- which matters, because a replan lasts about a fifth
+of a second and is the one phase of a move worth knowing about. Only a gap long
+enough to overrun that history loses anything, and the recorder counts what it
+lost rather than leaving the reader to assume the rover sat still.
 
 ## What one look costs to record
 
@@ -50,9 +52,23 @@ import refs
 import store as store_mod
 import summary as summary_mod
 
-#: Where the recorder keeps its place in the world state's history.
+#: Where the recorder keeps its place in the world state's history, in the
+#: driving loop's running commentary, and in a move it has opened and not yet
+#: seen the end of.
 LOOK_MARK = "last_inference"
 MOVE_MARK = "last_move_seq"
+OPEN_MOVE = "open_move_episode"
+OPEN_MOVE_ID = "open_move_identity"
+
+#: How a move's own word for how it ended becomes an episode outcome. The
+#: vocabulary is the navigator's -- see `ros_navigator`, which is where these
+#: come from -- and anything not in it closes `failed`, because a move that
+#: ended for a reason nothing here recognises is not one to record as fine.
+ENDINGS = {
+    "arrived": "succeeded", "finished": "succeeded",
+    "stopped": "interrupted", "busy": "interrupted", "refused": "interrupted",
+    "blocked": "failed", "failed": "failed", "lost": "failed",
+}
 
 #: How much of the world to snapshot beside a look. The whole entity listing is
 #: the honest answer and it is also the expensive one, so it is snapshotted at
@@ -246,50 +262,92 @@ class Recorder:
     # --- moves ----------------------------------------------------------------
 
     def _record_move(self, live: dict[str, Any]) -> int:
-        """One episode per move the driving loop reports, on its sequence number.
+        """One episode per move, built from the driving loop's own sentences.
 
-        Polled rather than replayed from a history, because there is no history
-        of moves to read -- so a move that began and ended between two polls is
-        counted as missed and reported, never silently absent.
+        A move is not one reading. The loop says something each time the move
+        turns a corner -- choosing, turning, driving, replanning, ended -- and
+        each sentence carries its own sequence number, so what arrives here is a
+        run of them belonging to one move. The episode opens on the first and
+        closes on the sentence that says how it ended.
         """
-        move = live.get("move") or {}
-        seq = move.get("seq")
-        if not isinstance(seq, int) or seq <= 0:
-            return 0
+        move = dict(live.get("move") or {})
+        missed = move.pop("missed", None) or []
         last = _int(self.store.marked(MOVE_MARK), 0)
-        if seq <= last:
+        said = [one for one in [*missed, move]
+                if isinstance(one.get("seq"), int) and one["seq"] > last]
+        if not said:
             return 0
-        if seq > last + 1 and last:
-            self.recorded["missed_moves"] += seq - last - 1
-        generation = refs.generation_of(live)
-        episode = self.store.open_episode(
-            "the rover moved",
-            world_generation=generation if generation != refs.UNKNOWN else None,
-            map_session=live.get("map_session"),
-            detail={"seq": seq, "kind": move.get("kind"),
-                    "asked": move.get("asked"), "why": move.get("why")},
-            note="recorded by a shadow run; the rover was driven by somebody else")
-        self.store.append(episode, events.measured(
-            "the move as the recorder found it",
-            phase=move.get("phase"), route_m=move.get("route_m"),
-            waypoints=move.get("waypoints"), replans=move.get("replans"),
-            reason=move.get("reason"), age_s=move.get("age_s"),
+        # The loop keeps thirty-two sentences. A recorder away for longer than
+        # that really has lost some, and saying how many is the whole difference
+        # between a gap and a rover that sat still.
+        if last and said[0]["seq"] > last + 1:
+            self.recorded["missed_moves"] += said[0]["seq"] - last - 1
+        opened = 0
+        for one in said:
+            opened += self._one_sentence(one, live)
+            self.store.mark(MOVE_MARK, one["seq"])
+        return opened
+
+    def _one_sentence(self, said: dict[str, Any], live: dict[str, Any]) -> int:
+        """Fold one sentence into the move it belongs to. Returns 1 if it began one."""
+        phase = said.get("phase")
+        open_ref = self.store.marked(OPEN_MOVE)
+        identity = _dumps(said.get("kind"), said.get("asked"))
+
+        if phase == "idle":
+            # The loop is saying nothing is happening. Anything still open ended
+            # without the recorder seeing it end.
+            if open_ref:
+                self._close_move(open_ref, None,
+                                 "the loop went idle without this move being "
+                                 "seen to end")
+            return 0
+
+        if open_ref and self.store.marked(OPEN_MOVE_ID) != identity:
+            self._close_move(open_ref, None,
+                             "a new move began before this one was seen to end")
+            open_ref = ""
+
+        began = 0
+        if not open_ref:
+            open_ref = self.store.open_episode(
+                "the rover moved",
+                world_generation=(live.get("world_generation")
+                                  if refs.generation_of(live) != refs.UNKNOWN
+                                  else None),
+                map_session=live.get("map_session"),
+                detail={"kind": said.get("kind"), "asked": said.get("asked"),
+                        "first_seq": said.get("seq")},
+                note="recorded by a shadow run; the rover was driven by "
+                     "somebody else")
+            self.store.mark(OPEN_MOVE, open_ref)
+            self.store.mark(OPEN_MOVE_ID, identity)
+            self.recorded["moves"] += 1
+            began = 1
+
+        self.store.append(open_ref, events.measured(
+            f"the move said {phase!r}",
+            seq=said.get("seq"), phase=phase, why=said.get("why"),
+            route_m=said.get("route_m"), waypoints=said.get("waypoints"),
+            replans=said.get("replans"), reason=said.get("reason"),
+            frontiers_left=said.get("frontiers_left"),
             pose=live.get("pose"), battery_v=live.get("battery_v"),
             map_settled=live.get("map_settled")))
-        # Closed straight away rather than held open across polls. The recorder
-        # sees a move's phase, not its beginning and end, so an episode left
-        # open would be waiting for a transition it cannot rely on seeing; what
-        # it can honestly record is the state the move was in when it was found.
+
+        if phase == "ended":
+            self._close_move(open_ref, said.get("reason"), said.get("why") or "")
+        return began
+
+    def _close_move(self, episode_ref: str, reason: str | None,
+                    detail: str) -> None:
+        outcome = ENDINGS.get(str(reason or ""), "failed" if reason else
+                              "interrupted")
         self.store.close_episode(
-            episode,
-            "succeeded" if move.get("phase") in ("arrived", "done") else
-            "interrupted" if move.get("phase") in ("stopped", "failed") else
-            "abandoned",
-            detail=f"seen in phase {move.get('phase')!r} by a recorder that "
-                   f"polls; the phases before it were not observed")
-        self.store.mark(MOVE_MARK, seq)
-        self.recorded["moves"] += 1
-        return 1
+            episode_ref, outcome,
+            detail=(f"{reason}: {detail}" if reason and detail else
+                    str(reason or detail)))
+        self.store.mark(OPEN_MOVE, "")
+        self.store.mark(OPEN_MOVE_ID, "")
 
     # --- what the rover was like -----------------------------------------------
 
@@ -299,7 +357,13 @@ class Recorder:
         live: dict[str, Any] = dict(world.get("summary") or {})
         live["backend"] = world.get("backend")
         try:
-            nav = self.client.call("nav_status")
+            # Named so the loop hands back the sentences said since -- a replan
+            # lasts about a fifth of a second and would otherwise be gone.
+            # Zero on a fresh recorder rather than nothing, so that a move
+            # already under way when it started is picked up from the beginning
+            # of what the loop still remembers, the way the looks are.
+            nav = self.client.call("nav_status", {
+                "since_seq": _int(self.store.marked(MOVE_MARK), 0)})
             for key in ("move", "pose", "driving", "exploring", "estop",
                         "map_settled", "map_kept", "position_trusted",
                         "map_id", "match_score"):
@@ -341,6 +405,12 @@ def _what_the_look_did(rows: list[dict]) -> str:
     return (f"a look found {len(rows)} region{'' if len(rows) == 1 else 's'}, "
             f"{attached} of them attached to a thing the rover already knows, "
             f"{ranged} with a measured distance")
+
+
+def _dumps(*values: Any) -> str:
+    """A stable name for a move's identity, so that a new one is recognisable."""
+    import json
+    return json.dumps(values, sort_keys=True, default=str)
 
 
 def _int(text: str, fallback: int) -> int:

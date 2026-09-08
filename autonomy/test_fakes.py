@@ -109,12 +109,15 @@ class FakeRover(client.ReadOnly):
     """
 
     def __init__(self, *, generation: str = WORLD, rows: list | None = None,
-                 move: dict | None = None, frames: dict | None = None,
+                 said: list | None = None, frames: dict | None = None,
                  entities: list | None = None) -> None:
         super().__init__()
         self.generation = generation
         self.rows = list(rows or [])
-        self.move = move or {"seq": 0, "phase": "idle"}
+        #: The driving loop's running commentary, oldest first. The last is what
+        #: it is saying now; the ones before it are what a poller that named a
+        #: sequence number gets back under `missed`.
+        self.said = list(said or [{"seq": 0, "phase": "idle"}])
         self.frames = dict(frames or {})
         self.entities = list(entities or [])
         self.asked: list[str] = []
@@ -170,8 +173,12 @@ class FakeRover(client.ReadOnly):
     def _world_building(self, _arguments):
         return {"ok": True, "building": True, "looks": 9, "every_s": 1.0}
 
-    def _nav_status(self, _arguments):
-        return {"ok": True, "move": self.move, "driving": False,
+    def _nav_status(self, arguments):
+        since = arguments.get("since_seq")
+        missed = [] if since is None else [one for one in self.said[:-1]
+                                           if one["seq"] > int(since)]
+        move = {**self.said[-1], "missed": missed}
+        return {"ok": True, "move": move, "driving": False,
                 "exploring": False, "estop": False, "map_settled": True,
                 "map_kept": True, "position_trusted": True, "map_id": "m1",
                 "match_score": 0.8,
