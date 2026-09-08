@@ -46,6 +46,10 @@ def test_schemas():
                       if m.startswith("_tool_"))
     control = ["set_vision", "nav_status", "map_png", "camera_jpeg", "clear_map",
                "detect_in",
+               # The occupancy map as numbers. A model has every use for the
+               # picture `show_map` draws and none at all for 28 kB of cells;
+               # what wants the cells is the autonomy component's chooser.
+               "nav_grid",
                # Replugging the lidar in software, which is a control call for the
                # same reason wifi_join is: it is the right thing for a person
                # watching a stale map and the wrong thing for a model, since it
