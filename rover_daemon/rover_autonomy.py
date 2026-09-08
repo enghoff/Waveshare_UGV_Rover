@@ -30,10 +30,7 @@ back on, because enabling is not.
 """
 from __future__ import annotations
 
-import time
 from typing import Any
-
-import permission as permission_mod
 
 #: The calls a person makes that end a run. Stopping is the obvious one; the
 #: rest are a person taking the rover back by doing something with it. Driving

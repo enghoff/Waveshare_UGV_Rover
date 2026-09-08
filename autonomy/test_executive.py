@@ -18,7 +18,6 @@ and no-candidate idle, plus a stop in each state of the machine.
 """
 from __future__ import annotations
 
-import os
 import tempfile
 from typing import Any
 
@@ -161,7 +160,7 @@ def test_every_movement_names_the_episode_and_the_action_that_asked_for_it():
     for action_id, record in dispatched.items():
         check(f"{action_id} names its episode", record["episode"],
               got["episode"])
-        check(f"...and its identifier begins with it",
+        check("...and its identifier begins with it",
               action_id.startswith(got["episode"]), True)
     session.close()
 
@@ -485,7 +484,7 @@ def test_a_repeat_of_an_action_is_refused_rather_than_done_twice():
     """
     session = Session()
     rover = session.rover
-    run, permit = session.run, session.executive.renew()
+    permit = session.executive.renew()
     first = rover.call("autonomy_act",
                        {"permit": permit, "action": "drive_to",
                         "action_id": "au/x/episode:1#1", "episode": "au/x/episode:1",
