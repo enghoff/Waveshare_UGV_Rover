@@ -32,11 +32,13 @@ from test_recorder import TESTS as RECORDER_TESTS
 from test_refs import TESTS as REFS_TESTS
 from test_replay import TESTS as REPLAY_TESTS
 from test_retention import TESTS as RETENTION_TESTS
+from test_review import TESTS as REVIEW_TESTS
 from test_store import TESTS as STORE_TESTS
 from test_summary import TESTS as SUMMARY_TESTS
 
 TESTS = (*REFS_TESTS, *STORE_TESTS, *REPLAY_TESTS, *SUMMARY_TESTS,
-         *RECORDER_TESTS, *RETENTION_TESTS, *BUILDS_TESTS)
+         *RECORDER_TESTS, *RETENTION_TESTS, *BUILDS_TESTS,
+         *REVIEW_TESTS)
 
 
 def main() -> int:
