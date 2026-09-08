@@ -85,6 +85,7 @@ The web console uses HTTPS and assumes a trusted local network; it has no login.
 | [Rover daemon](rover_daemon/README.md) | Hardware ownership, tool API and navigation integration |
 | [Navigation](ros_nav/README.md) | ROS 2 stack, map persistence, exploration, calibration and replay |
 | [World state](world_state/README.md) | Observation storage, perception, association and text search |
+| [Episodic memory](autonomy/README.md) | What the rover did and why, with names that outlive the world state |
 | [Web console](drive_web/README.md) | Browser controls, maps, observation inspection and audio bridge |
 | [Voice](voice_chat/README.md) | Qwen realtime protocol, prompts and rover client |
 | [Face tracking](face_tracking/README.md) | YuNet detection, aiming geometry and calibration |
