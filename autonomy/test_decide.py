@@ -52,6 +52,9 @@ def test_a_deliberation_is_recorded_whole() -> None:
               rebuilt["decision"]["inputs_digest"], got["inputs"])
         check("...and the snapshot is the world it saw, not today's",
               rebuilt["decision"]["inputs"]["at"], here.at)
+        check("...with the things and the map in a row of their own",
+              situation_mod.restore(store, got["inputs"]).entities,
+              here.entities)
         check("...and it chose nothing, because it may not act",
               rebuilt["decision"]["chose"], "nothing")
         check("...which is not a failure",
@@ -75,11 +78,10 @@ def test_the_ranking_can_be_recomputed_from_the_record_alone() -> None:
 
         # Everything the scorer is allowed to look at, read back out of the
         # database and given to it again.
-        body = store.snapshot_body(got["inputs"])
+        was = situation_mod.restore(store, got["inputs"])
         weights = scoring.Weights.from_dict(got["decision"]["weights"])
         again = [(one["candidate"]["id"], one["score"]["utility"])
-                 for one in scoring.consider(Situation(body), weights)[
-                     "considered"]]
+                 for one in scoring.consider(was, weights)["considered"]]
 
         check("the same candidates come back, in the same order",
               [one[0] for one in again], [one[0] for one in recorded])
@@ -223,6 +225,24 @@ def test_a_family_of_refusals_is_reported_once_with_its_members() -> None:
         store.close()
 
 
+def test_an_unchanged_world_is_stored_once_however_often_it_is_decided_from() -> None:
+    """Measured on the rover, a whole situation is 97 kB of which 96 kB is a
+    listing and a map that did not change -- and nothing prunes snapshots,
+    because there is no DELETE anywhere in the store."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = EpisodeStore(directory)
+        for minute in range(5):
+            # The same world, a minute apart, with the battery sagging the way
+            # a real one does. Nothing a decision is about has changed.
+            decide.deliberate(store, _here(
+                entities=[_a_thing_worth_looking_at()],
+                at=1757320800.0 + 60.0 * minute,
+                battery_v=12.1 - 0.01 * minute))
+        rows = store.summary()["snapshots"]
+        check("five deliberations, and the world stored once", rows, 6)
+        store.close()
+
+
 TESTS = (
     test_a_deliberation_is_recorded_whole,
     test_the_ranking_can_be_recomputed_from_the_record_alone,
@@ -233,4 +253,5 @@ TESTS = (
     test_a_thing_that_took_looks_and_got_no_better_is_put_aside_by_the_next_one,
     test_reading_the_rover_and_deciding_are_separate_things,
     test_a_family_of_refusals_is_reported_once_with_its_members,
+    test_an_unchanged_world_is_stored_once_however_often_it_is_decided_from,
 )

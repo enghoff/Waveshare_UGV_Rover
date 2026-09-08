@@ -118,8 +118,13 @@ def test_an_episode_whose_pictures_were_expired_says_so() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
         episode = an_episode(store)
+        # A day after whenever this runs, rather than a year after the fixed
+        # date the other checks use. `an_episode` stores its pictures at the
+        # real clock, so a hardcoded future stops being in the future: this line
+        # used to read `NOW + 365 * DAY`, and it quietly began failing at
+        # 13:56 on 2026-09-08 when the wall clock caught up with it.
         retention.apply(store, retention.Policy(0.0, 10 ** 9),
-                        now=NOW + 365 * DAY)
+                        now=time.time() + DAY)
         got = replay.reconstruct(store, episode)
         check("no longer fully replayable", got["replayable"], False)
         check("...because evidence was deleted",

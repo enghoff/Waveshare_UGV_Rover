@@ -18,12 +18,15 @@ closes with.
 
 ## What is recorded, and why it is recorded that way
 
-The situation is snapshotted *whole* -- the things with their placements, the
+The situation is snapshotted whole -- the things with their placements, the
 occupancy map, the pose, the battery -- and the decision names its digest. So a
 replay a month later reranks the same candidates from the same inputs, and any
 disagreement between what it computes now and what the record says is a change
 in this code rather than a change in the world. That is the only way "the
 scoring is deterministic under replay" can be checked rather than asserted.
+It is stored in two parts, for the reason `situation.snapshot` gives: the
+listing and the map repeat and the rest does not, and only the repeating half
+can be shared between decisions.
 
 The weights go into the decision as well, in full. A version string alone would
 answer "which weights were these" only while somebody kept the file that went
@@ -76,7 +79,8 @@ def prepare(store: store_mod.EpisodeStore,
     cooling list held in a variable somewhere would refuse a candidate on
     replay day for a reason that is nowhere in the record.
     """
-    previous = store.snapshot_body(store.marked(SITUATION_MARK)) or None
+    was = situation_mod.restore(store, store.marked(SITUATION_MARK))
+    previous = None if was is None else was.as_dict()
     was_cooled = _loads(store.marked(COOLED_MARK)) or []
     here.body["cooled"] = cooling.update(previous, here.body, was_cooled,
                                          now=here.at)
@@ -120,7 +124,7 @@ def deliberate(store: store_mod.EpisodeStore,
         note=note or ("a shadow decision: it chose what it would do and has no "
                       "way to do it"))
 
-    inputs = store.snapshot("situation", here.as_dict())
+    inputs = situation_mod.snapshot(store, here)
 
     for one in got["considered"][:RECORD_LIMIT]:
         body = one["candidate"]

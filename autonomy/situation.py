@@ -301,6 +301,55 @@ class Situation:
         return cls(body)
 
 
+#: The two parts of a situation that are large and change slowly: the things
+#: the rover holds, and the occupancy map. Everything else -- the pose, the
+#: battery, what was cooling, what it wanted last time -- is a few hundred bytes
+#: and changes every time.
+HEAVY = ("entities", "map")
+
+
+def snapshot(store: Any, here: "Situation") -> str:
+    """Write a situation into the record, in two parts, and name the whole.
+
+    **Content addressing only saves anything if the thing addressed actually
+    repeats.** A whole situation never does: the battery moves by a hundredth of
+    a volt and the clock moves at all, so every reading is a new row -- and
+    measured on the rover that is 97 kB a minute, of which 96 kB is a listing of
+    123 things and a map that did not change. A parked rover deliberating for an
+    afternoon would add a quarter of a gigabyte of identical listings, and
+    nothing prunes them, because there is no DELETE anywhere in the store.
+
+    So the parts that repeat are stored as their own row and referenced. An
+    unchanged world costs one row however many decisions are made from it, which
+    is what the addressing was for. `restore` puts the two halves back.
+    """
+    heavy = store.snapshot("world_and_map",
+                           {name: here.body.get(name) for name in HEAVY})
+    light = {name: value for name, value in here.body.items()
+             if name not in HEAVY}
+    light["world_and_map"] = heavy
+    return store.snapshot("situation", light)
+
+
+def restore(store: Any, digest: str) -> "Situation | None":
+    """The situation a decision was made from, both halves, or None.
+
+    None rather than a situation missing its things: a re-ranking against an
+    empty world would produce a confident, different answer and nothing about it
+    would look broken.
+    """
+    body = store.snapshot_body(digest)
+    if not isinstance(body, dict):
+        return None
+    heavy = store.snapshot_body(body.get("world_and_map") or "")
+    if not isinstance(heavy, dict):
+        return None
+    merged = {name: value for name, value in body.items()
+              if name != "world_and_map"}
+    merged.update(heavy)
+    return Situation(merged)
+
+
 def _try(client: client_mod.ReadOnly, name: str,
          arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     """One read, with an unreachable daemon reported rather than raised.
