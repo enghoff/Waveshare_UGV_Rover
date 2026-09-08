@@ -15,6 +15,7 @@ area:
 | `WS` | [world-state.md](world-state.md) | observations, placement, identity and visual search |
 | `CTL` | [control.md](control.md) | the tool protocol, the console, voice and the camera surfaces |
 | `PLAT` | [platform.md](platform.md) | the host, runtime state, deployment and the network |
+| `AUT` | [autonomy.md](autonomy.md) | what the rover decides for itself, and the record that has to exist first |
 
 ## What a requirement looks like
 

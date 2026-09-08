@@ -8,6 +8,7 @@ that a database written by an older build still opens.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import tempfile
 import time
@@ -302,6 +303,48 @@ def test_clearing_the_semantic_world_takes_its_frames_with_it() -> None:
               cleared["map_session"], 1)
         check("...and identifiers start again, which is what a repeatable "
               "experiment needs", store.allocate("furniture"), "furniture:1")
+        store.close()
+
+
+def test_a_cleared_store_is_a_different_store_and_says_so() -> None:
+    """The counters restart, so the names have to stop meaning what they meant.
+
+    `object:8` before a clear and `object:8` after it are different objects
+    wearing one name. That has always been true and was harmless while nothing
+    outside this database remembered a name; an episode record does, so the
+    store now carries a token saying which filling of it a name came from. The
+    map session deliberately does not move: it is about the coordinates a
+    placement was measured in, and those survive a semantic clear.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        before = store.generation()
+        check("a new store has a generation",
+              bool(re.match(r"^[0-9a-f]{16}$", before)), True)
+        check("...and reports it", store.summary()["world_generation"], before)
+        check("...and the first name it hands out", store.allocate("object"),
+              "object:1")
+
+        store.clear()
+        after = store.generation()
+        check("clearing mints a new one", after == before, False)
+        check("...of the same shape",
+              bool(re.match(r"^[0-9a-f]{16}$", after)), True)
+        check("...while the names start again", store.allocate("object"),
+              "object:1")
+        check("...and the map session stays where it was",
+              store.summary()["map_session"], 1)
+        store.close()
+
+
+def test_a_generation_outlives_the_process_that_minted_it() -> None:
+    """Only a clear changes it. Reopening the same store must not."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        minted = store.generation()
+        store.close()
+        store = a_store(directory)
+        check("the same store, the same generation", store.generation(), minted)
         store.close()
 
 
@@ -696,6 +739,8 @@ TESTS = (
     test_the_rows_a_search_matched_can_be_asked_for_by_name,
     test_a_missing_pose_is_recorded_as_missing,
     test_clearing_the_semantic_world_takes_its_frames_with_it,
+    test_a_cleared_store_is_a_different_store_and_says_so,
+    test_a_generation_outlives_the_process_that_minted_it,
     test_clearing_the_map_keeps_the_semantic_world,
     test_the_world_follows_the_map_rather_than_the_boot,
     test_an_empty_world_does_not_burn_a_map_session,

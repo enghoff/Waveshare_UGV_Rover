@@ -79,3 +79,10 @@ world_state/** text eol=lf
 # failure would be a commit guard that quietly refuses to run rather than one
 # that refuses a credential.
 .githooks/** text eol=lf
+
+# autonomy/ is deployed to the rover and has no shell script yet, which is the
+# reason to write the rule down now rather than after the first one arrives with
+# a shebang on it. Its selftest is run on the rover by the deployer, so what a
+# CRLF checkout would eventually produce here is a verification step that fails
+# on the machine it was meant to prove.
+autonomy/** text eol=lf

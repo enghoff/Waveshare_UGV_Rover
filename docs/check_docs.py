@@ -31,6 +31,7 @@ AREAS = {
     "WS": "world-state.md",
     "CTL": "control.md",
     "PLAT": "platform.md",
+    "AUT": "autonomy.md",
 }
 
 # Each state and the field a record in that state must carry.
@@ -285,6 +286,7 @@ def summary_table(reqs: list[Requirement]) -> str:
         "WS": "[Visual memory](requirements/world-state.md)",
         "CTL": "[Control surface](requirements/control.md)",
         "PLAT": "[Host and deployment](requirements/platform.md)",
+        "AUT": "[Autonomy and its record](requirements/autonomy.md)",
     }
 
     head = "| Area | " + " | ".join(f"`{s}`" for s in used) + " | Total |"

@@ -49,6 +49,26 @@
       ]
     },
     {
+      "name": "autonomy",
+      "host": "orin",
+      "destination": "~/ugv/autonomy",
+      "prune": false,
+      "sources": [
+        {
+          "patterns": [
+            "autonomy/**"
+          ],
+          "strip": "autonomy"
+        }
+      ],
+      "commands": [
+        "cd ~/ugv/autonomy && python3 selftest.py | tail -2"
+      ],
+      "triggers": [
+        "deploy/manifest.json"
+      ]
+    },
+    {
       "name": "rover_daemon",
       "host": "orin",
       "destination": "~/ugv",

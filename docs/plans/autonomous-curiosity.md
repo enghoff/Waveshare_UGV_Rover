@@ -1,6 +1,7 @@
 # Development plan: curiosity-driven autonomy
 
-Status: Phase 0 (P0) is in progress; later phases remain proposed. This is the
+Status: Phase 0 (P0) is in progress and Phase 1 (P1) is under way alongside
+it, with no action authority; later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -392,53 +393,38 @@ independent decisions.
 
 Create the evidence trail before creating an executive that can act.
 
-### Proposed component
+### The component, which exists
 
-Add an `autonomy/` component or equivalent with no movement authority yet. Keep its
-runtime database outside the deploy tree, for example under `~/.ugv/autonomy/`.
+`autonomy/` records episodes and has no authority over anything. What it holds and
+how it works is [its own README](../../autonomy/README.md), and the reference
+scheme underneath it is settled in
+[a decision record](../decisions/episode-references-survive-the-world-state.md).
+Its runtime data lives outside the deploy tree at `~/.ugv/autonomy/`. It is
+started on 2026-09-08 and read-only in every sense: nothing on the rover writes
+to it yet, because the executive that will is Phase 2 work.
 
-Suggested initial modules:
+The durable evidence contract this phase asked for is decided and implemented. A
+world reference carries the generation of the store that minted it, so a name
+from a cleared world fails closed instead of resolving to a stranger; a decision
+keeps a copy of the world it was made from; evidence is copied out of the world
+state and named by its own bytes. `world_state` mints and reports that generation
+as of the same date. What remains open is written into
+[the autonomy requirements](../requirements/autonomy.md).
 
-```text
-autonomy/
-  README.md
-  schema.py          append-only episode/event schema
-  store.py           persistence and queries
-  events.py          typed event records
-  replay.py          deterministic episode playback
-  summary.py         compact human/model-readable episode summaries
-  selftest.py
-```
+### What is still ahead
 
-### Episode requirements
-
-Record:
-
-- trigger and current rover/world-state snapshot identifiers;
-- candidate goals if any;
-- decision inputs;
-- requested daemon calls and their results;
-- observation/entity changes caused by the attempt;
-- model calls and versions;
-- success predicate and outcome;
-- timing, travel and battery information available from existing services.
-
-The store should be append-first. Corrections/annotations refer to prior records
-rather than silently rewriting history.
-
-### Durable evidence contract
-
-Current map clears delete the world-state records and frames and reset entity
-counters. Before M1 acceptance, define globally unique evidence/entity references
-or a durable store-generation namespace, snapshot the decision inputs, and preserve
-referenced evidence outside the deploy tree before it can be cleared. Record entity
-merge aliases and map/calibration versions. A mutable database path alone is not a
-snapshot. Coordinate any required world-state changes with the ongoing P0 work.
-
-Map reset invalidates current placement while retained episodes remain replayable
-from archived evidence. Explicit user deletion must remove the requested evidence
-and mark affected episodes as no longer fully replayable. Document retention and
-disk limits, including how pinned acceptance recordings are protected.
+- **Nothing records an episode on the rover.** The component has no caller, so
+  criterion 4's thirty-minute shadow run has nothing to record. This is the next
+  piece of work and it is what criteria 4 and 5 wait on.
+- **Retention and disk limits**, neither implemented nor measured, which is
+  [R-AUT-6](../requirements/autonomy.md#r-aut-6) and criterion 6. Each look an
+  episode keeps costs a copy of a frame.
+- **Nothing tells the record about a merge or a split.** The alias table exists
+  and is tested; the world state does not call it.
+- **A real migration**, which cannot exist until the schema changes; the suite
+  exercises the mechanism against a database built one column short.
+- **Pinned acceptance recordings**, still to be defined: how a recording somebody
+  intends to keep is protected from retention expiry.
 
 ### Milestone M1: every future autonomous action can be reconstructed
 

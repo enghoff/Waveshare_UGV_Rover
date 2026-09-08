@@ -54,6 +54,16 @@ def world_dir() -> str:
     return os.environ.get(ENV_DIR) or os.path.expanduser("~/.ugv/world")
 
 
+def new_generation() -> str:
+    """A token naming this filling of the store, minted here and nowhere else.
+
+    Sixteen hex characters, and the shape matters: `autonomy/refs.py` will refuse
+    anything else, because a reference it cannot recognise as a generation is one
+    it must not resolve.
+    """
+    return os.urandom(8).hex()
+
+
 class WorldStore:
     """The semantic world, as SQLite plus a directory of JPEGs.
 
@@ -105,6 +115,17 @@ class WorldStore:
             # should not also be what a brand new database says.
             self.db.execute(
                 "INSERT OR IGNORE INTO meta(key, value) VALUES('map_session', '1')")
+            # And which filling of this store it is. **The identifier counters
+            # restart when the world is cleared**, so `object:8` before a clear
+            # and `object:8` after it are different objects wearing one name --
+            # which is harmless while nothing outside this database remembers a
+            # name, and is not harmless now that episodes do. Anything holding a
+            # name from elsewhere holds this beside it and can therefore tell
+            # that the store it is talking to is no longer the one it meant. See
+            # `autonomy/refs.py`.
+            self.db.execute(
+                "INSERT OR IGNORE INTO meta(key, value) VALUES('generation', ?)",
+                (new_generation(),))
 
     def _add_columns(self, table: str, columns: dict[str, str]) -> None:
         """Add columns a later version wants to a table an earlier one created.
@@ -140,6 +161,16 @@ class WorldStore:
             return int(self._meta("map_session", "1"))
         except ValueError:
             return 1
+
+    def generation(self) -> str:
+        """Which filling of this store the identifiers in it belong to.
+
+        Not the map session, which is about the coordinates a placement was
+        measured in and survives a clear. This is about the names: it changes
+        exactly when the counters restart, and it is the only thing that tells an
+        outside record that `object:8` has been handed to something else.
+        """
+        return self._meta("generation", "")
 
     def new_map_session(self) -> int:
         """The SLAM map was cleared, so anything positional from before belongs to
@@ -293,6 +324,7 @@ class WorldStore:
             "unmatched": unmatched,
             "inspections": inspections,
             "map_session": self.map_session(),
+            "world_generation": self.generation(),
             "last_at": None if last is None else last["started_at"],
             "last_status": None if last is None else last["status"],
             "last_detail": None if last is None else last["detail"],
@@ -1015,6 +1047,12 @@ class WorldStore:
         The frames go with the rows that reference them. A directory of JPEGs that
         nothing points at is not evidence of anything, and on a rover it is the
         thing that quietly fills the disk.
+
+        **A new generation is minted here**, because this is the moment the
+        identifier counters restart and every name this store has issued stops
+        meaning what it meant. Anything outside holding one of those names can
+        then see that it belongs to a world that no longer exists, rather than
+        looking it up and being handed a stranger.
         """
         removed = 0
         with self._lock, self.db:
@@ -1029,6 +1067,8 @@ class WorldStore:
             self.db.execute("DELETE FROM inferences")
             self.db.execute("DELETE FROM frames")
             self.db.execute("DELETE FROM counters")
+            self.db.execute("REPLACE INTO meta(key, value) VALUES('generation', ?)",
+                            (new_generation(),))
         # Everything in the directory rather than everything the table knew about,
         # so that a cleared world really is an empty directory: a frame stored for
         # an inference that then failed to write its row would otherwise stay
