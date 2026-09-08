@@ -48,11 +48,35 @@ COLLAPSED_ALONE = 0.20
 #: which are different things by construction, score 0.32 in the median and 0.69
 #: at the 95th, and one object across a real change of viewpoint scores 0.70.
 RECOGNISED = 0.70
+#: How far ahead some *other* thing in the room may be before this match is
+#: refused as the wrong home for the crop. See `_outclassed`.
+#:
+#: **This is Lowe's ratio test, in the additive form these scores want.** SIFT
+#: threw away a correspondence whose best match was not much better than its
+#: second best, and the same idea does the job the gates here could not: every
+#: other gate is a threshold a candidate passes on its own, so a crop that
+#: resembles a painting at 0.55 is admitted without anyone asking that it
+#: resembles a chair at 0.81. `_by_appearance` already compares rivals, but only
+#: among the things the geometry accepted, and the thing a wrongly-attached crop
+#: really belongs to is usually somewhere else in the room entirely.
+#:
+#: **Measured on the drive of 2026-09-08 and owed a held-out recording.** Over
+#: 923 attachments the median crop resembles its own thing as well as any other
+#: (a lead of -0.002); the 95th percentile is +0.146. The three merges found by
+#: eye sit at +0.265, +0.172 and +0.272, which is ranks 8, 31 and 7. At 0.15 all
+#: three are refused along with 41 other attachments, of which the worst are
+#: plainly right -- a hanging lamp inside a doorway, a framed picture inside the
+#: cabinet -- and the ones at the threshold are coin flips.
+OUTCLASSED_LEAD = 0.15
 RIVAL_FACTOR = 2.0
 SAME_PLACE_M = 0.5
 SAME_ANSWER = 0.05
 # Bound discovery work so repeated inspection stays responsive as the pool grows.
 MAX_NEW_PER_PASS = 2
+
+#: One pass's worth of "what else does this crop look like", keyed by
+#: observation. Cleared by `resolve` with `_UNIT`, and for the same reason.
+_ELSEWHERE: dict = {}
 
 
 @dataclass
@@ -192,6 +216,7 @@ def resolve(store, *, map_session: int | None = None,
     # because the pool is different next time and a daemon that ran all day would
     # otherwise keep every vector it had ever seen.
     _UNIT.clear()
+    _ELSEWHERE.clear()
 
     # Which entities each frame has already accounted for. Two regions in one
     # frame are two different things -- the region finder's own suppression saw
@@ -222,6 +247,7 @@ def resolve(store, *, map_session: int | None = None,
                                reach))
 
     _UNIT.clear()
+    _ELSEWHERE.clear()
     counted = {MATCH: 0, NEW: 0, AMBIGUOUS: 0}
     for decision in decisions:
         counted[decision.outcome] = counted.get(decision.outcome, 0) + 1
@@ -519,6 +545,11 @@ def _against_known(store, observation, entities, session,
         fell = collapsed(store, entity["id"], observation, looks)
         if fell is not None and fell >= COLLAPSED_ALONE:
             continue
+        # And whether something else in the room explains the crop far better,
+        # which is the one question a threshold cannot ask. See `_outclassed`.
+        if _outclassed(store, entity["id"], observation, looks, entities,
+                       _ELSEWHERE):
+            continue
         surviving.append({
             "entity_id": entity["id"],
             "distance_m": round(math.hypot(
@@ -550,7 +581,14 @@ def _against_known(store, observation, entities, session,
     why = (f"the bearing points at {chosen['entity_id']} "
            f"{chosen['distance_m']} m away, appearance {_says(chosen)}")
     store.attach(chosen["entity_id"], [observation["id"]], why)
-    if vector:
+    # **Learnt from only when the match was not in doubt.** A crop that joined
+    # on a middling score becoming an exemplar is how a thing's template drifts
+    # onto whatever it swallowed -- the model-drift problem visual trackers
+    # solve by updating conservatively, and the mechanism behind `object:8` on
+    # 2026-09-08: the chair joined the painting and was immediately part of what
+    # the painting looked like. `RECOGNISED` is already this component's word
+    # for "that is the same thing" rather than "that is not a different one".
+    if vector and (chosen.get("appearance") or 0.0) >= RECOGNISED:
         store.add_exemplar(chosen["entity_id"], vector,
                            alone=observation.get("dino_alone_blob") or b"")
     _replace_placement(store, chosen["entity_id"], session, reach)
@@ -585,6 +623,46 @@ def collapsed(store, entity_id: str, observation: dict[str, Any],
     if apart is None:
         return None
     return round(seen - apart, 3)
+
+
+def _outclassed(store, entity_id: str, observation: dict[str, Any],
+                seen: float | None, entities: list[dict],
+                found: dict) -> str | None:
+    """The thing this crop resembles much more than the one it is joining.
+
+    **The question none of the other gates asks.** Every gate in here gives a
+    candidate a threshold to clear on its own: is it not plainly unrelated, does
+    it survive masking, is it ahead of the other candidates the geometry
+    accepted. None of them asks the question a person asks immediately on seeing
+    the mistake -- that is not the painting, that is one of the chairs -- because
+    the chair is across the room and was never a candidate.
+
+    Returns the rival's identifier, or None when nothing is far enough ahead.
+    `found` caches the scores for one observation across one pass, because the
+    same crop is asked about once per candidate and the answer does not change.
+
+    **Silence is not a low score**, as everywhere else here: a crop with no
+    vector, or a room whose things hold no exemplars, says nothing about where
+    this belongs and must not refuse anything.
+    """
+    if seen is None:
+        return None
+    vector = observation.get("dino_blob") or b""
+    if not vector:
+        return None
+    key = observation.get("id")
+    scores = found.get(key)
+    if scores is None:
+        scores = {}
+        for entity in entities:
+            got = appearance(store, entity["id"], vector)
+            if got is not None:
+                scores[entity["id"]] = got
+        found[key] = scores
+    for other, got in scores.items():
+        if other != entity_id and got - seen >= OUTCLASSED_LEAD:
+            return other
+    return None
 
 
 def _looks(candidate: dict[str, Any]) -> float:
@@ -636,7 +714,7 @@ def _pair_up(store, leftover, session, entities, taken_in,
             # placement is a second at a full pool, and the rest of the pool is
             # still there next time.
             break
-        placed = _place_one(store, available, session, reach)
+        placed = _place_one(store, available, session, entities, reach)
         if placed is None:
             # **Only when no crossing is left, and that ordering is the whole of
             # why this is safe to have at all.** A thing agreed by two viewpoints
@@ -789,7 +867,7 @@ def _cluster_up(store, leftover, session, entities, taken_in,
     return decisions
 
 
-def _place_one(store, available, session, reach=None):
+def _place_one(store, available, session, entities, reach=None):
     """The best-supported crossing among these observations that nothing
     contradicts, or None.
 
@@ -847,6 +925,21 @@ def _place_one(store, available, session, reach=None):
             # names either of them, and it is the same removal-only gate
             # `_against_known` uses.
             if not _could_be_one(first_observation, second_observation):
+                continue
+            # And neither crop may belong obviously somewhere else. A pair that
+            # founds a thing is the one way in that no later gate can review,
+            # because from the next pass onward the pair *is* what the thing
+            # looks like. See `_outclassed`.
+            left = first_observation.get("dino_blob") or b""
+            right = second_observation.get("dino_blob") or b""
+            # Both vectors or neither: `similarity` answers 0.0 for a missing
+            # one, and 0.0 read as a score rather than as silence would refuse
+            # every pair the moment anything else in the room was comparable.
+            together = similarity(left, right) if left and right else None
+            if together is not None and any(
+                    _outclassed(store, None, one, together, entities,
+                                _ELSEWHERE)
+                    for one in (first_observation, second_observation)):
                 continue
             support = [observation for ray, observation in rays
                        if locate.agrees(crossing, ray)]
@@ -937,12 +1030,18 @@ def _place_one(store, available, session, reach=None):
         looks = appearance(store, entity_id, vector)
         if looks is not None and looks < DIFFERENT_THING:
             continue
+        # The same comparative question the join path asks. This loop admits
+        # whatever points at a thing placed a moment ago, so it is the easiest
+        # way into a thing and wants the same refusal.
+        if _outclassed(store, entity_id, observation, looks, entities,
+                       _ELSEWHERE):
+            continue
         claimed.add(observation.get("inference_id"))
         taken.append(observation["id"])
         store.attach(entity_id, [observation["id"]],
                      f"points at {entity_id} as well, from the same group"
                      + ("" if looks is None else f", appearance {looks:.2f}"))
-        if vector:
+        if vector and (looks or 0.0) >= RECOGNISED:
             store.add_exemplar(entity_id, vector,
                                alone=observation.get("dino_alone_blob") or b"")
 
