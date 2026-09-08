@@ -36,6 +36,16 @@ held-out for it and the entry must say so.
   no direction at all.
 - the depth camera covers the middle of the gimbal camera's view; a region
   outside it is reported as never-ranged rather than silently unranged.
+- **object distance 0.5 to 2.5 m.** Declared on 2026-09-08 from what this rover
+  actually does: across two drives that day, 61% and 71% of its looks at placed
+  things fell inside that band, with a median of about 2 m and a 90th percentile
+  of 3 to 4 m. It is the band the small targets can be detected and tape-measured
+  in, and it covers roughly two thirds of real work -- so it is a narrowing, not
+  an abstention. A look beyond 2.5 m is recorded and flagged as outside the
+  certified distance rather than refused, because the depth camera's blind edge
+  already refuses half of them and a second refusal on top would hollow the world
+  out. Widening it needs tape measurements between objects that detect at range,
+  which the tissue box and the bucket do not.
 
 ### The tolerances, declared now
 
@@ -47,7 +57,9 @@ held-out for it and the entry must say so.
 | does the rover abstain from everything instead? | at least 25 things placed, and at least 15 of them ranged |
 
 The first is set from 69% measured on 2026-09-08, so it asks the rover not to get
-worse. The second is set well outside the one separation measured that day
+worse. **It has since been measured twice more at 69% and 59%**, the second on a
+103-second run whose parallax baselines were too short to judge it, so the mark
+stands but a run must be long enough for the ground truth to mean anything. The second is set well outside the one separation measured that day
 (2.9 m against 2.899 m) and inside what the placements claim. The last exists
 because refusing every case is not a pass.
 
