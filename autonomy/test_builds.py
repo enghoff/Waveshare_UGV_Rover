@@ -62,13 +62,26 @@ def test_a_redeploy_between_two_readings_is_named() -> None:
 
 
 def test_every_episode_says_which_build_produced_it() -> None:
+    """**The state file is pointed at the temporary one for the whole poll**,
+    and not only for the reading that sets it up.
+
+    `poll` looks for a deploy landing under it, which reads the file again --
+    so a check that only redirected the first reading passed on a desk, where
+    there is no real state file to find, and failed on the rover, where the
+    poll replaced these two commits with the ones actually deployed. It did
+    fail there, for as long as the file existed, and nothing said so: the
+    deploy piped the suite to `tail` and took tail's exit status."""
     with tempfile.TemporaryDirectory() as directory:
         path = _state(directory, world_state=ONE, rover_daemon=ONE, ros_nav=ONE)
         store = a_store(directory)
         rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
         recorder = Recorder(store, rover)
-        recorder._builds = builds.builds(path)
-        recorder.poll()
+        builds.STATE, was = path, builds.STATE
+        try:
+            recorder._builds = builds.builds(path)
+            recorder.poll()
+        finally:
+            builds.STATE = was
         got = store.episodes()[0]["trigger_detail"]["builds"]
         check("the world state that decided this look's identity",
               got["world_state"], "d1aeef92cbf5")
