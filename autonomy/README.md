@@ -27,15 +27,22 @@ act will close with.
 Today two things trigger one: the rover taking a look, and the rover moving.
 Both are recorded by the shadow run below, which watches and decides nothing.
 
+One the rover really recorded, read back off the Orin:
+
 ```text
-episode:1 -- opened 2026-09-08 14:31:02, triggered by nothing_to_do
-  world state 9f2a1c04ffab3d21, map session 7
-  considered 2 goals, chose look_at(object:8): one look is a bearing and not a position
-  asked alibaba/qwen-omni-realtime for phrasing what it was about to do
-  called look_at(entity=object:8, pan_deg=-20.0) -- ok
-  closed: abandoned -- shadow mode: no movement authority
-  2 pieces of evidence kept, 51 bytes
+episode:210 -- opened 2026-09-08 09:59:52, triggered by the rover looked
+  world state f49e9206997fbe42, map session 67
+  recorded by a shadow run; the rover decided nothing here
+  decided nothing
+  called nothing
+  a look found 11 regions, 0 of them attached to a thing the rover already knows, 0 with a measured distance
+  closed: abandoned -- every region in this look is still unattached, which is the ordinary state until two bearings cross
+  1 piece of evidence kept, 31 kB
 ```
+
+When there is an executive, the same shape carries the goals it considered, the
+choice and why, and the calls it made — and `abandoned` will then also mean a
+decision taken with no authority to act on it.
 
 ## The one hard problem: a name that still means something next month
 
