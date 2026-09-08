@@ -100,6 +100,19 @@ class EpisodeStore:
             self.db.execute(
                 "INSERT OR IGNORE INTO meta(key, value) VALUES('created_at', ?)",
                 (str(time.time()),))
+            # The version this database has been brought up to, appended rather
+            # than overwritten, so the row in `meta` goes on saying which version
+            # created it and the marks say what it has been through since. A
+            # database upgraded from 1 to 2 can therefore say so, which a single
+            # number that had been rewritten could not.
+            row = self.db.execute(
+                "SELECT value FROM marks WHERE kind = 'schema_version'"
+                " ORDER BY id DESC LIMIT 1").fetchone()
+            if row is None or row["value"] != str(SCHEMA_VERSION):
+                self.db.execute(
+                    "INSERT INTO marks(at, kind, value)"
+                    " VALUES(?, 'schema_version', ?)",
+                    (time.time(), str(SCHEMA_VERSION)))
 
     def _add_columns(self, table: str, columns: dict[str, str]) -> None:
         """Add columns a later version wants to a table an earlier one created.
@@ -129,10 +142,83 @@ class EpisodeStore:
         return self._meta("generation", refs_mod.UNKNOWN)
 
     def schema_version(self) -> int:
+        """The version this database has been brought up to."""
+        try:
+            return int(self.marked("schema_version")
+                       or self._meta("schema_version", "0"))
+        except ValueError:
+            return 0
+
+    def created_version(self) -> int:
+        """The version that created it, which never changes."""
         try:
             return int(self._meta("schema_version", "0"))
         except ValueError:
             return 0
+
+    # --- marks: where something had got to ------------------------------------
+
+    def mark(self, kind: str, value: Any, *, at: float | None = None) -> None:
+        """Write down where something has got to, without forgetting where it was.
+
+        The recorder's place in the world state's history is the one caller. A
+        row rather than an edit, so that a gap in a recording can be traced to
+        the moment the recorder stopped and the moment it started again.
+        """
+        with self._lock, self.db:
+            self.db.execute(
+                "INSERT INTO marks(at, kind, value) VALUES(?, ?, ?)",
+                (time.time() if at is None else at, kind, str(value)))
+
+    def marked(self, kind: str, default: str = "") -> str:
+        with self._lock:
+            row = self.db.execute(
+                "SELECT value FROM marks WHERE kind = ? ORDER BY id DESC LIMIT 1",
+                (kind,)).fetchone()
+        return default if row is None else row["value"]
+
+    def marks(self, kind: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT at, value FROM marks WHERE kind = ?"
+                " ORDER BY id DESC LIMIT ?", (kind, limit)).fetchall()
+        return [{"at": row["at"], "value": row["value"]} for row in rows]
+
+    # --- pins: what retention may not touch -----------------------------------
+
+    def pin(self, episode_ref: str, why: str) -> None:
+        """Keep this episode's evidence whatever retention says.
+
+        An acceptance recording is the case this exists for. A rover that
+        deleted the evidence behind the run somebody is arguing from would be
+        doing the worst thing this component is capable of.
+        """
+        self._set_pin(episode_ref, True, why)
+
+    def unpin(self, episode_ref: str, why: str = "") -> None:
+        self._set_pin(episode_ref, False, why)
+
+    def _set_pin(self, episode_ref: str, pinned: bool, why: str) -> None:
+        with self._lock, self.db:
+            self._episode_id(episode_ref)
+            self.db.execute(
+                "INSERT INTO pins(at, ref, pinned, why) VALUES(?, ?, ?, ?)",
+                (time.time(), episode_ref, 1 if pinned else 0, why))
+
+    def is_pinned(self, episode_ref: str) -> bool:
+        with self._lock:
+            row = self.db.execute(
+                "SELECT pinned FROM pins WHERE ref = ? ORDER BY id DESC LIMIT 1",
+                (episode_ref,)).fetchone()
+        return bool(row and row["pinned"])
+
+    def pinned(self) -> list[str]:
+        """Every episode pinned right now, by the newest row for each."""
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT ref, pinned FROM pins WHERE id IN"
+                " (SELECT MAX(id) FROM pins GROUP BY ref)").fetchall()
+        return sorted(row["ref"] for row in rows if row["pinned"])
 
     # --- episodes -------------------------------------------------------------
 
@@ -285,7 +371,8 @@ class EpisodeStore:
     # --- evidence -------------------------------------------------------------
 
     def keep_evidence(self, kind: str, data: bytes, *,
-                      source: dict[str, Any] | None = None) -> str:
+                      source: dict[str, Any] | None = None,
+                      at: float | None = None) -> str:
         """Take a copy of a picture or a depth map before anything can delete it.
 
         Called with the bytes rather than a path on purpose. The caller is
@@ -312,7 +399,7 @@ class EpisodeStore:
             self.db.execute(
                 "INSERT OR IGNORE INTO evidence(digest, kind, bytes, stored_at,"
                 " source_json) VALUES(?, ?, ?, ?, ?)",
-                (digest, kind, len(data), time.time(),
+                (digest, kind, len(data), time.time() if at is None else at,
                  None if source is None else _dump(source)))
         return digest
 
@@ -441,16 +528,50 @@ class EpisodeStore:
 
     # --- reading --------------------------------------------------------------
 
+    def evidence_held(self, *, limit: int = 1000) -> list[dict[str, Any]]:
+        """Evidence still on disk, oldest first, which is retention's order.
+
+        Anything with a deletion row is left out: it has already gone, and
+        offering it to a retention pass again would produce a second deletion
+        record for one act.
+        """
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT * FROM evidence WHERE digest NOT IN"
+                " (SELECT digest FROM deletions)"
+                " ORDER BY stored_at, digest LIMIT ?", (limit,)).fetchall()
+        return [{"digest": row["digest"], "kind": row["kind"],
+                 "bytes": row["bytes"], "stored_at": row["stored_at"],
+                 "source": _load(row["source_json"])} for row in rows]
+
+    def evidence_of(self, episode_ref: str) -> list[str]:
+        """Every digest this episode's events refer to."""
+        with self._lock:
+            episode_id = self._episode_id(episode_ref)
+            rows = self.db.execute(
+                "SELECT evidence_json FROM events WHERE episode_id = ?"
+                " AND evidence_json IS NOT NULL", (episode_id,)).fetchall()
+        out: list[str] = []
+        for row in rows:
+            for digest in _load(row["evidence_json"]) or []:
+                if digest not in out:
+                    out.append(digest)
+        return out
+
     def summary(self) -> dict[str, Any]:
         with self._lock:
             counts = {
                 name: self.db.execute(
                     f"SELECT COUNT(*) AS n FROM {name}").fetchone()["n"]
                 for name in ("episodes", "events", "snapshots", "evidence",
-                             "deletions", "aliases")
+                             "deletions", "aliases", "marks", "pins")
             }
+            # What is still on disk, not what was ever stored. A store that has
+            # deleted half its evidence should report the half it has.
             held = self.db.execute(
-                "SELECT IFNULL(SUM(bytes), 0) AS n FROM evidence").fetchone()["n"]
+                "SELECT IFNULL(SUM(bytes), 0) AS n FROM evidence"
+                " WHERE digest NOT IN (SELECT digest FROM deletions)"
+            ).fetchone()["n"]
             open_now = self.db.execute(
                 "SELECT COUNT(*) AS n FROM episodes e WHERE NOT EXISTS"
                 " (SELECT 1 FROM events v WHERE v.episode_id = e.id"

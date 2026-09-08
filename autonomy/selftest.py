@@ -17,20 +17,25 @@ record, the names and the reconstruction, and nothing at all about the rover --
 which has not run this yet.
 
 This file is the runner. The checks live beside it, one module per part: the
-names, the store, the reconstruction, and the few lines a person reads.
-`test_fakes.py` holds the store and the one worked episode they share.
+names, the store, the reconstruction, the few lines a person reads, the shadow
+run that watches the rover, and what keeps the record off the rover's disk.
+`test_fakes.py` holds the store, the one worked episode and the fake rover they
+share.
 """
 from __future__ import annotations
 
 import sys
 
 from test_harness import FAIL, PASS, SKIP
+from test_recorder import TESTS as RECORDER_TESTS
 from test_refs import TESTS as REFS_TESTS
 from test_replay import TESTS as REPLAY_TESTS
+from test_retention import TESTS as RETENTION_TESTS
 from test_store import TESTS as STORE_TESTS
 from test_summary import TESTS as SUMMARY_TESTS
 
-TESTS = (*REFS_TESTS, *STORE_TESTS, *REPLAY_TESTS, *SUMMARY_TESTS)
+TESTS = (*REFS_TESTS, *STORE_TESTS, *REPLAY_TESTS, *SUMMARY_TESTS,
+         *RECORDER_TESTS, *RETENTION_TESTS)
 
 
 def main() -> int:

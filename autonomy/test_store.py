@@ -511,6 +511,118 @@ def test_a_measurement_the_rover_could_not_make_is_not_recorded_as_zero() -> Non
           "battery_v" in got.body, False)
 
 
+
+#: The schema exactly as version 1 shipped it, kept here so that the migration
+#: to version 2 is tested against what the rover really has rather than against
+#: today's schema with a table taken out. It is frozen: when version 3 arrives,
+#: this stays as it is and a second frozen copy joins it.
+SCHEMA_V1 = """
+    CREATE TABLE IF NOT EXISTS meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS episodes (
+        id               INTEGER PRIMARY KEY,
+        ref              TEXT NOT NULL UNIQUE,
+        opened_at        REAL NOT NULL,
+        trigger          TEXT NOT NULL,
+        trigger_json     TEXT,
+        world_generation TEXT NOT NULL,
+        map_session      INTEGER,
+        note             TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS events (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        episode_id    INTEGER NOT NULL,
+        seq           INTEGER NOT NULL,
+        at            REAL NOT NULL,
+        kind          TEXT NOT NULL,
+        body_json     TEXT NOT NULL,
+        refs_json     TEXT,
+        evidence_json TEXT,
+        corrects      INTEGER,
+        UNIQUE(episode_id, seq)
+    );
+    CREATE TABLE IF NOT EXISTS snapshots (
+        digest    TEXT PRIMARY KEY,
+        kind      TEXT NOT NULL,
+        taken_at  REAL NOT NULL,
+        bytes     INTEGER NOT NULL,
+        body_json TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS evidence (
+        digest      TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        bytes       INTEGER NOT NULL,
+        stored_at   REAL NOT NULL,
+        source_json TEXT
+    );
+    CREATE TABLE IF NOT EXISTS deletions (
+        id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        digest TEXT NOT NULL,
+        at     REAL NOT NULL,
+        why    TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS aliases (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        at       REAL NOT NULL,
+        kind     TEXT NOT NULL,
+        from_ref TEXT NOT NULL,
+        to_ref   TEXT NOT NULL,
+        note     TEXT NOT NULL DEFAULT ''
+    );
+"""
+
+
+def test_a_version_one_recording_opens_and_carries_on() -> None:
+    """The real migration, against the schema that really shipped.
+
+    Version 1 went to the rover on 2026-09-08 and version 2 followed it the same
+    day, adding `marks` and `pins`. What has to survive that is a recording made
+    by the older build: its episodes still read, its evidence is still found, and
+    the store can say it has been through both versions rather than only claiming
+    to be the newer one.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "episodes.db")
+        db = sqlite3.connect(path)
+        db.executescript(SCHEMA_V1)
+        db.execute("INSERT INTO meta VALUES('schema_version', '1')")
+        db.execute("INSERT INTO meta VALUES('generation', ?)", (WORLD,))
+        db.execute(
+            "INSERT INTO episodes(id, ref, opened_at, trigger, world_generation,"
+            " map_session, note) VALUES(1, ?, 1757320000.0, 'the rover looked',"
+            " ?, 7, '')", (f"au/{WORLD}/episode:1", WORLD))
+        db.execute(
+            "INSERT INTO events(episode_id, seq, at, kind, body_json)"
+            " VALUES(1, 1, 1757320000.0, 'note', '{\"text\": \"from version one\"}')")
+        db.commit()
+        db.close()
+
+        store = a_store(directory)
+        got = store.episode(f"au/{WORLD}/episode:1")
+        check("the version one episode still reads", got["trigger"],
+              "the rover looked")
+        check("...and its event with it", got["events"][0]["body"]["text"],
+              "from version one")
+        check("...the store is now at version two", store.schema_version(), 2)
+        check("...and still says which version made it",
+              store.created_version(), 1)
+        check("...with both versions in its history",
+              [one["value"] for one in store.marks("schema_version")], ["2"])
+
+        # The tables version 2 added are usable on the migrated database.
+        store.mark("last_inference", 4242)
+        store.pin(f"au/{WORLD}/episode:1", "kept for the write-up")
+        check("...the new tables work", store.marked("last_inference"), "4242")
+        check("...and pinning an old episode is allowed",
+              store.pinned(), [f"au/{WORLD}/episode:1"])
+        check("...and a new episode carries on from the old numbering",
+              refs.parse(store.open_episode("t", world_generation=WORLD)).local,
+              "episode:2")
+        store.close()
+
 def _raw_episode(store: EpisodeStore, ref: str) -> tuple:
     row = store.db.execute("SELECT * FROM episodes WHERE ref = ?",
                            (ref,)).fetchone()
@@ -544,6 +656,7 @@ TESTS = (
     test_following_a_chain_of_merges_ends_somewhere,
     test_a_name_that_is_not_one_cannot_be_aliased,
     test_a_recording_survives_a_column_arriving_under_it,
+    test_a_version_one_recording_opens_and_carries_on,
     test_a_column_a_later_build_wants_is_added_to_a_table_that_exists,
     test_unreadable_stored_json_cannot_take_the_reading_down,
     test_an_event_that_could_not_be_read_back_is_refused,

@@ -8,8 +8,10 @@ that a change to what an episode looks like shows up in one place.
 """
 from __future__ import annotations
 
+import base64
 from typing import Any
 
+import client
 import events
 import refs
 from store import EpisodeStore
@@ -93,3 +95,109 @@ def an_episode(store: EpisodeStore, *, generation: str | None = WORLD,
     store.close_episode(episode, "abandoned",
                         detail="shadow mode: no movement authority")
     return episode
+
+
+# --- a rover that answers without being one ---------------------------------
+
+class FakeRover(client.ReadOnly):
+    """A daemon's answers, without a daemon.
+
+    Subclasses the real client and replaces only the socket, so everything a
+    test does goes through the real allow-list: a check that this refuses
+    `drive` is a check about the client the rover actually uses, not about a
+    stand-in that happens to agree with it.
+    """
+
+    def __init__(self, *, generation: str = WORLD, rows: list | None = None,
+                 move: dict | None = None, frames: dict | None = None,
+                 entities: list | None = None) -> None:
+        super().__init__()
+        self.generation = generation
+        self.rows = list(rows or [])
+        self.move = move or {"seq": 0, "phase": "idle"}
+        self.frames = dict(frames or {})
+        self.entities = list(entities or [])
+        self.asked: list[str] = []
+        self.down = False
+
+    def _ask(self, name, arguments):
+        self.asked.append(name)
+        if self.down:
+            raise client.Unreachable(f"{name}: nothing is listening")
+        self.calls += 1
+        return getattr(self, "_" + name)(arguments)
+
+    # the calls, in the shapes the daemon really returns
+
+    def _world_state_summary(self, _arguments):
+        summary = {"entities": len(self.entities), "observations": len(self.rows),
+                   "unmatched": 0, "inspections": 1, "map_session": 7,
+                   "world_generation": self.generation}
+        if self.generation is None:
+            summary.pop("world_generation")
+        return {"ok": True, "summary": summary, "backend": "fake"}
+
+    def _world_state_entities(self, _arguments):
+        return {"ok": True, "entities": self.entities}
+
+    def _world_state_entity(self, arguments):
+        wanted = arguments.get("entity_id")
+        for one in self.entities:
+            if one.get("id") == wanted:
+                return {"ok": True, "entity": one}
+        return {"ok": False, "error": "no such thing"}
+
+    def _world_state_observations(self, arguments):
+        """Newest first, paged the way the daemon pages: below a given row."""
+        limit = int(arguments.get("limit") or 20)
+        rows = sorted(self.rows, key=lambda r: r["id"], reverse=True)
+        before_at = arguments.get("before_at")
+        if before_at not in (None, ""):
+            edge = (float(before_at), int(arguments.get("before_id") or 0))
+            rows = [r for r in rows
+                    if (r["observed_at"], r["id"]) < edge]
+        page = rows[:limit]
+        return {"ok": True, "observations": page, "more": len(page) == limit}
+
+    def _world_state_frame(self, arguments):
+        jpeg = self.frames.get(arguments.get("frame_id"))
+        if jpeg is None:
+            return {"ok": False, "error": "no stored frame"}
+        return {"ok": True, "frame_id": arguments.get("frame_id"),
+                "bytes": len(jpeg),
+                "jpeg_base64": base64.b64encode(jpeg).decode("ascii")}
+
+    def _world_building(self, _arguments):
+        return {"ok": True, "building": True, "looks": 9, "every_s": 1.0}
+
+    def _nav_status(self, _arguments):
+        return {"ok": True, "move": self.move, "driving": False,
+                "exploring": False, "estop": False, "map_settled": True,
+                "map_kept": True, "position_trusted": True, "map_id": "m1",
+                "match_score": 0.8,
+                "pose": {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0}}
+
+    def _battery(self, _arguments):
+        return {"ok": True, "volts": 12.07, "percent": 85}
+
+
+def a_look(inference_id: int, first_row_id: int, *, regions: int = 2,
+           at: float = 1757320000.0, frame_id: str = "",
+           attached: bool = True) -> list[dict]:
+    """The rows one inspection leaves behind, as the daemon reports them."""
+    frame = frame_id or f"frame-{inference_id}"
+    return [{
+        "id": first_row_id + n,
+        "inference_id": inference_id,
+        "observed_at": at + n * 0.01,
+        "frame_id": frame,
+        "entity_id": f"object:{10 + n}" if attached else None,
+        "map_session": 7,
+        "observer_pan_deg": -20.0,
+        "observer_tilt_deg": 0.0,
+        "camera": "gimbal",
+        "bearing_deg": -18.5,
+        "bearing_sigma_deg": 1.5,
+        "range_m": 1.371 if n == 0 else None,
+        "pose": {"x_m": 1.0, "y_m": 2.0, "heading_deg": 90.0},
+    } for n in range(regions)]

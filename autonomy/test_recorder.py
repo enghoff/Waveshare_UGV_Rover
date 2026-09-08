@@ -1,0 +1,343 @@
+"""The shadow run: that it misses nothing, repeats nothing, and cannot drive.
+
+Two failures would make a shadow run worthless, and neither is loud. A recorder
+that silently skipped what happened between two polls would leave a record with
+holes in it that read like a rover doing nothing; a recorder that recorded the
+same look twice on every restart would leave one that reads like a rover doing
+everything twice. Both are checked here, and so is the one that would be worse
+than worthless: a recorder that could move the rover it is supposed to be
+watching.
+"""
+from __future__ import annotations
+
+import tempfile
+
+import client
+import refs
+import replay
+import summary
+from recorder import LOOK_MARK, MOVE_MARK, Recorder
+from test_fakes import (CLEARED, PICTURE, WORLD, FakeRover, a_look, a_store)
+from test_harness import check
+
+
+def test_a_recorder_cannot_move_the_rover() -> None:
+    """The structural half of "no movement-capable path", asked by trying.
+
+    Every call a shadow run could plausibly reach for, refused before a socket
+    is opened -- so a recorder pointed at a daemon that would happily drive
+    still cannot ask it to.
+    """
+    rover = FakeRover()
+    for name in sorted(client.MOVES):
+        try:
+            rover.call(name, {})
+            check(f"{name} is refused", "allowed", "refused")
+        except client.Refused:
+            check(f"{name} is refused", "refused", "refused")
+    check("...and none of them reached the transport", rover.asked, [])
+    check("...while a read goes through",
+          rover.call("world_state_summary")["ok"], True)
+
+
+def test_world_state_inspect_is_not_a_call_a_recorder_may_make() -> None:
+    """It reads nothing -- it turns the gimbal and takes a picture. A recorder
+    that triggered looks would be part of the work rather than watching it."""
+    rover = FakeRover()
+    for name in ("world_inspect", "world_state_clear", "clear_map",
+                 "refit_pose", "set_vision"):
+        try:
+            rover.call(name, {})
+            check(f"{name} is refused", "allowed", "refused")
+        except client.Refused:
+            check(f"{name} is refused", "refused", "refused")
+
+
+def test_one_episode_per_look() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100) + a_look(2, 200),
+                          frames={"frame-1": PICTURE, "frame-2": PICTURE})
+        got = Recorder(store, rover).poll()
+        check("two looks, two episodes", got["looks"], 2)
+        check("...and that is what the store holds",
+              store.summary()["episodes"], 2)
+        rows = store.episodes()
+        check("...both triggered by the rover looking",
+              sorted({one["trigger"] for one in rows}), ["the rover looked"])
+        check("...carrying which inspection they were",
+              sorted(one["trigger_detail"]["inference_id"] for one in rows),
+              [1, 2])
+        store.close()
+
+
+def test_a_look_is_never_recorded_twice() -> None:
+    """The mark is what makes a restart continue rather than repeat."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+        again = Recorder(store, rover).poll()
+        check("a second recorder finds nothing new", again["looks"], 0)
+        check("...and the store still holds one episode",
+              store.summary()["episodes"], 1)
+        check("...with the mark where the first left it",
+              store.marked(LOOK_MARK), "101")
+        store.close()
+
+
+def test_a_recorder_that_was_stopped_catches_up() -> None:
+    """Nothing between two polls is lost, because the history is numbered."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+
+        # Three looks happened while nothing was watching.
+        rover.rows += a_look(2, 200) + a_look(3, 300) + a_look(4, 400)
+        rover.frames.update({"frame-2": PICTURE, "frame-3": PICTURE,
+                             "frame-4": PICTURE})
+        got = Recorder(store, rover).poll()
+        check("all three are picked up", got["looks"], 3)
+        check("...oldest first, so the mark only moves over what is written",
+              [one["trigger_detail"]["inference_id"]
+               for one in store.episodes()][::-1],
+              [1, 2, 3, 4])
+        store.close()
+
+
+def test_the_walk_back_is_bounded() -> None:
+    """A recorder started against a month of history records the recent past and
+    does not spend an hour copying frames nobody asked for."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rows = []
+        for n in range(1, 61):
+            rows += a_look(n, n * 10, regions=1)
+        rover = FakeRover(rows=rows)
+        got = Recorder(store, rover, keep_frames=False, catch_up=10).poll()
+        check("it stops at the bound", got["looks"], 10)
+        check("...taking the newest ten", store.summary()["episodes"], 10)
+        store.close()
+
+
+def test_a_look_carries_its_picture() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+        episode = store.episodes()[0]["ref"]
+        got = replay.reconstruct(store, episode, live_world_generation=WORLD)
+        check("one piece of evidence", len(got["evidence"]), 1)
+        check("...which is the picture", got["evidence"][0]["digest"],
+              refs.digest(PICTURE))
+        check("...and it is held", got["evidence"][0]["state"], "held")
+        check("...so the episode is replayable", got["replayable"], True)
+        store.close()
+
+
+def test_a_look_can_be_recorded_without_its_picture() -> None:
+    """Which is how the cost of keeping them gets measured."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover, keep_frames=False).poll()
+        check("the episode is there", store.summary()["episodes"], 1)
+        check("...and nothing was copied", store.summary()["evidence"], 0)
+        check("...and the frame was never even fetched",
+              "world_state_frame" in rover.asked, False)
+        store.close()
+
+
+def test_what_a_look_saw_is_named_durably() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+        episode = store.episodes()[0]["ref"]
+        got = replay.reconstruct(store, episode, live_world_generation=WORLD)
+        check("both things are named",
+              sorted(one["local"] for one in got["references"]),
+              ["object:10", "object:11"])
+        check("...and they resolve against the store that was live",
+              all(one["resolvable"] for one in got["references"]), True)
+        after = replay.reconstruct(store, episode,
+                                   live_world_generation=CLEARED)
+        check("...and against a cleared one, none of them do",
+              any(one["resolvable"] for one in after["references"]), False)
+        store.close()
+
+
+def test_a_rover_that_cannot_say_which_world_it_is_still_gets_recorded() -> None:
+    """A look is worth recording even when its names will never resolve."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(generation=None, rows=a_look(1, 100),
+                          frames={"frame-1": PICTURE})
+        got = Recorder(store, rover).poll()
+        check("it is recorded", got["looks"], 1)
+        episode = store.episodes()[0]
+        check("...marked as belonging to no known world",
+              episode["world_generation"], refs.UNKNOWN)
+        check("...and it says so when read",
+              "world state not known" in summary.of(store, episode["ref"]), True)
+        store.close()
+
+
+def test_a_look_that_attached_to_nothing_is_not_a_failure() -> None:
+    """The ordinary state until two bearings cross."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100, attached=False),
+                          frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+        episode = store.episodes()[0]["ref"]
+        check("closed abandoned rather than failed",
+              store.outcome(episode)["outcome"], "abandoned")
+        check("...saying why",
+              "still unattached" in store.outcome(episode)["detail"], True)
+        store.close()
+
+
+def test_a_shadow_episode_decides_nothing_and_says_so() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        Recorder(store, rover).poll()
+        episode = store.episodes()[0]["ref"]
+        got = replay.reconstruct(store, episode)
+        check("no decision", got["decision"], None)
+        check("...no calls made on the rover's behalf", got["calls"], [])
+        check("...and the summary is honest about it",
+              "decided nothing" in summary.of(store, episode), True)
+        check("...and there is no action to reconstruct",
+              replay.selected_action(store, episode), None)
+        store.close()
+
+
+# --- moves -------------------------------------------------------------------
+
+def test_a_move_is_recorded_once() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(move={"seq": 4, "phase": "driving", "kind": "drive_to",
+                                "asked": {"x_m": 1.0}, "why": "somebody asked",
+                                "route_m": 3.2, "replans": 0})
+        first = Recorder(store, rover).poll()
+        second = Recorder(store, rover).poll()
+        check("recorded once", first["moves"], 1)
+        check("...and not again while it is the same move", second["moves"], 0)
+        check("...with the sequence number marked", store.marked(MOVE_MARK), "4")
+        episode = store.episodes()[0]
+        check("...triggered by the rover moving", episode["trigger"],
+              "the rover moved")
+        store.close()
+
+
+def test_a_move_that_began_and_ended_between_polls_is_counted() -> None:
+    """Never silently absent. The recorder polls, so it can miss one, and a
+    reader has to be able to tell that from a rover that sat still."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(move={"seq": 1, "phase": "driving"})
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        rover.move = {"seq": 4, "phase": "arrived"}
+        recorder.poll()
+        check("two recorded", recorder.recorded["moves"], 2)
+        check("...and the two in between counted as missed",
+              recorder.recorded["missed_moves"], 2)
+        store.close()
+
+
+def test_an_idle_rover_produces_no_move_episodes() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(move={"seq": 0, "phase": "idle"})
+        got = Recorder(store, rover).poll()
+        check("nothing to record", got["moves"], 0)
+        check("...and no episode invented", store.summary()["episodes"], 0)
+        store.close()
+
+
+# --- the daemon going away ---------------------------------------------------
+
+def test_a_daemon_that_stops_answering_loses_nothing() -> None:
+    """A deploy restarts the daemon under a running recorder. The next poll
+    carries on from the mark."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        recorder = Recorder(store, rover)
+        recorder.poll()
+
+        rover.down = True
+        got = recorder.poll()
+        check("the poll reports it rather than raising", got["ok"], False)
+        check("...and counts it", recorder.recorded["unreachable"], 1)
+
+        rover.down = False
+        rover.rows += a_look(2, 200)
+        rover.frames["frame-2"] = PICTURE
+        after = recorder.poll()
+        check("...and the next poll carries on", after["looks"], 1)
+        check("...with nothing recorded twice", store.summary()["episodes"], 2)
+        store.close()
+
+
+def test_a_missing_picture_does_not_lose_the_look() -> None:
+    """The world state may have cleared the frame between the row and the fetch."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={})
+        got = Recorder(store, rover).poll()
+        check("the look is still recorded", got["looks"], 1)
+        check("...with no evidence behind it", store.summary()["evidence"], 0)
+        check("...and it is honest that nothing is missing, because nothing "
+              "was ever kept",
+              replay.reconstruct(store, store.episodes()[0]["ref"])["replayable"],
+              True)
+        store.close()
+
+
+def test_the_world_is_snapshotted_beside_the_looks() -> None:
+    """So that what the rover held at the time survives the store moving on."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE},
+                          entities=[{"id": "object:10", "looks": 4,
+                                     "placement": {"viewpoints": 1,
+                                                   "rays_agreeing": 1}}])
+        Recorder(store, rover).poll()
+        check("one snapshot", store.summary()["snapshots"], 1)
+        episode = store.episode(store.episodes()[0]["ref"])
+        digest = [one for one in episode["events"]
+                  if one["kind"] == "measured"][0]["body"]["world_at"]
+        held = store.snapshot_body(digest)
+        check("...holding the things the rover had",
+              held["entities"][0]["id"], "object:10")
+        check("...including that this one was placed from a single look",
+              held["entities"][0]["placement"]["viewpoints"], 1)
+        store.close()
+
+
+TESTS = (
+    test_a_recorder_cannot_move_the_rover,
+    test_world_state_inspect_is_not_a_call_a_recorder_may_make,
+    test_one_episode_per_look,
+    test_a_look_is_never_recorded_twice,
+    test_a_recorder_that_was_stopped_catches_up,
+    test_the_walk_back_is_bounded,
+    test_a_look_carries_its_picture,
+    test_a_look_can_be_recorded_without_its_picture,
+    test_what_a_look_saw_is_named_durably,
+    test_a_rover_that_cannot_say_which_world_it_is_still_gets_recorded,
+    test_a_look_that_attached_to_nothing_is_not_a_failure,
+    test_a_shadow_episode_decides_nothing_and_says_so,
+    test_a_move_is_recorded_once,
+    test_a_move_that_began_and_ended_between_polls_is_counted,
+    test_an_idle_rover_produces_no_move_episodes,
+    test_a_daemon_that_stops_answering_loses_nothing,
+    test_a_missing_picture_does_not_lose_the_look,
+    test_the_world_is_snapshotted_beside_the_looks,
+)

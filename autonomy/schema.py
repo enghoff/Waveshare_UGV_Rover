@@ -32,17 +32,19 @@ removed or retyped -- so that a recording made by an older build still opens. Se
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 #: Columns added after the table they belong to was first created, applied every
 #: time a database is opened. Adding to this is how the schema grows; nothing is
 #: ever taken out of it.
 #:
-#: Empty, because this component has not yet had a schema change. It is here from
-#: the first commit rather than added at the first migration, because the
-#: migration that goes wrong is the one written in a hurry against a rover that
-#: already holds a month of recordings. `test_store.py` exercises the machinery
-#: directly for the same reason.
+#: Still empty at version 2: the change from 1 to 2 added two whole tables --
+#: `marks` and `pins` -- and a table arrives on an existing database by itself,
+#: because `CREATE TABLE IF NOT EXISTS` runs on every open. No column has been
+#: added to an existing table yet. This stays here rather than waiting for the
+#: first one, because the migration that goes wrong is the one written in a hurry
+#: against a rover that already holds a month of recordings; `test_store.py`
+#: exercises the machinery directly for the same reason.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {}
 
 SCHEMA = """
@@ -147,4 +149,37 @@ SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS aliases_by_from
         ON aliases(from_ref);
+
+    -- Where something had got to. The recorder keeps the last look it recorded
+    -- here, so that restarting it carries on rather than starting again or
+    -- recording everything twice.
+    --
+    -- A table of appended rows rather than one row it edits, for the rule at
+    -- the top of this file: the newest row of a kind is the current answer, and
+    -- the ones under it are the history of where it had got to and when, which
+    -- is exactly what somebody debugging a gap in a recording wants.
+    CREATE TABLE IF NOT EXISTS marks (
+        id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        at    REAL NOT NULL,
+        kind  TEXT NOT NULL,
+        value TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS marks_by_kind
+        ON marks(kind, id DESC);
+
+    -- Episodes retention must not touch. An acceptance recording is the case
+    -- this exists for: the rover deleting the evidence behind the run somebody
+    -- is arguing from would be the worst thing this component could do.
+    --
+    -- Pinning and unpinning are both rows, and the newest wins, so "it was
+    -- pinned in September and released in October" is answerable.
+    CREATE TABLE IF NOT EXISTS pins (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        at      REAL NOT NULL,
+        ref     TEXT NOT NULL,
+        pinned  INTEGER NOT NULL,
+        why     TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS pins_by_ref
+        ON pins(ref, id DESC);
 """
