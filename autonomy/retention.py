@@ -122,23 +122,41 @@ def pinned_evidence(store: store_mod.EpisodeStore) -> set[str]:
     return out
 
 
-def would_fill(store: store_mod.EpisodeStore, *, hours: float,
+#: The shortest span a rate may be extrapolated from. Not a round number for
+#: its own sake: a recorder starting against a rover with a month of history
+#: copies hundreds of frames in a few seconds, and a rate taken across that span
+#: says the disk fills in minutes. Refusing to answer is the only honest
+#: response to it.
+MIN_SPAN_H = 0.1
+
+
+def would_fill(store: store_mod.EpisodeStore, *, hours: float = 0.0,
                policy: Policy = DEFAULT) -> dict[str, Any]:
-    """How long the record has at the rate it has been growing.
+    """How long the record has at the rate it has been growing, or why not.
 
     Measured from what is actually in the store rather than from an assumed
     frame size: the span between the oldest and newest evidence, and the bytes
-    between them. `hours` is what the caller believes the store has been
-    recording for, when the span itself is too short to extrapolate from.
+    between them. `hours` overrides that span, for the caller who knows how long
+    the recording really ran -- which is the answer to want after a catch-up,
+    because the frames a catch-up copies are stamped with when they were
+    *copied* and not with when the rover took them.
+
+    **It refuses rather than guesses.** A rate from a span of a few seconds is
+    the shape of a number somebody quotes in a report, and it would be wrong by
+    three orders of magnitude.
     """
     held = store.evidence_held(limit=100000)
     if len(held) < 2:
         return {"known": False,
                 "why": "not enough evidence to measure a rate from"}
     span_s = held[-1]["stored_at"] - held[0]["stored_at"]
-    span_h = max(span_s / 3600.0, hours if hours > 0 else 0.0)
-    if span_h <= 0:
-        return {"known": False, "why": "no time has passed"}
+    span_h = hours if hours > 0 else span_s / 3600.0
+    if span_h < MIN_SPAN_H:
+        return {"known": False, "frames": len(held),
+                "why": (f"the evidence in this store spans {span_h * 3600:.0f} "
+                        f"seconds, which is too short to extrapolate from; if "
+                        f"a catch-up copied it, pass the hours the recording "
+                        f"really ran for")}
     total = sum(one["bytes"] for one in held)
     rate = total / span_h
     return {

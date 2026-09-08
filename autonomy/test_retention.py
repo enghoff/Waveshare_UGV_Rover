@@ -186,6 +186,27 @@ def test_the_rate_is_measured_from_what_is_in_the_store() -> None:
         store.close()
 
 
+def test_a_rate_is_refused_when_the_span_is_too_short_to_mean_anything() -> None:
+    """Seen on the rover: a recorder catching up copied 200 frames in a few
+    seconds and the rate came back as 14 GB an hour, which is the shape of a
+    number somebody quotes in a report. It refuses now."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        _evidence(store, 200, first_at=NOW, every=0.02, size=30 * 1024)
+        got = retention.would_fill(store)
+        check("it will not answer", got["known"], False)
+        check("...and says the span is the reason",
+              "too short to extrapolate" in got["why"], True)
+        check("...and how to get an answer anyway",
+              "hours the recording really ran" in got["why"], True)
+        told = retention.would_fill(store, hours=2.0)
+        check("...which, told the real duration, it gives",
+              told["known"], True)
+        check("...as three megabytes an hour",
+              round(told["megabytes_per_hour"]), 3)
+        store.close()
+
+
 def test_a_rate_cannot_be_measured_from_nothing() -> None:
     with tempfile.TemporaryDirectory() as directory:
         store = a_store(directory)
@@ -223,6 +244,7 @@ TESTS = (
     test_retention_run_twice_does_not_delete_anything_twice,
     test_an_empty_store_is_left_alone,
     test_the_rate_is_measured_from_what_is_in_the_store,
+    test_a_rate_is_refused_when_the_span_is_too_short_to_mean_anything,
     test_a_rate_cannot_be_measured_from_nothing,
     test_the_policy_describes_itself,
     test_pinning_something_that_is_not_an_episode_is_refused,
