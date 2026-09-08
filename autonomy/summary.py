@@ -152,7 +152,7 @@ def _refused_above(got: dict[str, Any],
     record if the losing candidates and their refusals were written down.
     """
     chose = decision.get("chose")
-    lines: list[str] = []
+    families: dict[str, list[str]] = {}
     for body in got["candidates"]:
         if body.get("goal") == chose:
             break
@@ -161,9 +161,23 @@ def _refused_above(got: dict[str, Any],
             continue
         why = "; ".join(f"{one.get('veto')}: {one.get('why')}"
                         for one in vetoes)
-        lines.append(f"  {body.get('goal')} scored better and was refused -- "
-                     f"{why}")
-    return lines[:3]
+        families.setdefault(why, []).append(str(body.get("goal") or ""))
+
+    # Grouped, because refusals come in families: five things placed where the
+    # rover cannot stand produce five copies of the same two sentences, and the
+    # count is the interesting part of that anyway.
+    lines: list[str] = []
+    for why, goals in families.items():
+        if len(goals) == 1:
+            lines.append(f"  {goals[0]} scored better and was refused -- {why}")
+            continue
+        named = ", ".join(one.split("@")[0].split(":", 1)[-1]
+                          for one in goals[:6])
+        lines.append(f"  {len(goals)} scored better and were refused for the "
+                     f"same reason -- {why}")
+        lines.append(f"    they are {named}"
+                     + (" and others" if len(goals) > 6 else ""))
+    return lines[:6]
 
 
 def recent(store: store_mod.EpisodeStore, *, limit: int = 10) -> str:
