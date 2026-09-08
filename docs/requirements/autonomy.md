@@ -81,7 +81,10 @@ behaviour of a particular replay.
   component may make is named in `client.ALLOWED` and every other is refused
   before a socket is opened, checked by trying each one a recorder might reach
   for; the thirty-minute shadow run on the Orin of
-  [2026-09-08](../progress/2026-09-08-shadow-run.md)
+  [2026-09-08](../progress/2026-09-08-shadow-run.md), and
+  [the driven run](../progress/2026-09-08-the-driven-run.md) the same evening,
+  through which the rover was driven round the whole property while the component
+  watched and could not have moved it
 
 Distinct from [R-AUT-4](#r-aut-4), which is about replay alone. This is about the
 component as a whole: it observes and must have no movement-capable call

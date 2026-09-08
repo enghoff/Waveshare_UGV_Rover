@@ -1,7 +1,8 @@
 # Development plan: curiosity-driven autonomy
 
-Status: Phase 0 (P0) is in progress and Phase 1 (P1) is under way alongside
-it, with no action authority; later phases remain proposed. This is the
+Status: Phase 0 (P0) is in progress. Phase 1 (P1) passed its milestone on
+2026-09-08 and has no action authority; later phases remain proposed. This is
+the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -393,6 +394,15 @@ independent decisions.
 
 Create the evidence trail before creating an executive that can act.
 
+### Milestone M1 passed on 2026-09-08
+
+Every criterion is met, across three entries of that date: the record and its
+names, [the clear that emptied the world under it](../progress/2026-09-08-the-clear-that-proved-it.md),
+and [the driven run](../progress/2026-09-08-the-driven-run.md) that supplied the
+navigation half of criterion 4. What the milestone does *not* give is listed
+under "what is still ahead" below, and the first item is the one that matters:
+nothing decides anything yet.
+
 ### The component, which exists
 
 `autonomy/` records episodes and has no authority over anything. What it holds and
@@ -416,14 +426,16 @@ as of the same date. What remains open is written into
 - **Nothing decides anything.** The recorder watches and writes down; the
   executive that would choose a goal is Phase 2, and until it exists every
   episode is an occasion of the rover acting rather than of it deciding. The
-  record has been proved against real events; it has not been proved against a
-  decision, because there are none to record.
+  record has been proved against real events -- 59 moves and 426 looks across
+  three fillings of the world state -- and never against a decision, because
+  there are none to record.
 - **The recorder is not a service.** It is run by hand for as long as somebody
   wants a recording. Nothing starts it at boot, so a rover left alone records
   nothing, and retention is not run on a schedule either.
-- **Nothing tells the record about a merge or a split.** The alias table exists
-  and is tested; the world state does not call it, so identity changes are
-  recorded only when something puts them there.
+- **Nothing tells the record about a merge or a split.** A retained reference
+  cannot be broken or redirected by one, because replay never resolves against
+  the live store; but "what became of that thing" stays unanswered until
+  something calls `store.alias`.
 - **A look that found nothing leaves no episode.** The recorder keys an episode
   to an inspection's observations, and an inspection that found no region writes
   no observation — so "the rover looked and saw nothing", which is itself worth
