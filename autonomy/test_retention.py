@@ -215,6 +215,28 @@ def test_a_rate_cannot_be_measured_from_nothing() -> None:
         store.close()
 
 
+def test_a_size_is_reported_in_a_unit_somebody_would_say_it_in() -> None:
+    """Seen on the rover: a four-megabyte limit came back to a reader of a
+    pruned episode as "the record was over 0.0 GB"."""
+    check("bytes", retention.size(400), "400 bytes")
+    check("kilobytes", retention.size(30 * 1024), "30 kB")
+    check("megabytes", retention.size(4 * 1024 ** 2), "4.0 MB")
+    check("gigabytes", retention.size(2 * 1024 ** 3), "2.0 GB")
+
+
+def test_a_removal_explains_itself_in_that_unit_too() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        kept = _evidence(store, 3, first_at=NOW, every=1.0, size=2000)
+        retention.apply(store, retention.Policy(365.0, 4 * 1024 ** 2), now=NOW)
+        check("nothing removed under a four-megabyte limit",
+              store.evidence_state(kept[0])["state"], HELD)
+        retention.apply(store, retention.Policy(365.0, 2500), now=NOW)
+        check("...and when one bites, it says the size in kilobytes",
+              "over 2.4 kB" in store.evidence_state(kept[0])["why"], True)
+        store.close()
+
+
 def test_the_policy_describes_itself() -> None:
     """So that a report says what was applied rather than naming a constant."""
     said = retention.DEFAULT.describe()
@@ -246,6 +268,7 @@ TESTS = (
     test_the_rate_is_measured_from_what_is_in_the_store,
     test_a_rate_is_refused_when_the_span_is_too_short_to_mean_anything,
     test_a_rate_cannot_be_measured_from_nothing,
+    test_a_size_is_reported_in_a_unit_somebody_would_say_it_in,
     test_the_policy_describes_itself,
     test_pinning_something_that_is_not_an_episode_is_refused,
 )

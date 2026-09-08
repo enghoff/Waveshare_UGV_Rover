@@ -49,7 +49,7 @@ class Policy(NamedTuple):
 
     def describe(self) -> str:
         return (f"evidence is kept for {self.keep_days:g} days and up to "
-                f"{self.max_bytes / (1024 ** 3):.1f} GB, oldest removed first, "
+                f"{size(self.max_bytes)}, oldest removed first, "
                 f"pinned episodes never")
 
 
@@ -87,8 +87,7 @@ def apply(store: store_mod.EpisodeStore, policy: Policy = DEFAULT, *,
         if not (too_old or too_big):
             continue
         why = ("retention: older than %g days" % policy.keep_days if too_old
-               else "retention: the record was over %.1f GB"
-                    % (policy.max_bytes / (1024 ** 3)))
+               else "retention: the record was over %s" % size(policy.max_bytes))
         if not dry_run:
             store.delete_evidence(one["digest"], why,
                                   detail=f"kept since {_when(one['stored_at'])}")
@@ -169,6 +168,22 @@ def would_fill(store: store_mod.EpisodeStore, *, hours: float = 0.0,
         "days_to_limit": (round(policy.max_bytes / rate / 24.0, 1)
                           if rate else None),
     }
+
+
+def size(total: int) -> str:
+    """A size in the unit somebody would say it in.
+
+    Worth its own function because the first version formatted everything as
+    gigabytes, and a four-megabyte limit came back to a person reading a pruned
+    episode as "the record was over 0.0 GB".
+    """
+    if total < 1024:
+        return f"{total} bytes"
+    for unit, step in (("kB", 1024), ("MB", 1024 ** 2), ("GB", 1024 ** 3)):
+        if total < step * 1024 or unit == "GB":
+            value = total / step
+            return f"{value:.0f} {unit}" if value >= 10 else f"{value:.1f} {unit}"
+    return f"{total} bytes"
 
 
 def _when(stamp: float) -> str:

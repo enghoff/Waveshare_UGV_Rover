@@ -58,38 +58,52 @@ anything that substitutes a newer record sharing a local identifier.
 <a id="r-aut-4"></a>
 ### R-AUT-4 — Replaying a recorded episode issues no command to the rover
 
-- **State:** open
-- **Blocked by:** Milestone M1 in
-  [the curiosity plan](../plans/autonomous-curiosity.md), criterion 3
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md);
+  `autonomy/selftest.py` reads the replay module and checks that it imports
+  nothing but the record and the standard library; episodes reconstructed on the
+  Orin on 2026-09-08 with the daemon running beside them
 
 The reconstruction reads the episode record and the snapshot the decision was
 made from, and there is no client, socket or daemon call anywhere in that path.
-The offline suite checks the module's imports, which proves this build has no way
-to reach the rover; it is not settled because it has not been demonstrated on a
-rover with a daemon running beside it.
+What would make it false is an import that reaches the rover, added for one
+convenient lookup — which is why the check is on the imports rather than on the
+behaviour of a particular replay.
 
 <a id="r-aut-5"></a>
 ### R-AUT-5 — The component that records episodes has no path that can move the rover
 
-- **State:** open
-- **Blocked by:** Milestone M1 in
-  [the curiosity plan](../plans/autonomous-curiosity.md), criterion 4
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md); every call this
+  component may make is named in `client.ALLOWED` and every other is refused
+  before a socket is opened, checked by trying each one a recorder might reach
+  for; the thirty-minute shadow run on the Orin of
+  [2026-09-08](../progress/2026-09-08-shadow-run.md)
 
 Distinct from [R-AUT-4](#r-aut-4), which is about replay alone. This is about the
-component as a whole during a shadow run: it may observe navigation and
-world-state events and must have no movement-capable call available to it.
-Movement authority arrives at M3 and is gated separately in
-[safety](safety.md).
+component as a whole: it observes and must have no movement-capable call
+available to it. The refusal is a property of the client rather than of the
+caller's restraint, so what would make this false is a call being added to the
+allow-list — and the list is short enough to read. Movement authority arrives at
+M3 and is gated separately in [safety](safety.md).
 
 <a id="r-aut-6"></a>
 ### R-AUT-6 — Recording episodes cannot fill the rover's disk
 
-- **State:** open
-- **Blocked by:** Milestone M1 in
-  [the curiosity plan](../plans/autonomous-curiosity.md), criterion 6
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md); the policy and
+  its numbers are in `retention.DEFAULT`; measured and demonstrated on the rover
+  in [2026-09-08](../progress/2026-09-08-shadow-run.md), where a limit applied to
+  the real record removed the oldest evidence, spared every pinned episode, and
+  left the pruned episodes reporting themselves as no longer fully replayable
 
 Each look an episode keeps means a copy of a frame, and a rover left running is
-the case that matters. Neither a retention policy nor a disk limit exists yet,
-and the growth per hour of a shadow run has not been measured. What settles this
-is a documented limit, a measurement of the rate, and evidence that reaching the
-limit removes evidence in a way [R-AUT-3](#r-aut-3) reports honestly.
+the case that matters. The record is bounded by age and by size, oldest removed
+first, and a pinned episode is never touched even by a store far over its limit.
+
+**The recorder applies the policy itself**, as it records, which is what makes
+this a property of the component rather than of somebody remembering to run a
+second program: the record only grows while something is recording. What would
+make it false is evidence kept by a path that does not go through the recorder,
+or a pinned set large enough to exceed the limit on its own — which is reported
+loudly rather than resolved by deleting the pins.
