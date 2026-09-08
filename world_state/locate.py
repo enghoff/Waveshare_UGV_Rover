@@ -24,8 +24,12 @@ SEE_PAST_M = 1.0
 ELEVATION_SIGMA_DEG = BEARING_SIGMA_DEG
 MAX_ELEVATION_DEG = 80.0
 MAX_RISE_EXTENT_M = 1.0
-# Unmeasured: report relative height only until the optical centre is surveyed.
-CAMERA_HEIGHT_M = None
+# The gimbal camera's optical centre above the floor, camera level, and the datum
+# every height in here is quoted against. Tape, 2026-09-08, and worth about a
+# centimetre: an optical centre cannot be seen, so both ends were placed by eye.
+# The one independent check is that the same tape put the OAK 95 mm below this
+# camera where the board fit of 2026-09-07 put it 93.7.
+CAMERA_HEIGHT_M = 0.235
 HUBER_K = 2.0
 RANGE_SIGMA_M = 0.15
 
@@ -469,7 +473,16 @@ def along_track(point: dict[str, Any], ray: dict[str, Any]) -> float:
 
 
 def rise_m(point: dict[str, Any], ray: dict[str, Any]) -> float | None:
-    """Height relative to the camera at this horizontal range; None if unmeasured."""
+    """Height above the datum at this horizontal range; None if unmeasured.
+
+    **The datum is the gimbal camera's optical centre, not whichever lens took
+    the picture.** A ray through another camera carries `camera_rise_m` saying
+    how much higher that lens sits, because the two are 94 mm apart and a
+    difference in mounting height is the one term that does not cancel when
+    heights measured through both are compared -- the same object photographed
+    from the lower lens reads 94 mm higher. Absent means this ray's camera is
+    the datum, which every look this rover has taken so far was.
+    """
     elevation = ray.get("elevation_deg")
     if elevation is None:
         return None
@@ -481,7 +494,8 @@ def rise_m(point: dict[str, Any], ray: dict[str, Any]) -> float | None:
         return None
     range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
                          float(point["y_m"]) - float(ray["y_m"]))
-    return range_m * math.tan(math.radians(elevation))
+    return (range_m * math.tan(math.radians(elevation))
+            + float(ray.get("camera_rise_m") or 0.0))
 
 
 def rise_tolerance_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
@@ -732,7 +746,14 @@ def stands_at_range(point: dict[str, Any], ray: dict[str, Any]) -> bool:
 
 
 def above_floor_m(height_m: float | None) -> float | None:
-    """Convert relative height only when the camera mounting height is measured."""
+    """Height above the floor, from a height above the datum; None if unsurveyed.
+
+    Kept as a conversion rather than folded into `rise_m` because the two carry
+    different confidence. A height above the camera is measured every time a
+    thing is placed and is as good as the elevations that made it; a height above
+    the floor adds one constant somebody measured once with a tape, so it can be
+    no better than that tape however many looks went into the rest.
+    """
     if height_m is None or CAMERA_HEIGHT_M is None:
         return None
     return float(height_m) + float(CAMERA_HEIGHT_M)

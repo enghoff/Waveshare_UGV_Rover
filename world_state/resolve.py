@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import cluster, locate, view
+from . import cluster, locate, oak, view
 from .appearance import _UNIT, alone, any_of, appearance, similarity
 
 MATCH = "match"
@@ -143,6 +143,14 @@ def ray_of(observation: dict[str, Any],
                  # `locate.rise_m`.
                  "elevation_deg": observation.get("elevation_deg"),
                  "elevation_span_deg": observation.get("elevation_span_deg"),
+                 # Which lens this ray was measured from, expressed as how high
+                 # that lens sits above the height datum. The two cameras on this
+                 # rover are 94 mm apart vertically, so without it a thing
+                 # photographed through the OAK and the same thing photographed
+                 # through the gimbal disagree about their height by that much
+                 # and the resolver reads the disagreement as evidence they are
+                 # different things. See `oak.rise_of`.
+                 "camera_rise_m": oak.rise_of(observation.get("camera")),
                  # And how far away the depth camera said it was, with what that
                  # reading is worth. Absent on every look the rover took before
                  # it read the depth camera, and on every look since taken

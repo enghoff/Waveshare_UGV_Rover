@@ -599,9 +599,34 @@ def test_a_height_needs_a_range_and_a_bearing_has_none() -> None:
           locate.rise_m(point, _high(0.0, 0.0, 45.0)), None)
     check("and a ray pointing nearly at the ceiling says nothing either",
           locate.rise_m(point, _high(0.0, 0.0, 45.0, 85.0)), None)
-    check("the height is above the camera, and stays there until somebody "
-          "measures how high that is",
-          (locate.CAMERA_HEIGHT_M, locate.above_floor_m(1.0)), (None, None))
+    check("the height is above the camera, and the camera's own height above "
+          "the floor was measured, so it converts",
+          (locate.CAMERA_HEIGHT_M, round(locate.above_floor_m(1.0), 3)),
+          (0.235, 1.235))
+    check("a thing with no measured height has no height above the floor either",
+          locate.above_floor_m(None), None)
+
+
+def test_a_look_through_the_lower_camera_is_put_on_the_same_datum() -> None:
+    """**The two cameras are 94 mm apart vertically and nothing cancels it.**
+    Photograph one object through both and the lower lens sees it higher above
+    itself by exactly that gap, so without a common datum the resolver would read
+    two views of one thing as a height disagreement -- which is a gate it
+    enforces, so the wrong answer is a refusal to merge rather than a wrong
+    number."""
+    point = {"x_m": 1.0, "y_m": 0.0, "uncertainty_m": 0.2}
+    level = _high(0.0, 0.0, 0.0, 45.0)
+    lower = {**level, "camera_rise_m": -0.0937}
+    check("through the gimbal, the height is measured from the gimbal",
+          round(locate.rise_m(point, level), 3), 1.0)
+    check("...and through the OAK the same angle is 94 mm lower, because the "
+          "lens it was measured from is",
+          round(locate.rise_m(point, lower), 3), 0.906)
+    check("a ray that does not say which camera it came from is the datum's",
+          locate.rise_m(point, level), locate.rise_m(point, {**level,
+                                                            "camera_rise_m": None}))
+    check("and the offset moves the height rather than the uncertainty",
+          locate.rise_noise_m(point, level), locate.rise_noise_m(point, lower))
 
 
 def test_two_rays_must_agree_about_the_height_as_well_as_the_place() -> None:

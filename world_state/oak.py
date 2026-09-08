@@ -424,6 +424,25 @@ def _project(direction: tuple[float, float, float],
             (lens.cy + lens.fy * y / z) / lens.height)
 
 
+def rise_of(camera: str | None) -> float:
+    """How high this camera's optical centre sits above the height datum, in metres.
+
+    The datum is the gimbal camera, so its own answer is zero by construction and
+    the OAK's is where the mount puts it -- 94 mm lower, hence negative. This is
+    the `up_m` that `pose_for` deliberately does not spend: the map is flat, so
+    the horizontal offset belongs on the pose, while the vertical one belongs on
+    the height and had nowhere to go until the datum itself was measured.
+
+    An unmeasured mount, or a camera nobody has heard of, is zero rather than a
+    refusal. Zero is what a look through the gimbal deserves and what every look
+    on this rover so far was, and a datum offset guessed wrong is worse than one
+    not applied -- it would move heights that are currently right.
+    """
+    if camera == OAK and MEASURED:
+        return float(MOUNT.up_m)
+    return 0.0
+
+
 def describe() -> str:
     """One line for the diagnostics row: where this camera is, or that nobody knows."""
     if not MEASURED:
