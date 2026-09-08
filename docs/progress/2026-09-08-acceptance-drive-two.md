@@ -19,11 +19,20 @@ confirmation that the corrected OAK mount does real work on a driven run rather
 than passing a bench fit, and it tests the whole chain at once — the bearing, the
 rover's own pose, and the range that helped place them.
 
-It also says the rover is pessimistic about itself. It claimed 0.263 m and
-0.175 m of placement uncertainty on those two, so it would have accepted anything
-between about 2.5 and 3.3 m, and the truth landed inside a tenth of a metre.
-Over-stating uncertainty is the safe direction and it is not free: 387 of the
-1328 looks attached to nothing at all.
+**It is one measurement and it should not be asked to carry more than that.** A
+single separation between two well-observed objects, read off a tape, agrees with
+the rover to better than a tenth of a metre while the rover claimed 0.263 m and
+0.175 m of doubt about the two placements. That is consistent with the recorded
+uncertainty being conservative, and it is not evidence of how accurate the rover
+is in general: one agreement can be luck, it says nothing about the objects that
+were harder to see, and no error distribution can be drawn through a single
+point. What it does rule out is a gross error in the chain on this drive.
+
+Whether the recorded uncertainty should be narrowed is therefore an open
+question and not a finding. It is worth asking because being vague is not free —
+several things in one corner of a room all qualify for the same sighting, the
+resolver refuses a tie rather than guessing, and 387 of the 1328 looks attached
+to nothing at all. How much of that is the margins is unmeasured.
 
 Ranges are better again. Against the parallax ground truth — every thing seen
 from three or more standing places has its position fixed by crossing bearings
@@ -149,9 +158,10 @@ the rover can range but cannot place is worth naming.
 - [R-WS-13](../requirements/world-state.md#r-ws-13) stays `open`, with three
   fresh named instances and a mechanism: the collapse test guards joining a thing
   and not founding one.
-- [R-WS-10](../requirements/world-state.md#r-ws-10) stays `failing`. The 2.9 m
-  separation is real evidence and it is one measurement of the whole chain, not
-  the held-out bearing trials the criterion asks for.
+- [R-WS-10](../requirements/world-state.md#r-ws-10) stays `failing`. One
+  separation measured to a tenth of a metre is a single point on the whole
+  chain, not the held-out bearing trials the criterion asks for, and it cannot
+  be read as an accuracy figure.
 - [R-WS-16](../requirements/world-state.md#r-ws-16) stays `open`; its hardware
   demonstration exists now and wants writing up against the restart itself.
 - [R-WS-12](../requirements/world-state.md#r-ws-12) is untouched: no bare patch
@@ -169,7 +179,10 @@ the rover can range but cannot place is worth naming.
    down against each one, which is a review rather than an experiment.
 2. Let a measured range place a thing from one viewpoint. The spray can is the
    case, and 38 things that were never ranged are the scale.
-3. Narrow the recorded placement uncertainty toward what the drive measured.
+3. Decide whether the recorded placement uncertainty is too wide, which needs
+   more than the one separation this drive measured -- several objects at known
+   separations, and a count of how many unattached looks are ties rather than
+   misses.
 4. Count splits, which nothing reports the way a merge is reported.
 
 Not worth doing: another pass at where to ask the masked question. The four
