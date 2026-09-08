@@ -56,6 +56,15 @@ The last row is the one worth the reading. That is the daemon taking the wheels
 back from an executive that had stopped asking, with Nav2 healthy underneath —
 the case that makes the difference between a permission and a promise.
 
+**And the executive was killed outright while holding a live permit.** With a
+run open and the executive renewing it every few seconds — three renewals in,
+fourteen seconds left on the lease — `kill -9` on the process, and the daemon
+ended the run **14.1 s later**: "the permission ran out and nothing renewed it",
+not latched, because a kill is not a person's stop. That is the mechanism
+[M3](../plans/autonomous-curiosity.md)'s criterion 9 asks for, measured on the
+rover with no motion involved; what the criterion still wants is the same thing
+happening to a rover that is driving.
+
 The executive itself was then run against the real house three times with the
 safe area declared a centimetre wide and a kilometre away, so that no candidate
 could be inside it and the daemon would refuse the dispatch even if the scorer
