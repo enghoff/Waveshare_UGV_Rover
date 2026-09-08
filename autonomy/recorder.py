@@ -49,6 +49,7 @@ from typing import Any
 import client as client_mod
 import events
 import refs
+import retention as retention_mod
 import store as store_mod
 import summary as summary_mod
 
@@ -70,6 +71,13 @@ ENDINGS = {
     "blocked": "failed", "failed": "failed", "lost": "failed",
 }
 
+#: How often, in seconds, a running recorder brings the record back within its
+#: retention policy. **The recorder is the only thing that ever runs retention**,
+#: which is deliberate: the record only grows while something is recording, so
+#: the thing doing the growing is the right thing to do the pruning, and there is
+#: no timer to install and forget on a rover nobody is watching.
+RETAIN_EVERY_S = 300.0
+
 #: How much of the world to snapshot beside a look. The whole entity listing is
 #: the honest answer and it is also the expensive one, so it is snapshotted at
 #: the summary level per look and in full only when the listing has changed --
@@ -88,15 +96,22 @@ class Recorder:
 
     def __init__(self, store: store_mod.EpisodeStore,
                  client: client_mod.ReadOnly, *, keep_frames: bool = True,
-                 catch_up: int = 200) -> None:
+                 catch_up: int = 200,
+                 policy: retention_mod.Policy | None = retention_mod.DEFAULT
+                 ) -> None:
         self.store = store
         self.client = client
         self.keep_frames = keep_frames
         self.catch_up = catch_up
+        #: None turns retention off, which is for measuring what a run would
+        #: cost if nothing pruned it. Anything else is enforced as it records.
+        self.policy = policy
         self.recorded = {"looks": 0, "moves": 0, "frames": 0, "polls": 0,
-                         "missed_moves": 0, "unreachable": 0}
+                         "missed_moves": 0, "unreachable": 0,
+                         "evidence_removed": 0, "bytes_freed": 0}
         self._entities_at = 0.0
         self._entities_digest = ""
+        self._retained_at = 0.0
 
     # --- one pass -------------------------------------------------------------
 
@@ -117,16 +132,39 @@ class Recorder:
 
     def run(self, *, seconds: float, every_s: float = 2.0,
             report: Any = None) -> dict[str, Any]:
-        """Poll until the time is up, then say what was recorded."""
+        """Poll until the time is up, then say what was recorded.
+
+        Retention runs as part of this rather than on a timer somewhere else.
+        A record that only grows while something is recording should be pruned
+        by the thing doing the growing -- otherwise the honest claim is not
+        "the record cannot fill the disk" but "it cannot, as long as somebody
+        remembers to run the other program".
+        """
         started = time.time()
         deadline = started + seconds
+        self._retained_at = started
         while time.time() < deadline:
             got = self.poll()
             if report and (got.get("looks") or got.get("moves")
                            or not got.get("ok")):
                 report(got)
+            if (self.policy is not None
+                    and time.time() - self._retained_at >= RETAIN_EVERY_S):
+                self.retain(report=report)
             time.sleep(max(0.1, min(every_s, deadline - time.time())))
+        if self.policy is not None:
+            self.retain(report=report)
         return {**self.recorded, "seconds": round(time.time() - started, 1)}
+
+    def retain(self, *, report: Any = None) -> dict[str, Any]:
+        """Bring the record back within its policy, and count what went."""
+        self._retained_at = time.time()
+        got = retention_mod.apply(self.store, self.policy)
+        self.recorded["evidence_removed"] += got["removed"]
+        self.recorded["bytes_freed"] += got["freed"]
+        if report and got["removed"]:
+            report({"ok": True, "retained": got})
+        return got
 
     # --- looks ----------------------------------------------------------------
 
@@ -433,21 +471,33 @@ def main(argv: list[str] | None = None) -> int:
                         help="most looks to record from before it started")
     parser.add_argument("--dir", default=None,
                         help="where to keep the record (default ~/.ugv/autonomy)")
+    parser.add_argument("--no-retention", action="store_true",
+                        help="do not prune the record while recording, which is "
+                             "how the unpruned cost of a run gets measured")
     args = parser.parse_args(argv)
 
     store = store_mod.EpisodeStore(args.dir)
+    policy = None if args.no_retention else retention_mod.DEFAULT
     recorder = Recorder(store, client_mod.ReadOnly(),
                         keep_frames=not args.no_frames,
-                        catch_up=args.catch_up)
+                        catch_up=args.catch_up, policy=policy)
     before = store.summary()
     print(f"watching for {args.seconds:.0f}s, polling every {args.every:.0f}s, "
           f"frames {'off' if args.no_frames else 'on'}")
     print(f"the record holds {before['episodes']} episodes and "
           f"{before['evidence_bytes']} bytes of evidence to begin with")
+    print("retention: " + (policy.describe() if policy else
+                           "off -- the record will not be pruned"))
 
     def say(got: dict[str, Any]) -> None:
         if not got.get("ok"):
             print(f"  the daemon did not answer: {got.get('why')}")
+            return
+        if got.get("retained"):
+            kept = got["retained"]
+            print(f"  {time.strftime('%H:%M:%S')} retention removed "
+                  f"{kept['removed']} piece(s) of evidence, "
+                  f"{kept['freed']} bytes")
             return
         parts = []
         if got.get("looks"):
@@ -466,6 +516,9 @@ def main(argv: list[str] | None = None) -> int:
               f"and were not recorded")
     if got["unreachable"]:
         print(f"  the daemon did not answer on {got['unreachable']} poll(s)")
+    if got["evidence_removed"]:
+        print(f"  retention removed {got['evidence_removed']} piece(s) of "
+              f"evidence, freeing {got['bytes_freed']} bytes")
     print(f"  {after['episodes'] - before['episodes']} episodes, "
           f"{after['events'] - before['events']} events, "
           f"{got['frames']} frames, "

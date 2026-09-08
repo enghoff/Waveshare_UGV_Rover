@@ -18,6 +18,7 @@ import replay
 import summary
 from recorder import LOOK_MARK, MOVE_MARK, Recorder
 from test_fakes import (CLEARED, PICTURE, WORLD, FakeRover, a_look, a_store)
+import retention
 from test_harness import check
 
 
@@ -461,6 +462,60 @@ def test_the_world_is_snapshotted_beside_the_looks() -> None:
         store.close()
 
 
+
+# --- keeping itself off the disk ---------------------------------------------
+
+def test_a_run_prunes_the_record_as_it_goes() -> None:
+    """Otherwise the honest claim is not "the record cannot fill the disk" but
+    "it cannot, as long as somebody remembers to run the other program"."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        recorder = Recorder(store, rover,
+                            policy=retention.Policy(keep_days=0.0,
+                                                    max_bytes=10 ** 9))
+        recorder.poll()
+        check("the look is recorded", store.summary()["episodes"], 1)
+        recorder.retain()
+        check("...and its picture pruned, being past the age limit",
+              store.evidence_state(refs.digest(PICTURE))["state"], "deleted")
+        check("...counted in the run's own report",
+              recorder.recorded["evidence_removed"], 1)
+        check("...and the episode says it can no longer be replayed in full",
+              replay.reconstruct(store,
+                                 store.episodes()[0]["ref"])["replayable"],
+              False)
+        store.close()
+
+
+def test_a_run_can_be_told_not_to_prune() -> None:
+    """Which is how the unpruned cost of a run gets measured."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        recorder = Recorder(store, rover, policy=None)
+        recorder.poll()
+        got = recorder.run(seconds=0.0)
+        check("nothing was pruned", got["evidence_removed"], 0)
+        check("...and the picture is still there",
+              store.evidence_state(refs.digest(PICTURE))["state"], "held")
+        store.close()
+
+
+def test_pruning_never_takes_a_pinned_run() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(rows=a_look(1, 100), frames={"frame-1": PICTURE})
+        recorder = Recorder(store, rover,
+                            policy=retention.Policy(keep_days=0.0, max_bytes=0))
+        recorder.poll()
+        store.pin(store.episodes()[0]["ref"], "the acceptance run")
+        recorder.retain()
+        check("nothing removed", recorder.recorded["evidence_removed"], 0)
+        check("...and the picture is still there",
+              store.evidence_state(refs.digest(PICTURE))["state"], "held")
+        store.close()
+
 TESTS = (
     test_a_recorder_cannot_move_the_rover,
     test_world_state_inspect_is_not_a_call_a_recorder_may_make,
@@ -487,4 +542,7 @@ TESTS = (
     test_a_daemon_that_stops_answering_loses_nothing,
     test_a_missing_picture_does_not_lose_the_look,
     test_the_world_is_snapshotted_beside_the_looks,
+    test_a_run_prunes_the_record_as_it_goes,
+    test_a_run_can_be_told_not_to_prune,
+    test_pruning_never_takes_a_pinned_run,
 )
