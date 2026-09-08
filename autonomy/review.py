@@ -3,6 +3,7 @@
 
     ssh orin 'cd ~/ugv/autonomy && python3 review.py'            the last 20
     ssh orin 'cd ~/ugv/autonomy && python3 review.py --moves'    only the driving
+    ssh orin 'cd ~/ugv/autonomy && python3 review.py --decisions'  what it would do
     ssh orin 'cd ~/ugv/autonomy && python3 review.py episode:481'
     ssh orin 'cd ~/ugv/autonomy && python3 review.py --stats'
     ssh orin 'cd ~/ugv/autonomy && python3 review.py episode:481 --save ~/look'
@@ -42,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="how many to list (default 20)")
     parser.add_argument("--moves", action="store_true",
                         help="only episodes where the rover moved")
+    parser.add_argument("--decisions", action="store_true",
+                        help="only the deliberations: what it would do next")
     parser.add_argument("--looks", action="store_true",
                         help="only episodes where the rover looked")
     parser.add_argument("--world", default=None,
@@ -80,6 +83,9 @@ def listing(store: store_mod.EpisodeStore, args: Any) -> int:
         rows = [one for one in rows if one["trigger"] == "the rover moved"]
     if args.looks:
         rows = [one for one in rows if one["trigger"] == "the rover looked"]
+    if args.decisions:
+        rows = [one for one in rows
+                if one["trigger"] == "the rover considered what to do next"]
     if args.pinned:
         rows = [one for one in rows if store.is_pinned(one["ref"])]
     if args.broken:
@@ -110,10 +116,13 @@ def line(store: store_mod.EpisodeStore, episode: dict[str, Any], *,
     ended = "open" if outcome is None else outcome["outcome"]
     name = episode["ref"] if full else _short(episode["ref"])
     detail = episode["trigger_detail"] or {}
-    what = (f"{detail.get('kind') or 'a move'}"
-            if episode["trigger"] == "the rover moved"
-            else f"{detail.get('regions', '?')} region(s)"
-                 f" at pan {_deg(detail.get('pan_deg'))}")
+    if episode["trigger"] == "the rover moved":
+        what = f"{detail.get('kind') or 'a move'}"
+    elif episode["trigger"] == "the rover looked":
+        what = (f"{detail.get('regions', '?')} region(s)"
+                f" at pan {_deg(detail.get('pan_deg'))}")
+    else:
+        what = f"{detail.get('candidates', '?')} candidate(s)"
     marks = "".join((
         "*" if store.is_pinned(episode["ref"]) else " ",
         "!" if not replay.reconstruct(store, episode["ref"])["replayable"]
@@ -263,7 +272,17 @@ def _short(ref: str) -> str:
 
 
 def _trigger(trigger: str) -> str:
-    return "moved" if "moved" in trigger else "looked"
+    """The one word a listing shows for what an episode was.
+
+    Three kinds now, and the third is the only one that contains a choice --
+    which is why it is worth a word of its own in a listing rather than being
+    lumped in with the rover's own activity.
+    """
+    if "moved" in trigger:
+        return "moved"
+    if "looked" in trigger:
+        return "looked"
+    return "decided"
 
 
 def _deg(value: Any) -> str:
@@ -280,6 +299,8 @@ def _clock(stamp: float) -> str:
 
 def _body(step: dict[str, Any]) -> str:
     body = dict(step["body"])
+    if step["kind"] == "candidate":
+        return _candidate(body)
     if step["kind"] == "measured" and body.get("phase"):
         said = [str(body["phase"])]
         if body.get("why"):
@@ -295,6 +316,32 @@ def _body(step: dict[str, Any]) -> str:
             trimmed = ", ".join(f"{k}={v}" for k, v in sorted(rest.items()))
             return f"{body[key]}" + (f" ({trimmed})" if trimmed else "")
     return ", ".join(f"{k}={v}" for k, v in sorted(body.items()))
+
+
+def _candidate(body: dict[str, Any]) -> str:
+    """A considered goal in one line rather than in five hundred characters.
+
+    A deliberation records twenty-five of these, each carrying its whole score
+    decomposition, the geometry behind its estimate and the refusals against it.
+    Printed as the dictionary it is, that is a page per candidate and nobody
+    reads it -- so the line here is the four things somebody scanning a
+    deliberation actually wants, and the full body is still in the database for
+    anything that needs it.
+    """
+    params = body.get("params") or {}
+    score = params.get("score") or {}
+    said = [str(body.get("goal") or "")]
+    if score.get("utility") is not None:
+        said.append(f"scored {score['utility']}")
+    if params.get("travel_m") is not None:
+        said.append(f"{params['travel_m']} m, {params.get('time_s')} s")
+    vetoes = params.get("vetoes") or []
+    if vetoes:
+        said.append("refused: " + "; ".join(str(one.get("veto"))
+                                            for one in vetoes))
+    elif score.get("below_min_gain"):
+        said.append("under the minimum worth disturbing the rover for")
+    return " -- ".join(one for one in said if one)
 
 
 if __name__ == "__main__":

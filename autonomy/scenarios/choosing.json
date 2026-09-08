@@ -153,6 +153,27 @@
       }
     },
     {
+      "name": "a place to stand near the last one is not the same goal",
+      "why": "On a real map the viewpoints for two different things are routinely within a metre of each other, so proximity cannot be what makes two goals the same. A goal about a thing is the same goal wherever the rover stands to look at it, and a different thing is a different goal however near.",
+      "map": "room",
+      "previous_goal": {"type": "improve_geometry", "target": "object:9",
+                        "goal": {"x_m": 1.65, "y_m": 0.55}},
+      "entities": [
+        {"id": "object:8", "at": [1.15, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90},
+        {"id": "object:9", "at": [2.15, 1.0], "uncertainty_m": 0.60,
+         "major_deg": 90}
+      ],
+      "expect": {
+        "terms": [
+          {"match": {"target": "object:8"}, "field": "switching_cost",
+           "at_least": 0.1},
+          {"match": {"target": "object:9"}, "field": "switching_cost",
+           "at_most": 0.0}
+        ]
+      }
+    },
+    {
       "name": "a roomful of well placed things is a rover with nothing to do",
       "why": "The no-action case that matters most, because everything here is reachable, safe and in front of it. Idle has to be able to win.",
       "map": "room",

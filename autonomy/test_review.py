@@ -14,7 +14,9 @@ import tempfile
 import refs
 import retention
 import review
-from test_fakes import PICTURE, WORLD, FakeRover, a_look, a_store, an_episode
+from test_fakes import (PICTURE, WORLD, FakeRover, a_look, a_store,
+                        a_thing, an_episode)
+from test_goals import ROOM
 from test_harness import check
 
 
@@ -174,6 +176,29 @@ def test_an_unreadable_episode_is_marked_in_the_listing() -> None:
         check("it can be listed on its own", "1 episode(s) match" in said, True)
 
 
+def test_the_deliberations_can_be_listed_on_their_own() -> None:
+    """The one kind of episode that contains a choice is worth finding."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        rover = FakeRover(room=ROOM, rows=a_look(1, 100),
+                          frames={"frame-1": PICTURE},
+                          entities=[a_thing("object:8", 1.6, 1.0,
+                                            uncertainty_m=0.60,
+                                            major_deg=90.0)])
+        from recorder import Recorder
+        recorder = Recorder(store, rover)
+        recorder.poll()
+        recorder.consider()
+        store.close()
+
+        code, said = _run(["--decisions"], directory)
+        check("it runs", code, 0)
+        check("...listing the deliberation alone", "1 episode(s) match" in said,
+              True)
+        check("...under a word of its own", "decided" in said, True)
+        check("...with how many goals it weighed", "candidate(s)" in said, True)
+
+
 TESTS = (
     test_reading_the_record_cannot_reach_the_rover,
     test_the_listing_shows_what_happened,
@@ -185,4 +210,5 @@ TESTS = (
     test_an_episode_says_whether_retention_may_take_it,
     test_the_stats_say_which_worlds_the_record_spans,
     test_an_unreadable_episode_is_marked_in_the_listing,
+    test_the_deliberations_can_be_listed_on_their_own,
 )

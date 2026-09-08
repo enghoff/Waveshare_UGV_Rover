@@ -374,17 +374,21 @@ def _the_same_goal(candidate: goals_mod.Candidate,
                    previous: dict[str, Any]) -> bool:
     """Is this the goal the last deliberation wanted, in all but its name?
 
-    Three ways of being the same, and the first two are what make hysteresis
-    survive an hour of the world state refining itself: the same thing being
-    looked at, or a place within a metre of where the rover was already headed.
-    The metre is `frontier.HYSTERESIS_M`'s, and for its reason -- more than the
-    reordering noise between two candidates, less than the distance to anything
-    in another room.
+    **What makes two goals the same depends on what the goal is about.** A goal
+    about a thing is the same goal wherever the rover ends up standing to look
+    at it, and a different thing is a different goal however close the two
+    viewpoints happen to be -- which is not hypothetical: on the real map a
+    place to stand and look at one object is routinely within a metre of a place
+    to stand and look at another. A goal about a place -- a frontier -- is the
+    same goal a few centimetres along, because the cell the chooser picks for
+    one doorway wanders every time the map is redrawn. The metre is
+    `frontier.HYSTERESIS_M`'s and for its reason: more than the reordering
+    noise, less than the distance to anything in another room.
     """
     if previous.get("id") and candidate.id == previous["id"]:
         return True
-    if previous.get("target") and candidate.target == previous["target"]:
-        return True
+    if candidate.target or previous.get("target"):
+        return bool(previous.get("target")) and candidate.target == previous["target"]
     was, goes = previous.get("goal"), candidate.constraints.get("goal")
     if isinstance(was, dict) and isinstance(goes, dict):
         if was.get("x_m") is not None and goes.get("x_m") is not None:

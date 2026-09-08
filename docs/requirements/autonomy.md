@@ -132,3 +132,58 @@ work that matters, and what makes it safe to throw away a recording that has
 gone wrong. What would make this false is any write to a component other than
 its own store, and the only path out of here is a client that can nothing but
 read.
+
+<a id="r-aut-8"></a>
+### R-AUT-8 — A decision can be re-ranked from the record alone, and comes out the same
+
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md);
+  `autonomy/selftest.py` re-reads the snapshot an episode names, runs the scorer
+  over it again with the weights that episode recorded, and checks that the same
+  candidates come back in the same order with the same numbers
+
+Everything a choice is made from is read once, written into the record whole,
+and never asked for again: the things with their placements, the occupancy map,
+the pose, the battery, what was cooling and what was wanted last time. The
+weights go in too, in full rather than as a version string, because the file
+they came from lives on the rover where nothing versions it. What would make
+this false is a generator or a scorer that reads anything outside the situation
+it was handed — the rover, the clock, or a configuration file — and the failure
+is silent, because the decision still looks reproducible until somebody tries.
+
+<a id="r-aut-9"></a>
+### R-AUT-9 — A refusal cannot be outscored
+
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md);
+  `autonomy/selftest.py` scores a refused candidate with the purpose weight set
+  to a thousand, and checks that it is still refused and still not chosen; the
+  curated scenarios carry the same case
+
+Refusals are of two kinds and both run before the score rather than inside it. A
+**gate** is about the rover — a flat or unreadable battery, a latched stop, a
+pose it does not trust, a map that has not settled, a perception loop that has
+stopped, and the standing fact that nothing in this component may move anything.
+A **veto** is about one candidate — nowhere to walk to, a viewpoint outside the
+0.5 to 2.5 m band the geometry was accepted in, a goal outside a configured safe
+area, or a thing put aside for getting nowhere. What would make this false is a
+constraint expressed as a large negative term in the utility, because a term can
+always be outweighed and nobody notices which weight did it.
+
+<a id="r-aut-10"></a>
+### R-AUT-10 — Why the rover did not do the better-looking thing is in the record
+
+- **State:** settled
+- **Evidence:** [autonomy/README.md](../../autonomy/README.md);
+  `autonomy/selftest.py`; and on the rover in
+  [2026-09-08](../progress/2026-09-08-shadow-decisions.md), where six of
+  twenty-five candidates were refused and each refusal is named beside the goal
+  it refused
+
+Every candidate is recorded whether it won or lost, with its full score
+decomposition, its estimated travel and time, and the refusals against it. A
+decision names what it would have cost and lists the candidates that scored
+better than the one chosen with the reason each was refused. What would make
+this false is a record of the winner alone: "why did it not go and look at the
+thing in the hall" is the question a shadow run exists to answer, and a rover
+that only writes down what it wanted cannot answer it.

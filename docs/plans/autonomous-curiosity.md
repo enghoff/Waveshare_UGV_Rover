@@ -538,6 +538,15 @@ Include ambiguous cases where **no** candidate is acceptable.
 
 ### Milestone M2: the rover can explain what it would investigate next
 
+**Criterion 6 asked for an hour of shadow running until 2026-09-08, when the
+owner removed the clock from it.** The reason it is worth recording rather than
+quietly editing: an hour was a stand-in for variety, and what the criterion is
+actually about is that the choosing works against the real world state and the
+real map rather than against drawn rooms. A run that shows that in twenty
+minutes shows it; one that idles for an hour in front of an unchanging scene
+does not show it better. The run reports its own length, so a reader can judge
+what it covered.
+
 Pass when all are true:
 
 1. candidate generation and scoring are deterministic under replay;
@@ -550,8 +559,9 @@ Pass when all are true:
 5. expected ordering is correct in at least 95% of the curated acceptance cases;
    disagreements are reviewed and the expected set is changed only with a written
    reason, not merely to make the metric pass;
-6. a one-hour rover shadow run emits candidate decisions but makes **zero autonomy
-   movement calls**;
+6. a rover shadow run emits candidate decisions against the real world state and
+   the real map while making **zero autonomy movement calls**, and the entry
+   reporting it says how long it ran and what it saw;
 7. the console or log can answer in one concise record: what it wanted to do, why,
    estimated cost, and why higher-scoring-but-vetoed options were refused.
 
