@@ -240,15 +240,25 @@ is what would settle it, and until then nothing should be built to filter a faul
 nobody can currently reproduce.
 
 <a id="r-ws-13"></a>
-### R-WS-13 — No association eligible to influence movement is knowingly wrong
+### R-WS-13 — Identity-dependent actions use independently validated associations
 
 - **State:** open
 - **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M0, criteria 3 and 8)
+  (M0b)
 
-The bar is a reviewed acceptance sample of at least fifty association decisions
-with zero known incorrect merges among those eligible to influence movement,
-counting unresolved cases separately rather than as failures.
+The bar is an independently reviewed acceptance sample of at least fifty
+association decisions with zero known incorrect merges among those eligible for
+actions that rely on persistent identity. Review every eligible confidence band;
+appearance similarity alone is not calibrated identity confidence. Count unresolved
+cases separately and demonstrate useful coverage of independently named physical
+targets. Repeated frames of the same physical association are not independent cases.
+
+The scope was revised on 2026-09-10: an uncertain association may motivate a bounded
+inspection to test it under R-AUT-12, but cannot be treated as established identity
+by that inspection or any following action. The distinction must be enforced at dispatch,
+not inferred from the goal's name. See the
+[M0 decision](../decisions/m0-hypothesis-inspection.md). Neither gate has passed;
+the earlier measurements below retain their original acceptance interpretation.
 
 Identity came out of the 2026-09-07 review better than the plan assumed: around
 250 decisions were reviewed with no error at or above 0.70 appearance similarity.

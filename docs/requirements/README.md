@@ -74,7 +74,7 @@ authoritative value lives.
 
 **Say what would make it false.** A requirement nobody could disprove is a
 slogan. "Identity is reliable" is a slogan; "no known incorrect
-movement-eligible association in a reviewed sample of at least fifty decisions"
+association eligible for identity-dependent actions in a reviewed sample of at least fifty decisions"
 is a requirement.
 
 **One requirement per statement.** If the state of half of it would differ from

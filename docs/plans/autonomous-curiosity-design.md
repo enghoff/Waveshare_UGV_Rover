@@ -61,7 +61,10 @@ P0 already has a fresh driven recording and a
 M0: camera geometry and range-to-object alignment remain unproven, and the review
 also found lower-confidence association errors and floor patches treated as objects.
 Continue that work under P0; this proposal does not restart it or prescribe a
-calibration fix. M0 remains a prerequisite for semantic movement. Read-only episodic
+calibration fix. The [September 10 decision](../decisions/m0-hypothesis-inspection.md)
+splits M0: bounded hypothesis inspection requires M0a (R-AUT-12), while actions
+relying on persistent identity require M0b (R-WS-13). Neither has passed, and both
+retain geometry, capture and control prerequisites. Read-only episodic
 recording and shadow decisions may be developed while P0 is in progress.
 The [current review](../progress/2026-09-07-m0-review.md) records the bounded
 calibration scope and the additional requirement to withhold usable bearings when
@@ -123,7 +126,7 @@ stale because the object is movable and has not been seen recently.
 
 ### Calibration has a physical limit
 
-M0 means accuracy and uncertainty are demonstrated adequate within declared
+Both M0 gates require accuracy and uncertainty demonstrated adequate within declared
 operating limits, with unsupported cases refused. It does not require perfect
 pointing, identifying every object, or removing every mechanical error.
 

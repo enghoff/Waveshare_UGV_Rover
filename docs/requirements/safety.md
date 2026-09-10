@@ -67,8 +67,12 @@ through `find_thing` and `distance_between_things`, and the one thing it may act
 on is `go_to_thing`, which is the existing navigation boundary with a placed
 coordinate handed to it. It cannot write to the store or clear it.
 
-This matters most while identity is unproven: a wrong association should cost a
-wrong answer, not a drive across the room. See [R-WS-13](world-state.md#r-ws-13).
+Identity does not grant movement authority. Under the revised M0 gates, an
+uncertain association may motivate a bounded verification request only through
+the separately validated inspection path required by R-AUT-12. Actions that rely
+on its identity still require [R-WS-13](world-state.md#r-ws-13). That inspection
+path is not yet accepted; this revision enables no movement and changes none of
+the daemon's checks.
 
 <a id="r-safe-5"></a>
 ### R-SAFE-5 — A person can stop the rover at any time

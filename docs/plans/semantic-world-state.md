@@ -72,7 +72,11 @@ does not hold up, and three requirements carry what is left:
 |---|---|---|
 | [R-WS-10](../requirements/world-state.md#r-ws-10) | `failing` | measure the pan servo's commanded angle against its actual one, from both directions, then re-measure the OAK mount against it. Nothing else can be settled first, because every OAK number is expressed relative to the gimbal camera. |
 | [R-WS-12](../requirements/world-state.md#r-ws-12) | `open` | refuse entities made of bare floor, so that something choosing where to look next cannot spend distance on them |
-| [R-WS-13](../requirements/world-state.md#r-ws-13) | `open` | treat the 0.55-to-0.70 appearance band as geometry-only; every merge error found sits there, and every one is a thing standing behind another thing |
+| [R-WS-13](../requirements/world-state.md#r-ws-13) | `open` | demonstrate correct associations and useful physical-target coverage for identity-dependent actions under M0b; the proposed appearance-band/geometry remedy failed replay |
+
+The [M0 revision](../decisions/m0-hypothesis-inspection.md) permits bounded
+verification of uncertain hypotheses only after the separate M0a gate (R-AUT-12).
+It does not settle identity or activate a different resolver.
 
 [R-WS-11](../requirements/world-state.md#r-ws-11) — absolute height above the
 floor — stays open behind the same measurement, because the translation between

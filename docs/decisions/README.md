@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [m0-hypothesis-inspection.md](m0-hypothesis-inspection.md) | agreed 2026-09-10; implementation owed | why bounded inspection can precede trusted persistent identity, and what evidence permits each |
 | [jetson-orin-navigation.md](jetson-orin-navigation.md) | implemented | why `slam_toolbox` and Nav2 on the Orin, and what a replacement mapper or controller would have to beat |
 | [cosmos-reason2.md](cosmos-reason2.md) | closed 2026-09-02 | why there is no local vision-language model in the inspection path |
 | [doorway-pivot.md](doorway-pivot.md) | closed | why the rover locked up pivoting in narrow passages, and why two plausible fixes were wrong |

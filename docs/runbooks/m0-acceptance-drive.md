@@ -2,7 +2,11 @@
 
 What to set up, what to type, and — the part that matters — **what has to be
 written down before the rover moves.** [M0](../plans/autonomous-curiosity.md#milestone-m0-semantic-state-is-safe-enough-to-influence-goal-selection)
-asks for tolerances declared in advance and trials the remedies have not seen. A
+now has two gates: **M0a** for bounded hypothesis inspection (R-AUT-12), and
+**M0b** for actions relying on persistent identity (R-WS-13). Both remain open.
+The [revision](../decisions/m0-hypothesis-inspection.md) changes acceptance, not
+runtime permission. Each gate asks for tolerances declared in advance and trials
+the remedies have not seen. A
 drive taken without this page cannot certify anything, however good its numbers
 turn out to be, and that is why [the drive of
 2026-09-08](../progress/2026-09-08-acceptance-drive-two.md) improved on its
@@ -13,7 +17,46 @@ predecessor and still moved no criterion.
 Copy this block into the run's manifest file and fill in the blanks with the
 owner present. Nothing here may be changed after the recording starts.
 
-### The thresholds under test, as deployed
+### Trial authority and questions
+
+Record the gate under test, deployed commit, resolver and all thresholds; whether
+this is owner-driven data collection or supervised M0a execution; physical area,
+supervisor and stop control; the shared-prerequisite evidence and physical M3
+stop/failure evidence required for execution. Owner-driven collection does not
+certify autonomous dispatch or budget enforcement. This document is not a command
+to enable movement.
+
+For each inspection, freeze:
+
+| field | value to supply before the trial |
+|---|---|
+| case | independent physical target/region ID; source observation references and store/map generation |
+| question | the uncertain identity/location claim, alternatives and what would answer it |
+| reference | owner-annotated physical truth, retained images and independent distance/position measurements; unavailable to the policy |
+| viewpoint | observation pose and how map/route/physical-area checks validate it independently of the hypothesis |
+| effort limits | maximum cumulative travel in metres, duration in seconds and attempts per case, plus run totals; non-empty, finite, enforced limits |
+| outcome rule | evidence for supported/contradicted; when visibility or detectability requires unresolved |
+| coverage | named useful cases and the task tolerances they must meet |
+
+In M0a, collect at least 20 attempts over at least three fresh supervised runs,
+covering at least ten distinct physical target/region cases. Include at least
+three false/absent-target cases and three occluded/insufficient-view cases; label
+their physical truth independently. Repeated attempts count as effort, never as
+new target coverage; re-answering an already resolved physical question is not
+another success. Budgets follow the physical route and task, not the entity ID.
+Changing an ID or regenerating a goal must not replenish them.
+
+Before these execution trials, demonstrate the incorrect-association reproduction,
+refusals, stale-state handling, budget exhaustion and prevention of identity-dependent
+follow-on actions in replay. Complete shared geometry/capture checks and supervised
+physical stop/failure checks first. Only this frozen supervised protocol may run
+before M0a passes; the wider M3 autonomy sessions remain a separate milestone.
+
+### Resolver baseline to verify before the run
+
+These are the last recorded baseline values, not authority over current source or
+configuration. Read back the deployed values and freeze what will actually be
+tested. The revised gates do not select or deploy an experimental resolver.
 
 | what | value | chosen on | owed |
 |---|---|---|---|
@@ -24,10 +67,10 @@ owner present. Nothing here may be changed after the recording starts.
 | a crossing needs a baseline of at least | 0.4 m | — | — |
 | a crossing needs a parallax of at least | 12 degrees | — | — |
 
-**Three of those were chosen after seeing the faults they catch**, which is what
-makes this drive worth taking: it is the first recording none of them has seen.
-If any value is edited between now and the recording, this drive stops being
-held-out for it and the entry must say so.
+**Three of those were chosen after seeing the faults they catch.** Earlier
+recordings are development evidence for them. Collect fresh acceptance recordings
+after all policy and threshold choices are frozen; tuning on a recording makes
+that recording development data and requires a new acceptance run.
 
 ### The operating envelope
 
@@ -51,17 +94,21 @@ held-out for it and the entry must say so.
 
 | question | passes if |
 |---|---|
-| do ranges land on the object they claim? | at least 70% of ranges within 0.5 m of the parallax answer, on things fixed from 3+ standing places |
-| is a placement where the object is? | every measured separation between named targets agrees within 0.30 m |
-| is any movement-eligible association wrong? | **zero** known-incorrect in at least 50 reviewed decisions |
-| does the rover abstain from everything instead? | at least 25 things placed, and at least 15 of them ranged |
+| do ranges land on the object they claim? | at least 70% of expected in-coverage target ranges are usable, correctly attributed and within 0.5 m of an independent physical reference; missing/ambiguous ranges remain in this denominator |
+| is a placement where the object is? | every measured separation between named targets agrees within 0.30 m, and independently referenced target positions relative to the rover meet task-derived position/bearing tolerances frozen in the manifest |
+| M0a: is inspection useful? | at least half of all attempts correctly answer the frozen question, in >=20 attempts across >=3 runs and >=10 distinct target/region cases; refusals and unresolved outcomes are not successes |
+| M0a: is uncertainty contained? | **zero** unsupported verification conclusions, promotions into identity-dependent actions, or action/budget/safety boundary violations; every attempt terminates and is recorded |
+| M0b: is a trusted association wrong? | **zero** known-incorrect high-confidence merges and associations eligible for identity-dependent actions in >=50 distinct reviewed association decisions, covering every eligible confidence band |
+| M0b: is trusted identity useful? | each of at least three independently named physical targets supports its predeclared identity-dependent inspection task within the frozen tolerances; record eligible coverage, splits and abstentions for all targets |
 
-The first is set from 69% measured on 2026-09-08, so it asks the rover not to get
-worse. **It has since been measured twice more at 69% and 59%**, the second on a
-103-second run whose parallax baselines were too short to judge it, so the mark
-stands but a run must be long enough for the ground truth to mean anything. The second is set well outside the one separation measured that day
-(2.9 m against 2.899 m) and inside what the placements claim. The last exists
-because refusing every case is not a pass.
+The previous 70% range check compared depth with fitted parallax. The numerical
+tolerance is retained as the initial task limit, but its denominator and reference
+are now explicit and independent; previous percentages are not passes under this
+test. Target separations alone cannot reveal a common map offset, so record target
+positions relative to independently surveyed rover standing places as well.
+The former 25-entity/15-ranged minimum is replaced by physical-target and inspection
+outcomes: splitting one object into many records must not improve coverage.
+Freeze any task-specific tighter tolerances before collecting data.
 
 ### The targets
 
@@ -78,7 +125,18 @@ One of them at floor level, one above the horizontal, and one deliberately place
 so it is seen at the edge of the frame — that last is what exercises the
 never-ranged reporting.
 
-## The drive
+These are the shared geometry and M0b targets. M0a's ten target/region cases also
+include false and unobservable hypotheses. For the edge target, predeclare which
+views should have depth and which should abstain; obtain supported views for its
+geometry/identity task as well. Keep raw depth, full frames, intrinsics, capture
+poses and timestamps so a claimed absence can be checked rather than inferred
+from an empty detection list.
+
+## The owner-driven capture procedure
+
+Use this procedure for shared geometry and M0b data collection. M0a additionally
+needs the supervised execution protocol above and a complete record of actual
+dispatches and outcomes; manually driving these views is not equivalent.
 
 1. **Clear the semantic store, keep the map.** The sample has to be free of old
    association decisions; the map is the frame everything is measured in, and
@@ -112,8 +170,22 @@ ssh orin 'mkdir -p ~/.ugv/archive/frames-<date>-acceptance && cp ~/.ugv/world/fr
 Copy both down into `captures/`, which is gitignored, and keep a MANIFEST.txt
 beside them holding the frozen block above.
 
-Then score it: the parallax check for ranges and placements, and a contact-sheet
+Then score it against the independent range/position references, and a contact-sheet
 review giving **every** thing a written verdict rather than only the ones that
 catch the eye. Two mistakes on 2026-09-07 and 2026-09-08 were both made reading
 crops too small; five to a row at 200 pixels, and zoom anything doubtful with its
 full frame behind it.
+
+Parallax agreement remains a diagnostic; acceptance uses the independent references
+above. For M0a, review every attempt as supported, contradicted or unresolved and
+check its conclusion against the physical truth. A missed detection under occlusion
+must remain unresolved. Report correct answers, false conclusions, distinct target
+coverage, refusals, unresolved attempts, duplicates, false merges, and total and
+unsuccessful travel/time, with the frozen budgets beside the actual effort.
+Review the actual action class and follow-on requests, not just the goal's label.
+
+Publish separate M0a and M0b results against every shared and gate-specific criterion
+in the plan, including the M0b range-assisted/bearing-only replay comparison. A
+failed, incomplete or unmeasured criterion stays open. Passing M0a does not settle
+R-WS-13 or pass M3, and neither gate can be passed by the September development
+recordings or the documentation revision.

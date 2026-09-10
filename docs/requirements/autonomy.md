@@ -210,3 +210,32 @@ against the same action.
 The rule is enforced by the daemon rather than by the caller, and the same
 module the daemon enforces with is what the executive plans against. What is
 owed for `settled` is a hardware session in which it holds.
+
+<a id="r-aut-12"></a>
+### R-AUT-12 — Inspecting a hypothesis never treats it as an established identity
+
+- **State:** open
+- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+  (M0a); [the acceptance procedure](../runbooks/m0-acceptance-drive.md)
+
+An inspection may be motivated by an uncertain or incorrect identity or location.
+Its request records the source observations, competing explanations, the question
+to test and the evidence needed to answer it. Its destination is a separately
+validated observation viewpoint, not an assumed free space at the object's
+estimated location. Pose, map, route, physical operating limits and movement
+authority must remain valid even if the hypothesis is false (R-SAFE-3,
+R-SAFE-4, R-SAFE-12 and R-WS-16).
+
+The permitted action class and its travel, duration and attempt limits are
+enforced at dispatch and during execution. Renaming an entity or generating
+another goal cannot reset the inspection's budget. Failure, missing evidence or
+an exhausted budget ends the attempt without an unlogged retry. Results are
+recorded as supported, contradicted or unresolved, with their evidence; failing
+to detect an object is not a contradiction unless visibility and detectability
+justify that conclusion. R-AUT-1 preserves the original belief and its correction.
+
+An inspection result alone cannot grant persistent identity the authority reserved
+by R-WS-13. False promotion, movement justified by the hypothesis's supposed free
+space, or a retry that escapes its budget would each violate this requirement.
+Useful outcomes and unsuccessful travel are measured on fresh physical targets;
+merely making more entity records or taking more pictures is not success.
