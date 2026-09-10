@@ -1,0 +1,21 @@
+{
+  "about": "Observation-level cannot-link constraints, reviewed from every crop in the relevant mixed entities on 2026-09-10. Groups distinguish physical objects or unmistakably different object categories; this does NOT assert that every chair in a group is the same chair. The implementation was frozen before these constraints were scored. This is a development review by the coding agent, not owner-confirmed or held-out ground truth.",
+  "recording": "captures/m0-2026-09-08/world.db",
+  "cases": [
+    {"name": "shelf versus painting", "groups": [[34946,34971,34979],[35670]]},
+    {"name": "armchair versus person", "groups": [[34962,35614,35954,35981,36135],[35628]]},
+    {"name": "sofa versus person", "groups": [[34988,35910,35921,35930],[35965]]},
+    {"name": "chairs versus landscape painting", "groups": [[35029,35219,35245,35258,35372,35475,35485,35561,35567,35580,35600,35674,35685,35695,35810,35836,35936,35949,35969,35979],[35015,35025]]},
+    {"name": "two different landscape pictures", "groups": [[35222,35231,35239,35252,35263,35564,35574,35584,35594,35605,35615,35626,35636,35673,35684,35690,35707,35721,35736,35742,35813,35907,35922,35931,35942,35953,35974,35982,35989,35997,36003,36008,36106,36117,36126,36137],[35392,35394]]},
+    {"name": "painting versus doorframe versus arch", "groups": [[35036],[35283,35288],[35308]]},
+    {"name": "arch versus green doorway", "groups": [[35668,36073,36081],[36027]]},
+    {"name": "cream picture versus dark framed picture", "groups": [[35202,35205,35548,35551],[35905]]}
+  ],
+  "unresolved_original_verdicts": ["object:1", "object:9", "object:11", "object:23", "object:39", "object:43", "object:46", "object:124", "object:136"],
+  "limitations": [
+    "Small or blurred crops and boxes containing both objects were excluded where the intended object was not clear.",
+    "Original mixed verdicts are preserved; excluded cases have not been relabelled clean.",
+    "Correct-association retention is evaluated separately using the 52 originally labelled clean entities.",
+    "No claim of an overall merge rate or measured position accuracy follows from these constraints."
+  ]
+}

@@ -1,0 +1,534 @@
+{
+  "runs": [
+    {
+      "drive": "07",
+      "mode": "baseline",
+      "complete": true,
+      "frames": 231,
+      "observations": 1262,
+      "seconds": 80.286,
+      "p95_ms": 801.86,
+      "entities": 139,
+      "placed_entities": 139,
+      "attached": 971,
+      "pair_crossings": 4272415,
+      "geometry_checks": 3505440,
+      "revision_queue_remaining": 0,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "07",
+      "mode": "shortlist",
+      "complete": true,
+      "frames": 231,
+      "observations": 1262,
+      "seconds": 30.65,
+      "p95_ms": 239.19,
+      "entities": 160,
+      "placed_entities": 160,
+      "attached": 966,
+      "pair_crossings": 338710,
+      "geometry_checks": 1596412,
+      "revision_queue_remaining": 0,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "07",
+      "mode": "revision",
+      "complete": true,
+      "frames": 231,
+      "observations": 1262,
+      "seconds": 29.995,
+      "p95_ms": 229.61,
+      "entities": 160,
+      "placed_entities": 160,
+      "attached": 966,
+      "pair_crossings": 338710,
+      "geometry_checks": 1596412,
+      "revision_queue_remaining": 20,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "07",
+      "mode": "negative",
+      "complete": true,
+      "frames": 231,
+      "observations": 1262,
+      "seconds": 29.85,
+      "p95_ms": 231.2,
+      "entities": 160,
+      "placed_entities": 160,
+      "attached": 966,
+      "pair_crossings": 338710,
+      "geometry_checks": 1596412,
+      "revision_queue_remaining": 20,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "08",
+      "mode": "baseline",
+      "complete": true,
+      "frames": 211,
+      "observations": 1328,
+      "seconds": 87.453,
+      "p95_ms": 1026.54,
+      "entities": 152,
+      "placed_entities": 152,
+      "attached": 1013,
+      "pair_crossings": 3954515,
+      "geometry_checks": 3561511,
+      "revision_queue_remaining": 0,
+      "negative_challenges": 0,
+      "clean_retention_pct": 100.0,
+      "clean_entities_whole": 52,
+      "cases_mixed": 8,
+      "cases_separated": 0,
+      "cases_unresolved": 0
+    },
+    {
+      "drive": "08",
+      "mode": "shortlist",
+      "complete": true,
+      "frames": 211,
+      "observations": 1328,
+      "seconds": 39.073,
+      "p95_ms": 335.81,
+      "entities": 204,
+      "placed_entities": 204,
+      "attached": 1057,
+      "pair_crossings": 329223,
+      "geometry_checks": 1744636,
+      "revision_queue_remaining": 0,
+      "negative_challenges": 0,
+      "clean_retention_pct": 62.788844621513945,
+      "clean_entities_whole": 16,
+      "cases_mixed": 4,
+      "cases_separated": 3,
+      "cases_unresolved": 1
+    },
+    {
+      "drive": "08",
+      "mode": "revision",
+      "complete": true,
+      "frames": 211,
+      "observations": 1328,
+      "seconds": 35.361,
+      "p95_ms": 315.51,
+      "entities": 203,
+      "placed_entities": 195,
+      "attached": 1044,
+      "pair_crossings": 317796,
+      "geometry_checks": 1697943,
+      "revision_queue_remaining": 52,
+      "negative_challenges": 0,
+      "clean_retention_pct": 50.657370517928285,
+      "clean_entities_whole": 12,
+      "cases_mixed": 3,
+      "cases_separated": 4,
+      "cases_unresolved": 1
+    },
+    {
+      "drive": "08",
+      "mode": "negative",
+      "complete": true,
+      "frames": 211,
+      "observations": 1328,
+      "seconds": 34.652,
+      "p95_ms": 310.52,
+      "entities": 203,
+      "placed_entities": 195,
+      "attached": 1044,
+      "pair_crossings": 317796,
+      "geometry_checks": 1697943,
+      "revision_queue_remaining": 52,
+      "negative_challenges": 0,
+      "clean_retention_pct": 50.657370517928285,
+      "clean_entities_whole": 12,
+      "cases_mixed": 3,
+      "cases_separated": 4,
+      "cases_unresolved": 1
+    },
+    {
+      "drive": "acceptance",
+      "mode": "baseline",
+      "complete": true,
+      "frames": 214,
+      "observations": 1208,
+      "seconds": 80.444,
+      "p95_ms": 821.92,
+      "entities": 160,
+      "placed_entities": 160,
+      "attached": 998,
+      "pair_crossings": 2711119,
+      "geometry_checks": 2843183,
+      "revision_queue_remaining": 0,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "acceptance",
+      "mode": "shortlist",
+      "complete": true,
+      "frames": 214,
+      "observations": 1208,
+      "seconds": 37.767,
+      "p95_ms": 276.13,
+      "entities": 183,
+      "placed_entities": 183,
+      "attached": 1024,
+      "pair_crossings": 324753,
+      "geometry_checks": 1628500,
+      "revision_queue_remaining": 0,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "acceptance",
+      "mode": "revision",
+      "complete": true,
+      "frames": 214,
+      "observations": 1208,
+      "seconds": 75.607,
+      "p95_ms": 542.08,
+      "entities": 197,
+      "placed_entities": 194,
+      "attached": 1030,
+      "pair_crossings": 332826,
+      "geometry_checks": 1672700,
+      "revision_queue_remaining": 53,
+      "negative_challenges": 0
+    },
+    {
+      "drive": "acceptance",
+      "mode": "negative",
+      "complete": true,
+      "frames": 214,
+      "observations": 1208,
+      "seconds": 40.349,
+      "p95_ms": 340.44,
+      "entities": 197,
+      "placed_entities": 194,
+      "attached": 1030,
+      "pair_crossings": 332826,
+      "geometry_checks": 1672700,
+      "revision_queue_remaining": 53,
+      "negative_challenges": 0
+    }
+  ],
+  "quality": {
+    "baseline": {
+      "clean_pairs": 5020,
+      "clean_pairs_retained": 5020,
+      "clean_pairs_split": 0,
+      "clean_pairs_unresolved": 0,
+      "clean_retention_pct": 100.0,
+      "clean_entities_whole": 52,
+      "clean_entities_total": 52,
+      "challenge_cases": [
+        {
+          "name": "shelf versus painting",
+          "wrong_pairs": 3,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "armchair versus person",
+          "wrong_pairs": 5,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "sofa versus person",
+          "wrong_pairs": 4,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "chairs versus landscape painting",
+          "wrong_pairs": 40,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "two different landscape pictures",
+          "wrong_pairs": 72,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "painting versus doorframe versus arch",
+          "wrong_pairs": 5,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "arch versus green doorway",
+          "wrong_pairs": 2,
+          "separate_pairs": 1,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "cream picture versus dark framed picture",
+          "wrong_pairs": 4,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        }
+      ],
+      "cases_mixed": 8,
+      "cases_separated": 0,
+      "cases_unresolved": 0
+    },
+    "shortlist": {
+      "clean_pairs": 5020,
+      "clean_pairs_retained": 3152,
+      "clean_pairs_split": 1705,
+      "clean_pairs_unresolved": 163,
+      "clean_retention_pct": 62.788844621513945,
+      "clean_entities_whole": 16,
+      "clean_entities_total": 52,
+      "challenge_cases": [
+        {
+          "name": "shelf versus painting",
+          "wrong_pairs": 0,
+          "separate_pairs": 3,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "armchair versus person",
+          "wrong_pairs": 0,
+          "separate_pairs": 0,
+          "unresolved_pairs": 5,
+          "status": "unresolved"
+        },
+        {
+          "name": "sofa versus person",
+          "wrong_pairs": 2,
+          "separate_pairs": 2,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "chairs versus landscape painting",
+          "wrong_pairs": 2,
+          "separate_pairs": 38,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "two different landscape pictures",
+          "wrong_pairs": 36,
+          "separate_pairs": 36,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "painting versus doorframe versus arch",
+          "wrong_pairs": 0,
+          "separate_pairs": 5,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "arch versus green doorway",
+          "wrong_pairs": 0,
+          "separate_pairs": 3,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "cream picture versus dark framed picture",
+          "wrong_pairs": 4,
+          "separate_pairs": 0,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        }
+      ],
+      "cases_mixed": 4,
+      "cases_separated": 3,
+      "cases_unresolved": 1
+    },
+    "revision": {
+      "clean_pairs": 5020,
+      "clean_pairs_retained": 2543,
+      "clean_pairs_split": 2272,
+      "clean_pairs_unresolved": 205,
+      "clean_retention_pct": 50.657370517928285,
+      "clean_entities_whole": 12,
+      "clean_entities_total": 52,
+      "challenge_cases": [
+        {
+          "name": "shelf versus painting",
+          "wrong_pairs": 2,
+          "separate_pairs": 1,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "armchair versus person",
+          "wrong_pairs": 0,
+          "separate_pairs": 5,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "sofa versus person",
+          "wrong_pairs": 2,
+          "separate_pairs": 2,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "chairs versus landscape painting",
+          "wrong_pairs": 0,
+          "separate_pairs": 36,
+          "unresolved_pairs": 4,
+          "status": "unresolved"
+        },
+        {
+          "name": "two different landscape pictures",
+          "wrong_pairs": 31,
+          "separate_pairs": 41,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "painting versus doorframe versus arch",
+          "wrong_pairs": 0,
+          "separate_pairs": 5,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "arch versus green doorway",
+          "wrong_pairs": 0,
+          "separate_pairs": 3,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "cream picture versus dark framed picture",
+          "wrong_pairs": 0,
+          "separate_pairs": 4,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        }
+      ],
+      "cases_mixed": 3,
+      "cases_separated": 4,
+      "cases_unresolved": 1
+    },
+    "negative": {
+      "clean_pairs": 5020,
+      "clean_pairs_retained": 2543,
+      "clean_pairs_split": 2272,
+      "clean_pairs_unresolved": 205,
+      "clean_retention_pct": 50.657370517928285,
+      "clean_entities_whole": 12,
+      "clean_entities_total": 52,
+      "challenge_cases": [
+        {
+          "name": "shelf versus painting",
+          "wrong_pairs": 2,
+          "separate_pairs": 1,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "armchair versus person",
+          "wrong_pairs": 0,
+          "separate_pairs": 5,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "sofa versus person",
+          "wrong_pairs": 2,
+          "separate_pairs": 2,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "chairs versus landscape painting",
+          "wrong_pairs": 0,
+          "separate_pairs": 36,
+          "unresolved_pairs": 4,
+          "status": "unresolved"
+        },
+        {
+          "name": "two different landscape pictures",
+          "wrong_pairs": 31,
+          "separate_pairs": 41,
+          "unresolved_pairs": 0,
+          "status": "mixed"
+        },
+        {
+          "name": "painting versus doorframe versus arch",
+          "wrong_pairs": 0,
+          "separate_pairs": 5,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "arch versus green doorway",
+          "wrong_pairs": 0,
+          "separate_pairs": 3,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        },
+        {
+          "name": "cream picture versus dark framed picture",
+          "wrong_pairs": 0,
+          "separate_pairs": 4,
+          "unresolved_pairs": 0,
+          "status": "separated"
+        }
+      ],
+      "cases_mixed": 3,
+      "cases_separated": 4,
+      "cases_unresolved": 1
+    }
+  },
+  "growth": [
+    {
+      "mode": "baseline",
+      "pass": 1,
+      "cumulative_observations": 1328,
+      "seconds": 95.78506220001509,
+      "median_ms": 423.06989999997313,
+      "p95_ms": 1033.1879999976081
+    },
+    {
+      "mode": "baseline",
+      "pass": 2,
+      "cumulative_observations": 2656,
+      "seconds": 255.4028613000155,
+      "median_ms": 1187.6886999998533,
+      "p95_ms": 1720.291300000099
+    },
+    {
+      "mode": "negative",
+      "pass": 1,
+      "cumulative_observations": 1328,
+      "seconds": 38.070260600004985,
+      "median_ms": 176.26449999806937,
+      "p95_ms": 351.35479999735253
+    },
+    {
+      "mode": "negative",
+      "pass": 2,
+      "cumulative_observations": 2656,
+      "seconds": 69.52971239992621,
+      "median_ms": 317.40569999965373,
+      "p95_ms": 532.002799998736
+    }
+  ],
+  "quality_scope": "8 visually reviewed cannot-link cases; retention of same-object pairs within 52 previously labelled clean entities. Not an overall error rate.",
+  "decision": "Keep the production resolver: this comparison does not establish an acceptable identity improvement."
+}

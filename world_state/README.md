@@ -131,6 +131,70 @@ the time. It was re-measured and replaced on 2026-09-07 -- see
 [`docs/progress/2026-09-07-p0-oak-mount.md`](../docs/progress/2026-09-07-p0-oak-mount.md)
 -- so the depth attribution wants checking again before it is believed.
 
+## Offline experiment: bounded association and revision
+
+`bench_incremental.py` compares the production resolver with an experimental
+`IncrementalResolver`. The daemon does not enable this resolver. On the local
+September recordings it reduces computation but fragments previously correct
+identities; see [the measured comparison](../docs/progress/2026-09-10-bounded-entity-fitting.md)
+for the results and the remaining work under R-WS-13.
+
+The experiment keeps the original observations in SQLite, retrieves older
+observations through four deterministic appearance hash tables, and offers each
+camera viewpoint its own spatial/appearance shortlist. The active pool is at
+most 48 pending observations and 24 existing candidate entities per view, with
+the production limit of two new entities per pass. Two queued entities can be
+reviewed per frame, using eight founding and sixteen recent observations.
+Revision can detach an observation, clear contaminated exemplars and refit the
+remaining support. Detached observations retain their IDs and measurements and
+can be grouped again. The runtime adapter's optional `association_allowed`
+hook prevents a rejected observation immediately rejoining its former owner.
+
+`negative_evidence.py` tests whether archived depth measures clear space through
+a proposed position. Missing depth, stale captures, uncertainty, occlusion and
+frame edges abstain. Three separated viewpoints must contradict the same
+unchanged position before its placement is withdrawn. This is an experimental
+depth contradiction rule; a calibrated detector-miss likelihood is still absent.
+No placement was withdrawn by this rule on the tested recordings.
+
+The indexes grow with the archive and have bounded query buckets. Working-set
+limits are approximate retrieval limits, not a guarantee of a globally optimal
+association or constant end-to-end runtime. Queue backlog, bucket overflow and
+candidate deferrals are reported. The prototype's revision vetoes and queue are
+in memory; deployment as an active resolver would require persistence and
+recovery tests, as well as acceptable identity results.
+
+Run from the repository root, with NumPy and SciPy available:
+
+```text
+python world_state/bench_incremental.py captures/m0-2026-09-08/world.db --mode baseline --output captures/comparison/baseline-08.json
+python world_state/bench_incremental.py captures/m0-2026-09-08/world.db --mode shortlist --output captures/comparison/shortlist-08.json
+python world_state/bench_incremental.py captures/m0-2026-09-08/world.db --mode revision --output captures/comparison/revision-08.json
+python world_state/bench_incremental.py captures/m0-2026-09-08/world.db --mode negative --output captures/comparison/negative-08.json
+python world_state/report_incremental.py captures/comparison
+python -m unittest world_state.test_incremental
+```
+
+Reporting additionally needs Matplotlib. `--repeat 2` feeds a drive through twice
+with distinct observation IDs and timestamps for a workload test. It is not a
+second independent accuracy sample. `--max-seconds` saves a clearly marked
+partial result when a run reaches its time budget. The `cached` mode is a
+memoization control which was slower in the measured trial.
+
+The benchmark reads the source database in read-only mode and resolves into a
+temporary database. It preserves observation IDs, records input and code hashes,
+times each update, and counts actual geometry calls. It does not re-perceive the
+images, remeasure bearings, or alter the source recording. All modes use the same
+stored detections and omit wall checks because contemporaneous map snapshots
+are unavailable. Empty/skipped frames are not replayed.
+
+`score_incremental.py` checks observation-level cannot-link cases in
+`labels/incremental-2026-09-10.json` and retention of same-object pairs within
+the 52 previously labelled clean entities. It distinguishes separated from
+unresolved cases. The older `bench_identity.py` remains useful for scoring a
+signal on the original entities; its transfer of entity verdicts by overlap is
+not a way to judge corrected splits.
+
 ## Install and run
 
 The deployer installs source. Models and TensorRT engines are host-built runtime

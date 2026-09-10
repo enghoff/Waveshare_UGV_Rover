@@ -338,6 +338,16 @@ geometry has nothing to notice. The number remains useful for *ranking* what to
 re-look at, which is what `autonomy/goals.py` already does with it. See
 [the measurement](../progress/2026-09-08-uncertainty-cannot-gate.md).
 
+**Bounded revision is implemented as an offline experiment and is not an
+accepted remedy.** The [September 10 comparison](../progress/2026-09-10-bounded-entity-fitting.md)
+reproduces all 76 original entity memberships before testing changes. The full
+prototype separates four of eight reviewed mix-ups, leaves three mixed and one
+unresolved, but retains only 50.7% of same-object pairs within the 52 originally
+labelled clean entities. Its conservative depth contradiction check makes no
+correction on the three local drives. R-WS-13 remains open. Observation-level
+constraints are now available to score corrections without carrying an old
+entity's mixed verdict onto a successfully separated fragment.
+
 <a id="r-ws-14"></a>
 ### R-WS-14 — A thing whose map was replaced is recognised when it is seen again
 

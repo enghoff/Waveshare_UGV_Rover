@@ -405,6 +405,11 @@ def _by_look(store, group, entities, session, taken_in,
         vector = observation.get("dino_blob") or b""
         row_costs, row_looks = [], []
         for entity in open_to:
+            allowed = getattr(store, "association_allowed", None)
+            if allowed is not None and not allowed(entity["id"], observation["id"]):
+                row_costs.append(_FORBIDDEN)
+                row_looks.append(None)
+                continue
             placement = entity.get("placement") or {}
             used = _allowance_used(placement, ray)
             seen = None if used is None else appearance(store, entity["id"],
@@ -531,6 +536,9 @@ def _against_known(store, observation, entities, session,
     surviving = []
     for entity in entities:
         if entity["id"] in already:
+            continue
+        allowed = getattr(store, "association_allowed", None)
+        if allowed is not None and not allowed(entity["id"], observation["id"]):
             continue
         placement = entity.get("placement") or {}
         # Wide enough to cover the thing itself, not just the bearing: see
