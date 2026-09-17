@@ -36,6 +36,39 @@ Without VS Code, `python -m ocp_vscode --port 3939` serves the same viewer at
 <http://127.0.0.1:3939> and `--show` will find it there. Set `OCP_PORT` if you
 need a different one.
 
+## Watching a part as you edit it
+
+`watch.cmd`, at the root of the repository, holds the viewer on a part and draws
+it again every time you save:
+
+```
+watch.cmd                  the assembly, redrawn on every save
+watch.cmd --section -23    sliced, which is the view you actually want
+watch.cmd --list           what can be shown
+watch.cmd --browser        a standalone viewer in a browser tab instead
+```
+
+Everything you pass goes through to `oak_rail_mount.py --show`, so whatever that
+draws, this draws and then keeps current. It watches every `.py` in this
+directory rather than only the one being shown, because `drawing.py` reads its
+dimensions out of `oak_rail_mount.py`, and redraws in a fresh interpreter for
+the same reason — a reloaded module leaves the rest holding the old constants,
+which is a viewer that lies to you. A save that does not build prints its
+traceback and the watch carries on.
+
+The port is not assumed. 3939 is only where the VS Code extension starts looking
+for a free one, so a standalone viewer or a second window pushes the panel to
+3940 and up; every viewer announces itself in `~/.ocpvscode`, and the watcher
+reads that and passes what it finds down in `OCP_PORT`. With no viewer open at
+all it waits for one rather than building a part it has nowhere to put — opening
+the panel is a VS Code command and nothing at a terminal can do it.
+
+What it can't do is tell you the part fits: a jaw can close on air and look
+perfect from outside. `python cad/oak_rail_mount.py` is the check, and it exits
+non-zero when a clearance is wrong. The work is in `cad/watch.py`; `watch.cmd`
+is the wrapper that finds an interpreter with build123d in it (`CAD_PYTHON`, or
+`.venv`, or `python`) and says so plainly when there isn't one.
+
 ## Drawings on paper
 
 ```

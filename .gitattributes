@@ -86,3 +86,10 @@ world_state/** text eol=lf
 # CRLF checkout would eventually produce here is a verification step that fails
 # on the machine it was meant to prove.
 autonomy/** text eol=lf
+
+# watch.cmd is run by cmd.exe, which is the one shell here that wants carriage
+# returns rather than breaking on them: a label or a goto on a line that ends
+# in a bare LF can be read short, and the failure is a batch file that silently
+# does half of itself. The opposite trap to every rule above, so it is written
+# down for the same reason.
+*.cmd text eol=crlf
