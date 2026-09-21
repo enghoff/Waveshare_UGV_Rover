@@ -162,7 +162,7 @@ nuts no way in.
 |---|---|
 | Screws | 4 x M4 x 10 socket head — two for the camera, two for the clamp |
 | Nuts | 2 x 20-series M4 T-nuts, sliding into the wedge's T-slot |
-| Material | PETG or ABS rather than PLA — it sits in the sun on the gimbal |
+| Material | PETG rather than PLA — the camera's case is its own heatsink, and the clamp holds by preload |
 | Print, body | plate face down on the bed, 4 perimeters, 40% infill, supports under the jaws |
 | Print, wedge | underside on the bed, no supports; the slot's roof bridges 10.4 mm |
 
@@ -193,6 +193,15 @@ roughly in the middle of that. It also assumes the rail is to spec: the clamp is
 cut against the maximum-material profile from MIL-STD-1913 Figure 1, so a
 generous aftermarket rail will be loose and an oversize one will not go on. If
 the printed body rocks on the rail, take a tenth off `FIT` and print again.
+
+**Print it in PETG.** The rover runs indoors, so none of this is about weather —
+the heat that reaches the mount is the camera's own. The plate bolts flat to the
+back of the OAK-D-Lite, whose enclosure is its heatsink, which is what the two
+raised pads are there to keep clear, and everything the clamp does it does by
+preload, which is the load PLA lets go of over time even at room temperature.
+ABS or ASA will hold up too, but shrinkage across a 54 mm clamp is comparable to
+the 0.25 mm `FIT` is cut for, so expect to retune `FIT` against a printed body
+rather than trusting the first one onto the rail.
 
 `CAM_BOTTOM_Z` is the one number worth thinking about. It sets how far the
 camera's bottom edge floats above the rail, and at the default 10 mm the optical
