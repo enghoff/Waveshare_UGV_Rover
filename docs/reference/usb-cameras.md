@@ -147,7 +147,34 @@ backwards, or the tilt axis used for a pan, gives a small residual and a quietly
 answer; rendering the sweep through the same rotation the fit inverts is what catches
 it.
 
-### What this camera turned out to be
+### What this camera is, measured without a servo (2026-09-30)
+
+| | measured, at 640x480 |
+|---|---|
+| horizontal | 134.2 degrees across 640 px |
+| vertical | 99.5 degrees across 480 px |
+| on the axis | 12.64 arcmin per pixel |
+| distortion terms | -0.058 and +0.053 in the normalised radius squared and to the fourth |
+| centre of the lens | 323, 226 px -- three right of the middle of the picture and fourteen above |
+
+The sweeps below turned out about 7% short in the middle of the picture, and the
+lens `face_tracking/lens.py` flies was refitted from evidence that asks no servo
+where it is: a printed board, the OAK riding the same platform, and a stepped
+sweep's still pictures with each step's rotation left free
+([`fit_fisheye.py`](../../usb_cameras/fit_fisheye.py), fed by
+[`capture_lens_sweep.py`](../../usb_cameras/capture_lens_sweep.py)). It matches tilt
+steps the OAK's accelerometer measured against gravity to 0.998, and one-move
+aiming misses by a median 1.7 degrees with it against 2.4 with the old lens. The
+640x480 picture is the 1280x960 one halved, to a scale of 2.001 about the same
+centre, which is what lets the board frames at 1280x960 describe it. See
+[the lens entry](../progress/2026-09-30-the-fisheye-lens-refitted.md).
+
+Why the sweeps came out short is not known. Taken with the servo's commanded
+angles they needed the servo to overshoot by 7%, and the servo overshoots by 2 to
+4%; the chassis-turn run's 131.7 degrees across disagrees with today's 134.2 as
+well, though less, and it fitted the same single distortion term the pan sweep did.
+
+### What the sweeps of 2026-08-19 said
 
 | | measured, at 640x480 |
 |---|---|

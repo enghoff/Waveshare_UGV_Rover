@@ -104,13 +104,67 @@ What else fell out of the same data:
   take the mount a look was taken on.
 - `world_state/relens.py`, the migration below, and its tests.
 
-world_state 863 passed, rover_daemon 983, `calibrate_fov.py --selftest` and
-`oak_depth/test_colour_lens.py` pass.
+- `usb_cameras/capture_lens_sweep.py` and `usb_cameras/fit_fisheye.py` are the
+  sweep and the fit. Run on what was kept, the fit reproduces the adopted lens to
+  0.01 degrees across the picture and its centre to 0.6 px.
+
+world_state 868 passed and rover_daemon 983, on the desk and on the Orin;
+`calibrate_fov.py --selftest` and `oak_depth/test_colour_lens.py` pass.
+
+**Deploy the daemon before the world state after a lens change.** The first
+deploy ran the world state's suite before the daemon component had delivered
+`lens.py`, which is where both read the lens from on the rover, and 14 checks
+failed against the old lens; with the daemon deployed, the same suite passed 863.
+
+## Aiming, measured on the rover
+
+`usb_cameras/calibrate_aim.py` cuts a patch at a pixel, commands the move the
+lens says will centre it, and measures where the patch lands. Back to back on the
+same targets, 12 to 72 degrees off the axis:
+
+| lens | usable targets | median miss | worst |
+|---|---:|---:|---:|
+| refitted | 10 | 1.7 deg | 3.4 deg at 60 deg off axis |
+| as it was | 11 | 2.4 deg | 5.5 deg at 58 deg off axis |
+
+What is left is mostly not the lens: the servo turns a few percent more than it
+is told, and the lens sits in front of the pivot, so a near thing moves by
+parallax as well as by rotation.
 
 ## The stored looks
 
-Every look with a direction -- 2282, all from the drive of 2026-09-08, all at pan
-0 -- reproduced exactly through the old lens from the pose, tilt and box stored
-with it, so all were redrawn. Every range in a look whose depth map was kept was
-replayed from that map through the geometry of the day before being redone.
-Recorded when the migration was run on the rover; see below.
+`world_state/relens.py --apply` on the rover, after a copy of the database
+(`~/.ugv/world/world.db.before-relens-1790771511`):
+
+- **All 2282 looks with a direction reproduced** exactly through the old lens from
+  the pose, tilt and box stored with them -- all from the drive of 2026-09-08, all
+  at pan 0 -- and were redrawn. Bearings moved by a median 1.5 degrees, 3.4 at the
+  90th percentile and 5.2 at most; elevations by a median 0.8, at most 2.1.
+- **Ranges were replayed from their kept depth maps** through the geometry of the
+  day (the old lens, the OAK's lens as published then, the chassis mount as it was
+  held) before anything was redone. Half the replays gave back the stored range to
+  the millimetre and nine in ten to 8 mm -- the map kept is the frame after the one
+  ranged -- and 1810 of 1828 came within the reading's own uncertainty and were
+  redone through today's geometry. 746 kept a range, moving by a median 6 cm and
+  36 cm at the 90th percentile; 2 gained one; 88 lost one, their boxes now falling
+  outside the OAK's true, narrower picture or on nothing measurable. The 18 that
+  did not reproduce were left.
+- **Every placed thing moved by what its redrawn looks moved it**, and by nothing
+  else. A control first: fitting each thing's looks afresh, with nothing redrawn,
+  leaves 136 of 173 where they stand and moves the rest by up to 2 m, because the
+  resolver built them from whichever looks it had at the time. So where the fresh
+  fit reproduced the stored place, the redrawn fit replaced it; otherwise the
+  stored place was shifted by the difference between the two fits. 161 moved, by
+  a median 10 cm, 42 cm at the 90th percentile and 1.89 m at most. 12 no longer
+  have a place their own looks agree on and are unplaced, identities and looks
+  kept; 4 could not be fitted from their looks even before and were left.
+- **The resolver's next passes found 6 new things** among looks of the same drive
+  that had been waiting in its pool, which the redrawn directions now let cross:
+  171 things are placed of 183.
+
+Proved over TCP 8769: the daemon serves observation 39473 at bearing 142.4 and
+range 2.65 m, where the copy taken before holds 140.4 and 2.763.
+
+The labelled drive the identity benchmarks score against is a separate recording
+and was not touched; its stored directions are still the old lens's. Scoring the
+resolver on redrawn data means running `relens.py` on a copy of it first.

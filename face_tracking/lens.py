@@ -281,8 +281,12 @@ def lens_recipe():
     for the absolute scale; and features tracked between pictures taken while the
     gimbal steps, each pair its own rotation, for the shape out to the edges. Then
     it is checked against tilt steps whose true size the OAK's accelerometer reads
-    off gravity. The whole method, and its numbers, are in
-    docs/progress/2026-09-30-the-fisheye-lens-refitted.md. At 640x480 the result
+    off gravity. `usb_cameras/capture_lens_sweep.py` takes the sweep and
+    `usb_cameras/fit_fisheye.py` does the fit and the check, and prints the answer
+    in LENS's form; the whole method, and its numbers, are in
+    docs/progress/2026-09-30-the-fisheye-lens-refitted.md. **Re-derive the OAK
+    mount through the new lens in the same change** (`bench_oak.py --joint`),
+    because its yaw is measured against this lens's axis. At 640x480 the result
     sees 134.2 by 99.5 degrees, with its axis three pixels right of the middle of
     the frame and fourteen above.
 
