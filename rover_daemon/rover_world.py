@@ -489,11 +489,19 @@ class RoverWorld:
         exactly what this component recorded before ranges existed. The client
         itself never raises, so the only thing that lands here is the component
         not being installed at all.
+
+        **A fake world gets a fake depth camera**, as it gets fake eyes. Until
+        2026-09-30 it got the real one, so a test run on the rover measured real
+        ranges whenever the OAK happened to be switched on and kept a depth map
+        its count of pictures did not expect -- a suite that passed or failed on
+        the state of a switch.
         """
         ranger = getattr(self, "_world_ranger_cache", None)
         if ranger is None:
             try:
-                ranger = world_state.depth_client.SidecarRanger()
+                ranger = (world_state.FakeRanger()
+                          if os.environ.get(ENV_FAKE) == "1"
+                          else world_state.depth_client.SidecarRanger())
             except Exception:                       # never past here
                 return None
             self._world_ranger_cache = ranger
