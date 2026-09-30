@@ -30,11 +30,12 @@ was kept: its range and range uncertainty, from that depth map, through today's
 fisheye, the OAK's corrected lens and the chassis mount it was on
 (`oak.CHASSIS_MOUNT`, or whatever `oak.mount_at` says for when it was taken). The
 part of a range's uncertainty that came from the rover moving is carried over
-unchanged. Then every placed thing is placed again from its own looks by the
-resolver's own rules -- the same pair-and-refine `resolve._replace_placement`
-uses, or a single ranged look as `resolve._place_from_range` does -- which keeps
-every identity and moves only positions. What the resolver decided about which
-looks belong together is not revisited.
+unchanged. Then every placed thing moves by exactly what its redrawn looks move
+it by: its looks are fitted by the resolver's own rules -- the pair-and-refine
+`resolve._replace_placement` uses, or a single ranged look as
+`resolve._place_from_range` does -- before and after the redraw, and the
+difference is applied (see `moved_placement`). Identities are kept, and what the
+resolver decided about which looks belong together is not revisited.
 
 **Nothing is written without `--apply`**, and `--apply` copies the database
 beside itself first, as `world.db.before-relens-<time>`.
@@ -412,6 +413,10 @@ def apply(store, db_path: str, result: dict[str, Any], reach,
         store.db.backup(target)
     target.close()
     say(f"copied the database to {backup}")
+    # Every thing fitted from its looks as they stand, before any is redrawn:
+    # the difference from the fit afterwards is what the lens moved it by.
+    fits = [(entity, placement_for(store, entity, reach))
+            for entity in store.placed()]
     with store._lock, store.db:
         for observation_id, (_row, change) in result["changes"].items():
             names = sorted(change)
@@ -419,16 +424,20 @@ def apply(store, db_path: str, result: dict[str, Any], reach,
                 "UPDATE observations SET "
                 + ", ".join(f"{name} = ?" for name in names) + " WHERE id = ?",
                 [change[name] for name in names] + [observation_id])
-    moved, unplaced = [], []
-    for entity in store.placed():
-        before = entity["placement"]
-        after = placement_for(store, entity, reach)
+    moved, unplaced, left = [], [], []
+    for entity, old_fit in fits:
+        stored = entity["placement"]
+        new_fit = placement_for(store, entity, reach)
+        after = moved_placement(stored, old_fit, new_fit)
+        if old_fit is None:
+            left.append(entity["id"])
+            continue
         store.place(entity["id"], after, entity["placement_map_session"])
         if after is None:
             unplaced.append(entity["id"])
         else:
-            moved.append(math.hypot(after["x_m"] - before["x_m"],
-                                    after["y_m"] - before["y_m"]))
+            moved.append(math.hypot(after["x_m"] - stored["x_m"],
+                                    after["y_m"] - stored["y_m"]))
     if moved:
         say(f"placed {len(moved)} things again: they moved by a median "
             f"{statistics.median(moved):.2f} m, 90th percentile "
@@ -437,7 +446,43 @@ def apply(store, db_path: str, result: dict[str, Any], reach,
         say(f"{len(unplaced)} things no longer have a place their own looks agree "
             f"on, and are unplaced: {', '.join(unplaced[:12])}"
             + (" ..." if len(unplaced) > 12 else ""))
-    return {"backup": backup, "moved": moved, "unplaced": unplaced}
+    if left:
+        say(f"{len(left)} things could not be placed from their own looks even "
+            f"before the redraw, so there is no measure of what the lens changed "
+            f"for them and they are left where they were: {', '.join(left[:12])}")
+    return {"backup": backup, "moved": moved, "unplaced": unplaced, "left": left}
+
+
+def moved_placement(stored: dict[str, Any], old_fit: dict[str, Any] | None,
+                    new_fit: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A thing's place after the redraw, moved by what the redraw changed and
+    by nothing else.
+
+    **The resolver's history is not the lens's to rewrite.** A thing is built
+    from whichever looks the resolver had at the time, so fitting its looks
+    afresh does not always give back where it stands, even with nothing redrawn
+    -- measured on the rover, 37 of 173 things moved by up to two metres that
+    way. So where a fresh fit of the old looks gives back the stored place, the
+    fresh fit of the redrawn looks replaces it outright; and where it does not,
+    the stored place is shifted -- across the floor and in height -- by the
+    difference between the two fits, which is the lens's doing and nothing
+    else's. A thing whose redrawn looks agree on no place at all is unplaced; one
+    whose old looks never did either is returned as it was.
+    """
+    if old_fit is None:
+        return stored
+    if new_fit is None:
+        return None
+    if math.hypot(old_fit["x_m"] - stored["x_m"],
+                  old_fit["y_m"] - stored["y_m"]) < 0.01:
+        return new_fit
+    shifted = dict(stored)
+    for key in ("x_m", "y_m", "height_m", "height_above_floor_m"):
+        if (stored.get(key) is not None and old_fit.get(key) is not None
+                and new_fit.get(key) is not None):
+            shifted[key] = round(float(stored[key]) + float(new_fit[key])
+                                 - float(old_fit[key]), 3)
+    return shifted
 
 
 def main() -> int:

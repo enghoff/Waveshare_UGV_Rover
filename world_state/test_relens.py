@@ -152,7 +152,29 @@ def test_apply_keeps_a_copy_and_moves_a_thing_to_where_its_looks_cross() -> None
         store.close()
 
 
+def test_a_place_the_resolver_built_up_moves_only_by_what_the_lens_changed() -> None:
+    """A thing's stored place is history, built from whichever looks the resolver
+    had at the time, and need not be where a fresh fit of its looks lands. The
+    redraw must move it by what the lens changed and not snap it to the fresh
+    fit, which would be the method's doing rather than the lens's."""
+    stored = {"x_m": 2.30, "y_m": 1.00, "height_m": 0.40, "uncertainty_m": 0.2}
+    old_fit = {"x_m": 2.00, "y_m": 1.00, "height_m": 0.30}
+    new_fit = {"x_m": 2.10, "y_m": 0.90, "height_m": 0.35}
+    moved = relens.moved_placement(stored, old_fit, new_fit)
+    check("a place the fresh fit does not reproduce is shifted by the lens's change",
+          (moved["x_m"], moved["y_m"], moved["height_m"]), (2.4, 0.9, 0.45))
+    check("...keeping everything else it held",
+          moved["uncertainty_m"], 0.2)
+    check("a place the fresh fit reproduces becomes the new fit",
+          relens.moved_placement(dict(old_fit), old_fit, new_fit), new_fit)
+    check("one whose redrawn looks agree on nowhere is unplaced",
+          relens.moved_placement(stored, old_fit, None), None)
+    check("and one its old looks never placed either is left as it was",
+          relens.moved_placement(stored, None, new_fit), stored)
+
+
 TESTS = (
+    test_a_place_the_resolver_built_up_moves_only_by_what_the_lens_changed,
     test_only_a_look_the_old_lens_reproduces_is_redrawn,
     test_a_range_is_replayed_from_its_depth_map_before_it_is_redone,
     test_apply_keeps_a_copy_and_moves_a_thing_to_where_its_looks_cross,
