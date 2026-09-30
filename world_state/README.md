@@ -23,7 +23,7 @@ looking the same way, so any region in the middle of the picture -- the OAK's 65
 by 40 degrees inside the fisheye's 130 by 96 -- can carry a range, wherever the
 gimbal points. Where the OAK sits relative to the gimbal camera (`oak.MOUNT`) is
 one fixed transform that turns with the platform; it was measured on 2026-09-30
-from matched features at nine gimbal positions, which agreed to a tenth of a
+from matched features at fifteen gimbal positions, which agreed to a tenth of a
 degree ([the measurement](../docs/progress/2026-09-30-oak-on-the-gimbal.md)).
 The gimbal camera's own position relative to the SLAM pose remains unmeasured.
 
@@ -318,7 +318,7 @@ two cameras -- the OAK turns with the fisheye, so where a fisheye box lands in
 the OAK's picture is the same at every pan and tilt.
 
 **The fisheye's own lens model is the next largest term, and it is not a servo
-fault.** Fitting one rigid mount across nine gimbal positions on 2026-09-30 only
+fault.** Fitting one rigid mount across fifteen gimbal positions on 2026-09-30 only
 closed once the fisheye's angles off its axis were stretched by 7.2%: the lens in
 `face_tracking/lens.py` puts a thing 30 degrees from the middle of the picture at
 28. It was swept by turning the gimbal and trusting the angle it was told, so it

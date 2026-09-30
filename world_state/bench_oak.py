@@ -371,6 +371,138 @@ def free_offset(cv2, numpy, objects, images):
     return chassis_from_optical(numpy, 0.0, 0.0) @ tvec.reshape(3)
 
 
+# --- every position at once -----------------------------------------------------
+
+
+def joint_fit(numpy, kept, forward_m=0.0, resamples=200):
+    """One mount for every collected position, with the fisheye's scale free.
+
+    **Why the scale has to be free, measured on 2026-09-30.** With the OAK on
+    the rail every position ought to agree, and with the rotation alone they did
+    not; with the offset free as well the fit claimed 23 cm of forward reach
+    between two lenses set in one plane. What closed it, to a median of 0.24
+    degrees, was letting the fisheye's angles off its axis stretch -- by 7.2%,
+    which is `face_tracking/lens.py` being short and not anything about the
+    mount. So the fit here is the rotation, the left and up offset and that
+    scale, with the forward offset held where the owner set it: forward and the
+    scale are the one pair these points cannot tell apart.
+
+    `(answer, per_position)`, or `(None, [])` if nothing survives. The answer
+    carries the angles and offsets in `Mount`'s terms, the scale, the median
+    miss, and 95% intervals from `resamples` resamplings of the points.
+    """
+    from scipy.optimize import least_squares                      # noqa: PLC0415
+    from scipy.spatial.transform import Rotation                  # noqa: PLC0415
+
+    objects = numpy.vstack([numpy.array(one["objects"]) for one in kept])
+    rays = numpy.vstack([numpy.array([[x, y, 1.0] for x, y in one["images"]])
+                         for one in kept])
+    rays /= numpy.linalg.norm(rays, axis=1, keepdims=True)
+    where = numpy.concatenate([[index] * len(one["objects"])
+                               for index, one in enumerate(kept)])
+    # The optical frame is x right, y down, z out; the forward offset is z.
+    held = float(forward_m)
+
+    def stretched(k):
+        theta = numpy.arccos(numpy.clip(rays[:, 2], -1.0, 1.0)) * k
+        around = numpy.arctan2(rays[:, 1], rays[:, 0])
+        return numpy.stack([numpy.sin(theta) * numpy.cos(around),
+                            numpy.sin(theta) * numpy.sin(around),
+                            numpy.cos(theta)], axis=1)
+
+    def misses(x, pick):
+        moved = Rotation.from_rotvec(x[:3]).apply(objects[pick]) \
+            + numpy.array([x[3], x[4], held])
+        moved /= numpy.linalg.norm(moved, axis=1, keepdims=True)
+        return numpy.degrees(numpy.cross(moved, stretched(x[5])[pick]))
+
+    def solve(pick, rotation_only=None):
+        x = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+        if rotation_only is not None:
+            x = rotation_only.copy()
+        keep = numpy.ones(len(pick), dtype=bool)
+        free = slice(0, 3) if rotation_only is not None else slice(0, 6)
+        for _round in range(5):
+            if int(keep.sum()) < MIN_INLIERS:
+                return None, None, keep
+            chosen = pick[keep]
+
+            def residual(z):
+                full = x.copy()
+                full[free] = z
+                return misses(full, chosen).ravel()
+
+            x[free] = least_squares(residual, x[free], loss="soft_l1",
+                                    f_scale=0.5).x
+            miss = numpy.linalg.norm(misses(x, pick), axis=1)
+            keep = miss <= INLIER_DEG
+        return x, miss, keep
+
+    everything = numpy.arange(len(objects))
+    x, miss, keep = solve(everything)
+    if x is None:
+        return None, []
+
+    def described(z):
+        angles = angles_of(numpy, Rotation.from_rotvec(z[:3]).as_matrix(),
+                           0.0, 0.0)
+        return [angles["yaw_deg"], angles["pitch_deg"], angles["roll_deg"],
+                held, -z[3], -z[4], z[5]]
+
+    names = ("yaw_deg", "pitch_deg", "roll_deg", "forward_m", "left_m", "up_m",
+             "fisheye_scale")
+    answer = dict(zip(names, described(x)))
+    answer.update(miss_deg=float(numpy.median(miss[keep])),
+                  points=int(keep.sum()), of=len(objects))
+    chance = numpy.random.default_rng(1)
+    again = []
+    for _round in range(resamples):
+        z, _m, _k = solve(chance.integers(0, len(objects), len(objects)))
+        if z is not None:
+            again.append(described(z))
+    if again:
+        low, high = numpy.percentile(numpy.array(again), [2.5, 97.5], axis=0)
+        answer["interval"] = {name: (float(a), float(b))
+                              for name, a, b in zip(names, low, high)}
+
+    per_position = []
+    for index, one in enumerate(kept):
+        z, m, k = solve(numpy.flatnonzero(where == index), rotation_only=x)
+        if z is None:
+            continue
+        found = dict(zip(names[:3], described(z)[:3]))
+        found.update(pan_deg=one["pan_deg"], tilt_deg=one.get("tilt_deg", 0.0),
+                     points=int(k.sum()), miss_deg=float(numpy.median(m[k])))
+        per_position.append(found)
+    return answer, per_position
+
+
+def report_joint(answer, per_position) -> int:
+    if answer is None:
+        print("the joint fit found too few points that agree")
+        return 1
+    print(f"one mount for every position, the fisheye's scale free, forward held "
+          f"at {answer['forward_m']:+.3f} m: {answer['points']} of {answer['of']} "
+          f"points, median miss {answer['miss_deg']:.2f} deg")
+    interval = answer.get("interval", {})
+    for name in ("yaw_deg", "pitch_deg", "roll_deg", "left_m", "up_m",
+                 "fisheye_scale"):
+        low, high = interval.get(name, (float("nan"), float("nan")))
+        print(f"  {name:<14s} {answer[name]:+8.4f}   95% {low:+.4f} to {high:+.4f}")
+    print()
+    print("each position on its own, offsets and scale held")
+    print("    pan  tilt     yaw    pitch     roll   pts   miss")
+    for one in per_position:
+        print(f"  {one['pan_deg']:+5.0f} {one['tilt_deg']:+5.0f}  "
+              f"{one['yaw_deg']:+6.2f}  {one['pitch_deg']:+6.2f}  "
+              f"{one['roll_deg']:+6.2f}  {one['points']:4d}  "
+              f"{one['miss_deg']:5.2f}")
+    print()
+    print("a scale away from 1 is the fisheye's lens model, not the mount -- see "
+          "world_state/oak.py")
+    return 0
+
+
 # --- one position, end to end -------------------------------------------------
 
 
@@ -594,6 +726,12 @@ def main() -> int:
                              "is already there -- so the offset can be measured "
                              "with a ruler afterwards and the rotation re-solved "
                              "without needing the rover back in the same room")
+    parser.add_argument("--joint", action="store_true",
+                        help="also fit one mount to every position at once, with "
+                             "the left and up offset and the fisheye's angular "
+                             "scale free and the forward offset held at "
+                             "--offset's. This is how oak.MOUNT was measured on "
+                             "2026-09-30; it needs scipy")
     parser.add_argument("--save", metavar="PREFIX",
                         help="write both pictures per position, the OAK's warped "
                              "into the fisheye's geometry, so a person can see "
@@ -610,15 +748,14 @@ def main() -> int:
         print(f"this needs OpenCV and numpy on the host that runs it: {error}")
         return 1
 
-    ranger = SidecarRanger()
-    lens_oak = ranger.lens()
-    if lens_oak is None:
-        print("the depth camera would not say what lens it has; is oak_depth "
-              "running, and is it a build that serves the colour half?")
-        return 1
-
     kept = _read_points(args.points)
     if kept is None:
+        ranger = SidecarRanger()
+        lens_oak = ranger.lens()
+        if lens_oak is None:
+            print("the depth camera would not say what lens it has; is oak_depth "
+                  "running, and is it a build that serves the colour half?")
+            return 1
         first = gimbal_frame(args.pan[0], args.tilt[0])
         if not first["ok"]:
             print(f"the gimbal camera would not answer: {first['error']}")
@@ -650,7 +787,11 @@ def main() -> int:
         # the method rather than part of the answer -- see `free_offset`.
         solved["free"] = free_offset(cv2, numpy, one["objects"], one["images"])
         found.append(solved)
-    return report(numpy, found, notes, args.offset)
+    status = report(numpy, found, notes, args.offset)
+    if args.joint and kept:
+        print()
+        status = report_joint(*joint_fit(numpy, kept, forward_m=args.offset[0]))
+    return status
 
 
 def _read_points(path):

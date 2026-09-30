@@ -178,7 +178,7 @@ is history; see
 *The fisheye's lens model is about 7% short of the angles it describes, and that
 is not a servo fault.* Since 2026-09-30 the OAK rides the gimbal, which makes its
 factory-calibrated lens a reference no servo stands between. One rigid mount fits
-all nine gimbal positions it was measured at to a median 0.24 degrees only once
+all fifteen gimbal positions it was measured at to a median 0.23 degrees only once
 the angles off the fisheye's axis from `face_tracking/lens.py` are stretched by
 7.2%; through the board-fitted fisheye of 2026-09-07 the same fit needs 1.1%. So
 a thing 30 degrees from the middle of the picture is recorded at 28, which is
@@ -203,8 +203,8 @@ through the current envelope and the current gates, can lift it.
 
 Both the rotation and the translation between the OAK and the gimbal camera are
 measured. Since 2026-09-30 the OAK rides the gimbal's rail, and [the rail
-measurement](../progress/2026-09-30-oak-on-the-gimbal.md) puts it 51 mm above and
-7 mm to the right of the gimbal camera's optical centre, in that camera's own
+measurement](../progress/2026-09-30-oak-on-the-gimbal.md) puts it 46 mm above and
+5 mm to the right of the gimbal camera's optical centre, in that camera's own
 frame, with the two sensors in one plane; the vertical figure is good to about a
 centimetre. `oak.rise_of` turns that with the tilt of each look. That closes half
 of what blocked this. (On the chassis bracket before it, the board measurement of

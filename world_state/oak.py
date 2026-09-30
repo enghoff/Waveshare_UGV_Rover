@@ -94,24 +94,31 @@ class Mount:
     on_gimbal: bool = True
 
 
-#: Where this rover's OAK is, measured on 2026-09-30 by `bench_oak.py` at nine
-#: gimbal positions -- pan -30, 0 and +30 at tilt 0, 20 and 40 -- from 836 feature
-#: matches between the two cameras, ranged by the OAK itself, 2.4 to 5.5 m out.
+#: Where this rover's OAK is, measured on 2026-09-30 by `bench_oak.py --joint` in
+#: two runs at fifteen gimbal positions between them -- pan -30, 0 and +30 at tilt
+#: 0, 20 and 40, then pan -45, 0 and +45 at tilt 10 and 30 -- from 1417 feature
+#: matches between the two cameras, ranged by the OAK itself, 2 to 6 m out.
 #:
-#:     component    adopted       95% interval over 200 resamplings
-#:     yaw         +1.89 deg       +1.83 to +1.94
-#:     pitch       +0.73 deg       +0.62 to +0.92
-#:     roll        -0.82 deg       -0.89 to -0.74
+#:     component    adopted       first run   second run
+#:     yaw         +1.92 deg       +1.89       +1.98
+#:     pitch       +0.80 deg       +0.73       +0.92
+#:     roll        -0.80 deg       -0.82       -0.71
 #:     forward      0.000 m        held: the two sensors are in one plane
-#:     left        -0.007 m        -0.011 to -0.004
-#:     up          +0.051 m        +0.040 to +0.058
+#:     left        -0.005 m        -0.007      -0.002
+#:     up          +0.046 m        +0.051      +0.038
+#:
+#: Read the two runs, not the resampling intervals, as what these are good to:
+#: the intervals within each run are half the width of the difference between
+#: them, because the height and the pitch trade against each other through
+#: whatever ranges the room offered. About a tenth of a degree, and a centimetre
+#: of height.
 #:
 #: **The rail is rigid, and that is the measurement that says so.** Fitted
-#: position by position with the offset held, the nine rotations agree to 0.07
-#: degrees of yaw and 0.15 of pitch, with no trend in tilt, which is what a clamp
-#: sagging under the camera's weight would show first. On the chassis bracket the
-#: same bench moved by 4.5 degrees of yaw with the gimbal, because the gimbal's
-#: pointing faults were in between.
+#: position by position with the offset held, the fifteen rotations agree to 0.13
+#: degrees of yaw, with no trend in tilt, which is what a clamp sagging under the
+#: camera's weight would show first. On the chassis bracket the same bench moved
+#: by 4.5 degrees of yaw with the gimbal, because the gimbal's pointing faults
+#: were in between.
 #:
 #: **The forward offset is the owner's, not the fit's.** The OAK was mounted with
 #: its sensors in the plane of the fisheye's; the fit, left free, puts it 19 mm
@@ -120,8 +127,9 @@ class Mount:
 #: else by more than a tenth of a degree or 2 mm.
 #:
 #: **The fisheye's own lens is the largest term left, and it is not the mount's.**
-#: The fit only closes -- a median of 0.24 degrees over all nine positions --
-#: once the fisheye's angles off its axis are stretched by 7.2%, meaning
+#: The fit only closes -- a median of 0.23 degrees over all fifteen positions --
+#: once the fisheye's angles off its axis are stretched by 7.2% (1.0719 and
+#: 1.0716 in the two runs), meaning
 #: `face_tracking/lens.py` puts a thing 30 degrees from the middle of the picture
 #: at 28. The board calibration of 2026-09-07, which never trusted a servo, says
 #: 5 to 7%. That is recorded against R-WS-10 and left for its own change; until
@@ -129,12 +137,12 @@ class Mount:
 #: of how far it sits from the middle of the picture -- nothing at the centre, two
 #: degrees at the OAK's edge. See `docs/progress/2026-09-30-oak-on-the-gimbal.md`.
 MOUNT = Mount(
-    yaw_deg=1.89,
-    pitch_deg=0.73,
-    roll_deg=-0.82,
+    yaw_deg=1.92,
+    pitch_deg=0.80,
+    roll_deg=-0.80,
     forward_m=0.0,
-    left_m=-0.007,
-    up_m=0.051,
+    left_m=-0.005,
+    up_m=0.046,
 )
 
 #: Where the OAK was until 2026-09-30: bolted to the chassis, measured 2026-09-07

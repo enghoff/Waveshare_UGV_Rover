@@ -272,8 +272,8 @@ def test_the_two_cameras_agree_wherever_the_gimbal_points() -> None:
 
     region = type("Region", (), {"bbox": [0.45, 0.40, 0.55, 0.52]})()
     asked = []
-    with _mounted(yaw_deg=1.89, pitch_deg=0.73, roll_deg=-0.82, up_m=0.051,
-                  left_m=-0.007):
+    with _mounted(yaw_deg=1.92, pitch_deg=0.80, roll_deg=-0.80, up_m=0.046,
+                  left_m=-0.005):
         for pan, tilt in ((0.0, 0.0), (60.0, 20.0), (-150.0, 45.0)):
             ranging = Ranging()
             ranging._ranges_across({"pan": pan, "tilt": tilt,

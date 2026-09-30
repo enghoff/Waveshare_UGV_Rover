@@ -188,7 +188,7 @@ from the calibration work still to do. The gimbal measurement has passed its
 held-out gate at tilt zero and pan -20 to +20 degrees when every placement finishes
 from the ascending direction, and the envelope now extends to tilt +20. The
 OAK moved from its chassis bracket onto the gimbal's rail on 2026-09-30 and its
-mount was measured again there, rigid to a tenth of a degree across nine gimbal
+mount was measured again there, rigid to a tenth of a degree across fifteen gimbal
 positions ([the rail entry](../progress/2026-09-30-oak-on-the-gimbal.md)), so the
 clean confirmation the chassis mount still owed no longer matters. What that
 measurement owes is a board check of its offset, and what it found -- the
