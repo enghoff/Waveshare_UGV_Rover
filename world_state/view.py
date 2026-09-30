@@ -415,12 +415,12 @@ def _from_box(bbox: Any, tilt_deg: float = 0.0,
     still measured, and only the refinement is missing.
 
     **Off the lens axis rather than off the middle of the picture**, which is a
-    choice worth naming because the two are 0.8 degrees apart on this camera --
-    the sweep put the principal point thirteen pixels above the centre of the
-    frame. The axis is what the fitted projection calls forward and what
+    choice worth naming because the two are about three quarters of a degree
+    apart on this camera -- the lens puts the principal point fourteen pixels
+    above the centre of the frame and three to its right. The axis is what the fitted projection calls forward and what
     `lens.ray_at` answers (0, 0, 1) for, so taking it needs no assumption the
     calibration did not make. What *is* unmeasured is where pan = 0 actually
-    points relative to either, and it is worth more than this 0.8 degrees to
+    points relative to either, and it is worth more than this 0.7 degrees to
     anybody chasing it: the gimbal is already known to arrive about three degrees
     short of where it is sent, which no lens model can see.
 

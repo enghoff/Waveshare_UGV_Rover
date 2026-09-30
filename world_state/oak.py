@@ -94,55 +94,51 @@ class Mount:
     on_gimbal: bool = True
 
 
-#: Where this rover's OAK is, measured on 2026-09-30 by `bench_oak.py --joint` in
-#: two runs at fifteen gimbal positions between them -- pan -30, 0 and +30 at tilt
-#: 0, 20 and 40, then pan -45, 0 and +45 at tilt 10 and 30 -- from 1417 feature
-#: matches between the two cameras, ranged by the OAK itself, 2 to 6 m out.
+#: Where this rover's OAK is, measured on 2026-09-30 in two runs of `bench_oak.py`
+#: at fifteen gimbal positions between them -- pan -30, 0 and +30 at tilt 0, 20 and
+#: 40, then pan -45, 0 and +45 at tilt 10 and 30 -- from 1417 feature matches
+#: between the two cameras, ranged by the OAK itself, 2 to 6 m out, and fitted
+#: with `--joint` through the fisheye lens refitted the same day.
 #:
-#:     component    adopted       first run   second run
-#:     yaw         +1.92 deg       +1.89       +1.98
-#:     pitch       +0.80 deg       +0.73       +0.92
-#:     roll        -0.80 deg       -0.82       -0.71
+#:     component    adopted       95% interval over 200 resamplings
+#:     yaw         +0.37 deg       +0.33 to +0.41
+#:     pitch       +0.44 deg       +0.33 to +0.56
+#:     roll        -0.75 deg       -0.81 to -0.70
 #:     forward      0.000 m        held: the two sensors are in one plane
-#:     left        -0.005 m        -0.007      -0.002
-#:     up          +0.046 m        +0.051      +0.038
+#:     left        -0.004 m        -0.006 to -0.001
+#:     up          +0.045 m        +0.038 to +0.051
 #:
-#: Read the two runs, not the resampling intervals, as what these are good to:
-#: the intervals within each run are half the width of the difference between
-#: them, because the height and the pitch trade against each other through
-#: whatever ranges the room offered. About a tenth of a degree, and a centimetre
-#: of height.
+#: The two runs, fitted apart, disagreed by 13 mm in height and 0.2 degrees in
+#: pitch, which trade against each other through whatever ranges the room
+#: offered -- so read these as good to about a tenth of a degree and a
+#: centimetre, not to the intervals.
 #:
 #: **The rail is rigid, and that is the measurement that says so.** Fitted
-#: position by position with the offset held, the fifteen rotations agree to 0.13
-#: degrees of yaw, with no trend in tilt, which is what a clamp sagging under the
+#: position by position with the offset held, the fifteen rotations agree to 0.1
+#: degree of yaw, with no trend in tilt, which is what a clamp sagging under the
 #: camera's weight would show first. On the chassis bracket the same bench moved
 #: by 4.5 degrees of yaw with the gimbal, because the gimbal's pointing faults
 #: were in between.
 #:
 #: **The forward offset is the owner's, not the fit's.** The OAK was mounted with
-#: its sensors in the plane of the fisheye's; the fit, left free, puts it 19 mm
-#: ahead, but forward is the one direction this bench cannot separate from the
-#: fisheye's angular scale (below), and holding it at nothing changes nothing
-#: else by more than a tenth of a degree or 2 mm.
+#: its sensors in the plane of the fisheye's; the fit, left free, puts it a
+#: couple of centimetres ahead, but forward is the one direction this bench
+#: cannot separate from the fisheye's angular scale, and holding it at nothing
+#: changes nothing else by more than a tenth of a degree or 2 mm.
 #:
-#: **The fisheye's own lens is the largest term left, and it is not the mount's.**
-#: The fit only closes -- a median of 0.23 degrees over all fifteen positions --
-#: once the fisheye's angles off its axis are stretched by 7.2% (1.0719 and
-#: 1.0716 in the two runs), meaning
-#: `face_tracking/lens.py` puts a thing 30 degrees from the middle of the picture
-#: at 28. The board calibration of 2026-09-07, which never trusted a servo, says
-#: 5 to 7%. That is recorded against R-WS-10 and left for its own change; until
-#: it is made, a box mapped from the fisheye onto this camera is off by about 7%
-#: of how far it sits from the middle of the picture -- nothing at the centre, two
-#: degrees at the OAK's edge. See `docs/progress/2026-09-30-oak-on-the-gimbal.md`.
+#: **The yaw is relative to the fisheye's axis as `face_tracking/lens.py` has it**,
+#: so it moves whenever that lens is refitted: through the lens before
+#: 2026-09-30, whose axis sat ten pixels left of today's, the same points gave
+#: +1.92. What is left between the two cameras is the fisheye scale `--joint`
+#: reports, 1.012, and that is the OAK's: it is drawn as a pinhole, which puts its
+#: edges about 1% too far out (see `depth_client.Lens`).
 MOUNT = Mount(
-    yaw_deg=1.92,
-    pitch_deg=0.80,
-    roll_deg=-0.80,
+    yaw_deg=0.37,
+    pitch_deg=0.44,
+    roll_deg=-0.75,
     forward_m=0.0,
-    left_m=-0.005,
-    up_m=0.046,
+    left_m=-0.004,
+    up_m=0.045,
 )
 
 #: Where the OAK was until 2026-09-30: bolted to the chassis, measured 2026-09-07
@@ -156,12 +152,17 @@ MOUNT = Mount(
 #: reported it was 9.6% short in focal length (see `oak_depth/colour_lens.py`),
 #: which puts the board 9.6% too close to the OAK and the OAK too far forward by
 #: 9.6% of the distance. Undone, the two distances agree on 42 and 44 mm, and a
-#: tape had said 40. The angles and the other two offsets do not depend on the
-#: focal length to first order and are as measured.
+#: tape had said 40.
+#:
+#: **And its angles are re-expressed against today's fisheye.** The board fit
+#: measured them against the board calibration's own lens, whose axis is 0.6
+#: degrees across and 0.5 up from the lens `face_tracking/lens.py` flies since
+#: 2026-09-30 (the two agree on shape to 0.05 degrees over the part of the
+#: picture the board covered). As measured: yaw +1.492, pitch +6.256, roll -1.200.
 CHASSIS_MOUNT = Mount(
-    yaw_deg=1.492,
-    pitch_deg=6.256,
-    roll_deg=-1.200,
+    yaw_deg=2.098,
+    pitch_deg=5.777,
+    roll_deg=-1.185,
     forward_m=0.043,
     left_m=-0.0031,
     up_m=-0.0937,
@@ -366,7 +367,7 @@ def pose_at(pose: dict[str, Any] | None, pan_deg: float | None = None,
 
 
 def box_for(corners: list[tuple[float, float, float]], lens: Any,
-            range_m: float | None = None
+            range_m: float | None = None, mount: Mount | None = None
             ) -> tuple[list[float], float] | None:
     """Where a thing the gimbal camera saw would be in the OAK's picture, and how
     far the OAK's answer would then be from the gimbal camera.
@@ -397,13 +398,16 @@ def box_for(corners: list[tuple[float, float, float]], lens: Any,
     A box, in fractions of the OAK's picture, and nothing else. Turning the range
     that comes back into a length along the gimbal camera's own ray is
     `range_from_gimbal`, which needs no guess at all.
+
+    `mount` is for reading a look taken on another mount -- `mount_at` says
+    which -- and `corners` are then in that mount's own frame.
     """
     if not MEASURED or lens is None or not corners:
         return None
     assumed = GUESS_RANGE_M if range_m is None else max(0.05, float(range_m))
     seen = []
     for direction in corners:
-        placed = _in_oak(direction, assumed)
+        placed = _in_oak(direction, assumed, mount)
         if placed is None:
             return None
         seen.append(_project(placed, lens))
@@ -421,7 +425,8 @@ def box_for(corners: list[tuple[float, float, float]], lens: Any,
 
 
 def range_from_gimbal(corners: list[tuple[float, float, float]],
-                      oak_range_m: float) -> float | None:
+                      oak_range_m: float,
+                      mount: Mount | None = None) -> float | None:
     """How far a thing the OAK measured at `oak_range_m` is from the gimbal camera.
 
     **A range is a length along a particular ray from a particular point**, and
@@ -445,10 +450,11 @@ def range_from_gimbal(corners: list[tuple[float, float, float]],
     """
     if not MEASURED or not corners:
         return None
+    mount = mount or MOUNT
     direction = _middle(corners)
-    towards = (MOUNT.forward_m * direction[0] + MOUNT.left_m * direction[1]
-               + MOUNT.up_m * direction[2])
-    apart = (MOUNT.forward_m ** 2 + MOUNT.left_m ** 2 + MOUNT.up_m ** 2)
+    towards = (mount.forward_m * direction[0] + mount.left_m * direction[1]
+               + mount.up_m * direction[2])
+    apart = (mount.forward_m ** 2 + mount.left_m ** 2 + mount.up_m ** 2)
     under = towards * towards - apart + float(oak_range_m) ** 2
     if under < 0.0:
         return None

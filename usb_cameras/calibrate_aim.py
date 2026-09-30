@@ -59,18 +59,22 @@ from rover_tools import RoverClient, discover                      # noqa: E402
 from calibrate_fov import directions, project, turned, _theta      # noqa: E402
 import aiming                                                      # noqa: E402
 
-# The lens this rover wears, as calibrate_fov.py measures it: near enough an
-# equidistant fisheye, about 130 degrees across. Kept here as a default so that a run
-# costs one trip to the hardware rather than two, and overridable with --lens because
-# a freshly measured sweep should always be believed over a remembered one.
-#
-# Measured 2026-08-19 by two sweeps that share no motion: a pan sweep gave 11.85
-# arcmin per pixel with a distortion term of +0.025, a tilt sweep 11.79 and +0.035.
-# They agree on the scale to half a percent, which is the part this file leans on.
-# The centre is taken one axis from each, because a sweep pins the coordinate it
-# moves along and says almost nothing about the other: cx from the pan run, cy from
-# the tilt run. See docs/reference/usb-cameras.md.
-LENS = {"arcmin_per_px": 11.82, "bend": 0.030, "centre": (315.9, 227.4)}
+# The lens this rover wears: near enough an equidistant fisheye, about 134 degrees
+# across. The default is the one face_tracking/lens.py flies, and --lens overrides
+# it to try a freshly measured one. Its provenance is written there, not here.
+def _flown_lens():
+    """The lens `face_tracking/lens.py` flies, read from it rather than copied.
+
+    A copy of these numbers sat here until 2026-09-30 and would have gone on
+    testing the aiming against the lens it no longer used."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "face_tracking"))
+    import lens as flown                                          # noqa: PLC0415
+
+    arcmin, bend, centre = flown.LENS[(640, 480)]
+    return {"arcmin_per_px": arcmin, "bend": bend, "centre": centre}
+
+
+LENS = _flown_lens()
 
 # Where in the frame to try, as fractions of a half frame from the middle: +1 is the
 # right edge and the top. Chosen to walk out along the centreline, up the middle, and

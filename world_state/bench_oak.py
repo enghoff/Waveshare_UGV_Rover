@@ -382,10 +382,12 @@ def joint_fit(numpy, kept, forward_m=0.0, resamples=200):
     not; with the offset free as well the fit claimed 23 cm of forward reach
     between two lenses set in one plane. What closed it, to a median of 0.24
     degrees, was letting the fisheye's angles off its axis stretch -- by 7.2%,
-    which is `face_tracking/lens.py` being short and not anything about the
-    mount. So the fit here is the rotation, the left and up offset and that
-    scale, with the forward offset held where the owner set it: forward and the
-    scale are the one pair these points cannot tell apart.
+    which was `face_tracking/lens.py` being short and not anything about the
+    mount, and which the lens refitted the same day brought to 1.012 (the rest
+    is the OAK drawn as a pinhole). So the fit here is the rotation, the left
+    and up offset and that scale, with the forward offset held where the owner
+    set it: forward and the scale are the one pair these points cannot tell
+    apart. A scale well away from 1 means the fisheye wants measuring again.
 
     `(answer, per_position)`, or `(None, [])` if nothing survives. The answer
     carries the angles and offsets in `Mount`'s terms, the scale, the median
@@ -545,7 +547,7 @@ def collect_at(cv2, numpy, pan, tilt, ranger, lens_oak, maps, save):
     # Back out of the warp: the map says which OAK pixel each warped pixel came
     # from, so reading it at the match is the real pixel to ask for a range.
     optics = fitted.lens_for(*frame["size"])
-    in_oak, rays = [], []
+    in_oak, rays, seen_at = [], [], []
     for (gx, gy), (wx, wy) in pairs:
         column = int(round(min(max(wx, 0.0), maps[0].shape[1] - 1)))
         row = int(round(min(max(wy, 0.0), maps[0].shape[0] - 1)))
@@ -557,6 +559,7 @@ def collect_at(cv2, numpy, pan, tilt, ranger, lens_oak, maps, save):
             continue
         in_oak.append((ox, oy))
         rays.append((dx / dz, dy / dz))
+        seen_at.append((gx, gy))
     if len(in_oak) < MIN_INLIERS:
         return None, (f"{where}: {len(pairs)} matched, only "
                       f"{len(in_oak)} of them usable")
@@ -565,10 +568,14 @@ def collect_at(cv2, numpy, pan, tilt, ranger, lens_oak, maps, save):
     if measured is None:
         return None, f"{where}: no ranges ({error})"
 
-    objects, images, ranged = [], [], []
-    for (ox, oy), ray, range_m in zip(in_oak, rays, measured):
+    objects, images, ranged, pixels = [], [], [], []
+    for (ox, oy), ray, range_m, pixel in zip(in_oak, rays, measured, seen_at):
         if not range_m:
             continue
+        # The fisheye pixel as well as its ray, so that the points can be
+        # re-rayed when the lens is refitted -- which on 2026-09-30 meant
+        # inverting the old lens to get them back.
+        pixels.append([round(pixel[0], 3), round(pixel[1], 3)])
         # **The lens alone and not the mount.** `oak.ray_at` takes the adopted
         # roll out, which is right for anything drawing a bearing and wrong
         # here: this would then measure how far the mount has moved since
@@ -584,6 +591,7 @@ def collect_at(cv2, numpy, pan, tilt, ranger, lens_oak, maps, save):
                       f"{len(objects)} had a range")
 
     return ({"objects": objects, "images": images, "ranges": ranged,
+             "pixels": pixels,
              "pan_deg": frame["pan"], "tilt_deg": frame["tilt"]},
             f"{where}: {counts[0]}/{counts[1]} features, "
             f"{len(pairs)} matched, {len(objects)} ranged")

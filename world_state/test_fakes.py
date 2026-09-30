@@ -159,14 +159,22 @@ def a_vector(*values, width=8):
 
 #: A box sitting on the lens axis, so that the angle it contributes is zero.
 #:
-#: **Not the middle of the picture, which is a different point.** The sweep put
-#: this camera's principal point thirteen pixels above the centre of the frame,
-#: and a bearing is now worked out through that lens rather than by multiplying
-#: a fraction of the frame by a field of view -- so a box centred in the picture
-#: contributes 0.8 degrees and every expectation in every resolver test would be
-#: carrying it. Written as the axis rather than as the numbers it comes to, so
-#: that a re-swept lens moves the fixture instead of breaking forty tests.
-ON_AXIS = (315.9 / 640.0, 227.4 / 480.0)
+#: **Not the middle of the picture, which is a different point.** The lens puts
+#: this camera's principal point fourteen pixels above the centre of the frame
+#: and three to its right, and a bearing is worked out through that lens rather
+#: than by multiplying a fraction of the frame by a field of view -- so a box
+#: centred in the picture contributes 0.7 degrees and every expectation in every
+#: resolver test would be carrying it. Read off the lens rather than written out, so that a refitted
+#: lens moves the fixture instead of breaking forty tests -- which is what the
+#: numbers written here did until the lens was refitted on 2026-09-30.
+def _on_axis():
+    from world_state import view                              # noqa: PLC0415
+
+    _scale, _bend, centre = view._lens_module().LENS[(640, 480)]
+    return (centre[0] / 640.0, centre[1] / 480.0)
+
+
+ON_AXIS = _on_axis()
 
 
 def a_ray(x_m, y_m, at, *, sigma=None, span=0.0, look=None, off=0.0,

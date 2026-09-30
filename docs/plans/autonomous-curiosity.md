@@ -191,8 +191,9 @@ OAK moved from its chassis bracket onto the gimbal's rail on 2026-09-30 and its
 mount was measured again there, rigid to a tenth of a degree across fifteen gimbal
 positions ([the rail entry](../progress/2026-09-30-oak-on-the-gimbal.md)), so the
 clean confirmation the chassis mount still owed no longer matters. What that
-measurement owes is a board check of its offset, and what it found -- the
-fisheye's lens model about 7% short off-axis -- belongs to R-WS-10. The baseline's historical
+measurement owes is a board check of its offset. What it found -- the
+fisheye's lens model about 7% short off-axis -- was refitted the same day and the
+stored looks redrawn ([the lens entry](../progress/2026-09-30-the-fisheye-lens-refitted.md)). The baseline's historical
 pass counts and "before Phase 1" heading are not the current gate: read-only
 M1/M2 may proceed.
 

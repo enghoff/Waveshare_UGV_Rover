@@ -96,8 +96,30 @@ def _theta(radius, scale, bend, normal):
     fit say otherwise. It is written against a normalised radius so that it comes
     out around a hundredth rather than around 1e-9, which is the difference between a
     fit that converges and one that wanders.
+
+    `bend` may also be a sequence, the terms in the normalised radius squared, to
+    the fourth and so on -- which is what `face_tracking/lens.py` carries since
+    the board and the OAK measured it on 2026-09-30. This sweep fits one term.
     """
-    return radius * scale * (1.0 + bend * (radius / normal) ** 2)
+    return radius * scale * _poly(radius / normal, bend)
+
+
+def _poly(u, bend):
+    """1 + b1 u^2 + b2 u^4 + ..., for one bend or several."""
+    terms = bend if isinstance(bend, (list, tuple)) else (bend,)
+    total = 1.0
+    for power, term in enumerate(terms, 1):
+        total = total + term * u ** (2 * power)
+    return total
+
+
+def _slope(u, bend):
+    """d/du of u * _poly(u, bend): 1 + 3 b1 u^2 + 5 b2 u^4 + ..."""
+    terms = bend if isinstance(bend, (list, tuple)) else (bend,)
+    total = 1.0
+    for power, term in enumerate(terms, 1):
+        total = total + (2 * power + 1) * term * u ** (2 * power)
+    return total
 
 
 def _radius(theta, scale, bend, normal):
@@ -105,7 +127,7 @@ def _radius(theta, scale, bend, normal):
     radius = theta / scale
     for _ in range(20):
         guess = _theta(radius, scale, bend, normal)
-        slope = scale * (1.0 + 3.0 * bend * (radius / normal) ** 2)
+        slope = scale * _slope(radius / normal, bend)
         radius = radius - (guess - theta) / slope
     return radius
 

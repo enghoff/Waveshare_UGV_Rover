@@ -175,19 +175,19 @@ the note that used to stand here about deliberately leaving it six degrees out
 is history; see
 [the mount entry](../progress/2026-09-07-p0-oak-mount.md).
 
-*The fisheye's lens model is about 7% short of the angles it describes, and that
-is not a servo fault.* Since 2026-09-30 the OAK rides the gimbal, which makes its
-factory-calibrated lens a reference no servo stands between. One rigid mount fits
-all fifteen gimbal positions it was measured at to a median 0.23 degrees only once
-the angles off the fisheye's axis from `face_tracking/lens.py` are stretched by
-7.2%; through the board-fitted fisheye of 2026-09-07 the same fit needs 1.1%. So
-a thing 30 degrees from the middle of the picture is recorded at 28, which is
-larger than the 1.5 degrees this requirement is about everywhere outside the
-middle third of the frame. The OAK's own servo-independent readings put the pan
-servo's 30-degree steps at 28.6 to 30.6. See
-[the rail entry](../progress/2026-09-30-oak-on-the-gimbal.md). Refitting the lens
-changes every bearing recorded from then on and the mount's yaw with it, so it is
-its own change.
+*The fisheye's lens model was 7% short of the angles it describes, and is
+refitted.* Until 2026-09-30 `face_tracking/lens.py` recorded a thing 21 degrees
+from the middle of the picture at 19.8 and one 41 degrees out at 39.9 -- larger
+than the 1.5 degrees this requirement is about everywhere outside the middle of
+the frame. It was refitted without trusting a servo, from the printed board, the
+OAK riding the same platform and still pictures of a stepped sweep, and checked
+against tilt steps the OAK's accelerometer measured against gravity: 0.998. The
+2282 stored looks with a direction, all from the drive of 2026-09-08, reproduced
+exactly through the old lens and were redrawn through the new one, and every
+placed thing placed again from them. See
+[the lens entry](../progress/2026-09-30-the-fisheye-lens-refitted.md). The same
+measurement puts the pan servo 2.4% over on 5-degree steps and the tilt servo
+3.6% over, both ascending.
 
 **What is left is the acceptance measurement.** The baseline that set this to
 `failing` was taken on a driven recording, where half the bearings fell outside
@@ -203,8 +203,8 @@ through the current envelope and the current gates, can lift it.
 
 Both the rotation and the translation between the OAK and the gimbal camera are
 measured. Since 2026-09-30 the OAK rides the gimbal's rail, and [the rail
-measurement](../progress/2026-09-30-oak-on-the-gimbal.md) puts it 46 mm above and
-5 mm to the right of the gimbal camera's optical centre, in that camera's own
+measurement](../progress/2026-09-30-oak-on-the-gimbal.md) puts it 45 mm above and
+4 mm to the right of the gimbal camera's optical centre, in that camera's own
 frame, with the two sensors in one plane; the vertical figure is good to about a
 centimetre. `oak.rise_of` turns that with the tilt of each look. That closes half
 of what blocked this. (On the chassis bracket before it, the board measurement of

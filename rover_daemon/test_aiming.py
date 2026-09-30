@@ -119,9 +119,18 @@ def test_one_move_puts_a_face_in_the_middle():
     def one_correction(face, tilt_now):
         gimbal = Gimbal(1.0, size)              # all of it, in one step
         gimbal.begin(1000.0, 0.0, tilt_now)
-        gimbal.track((face[0] - size[0] / 2) / (size[0] / 2),
-                     (size[1] / 2 - face[1]) / (size[1] / 2),
-                     1.0, 1000.5, exposed_at=1000.5)
+        # **Without the deadband, which is a different claim.** It holds an axis
+        # still while what is left on it is under two degrees, so a face on the
+        # middle row at the edge of the frame -- which the lens curves half a
+        # degree off that row -- gets its pan and not its tilt. That is the
+        # deadband working, and this check is about solve().
+        held, aiming.DEADBAND = aiming.DEADBAND, 0.0
+        try:
+            gimbal.track((face[0] - size[0] / 2) / (size[0] / 2),
+                         (size[1] / 2 - face[1]) / (size[1] / 2),
+                         1.0, 1000.5, exposed_at=1000.5)
+        finally:
+            aiming.DEADBAND = held
         return gimbal.pan, gimbal.tilt
 
     # Corners, edges and the two centre lines, from level and from tilted up, which
@@ -151,6 +160,19 @@ def test_one_move_puts_a_face_in_the_middle():
         pan_half, tilt_half = aiming.gains_for(*size_tried)
         check(f"{size_tried[0]}x{size_tried[1]} has a believable half frame",
               60 < pan_half < 75 and 30 < tilt_half < 60, True)
+
+    # The two constants that still quote the half frame in degrees are read off
+    # the lens, and must not drift from it when it is refitted.
+    pan_half, tilt_half = aiming.gains_for(640, 480)
+    check("the quoted half frames are the lens's own",
+          (round(pan_half), round(tilt_half)),
+          (aiming.PAN_DEG_PER_HALF_FRAME, aiming.TILT_DEG_PER_HALF_FRAME))
+    # And the lens can be read backwards, which the simulations below lean on:
+    # out to the corner of the frame, where the distortion terms are largest.
+    for radius in (10.0, 160.0, 320.0, 400.0):
+        check(f"a point {radius:.0f} px out comes back to {radius:.0f} px",
+              round(aiming.radius_of(aiming.theta_of(radius, lens), lens), 6),
+              radius)
 
 
 def test_the_approach_to_a_face_never_turns_back():
@@ -188,11 +210,7 @@ def test_the_approach_to_a_face_never_turns_back():
         x, y, z = turned(turned(world, "pan", pan), "tilt", tilt)
         flat = math.hypot(x, y)
         theta = math.atan2(flat, z)
-        radius, scale, bend = theta / lens[0], lens[0], lens[1]
-        for _ in range(20):               # invert theta_of, which is monotone
-            guess = aiming.theta_of(radius, lens)
-            slope = scale * (1.0 + 3.0 * bend * (radius / lens[4]) ** 2)
-            radius -= (guess - theta) / slope
+        radius = aiming.radius_of(theta, lens)
         along = radius / flat if flat > 1e-9 else 0.0
         return lens[2] + x * along, lens[3] + y * along
 

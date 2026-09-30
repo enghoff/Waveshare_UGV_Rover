@@ -91,17 +91,34 @@ NMS_THRESHOLD = 0.3
 # 16:9 mode is a *crop* rather than a letterboxed 4:3, so the two modes do not see
 # the same angle and one cannot be derived from the other.
 LENS = {
-    # Measured 2026-08-19 by usb_cameras/calibrate_fov.py, two sweeps that share no
-    # motion: panning gave 11.85 arcmin per pixel with a distortion term of +0.025,
-    # tilting 11.79 and +0.035. Half a percent apart on the scale, which is the part
-    # the aiming leans on. The centre comes one axis from each run, because a sweep
-    # pins the coordinate it moves along and says next to nothing about the other.
-    (640, 480): (11.82, 0.030, (315.9, 227.4)),
+    # Measured 2026-09-30, and **none of it from a servo**: 8061 corners of the
+    # printed ChArUco board photographed on 2026-09-07 give the centre and the shape
+    # of the middle of the picture; 1417 features matched with the OAK, which rides
+    # the same platform and whose factory lens and stereo ranges are its own, give
+    # the absolute scale; and 9108 features tracked between still pictures of a
+    # tilt and pan sweep give the shape out to the edges, each pair its own
+    # rotation. Two distortion terms, in the normalised radius squared and to the
+    # fourth; a third changed no angle by more than 0.3 degrees.
+    #
+    # Checked against what it was not fitted to: the tilt steps of that sweep, whose
+    # true size the OAK's accelerometer read off gravity, come out at 0.998 of what
+    # this lens says (the lens it replaced said 0.962 of them).
+    #
+    # What it replaced was 11.82 arcmin per pixel with one term of +0.030 about
+    # (315.9, 227.4), swept on 2026-08-19 by `usb_cameras/calibrate_fov.py`, which
+    # turns the gimbal and trusts the angle it was told. It put a thing 20 degrees
+    # off the middle at 18.9 and one 40 degrees off at 38.5. Why that sweep came
+    # out short is not known: the servo turns 2 to 4 percent more than it is told
+    # today, not the 7 the sweep would need. See
+    # docs/progress/2026-09-30-the-fisheye-lens-refitted.md.
+    (640, 480): (12.637, (-0.0578, 0.0531), (323.3, 225.6)),
     # Converted from the old template-match pair (9.65 and 9.50 pixels per degree,
     # which agree to 1.5% and so describe an equidistant lens at 9.575) and never
     # sweep-fitted. Treat the distortion term and the centre as guesses: this mode
     # is not what the rover captures, and the desk script that does use it should
     # have calibrate_fov.py run on it before anything is concluded from it.
+    # Suspect for the same reason the 640x480 figure was: servo angles again. The
+    # rover does not capture in this mode.
     (1280, 720): (6.27, 0.0, None),
 }
 
@@ -109,11 +126,11 @@ LENS = {
 # What half a frame comes to in degrees, kept because the README and the docstrings
 # quote them and because the sweep and the deadband are still sized in frames. Now
 # read off the lens rather than measured separately, so there is one description of
-# the optics and not two that can disagree.
-PAN_DEG_PER_HALF_FRAME = 65
+# the optics and not two that can disagree -- `test_aiming` checks the two agree.
+PAN_DEG_PER_HALF_FRAME = 67
 
 
-TILT_DEG_PER_HALF_FRAME = 48
+TILT_DEG_PER_HALF_FRAME = 50
 
 
 def lens_for(width, height):
@@ -146,13 +163,44 @@ def theta_of(radius, lens):
     """Angle off the lens axis, in radians, for a point this many pixels out.
 
     An equidistant fisheye puts angle in proportion to radius -- which is what this
-    camera turned out to be, near enough -- and the distortion term is the one thing
-    that lets the fit say otherwise. It is written against a normalised radius so
-    that it comes out around a hundredth rather than around 1e-9. The same function
-    is in usb_cameras/calibrate_fov.py, which fits it; this is the one that flies.
+    camera turned out to be, near enough -- and the distortion terms are what let
+    the fit say otherwise. They are written against a normalised radius so that
+    they come out around a hundredth rather than around 1e-9. `bend` is one term or
+    a tuple of them, in the normalised radius squared, to the fourth and so on. The
+    same function is in usb_cameras/calibrate_fov.py; this is the one that flies.
     """
     scale, bend, _, _, normal = lens
-    return radius * scale * (1.0 + bend * (radius / normal) ** 2)
+    return radius * scale * _poly(radius / normal, bend)
+
+
+def radius_of(theta, lens):
+    """How many pixels out from the centre a point this far off the axis lands:
+    `theta_of` the other way round, by Newton. The lens is monotone across the
+    whole frame, so this is safe there."""
+    scale, bend, _, _, normal = lens
+    radius = theta / scale
+    for _ in range(30):
+        u = radius / normal
+        radius -= (radius * scale * _poly(u, bend) - theta) / (scale * _slope(u, bend))
+    return radius
+
+
+def _poly(u, bend):
+    """1 + b1 u^2 + b2 u^4 + ..., for one term or several."""
+    terms = bend if isinstance(bend, (list, tuple)) else (bend,)
+    total = 1.0
+    for power, term in enumerate(terms, 1):
+        total += term * u ** (2 * power)
+    return total
+
+
+def _slope(u, bend):
+    """d/du of u * _poly(u, bend): 1 + 3 b1 u^2 + 5 b2 u^4 + ..."""
+    terms = bend if isinstance(bend, (list, tuple)) else (bend,)
+    total = 1.0
+    for power, term in enumerate(terms, 1):
+        total += (2 * power + 1) * term * u ** (2 * power)
+    return total
 
 
 def ray_at(x, y, lens):
@@ -222,6 +270,24 @@ def lens_recipe():
     Not called. Kept as the recipe, because LENS is the only thing in this file
     that is a property of the hardware rather than of the algorithm, and a changed
     lens or a servo horn refitted a spline out makes it wrong.
+
+    **Since 2026-09-30, measure it without trusting a servo.** The sweep below
+    takes its angles from what the gimbal was told, and on this rover that left
+    the lens about 7% short in the middle of the picture. What replaced it fits the
+    same form -- scale, distortion terms, centre -- to three things at once: a
+    printed ChArUco board seen in many frames, each frame its own pose, for the
+    centre and the inner shape; features matched between this camera and the OAK
+    on the same platform, through the OAK's factory lens and its stereo ranges,
+    for the absolute scale; and features tracked between pictures taken while the
+    gimbal steps, each pair its own rotation, for the shape out to the edges. Then
+    it is checked against tilt steps whose true size the OAK's accelerometer reads
+    off gravity. The whole method, and its numbers, are in
+    docs/progress/2026-09-30-the-fisheye-lens-refitted.md. At 640x480 the result
+    sees 134.2 by 99.5 degrees, with its axis three pixels right of the middle of
+    the frame and fourteen above.
+
+    **What follows is how the lens was measured before that**, kept because the
+    aiming check at the end is still the one to run after any change.
 
     **Measure it with usb_cameras/calibrate_fov.py**, which turns the camera by a
     known angle and fits the projection -- angular scale, one distortion term and

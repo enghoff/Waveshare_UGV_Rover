@@ -31,7 +31,7 @@ import time
 from lens import (
     ACQUIRE_SCORE, DETECT_WIDTH, KEEP_SCORE, LENS, NMS_THRESHOLD,
     PAN_DEG_PER_HALF_FRAME, TILT_DEG_PER_HALF_FRAME, gains_for, lens_for,
-    lens_recipe, ray_at, solve, theta_of,
+    lens_recipe, radius_of, ray_at, solve, theta_of,
 )
 
 

@@ -70,7 +70,7 @@ does not hold up, and three requirements carry what is left:
 
 | Requirement | State | What has to happen |
 |---|---|---|
-| [R-WS-10](../requirements/world-state.md#r-ws-10) | `failing` | refit the fisheye's lens model, which is about 7% short off-axis, and re-derive the OAK mount's yaw from the same points in the same change; then take a driven recording through the current envelope. The OAK rides the gimbal since 2026-09-30, so its mount no longer waits on the servo. |
+| [R-WS-10](../requirements/world-state.md#r-ws-10) | `failing` | take a driven recording through the current envelope. The fisheye lens was refitted and the stored looks redrawn on 2026-09-30, and the OAK rides the gimbal, so neither the lens nor the mount waits on the servo any more. |
 | [R-WS-12](../requirements/world-state.md#r-ws-12) | `open` | refuse entities made of bare floor, so that something choosing where to look next cannot spend distance on them |
 | [R-WS-13](../requirements/world-state.md#r-ws-13) | `open` | demonstrate correct associations and useful physical-target coverage for identity-dependent actions under M0b; the proposed appearance-band/geometry remedy failed replay |
 

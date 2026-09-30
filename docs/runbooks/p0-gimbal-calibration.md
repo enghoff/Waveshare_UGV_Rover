@@ -312,10 +312,13 @@ runtime calibration.
 
 ## Current OAK mount result
 
-**The rail mount, adopted 2026-09-30.** `world_state/oak.py` carries yaw +1.92,
-pitch +0.80, roll -0.80 degrees and offset 0 forward, -0.005 m left and +0.046 m
+**The rail mount, adopted 2026-09-30.** `world_state/oak.py` carries yaw +0.37,
+pitch +0.44, roll -0.75 degrees and offset 0 forward, -0.004 m left and +0.045 m
 up of the gimbal camera, in that camera's own frame, from `bench_oak.py --joint` at
-fifteen gimbal positions in two runs. The history is in
+fifteen gimbal positions in two runs, through the fisheye lens refitted the same
+day ([the lens entry](../progress/2026-09-30-the-fisheye-lens-refitted.md)). The
+yaw is relative to that lens's axis, so it has to be re-derived whenever the lens
+is refitted; the points files under `captures/2026-09-30-oak-rail/` allow it. The history is in
 [the entry](../progress/2026-09-30-oak-on-the-gimbal.md). The board method has not
 yet been run on the rail; doing so is the independent check on the offset.
 

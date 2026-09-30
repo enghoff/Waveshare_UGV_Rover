@@ -317,12 +317,10 @@ as a look through the fisheye. What they no longer touch is the step between the
 two cameras -- the OAK turns with the fisheye, so where a fisheye box lands in
 the OAK's picture is the same at every pan and tilt.
 
-**The fisheye's own lens model is the next largest term, and it is not a servo
-fault.** Fitting one rigid mount across fifteen gimbal positions on 2026-09-30 only
-closed once the fisheye's angles off its axis were stretched by 7.2%: the lens in
-`face_tracking/lens.py` puts a thing 30 degrees from the middle of the picture at
-28. It was swept by turning the gimbal and trusting the angle it was told, so it
-may have absorbed the servo's under-travel; the board calibration of 2026-09-07,
-which trusted no servo, says 5 to 7%. Until the lens is refitted, a box mapped
-onto the OAK's picture is off by about 7% of its distance from the middle, and a
-bearing by the same.
+**The fisheye's own lens model was the next largest term, and it was not a
+servo fault.** Fitting one rigid mount across fifteen gimbal positions on
+2026-09-30 only closed once the fisheye's angles off its axis were stretched by
+7.2%. The lens was refitted the same day without trusting a servo, and every
+stored look was redrawn through it by `relens.py`, which rewrites only what it
+can first reproduce through the old lens -- see
+[the lens entry](../docs/progress/2026-09-30-the-fisheye-lens-refitted.md).
