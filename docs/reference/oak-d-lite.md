@@ -40,8 +40,10 @@ gimbal camera's lens. It pans and tilts with it. The transform between the two
 cameras is `world_state/oak.py`'s `MOUNT`, measured at fifteen gimbal positions
 ([the entry](../progress/2026-09-30-oak-on-the-gimbal.md)); the same measurement
 found the mount rigid to a tenth of a degree from tilt 0 to 40. Its USB cable now
-travels with the gimbal, and a sweep of pan to ±90 degrees and tilt from -30 to
-+60 held the link throughout.
+travels with the gimbal and has the slack for its whole travel: pan to ±180 and
+tilt from -30 to +90 held the link throughout, and the back of the mount clears
+the pan base looking straight up
+([the sweep](../progress/2026-09-30-gimbal-full-travel-with-the-oak.md)).
 
 Until then it was bolted to the chassis, 43 mm ahead of and 94 mm below the
 gimbal camera, and could look nowhere else.
