@@ -20,19 +20,19 @@ class InspectionRanges:
 
         `([], "")` whenever the question cannot be asked, which is most of the
         time and is not a failure: no depth camera on this rover, a mount nobody
-        has measured, a service that is restarting, or a gimbal turned to look at
-        something the OAK cannot see. Everything downstream treats a missing
-        range as abstention.
+        has measured, a service that is restarting, or a region out near the
+        fisheye's edge where the OAK cannot see. Everything downstream treats a
+        missing range as abstention.
 
         **Two shapes, because the two cameras stand differently to the depth
         map.** A look taken through the OAK is already in the depth map's own
         frame -- the depth is warped into the colour camera's geometry on the
         device -- so a box goes straight across. A look taken through the gimbal
-        is a box on a different lens on a mount that turns, so each box becomes
-        four directions in the rover's frame and `oak.box_for` finds where those
-        land in the OAK's picture, if they land in it at all. About half of a
-        centred gimbal frame does, and a look taken over the rover's shoulder
-        does not.
+        is a box on a different lens a few centimetres away, so each box becomes
+        four directions in the gimbal camera's own frame and `oak.box_for` finds
+        where those land in the OAK's picture, if they land in it at all. The OAK
+        rides the same platform, so the middle of every fisheye picture has depth
+        behind it wherever the gimbal points.
         """
         if self.ranger is None or not regions:
             return [], ""
@@ -128,8 +128,9 @@ class InspectionRanges:
         out at `oak.GUESS_RANGE_M`, and any answer that comes back a long way
         from that guess is asked again from where it now appears to be. One extra
         loopback call, and only for the near things where the parallax is worth
-        correcting: at two metres a wrong guess of half a metre moves the box by
-        about four pixels, and at sixty centimetres it moves it by forty.
+        correcting: with the OAK five centimetres above the fisheye, a guess of
+        2.5 m for a thing at two metres puts the box about three pixels out, and
+        for one at sixty centimetres about thirty.
         """
         try:
             lens = self.ranger.lens()
@@ -138,12 +139,10 @@ class InspectionRanges:
         if lens is None or not oak.MEASURED:
             return [], ""
         size = capture.get("frame_size")
-        pan = capture.get("pan") or 0.0
-        tilt = capture.get("tilt") or 0.0
         corners: list[Any] = []
         boxes: list[Any] = []
         for region in regions:
-            found = self._corners_of(region.bbox, pan, tilt, size)
+            found = self._corners_of(region.bbox, size)
             corners.append(found)
             boxes.append(None if found is None else oak.box_for(found, lens))
         asked = [index for index, box in enumerate(boxes) if box is not None]
@@ -243,14 +242,19 @@ class InspectionRanges:
         return found, note
 
     @staticmethod
-    def _corners_of(bbox, pan_deg: float, tilt_deg: float, size):
-        """A box on the gimbal camera as four directions in the rover's frame.
+    def _corners_of(bbox, size):
+        """A box on the gimbal camera as four directions in that camera's frame.
 
         None when the box is unusable or the lens cannot be reached, which is the
         same silence everything else here keeps. Four corners rather than a
         centre because what the depth camera is asked for is an area of its own
         picture, and the two lenses do not agree about shape: a box near the edge
         of a 130-degree fisheye maps to a very different rectangle on a pinhole.
+
+        **At pan 0 and tilt 0 whatever the gimbal was doing**, which is what makes
+        these directions in the camera's own frame rather than the rover's: the
+        OAK turns with the gimbal, so where a fisheye pixel lands in its picture
+        does not depend on the servos -- and their pointing errors cannot move it.
         """
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
             return None
@@ -261,8 +265,7 @@ class InspectionRanges:
         found = []
         for x_frac, y_frac in ((left, top), (right, top),
                                (left, bottom), (right, bottom)):
-            direction = view.chassis_direction(x_frac, y_frac, pan_deg, tilt_deg,
-                                               size)
+            direction = view.chassis_direction(x_frac, y_frac, 0.0, 0.0, size)
             if direction is None:
                 return None
             found.append(direction)

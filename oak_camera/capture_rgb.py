@@ -4,8 +4,15 @@
 Run only while the resident depth service has released the device. This is a bench
 capture, not a replacement for the paired 640x360 colour/depth runtime stream.
 
-    PYTHONPATH=~/ugv/oak_depth/vendor python3 capture_rgb.py /tmp/oak-rgb \
-      --size 1280x720 --frames 5
+    PYTHONPATH=~/ugv/oak_depth/vendor:~/ugv/oak_depth python3 capture_rgb.py \
+      /tmp/oak-rgb --size 1280x720 --frames 5
+
+The lens it records comes from `oak_depth/colour_lens.py`, the same arithmetic the
+service uses, and it needs to: a size below 1920x1080 here is the *middle* of the
+1080p picture rather than a scaled copy of it, and 1080p is itself only the middle
+of the sensor. depthai's `getCameraIntrinsics(socket, w, h)` assumes neither, and
+what this wrote before 2026-09-30 was 9.6% short in focal length at 1920x1080 and
+39% short at 1280x720.
 """
 
 from __future__ import annotations
@@ -13,10 +20,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import depthai as dai
+
+# `colour_lens` lives with the depth service: beside this directory in a checkout,
+# and in ~/ugv/oak_depth on the rover, which is where the command above points.
+sys.path.append(str(Path(__file__).resolve().parent.parent / "oak_depth"))
+from colour_lens import colour_intrinsics  # noqa: E402
 
 
 def main() -> int:
@@ -55,9 +68,8 @@ def main() -> int:
     rows = []
     with dai.Device(pipeline, maxUsbSpeed=dai.UsbSpeed.HIGH) as device:
         calibration = device.readCalibration()
-        matrix = calibration.getCameraIntrinsics(
-            dai.CameraBoardSocket.CAM_A, width, height
-        )
+        lens = colour_intrinsics(calibration, dai, "THE_1080_P", (1, 1),
+                                 (width, height))
         distortion = calibration.getDistortionCoefficients(
             dai.CameraBoardSocket.CAM_A
         )
@@ -82,11 +94,7 @@ def main() -> int:
             "usb": device.getUsbSpeed().name,
             "colour": {
                 "size": [width, height],
-                "intrinsics": {
-                    "fx": float(matrix[0][0]), "fy": float(matrix[1][1]),
-                    "cx": float(matrix[0][2]), "cy": float(matrix[1][2]),
-                    "width": width, "height": height,
-                },
+                "intrinsics": lens,
                 "distortion": [float(value) for value in distortion],
             },
             "frames": rows,

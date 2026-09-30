@@ -157,7 +157,41 @@ repeating held-out validation. Use the maximum mode only if later evidence shows
 the gimbal reference is the limiting measurement; it does not improve the OAK's
 target coverage. Normal face tracking remains at its validated 640 x 480 mode.
 
+## Since 2026-09-30 the OAK rides the gimbal
+
+The OAK moved from its chassis bracket onto the gimbal's rail, beside the gimbal
+camera and looking the same way, with the two sensors in one plane. Three things
+in this runbook change with it.
+
+- **The quickest measurement needs no board.** `world_state/bench_oak.py` matches
+  features between the two cameras' pictures of the room and ranges them with the
+  OAK. On the chassis its answer moved with the gimbal; on the rail it should not,
+  and asking it at several positions is the rigidity check:
+
+  ```bash
+  scp world_state/bench_oak.py orin:/tmp/oakbench/
+  ssh orin 'cd /tmp/oakbench && PYTHONPATH=~/ugv python3 bench_oak.py \
+    --pan -30 0 30 --tilt 0 20 40 --points /tmp/oakbench/points.json'
+  ```
+
+  It fits the rotation with the offset given. The measurement of 2026-09-30 fitted
+  rotation, offset and the fisheye's angular scale together from its points file;
+  see [the entry](../progress/2026-09-30-oak-on-the-gimbal.md) for why the scale
+  has to be free.
+- **The board method below still measures the right thing.** It takes the mount
+  at pan 0 and tilt 0, which is the frame the rail mount is written in. What no
+  longer applies is its framing advice, which was about a camera 87 mm ahead of
+  and 94 mm below the gimbal camera; the two now see the board from nearly the
+  same place.
+- **The OAK's stored lens was 9.6% short until 2026-09-30.** Every intrinsics
+  figure a capture recorded before then -- including the "size-specific factory
+  intrinsics" at 1920 x 1080 below -- came from depthai's
+  `getCameraIntrinsics`, which does not know the 1080p mode reads only the middle
+  of the sensor. `oak_camera/capture_rgb.py` now records the corrected lens.
+
 ## Frame the target for both cameras
+
+This section describes the chassis bracket the OAK was on until 2026-09-30.
 
 The fixed OAK is lower than the gimbal camera and has a narrower view. In the first
 mounted preflight it detected 24 of 54 ChArUco corners: all six rows but only four
@@ -174,7 +208,7 @@ centering is unnecessary. The resulting development capture had 48 OAK corners i
 every frame and 50-54 gimbal corners after native/enlarged detector selection, so
 the coverage gate passes.
 
-## Measure the fixed OAK mount
+## Measure the OAK mount against a board
 
 Once both cameras see at least 45 corners, capture the development measurement:
 
@@ -278,9 +312,20 @@ runtime calibration.
 
 ## Current OAK mount result
 
-**Adopted on 2026-09-07 and deployed.** `world_state/oak.py` carries yaw +1.492,
-pitch +6.256, roll -1.200 degrees and offset +0.0872 m forward, -0.0031 m left and
--0.0937 m up, and the running daemon reports them over TCP 8769.
+**The rail mount, adopted 2026-09-30.** `world_state/oak.py` carries yaw +1.89,
+pitch +0.73, roll -0.82 degrees and offset 0 forward, -0.007 m left and +0.051 m
+up of the gimbal camera, in that camera's own frame, from `bench_oak.py` at nine
+gimbal positions. The history is in
+[the entry](../progress/2026-09-30-oak-on-the-gimbal.md). The board method has not
+yet been run on the rail; doing so is the independent check on the offset.
+
+### The chassis bracket, 2026-09-07 to 2026-09-30
+
+**Adopted on 2026-09-07 and deployed then.** `world_state/oak.py` carried yaw
++1.492, pitch +6.256, roll -1.200 degrees and offset +0.0872 m forward, -0.0031 m
+left and -0.0937 m up. It is kept there as `CHASSIS_MOUNT` for reading old depth
+maps, with the forward offset corrected to 0.043 m: the 12 mm walk between the two
+distances described below was the OAK's lens being 9.6% short.
 
 The held-out set at 0.686 m -- 0.130 m beyond development -- first failed on an
 internal yaw range of 0.863 degrees against the 0.75 limit. Attributing its 25 pair

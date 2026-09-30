@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure the fixed OAK mount against the independently fitted gimbal camera.
+"""Measure the OAK mount against the independently fitted gimbal camera.
 
 The same printed ChArUco board is solved in both cameras.  A development capture
 produces a candidate; a second target distance can compare against that candidate.
@@ -172,7 +172,10 @@ def capture_highres_oak(folder: Path, host: str,
         ], check=True, timeout=40)
         width, height = size
         command = (
-            f"PYTHONPATH=~/ugv/oak_depth/vendor python3 {remote_script} {remote} "
+            # ~/ugv/oak_depth for `colour_lens`, which the capture needs to write
+            # down a lens that matches the pixels -- see capture_rgb.py.
+            f"PYTHONPATH=~/ugv/oak_depth/vendor:~/ugv/oak_depth "
+            f"python3 {remote_script} {remote} "
             f"--size {width}x{height} --frames {FRAMES}"
         )
         subprocess.run(["ssh", host, command], check=True, timeout=90)

@@ -307,15 +307,16 @@ class RoverWorld:
         that swung its camera across the whole room counted as having seen
         nothing new.
 
-        **Whose pan depends on which camera is looking.** The OAK is bolted to
-        the chassis, so turning the gimbal changes nothing it can see and only
-        the rover turning does -- and reading the gimbal's pan here would have a
-        parked rover think it had found a new direction every time the tracking
-        loop moved a servo.
+        **The same pan whichever camera is looking**, since 2026-09-30: the OAK
+        rides the gimbal's rail, so swinging the servo is a new direction for it
+        too, and it only differs from the fisheye by the couple of degrees it is
+        mounted off true. While it was bolted to the chassis only the rover
+        turning could show it anything new.
         """
+        pan = float(getattr(self, "pan", 0.0) or 0.0)
         if WORLD_CAMERA == world_state.oak.OAK:
-            return pose["heading_deg"] - world_state.oak.pan_deg()
-        return pose["heading_deg"] - float(getattr(self, "pan", 0.0) or 0.0)
+            pan += world_state.oak.MOUNT.yaw_deg
+        return pose["heading_deg"] - pan
 
     def _world_building_loop(self) -> None:
         """Never raises, and looks while the rover drives.
@@ -503,23 +504,26 @@ class RoverWorld:
     def _world_capture_oak(self) -> dict[str, Any]:
         """One frame from the depth camera, with the range behind every pixel.
 
-        **The other camera, and the reason it is worth having one.** The gimbal
-        camera can look anywhere and cannot say how far away anything is; this one
-        cannot look anywhere at all and says how far away everything is, because
-        the depth is warped into this very picture's geometry on the device. A box
-        found here indexes the ranges directly.
+        **The other camera, and the reason it is worth having one.** The fisheye
+        takes in the whole room and cannot say how far away anything is; this one
+        takes in the middle of what the fisheye sees and says how far away all of
+        it is, because the depth is warped into this very picture's geometry on the
+        device. A box found here indexes the ranges directly.
 
         It opens no device: the depth service already holds the OAK, for the
         reason its own README gives -- a booted Myriad with no host dies in 1500
         ms, so being awake *is* a process holding it -- and this is an HTTP call to
         that process.
 
-        The pan and tilt recorded are the mount's own, which is what makes this
-        camera a gimbal that never moves as far as everything downstream is
-        concerned. The picture is a little older than this instant, because the
-        service holds each depth frame until the colour frame exposed with it has
-        arrived; `taken_at` says how much and the bearing arithmetic reads it
-        rather than assuming a figure that changes with the camera's rate.
+        The pan and tilt recorded are the gimbal's, read the way `_world_capture`
+        reads them, because the OAK is on the gimbal's rail and points wherever
+        the fisheye points; `world_state.oak.ray_at` takes the couple of degrees
+        between the two out of every pixel, so downstream this is the gimbal
+        camera with a narrower lens. The picture is a little older than this
+        instant, because the service holds each depth frame until the colour frame
+        exposed with it has arrived; `taken_at` says how much and the bearing
+        arithmetic reads it rather than assuming a figure that changes with the
+        camera's rate.
         """
         ranger = self._world_ranger()
         if ranger is None:
@@ -538,9 +542,14 @@ class RoverWorld:
         frame = ranger.frame()
         if not frame.ok:
             return {"ok": False, "error": frame.error}
+        with self._lock:
+            # Under the same lock as the fisheye's, for the same reason: which way
+            # the servo arrived only means anything beside the angle it arrived at.
+            pan, tilt = self.pan, self.tilt
+            approach = getattr(self, "pan_approach", 0)
         return {"ok": True, "jpeg": frame.jpeg, "camera": world_state.oak.OAK,
-                "pan": round(world_state.oak.pan_deg(), 1),
-                "tilt": round(world_state.oak.tilt_deg(), 1),
+                "pan": round(pan, 1), "tilt": round(tilt, 1),
+                "pan_approach": approach,
                 "live": True, "width": frame.width, "height": frame.height,
                 "age_s": frame.age_s, "taken_at": frame.taken_at}
 

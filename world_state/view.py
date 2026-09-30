@@ -150,14 +150,14 @@ def _levelled(cx_frac: float, cy_frac: float, tilt_deg: float,
     with the world as long as the rover is.
 
     **And one rotation serving both cameras, which is why `lens` is an argument.**
-    The rover has two things that look at the room -- a 130-degree fisheye on the
-    gimbal and the OAK bolted to the chassis -- and the only thing that differs
-    between them here is how a pixel becomes a direction. Given one, that is
-    `oak.ray_at` through the intrinsics the device reports; given none, it is the
-    swept fit in `face_tracking/lens.py`, which is what every bearing this
-    component has ever recorded was drawn through. The OAK is modelled as a
-    gimbal that never moves, so the tilt below is its mounting pitch and
-    everything from here on is shared.
+    The rover has two things that look at the room -- a 130-degree fisheye and
+    the OAK, both on the gimbal -- and the only thing that differs between them
+    here is how a pixel becomes a direction. Given one, that is `oak.ray_at`
+    through the intrinsics the device reports; given none, it is the swept fit in
+    `face_tracking/lens.py`, which is what every bearing this component has ever
+    recorded was drawn through. `oak.ray_at` answers in the fisheye's frame, with
+    the mount already taken out, so the tilt below is the gimbal's for either
+    camera and everything from here on is shared.
 
     Both `ray_at` functions answer x right, y down, z out of the lens, and `up`
     is negated here so that the caller reads a positive number as higher, which

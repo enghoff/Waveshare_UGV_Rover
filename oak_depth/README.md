@@ -15,10 +15,20 @@ takes several seconds.
 - USB2 (`HIGH`) for stability on the rover's shared USB path.
 - 640x360 MJPEG colour and 320x180 aligned depth at 15 fps.
 - Valid stereo range: 0.2 to 6 m.
-- Colour field of view from device intrinsics: 70.1 degrees by 43.0 degrees.
+- Colour field of view 65.2 degrees by 39.6, from the stored calibration cut
+  to the window the 1080p mode actually reads (`colour_lens.py`).
 - `/health` publishes the colour matrix and stored distortion coefficients so a
   calibration bench can measure the error from treating this near-pinhole lens
   as a pinhole.
+
+The colour lens is worked out for the sensor mode as well as the output size.
+depthai's `getCameraIntrinsics(socket, w, h)` assumes a mode reads the sensor's
+full width, and 1080p reads only its middle 3840 x 2160, so until 2026-09-30 this
+service published a focal length 9.6% short (456.5 pixels where the pixels obey
+500.3) and a 70.1-degree field of view. Matching the colour picture against the
+right mono camera confirmed the corrected lens to 0.2%. The device's own depth
+alignment was never affected. `python oak_depth/test_colour_lens.py` checks the
+arithmetic at a desk.
 - Stereo baseline: 7.5 cm.
 
 Depth is aligned to the colour camera. A normalized box from `/frame` can be sent
@@ -50,13 +60,19 @@ The installer unpacks the pinned wheel beside the component and installs the
 udev rule for the `03e7` device. `run_oak_depth.sh` supervises the process and
 reopens the camera after a fault. Only one process can own the OAK.
 
-To test the hardware directly, stop the service first:
+To test the hardware directly, stop the service first. There is no stop option;
+stopping the supervisor stops the server with it, and the bracket keeps the
+pattern from matching the ssh command that carries it:
 
 ```bash
-ssh orin '~/ugv/oak_depth/restart.sh --stop'
+ssh orin 'pkill -f "oak_depth/run_oak_depth[.]sh"'
 ssh orin 'python3 ~/ugv/oak_depth/selftest.py --frames 60'
 ssh orin '~/ugv/oak_depth/restart.sh'
 ```
+
+The first program to open the device afterwards reports that it "has crashed"
+and saves a crash dump. That is the device's watchdog firing when the service
+let go of it, which it always does, not a fault in the test.
 
 The direct self-test proves library import, udev access, enumeration, USB speed,
 pipeline upload and live frames. It is a hardware test and is not expected to run

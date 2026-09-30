@@ -564,13 +564,14 @@ class Inspector(InspectionRanges):
             frame.get("pan"), frame.get("pan_approach"), where, sigma_deg)
         # Which camera this picture came from, and where that camera actually
         # is. A ray has to start where the lens is, and the two cameras on this
-        # rover are not in the same place -- ten centimetres between them is
-        # three degrees of bearing at two metres, which is twice what the
-        # geometry is told to expect. `oak.pose_at` moves the pose to the OAK's
-        # optical centre and leaves a gimbal look exactly as it was.
+        # rover are not in the same place -- five centimetres between them is
+        # three degrees of bearing at a metre, which is twice what the geometry
+        # is told to expect. `oak.pose_at` moves the pose to the OAK's optical
+        # centre, turned by the pan and tilt it rode to, and leaves a gimbal look
+        # exactly as it was.
         camera = frame.get("camera") or oak.GIMBAL
         if camera == oak.OAK:
-            where = oak.pose_at(where)
+            where = oak.pose_at(where, frame.get("pan"), frame.get("tilt"))
         capture = {"frame_id": frame_id,
                    "camera": camera,
                    # How fast the rover was going, from the bracket that already

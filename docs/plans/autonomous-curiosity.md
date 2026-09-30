@@ -187,11 +187,12 @@ P0 remains in progress and M0 has not passed. The
 from the calibration work still to do. The gimbal measurement has passed its
 held-out gate at tilt zero and pan -20 to +20 degrees when every placement finishes
 from the ascending direction, and the envelope now extends to tilt +20. The
-fixed-OAK mount has passed its development fit and its second-distance held-out
-check and is deployed; what it still owes is a *cleanly captured* confirmation,
-because the confirming set was re-analysed rather than re-photographed after a
-correction to the pose fit. That is a loose end on a working measurement and not
-an M0 criterion, and it needs no larger printed target. The baseline's historical
+OAK moved from its chassis bracket onto the gimbal's rail on 2026-09-30 and its
+mount was measured again there, rigid to a tenth of a degree across nine gimbal
+positions ([the rail entry](../progress/2026-09-30-oak-on-the-gimbal.md)), so the
+clean confirmation the chassis mount still owed no longer matters. What that
+measurement owes is a board check of its offset, and what it found -- the
+fisheye's lens model about 7% short off-axis -- belongs to R-WS-10. The baseline's historical
 pass counts and "before Phase 1" heading are not the current gate: read-only
 M1/M2 may proceed.
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import locate, resolve
+from . import locate, oak, resolve
 
 PENDING = 48
 CANDIDATES = 24
@@ -313,13 +313,18 @@ class IncrementalResolver:
                 self.cooldown[eid]=self.frame_number
                 self._audit(eid)
         if self.views:
-            # Query the fixed depth camera's view, including directions with no
+            # Query the depth camera's view, including directions with no
             # detected region. A detector-only shortlist would miss empty space.
+            # It faced the nose until 2026-09-30 and faces wherever the gimbal
+            # does since; `oak.mount_at` says which a look was taken under.
             depth_rays=[]
             for row in current[:1]:
                 if row.get("pose") and row.get("bearing_deg") is not None:
+                    facing=row["pose"]["heading_deg"]
+                    if oak.mount_at(row.get("observed_at")).on_gimbal:
+                        facing-=float(row.get("observer_pan_deg") or 0.0)
                     for offset in (-30,0,30):
-                        depth_rays.append(dict(row,bearing_deg=row["pose"]["heading_deg"]+offset))
+                        depth_rays.append(dict(row,bearing_deg=facing+offset))
             visible=sorted(self._near(depth_rays))
             self.counts["negative_candidates_deferred"]+=max(0,len(visible)-CANDIDATES)
             # Round-robin candidates in crowded views instead of starving high IDs.

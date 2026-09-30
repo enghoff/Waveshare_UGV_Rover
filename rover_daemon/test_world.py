@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 
 from test_fakes import FakeLink
@@ -1106,15 +1107,15 @@ def test_the_camera_the_world_is_built_through_is_chosen_in_code() -> None:
     check("through the gimbal, swinging the servo is a new direction",
           rover._world_camera_deg(pose), -30.0)
 
-    # **Through the OAK it is not**, and reading the gimbal's pan there would have
-    # a parked rover think it had found somewhere new to look every time the
-    # tracking loop moved a servo the depth camera cannot see through.
+    # **Through the OAK it is too**, since it moved onto the gimbal's rail: the
+    # servo carries it round, and all that differs is the couple of degrees it is
+    # mounted off the fisheye's axis.
     was = rover_world.WORLD_CAMERA
     rover_world.WORLD_CAMERA = world_state.oak.OAK
     try:
-        check("through the OAK, only the rover turning is",
+        check("through the OAK, swinging the servo is a new direction as well",
               round(rover._world_camera_deg(pose), 1),
-              round(10.0 - world_state.oak.pan_deg(), 1))
+              round(-30.0 - world_state.oak.MOUNT.yaw_deg, 1))
     finally:
         rover_world.WORLD_CAMERA = was
 
@@ -1157,11 +1158,16 @@ def test_a_look_through_the_oak_needs_the_mount_measured() -> None:
     check("a rover with no depth camera refuses it too, and says so",
           Nothing()._world_capture_oak()["ok"], False)
 
-    # And with both in place, the picture comes back stamped with the mount as a
-    # pan and a tilt -- which is what makes `view.ray` treat this camera as a
-    # gimbal that never moves and need no new arithmetic at all.
+    # And with both in place, the picture comes back stamped with the gimbal's pan
+    # and tilt, and which side the pan was reached from -- the OAK rides the
+    # gimbal, so it inherits the servo's backlash exactly as the fisheye does,
+    # and `world_state.oak.ray_at` takes the mount out of every pixel.
     class Looking:
         _world_capture_oak = rover_world.RoverWorld._world_capture_oak
+
+        def __init__(self):
+            self._lock = threading.Lock()
+            self.pan, self.tilt, self.pan_approach = 25.0, 20.0, 1
 
         def _world_ranger(self):
             return world_state.FakeRanger()
@@ -1171,8 +1177,9 @@ def test_a_look_through_the_oak_needs_the_mount_measured() -> None:
     try:
         got = Looking()._world_capture_oak()
         check("a measured rover takes the picture", got["ok"], True)
-        check("...and records the mount as the camera's own pan and tilt",
-              (got["camera"], got["pan"], got["tilt"]), ("oak", -0.7, 2.7))
+        check("...and records the gimbal's pan and tilt, not the mount's",
+              (got["camera"], got["pan"], got["tilt"], got["pan_approach"]),
+              ("oak", 25.0, 20.0, 1))
     finally:
         world_state.oak.MOUNT = was_mount
         world_state.oak.MEASURED = was_measured

@@ -23,8 +23,11 @@ class DepthEvidence:
         self.cache_key=None
         self.cache=None
         self.misses={}
-        # Archived device intrinsics, not invented from nominal field of view.
-        source=Path(calibration) if calibration else Path(__file__).resolve().parent.parent/"captures/p0-gimbal-2026-09-07/oak-highres-preflight/calibration-health.json"
+        # Archived device intrinsics, not invented from nominal field of view:
+        # the service's 640x360 lens as published after oak_depth/colour_lens.py
+        # corrected it. The depth maps are that frame's, and the Sept 7 archive
+        # this read before carried depthai's 9.6%-short focal length.
+        source=Path(calibration) if calibration else Path(__file__).resolve().parent.parent/"captures/2026-09-30-oak-rail/oak-health.json"
         self.calibration=str(source)
         self.lens=None
         if source.exists():
@@ -77,7 +80,13 @@ class DepthEvidence:
         distance=math.sqrt(forward*forward+left*left+height*height)
         if distance<.5 or distance>8:
             return "unknown"
-        xyz=oak._in_oak((forward/distance,left/distance,height/distance),distance)
+        # The mount this depth map was taken through: the chassis bracket before
+        # 2026-09-30, the gimbal rail since, which turns with the look's pan/tilt.
+        mount=oak.mount_at(row.get("observed_at"))
+        unit=(forward/distance,left/distance,height/distance)
+        if mount.on_gimbal:
+            unit=oak.camera_frame(unit,row.get("observer_pan_deg"),row.get("observer_tilt_deg"))
+        xyz=oak._in_oak(unit,distance,mount)
         if xyz is None:
             return "unknown"
         u,v=oak._project(xyz,self.lens)
@@ -127,4 +136,4 @@ class DepthEvidence:
 
     def stats(self):
         return {**dict(self.counts),"calibration":self.calibration,
-                "note":"Device intrinsics from Sept 7; current mount transform. No calibrated detector-miss probability is assumed."}
+                "note":"Device intrinsics as corrected Sept 30; the mount in place when each look was taken. No calibrated detector-miss probability is assumed."}

@@ -181,17 +181,13 @@ TILT_LIMITS = (-30, 90)
 # 50.7 below -- so twenty degrees moves the view by about a fifth of a frame and
 # lifts the bottom edge from the floor 35 cm in front of the wheels to 50 cm.
 #
-# **What bounds this number is the OAK, not the lens.** The depth camera is
-# bolted to the chassis pitched 3.1 degrees up and sees only 43 degrees
-# vertically, so it covers 18.4 below the horizontal to 24.6 above and nothing
-# else; a look through the gimbal only carries a range where the two overlap. The
-# overlap is a fixed band of the room, so tilting does not shrink it -- a quarter
-# of the gimbal's picture has depth behind it at every tilt from 0 to 30 -- but
-# it does slide that band down the frame, and what runs out is the headroom above
-# the middle of the picture. Something centred in the frame keeps its range up to
-# a tilt of 35 degrees, or 28 at arm's length once the 110 mm the OAK sits below
-# this camera is spent. Twenty leaves a comfortable margin; forty-five would not,
-# and that is worth knowing before this number is raised again.
+# **The OAK no longer bounds this number.** Until 2026-09-30 the depth camera
+# was bolted to the chassis and covered one fixed band of the room, so tilting
+# slid that band down the gimbal's picture and a tilt past about 35 left the
+# middle of it with no range behind it. It rides the gimbal's rail now, pointing
+# where this camera points, so the middle of every picture has depth behind it
+# at any tilt -- the OAK's 65 by 40 degrees sit inside this lens's 130 by 96 --
+# and twenty is simply the view of the room this picks.
 #
 # The sweep is unaffected and stays at SCAN_TILT, which is 45: looking for a
 # face is a different job from resting, and it is argued where that number is.

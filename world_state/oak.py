@@ -3,9 +3,16 @@
 The rover has two cameras that point at the room and they are nothing alike. The
 gimbal camera is a 130-degree fisheye on two servos, swept and fitted by
 `usb_cameras/calibrate_fov.py`, and it is the one every bearing this component has
-ever recorded was drawn through. The OAK is bolted to the chassis, sees 70 degrees
-of the room and cannot look anywhere else -- and it is the only thing on the rover
-that knows **how far away** what it is looking at is.
+ever recorded was drawn through. The OAK sees 65 degrees of the room and is the
+only thing on the rover that knows **how far away** what it is looking at is.
+
+**Since 2026-09-30 the OAK rides the gimbal**, clamped to the rail on its tilt
+platform by the printed mount in `cad/`, beside the fisheye and looking the same
+way. Until then it was bolted to the chassis and could look nowhere else. The
+move is what this module's shape follows from: the two cameras now turn together,
+so where one of them is relative to the other is a single fixed transform, and
+the servos -- whose pointing faults are recorded in
+`docs/requirements/world-state.md#r-ws-10` -- no longer come between them.
 
 This module is what lets the second one write into the world the first one built.
 Three things have to be true for that, and each is a section below:
@@ -13,17 +20,16 @@ Three things have to be true for that, and each is a section below:
 * **its pixels have to become directions**, which is a lens, and the lens is the
   device's own -- fetched by `depth_client`, never written down here;
 * **it has to be somewhere**, which is `MOUNT`: where the OAK sits and which way
-  it faces, relative to the gimbal camera at rest. Until that is measured this
-  camera cannot draw a bearing at all, and `MEASURED` says so;
+  it faces relative to the gimbal camera. Until that is measured this camera
+  cannot draw a bearing at all, and `MEASURED` says so;
 * **a box drawn on the other camera's picture has to be findable in this one**,
   which is `box_for`, and which is what lets a look taken through the gimbal
   carry a range without being taken through the OAK.
 
-**The OAK is modelled as a gimbal that never moves**, and that is what keeps the
-arithmetic in one place rather than two. An observation from it records the
-mount's yaw as `observer_pan_deg` and its pitch as `observer_tilt_deg`, so
-`view.ray` turns it into a bearing with the code it already had -- the only thing
-that differs between the two cameras is which lens a pixel goes through.
+**A look through the OAK is a look through the gimbal with a different lens.**
+`ray_at` turns an OAK pixel into a direction in the gimbal camera's own frame, so
+an observation from it records the gimbal's pan and tilt like any other and
+`view.ray` turns it into a bearing with the code it already had.
 """
 from __future__ import annotations
 
@@ -41,20 +47,26 @@ OAK = "oak"
 
 @dataclass(frozen=True)
 class Mount:
-    """Where the OAK is, relative to the gimbal camera at pan 0 and tilt 0.
+    """Where the OAK is, relative to the gimbal camera.
+
+    **In the gimbal camera's own frame, which turns with the gimbal.** At pan 0
+    and tilt 0 that frame is the chassis frame, which is where the mount is
+    measured and why the fields are named the way the chassis is: `forward_m`
+    along the fisheye's axis, `left_m` to its left, `up_m` above it. At any other
+    pan and tilt the whole transform turns with the platform -- which is the
+    point of the rail -- and `pose_at`, `rise_of` and `camera_frame` are where
+    that turning is done.
 
     Angles first, because they are what a bearing is made of: `yaw_deg` positive
     to the **right**, which is the gimbal's convention and the opposite of the
-    map's, and `pitch_deg` positive **up**, which is the gimbal's tilt. An OAK
-    observation stores these two as its pan and tilt, so a wrong yaw here swings
-    every bearing this camera ever records by the same amount.
+    map's, and `pitch_deg` positive **up**, which is the gimbal's tilt. Applied
+    after the gimbal's own pan and tilt, so a wrong yaw here swings every bearing
+    this camera records by the same amount.
 
-    Then the offset, in the chassis frame: `forward_m` along the rover's nose,
-    `left_m` to its left, `up_m` above. This is where the OAK's optical centre
-    sits relative to the gimbal camera's, and it is what makes the two cameras
-    agree about a thing two metres away rather than about a thing at infinity --
-    ten centimetres of it is three degrees of bearing at two metres, which is
-    twice what the geometry is told to expect from a bearing.
+    The offset is what makes the two cameras agree about a thing a metre away
+    rather than about a thing at infinity: five centimetres of it is three
+    degrees at a metre, which is twice what the geometry is told to expect from a
+    bearing.
 
     **Relative to the gimbal camera and not to the rover's centre, deliberately.**
     Where the gimbal camera itself sits relative to the pose SLAM reports has
@@ -69,82 +81,97 @@ class Mount:
     pitch_deg: float = 0.0
     #: And how far the camera is twisted about its own optical axis, positive
     #: the way a rotation from its x axis towards its y axis goes -- clockwise
-    #: in the picture. **Carried because this rover's is two degrees**, which is
-    #: past where it can be waved away: a roll mixes a ray's bearing into its
-    #: elevation and back, by the roll times how far off the axis the ray is, so
-    #: at the edge of this camera's field two degrees is more than a degree of
-    #: elevation. It was left out of the first version on the argument that a
-    #: bracket bolted to a flat plate has none, and the bracket disagreed.
+    #: in the picture. Carried because a roll mixes a ray's bearing into its
+    #: elevation and back, by the roll times how far off the axis the ray is,
+    #: and on the chassis bracket it was two degrees.
     roll_deg: float = 0.0
     forward_m: float = 0.0
     left_m: float = 0.0
     up_m: float = 0.0
+    #: Whether the OAK turns with the gimbal. False only for `CHASSIS_MOUNT`,
+    #: the bracket it was on until 2026-09-30, which is kept so that depth maps
+    #: recorded then can still be read.
+    on_gimbal: bool = True
 
 
-#: Where this rover's OAK is, measured on 2026-09-07 by
-#: `usb_cameras/calibrate_oak_mount.py`. **Both halves are measurements now**:
-#: which way the camera points and where it sits, taken together from the same
-#: observations, held out at a second target distance before being adopted.
+#: Where this rover's OAK is, measured on 2026-09-30 by `bench_oak.py` at nine
+#: gimbal positions -- pan -30, 0 and +30 at tilt 0, 20 and 40 -- from 836 feature
+#: matches between the two cameras, ranged by the OAK itself, 2.4 to 5.5 m out.
 #:
-#: The method is a printed ChArUco board that both cameras see at the same time,
-#: with the gimbal parked at pan 0 and tilt 0 and reached from the ascending
-#: direction, which is the state the gimbal's own campaign demonstrated. Each
-#: camera solves the board's pose in its own frame through its own lens model --
-#: the gimbal's from the calibration that passed the same day, the OAK's from the
-#: colour distortion it stores itself -- and the mount is what is left between the
-#: two. Nothing about where the gimbal is *pointed* enters it, which is what
-#: separates this from the bench that came before: the two cameras are compared to
-#: a common object rather than to each other's idea of a direction, so the gimbal
-#: pointing faults recorded in `docs/requirements/world-state.md#r-ws-10` cannot
-#: reach this number.
+#:     component    adopted       95% interval over 200 resamplings
+#:     yaw         +1.89 deg       +1.83 to +1.94
+#:     pitch       +0.73 deg       +0.62 to +0.92
+#:     roll        -0.82 deg       -0.89 to -0.74
+#:     forward      0.000 m        held: the two sensors are in one plane
+#:     left        -0.007 m        -0.011 to -0.004
+#:     up          +0.051 m        +0.040 to +0.058
 #:
-#: Five frames from each camera give twenty-five pairings. The values below are
-#: the development set's medians, at a target 0.555 m from the gimbal camera:
+#: **The rail is rigid, and that is the measurement that says so.** Fitted
+#: position by position with the offset held, the nine rotations agree to 0.07
+#: degrees of yaw and 0.15 of pitch, with no trend in tilt, which is what a clamp
+#: sagging under the camera's weight would show first. On the chassis bracket the
+#: same bench moved by 4.5 degrees of yaw with the gimbal, because the gimbal's
+#: pointing faults were in between.
 #:
-#:     component    adopted     spread over the 25 pairs
-#:     yaw         +1.492 deg          0.137 deg
-#:     pitch       +6.256 deg          0.067 deg
-#:     roll        -1.200 deg          0.026 deg
-#:     forward     +0.0872 m           0.0004 m
-#:     left        -0.0031 m           0.0008 m
-#:     up          -0.0937 m           0.0008 m
+#: **The forward offset is the owner's, not the fit's.** The OAK was mounted with
+#: its sensors in the plane of the fisheye's; the fit, left free, puts it 19 mm
+#: ahead, but forward is the one direction this bench cannot separate from the
+#: fisheye's angular scale (below), and holding it at nothing changes nothing
+#: else by more than a tenth of a degree or 2 mm.
 #:
-#: **A second set 0.130 m further out confirmed it before it was adopted**, which
-#: is the check that catches an offset and a rotation trading against each other:
-#: at one distance they are hard to tell apart, and at two they are not. That set
-#: read yaw +1.763, pitch +6.230, roll -1.233, forward +0.0996, left -0.0008 and
-#: up -0.0940 -- inside the 0.75 degree and 15 mm agreement declared before it was
-#: captured, and its pitch, roll and height agree to within 0.04 degrees and
-#: 0.4 mm.
-#:
-#: **What is weakest here is the forward offset.** It moved 12.4 mm between the
-#: two distances while repeating to under half a millimetre within each of them,
-#: so the disagreement is systematic and not noise, and it survives every corner
-#: detection path the bench can use. Read the forward figure as good to about a
-#: centimetre and the other five as good to their spreads. A centimetre of it is
-#: worth about a third of a degree of bearing at two metres, well inside the 1.5
-#: degrees `locate.BEARING_SIGMA_DEG` allows.
-#:
-#: **What this replaced, and why none of it should be revived.** Until this
-#: measurement the rotation came from `bench_oak.py` matching ORB features between
-#: the two cameras' pictures of a room, and the offset was held at nothing because
-#: the rotation had been solved with it at nothing and half of a consistent pair
-#: is worse than neither half. That bench was answering a question it could not:
-#: what it fitted moved by 4.5 degrees of yaw and 3.4 of roll depending on where
-#: the *gimbal* was pointed, and no property of a camera bolted to the chassis can
-#: do that. A ruler reading of 40 mm forward and 110 mm below was recorded here as
-#: the run that would finish it; the board puts the OAK 87 mm forward and 94 mm
-#: below, so the ruler had the height about right and the reach wrong by more than
-#: twice. The full history is in
-#: `docs/progress/2026-09-07-p0-oak-mount.md`.
+#: **The fisheye's own lens is the largest term left, and it is not the mount's.**
+#: The fit only closes -- a median of 0.24 degrees over all nine positions --
+#: once the fisheye's angles off its axis are stretched by 7.2%, meaning
+#: `face_tracking/lens.py` puts a thing 30 degrees from the middle of the picture
+#: at 28. The board calibration of 2026-09-07, which never trusted a servo, says
+#: 5 to 7%. That is recorded against R-WS-10 and left for its own change; until
+#: it is made, a box mapped from the fisheye onto this camera is off by about 7%
+#: of how far it sits from the middle of the picture -- nothing at the centre, two
+#: degrees at the OAK's edge. See `docs/progress/2026-09-30-oak-on-the-gimbal.md`.
 MOUNT = Mount(
+    yaw_deg=1.89,
+    pitch_deg=0.73,
+    roll_deg=-0.82,
+    forward_m=0.0,
+    left_m=-0.007,
+    up_m=0.051,
+)
+
+#: Where the OAK was until 2026-09-30: bolted to the chassis, measured 2026-09-07
+#: by `usb_cameras/calibrate_oak_mount.py` against a printed board with the gimbal
+#: at pan 0 and tilt 0. Kept only for reading what the rover recorded then --
+#: every depth map saved beside a look before `RAIL_SINCE` was taken through it.
+#:
+#: **Its forward offset is corrected here, and the correction is a measurement.**
+#: The board fit read 87 mm at one target distance and 100 mm at another, a
+#: systematic 12.4 mm nobody could account for; the OAK's lens as depthai
+#: reported it was 9.6% short in focal length (see `oak_depth/colour_lens.py`),
+#: which puts the board 9.6% too close to the OAK and the OAK too far forward by
+#: 9.6% of the distance. Undone, the two distances agree on 42 and 44 mm, and a
+#: tape had said 40. The angles and the other two offsets do not depend on the
+#: focal length to first order and are as measured.
+CHASSIS_MOUNT = Mount(
     yaw_deg=1.492,
     pitch_deg=6.256,
     roll_deg=-1.200,
-    forward_m=0.0872,
+    forward_m=0.043,
     left_m=-0.0031,
     up_m=-0.0937,
+    on_gimbal=False,
 )
+
+#: When the OAK moved, as a Unix time: the rover's first boot with it on the rail,
+#: 2026-09-30 14:22:24 +05:30. The rover was off from 2026-09-08 19:54 until then,
+#: so nothing it recorded falls between the two mounts.
+RAIL_SINCE = 1790758344.0
+
+
+def mount_at(when: float | None) -> Mount:
+    """The mount the OAK was on at this Unix time; the current one if unsaid."""
+    if when is not None and float(when) < RAIL_SINCE:
+        return CHASSIS_MOUNT
+    return MOUNT
+
 
 #: Whether `MOUNT` above holds measurements. **Everything this module can do is
 #: gated on it**, in both directions: the OAK cannot draw a bearing without it,
@@ -155,19 +182,13 @@ MOUNT = Mount(
 #: A flag rather than a check for zeros, because zero is a perfectly possible
 #: measurement -- a camera mounted straight ahead has a yaw of zero, and the
 #: difference between "measured as zero" and "never measured" is the whole point.
-#: It is on because both halves are now measured together and confirmed at a
-#: second distance. It was already on when only the rotation was, on the argument
-#: that the rotation is the half that swings every bearing while an offset left at
-#: nothing costs about a degree at two metres -- a known, bounded, written-down
-#: gap rather than an unknown one. That gap is closed.
 MEASURED = True
 
 #: How far off the OAK's own axis a direction may lie before it is not in its
 #: picture at all, as a fraction of the frame beyond the edge. A box mapped from
-#: the gimbal camera lands wherever it lands, and most of them land outside: the
-#: gimbal sees 122 degrees across and the OAK 70, so about half of a centred
-#: gimbal frame has no depth behind it at all and everything past +/-35 degrees of
-#: pan has none whatever.
+#: the gimbal camera lands wherever it lands, and plenty land outside: the OAK
+#: takes in the middle half of the fisheye's picture across and two fifths of it
+#: down, whichever way the gimbal points.
 #:
 #: A little beyond the edge is still allowed because a box that runs off the side
 #: of the OAK's picture still has pixels inside it, and the part that is inside is
@@ -183,23 +204,79 @@ EDGE_SLACK = 0.02
 GUESS_RANGE_M = 2.5
 
 
-def ray_at(x_frac: float, y_frac: float, lens: Any) -> tuple[float, float, float]:
-    """Where a point in the OAK's picture looks: x right, y down, z out of the lens.
+# --- turning a direction by a gimbal-like pair of angles ----------------------
 
-    The same convention `face_tracking/lens.ray_at` answers in, so `view` can
-    rotate either camera's answer with one piece of code -- and **with the
-    mount's roll already taken out**, so that what comes back is in the frame the
-    yaw and the pitch are defined in and the caller can go on treating this
-    camera as a gimbal that never moves.
+
+def _turn(vector: tuple[float, float, float], yaw_right_deg: float,
+          pitch_up_deg: float) -> tuple[float, float, float]:
+    """A forward-left-up vector turned the way a gimbal turns its camera.
+
+    Pitched up about its own horizontal first and then yawed right about the
+    vertical, which is the order a pan-tilt head composes them in: the pan
+    carries the tilt axis round with it. Used twice over -- the mount within the
+    gimbal camera's frame, and the gimbal within the chassis.
+    """
+    forward, left, up = vector
+    pitch = math.radians(pitch_up_deg or 0.0)
+    forward, up = (forward * math.cos(pitch) - up * math.sin(pitch),
+                   forward * math.sin(pitch) + up * math.cos(pitch))
+    # Right is positive for the gimbal and left for the map -- the same swap
+    # `view.ray` makes for the pan.
+    yaw = math.radians(-(yaw_right_deg or 0.0))
+    return (forward * math.cos(yaw) - left * math.sin(yaw),
+            forward * math.sin(yaw) + left * math.cos(yaw),
+            up)
+
+
+def _unturn(vector: tuple[float, float, float], yaw_right_deg: float,
+            pitch_up_deg: float) -> tuple[float, float, float]:
+    """`_turn` undone: the yaw taken off first, then the pitch."""
+    x, y, z = vector
+    yaw = math.radians(-(yaw_right_deg or 0.0))
+    forward = x * math.cos(yaw) + y * math.sin(yaw)
+    left = -x * math.sin(yaw) + y * math.cos(yaw)
+    pitch = math.radians(pitch_up_deg or 0.0)
+    return (forward * math.cos(pitch) + z * math.sin(pitch),
+            left,
+            -forward * math.sin(pitch) + z * math.cos(pitch))
+
+
+def camera_frame(vector: tuple[float, float, float], pan_deg: float | None,
+                 tilt_deg: float | None) -> tuple[float, float, float]:
+    """A chassis-frame vector, as the gimbal camera saw it at this pan and tilt.
+
+    The frame `box_for`, `range_from_gimbal` and `_in_oak` work in, for a mount
+    that rides the gimbal: whatever the servos did, the OAK stands in the same
+    place relative to this frame. A missing angle is taken as rest's zero, which
+    is also what a look with no gimbal angle has had its bearing withheld for.
+    """
+    return _unturn(vector, pan_deg or 0.0, tilt_deg or 0.0)
+
+
+# --- the lens -------------------------------------------------------------------
+
+
+def ray_at(x_frac: float, y_frac: float, lens: Any) -> tuple[float, float, float]:
+    """Where a point in the OAK's picture looks, **in the gimbal camera's frame**:
+    x right, y down, z out of the fisheye's lens.
+
+    The same convention `face_tracking/lens.ray_at` answers in, and the reason it
+    answers in the other camera's frame rather than its own: an OAK look records
+    the gimbal's pan and tilt exactly as a fisheye look does, so `view` can turn
+    either camera's answer into a bearing with one piece of code. The mount's
+    whole rotation -- roll, pitch and yaw -- is taken out here, and the gimbal's
+    is taken out by `view` afterwards.
 
     A pinhole, and honestly one rather than for convenience -- see
     `depth_client.Lens`, where the measured reason is written down: this lens's
     rational distortion model has its numerator and denominator terms within a
     tenth of each other and they very nearly cancel.
     """
-    x, y, z = pinhole_at(x_frac, y_frac, lens)
-    x, y = _unrolled(x, y)
-    return x, y, z
+    right, down, along = pinhole_at(x_frac, y_frac, lens)
+    right, down = _unrolled(right, down)
+    forward, left, up = _turn((along, -right, -down),
+                              MOUNT.yaw_deg, MOUNT.pitch_deg)
+    return -left, -up, forward
 
 
 def pinhole_at(x_frac: float, y_frac: float,
@@ -207,8 +284,8 @@ def pinhole_at(x_frac: float, y_frac: float,
     """The same pixel, through the lens alone and **not** through the mount.
 
     `ray_at` is what everything that draws a bearing wants: the direction with
-    the mount's roll already taken out, so this camera can be treated as a gimbal
-    that never moves. This is what the *calibration* wants, and the difference is
+    the mount taken out, so this camera can be treated as the gimbal camera with
+    another lens. This is what the *calibration* wants, and the difference is
     the whole reason it is a separate function: a bench that measured the mount
     through `ray_at` would be measuring how far the mount has moved since the
     last time somebody wrote a number down, and would print that as if it were
@@ -220,33 +297,24 @@ def pinhole_at(x_frac: float, y_frac: float,
     return x / length, y / length, 1.0 / length
 
 
-def _rolled(x: float, y: float) -> tuple[float, float]:
+def _rolled(x: float, y: float, mount: Mount | None = None) -> tuple[float, float]:
     """Turn a direction from the frame the yaw and pitch live in into the
     sensor's own, which is the one a pixel is measured in."""
-    roll = math.radians(MOUNT.roll_deg)
+    roll = math.radians((mount or MOUNT).roll_deg)
     return (x * math.cos(roll) - y * math.sin(roll),
             x * math.sin(roll) + y * math.cos(roll))
 
 
-def _unrolled(x: float, y: float) -> tuple[float, float]:
+def _unrolled(x: float, y: float, mount: Mount | None = None) -> tuple[float, float]:
     """And back the other way. The inverse of `_rolled` by construction, which is
     what `test_oak` checks rather than trusting the two signs to stay in step."""
-    roll = math.radians(MOUNT.roll_deg)
+    roll = math.radians((mount or MOUNT).roll_deg)
     return (x * math.cos(roll) + y * math.sin(roll),
             -x * math.sin(roll) + y * math.cos(roll))
 
 
-def pan_deg() -> float:
-    """What an OAK observation records as its gimbal pan: the mount's yaw."""
-    return MOUNT.yaw_deg
-
-
-def tilt_deg() -> float:
-    """And as its tilt: the mount's pitch."""
-    return MOUNT.pitch_deg
-
-
-def pose_at(pose: dict[str, Any] | None) -> dict[str, Any] | None:
+def pose_at(pose: dict[str, Any] | None, pan_deg: float | None = None,
+            tilt_deg: float | None = None) -> dict[str, Any] | None:
     """The rover's pose moved to where the OAK's optical centre actually is.
 
     **A ray has to start where the camera is**, and this camera is not where the
@@ -256,31 +324,34 @@ def pose_at(pose: dict[str, Any] | None) -> dict[str, Any] | None:
     -- and worse, the range the OAK measured is from the OAK, so the range and
     the origin would be describing different points.
 
-    The offset is in the chassis frame and the pose is on the map, so it is
-    turned by the heading: the rover's nose points along `(cos h, sin h)` and its
-    left along `(-sin h, cos h)`.
+    The offset lives in the gimbal camera's frame, so it is turned by the tilt
+    and the pan the look was taken at, and then by the heading onto the map: the
+    rover's nose points along `(cos h, sin h)` and its left along
+    `(-sin h, cos h)`. Five centimetres above the lens is a centimetre and a half
+    forward at a tilt of 20 and nothing sideways at any pan, which is why this is
+    small -- and why it is done anyway rather than assumed.
 
-    `up_m` is not spent here and is not lost either: the map is flat, and what
-    reads a height is `locate.rise_m`, which measures it relative to whatever the
-    camera's own height is and never needs to know it -- see
-    `locate.CAMERA_HEIGHT_M`. A difference in mounting height between the two
-    cameras is the one term that does not cancel there, and it is recorded in
-    `MOUNT` so that it can be spent when that constant is.
+    What is left vertical is not spent here and is not lost either: the map is
+    flat, and what reads a height is `locate.rise_m` -- see `rise_of`.
     """
     if not isinstance(pose, dict) or not MEASURED:
         return pose
-    if not MOUNT.forward_m and not MOUNT.left_m:
+    offset = (MOUNT.forward_m, MOUNT.left_m, MOUNT.up_m)
+    if not any(offset):
         return pose
+    if MOUNT.on_gimbal:
+        offset = _turn(offset, pan_deg or 0.0, tilt_deg or 0.0)
     try:
         heading = math.radians(float(pose.get("heading_deg", 0.0)))
         x_m, y_m = float(pose["x_m"]), float(pose["y_m"])
     except (KeyError, TypeError, ValueError):
         return pose
+    forward, left, _up = offset
     return {**pose,
-            "x_m": round(x_m + MOUNT.forward_m * math.cos(heading)
-                         - MOUNT.left_m * math.sin(heading), 3),
-            "y_m": round(y_m + MOUNT.forward_m * math.sin(heading)
-                         + MOUNT.left_m * math.cos(heading), 3)}
+            "x_m": round(x_m + forward * math.cos(heading)
+                         - left * math.sin(heading), 3),
+            "y_m": round(y_m + forward * math.sin(heading)
+                         + left * math.cos(heading), 3)}
 
 
 # --- finding the other camera's box in this one -------------------------------
@@ -292,16 +363,19 @@ def box_for(corners: list[tuple[float, float, float]], lens: Any,
     """Where a thing the gimbal camera saw would be in the OAK's picture, and how
     far the OAK's answer would then be from the gimbal camera.
 
-    `corners` are the box's four corners as directions in the **chassis frame** --
-    x forward, y left, z up -- which is what `view.chassis_direction` answers.
-    They arrive that way rather than as pixels because the two cameras share
-    nothing else: a fisheye pixel and a pinhole pixel are not comparable, and the
-    direction between them is.
+    `corners` are the box's four corners as directions in the **gimbal camera's
+    own frame** -- x along its axis, y to its left, z up -- which is what
+    `view.chassis_direction` answers at pan 0 and tilt 0. They arrive that way
+    rather than as pixels because the two cameras share nothing else: a fisheye
+    pixel and a pinhole pixel are not comparable, and the direction between them
+    is. And in that frame rather than the rover's because the OAK turns with the
+    gimbal: the answer is the same wherever the gimbal is pointed, and no servo
+    error enters it.
 
     None when the thing is not in this camera's picture at all, which is the
-    ordinary case rather than a failure -- the gimbal sees 122 degrees across and
-    this camera 70, so about half of a centred frame has no depth behind it and a
-    look taken over the rover's shoulder has none whatever.
+    ordinary case rather than a failure -- the OAK takes in the middle half of
+    the fisheye's picture across and two fifths of it down, so a box near the
+    fisheye's edge has no depth behind it whichever way the gimbal points.
 
     **The offset between the two cameras is what makes this more than a
     rotation, and it is why a range goes in as well as coming out.** The two
@@ -346,13 +420,15 @@ def range_from_gimbal(corners: list[tuple[float, float, float]],
     this one was measured from the other lens. The observation it is about to be
     stored on carries a ray that starts at the gimbal camera, so the number has to
     be converted rather than copied -- a few centimetres at three metres, and a
-    quarter of the answer at half of one.
+    good share of the answer at half of one.
 
     Exactly, and with no guess in it: the thing lies somewhere along the gimbal
     camera's own direction, and it lies on a sphere of radius `oak_range_m` about
     the OAK's lens. Where a line meets a sphere is a quadratic, so this is the far
     root of one -- which is also why `box_for` above may guess about *where to
-    look* without that guess reaching the answer.
+    look* without that guess reaching the answer. `corners` are in the gimbal
+    camera's own frame, the same as `box_for`'s, which is the frame the offset is
+    written in.
 
     None when the mount is unmeasured, and None when the sphere does not reach the
     line at all: a range shorter than the distance between the two lenses,
@@ -382,37 +458,33 @@ def _middle(corners: list[tuple[float, float, float]]
     return x / length, y / length, z / length
 
 
-def _in_oak(direction: tuple[float, float, float],
-            range_m: float) -> tuple[float, float, float] | None:
-    """A chassis-frame direction, as a direction in the OAK's own optical frame.
+def _in_oak(direction: tuple[float, float, float], range_m: float,
+            mount: Mount | None = None) -> tuple[float, float, float] | None:
+    """A direction from the gimbal camera, as a direction in the OAK's optical
+    frame.
 
-    The point the gimbal camera is looking at is `range_m` along `direction` from
-    the gimbal camera, which is the chassis frame's origin by construction. Where
-    that point lies from the OAK is the same point less the OAK's own position,
-    turned by the mount's yaw and pitch.
+    The direction is in the gimbal camera's own frame for a mount that rides the
+    gimbal, and in the chassis frame for `CHASSIS_MOUNT` -- in both cases the
+    frame the mount's own numbers are written in, which is what makes it one
+    function. The point the gimbal camera is looking at is `range_m` along
+    `direction` from its lens, which is that frame's origin by construction.
+    Where the point lies from the OAK is the same point less the OAK's own
+    position, turned by the mount's yaw and pitch.
 
     None when the point ends up behind this camera, which a thing over the
     rover's shoulder is.
     """
-    x = direction[0] * range_m - MOUNT.forward_m
-    y = direction[1] * range_m - MOUNT.left_m
-    z = direction[2] * range_m - MOUNT.up_m
-    # Undo the mount's yaw. The OAK's axis is at chassis yaw `-yaw_deg` measured
-    # positive to the left, because the mount's yaw is positive to the right --
-    # the same swap `view.ray` makes for the gimbal's pan.
-    yaw = math.radians(-MOUNT.yaw_deg)
-    forward = x * math.cos(yaw) + y * math.sin(yaw)
-    left = -x * math.sin(yaw) + y * math.cos(yaw)
-    # Then its pitch, positive up, about the camera's own horizontal.
-    pitch = math.radians(MOUNT.pitch_deg)
-    along = forward * math.cos(pitch) + z * math.sin(pitch)
-    up = -forward * math.sin(pitch) + z * math.cos(pitch)
+    mount = mount or MOUNT
+    point = (direction[0] * range_m - mount.forward_m,
+             direction[1] * range_m - mount.left_m,
+             direction[2] * range_m - mount.up_m)
+    along, left, up = _unturn(point, mount.yaw_deg, mount.pitch_deg)
     if along <= 1e-6:
         return None
     # Into the lens's own axes: x right, y down, z out -- and twisted by the
     # mount's roll, because that is the frame a pixel is measured in and
     # `_project` is a plain pinhole.
-    right, down = _rolled(-left, -up)
+    right, down = _rolled(-left, -up, mount)
     return right, down, along
 
 
@@ -424,29 +496,34 @@ def _project(direction: tuple[float, float, float],
             (lens.cy + lens.fy * y / z) / lens.height)
 
 
-def rise_of(camera: str | None) -> float:
+def rise_of(camera: str | None, tilt_deg: float | None = None) -> float:
     """How high this camera's optical centre sits above the height datum, in metres.
 
     The datum is the gimbal camera, so its own answer is zero by construction and
-    the OAK's is where the mount puts it -- 94 mm lower, hence negative. This is
-    the `up_m` that `pose_for` deliberately does not spend: the map is flat, so
-    the horizontal offset belongs on the pose, while the vertical one belongs on
-    the height and had nowhere to go until the datum itself was measured.
+    the OAK's is where the mount puts it at the tilt the look was taken at --
+    five centimetres higher when level, a little less tilted, because the offset
+    turns with the platform. This is the vertical half of the offset that
+    `pose_at` deliberately does not spend: the map is flat, so the horizontal
+    part belongs on the pose and the vertical part on the height.
 
     An unmeasured mount, or a camera nobody has heard of, is zero rather than a
     refusal. Zero is what a look through the gimbal deserves and what every look
     on this rover so far was, and a datum offset guessed wrong is worse than one
     not applied -- it would move heights that are currently right.
     """
-    if camera == OAK and MEASURED:
+    if camera != OAK or not MEASURED:
+        return 0.0
+    if not MOUNT.on_gimbal:
         return float(MOUNT.up_m)
-    return 0.0
+    tilt = math.radians(tilt_deg or 0.0)
+    return float(MOUNT.forward_m * math.sin(tilt) + MOUNT.up_m * math.cos(tilt))
 
 
 def describe() -> str:
     """One line for the diagnostics row: where this camera is, or that nobody knows."""
     if not MEASURED:
         return "oak mount unmeasured -- run bench_oak.py"
-    return (f"oak at yaw {MOUNT.yaw_deg:+.1f} pitch {MOUNT.pitch_deg:+.1f} deg, "
-            f"{MOUNT.forward_m:+.3f} forward {MOUNT.left_m:+.3f} left "
-            f"{MOUNT.up_m:+.3f} up of the gimbal camera")
+    where = "on the gimbal rail" if MOUNT.on_gimbal else "on the chassis"
+    return (f"oak {where} at yaw {MOUNT.yaw_deg:+.1f} pitch "
+            f"{MOUNT.pitch_deg:+.1f} deg, {MOUNT.forward_m:+.3f} forward "
+            f"{MOUNT.left_m:+.3f} left {MOUNT.up_m:+.3f} up of the gimbal camera")

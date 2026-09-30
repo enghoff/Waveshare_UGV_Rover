@@ -28,7 +28,8 @@ MAX_RISE_EXTENT_M = 1.0
 # every height in here is quoted against. Tape, 2026-09-08, and worth about a
 # centimetre: an optical centre cannot be seen, so both ends were placed by eye.
 # The one independent check is that the same tape put the OAK 95 mm below this
-# camera where the board fit of 2026-09-07 put it 93.7.
+# camera where the board fit of 2026-09-07 put it 93.7 -- on the chassis bracket
+# it was on until 2026-09-30, so a check on the tape rather than on where it is.
 CAMERA_HEIGHT_M = 0.235
 HUBER_K = 2.0
 RANGE_SIGMA_M = 0.15
@@ -477,11 +478,11 @@ def rise_m(point: dict[str, Any], ray: dict[str, Any]) -> float | None:
 
     **The datum is the gimbal camera's optical centre, not whichever lens took
     the picture.** A ray through another camera carries `camera_rise_m` saying
-    how much higher that lens sits, because the two are 94 mm apart and a
-    difference in mounting height is the one term that does not cancel when
+    how much higher that lens sits, because the two are five centimetres apart
+    and a difference in mounting height is the one term that does not cancel when
     heights measured through both are compared -- the same object photographed
-    from the lower lens reads 94 mm higher. Absent means this ray's camera is
-    the datum, which every look this rover has taken so far was.
+    from the higher lens reads five centimetres lower. Absent means this ray's
+    camera is the datum, which every look this rover has taken so far was.
     """
     elevation = ray.get("elevation_deg")
     if elevation is None:

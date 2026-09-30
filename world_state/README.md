@@ -18,10 +18,20 @@ available. Each observation records the backend because vectors from the two
 backends are not comparable.
 
 `rover_daemon/rover_world.py` owns capture and background scheduling. It records
-through the gimbal camera by default. The OAK can supply ranges for regions that
-fall inside its narrower fixed view. The OAK mount is measured, rotation and
-translation together, against a printed board both cameras see at once; the
-gimbal camera's own position relative to the SLAM pose remains unmeasured.
+through the gimbal camera by default. The OAK rides the gimbal's rail beside it,
+looking the same way, so any region in the middle of the picture -- the OAK's 65
+by 40 degrees inside the fisheye's 130 by 96 -- can carry a range, wherever the
+gimbal points. Where the OAK sits relative to the gimbal camera (`oak.MOUNT`) is
+one fixed transform that turns with the platform; it was measured on 2026-09-30
+from matched features at nine gimbal positions, which agreed to a tenth of a
+degree ([the measurement](../docs/progress/2026-09-30-oak-on-the-gimbal.md)).
+The gimbal camera's own position relative to the SLAM pose remains unmeasured.
+
+Until 2026-09-30 the OAK was bolted to the chassis, and its lens as published by
+`oak_depth` was 9.6% short in focal length. Depth maps saved before then are read
+through the bracket they were taken on (`oak.CHASSIS_MOUNT`, chosen by
+`oak.mount_at`); ranges stored on observations before then were attached through
+both of those errors.
 
 Runtime data lives outside the deploy tree:
 
@@ -129,7 +139,9 @@ which also says why the ranges on that run are not trustworthy as ranges *to*
 anything: the mount constant the boxes were placed through was 6.2 degrees out at
 the time. It was re-measured and replaced on 2026-09-07 -- see
 [`docs/progress/2026-09-07-p0-oak-mount.md`](../docs/progress/2026-09-07-p0-oak-mount.md)
--- so the depth attribution wants checking again before it is believed.
+-- so the depth attribution wants checking again before it is believed. The OAK's
+lens was also 9.6% short in focal length until 2026-09-30, which put a box three
+degrees off at the edge of its picture; the ranges on those runs carry that too.
 
 ## Offline experiment: bounded association and revision
 
@@ -280,8 +292,9 @@ crossings. The next hardware proof is a different one, and it is not about this
 camera at all. Sweeping the gimbal through a position from either side -- which
 needs an overshoot, or the approach is only ever opposed at pan 0 -- shows the
 gimbal camera **carries about a degree and a half of backlash at every angle in
-its travel**, against a same-direction floor of five hundredths. The OAK is bolted
-to the chassis, so nothing but the gimbal's own pointing can account for it. That
+its travel**, against a same-direction floor of five hundredths. The OAK was
+bolted to the chassis then, so nothing but the gimbal's own pointing could account
+for it. That
 alone is the whole of the 1.5 degrees a bearing here is believed to. **Which way
 the gimbal last moved is recorded now**, which it was not when this paragraph was
 first written: `Rover.pan_approach` is set as each servo command goes out and
@@ -297,8 +310,19 @@ straight ahead so far, but a face being tracked or a `look_at` puts them out at
 wide pan where the gain is worst. Measure the pan servo's commanded angle against
 its actual one before anything else; it is the largest correctable term.
 
-That measurement has since been made, within a bounded envelope, and it freed the
-mount: `oak.MOUNT` now holds a rotation and an offset measured against a printed
-board that both cameras see at the same moment, which never asks the gimbal which
-way it is pointed and so cannot inherit these faults. The faults themselves are
-untouched and still belong to every bearing the gimbal camera records.
+That measurement has since been made, within a bounded envelope. The faults
+themselves are untouched and belong to every bearing either camera records: the
+OAK rides the same servos now, so a look through it is pointed exactly as badly
+as a look through the fisheye. What they no longer touch is the step between the
+two cameras -- the OAK turns with the fisheye, so where a fisheye box lands in
+the OAK's picture is the same at every pan and tilt.
+
+**The fisheye's own lens model is the next largest term, and it is not a servo
+fault.** Fitting one rigid mount across nine gimbal positions on 2026-09-30 only
+closed once the fisheye's angles off its axis were stretched by 7.2%: the lens in
+`face_tracking/lens.py` puts a thing 30 degrees from the middle of the picture at
+28. It was swept by turning the gimbal and trusting the angle it was told, so it
+may have absorbed the servo's under-travel; the board calibration of 2026-09-07,
+which trusted no servo, says 5 to 7%. Until the lens is refitted, a box mapped
+onto the OAK's picture is off by about 7% of its distance from the middle, and a
+bearing by the same.

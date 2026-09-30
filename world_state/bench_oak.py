@@ -2,15 +2,23 @@
 """Which way the OAK points, measured against the camera the rover already trusts.
 
     ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py'
-    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --offset 0.05 0 0.04'
-    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan 0 0 0 --save /tmp/oak'
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --offset 0 0 0.05'
+    ssh orin 'cd ~/ugv/world_state && python3 bench_oak.py --pan -30 0 30 --tilt 0 20'
 
 The rover has two cameras that see the room and they had never been in the same
 frame. The gimbal camera's optics were swept and fitted on this rover and every
-bearing the world state holds was drawn through them; the OAK is bolted to the
-chassis and is the only thing that knows how far away anything is. Before either
-could check the other's work, somebody had to say **which way the OAK points**
-relative to the gimbal camera. That is what this measures.
+bearing the world state holds was drawn through them; the OAK rides the gimbal's
+rail beside it and is the only thing that knows how far away anything is. Before
+either could check the other's work, somebody had to say **which way the OAK
+points** relative to the gimbal camera. That is what this measures.
+
+**Every position should give the same answer now, and that is the check.** The
+OAK was bolted to the chassis until 2026-09-30, and what this bench fitted then
+moved by 4.5 degrees of yaw depending on where the gimbal was pointed -- the
+gimbal's own pointing faults, read as a property of the mount. On the rail the
+two cameras turn together, so the rotation between them is one number whatever
+the servos did, and positions that disagree mean the mount is not rigid or a
+lens model is wrong. `--pan` and `--tilt` exist to ask that question.
 
 **It measures the rotation and it does not measure the offset**, and that
 division is the whole design rather than a shortcoming admitted afterwards. Two
@@ -122,15 +130,15 @@ def call(name: str, arguments: dict | None = None) -> dict:
         return {"ok": False, "error": f"{type(error).__name__}: {error}"}
 
 
-def gimbal_frame(pan_deg: float) -> dict:
+def gimbal_frame(pan_deg: float, tilt_deg: float = 0.0) -> dict:
     """Park the gimbal and take one picture through it.
 
     The pan and tilt come back from the daemon rather than being assumed. What is
-    read back is what it was *told*, so the pan servo's own error is still in
-    here -- which is why the mount is taken at pan 0 and why the report says
-    which pans it used.
+    read back is what it was *told*, so the servos' own errors are still in here
+    -- which no longer reaches the answer, because both cameras carry the same
+    error, and is why the report still says where each position was.
     """
-    aimed = call("look_at", {"pan": pan_deg, "tilt": 0})
+    aimed = call("look_at", {"pan": pan_deg, "tilt": tilt_deg})
     if not aimed.get("ok"):
         return {"ok": False, "error": str(aimed.get("error", "the gimbal refused"))}
     time.sleep(SETTLE_S)
@@ -139,7 +147,7 @@ def gimbal_frame(pan_deg: float) -> dict:
         return {"ok": False, "error": str(got.get("error", "no picture"))}
     return {"ok": True, "jpeg": base64.b64decode(got["jpeg_base64"]),
             "pan": float(aimed.get("pan", pan_deg)),
-            "tilt": float(aimed.get("tilt", 0.0)),
+            "tilt": float(aimed.get("tilt", tilt_deg)),
             "size": (int(got.get("width") or 640), int(got.get("height") or 480))}
 
 
@@ -326,8 +334,11 @@ def angles_of(numpy, rotation, pan_deg, tilt_deg):
     """A rotation as the mount's yaw, pitch and roll, in degrees.
 
     `rotation` takes a direction in the OAK's optical frame to the gimbal
-    camera's. `oak._in_oak` goes the other way and works in the rover's frame, so
-    what it needs is the transpose of the two put together.
+    camera's. `oak._in_oak` goes the other way and works in the gimbal camera's
+    own frame as it stands at pan 0 and tilt 0, so what it needs is the transpose
+    of the two put together -- and since the OAK rides the gimbal, 0 and 0 is
+    what every caller passes whatever the gimbal was doing. The arguments stay so
+    that a recording made while the OAK was on the chassis can still be read.
     """
     into_oak = (chassis_from_optical(numpy, pan_deg, tilt_deg) @ rotation).T
     pitch = math.asin(max(-1.0, min(1.0, float(into_oak[2][2]))))
@@ -363,7 +374,7 @@ def free_offset(cv2, numpy, objects, images):
 # --- one position, end to end -------------------------------------------------
 
 
-def collect_at(cv2, numpy, pan, ranger, lens_oak, maps, save):
+def collect_at(cv2, numpy, pan, tilt, ranger, lens_oak, maps, save):
     """One gimbal position, as points to solve from, or a sentence saying why not.
 
     Kept apart from the solve because the offset the solve needs is measured with
@@ -373,29 +384,30 @@ def collect_at(cv2, numpy, pan, ranger, lens_oak, maps, save):
     """
     import lens as fitted                                         # noqa: PLC0415
 
-    frame = gimbal_frame(pan)
+    where = f"pan {pan:+.0f} tilt {tilt:+.0f}"
+    frame = gimbal_frame(pan, tilt)
     if not frame["ok"]:
-        return None, f"pan {pan:+.0f}: {frame['error']}"
+        return None, f"{where}: {frame['error']}"
     theirs = ranger.frame()
     if not theirs.ok:
-        return None, f"pan {pan:+.0f}: {theirs.error}"
+        return None, f"{where}: {theirs.error}"
 
     gimbal = cv2.imdecode(numpy.frombuffer(frame["jpeg"], numpy.uint8),
                           cv2.IMREAD_GRAYSCALE)
     picture = cv2.imdecode(numpy.frombuffer(theirs.jpeg, numpy.uint8),
                            cv2.IMREAD_GRAYSCALE)
     if gimbal is None or picture is None:
-        return None, f"pan {pan:+.0f}: a picture would not decode"
+        return None, f"{where}: a picture would not decode"
     warped = cv2.remap(picture, maps[0], maps[1], cv2.INTER_LINEAR,
                        borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     if save:
-        base = f"{save}-pan{int(round(pan)):+03d}"
+        base = f"{save}-pan{int(round(pan)):+03d}-tilt{int(round(tilt)):+03d}"
         cv2.imwrite(base + "-gimbal.png", gimbal)
         cv2.imwrite(base + "-oak-warped.png", warped)
 
     pairs, counts = matched_points(cv2, gimbal, warped)
     if not pairs:
-        return None, (f"pan {pan:+.0f}: {counts[0]} and {counts[1]} features, "
+        return None, (f"{where}: {counts[0]} and {counts[1]} features, "
                       f"none matched")
 
     # Back out of the warp: the map says which OAK pixel each warped pixel came
@@ -414,12 +426,12 @@ def collect_at(cv2, numpy, pan, ranger, lens_oak, maps, save):
         in_oak.append((ox, oy))
         rays.append((dx / dz, dy / dz))
     if len(in_oak) < MIN_INLIERS:
-        return None, (f"pan {pan:+.0f}: {len(pairs)} matched, only "
+        return None, (f"{where}: {len(pairs)} matched, only "
                       f"{len(in_oak)} of them usable")
 
     measured, error = ranges_at(ranger, in_oak, lens_oak)
     if measured is None:
-        return None, f"pan {pan:+.0f}: no ranges ({error})"
+        return None, f"{where}: no ranges ({error})"
 
     objects, images, ranged = [], [], []
     for (ox, oy), ray, range_m in zip(in_oak, rays, measured):
@@ -436,12 +448,12 @@ def collect_at(cv2, numpy, pan, ranger, lens_oak, maps, save):
         images.append(list(ray))
         ranged.append(range_m)
     if len(objects) < MIN_INLIERS:
-        return None, (f"pan {pan:+.0f}: {len(pairs)} matched, only "
+        return None, (f"{where}: {len(pairs)} matched, only "
                       f"{len(objects)} had a range")
 
     return ({"objects": objects, "images": images, "ranges": ranged,
              "pan_deg": frame["pan"], "tilt_deg": frame["tilt"]},
-            f"pan {pan:+.0f}: {counts[0]}/{counts[1]} features, "
+            f"{where}: {counts[0]}/{counts[1]} features, "
             f"{len(pairs)} matched, {len(objects)} ranged")
 
 
@@ -451,9 +463,12 @@ def solve_at(numpy, kept, offset):
     if solved is None:
         return None
     rotation, miss, keep = solved
-    found = angles_of(numpy, rotation, kept["pan_deg"], kept["tilt_deg"])
+    # In the gimbal camera's own frame and not the rover's, whatever the gimbal
+    # was doing: the OAK turns with it, so the pan and tilt are where the pair
+    # was pointed and not part of the mount. See `angles_of`.
+    found = angles_of(numpy, rotation, 0.0, 0.0)
     found.update(inliers=int(keep.sum()), points=len(kept["objects"]),
-                 pan_deg=kept["pan_deg"],
+                 pan_deg=kept["pan_deg"], tilt_deg=kept.get("tilt_deg", 0.0),
                  miss_deg=float(numpy.median(miss[keep])),
                  worst_deg=float(numpy.max(miss[keep])),
                  free=None,
@@ -487,9 +502,10 @@ def report(numpy, found: list, notes: list, offset) -> int:
           f"left, {offset[2]:+.3f} up")
     print()
     print("what each position said on its own")
-    print("    pan     yaw    pitch     roll   pts   miss  worst")
+    print("    pan  tilt     yaw    pitch     roll   pts   miss  worst")
     for one in found:
-        print(f"  {one['pan_deg']:+5.0f}  {one['yaw_deg']:+6.2f}  "
+        print(f"  {one['pan_deg']:+5.0f} {one['tilt_deg']:+5.0f}  "
+              f"{one['yaw_deg']:+6.2f}  "
               f"{one['pitch_deg']:+6.2f}  {one['roll_deg']:+6.2f}  "
               f"{one['inliers']:4d}  {one['miss_deg']:5.2f}  "
               f"{one['worst_deg']:5.2f}")
@@ -546,24 +562,25 @@ def _leftover(spread, offset) -> None:
     print("    MOUNT = Mount(")
     print(f"        yaw_deg={spread('yaw_deg')[0]:.2f},")
     print(f"        pitch_deg={spread('pitch_deg')[0]:.2f},")
+    print(f"        roll_deg={spread('roll_deg')[0]:.2f},")
     print(f"        forward_m={offset[0]:.3f},")
     print(f"        left_m={offset[1]:.3f},")
     print(f"        up_m={offset[2]:.3f},")
     print("    )")
     print("    MEASURED = True")
-    print()
-    roll = spread("roll_deg")[0]
-    if abs(roll) > 1.0:
-        print(f"and note the roll of {roll:+.2f} deg, which oak.Mount does not "
-              f"carry. Above a degree it is worth adding rather than ignoring.")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--pan", type=float, nargs="+", default=[0.0],
                         help="gimbal pan positions to solve at (default: just "
-                             "0, which is where the mount is defined). Several "
-                             "is a check on the answer rather than more of it")
+                             "0). Several is a check on the mount's rigidity "
+                             "rather than more of the answer")
+    parser.add_argument("--tilt", type=float, nargs="+", default=[0.0],
+                        help="gimbal tilts to solve at, each at every --pan "
+                             "(default: just 0). The tilt is what loads the "
+                             "mount against gravity, so a sagging clamp shows "
+                             "here first")
     parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0],
                         metavar=("FORWARD", "LEFT", "UP"),
                         help="where the OAK's lens sits relative to the gimbal "
@@ -602,18 +619,19 @@ def main() -> int:
 
     kept = _read_points(args.points)
     if kept is None:
-        first = gimbal_frame(args.pan[0])
+        first = gimbal_frame(args.pan[0], args.tilt[0])
         if not first["ok"]:
             print(f"the gimbal camera would not answer: {first['error']}")
             return 1
         maps = warp_maps(numpy, first["size"], lens_oak)
         kept, notes = [], []
         for pan in args.pan:
-            one, note = collect_at(cv2, numpy, pan, ranger, lens_oak, maps,
-                                   args.save)
-            notes.append(note)
-            if one is not None:
-                kept.append(one)
+            for tilt in args.tilt:
+                one, note = collect_at(cv2, numpy, pan, tilt, ranger, lens_oak,
+                                       maps, args.save)
+                notes.append(note)
+                if one is not None:
+                    kept.append(one)
         _write_points(args.points, kept)
     else:
         notes = [f"{len(kept)} position(s) read back from {args.points}, "
@@ -623,8 +641,9 @@ def main() -> int:
     for one in kept:
         solved = solve_at(numpy, one, args.offset)
         if solved is None:
-            notes.append(f"pan {one['pan_deg']:+.0f}: no rotation survived "
-                         f"its {len(one['objects'])} points")
+            notes.append(f"pan {one['pan_deg']:+.0f} tilt "
+                         f"{one.get('tilt_deg', 0.0):+.0f}: no rotation "
+                         f"survived its {len(one['objects'])} points")
             continue
         # What a solver claims the offset is, from this position's own points.
         # Paired here rather than inside the solve because it is a warning about

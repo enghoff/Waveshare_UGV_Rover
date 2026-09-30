@@ -36,6 +36,11 @@ from depth_settings import (
     NEAR_PERCENTILE, STAT_WINDOW, RANGE_PERCENTILE, RANGE_BAND_FRAC,
     RANGE_BAND_M, RANGE_MIN_PIXELS, DISPARITY_SIGMA_PX,
 )
+from colour_lens import colour_intrinsics
+
+#: The colour sensor mode, named once because the lens depends on it as much as
+#: on the output size -- see `colour_lens`.
+COLOUR_MODE = "THE_1080_P"
 
 
 class DepthError(RuntimeError):
@@ -164,7 +169,8 @@ class Depth:
         # and `preview` is planar BGR for a host that is about to display it.
         colour = pipeline.create(dai.node.ColorCamera)
         colour.setBoardSocket(dai.CameraBoardSocket.CAM_A)
-        colour.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+        colour.setResolution(
+            getattr(dai.ColorCameraProperties.SensorResolution, COLOUR_MODE))
         colour.setIspScale(*COLOUR_ISP_SCALE)
         colour.setVideoSize(*COLOUR_SIZE)
         colour.setInterleaved(False)
@@ -346,13 +352,16 @@ class Depth:
         actually emits**, because everything downstream turns pixels into angles
         with it and a lens described twice is two lenses that will disagree --
         the mistake `face_tracking/lens.py` exists to have stopped making for the
-        other camera on this rover. `getCameraIntrinsics(socket, w, h)` accounts
-        for the crop and the scale of the mode in use, so the numbers here
-        describe the frame `/frame` returns and not the full sensor.
+        other camera on this rover.
 
-        It is also why the field of view quoted here is 70.1 degrees rather than
-        the 69 `getFov` reports: `getFov` returns the spec figure for the sensor,
-        and the fitted intrinsics are what the pixels obey.
+        **Worked out for the sensor mode as well as the size**, which is what
+        `colour_lens` is for. depthai's `getCameraIntrinsics(socket, w, h)` knows
+        the size and not the mode, and the 1080p mode reads only the middle of the
+        sensor, so what this published until 2026-09-30 was a 70.1-degree lens on
+        a picture that takes in 65.2 -- every box mapped onto it from the other
+        camera landed up to three degrees off, and every range was stretched by
+        the wrong secant. `getFov`'s 69 is the spec figure for the whole sensor
+        and describes neither.
         """
         dai = self.dai
         self.device_name = device.getDeviceName()
@@ -360,14 +369,10 @@ class Depth:
         try:
             calibration = device.readCalibration()
             width, height = COLOUR_SIZE
-            matrix = calibration.getCameraIntrinsics(
-                dai.CameraBoardSocket.CAM_A, width, height)
-            fx, fy = float(matrix[0][0]), float(matrix[1][1])
-            self.colour_intrinsics = {
-                "fx": round(fx, 2), "fy": round(fy, 2),
-                "cx": round(float(matrix[0][2]), 2),
-                "cy": round(float(matrix[1][2]), 2),
-                "width": width, "height": height}
+            self.colour_intrinsics = colour_intrinsics(
+                calibration, dai, COLOUR_MODE, COLOUR_ISP_SCALE, COLOUR_SIZE)
+            fx = self.colour_intrinsics["fx"]
+            fy = self.colour_intrinsics["fy"]
             self.colour_distortion = [
                 round(float(value), 8) for value in
                 calibration.getDistortionCoefficients(
@@ -714,8 +719,8 @@ class Depth:
         # surface is in front of the camera plane -- and what anybody asking
         # "how far away is that" means is the length of the line to it. The two
         # are the same only dead ahead: they differ by one over the cosine of the
-        # angle off the axis, which on this lens is 22% at the side of the frame
-        # and 32% in the corner. `world_state.locate` compares this against a
+        # angle off the axis, which on this lens is 19% at the side of the frame
+        # and 24% in the corner. `world_state.locate` compares this against a
         # distance measured on the map, so shipping the axial figure would have
         # put every off-centre range a fifth short.
         range_m = along_m * self._secant(x0, x1, y0, y1, width, height)

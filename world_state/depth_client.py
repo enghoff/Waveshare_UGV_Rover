@@ -131,10 +131,10 @@ class Ranged:
     #: whenever there is one.
     #:
     #: **"No range" is three different situations and they were indistinguishable
-    #: until this existed.** The depth camera sees about 70 degrees across where
-    #: the gimbal sees 99, so roughly a third of a centred frame has no depth
-    #: behind it at all -- and a region out there was never going to be measured,
-    #: however many times the rover looks. That is a fact about the rover and not
+    #: until this existed.** The depth camera sees 65 degrees across where the
+    #: fisheye sees 130, so the outer part of every frame has no depth behind it
+    #: at all -- and a region that only ever appears out there was never going to
+    #: be measured, however many times the rover looks. That is a fact about the rover and not
     #: about the thing, and it is why a named object sat in the store through a
     #: whole drive with no distance and nothing able to say why. The other two
     #: are ordinary: a box the camera could see into and found nothing in, and a
@@ -294,9 +294,11 @@ class FakeRanger(Ranger):
         self.fail = fail
         self.switched = "on"
         self.switches: list[bool] = []
-        self._lens = lens or Lens(fx=456.5, fy=456.4, cx=321.1, cy=189.8,
+        # The rover's own lens as the service has published it since 2026-09-30
+        # -- see `oak_depth/colour_lens.py` for the 456.5 it said before.
+        self._lens = lens or Lens(fx=500.3, fy=500.2, cx=321.2, cy=190.7,
                                   width=640, height=360,
-                                  hfov_deg=70.1, vfov_deg=43.0)
+                                  hfov_deg=65.2, vfov_deg=39.6)
         self.asked: list[list[list[float]]] = []
 
     def available(self) -> tuple[bool, str]:

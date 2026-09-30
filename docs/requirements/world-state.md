@@ -175,6 +175,20 @@ the note that used to stand here about deliberately leaving it six degrees out
 is history; see
 [the mount entry](../progress/2026-09-07-p0-oak-mount.md).
 
+*The fisheye's lens model is about 7% short of the angles it describes, and that
+is not a servo fault.* Since 2026-09-30 the OAK rides the gimbal, which makes its
+factory-calibrated lens a reference no servo stands between. One rigid mount fits
+all nine gimbal positions it was measured at to a median 0.24 degrees only once
+the angles off the fisheye's axis from `face_tracking/lens.py` are stretched by
+7.2%; through the board-fitted fisheye of 2026-09-07 the same fit needs 1.1%. So
+a thing 30 degrees from the middle of the picture is recorded at 28, which is
+larger than the 1.5 degrees this requirement is about everywhere outside the
+middle third of the frame. The OAK's own servo-independent readings put the pan
+servo's 30-degree steps at 28.6 to 30.6. See
+[the rail entry](../progress/2026-09-30-oak-on-the-gimbal.md). Refitting the lens
+changes every bearing recorded from then on and the mount's yaw with it, so it is
+its own change.
+
 **What is left is the acceptance measurement.** The baseline that set this to
 `failing` was taken on a driven recording, where half the bearings fell outside
 the 1.5 degrees the resolver expects. Only another driven recording, taken
@@ -188,10 +202,14 @@ through the current envelope and the current gates, can lift it.
   see [../plans/semantic-world-state.md](../plans/semantic-world-state.md)
 
 Both the rotation and the translation between the OAK and the gimbal camera are
-measured, as of the [2026-09-07 mount
-measurement](../progress/2026-09-07-p0-oak-mount.md): the OAK sits 87 mm forward,
-3 mm to the right and 94 mm below the gimbal camera's optical centre, with the
-forward figure good to about a centimetre. That closes half of what blocked this.
+measured. Since 2026-09-30 the OAK rides the gimbal's rail, and [the rail
+measurement](../progress/2026-09-30-oak-on-the-gimbal.md) puts it 51 mm above and
+7 mm to the right of the gimbal camera's optical centre, in that camera's own
+frame, with the two sensors in one plane; the vertical figure is good to about a
+centimetre. `oak.rise_of` turns that with the tilt of each look. That closes half
+of what blocked this. (On the chassis bracket before it, the board measurement of
+2026-09-07 put it 94 mm below and 43 mm ahead once the OAK lens's 9.6% focal
+length error is taken out of the 87 mm it read.)
 
 What is left is where the gimbal camera itself sits relative to the pose SLAM
 reports. Until that is known, elevation is usable as a relative constraint between

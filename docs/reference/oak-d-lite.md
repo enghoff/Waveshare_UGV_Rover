@@ -23,6 +23,29 @@ reported for one unit on 2026-08-11, which is also the shape of what it prints:
 | IR drivers | none — the Lite has no dot projector or flood illuminator |
 | Idle temperature | ~37 °C |
 
+**CAM_A's 69 degrees is the whole sensor, and the rover does not use the whole
+sensor.** The 1080p mode the depth service runs reads the middle 3840 x 2160 and
+bins it, so the picture it serves takes in 65.2 by 39.6 degrees. depthai's
+`getCameraIntrinsics(socket, w, h)` does not know that and returns a lens for the
+full width, 9.6% short in focal length; `oak_depth/colour_lens.py` is the
+arithmetic that gets it right, confirmed against the right mono camera on
+2026-09-30.
+
+## Where it is mounted
+
+On the gimbal, since 2026-09-30: clamped to the Picatinny rail on the tilt
+platform by the printed mount in [`cad/`](../../cad/README.md), looking the same
+way as the gimbal camera with the two sensors in one plane, about 5 cm above the
+gimbal camera's lens. It pans and tilts with it. The transform between the two
+cameras is `world_state/oak.py`'s `MOUNT`, measured at nine gimbal positions
+([the entry](../progress/2026-09-30-oak-on-the-gimbal.md)); the same measurement
+found the mount rigid to a tenth of a degree from tilt 0 to 40. Its USB cable now
+travels with the gimbal, and a sweep of pan to ±90 degrees and tilt from -30 to
++60 held the link throughout.
+
+Until then it was bolted to the chassis, 43 mm ahead of and 94 mm below the
+gimbal camera, and could look nowhere else.
+
 No driver install is needed on Windows: the camera enumerates as a WinUSB device
 (`USB\VID_03E7&PID_2485`) in the MyriadX ROM bootloader state, and depthai uploads
 firmware over USB every time a pipeline opens. A device showing as `Movidius

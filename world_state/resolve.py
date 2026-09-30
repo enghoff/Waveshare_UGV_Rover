@@ -144,13 +144,16 @@ def ray_of(observation: dict[str, Any],
                  "elevation_deg": observation.get("elevation_deg"),
                  "elevation_span_deg": observation.get("elevation_span_deg"),
                  # Which lens this ray was measured from, expressed as how high
-                 # that lens sits above the height datum. The two cameras on this
-                 # rover are 94 mm apart vertically, so without it a thing
-                 # photographed through the OAK and the same thing photographed
-                 # through the gimbal disagree about their height by that much
-                 # and the resolver reads the disagreement as evidence they are
-                 # different things. See `oak.rise_of`.
-                 "camera_rise_m": oak.rise_of(observation.get("camera")),
+                 # that lens sits above the height datum. The OAK rides five
+                 # centimetres above the fisheye, so without it a thing
+                 # photographed through one and the same thing photographed
+                 # through the other disagree about their height by that much and
+                 # the resolver reads the disagreement as evidence they are
+                 # different things. The offset turns with the platform, so it
+                 # takes the look's tilt. See `oak.rise_of`.
+                 "camera_rise_m": oak.rise_of(
+                     observation.get("camera"),
+                     observation.get("observer_tilt_deg")),
                  # And how far away the depth camera said it was, with what that
                  # reading is worth. Absent on every look the rover took before
                  # it read the depth camera, and on every look since taken
