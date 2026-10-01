@@ -189,17 +189,25 @@ placed thing placed again from them. See
 measurement puts the pan servo 2.4% over on 5-degree steps and the tilt servo
 3.6% over, both ascending.
 
-**What is left is the acceptance measurement.** The baseline that set this to
-`failing` was taken on a driven recording, where half the bearings fell outside
-the 1.5 degrees the resolver expects. Only another driven recording, taken
-through the current envelope and the current gates, can lift it.
+**The acceptance measurement was retaken on 2026-10-01, and it fails.** On a
+drive through the refitted lens and the current gates, 108 looks at six targets
+were compared with the direction to each target's taped position. The median
+error is 4.0 degrees, the 90th percentile 13.5, and only 22 fall within 1.5. **The
+largest term is now the rover's belief about its own heading, not the camera.**
+Where it only turned on the spot, the median error is 6.7 degrees, and at one stop
+every look was out by 8 to 23. Where it drove to the stop first, the median is 3.5.
+A navigation restart in the same run showed the belief 8 degrees out of agreement
+with the rover's own map, with nothing to notice it. Why is not established. See
+[the drive](../progress/2026-10-01-the-room-as-it-stands.md), which says what would
+settle it. Lifting this needs the heading fixed, and then another driven recording.
 
 <a id="r-ws-11"></a>
 ### R-WS-11 — A thing's height above the floor is known
 
 - **State:** open
-- **Blocked by:** the gimbal camera's offset from the SLAM pose is unmeasured —
-  see [../plans/semantic-world-state.md](../plans/semantic-world-state.md)
+- **Blocked by:** heights against the tape pass for one target in three on
+  [the 2026-10-01 drive](../progress/2026-10-01-the-room-as-it-stands.md), behind
+  the bearing and elevation errors of [R-WS-10](#r-ws-10)
 
 Both the rotation and the translation between the OAK and the gimbal camera are
 measured. Since 2026-09-30 the OAK rides the gimbal's rail, and [the rail
@@ -211,10 +219,18 @@ of what blocked this. (On the chassis bracket before it, the board measurement o
 2026-09-07 put it 94 mm below and 43 mm ahead once the OAK lens's 9.6% focal
 length error is taken out of the 87 mm it read.)
 
-What is left is where the gimbal camera itself sits relative to the pose SLAM
-reports. Until that is known, elevation is usable as a relative constraint between
-observations but absolute height above the floor is unavailable, which is why
-elevation can reject a crossing but cannot say a thing is on a table.
+Where the gimbal camera sits relative to the pose SLAM reports is measured too.
+The owner taped it on 2026-10-01: 23.5 cm above the floor at tilt zero, which is the
+constant `locate.CAMERA_HEIGHT_M` already used, and about 2 cm ahead of the lidar's
+spin centre, on the rover's centre line. The pan and tilt pivots sit behind and below
+the lens, so it swings about a centimetre off the centre line within the ±20-degree
+envelope. That is small against any placement error, and nothing models it.
+
+So the blocker is no longer a missing number. It is that the heights do not yet come
+out right. On the same day's drive, the landscape painting's centre came out 0.13 m
+above its taped 1.70 m, but the painting above the cabinet 0.63 m too high and the
+toolbox 0.31 m. Those are the bearing and association errors of
+[R-WS-10](#r-ws-10) and [R-WS-13](#r-ws-13) showing up in the vertical.
 
 <a id="r-ws-12"></a>
 ### R-WS-12 — Bare floor and background are not eligible as things to go and look at
@@ -257,6 +273,13 @@ refusing crops with no picture in them — is not established. The held-out driv
 is what would settle it, and until then nothing should be built to filter a fault
 nobody can currently reproduce.
 
+**It reproduced on 2026-10-01.** Between three and five of the 71 things on that
+drive are a patch with no object in it. Two are strips of floor, one is a single
+look at a floor strip, and two are blown-out windows. Rugs, lamps and the fan are
+excluded. See [the drive](../progress/2026-10-01-the-room-as-it-stands.md). The
+condition above is met, and a filter now has instances to be built and scored
+against.
+
 <a id="r-ws-13"></a>
 ### R-WS-13 — Identity-dependent actions use independently validated associations
 
@@ -277,6 +300,13 @@ by that inspection or any following action. The distinction must be enforced at 
 not inferred from the goal's name. See the
 [M0 decision](../decisions/m0-hypothesis-inspection.md). Neither gate has passed;
 the earlier measurements below retain their original acceptance interpretation.
+
+**M0b failed again on 2026-10-01**, on targets chosen from the room as it stood.
+Three of 71 things are confirmed on full frames to hold different objects: a chair
+holding the tissue box and the door, and two paintings each holding the cabinet or
+other paintings. No target was exactly one clean thing: the cabinet was split three
+ways and the two paintings four and five. See
+[the drive](../progress/2026-10-01-the-room-as-it-stands.md).
 
 Identity came out of the 2026-09-07 review better than the plan assumed: around
 250 decisions were reviewed with no error at or above 0.70 appearance similarity.
@@ -411,10 +441,11 @@ marked as belonging to the map that has gone rather than left looking current.
 <a id="r-ws-16"></a>
 ### R-WS-16 — An observation is only given a direction when the rover's place on the map has been confirmed
 
-- **State:** settled
-- **Evidence:** [2026-09-08 the restart demonstration](../progress/2026-09-08-restart-withholds-directions.md);
-  `python rover_daemon/selftest.py`
-- **How it is met:** `rover_world._world_pose` refuses a direction unless
+- **State:** failing
+- **Broken by:** [2026-10-01, a rover carried by hand](../progress/2026-10-01-the-room-as-it-stands.md):
+  it recorded six regions with directions from a position 2.3 m away from where it
+  stood, and the drift check that noticed could not withdraw it
+- **How it was met until then:** `rover_world._world_pose` refuses a direction unless
   navigation reports both a trusted position and `map_settled`, the offline
   half is covered by `python rover_daemon/selftest.py` — the withholding, and
   that a later confirmation does not give an earlier bearing back — and the
@@ -454,3 +485,17 @@ observation's row is written once and nothing ever puts a pose back onto it, so
 confirming the rover an hour later cannot retroactively validate a bearing
 recorded before the confirmation — which is the trap this requirement names and
 the reason the fix is a gate at capture rather than a filter at read time.
+
+**What broke it is a rover that was carried.** The gate reads two flags,
+`position_trusted` and `map_settled`, and both describe the mapper's state, not
+whether the rover is still where the mapper left it. A rover lifted while parked
+turns no wheel, so nothing tells the mapper that anything happened. On 2026-10-01
+the rover was carried 2.3 m and roughly half a turn. Its next look recorded six
+regions with directions from the old position, and two of them started new things.
+Ninety seconds later the drift check (`nav_map.check_drift`, every five minutes)
+correctly reported that it could not find the rover anywhere near where it thought
+it was. The check is deliberately report-only, so both flags stayed true. The
+smallest fix is to let that verdict withdraw `position_trusted` until a refit. It
+moves nothing, so it keeps the reason the check was made report-only, and the
+capture gate already refuses on that flag. A lift detector would close the window
+before the next check, which can be up to five minutes away.

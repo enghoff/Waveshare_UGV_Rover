@@ -28,13 +28,13 @@ the rover's behaviour that a plan can aim at and a measurement can move.
 |---|---|---|---|---|---|
 | [Safety and authority](requirements/safety.md) | 6 | -- | 5 | 4 | 15 |
 | [Mapping and movement](requirements/navigation.md) | 10 | 1 | 2 | 1 | 14 |
-| [Visual memory](requirements/world-state.md) | 12 | 1 | 3 | -- | 16 |
+| [Visual memory](requirements/world-state.md) | 11 | 2 | 3 | -- | 16 |
 | [Control surface](requirements/control.md) | 10 | -- | -- | -- | 10 |
 | [Host and deployment](requirements/platform.md) | 11 | -- | -- | -- | 11 |
 | [Autonomy and its record](requirements/autonomy.md) | 10 | -- | 2 | -- | 12 |
-| **All** | **59** | **2** | **12** | **5** | **78** |
+| **All** | **58** | **3** | **12** | **5** | **78** |
 
-Currently failing: [R-NAV-6](requirements/navigation.md#r-nav-6), [R-WS-10](requirements/world-state.md#r-ws-10).
+Currently failing: [R-NAV-6](requirements/navigation.md#r-nav-6), [R-WS-10](requirements/world-state.md#r-ws-10), [R-WS-16](requirements/world-state.md#r-ws-16).
 
 <!-- end: requirement summary -->
 

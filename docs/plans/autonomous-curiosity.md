@@ -285,22 +285,16 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 
 ### Owner preparation and next handoff
 
-The owner printed, measured, mounted and lowered the reference as requested. Both
-cameras pass their board-coverage gates.
-The mount was then measured at 0.555 m and confirmed at 0.686 m, using a
-calibration-only 1920 x 1080 OAK preflight that sees all 54 corners without
-changing the normal 640 x 360 colour/depth stream, and it is deployed. The exact
-sequence is in the
-[P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md).
-
-**What is asked of the owner now is one board setup, not a purchase.** Both
-cameras only see the A4 target well between about 0.55 and 0.69 m, so no third
-distance qualifies and the owed clean confirmation is instead a fresh pair at
-those same two distances, turned 20 to 30 degrees off face-on. The rover's own
-headlights at half brightness make that independent of daylight. No calibration
-jig, new sensor, larger print or attempt to remove the measured backlash is
-requested. A later driven acceptance run still needs the owner present in the
-pre-cleared test area.
+**Nothing has to be staged.** On 2026-10-01 the acceptance targets were picked from
+the room as it stood, and the owner's part was a tape measure. There are six
+targets: the bucket, the cabinet, the painting above it, the landscape painting,
+the tissue box and the toolbox. The owner taped each from two walls, and taped the
+lidar's spin centre at a parking spot before the drive and another after it. Claude
+drove. The targets, their taped positions and the wall frame are in
+`captures/m0-2026-10-01/MANIFEST.txt` and can be reused as they stand. The next
+drive needs only fresh parking readings and the owner in the room. The board
+method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
+remains the way to check the OAK's offset on the rail, and is not an M0 criterion.
 
 ### Work
 
@@ -311,39 +305,38 @@ demonstrated pointing envelope and its ascending approach
 gates in the deployed path
 ([the capture gates](../progress/2026-09-07-capture-state-gates.md)), and the
 driven evidence for depth attribution and identity
-([the acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md)). What is
-still ahead:
+([the acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md)). Since
+then, these have landed: depth maps saved beside every frame, regions outside the
+depth camera's view counted and carried to each thing as "never ranged", the
+confirmed-pose gate shown across a navigation restart, and the camera's place on
+the rover taped. The masked-crop collapse test is deployed and still owes a
+held-out pass.
 
-- **Ask the appearance question twice and refuse a look whose score collapses.**
-  A box holding a chair in front of a picture makes the picture resemble an
-  entity of chairs, and removing everything but the object's own pixels is what
-  exposes that. Measured on the recording: refusing a drop of 0.20 or more
-  catches four of four wrong attachments for 25 of 360 correct ones, at 84 ms on
-  a 550 ms look. Freeze the threshold in the run manifest before collecting
-  acceptance data, because it was chosen after seeing those four. Addresses
-  R-WS-13 and M0b. This remedy is already implemented; its remaining work is
-  held-out acceptance, not another implementation of the same gate.
-- **Keep the depth evidence, then test the range remedy.** Sampling the range on
-  the object's own pixels rather than its whole box cannot be tested offline at
-  all today: the recording never saved a depth map. Save each region's depth
-  patch, or the frame's depth map beside its JPEG, before the next drive. The
-  range remedy itself also needs a foreground/background pair inside the depth
-  camera's 43-degree vertical field, which a framed picture on a wall is not.
-- **Refuse or flag a region outside the depth camera's coverage.** It sees the
-  central two thirds of the gimbal's frame; count the refusals and carry "never
-  ranged" to the entity, so a target that can never be ranged is reported rather
-  than silently absent. Addresses criteria 2 and 10.
-- **Make a bare patch ineligible as an inspection goal** without excluding real
-  floor-level and ceiling-level objects. Addresses R-WS-12 and criterion 9.
-- **Demonstrate the confirmed-pose gate on hardware** through one navigation
-  restart, with the images retained. Addresses R-WS-16 and criterion 11.
-- **Take the clean second mount confirmation**, a fresh pair at 0.555 m and
-  0.686 m. Not an M0 criterion; a loose end on a measurement that passed.
-- **Measure where the gimbal camera sits relative to the pose SLAM reports**,
-  which is the half of R-WS-11 still missing and what keeps absolute height above
-  the floor unavailable.
-- **Then a second driven acceptance run**, with the same named targets plus
-  something at the frame edges to exercise the coverage reporting.
+[The drive of 2026-10-01](../progress/2026-10-01-the-room-as-it-stands.md) retook
+the acceptance measurement through the refitted lens and the OAK on the rail, and
+failed every tolerance. It found the next things to fix, in this order:
+
+- **The rover's heading after it turns on the spot.** Against the tape, bearings
+  err by a median of 6.7 degrees where the rover only turned, and 3.5 where it drove
+  first. That is now the largest term in R-WS-10. Measure it on the rover first:
+  turn in steps while parked, and compare the believed heading with the drift
+  check's own search after each step. Then fix the cause, whether that is the gyro
+  scale or the mapper.
+- **A carried rover keeps a confirmed position (R-WS-16, now failing).** Let the
+  drift check's "cannot find the rover" withdraw `position_trusted` until a refit,
+  so that the capture gate refuses directions.
+- **A range from the background on a small near object.** A tissue box 0.95 m away
+  read 2.61 m, and one look placed it 1.77 m out with ±0.17 m claimed. Open the
+  saved depth map for that frame before changing anything: it was the first stop
+  after the depth camera had been off. Ranging on the object's own pixels is the
+  remedy already proposed for this.
+- **Make a bare patch ineligible as an inspection goal (R-WS-12).** It reproduced on
+  the same drive, three to five things in 71, so there are now instances to build
+  and score against. Real floor-level and ceiling-level objects stay eligible.
+- **Identity (R-WS-13, M0b).** This is unchanged, and it is the open research
+  problem; see the [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md)
+  for the next experiments. M0a does not wait on it.
+- **Then another driven acceptance run** on the same six targets and wall frame.
 
 Two rules hold throughout: preserve the recordings as before-change evidence, and
 keep ambiguous evidence unresolved rather than lowering a threshold to raise the
