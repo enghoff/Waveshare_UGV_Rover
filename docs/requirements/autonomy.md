@@ -239,3 +239,12 @@ by R-WS-13. False promotion, movement justified by the hypothesis's supposed fre
 space, or a retry that escapes its budget would each violate this requirement.
 Useful outcomes and unsuccessful travel are measured on fresh physical targets;
 merely making more entity records or taking more pictures is not success.
+
+**Built, and shown in replay on 2026-10-01; no hardware trial yet.** The question
+an inspection asks is whether something stands where a thing's looks crossed,
+because one look cannot carry identity. The daemon enforces each attempt's
+travel, time and attempts against the place, so a renamed thing or a new run
+does not refill them; every attempt is recorded, and nothing acts on which thing
+it was. See [the replay](../progress/2026-10-01-hypothesis-inspection-replay.md),
+[autonomy/README.md](../../autonomy/README.md) and
+[world_state/README.md](../../world_state/README.md).

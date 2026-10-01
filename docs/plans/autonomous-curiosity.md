@@ -339,7 +339,16 @@ failed every tolerance. It found the next things to fix, in this order:
   drive should stop before it looks.
 - **Identity (R-WS-13, M0b).** This is unchanged, and it is the open research
   problem; see the [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md)
-  for the next experiments. M0a does not wait on it.
+  for the next experiments. M0a does not wait on it, and one look cannot carry
+  identity: see the measurement in
+  [the inspection replay](../progress/2026-10-01-hypothesis-inspection-replay.md).
+- **M0a's inspections (R-AUT-12) are built and hold in replay**
+  ([the replay](../progress/2026-10-01-hypothesis-inspection-replay.md)). The
+  question each asks is whether something stands where a thing's looks crossed;
+  the daemon enforces each attempt's travel, time and attempts by place. What is
+  left is the hardware: M3's supervised stop and failure checks, then three
+  supervised M0a runs of at least twenty attempts across ten places, with
+  absent-target cases made above the floor.
 - **Then another driven acceptance run** on the same six targets and wall frame.
 
 Two rules hold throughout: preserve the recordings as before-change evidence, and
