@@ -271,7 +271,11 @@ tested. Not seeing a region is never a contradiction.
 
 A look taken for a check is recorded even if the picture matches the last one,
 keeps its depth map whether or not anything was ranged, and saves the depth
-camera's lens beside it, so the check can be replayed at a desk.
+camera's lens beside it, so the check can be replayed at a desk. The daemon
+takes it holding the camera, wakes the depth camera for it, and aims it: one
+scan is measured against the map before the shutter and the gimbal pans,
+within its calibrated 20 degrees, to put the place in the middle of the picture
+([on the rover](../docs/progress/2026-10-01-hypothesis-check-on-the-rover.md)).
 `bench_inspection.py` replays it over a recording's real looks; see
 [the replay](../docs/progress/2026-10-01-hypothesis-inspection-replay.md).
 
