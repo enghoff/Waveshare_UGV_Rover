@@ -88,7 +88,7 @@ An observation keeps its frame, region, capture time, camera, pose, bearing,
 elevation, uncertainty, optional OAK range, and appearance vectors. It stays
 unplaced until the resolver has enough independent evidence.
 
-**Four conditions take the direction off a look while keeping everything else it
+**Five conditions take the direction off a look while keeping everything else it
 measured.** They are all the same shape -- the picture, the regions and the
 vectors are written down, and what is withheld is the one thing that was not
 measured well enough to keep:
@@ -107,6 +107,20 @@ measured well enough to keep:
   the gimbal's pan campaign actually validated. Past it the servo's gain error
   is unmeasured rather than merely larger, and the store holds looks taken at
   pan 145.
+- a heading that could not be checked against the map
+  ([headingcheck.py](headingcheck.py)). Turning on the spot leaves the rover's
+  heading about 7% of each turn out, so a still look asks the navigator where one
+  scan says the rover is. That is read-only, about a tenth of a second, and never
+  holds a move (`ros_nav` `measure_pose`). The look keeps its pose if the scan
+  agrees, takes the scan's pose if the scan confidently disagrees, and gets no
+  direction if the scan cannot say. A look taken while moving keeps its direction
+  only if the last still check found the heading right and the rover has turned
+  less than 15 degrees since. The check and any correction are written beside
+  the pose as `checked`. See
+  [the measurement](../docs/progress/2026-10-01-heading-after-turning.md),
+  [R-WS-10](../docs/requirements/world-state.md#r-ws-10) and
+  [R-WS-16](../docs/requirements/world-state.md#r-ws-16), since a carried rover's
+  scan fails the check too.
 
 **One condition widens the bearing instead of withholding it**: an angle reached
 from the descending side of the servo's backlash, or by a gimbal that has not

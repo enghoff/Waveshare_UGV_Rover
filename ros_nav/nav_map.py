@@ -137,6 +137,17 @@ import refit
 #: second is far below the minute between saves.
 TICK_S = 1.0
 
+#: The search a look's heading is checked with: half a metre and 45 degrees
+#: around where the rover thinks it is, which is about a tenth of a second on the
+#: Orin. Measured only -- see `measure_pose`.
+MEASURE_WINDOW_M = 0.5
+MEASURE_WINDOW_DEG = 45.0
+
+#: How long that measurement waits for the keeper, which holds the map lock for
+#: the seconds a graph write takes. The answer is "not now" rather than a look
+#: held up behind a save.
+MEASURE_WAIT_S = 0.3
+
 #: How long to wait for the mapper to answer a serialise or a deserialise. Both
 #: hold the mapper's own mutex while they read or write the whole graph, so on a
 #: large map they are seconds rather than milliseconds.
@@ -758,6 +769,40 @@ class NavMap:
                 return answer
         finally:
             self.move_mutex.release()
+
+    def measure_pose(self):
+        """Where one scan says the rover is, near where it thinks it is.
+
+        **Measured and nothing else: it moves nothing, writes nothing and takes
+        no move mutex**, so it can never hold up a move or the stop that ends
+        one. The world state asks it after a still look, to know whether that
+        look's heading can be believed (world_state/headingcheck.py). On
+        2026-10-01 turning on the spot left the heading 7% of every turn out, and
+        this same search found the truth to within 2 degrees of a tape. The
+        navigator itself is not corrected: it corrects itself once the rover
+        drives. An attempt to correct it inside every move held the wheels for
+        fifteen seconds and was reverted the same day.
+
+        Refused while a move is running, because a scan taken on the move and the
+        pose read beside it do not describe the same place. It is never queued
+        behind a graph write: it waits `MEASURE_WAIT_S` for the keeper, then
+        answers that it could not measure.
+        """
+        with self._lock:
+            driving = self.driving
+        if driving:
+            return {"trusted": False,
+                    "why": "the rover is moving, and a scan taken on the move "
+                           "does not describe one place"}
+        if not self.map_lock.acquire(timeout=MEASURE_WAIT_S):
+            return {"trusted": False,
+                    "why": "the map keeper is writing the graph"}
+        try:
+            answer, _fit, _where = self.map_measure(MEASURE_WINDOW_M,
+                                                    MEASURE_WINDOW_DEG)
+        finally:
+            self.map_lock.release()
+        return answer
 
     def drift_due(self):
         """Whether it is time to ask the lidar again.

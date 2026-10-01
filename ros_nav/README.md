@@ -95,6 +95,14 @@ an estimated gyro offset and leaving whatever the estimate was wrong by. The
 check remains, because "the rover cannot tell whether it is wrong" is a separate
 fault from "the rover drifts".
 
+The same search is offered read-only, as the bridge's `measure` op
+(`nav_map.measure_pose`): half a metre and 45 degrees around where the rover
+thinks it is, about a tenth of a second, with no move mutex, refusing a moving
+rover and never waiting behind a graph write. The world state uses it to check a
+still look's heading (world_state/headingcheck.py). Nothing on the navigation side
+acts on the answer. An attempt to correct the rover with it inside every move held
+the wheels for fifteen seconds and was reverted on 2026-10-01.
+
 Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
 treated as current positions.

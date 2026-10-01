@@ -477,9 +477,21 @@ class RoverWorld:
                 self._world_store(), eyes,
                 self._world_capture_oak if through_oak else self._world_capture,
                 self._world_pose, fov_deg=self.camera_fov_deg,
-                reach=self._world_reach, ranger=self._world_ranger())
+                reach=self._world_reach, ranger=self._world_ranger(),
+                measure=self._world_measure)
             self._world_inspector_cache = inspector
         return inspector
+
+    def _world_measure(self) -> dict[str, Any]:
+        """Where one scan says the rover is: the check a still look's heading
+        gets (world_state/headingcheck.py). Read-only on the navigator, and
+        `trusted` false whenever there is no navigator able to answer."""
+        navigator = getattr(self, "nav", None)
+        measure = getattr(navigator, "measure", None)
+        if measure is None:
+            return {"trusted": False,
+                    "why": "this navigator cannot measure the rover against its map"}
+        return measure()
 
     def _world_ranger(self):
         """The depth camera, opened once and kept, or None on a rover with none.

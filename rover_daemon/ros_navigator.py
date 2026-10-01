@@ -61,6 +61,10 @@ PORT = 8773
 # asking three times a second must not stack up behind it. The map is slower
 # because it is tens of kilobytes of grid being compressed.
 STATUS_TIMEOUT_S = 2.0
+#: A heading measurement is a tenth of a second of search plus at most
+#: `nav_map.MEASURE_WAIT_S` behind a graph write; past this the look goes without
+#: a direction rather than waiting.
+MEASURE_TIMEOUT_S = 1.5
 MAP_TIMEOUT_S = 8.0
 STOP_TIMEOUT_S = 3.0
 # Fitting the rover to its map is a tenth of a second of searching and then the
@@ -465,6 +469,23 @@ class RosNavigator:
                 % (self.host, self.port, error))
 
     # --- reading --------------------------------------------------------------
+    def measure(self) -> dict[str, Any]:
+        """Where one scan says the rover is, near where it thinks it is.
+
+        Read-only on the bridge (`nav_map.measure_pose`): it moves nothing and
+        takes no move mutex, so a look asking it can never hold up a move. Shaped
+        like `refit.Fit.as_dict`; `trusted` false, with a reason, whenever it
+        could not measure -- a moving rover, a busy keeper, a bridge too old to
+        have been asked, or one that is down. See world_state/headingcheck.py.
+        """
+        answer = self.ask({"op": "measure"}, MEASURE_TIMEOUT_S)
+        if not answer.get("ok"):
+            return {"trusted": False,
+                    "why": str(answer.get("error") or "the bridge did not measure")}
+        answer.pop("kind", None)
+        answer.pop("ok", None)
+        return answer
+
     def status(self, since_seq: int | None = None) -> dict[str, Any]:
         """Every number the driving half of the rover has, plus the move's own
         commentary, which lives on this side because it is this side that narrates

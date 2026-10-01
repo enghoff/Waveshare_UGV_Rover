@@ -29,6 +29,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from . import headingcheck
 from . import locate
 from . import oak
 from .inspection_ranges import InspectionRanges
@@ -364,7 +365,8 @@ class Inspector(InspectionRanges):
                  fov_deg: float | None = None,
                  source: str = "perception",
                  reach: Callable[[float, float, float], float | None] | None = None,
-                 ranger=None) -> None:
+                 ranger=None,
+                 measure: Callable[[], dict[str, Any] | None] | None = None) -> None:
         self.store = store
         #: The perception sidecar, and the only thing an inspection asks. It is
         #: required rather than optional: an inspector with nothing to look
@@ -373,6 +375,12 @@ class Inspector(InspectionRanges):
         self.eyes = eyes
         self.capture = capture
         self.pose = pose
+        #: Whether each look's heading can be believed, checked against the map
+        #: by the navigator's read-only measurement. None where nothing can
+        #: measure -- a bench, a replay -- and then a look's pose is taken as read,
+        #: as it always was. See headingcheck.py.
+        self.heading = (None if measure is None
+                        else headingcheck.HeadingCheck(measure))
         #: How far the rover could see from a place in a direction, out of the
         #: occupancy grid. Supplied rather than reached for, like the camera and
         #: the pose, because the map belongs to the navigator -- and optional,
@@ -540,6 +548,9 @@ class Inspector(InspectionRanges):
         frame = self._frame()
         after_at = time.time()
         after = self._pose()
+        if self.heading is not None:
+            self.heading.saw(before)
+            self.heading.saw(after)
         if not frame.get("ok"):
             return self._failed("no_frame", str(frame.get("error", "no picture")),
                                 began=began, backend=backend)
@@ -560,6 +571,12 @@ class Inspector(InspectionRanges):
         where, moved, turned, sigma_deg = self._where(
             before, after, before_at=before_at, after_at=after_at,
             taken_at=frame.get("taken_at"))
+        # After the frame is in hand and outside the bracket, so the check's
+        # tenth of a second is never charged to the shutter. Before the gimbal
+        # envelope, which works on whatever pose survives this.
+        checked_note = None
+        if self.heading is not None:
+            where, checked_note = self.heading.judge(where, moved, turned)
         where, sigma_deg, aimed = aimed_where_it_was_calibrated(
             frame.get("pan"), frame.get("pan_approach"), where, sigma_deg)
         # Which camera this picture came from, and where that camera actually
@@ -657,7 +674,8 @@ class Inspector(InspectionRanges):
         # one must leave the measurement untouched.
         settled = self._settle() if settle else {}
         detail = self._measured_detail(look, stored, settled, moved, turned,
-                                       sigma_deg, ranged_note, aimed)
+                                       sigma_deg, ranged_note, aimed,
+                                       checked_note)
         self.store.update_inference(
             inference_id, duration_s=round(time.time() - began, 2), status="ok",
             detail=detail or None, model_id=look.backend,
@@ -765,7 +783,7 @@ class Inspector(InspectionRanges):
 
     def _measured_detail(self, look, stored, settled, moved=0.0,
                          turned=0.0, sigma_deg=None, ranged_note="",
-                         aimed=None) -> str:
+                         aimed=None, checked_note=None) -> str:
         """One sentence a person can act on, in the popup's own column.
 
         The numbers that matter are how many regions were kept, how many got a
@@ -793,6 +811,11 @@ class Inspector(InspectionRanges):
             # `aimed_where_it_was_calibrated`.
             if aimed:
                 why = aimed
+            elif checked_note and stored["placed"] == 0:
+                # The heading check withheld the whole look's direction, which
+                # names what to do about it: stand still, somewhere the scan can
+                # see enough wall. See headingcheck.py.
+                why = checked_note
             elif not (moved or turned):
                 why = "no pose, no gimbal angle, or no field of view"
             elif moved > MOVED_WHILE_LOOKING_M:
@@ -825,6 +848,8 @@ class Inspector(InspectionRanges):
             # from the other side.
             parts.append(f"{aimed}, leaving the bearing good to "
                          f"{max(locate.BEARING_SIGMA_DEG, sigma_deg):.1f} deg")
+        if checked_note and stored["placed"]:
+            parts.append(checked_note)
         if ranged_note:
             parts.append(ranged_note)
         if not settled:

@@ -31,6 +31,7 @@ import sys
 from test_harness import FAIL, PASS, SKIP
 from test_approach import TESTS as APPROACH_TESTS
 from test_cluster import TESTS as CLUSTER_TESTS
+from test_headingcheck import TESTS as HEADINGCHECK_TESTS
 from test_identity import TESTS as IDENTITY_TESTS
 from test_inspect import TESTS as INSPECT_TESTS
 from test_locate import TESTS as LOCATE_TESTS
@@ -43,7 +44,7 @@ from test_search import TESTS as SEARCH_TESTS
 from test_store import TESTS as STORE_TESTS
 
 TESTS = (*STORE_TESTS, *LOCATE_TESTS, *CLUSTER_TESTS, *PERCEIVE_TESTS,
-         *INSPECT_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS,
+         *INSPECT_TESTS, *HEADINGCHECK_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS,
          *OAK_TESTS, *REANCHOR_TESTS, *IDENTITY_TESTS, *RELENS_TESTS)
 
 

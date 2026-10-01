@@ -688,6 +688,20 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
     check("a bridge that is down leaves the observation without a bearing",
           rover._world_pose(), None)
 
+    # The heading check's measurement (world_state/headingcheck.py) asks the
+    # navigator, and a navigator that cannot answer is an untrusted measurement,
+    # never an exception in the middle of a look.
+    class Measuring:
+        _world_measure = rover_world.RoverWorld._world_measure
+
+    measuring = Measuring()
+    measuring.nav = Silent()
+    check("a navigator that cannot measure says so rather than raising",
+          measuring._world_measure()["trusted"], False)
+    measuring.nav = None
+    check("...and so does no navigator at all",
+          measuring._world_measure()["trusted"], False)
+
 
 def test_a_look_taken_before_the_rover_is_placed_never_gets_a_direction() -> None:
     """R-WS-16 end to end: the picture is kept, the bearing is withheld, and the
