@@ -68,6 +68,11 @@ RECORD_LIMIT = 64
 SITUATION_MARK = "last_situation"
 GOAL_MARK = "last_goal"
 COOLED_MARK = "cooled"
+#: One row per hypothesis inspection attempt, appended by the executive when the
+#: attempt ends however it ends. Read whole into every situation so that a place
+#: already answered, or already spent, is refused from the record.
+INSPECTION_MARK = "inspection"
+INSPECTIONS_READ = 500
 
 
 def prepare(store: store_mod.EpisodeStore,
@@ -85,7 +90,18 @@ def prepare(store: store_mod.EpisodeStore,
     here.body["cooled"] = cooling.update(previous, here.body, was_cooled,
                                          now=here.at)
     here.body["previous_goal"] = _loads(store.marked(GOAL_MARK)) or {}
+    here.body["inspections"] = inspections(store)
     return here
+
+
+def inspections(store: store_mod.EpisodeStore) -> list[dict[str, Any]]:
+    """Every inspection attempt the record holds, oldest first."""
+    out = []
+    for row in reversed(store.marks(INSPECTION_MARK, limit=INSPECTIONS_READ)):
+        body = _loads(row["value"])
+        if isinstance(body, dict):
+            out.append({"at": row["at"], **body})
+    return out
 
 
 def _goal_of(preferred: dict[str, Any] | None) -> dict[str, Any]:
@@ -296,6 +312,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Work out what the rover would do next. Decides, never acts.")
     parser.add_argument("--dir", default=None,
                         help="where to keep the record (default ~/.ugv/autonomy)")
+    parser.add_argument("--m0a", action="store_true",
+                        help="run the frozen M0a protocol: hypothesis "
+                             "inspections only (R-AUT-12)")
     parser.add_argument("--no-record", action="store_true",
                         help="print the decision without writing an episode")
     parser.add_argument("--full", action="store_true",
@@ -304,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
 
     store = store_mod.EpisodeStore(args.dir)
     weights = scoring.Weights.load(args.dir)
+    if args.m0a:
+        weights.m0a_protocol = True
     here = situation_mod.Situation.read(client_mod.ReadOnly())
 
     if args.no_record:

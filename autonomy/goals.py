@@ -6,7 +6,10 @@ candidates in the same order for ever -- which is what makes a decision built on
 them replayable, and it is why the situation is read once and passed in rather
 than fetched where it is needed.
 
-Two kinds of goal, which is what Milestone M2 enables:
+Two kinds of goal, which is what Milestone M2 enables. A third,
+`inspect_hypothesis` -- M0a's check that something stands where a placement says
+-- lives in [`hypotheses.py`](hypotheses.py) and is generated only under the M0a
+protocol (`scoring.consider`):
 
 **`explore_frontier`** -- go and stand where the map stops, so the scanner sees
 past it. The choosing is `frontier.py`'s, the same module `explore` ranks with,

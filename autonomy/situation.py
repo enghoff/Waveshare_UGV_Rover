@@ -91,6 +91,13 @@ class Situation:
         return list(self.body.get("entities") or [])
 
     @property
+    def inspections(self) -> list[dict[str, Any]]:
+        """Every hypothesis inspection attempted so far, as `decide.prepare` read
+        them from the record: the case, the place, the map session, the outcome.
+        In the situation so that a refusal to ask again is in the snapshot."""
+        return list(self.body.get("inspections") or [])
+
+    @property
     def world(self) -> dict[str, Any]:
         return dict(self.body.get("world") or {})
 

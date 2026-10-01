@@ -156,6 +156,16 @@ class FakeRover(client.ReadOnly):
         #: it; the ordinary one found three regions and attached one.
         self.inspection: dict = {"ok": True, "regions": 3, "attached": 1,
                                  "placed": 0}
+        #: What a hypothesis check answers, and every check asked for. A look
+        #: taken with no pose is answered the way the real check answers it.
+        self.check_answer: dict = {"ok": True, "outcome": "supported",
+                                   "code": "ranged",
+                                   "why": "a region on the line was ranged there",
+                                   "evidence": {}}
+        self.checked: list[dict] = []
+        #: Whether the next look keeps its pose, as a look whose heading could
+        #: not be checked against the map does not.
+        self.look_has_pose = True
         self.generation = generation
         self.rows = list(rows or [])
         #: The occupancy map, drawn as a picture. None means the mapper has not
@@ -192,11 +202,24 @@ class FakeRover(client.ReadOnly):
         return {"ok": True, "entities": self.entities}
 
     def _world_state_entity(self, arguments):
-        wanted = arguments.get("entity_id")
+        # The daemon names the thing `id`; older checks here said `entity_id`.
+        wanted = arguments.get("id") or arguments.get("entity_id")
         for one in self.entities:
             if one.get("id") == wanted:
-                return {"ok": True, "entity": one}
+                looks = one.get("observation_ids") or list(
+                    range(100, 100 + int(one.get("observation_count") or 0)))
+                return {"ok": True, "entity": one,
+                        "observations": [{"id": n} for n in looks]}
         return {"ok": False, "error": "no such thing"}
+
+    def _world_state_check(self, arguments):
+        self.checked.append(dict(arguments))
+        if not arguments.get("pose"):
+            return {"ok": True, "outcome": "unresolved", "code": "direction",
+                    "why": "the look cannot be pointed: "
+                           + str(arguments.get("withheld") or "no pose"),
+                    "evidence": {}}
+        return dict(self.check_answer)
 
     def _world_state_observations(self, arguments):
         """Newest first, paged the way the daemon pages: below a given row."""
@@ -311,7 +334,9 @@ class FakeRover(client.ReadOnly):
             return {"ok": True, "stopped": True}
         if action == "world_inspect":
             self.looks += 1
-            return dict(self.inspection)
+            pose = self._nav_status({})["pose"] if self.look_has_pose else None
+            return {"frame_id": f"frame-{self.looks}", "pose": pose,
+                    **dict(self.inspection)}
         if self.driving:
             return {"ok": False, "error": "the rover is already driving"}
         self.moves.append(dict(params))
@@ -334,6 +359,14 @@ class FakeRover(client.ReadOnly):
         if why:
             self.driving = False
             self.permission.end_run(why)
+            return why
+        # An inspection's own limit ends the step and not the run, as
+        # `rover_autonomy._autonomy_tick_checked` does on the rover.
+        over = self.permission.inspection_over()
+        if over:
+            doing = self.permission.doing or {}
+            self.permission.limit_reached(str(doing.get("id") or ""), over)
+            self.driving = False
         return why
 
     def arrive(self, reason: str = "arrived", *, at=None) -> None:

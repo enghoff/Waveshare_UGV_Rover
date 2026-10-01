@@ -64,6 +64,7 @@ nothing else.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -72,6 +73,7 @@ from typing import Any, Callable
 import client as client_mod
 import decide as decide_mod
 import events
+import hypotheses
 import mapgrid
 import scoring
 import situation as situation_mod
@@ -259,16 +261,32 @@ class Executive:
                     "why": decision.get("why_nothing")}
 
         candidate = decision["preferred"]["candidate"]
+        inspecting = candidate["type"] == hypotheses.GOAL_TYPE
+        request: dict[str, Any] | None = None
         try:
             self.state = "PLAN"
             plan = self.plan(candidate)
+            if inspecting:
+                request = self.freeze(episode, here, candidate)
             self.state = "EXECUTE"
+            looked: dict[str, Any] = {}
             for step in plan:
-                self.do(episode, step, candidate)
+                looked = self.do(episode, step, candidate)
+            if inspecting:
+                self.state = "CHECK"
+                self.check(episode, request, looked)
             self.state = "EVALUATE"
             after = self.evaluate(episode, here, candidate)
+            if request is not None and request.get("answered"):
+                said = request["answered"]
+                after["what"] = f"{said['outcome']}: {said.get('why')}"
         except Aborted as stop:
             self.state = "ABORT"
+            if request is not None and "answered" not in request:
+                self.answered(episode, request, {
+                    "outcome": "unresolved", "code": stop.code,
+                    "why": f"the attempt ended before it could answer: "
+                           f"{stop.why}"})
             self.give_up(episode, stop)
             return {"episode": episode, "acted": True, "why": stop.why,
                     "outcome": "interrupted"}
@@ -307,6 +325,23 @@ class Executive:
         steps = [drive]
         if candidate["type"] == "improve_geometry":
             steps.append({"action": "world_inspect", "params": {"settle": True}})
+        if candidate["type"] == hypotheses.GOAL_TYPE:
+            # Both steps carry the case and its limits, which is what lets the
+            # daemon count them against the place rather than the goal, and stop
+            # a drive that runs past them. The look is taken fresh, keeps its
+            # depth, and leaves identity to the rover's own settling: deciding
+            # which thing this look belongs to is not this attempt's business.
+            limits = candidate["constraints"].get("inspection")
+            if not isinstance(limits, dict):
+                raise Aborted(f"{candidate['id']} carries no inspection limits",
+                              "no limits")
+            drive["params"]["inspection"] = limits
+            steps.append({"action": "world_inspect",
+                          "params": {"settle": False, "fresh": True,
+                                     "keep_depth": True,
+                                     "tilt_deg": candidate["constraints"].get(
+                                         "tilt_deg"),
+                                     "inspection": limits}})
 
         for step in steps:
             if step["action"] not in permission.ACTIONS:
@@ -368,7 +403,8 @@ class Executive:
             step["action"], params, ok=bool(result.get("ok")),
             result={"action_id": action_id, **{k: v for k, v in result.items()
                     if k in ("note", "detail", "regions", "attached",
-                             "placed", "ranged", "stopped", "going")}},
+                             "placed", "ranged", "stopped", "going",
+                             "frame_id", "pose", "status", "stored")}},
             error=str(result.get("error") or ""),
             duration_s=round(self.now() - began, 2)))
         if not result.get("ok"):
@@ -424,7 +460,10 @@ class Executive:
             "travelled_m": self._travelled(),
             "battery_v": after.battery_v,
         }
-        if candidate["type"] == "improve_geometry":
+        if candidate["type"] == hypotheses.GOAL_TYPE:
+            what = (f"tested whether anything stands where "
+                    f"{candidate['target']}'s looks crossed")
+        elif candidate["type"] == "improve_geometry":
             was = _uncertainty(before, candidate["target"])
             now = _uncertainty(after, candidate["target"])
             measured.update({"placement_uncertainty_before_m": was,
@@ -441,6 +480,114 @@ class Executive:
             what = _said_frontier(was, now)
         self.store.append(episode, events.measured("the attempt", **measured))
         return {"what": what, **measured}
+
+    # --- an inspection's own record --------------------------------------------
+
+    def freeze(self, episode: str, here: situation_mod.Situation,
+               candidate: dict[str, Any]) -> dict[str, Any]:
+        """Write the request down before anything moves (R-AUT-12).
+
+        The claim, its alternatives and the question come from the candidate,
+        which was generated from the snapshot the decision names. The source
+        looks are read now, once, from the world state, and frozen with it: the
+        resolver may attach this attempt's own look to the thing, or merge it
+        away, and the claim being tested must be the one that was asked.
+        """
+        detail = candidate.get("gain_detail") or {}
+        facts = candidate.get("constraints") or {}
+        source: list[int] = []
+        entity = candidate.get("target") or ""
+        if entity:
+            try:
+                got = self.rover.call("world_state_entity", {"id": entity})
+            except client_mod.Unreachable as exc:
+                raise Aborted(str(exc), "connection lost") from exc
+            source = [int(one["id"]) for one in (got.get("observations") or [])
+                      if one.get("id") is not None]
+        request = {
+            "case": facts.get("case") or detail.get("case"),
+            "claim": detail.get("claim"),
+            "claimed_by": entity,
+            "alternatives": detail.get("alternatives"),
+            "question": detail.get("question"),
+            "evidence_needed": detail.get("evidence_needed"),
+            "source": source,
+            "viewpoint": facts.get("goal"),
+            "tilt_deg": facts.get("tilt_deg"),
+            "patch_fits": detail.get("patch_fits"),
+            "limits": (facts.get("inspection") or {}).get("limits"),
+            "attempt": int(facts.get("case_attempts") or 0) + 1,
+            "map_session": here.map_session,
+            "map_id": here.nav.get("map_id"),
+        }
+        self.store.append(episode, events.inspection(
+            str(request["case"]), "request", refs=candidate.get("refs") or (),
+            **{k: v for k, v in request.items() if k != "case"}))
+        return request
+
+    def check(self, episode: str, request: dict[str, Any],
+              looked: dict[str, Any]) -> dict[str, Any]:
+        """Ask whether the look shows the claim, and record what it answers.
+
+        A read, not an act: `world_state_check` reads the stored look, its depth
+        and the frozen source looks, and decides nothing about identity. A look
+        whose direction was withheld goes to the check anyway, which answers
+        unresolved and says why -- that is an attempt with an answer, not one
+        that failed.
+        """
+        frame_id = looked.get("frame_id")
+        if not frame_id:
+            return self.answered(episode, request, {
+                "outcome": "unresolved", "code": "no look",
+                "why": "the look recorded no picture: "
+                       + str(looked.get("detail") or looked.get("status")
+                             or "nothing said why")})
+        pose = looked.get("pose")
+        try:
+            got = self.rover.call("world_state_check", {
+                "frame_id": frame_id, "claim": request["claim"],
+                "source": request["source"], "pose": pose,
+                "withheld": "" if pose else str(looked.get("detail") or
+                                                "the look kept no pose")})
+        except client_mod.Unreachable as exc:
+            raise Aborted(str(exc), "connection lost") from exc
+        if not got.get("ok"):
+            return self.answered(episode, request, {
+                "outcome": "unresolved", "code": "check failed",
+                "why": f"the check could not be made: {got.get('error')}"})
+        return self.answered(episode, request, {
+            "outcome": got.get("outcome"), "code": got.get("code"),
+            "why": got.get("why"), "frame_id": frame_id,
+            "evidence": got.get("evidence")})
+
+    def answered(self, episode: str, request: dict[str, Any],
+                 result: dict[str, Any]) -> dict[str, Any]:
+        """Record an attempt's result and spend it against its place.
+
+        Every attempt ends here, whatever ended it, which is what makes "every
+        attempt is recorded" a property of the code rather than of the run: a
+        refusal, a stop and a lost connection are attempts with an unresolved
+        answer, and they count against the case like any other.
+        """
+        outcome = result.get("outcome")
+        if outcome not in events.INSPECTION_OUTCOMES:
+            result = {**result, "outcome": "unresolved",
+                      "why": f"the check answered {outcome!r}, which is not an "
+                             f"answer: {result.get('why')}"}
+        self.store.append(episode, events.inspection(
+            str(request["case"]), "result", **result))
+        claim = request.get("claim") or {}
+        self.store.mark(decide_mod.INSPECTION_MARK, json.dumps({
+            "case": request["case"], "episode": episode,
+            "target": {"x_m": claim.get("x_m"), "y_m": claim.get("y_m")},
+            "map_session": request.get("map_session"),
+            "map_id": request.get("map_id"),
+            "claimed_by": request.get("claimed_by"),
+            "attempt": request.get("attempt"),
+            "outcome": result["outcome"], "code": result.get("code")}),
+            at=self.now())
+        request["answered"] = result
+        return result
 
     def give_up(self, episode: str, stop: Aborted) -> None:
         """Close an episode that did not finish, having stopped the rover.
@@ -638,12 +785,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--turns", type=int, default=None,
                         help="stop after this many goals (default: until the "
                              "run ends)")
+    parser.add_argument("--m0a", action="store_true",
+                        help="run the frozen M0a protocol: hypothesis "
+                             "inspections only (R-AUT-12)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8769)
     args = parser.parse_args(argv)
 
     store = store_mod.EpisodeStore(args.dir)
     weights = scoring.Weights.load(args.dir)
+    if args.m0a:
+        weights.m0a_protocol = True
     rover = client_mod.Acting(args.host, args.port)
     executive = Executive(store, rover, weights)
 

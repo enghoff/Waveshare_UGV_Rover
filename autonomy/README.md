@@ -259,6 +259,41 @@ the battery floor — or a person stopping the rover, or the daemon noticing tha
 nothing has renewed the lease. The first two end it from outside this loop
 entirely; the third is what happens if this process is killed mid-drive.
 
+## Checking a hypothesis (M0a)
+
+    ssh orin 'cd ~/ugv/autonomy && python3 executive.py --m0a'
+
+`inspect_hypothesis` is M0a's goal type
+([R-AUT-12](../docs/requirements/autonomy.md#r-aut-12)), in
+[`hypotheses.py`](hypotheses.py). It exists only under the frozen M0a protocol:
+`--m0a`, or `m0a_protocol` in the weights, generates inspections and refuses
+every other kind of goal; without it no inspection is generated at all.
+
+**Every placed thing is a hypothesis, and the claim tested is a place.** The
+claim is that something stands where its looks crossed, to within its
+uncertainty, and the question is whether depth finds it there from a viewpoint
+chosen on the map: reachable over free floor, with a clear line in the scan
+plane, 1.0 to 1.6 m away, never within the claim's uncertainty and half a metre
+of it, facing it, at whichever of the two calibrated tilts shows it. Which thing
+it is, is not asked; one look cannot answer that, and nothing here acts on it.
+
+An attempt freezes its request in the episode before anything moves: the claim,
+its alternatives, the question, the source looks read from the world state, the
+viewpoint and the limits. It then drives with the case and its limits attached,
+takes a fresh look that keeps its depth, asks `world_state_check`, and records
+the result as supported, contradicted or unresolved. A refusal, a stop, a limit
+or a lost connection is an attempt with an unresolved result. Every attempt is
+appended to a ledger of places, which the next decision reads: a place answered
+is not asked again, and a place with two attempts is refused. The ledger, like
+the daemon, matches by place within half a metre, so a renamed or merged thing
+lands on the attempts already spent.
+
+**What is proven is replay, not the rover.** The fake rover holding the real
+permission rules carries attempts through refusal, a stale map, a look that
+cannot be pointed, a drive stopped at its travel limit, and a renamed thing, and
+the check has been replayed over the real looks of two drives. No inspection has
+driven this rover; M0a's supervised runs are owed.
+
 ## How a decision reads
 
 ```text
@@ -379,6 +414,7 @@ else.
 | [`situation.py`](situation.py) | one reading of the rover: everything a decision may look at |
 | [`mapgrid.py`](mapgrid.py) | the occupancy map, and the rover's own frontier chooser reading it |
 | [`goals.py`](goals.py) | what could usefully be done next, and what each would cost |
+| [`hypotheses.py`](hypotheses.py) | which placed things to check are really there, and from where (M0a) |
 | [`scoring.py`](scoring.py) | what each is worth, what refuses it, and which one wins |
 | [`cooling.py`](cooling.py) | what is not worth looking at again just now, and when that lapses |
 | [`decide.py`](decide.py) | one deliberation, recorded; `python3 decide.py` says what it would do |

@@ -35,6 +35,7 @@ from test_decide import TESTS as DECIDE_TESTS
 from test_executive import TESTS as EXECUTIVE_TESTS
 from test_execution_regressions import TESTS as EXECUTION_REGRESSIONS
 from test_goals import TESTS as GOALS_TESTS
+from test_hypotheses import TESTS as HYPOTHESES_TESTS
 from test_recorder import TESTS as RECORDER_TESTS
 from test_refs import TESTS as REFS_TESTS
 from test_replay import TESTS as REPLAY_TESTS
@@ -50,7 +51,7 @@ TESTS = (*REFS_TESTS, *STORE_TESTS, *REPLAY_TESTS, *SUMMARY_TESTS,
          *RECORDER_TESTS, *RETENTION_TESTS, *BUILDS_TESTS,
          *REVIEW_TESTS, *SITUATION_TESTS, *GOALS_TESTS, *SCORING_TESTS,
          *COOLING_TESTS, *DECIDE_TESTS, *SCENARIO_TESTS,
-         *EXECUTIVE_TESTS, *EXECUTION_REGRESSIONS)
+         *EXECUTIVE_TESTS, *EXECUTION_REGRESSIONS, *HYPOTHESES_TESTS)
 
 
 def main() -> int:

@@ -48,6 +48,7 @@ ALLOWED = frozenset({
     "world_state_entity",        # one thing in detail
     "world_state_frame",         # a stored picture, as base64
     "world_building",            # whether the rover is looking, and how often
+    "world_state_check",         # whether one stored look shows a claimed thing
     "nav_status",                # every number the driving loop has
     "nav_grid",                  # the occupancy map, as numbers rather than a picture
     "battery",                   # volts, for the measured record

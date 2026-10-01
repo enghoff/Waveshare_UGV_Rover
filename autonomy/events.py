@@ -44,6 +44,11 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "world_change": ("what",),
     # Timing, travel and battery, whichever of them existed.
     "measured": ("what",),
+    # A hypothesis inspection (R-AUT-12), twice per attempt: the request as it
+    # was frozen before anything moved -- the claim, its alternatives, the
+    # question, the source looks, the viewpoint and the limits -- and the
+    # result, with the outcome and the evidence behind it. `stage` says which.
+    "inspection": ("case", "stage"),
     # Free text, and the only kind a person is expected to write by hand. Also
     # what a correction is: set `corrects` and say what was wrong.
     "note": ("text",),
@@ -174,6 +179,23 @@ def measured(what: str, **values: Any) -> Event:
     body: dict[str, Any] = {"what": what}
     body.update({k: v for k, v in values.items() if v is not None})
     return make("measured", body)
+
+
+#: The outcomes an inspection's result may record. Nothing else: an attempt
+#: refused, stopped or failed is `unresolved`, with its reason beside it.
+INSPECTION_OUTCOMES = ("supported", "contradicted", "unresolved")
+
+
+def inspection(case: str, stage: str, *, refs: Iterable[str] = (),
+               **body: Any) -> Event:
+    """One half of an inspection: `request` before it moves, `result` after."""
+    if stage not in ("request", "result"):
+        raise ValueError(f"an inspection's stage is request or result, not "
+                         f"{stage!r}")
+    if stage == "result" and body.get("outcome") not in INSPECTION_OUTCOMES:
+        raise ValueError(f"an inspection's outcome must be one of "
+                         f"{INSPECTION_OUTCOMES}, not {body.get('outcome')!r}")
+    return make("inspection", {"case": case, "stage": stage, **body}, refs=refs)
 
 
 def note(text: str, *, corrects: int | None = None,

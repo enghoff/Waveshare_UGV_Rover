@@ -51,6 +51,7 @@ from typing import Any
 
 import cooling
 import goals as goals_mod
+import hypotheses
 from situation import Situation
 
 # The daemon's own permission rules, so that a candidate this component refuses
@@ -97,7 +98,7 @@ class Weights:
     __slots__ = ("version", "purpose", "w_time", "w_travel", "w_energy",
                  "switching_cost", "min_gain", "room_m2",
                  "useful_uncertainty_m", "time_scale_s", "travel_scale_m",
-                 "battery_floor_v", "geofence", "source")
+                 "battery_floor_v", "geofence", "m0a_protocol", "source")
 
     def __init__(self, **fields: Any) -> None:
         for name, value in DEFAULTS.items():
@@ -144,11 +145,11 @@ class Weights:
 DEFAULTS: dict[str, Any] = {
     # Bumped whenever anything below changes, so that two decisions scored
     # differently can be told apart in the record without diffing them.
-    "version": "1",
+    "version": "2",
 
     # Per goal type, and 1.0 everywhere until the owner declares a purpose.
     "purpose": {"default": 1.0, "explore_frontier": 1.0,
-                "improve_geometry": 1.0},
+                "improve_geometry": 1.0, "inspect_hypothesis": 1.0},
 
     # What a minute of the rover's time and ten metres of its driving are worth
     # against a whole unit of knowledge. Both at 0.3 so that a goal has to be
@@ -200,6 +201,14 @@ DEFAULTS: dict[str, Any] = {
     # Phase 3 arrives it is `{"x_m", "y_m", "radius_m"}` or a `{"min_x_m", ...}`
     # box, and the veto below is already written against both.
     "geofence": None,
+
+    # Whether this is the frozen M0a protocol (R-AUT-12). Off, a hypothesis
+    # inspection is generated and refused, so the record says what the rover
+    # would have checked; on, only inspections are eligible, because M0a's
+    # trials count inspection attempts and an exploration in among them would
+    # be movement nobody asked the protocol for. The plan says only that
+    # protocol may exercise this path before M0a passes.
+    "m0a_protocol": False,
 }
 
 DEFAULT = Weights()
@@ -292,6 +301,41 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
     if cool:
         out.append({"veto": "cooling off", "why": str(cool.get("why") or
                                                       "recently got nowhere")})
+    out.extend(_inspection_vetoes(candidate, weights))
+    return out
+
+
+def _inspection_vetoes(candidate: goals_mod.Candidate,
+                       weights: Weights) -> list[dict[str, str]]:
+    """Which goals the M0a protocol allows, and when a place is not asked again.
+
+    **A place already answered is not asked again**: re-answering a resolved
+    question is not another success, and the plan says so. A place whose
+    attempts are spent is refused here as well as by the daemon, so that the
+    record says so before anything is dispatched.
+    """
+    out: list[dict[str, str]] = []
+    inspecting = candidate.type == hypotheses.GOAL_TYPE
+    if inspecting and not weights.m0a_protocol:
+        out.append({"veto": "inspections are off",
+                    "why": "only the frozen M0a protocol may test a hypothesis "
+                           "by moving, until M0a passes"})
+    if weights.m0a_protocol and not inspecting:
+        out.append({"veto": "the M0a protocol",
+                    "why": "the M0a protocol runs hypothesis inspections and "
+                           "nothing else"})
+    if not inspecting:
+        return out
+    facts = candidate.constraints
+    if facts.get("case_answered"):
+        out.append({"veto": "already answered",
+                    "why": f"this place was already found "
+                           f"{facts['case_answered']}, and answering it again "
+                           f"would not be another answer"})
+    if int(facts.get("case_attempts") or 0) >= hypotheses.ATTEMPTS:
+        out.append({"veto": "attempts spent",
+                    "why": f"this place has had {facts['case_attempts']} "
+                           f"inspection attempts, which is all it is allowed"})
     return out
 
 
@@ -449,6 +493,13 @@ def _gain(candidate: goals_mod.Candidate, weights: Weights
         note = (f"{value:.2f} m taken off where the thing is, counted against "
                 f"the {float(weights.useful_uncertainty_m):.2f} m tolerance the "
                 f"acceptance run declared")
+    elif candidate.gain_kind == "hypothesis_doubt":
+        # Already a unit: one for a place nothing has checked, a half for one
+        # whose only attempt could not answer, and half again for a viewpoint
+        # from which the check could confirm the claim but never refute it.
+        gain = max(0.0, min(1.0, float(value)))
+        note = (f"{value:.2f} of a unit of doubt about whether anything stands "
+                f"where the looks crossed")
     else:                                                      # pragma: no cover
         return 0.0, f"no scale is declared for {candidate.gain_kind}"
 
@@ -477,8 +528,14 @@ def consider(situation: Situation, weights: Weights = DEFAULT, *,
     when it would have chosen nothing -- the reason, which is a different fact
     from "there was nothing to choose".
     """
-    found = list(goals_mod.generate(situation)
-                 if candidates is None else candidates)
+    # Hypothesis inspections are generated only under the M0a protocol, which
+    # is the only thing allowed to carry one out before M0a passes; outside it
+    # they would be a dozen refusals in every shadow decision saying nothing.
+    if candidates is None:
+        candidates = goals_mod.generate(situation)
+        if weights.m0a_protocol:
+            candidates = [*candidates, *hypotheses.generate(situation)]
+    found = list(candidates)
     shut = gate(situation, weights, authority=authority)
 
     ranked = []
