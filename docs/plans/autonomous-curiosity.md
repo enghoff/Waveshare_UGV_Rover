@@ -321,16 +321,14 @@ failed every tolerance. It found the next things to fix, in this order:
   first. That is now the largest term in R-WS-10. It was
   [measured the same day](../progress/2026-10-01-heading-after-turning.md): the map
   over-counts every turn by about 7%, and a refit takes the heading back to within 2
-  degrees of the tape. The owner agreed to the rover refitting its own heading in a
-  narrow window after turning, and that is
-  [deployed and within 2 degrees of the tape](../progress/2026-10-01-heading-check-on-the-rover.md).
-  Left: a corrected turn costs about 15 s, and near a wall the check is often refused.
-  Finding why slam_toolbox gets turns wrong in the first place would remove both.
-- **A carried rover keeps a confirmed position (R-WS-16, now failing).** The drift
-  check's doubt now withholds bearings until a narrow check confirms the pose,
-  deployed with the heading check. It has not yet been shown on a carried rover. A
-  lift detector would close the up-to-five-minute window before the drift check
-  runs.
+  degrees of the tape. A refit inside each move held the wheels for 15 s and was
+  [rolled back](../progress/2026-10-01-heading-check-rolled-back.md). What replaces it
+  belongs in the world state's path: measure the heading in a fraction of a second
+  once the rover is still, then correct or withhold that look's direction, never
+  moving the rover or blocking a command.
+- **A carried rover keeps a confirmed position (R-WS-16, now failing).** The same
+  measure-only check covers it: a look whose pose the scan does not confirm gets no
+  direction.
 - **A range from the background on a small near object.** A tissue box 0.95 m away
   read 2.61 m, and one look placed it 1.77 m out with ±0.17 m claimed. Open the
   saved depth map for that frame before changing anything: it was the first stop
