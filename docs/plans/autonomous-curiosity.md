@@ -202,8 +202,8 @@ envelope. The current 1.5-degree bearing uncertainty is not an accuracy demand o
 the hardware. Finite backlash, flex and settling variation may remain; correcting
 the bias and representing those limits honestly is a valid outcome.
 
-This phase addresses R-WS-10 (bearing uncertainty), R-WS-11 (geometry), R-WS-12
-(background eligibility), R-WS-13 (identity-dependent actions), R-AUT-12
+This phase addresses R-WS-10 (bearing uncertainty), R-WS-11 (geometry), R-WS-13
+(identity-dependent actions), R-AUT-12
 (bounded hypothesis inspection) and R-WS-16
 (confirmed capture pose). None is marked settled by this plan revision.
 
@@ -337,9 +337,6 @@ failed every tolerance. It found the next things to fix, in this order:
   turning are [now dropped](../progress/2026-10-01-ranges-while-turning.md). The
   next drive's manifest measures the range tolerance over still looks, and the
   drive should stop before it looks.
-- **Make a bare patch ineligible as an inspection goal (R-WS-12).** It reproduced on
-  the same drive, three to five things in 71, so there are now instances to build
-  and score against. Real floor-level and ceiling-level objects stay eligible.
 - **Identity (R-WS-13, M0b).** This is unchanged, and it is the open research
   problem; see the [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md)
   for the next experiments. M0a does not wait on it.
@@ -380,8 +377,12 @@ Both gates require:
    placement. Unconfirmed poses cannot give observations usable directions, nor
    can later confirmation restore them retrospectively. Replay and hardware
    restart/refit checks retain the images and withhold affected bearings (R-WS-16);
-5. floor/background patches cannot become object-inspection goals (R-WS-12).
-   Deliberate geometric coverage remains a distinct goal type;
+5. no longer a condition: bare floor and background patches
+   ([R-WS-12](../requirements/world-state.md#r-ws-12)) were
+   [taken out of P0](../decisions/bare-patches-are-not-a-p0-gate.md) on
+   2026-10-01, because no available rule keeps them all out and an attempt on one
+   is already bounded by M0a. Deliberate geometric coverage remains a distinct
+   goal type;
 6. the deployed capture, goal and dispatch paths enforce the accepted envelope.
    A hypothesis never certifies free space, route safety or movement authority.
    Existing daemon/Nav2, stop, permission, battery and physical-area requirements

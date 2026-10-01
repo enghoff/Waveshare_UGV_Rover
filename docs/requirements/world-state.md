@@ -288,6 +288,14 @@ excluded. See [the drive](../progress/2026-10-01-the-room-as-it-stands.md). The
 condition above is met, and a filter now has instances to be built and scored
 against.
 
+**It is not a condition of P0.** No rule tried the same day kept every bare
+patch out without also losing real things; the best caught four of five held-out
+patches and excluded four real ones. The owner
+[took it out of P0](../decisions/bare-patches-are-not-a-p0-gate.md) on
+2026-10-01, since an attempt on a bare patch is already bounded by
+[R-AUT-12](autonomy.md#r-aut-12) and real objects should far outnumber them.
+It stays open, with that record saying what would bring it back.
+
 <a id="r-ws-13"></a>
 ### R-WS-13 — Identity-dependent actions use independently validated associations
 
