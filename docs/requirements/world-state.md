@@ -197,9 +197,17 @@ largest term is now the rover's belief about its own heading, not the camera.**
 Where it only turned on the spot, the median error is 6.7 degrees, and at one stop
 every look was out by 8 to 23. Where it drove to the stop first, the median is 3.5.
 A navigation restart in the same run showed the belief 8 degrees out of agreement
-with the rover's own map, with nothing to notice it. Why is not established. See
-[the drive](../progress/2026-10-01-the-room-as-it-stands.md), which says what would
-settle it. Lifting this needs the heading fixed, and then another driven recording.
+with the rover's own map, with nothing to notice it. See
+[the drive](../progress/2026-10-01-the-room-as-it-stands.md).
+
+**The same afternoon the heading error was measured on its own, and a remedy shown.**
+Turning only, against the tape, the map over-counts every turn by about 7%, so two
+circles put the heading 43 degrees out. A scan-to-map refit took three checkable
+cases from 22-24 degrees to 0.9-1.7. See
+[the turning measurement](../progress/2026-10-01-heading-after-turning.md). Its
+cause is not settled. Lifting this needs a look's heading checked since the last
+turn, which that entry describes two ways of doing, and then another driven
+recording.
 
 <a id="r-ws-11"></a>
 ### R-WS-11 — A thing's height above the floor is known

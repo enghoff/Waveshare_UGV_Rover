@@ -318,10 +318,14 @@ failed every tolerance. It found the next things to fix, in this order:
 
 - **The rover's heading after it turns on the spot.** Against the tape, bearings
   err by a median of 6.7 degrees where the rover only turned, and 3.5 where it drove
-  first. That is now the largest term in R-WS-10. Measure it on the rover first:
-  turn in steps while parked, and compare the believed heading with the drift
-  check's own search after each step. Then fix the cause, whether that is the gyro
-  scale or the mapper.
+  first. That is now the largest term in R-WS-10. It was
+  [measured the same day](../progress/2026-10-01-heading-after-turning.md): the map
+  over-counts every turn by about 7%, and a refit takes the heading back to within 2
+  degrees of the tape. What remains is to give a look a direction only from a heading
+  checked since the last turn. The owner has to decide whether the rover may refit
+  its own heading in a narrow window after turning, which reverses the code's choice
+  that only a person refits. The cause, rotation-skewed scans or the gyro scale, is
+  worth finding, but P0 does not wait on it.
 - **A carried rover keeps a confirmed position (R-WS-16, now failing).** Let the
   drift check's "cannot find the rover" withdraw `position_trusted` until a refit,
   so that the capture gate refuses directions.
