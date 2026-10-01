@@ -331,11 +331,12 @@ failed every tolerance. It found the next things to fix, in this order:
 - **A carried rover keeps a confirmed position (R-WS-16, now failing).** The same
   measure-only check covers it: a look whose pose the scan does not confirm gets no
   direction.
-- **A range from the background on a small near object.** A tissue box 0.95 m away
-  read 2.61 m, and one look placed it 1.77 m out with ±0.17 m claimed. Open the
-  saved depth map for that frame before changing anything: it was the first stop
-  after the depth camera had been off. Ranging on the object's own pixels is the
-  remedy already proposed for this.
+- **A range from the background on a small near object.** The tissue box's 2.61 m
+  was read off a depth frame the rover had turned 17 degrees away from, and all six
+  wrong target ranges that morning came from turning looks. Ranges taken while
+  turning are [now dropped](../progress/2026-10-01-ranges-while-turning.md). The
+  next drive's manifest measures the range tolerance over still looks, and the
+  drive should stop before it looks.
 - **Make a bare patch ineligible as an inspection goal (R-WS-12).** It reproduced on
   the same drive, three to five things in 71, so there are now instances to build
   and score against. Real floor-level and ceiling-level objects stay eligible.
