@@ -737,6 +737,10 @@ class Handler(socketserver.StreamRequestHandler):
                 outcome = node.goto((float(request["x_m"]), float(request["y_m"])),
                                     request.get("yaw_deg"), say,
                                     **({"guard": guard} if guard is not None else {}))
+            # Before the mutex goes, so the caller's next move cannot be refused
+            # as busy by a check it did not ask for, and the look it takes next
+            # has a heading checked against the map. See nav_map.check_pose.
+            outcome = _with_pose_check(node, outcome)
         finally:
             node.move_mutex.release()
         outcome["travelled_m"] = round(float(outcome.get("travelled_m", 0.0)), 3)
@@ -759,6 +763,24 @@ def _maybe(value):
     """A float the caller may have left out. None stays None: every one of these
     means "use what refit.py measured", and a zero would mean something else."""
     return None if value is None else float(value)
+
+
+def _with_pose_check(node, outcome):
+    """The move's outcome, with how the pose check after it went, if one ran.
+
+    A check that fails outright is reported in the outcome and never replaces
+    it: the move has already happened, and losing what it did to a fault in the
+    check that followed would be the worse of the two errors.
+    """
+    try:
+        checked = node.check_pose()
+    except Exception as error:                      # the move still happened
+        checked = {"confirmed": False,
+                   "why": "the check failed: %s: %s"
+                          % (type(error).__name__, error)}
+    if checked is not None:
+        outcome = dict(outcome, pose_check=checked)
+    return outcome
 
 
 class Server(socketserver.ThreadingTCPServer):

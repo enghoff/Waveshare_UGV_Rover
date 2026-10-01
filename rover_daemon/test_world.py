@@ -613,15 +613,19 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
             pose = (0.0, 0.0, 0.0)
 
         def __init__(self, trusted=True, pose=None, map_id="map-one",
-                     settled=True):
+                     settled=True, checked=True):
             self._trusted = trusted
             self._pose = pose
             self._map_id = map_id
             self._settled = settled
+            self._checked = checked
 
         def status(self):
-            return {"position_trusted": self._trusted, "pose": self._pose,
-                    "map_id": self._map_id, "map_settled": self._settled}
+            answer = {"position_trusted": self._trusted, "pose": self._pose,
+                      "map_id": self._map_id, "map_settled": self._settled}
+            if self._checked is not None:
+                answer["pose_checked"] = self._checked
+            return answer
 
     class Asking:
         _world_pose = rover_world.RoverWorld._world_pose
@@ -668,6 +672,24 @@ def test_a_world_observation_takes_the_live_pose_and_no_other() -> None:
                     settled=False)
     check("an unconfirmed place on a restored map gives no direction",
           rover._world_pose(), None)
+
+    # **A settled map and a heading that has since gone wrong.** Measured on
+    # 2026-10-01: turning on the spot leaves the rover 7% of every turn out, and
+    # a rover carried by hand stood 2.3 m from where it believed, with the map
+    # settled throughout. The navigator says whether it has checked the pose
+    # against the map since either could have happened. R-WS-10, R-WS-16.
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0},
+                    checked=False)
+    check("a pose not checked since the rover turned gives no direction",
+          rover._world_pose(), None)
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0},
+                    checked=None)
+    check("...and a navigator that does not say counts as unchecked",
+          rover._world_pose(), None)
+    rover.nav = Nav(True, {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0},
+                    checked=True)
+    check("...while a checked pose on a settled map is given as it is",
+          rover._world_pose(), {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0})
 
     class Silent:
         """A navigator too old to have been asked this question."""
@@ -722,7 +744,7 @@ def test_a_look_taken_before_the_rover_is_placed_never_gets_a_direction() -> Non
 
         def status(self, since_seq=None):
             return {"position_trusted": True, "map_id": self.map_id,
-                    "map_settled": self.settled,
+                    "map_settled": self.settled, "pose_checked": True,
                     "pose": {"x_m": 3.25, "y_m": -1.5, "heading_deg": 44.0}}
 
     with tempfile.TemporaryDirectory() as directory:
@@ -893,7 +915,7 @@ def test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map() -> None:
         def status(self):
             return {"position_trusted": self._pose is not None,
                     "pose": self._pose, "map_id": "map-one",
-                    "map_settled": True}
+                    "map_settled": True, "pose_checked": True}
 
         def ask(self, request, timeout_s):
             return payload

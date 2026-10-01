@@ -477,6 +477,15 @@ class NavExplore:
                 # does not, and signed addition reports a rover that turned left
                 # ninety degrees and then right ninety as having turned nowhere.
                 turned += abs(float(outcome.get("turned_deg") or 0.0))
+                # Between goals, not only at the end: an explore is one move of
+                # many goals, and the rover's looking does not wait for it to end.
+                # Without this every look after the first turn of a run would go
+                # without a direction. See nav_map.check_pose.
+                try:
+                    self.check_pose()
+                except Exception as error:      # exploring goes on regardless
+                    self.get_logger().warn("pose check between goals: %s: %s"
+                                           % (type(error).__name__, error))
                 reason = outcome.get("reason")
                 if reason == "arrived":
                     arrived += 1
