@@ -61,6 +61,8 @@ DEPTH_TICK_S = 0.5
 #: again, so a stopped service is not connected to twice a second for the life
 #: of the daemon.
 DEPTH_RETRY_S = 30.0
+#: How often a look waiting for the camera to wake asks whether it has.
+DEPTH_WAKE_POLL_S = 0.25
 
 
 class RoverDepth:
@@ -72,6 +74,9 @@ class RoverDepth:
     _depth_on: bool | None = None
     _depth_tried_at: float = 0.0
     _depth_error: str = ""
+    #: Until when a look that needs depth has asked for the camera to stay on,
+    #: whatever the wheels say. See `depth_wake`.
+    _depth_hold_until: float = 0.0
 
     def _depth_ranger(self):
         """The depth camera's client, or None on a rover without the component.
@@ -129,7 +134,7 @@ class RoverDepth:
         if wheels is None:
             return
         now = time.monotonic()
-        want = now - wheels < DEPTH_IDLE_OFF_S
+        want = now - wheels < DEPTH_IDLE_OFF_S or now < self._depth_hold_until
         if want is self._depth_on:
             return
         if self._depth_error and now - self._depth_tried_at < DEPTH_RETRY_S:
@@ -142,6 +147,35 @@ class RoverDepth:
         self._depth_error = power.error
         if not power.error:
             self._depth_on = want
+
+    def depth_wake(self, wait_s: float) -> str:
+        """Switch the camera on for a look that needs depth, and wait until it is.
+
+        A hypothesis check's look keeps its depth map, and on a rover that has
+        stood still for half a minute the camera is off and would answer
+        nothing. So it is switched on here, held on for the rule's own half a
+        minute so that the next tick does not undo it, and waited for until it
+        says `on` rather than `waking`. Returns '' when it is ready, or the
+        sentence saying why not; the look goes ahead either way, and a look with
+        no depth is a check that answers unresolved.
+        """
+        self._depth_hold_until = time.monotonic() + DEPTH_IDLE_OFF_S
+        ranger = self._depth_ranger()
+        if ranger is None:
+            return "this rover has no depth camera component installed"
+        power = ranger.set_power(True)
+        if power.error:
+            return f"the depth camera would not switch on: {power.error}"
+        self._depth_on = True
+        until = time.monotonic() + wait_s
+        while True:
+            power = ranger.power()
+            if not power.error and power.state == "on":
+                return ""
+            if time.monotonic() >= until:
+                return (f"the depth camera was still "
+                        f"{power.state or power.error} after {wait_s:.0f} s")
+            time.sleep(DEPTH_WAKE_POLL_S)
 
     def _tool_get_depth_power(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """Whether the depth camera is on, off, or still waking up.

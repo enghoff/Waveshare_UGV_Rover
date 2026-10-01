@@ -86,6 +86,44 @@ def test_one_look_is_read_back_whole_with_its_vectors() -> None:
         store.close()
 
 
+def test_a_check_look_takes_the_camera_before_it_tilts() -> None:
+    """Found on the rover: the gimbal was tilted while another look was running.
+
+    The rover's own looking loop had the camera when the check asked for it, so
+    the check was refused as busy -- having already tilted the gimbal under a
+    look taken at rest. Now the tilt happens only once the camera is held, and a
+    check look waits a few seconds for a look already running to finish.
+    """
+    import threading
+
+    with tempfile.TemporaryDirectory() as directory:
+        store, _eyes, inspector_ = a_seeing_inspector(directory,
+                                                      [[a_sighting()]])
+        held: list[bool] = []
+
+        def tilt() -> None:
+            held.append(inspector_._lock.locked())
+
+        inspector_._lock.acquire()
+        threading.Timer(0.2, inspector_._lock.release).start()
+        got = inspector_.inspect(fresh=True, keep_depth=True, wait_s=2.0,
+                                 before=tilt)
+        check("a check look waits for the look already running",
+              got.get("status"), "ok")
+        check("...and tilts only once it holds the camera", held, [True])
+
+        inspector_._lock.acquire()
+        try:
+            busy = inspector_.inspect(before=tilt)
+        finally:
+            inspector_._lock.release()
+        check("an ordinary look still refuses rather than waits",
+              busy.get("status"), "busy")
+        check("...and tilts nothing when it was refused", held, [True])
+        store.close()
+
+
 TESTS = (test_a_fresh_look_is_recorded_even_when_the_room_has_not_changed,
+         test_a_check_look_takes_the_camera_before_it_tilts,
          test_a_check_look_keeps_its_depth_with_nothing_ranged,
          test_one_look_is_read_back_whole_with_its_vectors)

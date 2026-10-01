@@ -454,7 +454,8 @@ class Inspector(InspectionRanges):
                 self._lock.release()
 
     def inspect(self, settle: bool = True, fresh: bool = False,
-                keep_depth: bool = False) -> dict[str, Any]:
+                keep_depth: bool = False, wait_s: float = 0.0,
+                before=None) -> dict[str, Any]:
         """Look once, and answer with what happened rather than with what was found.
 
         A second request while one is running is refused rather than queued. An
@@ -477,14 +478,22 @@ class Inspector(InspectionRanges):
         last one, because the question is about this moment and not about the
         room, and its depth map is kept even if nothing in it was ranged,
         because depth measured past an empty place is the evidence of absence.
+        Such a look may wait `wait_s` for a look already running to finish, and
+        `before` is called once the camera is held and before the shutter: it is
+        where the gimbal is set to another tilt, so that no other look is ever
+        taken while it moves.
         """
-        if not self._lock.acquire(blocking=False):
+        held = (self._lock.acquire(timeout=wait_s) if wait_s > 0
+                else self._lock.acquire(blocking=False))
+        if not held:
             return {"ok": False, "status": "busy", "busy": True,
                     "error": f"an inspection has been running for "
                              f"{time.monotonic() - self.started_at:.0f} s; "
                              f"this one was not started"}
         self.started_at = time.monotonic()
         try:
+            if before is not None:
+                before()
             return self._inspect(settle=settle, fresh=fresh,
                                  keep_depth=keep_depth)
         except Exception as error:            # never past here: the daemon owns STOP

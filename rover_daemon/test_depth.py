@@ -232,9 +232,67 @@ def test_the_rule_never_raises_at_its_own_thread():
     check("...but is attempted again later", down.switches, [True, True])
 
 
+def test_a_check_look_wakes_the_camera_and_holds_it_on():
+    """Found on the rover: a parked rover's check look kept no depth at all.
+
+    The camera had switched itself off half a minute after the wheels stopped,
+    so the look that most needed its depth -- a hypothesis check -- had none. A
+    check look wakes it, waits until it answers `on`, and holds it on for the
+    rule's half minute so that the next tick does not switch it straight off.
+    """
+    try:
+        import rover_daemon                                 # noqa: F401
+        import rover_depth
+        from world_state import depth_client
+    except ImportError as exc:
+        SKIP.append(f"waking the depth camera for a look ({type(exc).__name__})")
+        return
+
+    class Waking(depth_client.FakeRanger):
+        """Answers `waking` to the first two questions after a switch-on."""
+
+        def __init__(self):
+            super().__init__()
+            self.asked = 0
+
+        def power(self):
+            self.asked += 1
+            if self.switched == "waking" and self.asked > 2:
+                self.switched = "on"
+            return super().power()
+
+    rover, _fake = _parked_rover()
+    fake = Waking()
+    fake.switched = "off"
+    rover._world_ranger = lambda: fake
+    rover.nav.wheels_at -= rover_depth.DEPTH_IDLE_OFF_S + 5.0
+    rover._depth_on = False
+    began = time.monotonic()
+    why = rover.depth_wake(2.0)
+    check("a parked rover's camera is woken for the look and waited for",
+          (why, fake.power().state), ("", "on"))
+    check("...in about the time it took to wake",
+          time.monotonic() - began < 2.0, True)
+    rover.depth_tick()
+    check("...and the rule does not switch it straight off again",
+          fake.switches, [True])
+    rover._depth_hold_until = 0.0
+    rover.depth_tick()
+    check("once the hold is over the wheels decide again",
+          fake.switches, [True, False])
+
+    stuck = depth_client.FakeRanger()
+    stuck.switched = "off"
+    rover._world_ranger = lambda: stuck
+    why = rover.depth_wake(0.3)
+    check("a camera that never finishes waking is said so, not waited on for ever",
+          "still waking" in why, True)
+
+
 TESTS = (
     test_the_depth_camera_reports_in_every_state,
     test_the_camera_follows_the_wheels,
     test_a_rover_that_cannot_drive_keeps_its_camera,
     test_the_rule_never_raises_at_its_own_thread,
+    test_a_check_look_wakes_the_camera_and_holds_it_on,
 )

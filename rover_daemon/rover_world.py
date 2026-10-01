@@ -64,6 +64,11 @@ MAP_ASK_S = 8.0
 # A hypothesis check's look at another tilt waits this long for the servo and
 # the picture to settle; the pan approach inside `centre_gimbal` is separate.
 TILT_SETTLE_S = 1.0
+# How long a check look waits for a look already running to finish, and for the
+# depth camera to finish waking: four to six seconds of firmware upload on this
+# rover, measured, with room over.
+CHECK_LOOK_WAIT_S = 5.0
+DEPTH_WAKE_WAIT_S = 10.0
 
 
 class RoverWorld:
@@ -1124,21 +1129,32 @@ class RoverWorld:
         began = time.monotonic()
         settle = arguments.get("settle")
         tilt = arguments.get("tilt_deg")
-        if tilt is not None:
-            # A look at a chosen tilt, for a hypothesis check: set from below like
-            # rest is, given the servo and the picture time to settle, and put
-            # back to rest afterwards so that the next ordinary look is taken
-            # from where it always is.
+        keep_depth = bool(arguments.get("keep_depth"))
+        # A look for a hypothesis check needs its depth, and the camera switches
+        # itself off once the wheels have stood still for half a minute; it is
+        # woken and waited for here, and held on for this look.
+        woke = self.depth_wake(DEPTH_WAKE_WAIT_S) if keep_depth else ""
+
+        def tilted() -> None:
+            # Set from below like rest is, once the camera is held so that no
+            # other look is taken while it moves, and given the servo and the
+            # picture time to settle.
             self.centre_gimbal(float(tilt))
             time.sleep(TILT_SETTLE_S)
+
         try:
             result = self._world_inspector().inspect(
                 settle=True if settle is None else bool(settle),
-                fresh=bool(arguments.get("fresh")),
-                keep_depth=bool(arguments.get("keep_depth")))
+                fresh=bool(arguments.get("fresh")), keep_depth=keep_depth,
+                wait_s=CHECK_LOOK_WAIT_S if keep_depth else 0.0,
+                before=tilted if tilt is not None else None)
         finally:
             if tilt is not None:
+                # Back to rest, so the next ordinary look is taken from where
+                # it always is.
                 self.centre_gimbal()
+        if woke:
+            result["depth_note"] = woke
         result["took_s"] = round(time.monotonic() - began, 2)
         return result
 
