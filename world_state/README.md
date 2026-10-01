@@ -113,10 +113,13 @@ measured well enough to keep:
   scan says the rover is. That is read-only, about a tenth of a second, and never
   holds a move (`ros_nav` `measure_pose`). The look keeps its pose if the scan
   agrees, takes the scan's pose if the scan confidently disagrees, and gets no
-  direction if the scan cannot say. A look taken while moving keeps its direction
-  only if the last still check found the heading right and the rover has turned
-  less than 15 degrees since. The check and any correction are written beside
-  the pose as `checked`. See
+  direction if the scan cannot say. A look taken while moving takes the last still
+  check's correction, but only while that check is fresh: under 15 degrees of
+  turning since, and under half a metre of travel if the check had to correct.
+  The search starts from the last correction found, because the drift builds
+  steadily. The check and any correction are written beside the pose as
+  `checked`. Against a tape, a heading believed 43 degrees out was stored within
+  3.5 ([the check on the rover](../docs/progress/2026-10-01-photo-heading-check.md)). See
   [the measurement](../docs/progress/2026-10-01-heading-after-turning.md),
   [R-WS-10](../docs/requirements/world-state.md#r-ws-10) and
   [R-WS-16](../docs/requirements/world-state.md#r-ws-16), since a carried rover's
