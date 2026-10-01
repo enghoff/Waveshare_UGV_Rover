@@ -91,6 +91,9 @@ MAX_APART_S = 0.30
 OUTSIDE_VIEW = "outside the depth camera's view"
 NOTHING_TO_MEASURE = "nothing in the box could be measured"
 NO_DEPTH_ANSWER = "the depth camera did not answer"
+#: The rover turned between the picture and the depth frame far enough to move
+#: the box off what it was drawn round. Counted with the unmeasurable ones.
+TURNING = "the rover was turning, so the depth frame was not of the same instant"
 
 
 @dataclass

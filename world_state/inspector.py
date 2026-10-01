@@ -575,6 +575,10 @@ class Inspector(InspectionRanges):
         # tenth of a second is never charged to the shutter. Before the gimbal
         # envelope, which works on whatever pose survives this.
         checked_note = None
+        # The heading the navigator believed at the shutter, before any check
+        # corrects it: what a later reading is compared with to see whether the
+        # rover turned away from the depth frame. See `_drop_turned`.
+        shutter_heading = None if where is None else where.get("heading_deg")
         if self.heading is not None:
             where, checked_note = self.heading.judge(where, moved, turned)
         where, sigma_deg, aimed = aimed_where_it_was_calibrated(
@@ -597,6 +601,13 @@ class Inspector(InspectionRanges):
                    # from a frame that is not of this instant is only true of
                    # where the camera was then. See `_aged_sigma`.
                    "speed_mps": _speed(moved, before_at, after_at),
+                   # And how fast it was turning, with when the picture was taken
+                   # and which way the navigator believed it faced then: a range
+                   # read off a depth frame the rover has turned away from is
+                   # dropped. See `InspectionRanges._drop_turned`.
+                   "turn_dps": _speed(turned, before_at, after_at),
+                   "taken_at": frame.get("taken_at") or after_at,
+                   "shutter_heading_deg": shutter_heading,
                    # The lens to read this picture's pixels through, which is the
                    # device's own for the OAK and None -- meaning the swept fit
                    # in `face_tracking/lens.py` -- for the gimbal camera. Carried

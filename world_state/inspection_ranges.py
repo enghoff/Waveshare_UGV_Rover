@@ -2,14 +2,24 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import Any
 
 from . import oak, view
 from .depth_client import (NO_DEPTH_ANSWER, NOTHING_TO_MEASURE, OUTSIDE_VIEW,
-                           Ranged)
+                           TURNING, Ranged)
 
 # Redraw projected boxes when the first measured range differs by over 40%.
 REASK_RANGE_FRAC = 0.40
+
+#: How far the rover may have turned between the picture and the depth frame
+#: before a range is dropped. The depth frame is fetched after the encoders,
+#: a third of a second or more after the shutter. On 2026-10-01 a tissue box 0.95 m
+#: away read 2.61 m from a look taken while the rover turned 54.5 degrees across
+#: the shutter: about 17 degrees of turning separated the two frames, and the box
+#: landed on the furniture behind it, which then placed the box from that one look
+#: 1.77 m out. A degree is a fifth of the narrowest box that is ever ranged.
+RANGE_TURN_LIMIT_DEG = 1.0
 
 
 class InspectionRanges:
@@ -39,10 +49,52 @@ class InspectionRanges:
         camera = capture.get("camera") or oak.GIMBAL
         try:
             if camera == oak.OAK:
-                return self._ranges_here(capture, regions)
-            return self._ranges_across(capture, regions)
+                found, note = self._ranges_here(capture, regions)
+            else:
+                found, note = self._ranges_across(capture, regions)
         except Exception as error:                 # never past here
             return [], f"no ranges ({type(error).__name__}: {error})"
+        dropped = self._drop_turned(found, capture)
+        if dropped:
+            note = (f"{note}; {dropped} dropped because the rover was turning"
+                    if note else f"{dropped} ranges dropped because the rover "
+                                 f"was turning")
+        return found, note
+
+    def _drop_turned(self, found, capture, now=None) -> int:
+        """Drop the ranges whose depth frame the rover had turned away from.
+
+        Two measures of the turn, and the larger counts. One is how far the
+        rover's heading moved between the shutter and now, which bounds any depth
+        frame read in between. The other is the turn rate across the shutter
+        times how far the depth frame stood from the picture, which covers a frame
+        older than the shutter. A rover standing still loses nothing.
+        """
+        ranged = [i for i, one in enumerate(found or [])
+                  if one is not None and one.range_m is not None]
+        if not ranged:
+            return 0
+        now = time.time() if now is None else now
+        turned = 0.0
+        then = capture.get("shutter_heading_deg")
+        if then is not None:
+            pose = self._pose() if hasattr(self, "_pose") else None
+            if isinstance(pose, dict) and pose.get("heading_deg") is not None:
+                turned = abs((float(pose["heading_deg"]) - float(then) + 180.0)
+                             % 360.0 - 180.0)
+        rate = float(capture.get("turn_dps") or 0.0)
+        taken = capture.get("taken_at")
+        dropped = 0
+        for index in ranged:
+            one = found[index]
+            swung = turned
+            if rate and taken is not None and one.age_s is not None:
+                apart = abs((now - float(one.age_s)) - float(taken))
+                swung = max(swung, rate * apart)
+            if swung > RANGE_TURN_LIMIT_DEG:
+                found[index] = Ranged(absent=TURNING, age_s=one.age_s)
+                dropped += 1
+        return dropped
 
     def _ranges_here(self, capture: dict[str, Any], regions: list):
         """Ranges for boxes already drawn on the depth camera's own picture."""
