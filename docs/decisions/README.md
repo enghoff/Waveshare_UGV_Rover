@@ -7,9 +7,9 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
-| [identity-is-confirmed-when-it-is-used.md](identity-is-confirmed-when-it-is-used.md) | proposed 2026-10-01 | why an action that relies on identity must confirm it with a fresh look, and why only the refusal half of M0b stays in P0 |
+| [identity-is-judged-action-by-action.md](identity-is-judged-action-by-action.md) | agreed 2026-10-01 | why there is no single identity bar, how an action that relies on identity is judged instead, and why P0 does not wait on identity |
 | [bare-patches-are-not-a-p0-gate.md](bare-patches-are-not-a-p0-gate.md) | agreed 2026-10-01 | why P0 does not wait for bare floor and background to be kept out of inspection goals |
-| [m0-hypothesis-inspection.md](m0-hypothesis-inspection.md) | agreed 2026-09-10; implementation owed | why bounded inspection can precede trusted persistent identity, and what evidence permits each |
+| [m0-hypothesis-inspection.md](m0-hypothesis-inspection.md) | agreed 2026-09-10; M0b half replaced 2026-10-01 | why bounded inspection can precede trusted persistent identity, and what evidence permits each |
 | [jetson-orin-navigation.md](jetson-orin-navigation.md) | implemented | why `slam_toolbox` and Nav2 on the Orin, and what a replacement mapper or controller would have to beat |
 | [cosmos-reason2.md](cosmos-reason2.md) | closed 2026-09-02 | why there is no local vision-language model in the inspection path |
 | [doorway-pivot.md](doorway-pivot.md) | closed | why the rover locked up pivoting in narrow passages, and why two plausible fixes were wrong |

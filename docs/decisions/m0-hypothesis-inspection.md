@@ -1,6 +1,7 @@
 # M0 permits investigation before persistent identity is trusted
 
 Status: agreed 2026-09-10; acceptance contract revised, runtime permission unchanged.
+Its M0b half was [replaced on 2026-10-01](identity-is-judged-action-by-action.md): identity is judged action by action.
 
 The owner agreed to relax the identity prerequisite for bounded exploratory
 inspection. M0a will permit a safe move to test an explicitly uncertain hypothesis;

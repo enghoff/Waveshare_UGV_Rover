@@ -62,9 +62,10 @@ M0: camera geometry and range-to-object alignment remain unproven, and the revie
 also found lower-confidence association errors and floor patches treated as objects.
 Continue that work under P0; this proposal does not restart it or prescribe a
 calibration fix. The [September 10 decision](../decisions/m0-hypothesis-inspection.md)
-splits M0: bounded hypothesis inspection requires M0a (R-AUT-12), while actions
-relying on persistent identity require M0b (R-WS-13). Neither has passed, and both
-retain geometry, capture and control prerequisites. Read-only episodic
+splits M0: bounded hypothesis inspection requires M0a (R-AUT-12). Actions relying
+on persistent identity were held to one gate, M0b, until
+[2026-10-01](../decisions/identity-is-judged-action-by-action.md); each is now judged for itself under R-WS-13. M0a
+has not passed, and it retains geometry, capture and control prerequisites. Read-only episodic
 recording and shadow decisions may be developed while P0 is in progress.
 The [current review](../progress/2026-09-07-m0-review.md) records the bounded
 calibration scope and the additional requirement to withhold usable bearings when

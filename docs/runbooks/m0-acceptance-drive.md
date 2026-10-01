@@ -2,8 +2,9 @@
 
 What to set up, what to type, and — the part that matters — **what has to be
 written down before the rover moves.** [M0](../plans/autonomous-curiosity.md#milestone-m0-semantic-state-is-safe-enough-to-influence-goal-selection)
-now has two gates: **M0a** for bounded hypothesis inspection (R-AUT-12), and
-**M0b** for actions relying on persistent identity (R-WS-13). Both remain open.
+now has one gate: **M0a** for bounded hypothesis inspection (R-AUT-12), which
+remains open. **M0b**, for actions relying on persistent identity (R-WS-13), was
+[retired on 2026-10-01](../decisions/identity-is-judged-action-by-action.md); each such action is judged for itself.
 The [revision](../decisions/m0-hypothesis-inspection.md) changes acceptance, not
 runtime permission. Each gate asks for tolerances declared in advance and trials
 the remedies have not seen. A
@@ -98,8 +99,6 @@ that recording development data and requires a new acceptance run.
 | is a placement where the object is? | every measured separation between named targets agrees within 0.30 m, and independently referenced target positions relative to the rover meet task-derived position/bearing tolerances frozen in the manifest |
 | M0a: is inspection useful? | at least half of all attempts correctly answer the frozen question, in >=20 attempts across >=3 runs and >=10 distinct target/region cases; refusals and unresolved outcomes are not successes |
 | M0a: is uncertainty contained? | **zero** unsupported verification conclusions, promotions into identity-dependent actions, or action/budget/safety boundary violations; every attempt terminates and is recorded |
-| M0b: is a trusted association wrong? | **zero** known-incorrect high-confidence merges and associations eligible for identity-dependent actions in >=50 distinct reviewed association decisions, covering every eligible confidence band |
-| M0b: is trusted identity useful? | each of at least three independently named physical targets supports its predeclared identity-dependent inspection task within the frozen tolerances; record eligible coverage, splits and abstentions for all targets |
 
 The previous 70% range check compared depth with fitted parallax. The numerical
 tolerance is retained as the initial task limit, but its denominator and reference
@@ -125,16 +124,16 @@ One of them at floor level, one above the horizontal, and one deliberately place
 so it is seen at the edge of the frame — that last is what exercises the
 never-ranged reporting.
 
-These are the shared geometry and M0b targets. M0a's ten target/region cases also
+These are the shared geometry targets. M0a's ten target/region cases also
 include false and unobservable hypotheses. For the edge target, predeclare which
 views should have depth and which should abstain; obtain supported views for its
-geometry/identity task as well. Keep raw depth, full frames, intrinsics, capture
+geometry task as well. Keep raw depth, full frames, intrinsics, capture
 poses and timestamps so a claimed absence can be checked rather than inferred
 from an empty detection list.
 
 ## The owner-driven capture procedure
 
-Use this procedure for shared geometry and M0b data collection. M0a additionally
+Use this procedure for shared geometry data collection. M0a additionally
 needs the supervised execution protocol above and a complete record of actual
 dispatches and outcomes; manually driving these views is not equivalent.
 
@@ -184,8 +183,8 @@ coverage, refusals, unresolved attempts, duplicates, false merges, and total and
 unsuccessful travel/time, with the frozen budgets beside the actual effort.
 Review the actual action class and follow-on requests, not just the goal's label.
 
-Publish separate M0a and M0b results against every shared and gate-specific criterion
-in the plan, including the M0b range-assisted/bearing-only replay comparison. A
+Publish the M0a result against every shared and gate-specific criterion in the
+plan. A
 failed, incomplete or unmeasured criterion stays open. Passing M0a does not settle
-R-WS-13 or pass M3, and neither gate can be passed by the September development
+R-WS-13 or pass M3, and M0a cannot be passed by the September development
 recordings or the documentation revision.

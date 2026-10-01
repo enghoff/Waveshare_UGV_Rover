@@ -12,8 +12,8 @@ phase before starting the next. M1 recording and M2 shadow decisions proceeded
 alongside the existing P0 work, with no action authority, and both have now
 passed. The offline control-boundary tests M3 asks for are written and passing,
 which is what allowed P3 to be built alongside P0. **M3 semantic movement requires
-M0a for hypothesis inspection, and M0b for actions relying on identity.** Neither
-has passed. Supervised stop/failure trials precede bounded inspection acceptance
+M0a for hypothesis inspection, which has not passed. An action relying on identity
+needs its own case decided first** ([2026-10-01](../decisions/identity-is-judged-action-by-action.md)). Supervised stop/failure trials precede bounded inspection acceptance
 trials and autonomy sessions; geometric-only goals remain subject to the same
 control and physical safety gates. Later capabilities require
 recorded evidence for the primitives, semantics and execution substrate they use;
@@ -202,8 +202,7 @@ envelope. The current 1.5-degree bearing uncertainty is not an accuracy demand o
 the hardware. Finite backlash, flex and settling variation may remain; correcting
 the bias and representing those limits honestly is a valid outcome.
 
-This phase addresses R-WS-10 (bearing uncertainty), R-WS-11 (geometry), R-WS-13
-(identity-dependent actions), R-AUT-12
+This phase addresses R-WS-10 (bearing uncertainty), R-WS-11 (geometry), R-AUT-12
 (bounded hypothesis inspection) and R-WS-16
 (confirmed capture pose). None is marked settled by this plan revision.
 
@@ -337,11 +336,13 @@ failed every tolerance. It found the next things to fix, in this order:
   turning are [now dropped](../progress/2026-10-01-ranges-while-turning.md). The
   next drive's manifest measures the range tolerance over still looks, and the
   drive should stop before it looks.
-- **Identity (R-WS-13, M0b).** This is unchanged, and it is the open research
-  problem; see the [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md)
-  for the next experiments. M0a does not wait on it, and one look cannot carry
-  identity: see the measurement in
-  [the inspection replay](../progress/2026-10-01-hypothesis-inspection-replay.md).
+- **Identity (R-WS-13) is no longer a P0 gate.** The owner
+  [decided on 2026-10-01](../decisions/identity-is-judged-action-by-action.md) that how sure of identity an action
+  must be is judged for that action when it is proposed, not by one bar, and
+  M0b is retired. Identity remains the open research problem; see the
+  [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md) for the
+  next experiments, and [the inspection replay](../progress/2026-10-01-hypothesis-inspection-replay.md)
+  for what one look can carry.
 - **M0a's inspections (R-AUT-12) are built and hold in replay**
   ([the replay](../progress/2026-10-01-hypothesis-inspection-replay.md)). The
   question each asks is whether something stands where a thing's looks crossed;
@@ -363,15 +364,16 @@ replayed by path/manifest.
 
 ### Milestone M0: semantic state is safe enough to influence goal selection
 
-**Status: M0a and M0b are open; neither has passed.** The
+**Status: M0a is open and has not passed. M0b was retired on 2026-10-01**, when
+identity became [a case decided for each action](../decisions/identity-is-judged-action-by-action.md), so M0 now
+means M0a and the shared prerequisites. The
 [agreed revision](../decisions/m0-hypothesis-inspection.md) permits investigation
-before persistent identity is trusted. M0 means both gates when used without a
-suffix; report the two results separately. Earlier reports used the original,
+before persistent identity is trusted. Earlier reports used the original,
 stricter movement-eligibility contract and are not retrospectively rescored as passes.
 
 #### Shared prerequisites
 
-Both gates require:
+M0a requires these, and an identity-dependent action's case may rely on them:
 
 1. the normal world-state offline suite passes, together with the affected
    autonomy and daemon checks;
@@ -436,27 +438,18 @@ physical stop/failure checks must pass. Only the frozen supervised acceptance
 protocol may then exercise this path; passing M0a does not pass M3's autonomous
 sessions or waive their remaining criteria. Read-only development remains allowed.
 
-#### M0b: actions that rely on persistent identity
+#### M0b: retired on 2026-10-01
 
-This gate permits actions whose correctness depends on knowing which object is
-which (R-WS-13). It requires the shared prerequisites and:
+M0b was one bar for every action whose correctness depends on knowing which
+object is which. The owner [replaced it](../decisions/identity-is-judged-action-by-action.md) with an evaluation of
+each such action when it is proposed, weighed against what a wrong identity would
+cost that action; [R-WS-13](../requirements/world-state.md#r-ws-13) says what an
+evaluation owes. No autonomous run may take an identity-dependent action whose
+case is undecided. Today that holds because an autonomous run can only drive to a
+point, look and stop, and an inspection's outcome leads to no follow-on action.
 
-1. independent review finds zero known incorrect high-confidence merges, and zero
-   known incorrect associations across every confidence band eligible for these
-   actions, in at least 50 distinct physical association decisions. Appearance
-   similarity alone is not calibrated identity confidence. Accumulate runs if
-   necessary; repeated views of one association are not independent decisions;
-2. range-assisted replay does not increase false high-confidence merges relative
-   to bearing-only replay and rejects at least one previously plausible false
-   crossing or equivalent constructed/replayed case;
-3. useful coverage meets physical-target and task tolerances frozen before the
-   acceptance runs. Count duplicates and unresolved cases separately; abstaining
-   from every identity-dependent task cannot pass;
-4. the deployed goal/dispatch path refuses identity-dependent actions for
-   unsupported identities, even after an M0a inspection reports an outcome.
-
-M0a may pass while M0b remains open. Such a result permits the M3 inspection path
-only under its own control gates; it does not unlock identity-dependent tasks.
+Passing M0a permits the M3 inspection path only under its own control gates; it
+does not unlock any identity-dependent action.
 
 ## Phase 1 -- episodic memory and read-only autonomy telemetry
 
@@ -645,10 +638,11 @@ Everything physical, which is most of M3:
   start from a terminal. A console control is the obvious home for it, and
   [drive_web/AGENTS.md](../../drive_web/AGENTS.md) asks for a removal to be
   proposed alongside any addition.
-- **M0a/M0b.** Geometry-only goals remain subject to the control gates. Semantic
-  hypothesis inspection needs R-AUT-12 and M0a; the existing entity goal generator
-  cannot acquire that permission just by being renamed. Actions relying on
-  persistent identity still need R-WS-13 and M0b. Neither semantic gate has passed.
+- **M0a and identity.** Geometry-only goals remain subject to the control gates.
+  Semantic hypothesis inspection needs R-AUT-12 and M0a; the existing entity goal
+  generator cannot acquire that permission just by being renamed. An action
+  relying on persistent identity needs its own case decided under R-WS-13. M0a
+  has not passed.
 
 ### Physical test environment
 
@@ -1277,7 +1271,7 @@ Movement authority should be exposed gradually:
 |---|---|
 | M1 | none; event recording only |
 | M2 | none; shadow decisions only |
-| M3 | after M1/M2 and control tests; semantic hypothesis inspection additionally needs M0a, identity-dependent actions M0b; bounded operations in supervised safe area |
+| M3 | after M1/M2 and control tests; semantic hypothesis inspection additionally needs M0a, an identity-dependent action its own decided case; bounded operations in supervised safe area |
 | M4-M5 | bounded semantic inspection/revisit in same safe area |
 | M6-M7 | validated interpreter; candidates only in supervised trials after offline gates, verified skills eligible for autonomous reuse |
 | M8-M9 | executive chooses practice/reflection goals; same physical boundary |
@@ -1312,7 +1306,7 @@ the problem.
 | Milestone | Capability | Proof |
 |---|---|---|
 | M0a (open) | bounded verification of uncertain hypotheses | shared geometry/capture gates + replay refusals + useful outcomes in >=20 attempts across >=3 fresh supervised runs |
-| M0b (open) | actions relying on persistent identity | shared gates + zero incorrect eligible associations in >=50 distinct reviewed decisions + physical-target coverage + runtime refusals |
+| M0b (retired 2026-10-01) | actions relying on persistent identity | no single gate: each such action's case is decided under R-WS-13 before an autonomous run may take it |
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + one-hour no-action rover shadow |
 | M3 | bounded autonomous loop | 20 supervised sessions / >=120 min, measured stops, permission expiry and failure tests |
@@ -1343,8 +1337,8 @@ implementation slice is M1 -> M2, without movement authority:
 7. inspect the resulting choices; M3 needs M1/M2 and daemon-enforced control tests,
    followed by supervised physical stop/failure trials. Implement and replay
    R-AUT-12 before the narrowly scoped M0a supervised acceptance trials; semantic
-   inspection beyond those trials needs M0a, and identity-dependent actions need
-   M0b. Starting read-only work does not waive either gate.
+   inspection beyond those trials needs M0a, and an identity-dependent action
+   needs its own case decided. Starting read-only work waives neither.
 
 At the end of that slice the project will already answer a useful empirical
 question: **given what the rover actually knows today, does an explicit curiosity

@@ -72,7 +72,7 @@ does not hold up, and three requirements carry what is left:
 |---|---|---|
 | [R-WS-10](../requirements/world-state.md#r-ws-10) | `failing` | take a driven recording through the current envelope. The fisheye lens was refitted and the stored looks redrawn on 2026-09-30, and the OAK rides the gimbal, so neither the lens nor the mount waits on the servo any more. |
 | [R-WS-12](../requirements/world-state.md#r-ws-12) | `open` | refuse entities made of bare floor, so that something choosing where to look next cannot spend distance on them |
-| [R-WS-13](../requirements/world-state.md#r-ws-13) | `open` | demonstrate correct associations and useful physical-target coverage for identity-dependent actions under M0b; the proposed appearance-band/geometry remedy failed replay |
+| [R-WS-13](../requirements/world-state.md#r-ws-13) | `open` | show, for each identity-dependent action when it is proposed, that the identity evidence it accepts is good enough for what a mistake would cost ([2026-10-01](../decisions/identity-is-judged-action-by-action.md)); the proposed appearance-band/geometry remedy failed replay |
 
 The [M0 revision](../decisions/m0-hypothesis-inspection.md) permits bounded
 verification of uncertain hypotheses only after the separate M0a gate (R-AUT-12).

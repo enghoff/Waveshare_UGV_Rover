@@ -300,15 +300,20 @@ It stays open, with that record saying what would bring it back.
 ### R-WS-13 — Identity-dependent actions use independently validated associations
 
 - **State:** open
-- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M0b)
+- **Blocked by:** no identity-dependent action has been proposed and evaluated;
+  see [the 2026-10-01 decision](../decisions/identity-is-judged-action-by-action.md)
 
-The bar is an independently reviewed acceptance sample of at least fifty
-association decisions with zero known incorrect merges among those eligible for
-actions that rely on persistent identity. Review every eligible confidence band;
-appearance similarity alone is not calibrated identity confidence. Count unresolved
-cases separately and demonstrate useful coverage of independently named physical
-targets. Repeated frames of the same physical association are not independent cases.
+There is no single bar. Each action that would rely on identity is evaluated when
+it is proposed, against what a wrong identity would cost it, and no autonomous run
+may take it until that case is decided. An evaluation names the identity evidence
+the action will accept (the stored association, a fresh look, or more) and
+measures it on independently reviewed decisions before the action is allowed.
+Review every confidence band the action would accept; appearance similarity alone
+is not calibrated identity confidence. Count unresolved cases separately and
+demonstrate useful coverage of independently named physical targets. Repeated
+frames of the same physical association are not independent cases. Until
+2026-10-01 the bar was one sample of fifty decisions with none wrong, for every
+such action alike (M0b).
 
 The scope was revised on 2026-09-10: an uncertain association may motivate a bounded
 inspection to test it under R-AUT-12, but cannot be treated as established identity
