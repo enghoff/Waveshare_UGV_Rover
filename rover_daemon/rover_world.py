@@ -681,17 +681,6 @@ class RoverWorld:
         # loses looks rather than the one that invents bearings.
         if not status.get("map_settled"):
             return None
-        # **And a settled map does not mean a heading that is still right.**
-        # Turning on the spot leaves the rover wrong about which way it faces --
-        # measured on 2026-10-01, 7% of every turn, 43 degrees after two circles
-        # -- and a rover carried by hand is wrong about where it stands, with
-        # `map_settled` true throughout. The navigator checks the pose against
-        # the map after it turns and after the drift check doubts it, and says
-        # whether that check has happened since (`pose_checked`, see
-        # ros_nav/posecheck.py). Absent is read as unchecked, for the reason
-        # above. R-WS-10, R-WS-16.
-        if not status.get("pose_checked"):
-            return None
         where = status.get("pose")
         if not isinstance(where, dict):
             return None

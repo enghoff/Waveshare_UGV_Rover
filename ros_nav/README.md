@@ -95,30 +95,6 @@ an estimated gyro offset and leaving whatever the estimate was wrong by. The
 check remains, because "the rover cannot tell whether it is wrong" is a separate
 fault from "the rover drifts".
 
-**After it turns, the rover checks its own heading, in a narrow window.** Turning
-on the spot leaves slam_toolbox wrong about which way the rover faces. Measured
-against a tape on 2026-10-01, it over-counts every turn by about 7% in both
-directions, so two circles put the heading 43 degrees out, while the wheels and
-gyro under-count by 12%
-([the measurement](../docs/progress/2026-10-01-heading-after-turning.md)). So once
-the rover has turned more than 15 degrees, it matches one scan against the map
-within half a metre and 45 degrees of where it thinks it is, moves onto it, and
-measures again to see the correction held (`nav_map.check_pose`,
-[posecheck.py](posecheck.py)). That happens as each move ends, before the next
-move can be refused as busy, between the goals of an `explore`, and on the
-keeper's own tick once a rover driven by hand has stood still for a second and a
-half. A narrow search cannot put the rover in another room, which is why this one
-runs unasked where the wide refit above does not. It never runs on a restored map
-nobody has confirmed, because confirming that is the person's refit.
-
-`nav_status` reports the result as `pose_checked`, with `turned_since_check_deg`
-and the last check in `pose_check`. The world state takes no bearing while
-`pose_checked` is false. The drift check also feeds it: when the scan confidently
-places the rover elsewhere, or lies badly on the walls where the rover believes it
-is, the pose is in doubt until a check confirms it. A carried rover fails every
-narrow check, so bearings stay withheld until a person refits it (R-WS-16). A
-refused check is retried after 30 seconds, or straight away once the rover moves.
-
 Use the daemon's `clear_map` call to start a new map. That also advances the
 world-state map session, so semantic placements from old coordinates are not
 treated as current positions.

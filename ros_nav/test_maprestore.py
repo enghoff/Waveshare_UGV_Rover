@@ -51,7 +51,6 @@ _slam_toolbox()
 import threading                                            # noqa: E402
 
 import nav_map                                              # noqa: E402
-import posecheck                                            # noqa: E402
 
 
 class Mapper:
@@ -658,9 +657,6 @@ class Watcher:
         self.map_drift = None
         self._map_drift_at = None
         self._map_drift_said = False
-        # The one thing a drift check may change: whether the world state takes
-        # bearings. See posecheck.py.
-        self.pose_watch = posecheck.PoseWatch()
         self.said = []
         self.warned = []
         self.asked = []

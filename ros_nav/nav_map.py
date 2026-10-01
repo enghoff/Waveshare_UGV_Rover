@@ -130,18 +130,12 @@ from slam_toolbox.srv import DeserializePoseGraph, SerializePoseGraph
 
 import frontier
 import mapstore
-import posecheck
 import refit
 
 #: How often the keeper wakes up. It does one thing per tick -- restore, then
 #: save -- so this is also how long a boot takes to work through those, and a
 #: second is far below the minute between saves.
 TICK_S = 1.0
-
-#: How often odometry is sampled for `posecheck.PoseWatch`. A tenth of a second
-#: puts at most a few degrees of a turn between samples, far from the half-turn
-#: at which a wrapped difference would read backwards.
-POSE_TICK_S = 0.1
 
 #: How long to wait for the mapper to answer a serialise or a deserialise. Both
 #: hold the mapper's own mutex while they read or write the whole graph, so on a
@@ -292,10 +286,6 @@ class NavMap:
         #: the note say how long it has been trying.
         self.map_restore_at = None
         self.map_restore_tries = 0
-        #: Whether the pose has been checked against the map since the rover last
-        #: turned, or since the drift check last doubted it. The world state takes
-        #: no bearing while it has not. See posecheck.py and `check_pose`.
-        self.pose_watch = posecheck.PoseWatch()
 
         self.serialize_client = self.create_client(
             SerializePoseGraph, "/slam_toolbox/serialize_map",
@@ -310,10 +300,6 @@ class NavMap:
         # the executor's three threads gone for the length of a graph write.
         self._map_stop = threading.Event()
         threading.Thread(target=self._map_loop, name="nav-map",
-                         daemon=True).start()
-        # Its own thread too, because the keeper's can sit in a graph write for
-        # seconds and a turn made meanwhile must still be counted.
-        threading.Thread(target=self._pose_loop, name="nav-pose",
                          daemon=True).start()
 
     def map_status(self):
@@ -346,10 +332,6 @@ class NavMap:
             # places the rover somewhere else and is confident about it, which
             # means pressing refit. See `check_drift`.
             "map_drift": self.map_drift,
-            # Whether a bearing may be taken from the pose: `pose_checked`, the
-            # turning since the last check, any doubt the drift check raised, and
-            # how the last check went. See `check_pose`.
-            **self.pose_watch.status(),
         }
 
     def map_forgotten(self):
@@ -396,17 +378,6 @@ class NavMap:
                     # the parked pose from being overwritten by the anchor.
                     self.saved.restored(odom)
                     continue
-                if self.pose_watch.due(time.monotonic()):
-                    # A move checks as it ends, holding the mutex it already has.
-                    # This is for what ends with no move: driving by hand from the
-                    # console, or a doubt the drift check raised while parked.
-                    # Never queued behind a move -- skipped, and asked next tick.
-                    if self.move_mutex.acquire(blocking=False):
-                        try:
-                            self.check_pose()
-                        finally:
-                            self.move_mutex.release()
-                        continue
                 if self.drift_due():
                     # Before the trustworthiness gate on purpose: a rover whose
                     # place on the map nothing has confirmed is exactly the one
@@ -788,58 +759,6 @@ class NavMap:
         finally:
             self.move_mutex.release()
 
-    def check_pose(self):
-        """Match a scan against the map in a narrow window, move the rover onto
-        it, and look again to see that it stayed there.
-
-        **This one is not asked for by a person, and the window is why that is
-        safe.** `refit` searches a metre and 45 degrees around wherever a person
-        says the rover is, and its docstring explains why nothing calls it
-        unasked: a wide search can put the rover confidently in the wrong room.
-        This one searches `posecheck.WINDOW_M` around where the rover already
-        is, after it has only turned, and the error it corrects is the mapper
-        over-counting the turn -- measured on 2026-10-01 at about 7%, and
-        corrected by exactly this search to within 2 degrees of a tape. A room
-        that fits two ways is refused by `refit.fit` here as it is there.
-
-        Never on a restored map nothing has confirmed: confirming that is the
-        console's refit, which a person presses, and the world state already
-        takes no bearing until they do (R-WS-16).
-
-        The caller holds `move_mutex`: a move as it ends (nav_bridge.py), each
-        goal of an explore, or the keeper's own loop when the rover has stood
-        still after being driven by hand. Returns the check's report, or None
-        when nothing was in doubt.
-        """
-        watch = self.pose_watch
-        if watch.checked():
-            return None
-        if not self.map_trustworthy():
-            return watch.refused(
-                time.monotonic(),
-                "the rover's place on a restored map has not been confirmed, "
-                "and that is a refit for a person to ask for")
-        with self.map_lock:
-            fitted = self.map_fit_now(posecheck.WINDOW_M, posecheck.WINDOW_DEG)
-            verified, _fit, _where = self.map_measure(posecheck.WINDOW_M,
-                                                      posecheck.WINDOW_DEG)
-        report = watch.outcome(time.monotonic(), fitted, verified)
-        # Said once a check, because it is the one place a heading that was
-        # quietly twenty degrees out is ever written down.
-        self.get_logger().info(
-            "pose check after %.0f deg of turning: %s"
-            % (report["turned_deg"], report.get("why") or "no answer"))
-        return report
-
-    def _pose_loop(self):
-        """Feed odometry to the pose watch. Never raises."""
-        while not self._map_stop.wait(POSE_TICK_S):
-            try:
-                self.pose_watch.feed(self.travelled_deg(), time.monotonic())
-            except Exception as error:              # never past here: it is a loop
-                self.get_logger().warn("pose watch: %s: %s"
-                                       % (type(error).__name__, error))
-
     def drift_due(self):
         """Whether it is time to ask the lidar again.
 
@@ -864,11 +783,8 @@ class NavMap:
         rover drifts", and this is the answer to it: the scan is matched against
         the map every few minutes and the disagreement is reported.
 
-        **Reported, and nothing else moved.** No pose is written, no graph is
-        touched, `map_settled` is not moved and the rover is not driven. A
-        disagreement does put the pose in doubt (`posecheck.PoseWatch.drifted`),
-        so the world state takes no bearing until `check_pose` confirms it -- the
-        search runs
+        **Reported, and nothing else.** No pose is written, no graph is touched,
+        `map_settled` is not moved and the rover is not driven -- the search runs
         through `map_measure`, which has none of `map_fit_now`'s consequences.
         Acting on it is a person pressing "refit to map", because a rover that
         corrects itself unasked is a rover that can also relocate itself into
@@ -924,10 +840,6 @@ class NavMap:
             "here_score": answer["guess_score"], "rival": answer["rival"],
             "took_s": answer["took_s"], "at": time.time(), "why": why,
         }
-        # Still nothing moved here. What changes is that the world state stops
-        # taking bearings until a check in a narrow window confirms the pose,
-        # which a carried rover will fail and keep failing: R-WS-16.
-        self.pose_watch.drifted(self.map_drift)
         # Said once when it starts disagreeing and once when it stops, because
         # the point is a person noticing, and a line every five minutes for ever
         # is how a log stops being read.
