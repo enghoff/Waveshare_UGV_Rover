@@ -61,6 +61,9 @@ MAP_CACHE_S = 5.0
 REACH_LIMIT_M = 12.0
 OCCUPIED_AT = 50
 MAP_ASK_S = 8.0
+# A hypothesis check's look at another tilt waits this long for the servo and
+# the picture to settle; the pan approach inside `centre_gimbal` is separate.
+TILT_SETTLE_S = 1.0
 
 
 class RoverWorld:
@@ -1120,10 +1123,60 @@ class RoverWorld:
             return {"ok": False, "error": why}
         began = time.monotonic()
         settle = arguments.get("settle")
-        result = self._world_inspector().inspect(
-            settle=True if settle is None else bool(settle))
+        tilt = arguments.get("tilt_deg")
+        if tilt is not None:
+            # A look at a chosen tilt, for a hypothesis check: set from below like
+            # rest is, given the servo and the picture time to settle, and put
+            # back to rest afterwards so that the next ordinary look is taken
+            # from where it always is.
+            self.centre_gimbal(float(tilt))
+            time.sleep(TILT_SETTLE_S)
+        try:
+            result = self._world_inspector().inspect(
+                settle=True if settle is None else bool(settle),
+                fresh=bool(arguments.get("fresh")),
+                keep_depth=bool(arguments.get("keep_depth")))
+        finally:
+            if tilt is not None:
+                self.centre_gimbal()
         result["took_s"] = round(time.monotonic() - began, 2)
         return result
+
+    def _tool_world_state_check(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Whether one stored look shows something where a claim says it stands.
+
+        A read, for the executive's hypothesis inspections (R-AUT-12): the look's
+        regions, its saved depth and the claim's own source looks go through
+        `hypothesis_check.check`, and the verdict comes back with its evidence.
+        Nothing is written and no identity is decided -- the claim is the one the
+        request froze, not whatever the resolver has made of the thing since.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        frame_id = str(arguments.get("frame_id") or "")
+        claim = arguments.get("claim") or {}
+        if not frame_id or claim.get("x_m") is None or claim.get("y_m") is None:
+            return {"ok": False,
+                    "error": "name the look (frame_id) and the claim (x_m, y_m)"}
+        store = self._world_store()
+        look = store.observations(frame_id=frame_id, limit=200, vectors=True)
+        source_ids = [int(one) for one in (arguments.get("source") or [])][:200]
+        source = (store.observations(ids=source_ids, limit=len(source_ids),
+                                     vectors=True) if source_ids else [])
+        depth = store.depth(frame_id)
+        lens = None
+        ranger = getattr(self._world_inspector(), "ranger", None)
+        if ranger is not None:
+            try:
+                lens = ranger.lens()
+            except Exception:                                  # pragma: no cover
+                lens = None
+        verdict = world_state.hypothesis_check.check(
+            look, claim, depth=depth, lens=lens, source=source,
+            pose=arguments.get("pose"),
+            withheld=str(arguments.get("withheld") or ""))
+        return {"ok": True, "frame_id": frame_id, **verdict}
 
     def close_world(self) -> None:
         # The loop first, and joined, so that nothing is part-way through an

@@ -114,6 +114,34 @@ TICK_S = 0.5
 # acceptance must measure whether this allowance is sufficient at trial speed.
 FENCE_MARGIN_M = 0.5
 
+#: What one inspection of an uncertain hypothesis may spend, at most
+#: ([R-AUT-12](../docs/requirements/autonomy.md#r-aut-12)). A request declares
+#: its own limits and these are the ceilings on them, the same shape as a run's
+#: budget: an executive may ask for less and never for more. Eight metres is most
+#: of the room the acceptance drives were in; three minutes is a drive across it,
+#: a look and a check with room to spare; two attempts is one retry for a look
+#: that could not answer, and no more.
+INSPECTION_MAX_TRAVEL_M = 8.0
+INSPECTION_MAX_S = 180.0
+INSPECTION_MAX_ATTEMPTS = 2
+
+#: Two inspections are of the same physical case when the places they test are
+#: this close on the same map, whatever their requests call them. **The budget
+#: follows the place, not the name**: a thing renamed by a merge, or the same
+#: question regenerated as a new goal, lands on the case it already spent.
+CASE_RADIUS_M = 0.5
+
+#: How close to the place under test an inspection may be sent to stand. The
+#: place is a hypothesis and may be wrong in either direction -- something may be
+#: there that the map does not show, or nothing may be where the looks crossed --
+#: so the viewpoint is never on top of it. Half a metre is the rover's own
+#: footprint and then some.
+INSPECTION_STANDOFF_M = 0.5
+
+#: The tilts an inspection's look may be taken at: the two the bearing
+#: calibration covers, level and twenty degrees up.
+INSPECTION_TILTS = (0.0, 20.0)
+
 DEFAULT_BUDGET: dict[str, Any] = {
     "seconds": RUN_MAX_S,
     "travel_m": RUN_MAX_TRAVEL_M,
@@ -145,10 +173,17 @@ DEFAULT_BUDGET: dict[str, Any] = {
 #:   each.
 #: - Aiming the gimbal is left out because rest is the only pan angle this
 #:   rover's bearings are calibrated at, and the chassis heading that
-#:   `drive_to` already takes is what points the camera at the thing.
+#:   `drive_to` already takes is what points the camera at the thing. A look
+#:   may name a tilt, and only level or twenty up -- the two the calibration
+#:   covers -- because the depth camera sees nothing below the camera's own
+#:   height at twenty up, and an inspection of something on the floor needs it.
 #: - `run_script` and `start_script` are left out because the design says so:
 #:   rover-side scripts are process isolation and not a sandbox, and they are
 #:   not the representation for anything the rover chooses by itself.
+#:
+#: Either of the first two may carry an `inspection`: a hypothesis check
+#: (R-AUT-12) with its own case, place and limits, which `check` enforces at
+#: dispatch and `inspection_over` during the drive.
 ACTIONS: dict[str, tuple[str, ...]] = {
     "drive_to": ("x_m", "y_m"),
     "world_inspect": (),
@@ -160,6 +195,40 @@ ACTIONS: dict[str, tuple[str, ...]] = {
 #: none of them; refusing a look because the pose is untrusted would stop the
 #: rover recording evidence at the moment it is most worth having.
 DRIVING_ACTIONS = frozenset({"drive_to"})
+
+
+def _inspection_limits(asked: Any) -> dict[str, float] | str:
+    """An inspection's declared limits, checked against the ceilings, or why not.
+
+    All three are required, finite and positive: a limit that can be left out,
+    or asked for as zero, is not a limit, which is the same reasoning a run's
+    budget is held to in `Permission.enable`.
+    """
+    asked = asked if isinstance(asked, dict) else {}
+    out: dict[str, float] = {}
+    for name, ceiling in (("travel_m", INSPECTION_MAX_TRAVEL_M),
+                          ("seconds", INSPECTION_MAX_S),
+                          ("attempts", INSPECTION_MAX_ATTEMPTS)):
+        value = asked.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return f"an inspection's {name} must be a finite positive number"
+        if value != value or value <= 0 or value == float("inf"):
+            return f"an inspection's {name} must be a finite positive number"
+        if float(value) > ceiling:
+            return f"an inspection's {name} may be at most {ceiling:g}"
+        out[name] = float(value)
+    return out
+
+
+def _apart(one: dict[str, Any] | None, other: dict[str, Any] | None) -> float | None:
+    """How far apart two places on the map are, or None if either is unsaid."""
+    if not one or not other:
+        return None
+    try:
+        return ((float(one["x_m"]) - float(other["x_m"])) ** 2
+                + (float(one["y_m"]) - float(other["y_m"])) ** 2) ** 0.5
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 class Verdict(NamedTuple):
@@ -308,6 +377,10 @@ class Permission:
         #: Where the rover was at the previous tick, for accumulating travel.
         self._was: tuple[float, float] | None = None
         self._map_id: str | None = None
+        #: Every physical case an inspection has been spent on, kept across runs
+        #: for the life of this process, so that closing one run and opening
+        #: another does not hand a case its attempts back. See `CASE_RADIUS_M`.
+        self.cases: list[dict[str, Any]] = []
 
     # --- what a person does -------------------------------------------------
 
@@ -473,6 +546,18 @@ class Permission:
         if missing:
             return Verdict(False, "incomplete",
                            f"{action} needs {', '.join(missing)}")
+        tilt = params.get("tilt_deg")
+        if tilt is not None and (not isinstance(tilt, (int, float))
+                                 or float(tilt) not in INSPECTION_TILTS):
+            return Verdict(False, "tilt",
+                           f"a look may be taken at tilt "
+                           f"{' or '.join(f'{t:.0f}' for t in INSPECTION_TILTS)}"
+                           f", which is what the bearings are calibrated at")
+        if params.get("inspection") is not None:
+            refused = self._inspection_refused(action, params, facts, episode,
+                                               now)
+            if refused is not None:
+                return refused
 
         volts = facts.get("battery_v")
         floor = float(run.budget["battery_floor_v"])
@@ -504,6 +589,163 @@ class Permission:
                 return Verdict(False, "outside the safe area", breach)
         return Verdict(True)
 
+    # --- what one inspection may spend ----------------------------------------
+
+    def _inspection_refused(self, action: str, params: dict[str, Any],
+                            facts: dict[str, Any], episode: str,
+                            now: float) -> Verdict | None:
+        """Why this inspection's step may not go, or None when it may.
+
+        **One attempt is one episode**, and an attempt's travel and time are
+        counted from its first step: the drive to the viewpoint, or the look if
+        it needed none. A new episode on a case that has had its attempts is
+        refused whatever it calls the case, and the limits a case was first given
+        can be narrowed by a later request and never widened.
+        """
+        asked = params.get("inspection")
+        if not isinstance(asked, dict):
+            return Verdict(False, "inspection",
+                           "an inspection says which case it tests, where, and "
+                           "what it may spend")
+        target = asked.get("target") or {}
+        if not asked.get("case") or target.get("x_m") is None \
+                or target.get("y_m") is None:
+            return Verdict(False, "inspection",
+                           "an inspection names its case and the place it tests")
+        limits = _inspection_limits(asked.get("limits"))
+        if isinstance(limits, str):
+            return Verdict(False, "inspection limits", limits)
+        case = self._case_for(asked, facts.get("map_id"))
+        if case is not None:
+            limits = {name: min(value, case["limits"][name])
+                      for name, value in limits.items()}
+        attempts = [] if case is None else case["attempts"]
+        mine = next((one for one in attempts if one["episode"] == episode), None)
+        if mine is None:
+            if len(attempts) >= limits["attempts"]:
+                return Verdict(False, "inspection exhausted",
+                               f"this place has had {len(attempts)} inspection "
+                               f"attempts, which is all it is allowed")
+            spent_s, spent_m = 0.0, 0.0
+        else:
+            if mine.get("run") != (self.run.id if self.run else None):
+                return Verdict(False, "inspection exhausted",
+                               "an attempt does not carry on into another run")
+            spent_s = now - mine["started_at"]
+            spent_m = (self.run.travel_m if self.run else 0.0) - mine["travel_at"]
+            if spent_s >= limits["seconds"]:
+                return Verdict(False, "inspection exhausted",
+                               f"this attempt has used its "
+                               f"{limits['seconds']:.0f} s ({spent_s:.0f} s)")
+            if spent_m >= limits["travel_m"]:
+                return Verdict(False, "inspection exhausted",
+                               f"this attempt has driven its "
+                               f"{limits['travel_m']:.1f} m ({spent_m:.1f} m)")
+        if action in DRIVING_ACTIONS:
+            gap = _apart(params, target)
+            if gap is not None and gap < INSPECTION_STANDOFF_M:
+                return Verdict(False, "inspection standoff",
+                               f"the viewpoint is {gap:.2f} m from the place "
+                               f"under test, which may be wrong in either "
+                               f"direction; it may be no nearer than "
+                               f"{INSPECTION_STANDOFF_M:.1f} m")
+            where = facts.get("where")
+            if where is not None:
+                away = _apart(params, {"x_m": where[0], "y_m": where[1]})
+                left = limits["travel_m"] - spent_m
+                if away is not None and away > left:
+                    return Verdict(False, "inspection travel",
+                                   f"the viewpoint is {away:.1f} m away and "
+                                   f"this attempt may drive {left:.1f} m more")
+        return None
+
+    def _case_for(self, asked: dict[str, Any],
+                  map_id: str | None) -> dict[str, Any] | None:
+        """The case this request is of: by its name, or by the place it tests."""
+        target = asked.get("target") or {}
+        for case in self.cases:
+            if case["case"] == asked.get("case"):
+                return case
+            if map_id is not None and case.get("map_id") not in (None, map_id):
+                continue
+            gap = _apart(target, case["target"])
+            if gap is not None and gap <= CASE_RADIUS_M:
+                return case
+        return None
+
+    def _inspection_began(self, params: dict[str, Any], episode: str,
+                          action_id: str, map_id: str | None) -> None:
+        """Count an inspection's step against its case and its attempt."""
+        asked = params.get("inspection")
+        if not isinstance(asked, dict):
+            return
+        limits = _inspection_limits(asked.get("limits"))
+        if isinstance(limits, str):                            # pragma: no cover
+            return
+        case = self._case_for(asked, map_id)
+        if case is None:
+            target = asked.get("target") or {}
+            case = {"case": str(asked.get("case")), "map_id": map_id,
+                    "target": {"x_m": float(target["x_m"]),
+                               "y_m": float(target["y_m"])},
+                    "limits": limits, "attempts": []}
+            self.cases.append(case)
+        else:
+            case["limits"] = {name: min(value, case["limits"][name])
+                              for name, value in limits.items()}
+        attempt = next((one for one in case["attempts"]
+                        if one["episode"] == episode), None)
+        if attempt is None:
+            attempt = {"episode": episode, "run": self.run.id if self.run else None,
+                       "started_at": self.clock(),
+                       "travel_at": self.run.travel_m if self.run else 0.0,
+                       "actions": []}
+            case["attempts"].append(attempt)
+        attempt["actions"].append(action_id)
+        record = self.actions.get(action_id)
+        if record is not None:
+            record["case"] = case["case"]
+
+    def inspection_over(self) -> str:
+        """Why the inspection step now running must stop, or ''.
+
+        The daemon's watchdog asks this on every tick, so an attempt's travel and
+        time are enforced during the drive and not only at dispatch: a route
+        that turns out longer than the straight line is stopped at its limit,
+        and the step is failed with the reason rather than the run ended.
+        """
+        doing = self.doing
+        if not doing or doing.get("ok") is not None or not doing.get("case"):
+            return ""
+        case = next((one for one in self.cases
+                     if one["case"] == doing["case"]), None)
+        if case is None:                                       # pragma: no cover
+            return ""
+        attempt = next((one for one in case["attempts"]
+                        if doing["id"] in one["actions"]), None)
+        if attempt is None:                                    # pragma: no cover
+            return ""
+        spent_s = self.clock() - attempt["started_at"]
+        spent_m = (self.run.travel_m if self.run else 0.0) - attempt["travel_at"]
+        if spent_s >= case["limits"]["seconds"]:
+            return (f"the inspection's {case['limits']['seconds']:.0f} s ran out "
+                    f"while {doing.get('action')} was running")
+        if spent_m >= case["limits"]["travel_m"]:
+            return (f"the inspection drove its {case['limits']['travel_m']:.1f} m "
+                    f"({spent_m:.1f} m) before arriving")
+        return ""
+
+    def limit_reached(self, action_id: str, why: str) -> None:
+        """Fail a step that an inspection's limit stopped, before the wheels do.
+
+        Marked first, so that the stop it is followed by -- which the navigator
+        reports as an ordinary `stopped` -- cannot be mistaken for success.
+        """
+        record = self.actions.get(action_id)
+        if record is not None:
+            record["limited"] = why
+        self.finished(action_id, ok=False, detail=why)
+
     # --- what the daemon does around them -----------------------------------
 
     def began(self, action_id: str, action: str,
@@ -515,6 +757,9 @@ class Permission:
                   "episode": episode, "at": now, "wall": self.wall(),
                   "ok": None, "detail": "", "travel_m": 0.0}
         self.actions[action_id] = record
+        if (params or {}).get("inspection") is not None:
+            self._inspection_began(dict(params or {}), episode, action_id,
+                                   (params or {}).get("map_id") or self._map_id)
         self.doing = {"id": action_id, **record}
         if self.run is not None:
             self.run.actions += 1
@@ -530,6 +775,10 @@ class Permission:
         """
         record = self.actions.get(action_id)
         if record is not None:
+            if record.get("limited") and record.get("ok") is not None:
+                # Already failed by the inspection limit that stopped it; the
+                # navigator's own word for the stop comes second and is not news.
+                return
             record["ok"] = bool(ok)
             record["detail"] = detail
             if travel_m is not None:
@@ -660,6 +909,10 @@ class Permission:
                 "expires_in_s": round(float(permit["expires_at"]) - now, 1)},
             "doing": dict(self.doing) if self.doing else None,
             "actions_recorded": len(self.actions),
+            "inspections": [{"case": case["case"], "map_id": case.get("map_id"),
+                             "target": case["target"], "limits": case["limits"],
+                             "attempts": len(case["attempts"])}
+                            for case in self.cases[-20:]],
             "why": self._why(live, run),
         }
 

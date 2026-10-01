@@ -1,0 +1,192 @@
+"""What one hypothesis inspection may spend, enforced by the daemon (R-AUT-12).
+
+The executive declares a case, the place it tests, and limits on travel, time
+and attempts; these checks drive the daemon's own rules with a fake navigator
+and a clock wound by hand. The ones worth the closest reading are the budget
+following the place -- a renamed case, a regenerated goal and a new run all
+land on the attempts already spent -- and the watchdog stopping a drive at its
+limit without ending the run.
+"""
+from __future__ import annotations
+
+import permission as permission_mod
+from test_autonomy import Clock, Ended, FakeNav, a_rover, enabled, permitted
+from test_harness import check
+
+PLACE = {"x_m": 3.0, "y_m": 0.0}
+LIMITS = {"travel_m": 4.0, "seconds": 60.0, "attempts": 2}
+
+
+def inspection(case: str = "case/7/3.00,0.00", target=None, limits=None) -> dict:
+    return {"case": case, "target": dict(target or PLACE),
+            "limits": dict(LIMITS if limits is None else limits)}
+
+
+def act(rover, permit: str, action: str, action_id: str, episode: str,
+        **params):
+    return rover.call("autonomy_act",
+                      {"permit": permit, "action": action,
+                       "action_id": action_id, "episode": episode,
+                       "params": params})
+
+
+def test_an_inspection_must_declare_finite_limits_under_the_ceilings():
+    rover = a_rover(Clock())
+    permit = permitted(rover, enabled(rover))
+    for name, limits in (
+            ("with none", {}),
+            ("with a zero", dict(LIMITS, seconds=0)),
+            ("with no attempts said", {"travel_m": 4.0, "seconds": 60.0}),
+            ("with more travel than the ceiling",
+             dict(LIMITS, travel_m=permission_mod.INSPECTION_MAX_TRAVEL_M + 1)),
+            ("with more attempts than the ceiling",
+             dict(LIMITS, attempts=permission_mod.INSPECTION_MAX_ATTEMPTS + 1))):
+        got = act(rover, permit, "drive_to", f"e#{name}", "episode:1",
+                  x_m=1.5, y_m=0.0, inspection=inspection(limits=limits))
+        check(f"an inspection {name} is refused", got.get("refused"),
+              "inspection limits")
+
+
+def test_the_viewpoint_is_never_on_top_of_the_place_under_test():
+    rover = a_rover(Clock())
+    permit = permitted(rover, enabled(rover))
+    got = act(rover, permit, "drive_to", "e#1", "episode:1",
+              x_m=2.7, y_m=0.0, inspection=inspection())
+    check("a viewpoint 0.3 m from the place is refused",
+          got.get("refused"), "inspection standoff")
+    got = act(rover, permit, "drive_to", "e#2", "episode:1",
+              x_m=1.5, y_m=0.0, inspection=inspection())
+    check("...one 1.5 m from it is dispatched", got.get("ok"), True)
+
+
+def test_a_viewpoint_further_than_the_attempt_may_drive_is_refused():
+    rover = a_rover(Clock(), nav=FakeNav(where=(-3.0, 0.0)))
+    permit = permitted(rover, enabled(rover))
+    got = act(rover, permit, "drive_to", "e#1", "episode:1",
+              x_m=1.5, y_m=0.0, inspection=inspection())
+    check("a viewpoint 4.5 m away on a 4 m attempt is refused",
+          got.get("refused"), "inspection travel")
+
+
+def test_the_attempts_follow_the_place_and_not_the_name():
+    clock = Clock()
+    nav = FakeNav()
+    rover = a_rover(clock, nav=nav)
+    run = enabled(rover)
+    permit = permitted(rover, run)
+    for n in (1, 2):
+        got = act(rover, permit, "drive_to", f"e{n}#1", f"episode:{n}",
+                  x_m=1.5, y_m=0.0, inspection=inspection())
+        check(f"attempt {n} on the place is dispatched", got.get("ok"), True)
+        nav.driving = False
+        rover._trip_ended("errand", nav.sent[-1]["for_what"], Ended("arrived"))
+    got = act(rover, permit, "drive_to", "e3#1", "episode:3",
+              x_m=1.5, y_m=0.0, inspection=inspection())
+    check("a third is refused", got.get("refused"), "inspection exhausted")
+    got = act(rover, permit, "drive_to", "e4#1", "episode:4",
+              x_m=1.5, y_m=0.2,
+              inspection=inspection(case="case/7/3.10,0.20",
+                                    target={"x_m": 3.1, "y_m": 0.2}))
+    check("...and so is the same place under another name, a merge or a "
+          "regenerated goal", got.get("refused"), "inspection exhausted")
+    got = act(rover, permit, "drive_to", "e5#1", "episode:5",
+              x_m=1.5, y_m=1.2,
+              inspection=inspection(case="case/7/3.00,1.20",
+                                    target={"x_m": 3.0, "y_m": 1.2}))
+    check("...while a place 1.2 m away is a different case", got.get("ok"),
+          True)
+    nav.driving = False
+    rover._trip_ended("errand", nav.sent[-1]["for_what"], Ended("arrived"))
+
+    rover.call("autonomy_release", {"run": run})
+    permit = permitted(rover, enabled(rover))
+    got = act(rover, permit, "drive_to", "e6#1", "episode:6",
+              x_m=1.5, y_m=0.0, inspection=inspection())
+    check("closing the run and opening another does not hand the attempts back",
+          got.get("refused"), "inspection exhausted")
+
+
+def test_a_later_request_cannot_widen_a_case():
+    clock = Clock()
+    nav = FakeNav()
+    rover = a_rover(clock, nav=nav)
+    permit = permitted(rover, enabled(rover))
+    act(rover, permit, "drive_to", "e1#1", "episode:1", x_m=1.5, y_m=0.0,
+        inspection=inspection(limits=dict(LIMITS, attempts=1)))
+    nav.driving = False
+    rover._trip_ended("errand", nav.sent[-1]["for_what"], Ended("arrived"))
+    got = act(rover, permit, "drive_to", "e2#1", "episode:2", x_m=1.5, y_m=0.0,
+              inspection=inspection(limits=dict(LIMITS, attempts=2)))
+    check("a case first given one attempt is not given a second by asking",
+          got.get("refused"), "inspection exhausted")
+
+
+def test_an_attempt_that_has_used_its_time_may_not_look():
+    clock = Clock()
+    nav = FakeNav()
+    rover = a_rover(clock, nav=nav)
+    run = enabled(rover)
+    permit = permitted(rover, run)
+    act(rover, permit, "drive_to", "e1#1", "episode:1", x_m=1.5, y_m=0.0,
+        inspection=inspection())
+    nav.driving = False
+    rover._trip_ended("errand", nav.sent[-1]["for_what"], Ended("arrived"))
+    clock.tick(LIMITS["seconds"] + 1.0)
+    permit = permitted(rover, run)
+    got = act(rover, permit, "world_inspect", "e1#2", "episode:1",
+              tilt_deg=0.0, inspection=inspection())
+    check("a look after the attempt's minute is refused",
+          got.get("refused"), "inspection exhausted")
+    check("...saying it was the time", "s (" in got.get("error", ""), True)
+
+
+def test_the_watchdog_stops_a_drive_at_the_attempts_limit_and_not_the_run():
+    clock = Clock()
+    nav = FakeNav(where=(0.0, 0.0))
+    rover = a_rover(clock, nav=nav)
+    run = enabled(rover)
+    permit = permitted(rover, run)
+    act(rover, permit, "drive_to", "e1#1", "episode:1", x_m=-1.5, y_m=0.0,
+        inspection=inspection(target={"x_m": -3.0, "y_m": 0.0},
+                              limits=dict(LIMITS, travel_m=2.0)))
+    check("a viewpoint 1.5 m away on a 2 m attempt is dispatched",
+          rover.permission.actions["e1#1"]["ok"], None)
+    # A route far longer than its straight line: sideways and round.
+    for step in ((0.0, 0.5), (0.0, 1.0), (0.0, 1.5), (0.0, 2.0), (0.0, 2.5)):
+        clock.tick(permission_mod.TICK_S)
+        rover.call("autonomy_permit", {"run": run})
+        nav.where = step
+        rover.autonomy_tick()
+    check("the drive is stopped when the attempt has driven its two metres",
+          nav.stops, 1)
+    record = rover.permission.actions["e1#1"]
+    check("...and the step failed with the reason",
+          (record["ok"], "drove its" in record["detail"]), (False, True))
+    check("...while the run goes on", rover.call("autonomy_status", {})["enabled"],
+          True)
+    nav.driving = False
+    rover._trip_ended("errand", nav.sent[-1]["for_what"], Ended("stopped"))
+    check("the navigator's own word for the stop does not turn it into success",
+          rover.permission.actions["e1#1"]["ok"], False)
+
+
+def test_a_look_may_be_taken_at_the_two_calibrated_tilts_only():
+    rover = a_rover(Clock())
+    permit = permitted(rover, enabled(rover))
+    got = act(rover, permit, "world_inspect", "t#1", "episode:1", tilt_deg=45.0)
+    check("a look at tilt 45 is refused", got.get("refused"), "tilt")
+    got = act(rover, permit, "world_inspect", "t#2", "episode:1", tilt_deg=0.0)
+    check("...a look at tilt 0 is not refused for its tilt",
+          got.get("refused"), None)
+
+
+TESTS = (
+    test_an_inspection_must_declare_finite_limits_under_the_ceilings,
+    test_the_viewpoint_is_never_on_top_of_the_place_under_test,
+    test_a_viewpoint_further_than_the_attempt_may_drive_is_refused,
+    test_the_attempts_follow_the_place_and_not_the_name,
+    test_a_later_request_cannot_widen_a_case,
+    test_an_attempt_that_has_used_its_time_may_not_look,
+    test_the_watchdog_stops_a_drive_at_the_attempts_limit_and_not_the_run,
+    test_a_look_may_be_taken_at_the_two_calibrated_tilts_only,
+)

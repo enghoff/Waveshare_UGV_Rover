@@ -105,6 +105,9 @@ def test_schemas():
                # from models because nothing a model can see says where the rover
                # is in that frame. See `_tool_drive_to`.
                "world_state_viewpoint",
+               # Whether one look shows something where a hypothesis says, which
+               # reads map coordinates for the same reason; the executive asks it.
+               "world_state_check",
                # Autonomous permission, all five of them, and this is the most
                # deliberate entry on the list. Enabling autonomy is a person's
                # act and a model that could ask for it could talk itself into

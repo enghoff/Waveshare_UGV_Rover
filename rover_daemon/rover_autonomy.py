@@ -252,7 +252,14 @@ class RoverAutonomy:
             return {"ok": True, **self.nav.stop()}
 
         if action == "world_inspect":
-            return self._tool_world_inspect({"settle": params.get("settle", True)})
+            # A look for a hypothesis check may ask for the other calibrated tilt,
+            # a fresh picture and its depth kept; `permission.check` has already
+            # held the tilt to the two the bearings are calibrated at.
+            return self._tool_world_inspect({
+                "settle": params.get("settle", True),
+                "tilt_deg": params.get("tilt_deg"),
+                "fresh": bool(params.get("fresh")),
+                "keep_depth": bool(params.get("keep_depth"))})
 
         if action == "drive_to":
             if self.nav is None:
@@ -357,6 +364,15 @@ class RoverAutonomy:
                                       elapsed_s=None if was is None else now - was)
         why = fault or self.permission.due(facts)
         if not why:
+            # An inspection's own limits end the step and not the run: the
+            # attempt is over, and the next goal is the executive's to choose.
+            over = self.permission.inspection_over()
+            if over:
+                doing = self.permission.doing or {}
+                self.permission.limit_reached(str(doing.get("id") or ""), over)
+                if self.nav is not None and doing.get("action") == "drive_to":
+                    self.nav.stop()
+                print(f"[autonomy] {doing.get('id')} stopped: {over}", flush=True)
             return ""
         self.autonomy_end(why)
         return why

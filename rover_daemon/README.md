@@ -306,7 +306,20 @@ identifier for the action; the daemon checks the latch, the run, the lease, the
 budgets, the battery, the pose, the map identity and the safe area before
 anything turns. A repeat of an action already dispatched is answered with what
 happened the first time rather than driven again. Three operations are admitted
-and no others: `drive_to`, `world_inspect` and `stop`.
+and no others: `drive_to`, `world_inspect` and `stop`. A look may name a tilt, and
+only level or twenty up, the two the bearings are calibrated at.
+
+**A hypothesis inspection carries its own limits, and the daemon enforces them**
+([R-AUT-12](../docs/requirements/autonomy.md#r-aut-12)). A drive or a look sent
+for one names its case, the place it tests, and how far it may drive, how long it
+may take and how many attempts the place may have, each under a ceiling in
+`permission.py`. One attempt is one episode. A place whose attempts are spent is
+refused whatever the request calls it: two requests within half a metre of each
+other on the same map are one case, so a merge, a rename or a regenerated goal
+lands on what was already spent, and so does a new run. A viewpoint within half a
+metre of the place is refused, because the place is a hypothesis. The watchdog
+stops a drive that runs past its attempt's travel or time and fails that step,
+without ending the run.
 
 **Any person touching the rover takes it back.** Driving by hand, sending it
 somewhere by voice, running a script, stopping it, clearing the map or refitting
