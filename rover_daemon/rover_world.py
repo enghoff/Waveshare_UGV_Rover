@@ -1135,28 +1135,76 @@ class RoverWorld:
         # woken and waited for here, and held on for this look.
         woke = self.depth_wake(DEPTH_WAKE_WAIT_S) if keep_depth else ""
 
+        aim = arguments.get("aim_at")
+        aimed: dict[str, Any] = {}
+
         def tilted() -> None:
             # Set from below like rest is, once the camera is held so that no
             # other look is taken while it moves, and given the servo and the
             # picture time to settle.
-            self.centre_gimbal(float(tilt))
+            pan = 0.0
+            if isinstance(aim, dict) and aim.get("x_m") is not None:
+                aimed.update(self._aim_pan(aim))
+                pan = aimed.get("pan_deg") or 0.0
+            self.centre_gimbal(None if tilt is None else float(tilt), pan_deg=pan)
             time.sleep(TILT_SETTLE_S)
 
+        moves_gimbal = tilt is not None or isinstance(aim, dict)
         try:
             result = self._world_inspector().inspect(
                 settle=True if settle is None else bool(settle),
                 fresh=bool(arguments.get("fresh")), keep_depth=keep_depth,
                 wait_s=CHECK_LOOK_WAIT_S if keep_depth else 0.0,
-                before=tilted if tilt is not None else None)
+                before=tilted if moves_gimbal else None)
         finally:
-            if tilt is not None:
+            if moves_gimbal:
                 # Back to rest, so the next ordinary look is taken from where
                 # it always is.
                 self.centre_gimbal()
+        if aimed:
+            result["aimed"] = aimed
         if woke:
             result["depth_note"] = woke
         result["took_s"] = round(time.monotonic() - began, 2)
         return result
+
+    def _aim_pan(self, aim: dict[str, Any]) -> dict[str, Any]:
+        """The pan that puts a place in the middle of the picture, from where the
+        map says the rover faces.
+
+        **Measured, not believed.** Turning on the spot leaves the navigator's
+        heading tens of degrees out, and the navigator also calls a turn arrived
+        within fifteen degrees of the heading it was asked for; on the rover on
+        2026-10-01 those two together left a hypothesis check facing 34 degrees
+        away from its place, outside the depth camera's view. So one scan is
+        measured against the map first, as a still look's heading check does,
+        and the pan is worked out from that. Held to the twenty degrees either
+        way the pan calibration covers; outside that the look is taken at the
+        limit and the check says whether the place made it into view.
+        """
+        pose = self._world_pose()
+        if not pose or pose.get("heading_deg") is None:
+            return {"pan_deg": 0.0, "why": "no pose to aim from"}
+        heading = float(pose["heading_deg"])
+        x_m, y_m = float(pose["x_m"]), float(pose["y_m"])
+        inspector = self._world_inspector()
+        check = getattr(inspector, "heading", None)
+        fit = self._world_measure(None if check is None else check.offset)
+        measured = bool(fit.get("trusted"))
+        if measured and not fit.get("settled") and fit.get("heading_deg") is not None:
+            heading = float(fit["heading_deg"])
+            x_m = float(fit.get("x_m", x_m))
+            y_m = float(fit.get("y_m", y_m))
+        bearing = math.degrees(math.atan2(float(aim["y_m"]) - y_m,
+                                          float(aim["x_m"]) - x_m))
+        left = (bearing - heading + 180.0) % 360.0 - 180.0
+        limit = float(world_state.inspector.DEMONSTRATED_PAN_DEG)
+        # Pan is to the right and bearings to the left, so a place to the left
+        # is a negative pan.
+        pan = max(-limit, min(limit, round(-left)))
+        return {"pan_deg": float(pan), "place_left_deg": round(left, 1),
+                "heading_measured": measured,
+                "heading_deg": round(heading, 1)}
 
     def _tool_world_state_check(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Whether one stored look shows something where a claim says it stands.

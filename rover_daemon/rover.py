@@ -316,13 +316,16 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         self._pan_sent = float(target)
         return True
 
-    def centre_gimbal(self, tilt_deg: float | None = None) -> bool:
+    def centre_gimbal(self, tilt_deg: float | None = None,
+                      pan_deg: float = 0.0) -> bool:
         """Back to rest: straight ahead, and REST_TILT_DEG above level.
 
-        `tilt_deg` keeps the pan at rest and its approach, and sets another tilt:
-        a look taken to test a hypothesis asks for level when the place is below
-        the camera, because the depth camera sees forty degrees top to bottom and
-        at twenty up it sees nothing under the camera's own height.
+        `tilt_deg` and `pan_deg` are for a look taken to test a hypothesis: level
+        when the place is below the camera, because the depth camera sees forty
+        degrees top to bottom and at twenty up it sees nothing under the
+        camera's own height, and a pan inside the calibrated twenty degrees to
+        put the place in the middle of the picture. The pan is reached from
+        below like rest is.
 
         Twenty degrees up rather than level, for the reason argued where that
         number is defined -- the camera is low, and level fills most of the
@@ -346,12 +349,14 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         is lost is only the claim to know which way the servo arrived.
         """
         tilt = float(REST_TILT_DEG if tilt_deg is None else tilt_deg)
+        pan = float(round(pan_deg))
         with self._lock:
-            if self.link.send({"T": 133, "X": -APPROACH_UNDERSHOOT_DEG,
+            below = pan - APPROACH_UNDERSHOOT_DEG
+            if self.link.send({"T": 133, "X": below,
                                "Y": round(tilt), "SPD": 0, "ACC": 0}):
-                self._pan_sent = float(-APPROACH_UNDERSHOOT_DEG)
+                self._pan_sent = float(below)
                 time.sleep(APPROACH_SETTLE_S)
-            self.pan, self.tilt = 0.0, tilt
+            self.pan, self.tilt = pan, tilt
             return self._send_gimbal()
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

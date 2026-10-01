@@ -180,6 +180,38 @@ def test_a_look_may_be_taken_at_the_two_calibrated_tilts_only():
           got.get("refused"), None)
 
 
+def test_a_check_look_is_aimed_from_the_measured_heading():
+    """Found on the rover: a check facing 34 degrees away from its place.
+
+    The navigator called a turn arrived 17 degrees short, and its heading was
+    17.5 degrees out besides, so the place was outside the depth camera's view.
+    The pan is now worked out from where one scan says the rover faces, held to
+    the twenty degrees the pan calibration covers.
+    """
+    from types import SimpleNamespace
+
+    import rover_world
+
+    def aimed(believed, measured, place, trusted=True):
+        rover = SimpleNamespace(
+            _world_pose=lambda: {"x_m": 0.0, "y_m": 0.0, "heading_deg": believed},
+            _world_inspector=lambda: SimpleNamespace(heading=None),
+            _world_measure=lambda _offset: {
+                "trusted": trusted, "settled": measured == believed,
+                "x_m": 0.0, "y_m": 0.0, "heading_deg": measured})
+        return rover_world.RoverWorld._aim_pan(rover, place)
+
+    ahead_left = {"x_m": 1.0, "y_m": 0.18}            # 10 degrees to the left
+    check("a place ten degrees to the left is a pan ten degrees left",
+          aimed(0.0, 0.0, ahead_left)["pan_deg"], -10.0)
+    check("...worked out from the heading the scan measured, not the one "
+          "believed", aimed(15.0, 0.0, ahead_left)["pan_deg"], -10.0)
+    check("...and from the believed one when the scan cannot say",
+          aimed(15.0, 0.0, ahead_left, trusted=False)["pan_deg"], 5.0)
+    check("a place further round than the calibration is aimed at its limit",
+          aimed(0.0, 0.0, {"x_m": 0.0, "y_m": 1.0})["pan_deg"], -20.0)
+
+
 TESTS = (
     test_an_inspection_must_declare_finite_limits_under_the_ceilings,
     test_the_viewpoint_is_never_on_top_of_the_place_under_test,
@@ -189,4 +221,5 @@ TESTS = (
     test_an_attempt_that_has_used_its_time_may_not_look,
     test_the_watchdog_stops_a_drive_at_the_attempts_limit_and_not_the_run,
     test_a_look_may_be_taken_at_the_two_calibrated_tilts_only,
+    test_a_check_look_is_aimed_from_the_measured_heading,
 )

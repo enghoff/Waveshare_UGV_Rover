@@ -336,11 +336,15 @@ class Executive:
                 raise Aborted(f"{candidate['id']} carries no inspection limits",
                               "no limits")
             drive["params"]["inspection"] = limits
+            # Aimed at the place as well: the daemon measures where the rover
+            # really faces and pans the camera, within its calibration, to put
+            # the place in the middle of the picture.
             steps.append({"action": "world_inspect",
                           "params": {"settle": False, "fresh": True,
                                      "keep_depth": True,
                                      "tilt_deg": candidate["constraints"].get(
                                          "tilt_deg"),
+                                     "aim_at": limits.get("target"),
                                      "inspection": limits}})
 
         for step in steps:

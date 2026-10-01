@@ -258,6 +258,7 @@ class RoverAutonomy:
             return self._tool_world_inspect({
                 "settle": params.get("settle", True),
                 "tilt_deg": params.get("tilt_deg"),
+                "aim_at": params.get("aim_at"),
                 "fresh": bool(params.get("fresh")),
                 "keep_depth": bool(params.get("keep_depth"))})
 
