@@ -322,10 +322,12 @@ failed every tolerance. It found the next things to fix, in this order:
   [measured the same day](../progress/2026-10-01-heading-after-turning.md): the map
   over-counts every turn by about 7%, and a refit takes the heading back to within 2
   degrees of the tape. A refit inside each move held the wheels for 15 s and was
-  [rolled back](../progress/2026-10-01-heading-check-rolled-back.md). What replaces it
-  belongs in the world state's path: measure the heading in a fraction of a second
-  once the rover is still, then correct or withhold that look's direction, never
-  moving the rover or blocking a command.
+  [rolled back](../progress/2026-10-01-heading-check-rolled-back.md). Its replacement
+  works on looks only: a still look measures the heading in about a tenth of a
+  second, then corrects or withholds its own direction, never moving the rover. It
+  is [deployed](../progress/2026-10-01-photo-heading-check.md), and headings believed
+  17 to 43 degrees out are stored within 3.5 degrees of the tape. A driven
+  acceptance run is what is left.
 - **A carried rover keeps a confirmed position (R-WS-16, now failing).** The same
   measure-only check covers it: a look whose pose the scan does not confirm gets no
   direction.
