@@ -6,8 +6,9 @@ heading 23 to 43 degrees out without the check
 ([the measurement](2026-10-01-heading-after-turning.md)) measured +0.2, +1.7, -1.1,
 +1.4 and +1.5 degrees at the five steps where a target was in view. Deployed as
 `85d5909` (ros_nav and rover_daemon, both suites passing on the Orin: ros_nav 571,
-rover_daemon 986). It is described in [ros_nav/README.md](../../ros_nav/README.md)
-and [ros_nav/posecheck.py](../../ros_nav/posecheck.py). Pictures and poses are in
+rover_daemon 986). It was described in `ros_nav/README.md` and `ros_nav/posecheck.py`
+at that commit; both went with the
+[rollback the same day](2026-10-01-heading-check-rolled-back.md). Pictures and poses are in
 `captures/2026-10-01-heading/turn4/`.
 
 Two things it costs, both measured, neither yet dealt with:
