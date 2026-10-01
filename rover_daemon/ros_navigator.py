@@ -469,7 +469,7 @@ class RosNavigator:
                 % (self.host, self.port, error))
 
     # --- reading --------------------------------------------------------------
-    def measure(self) -> dict[str, Any]:
+    def measure(self, around_offset=None) -> dict[str, Any]:
         """Where one scan says the rover is, near where it thinks it is.
 
         Read-only on the bridge (`nav_map.measure_pose`): it moves nothing and
@@ -478,7 +478,10 @@ class RosNavigator:
         could not measure -- a moving rover, a busy keeper, a bridge too old to
         have been asked, or one that is down. See world_state/headingcheck.py.
         """
-        answer = self.ask({"op": "measure"}, MEASURE_TIMEOUT_S)
+        request: dict[str, Any] = {"op": "measure"}
+        if around_offset is not None:
+            request["around_offset"] = [float(v) for v in around_offset]
+        answer = self.ask(request, MEASURE_TIMEOUT_S)
         if not answer.get("ok"):
             return {"trusted": False,
                     "why": str(answer.get("error") or "the bridge did not measure")}

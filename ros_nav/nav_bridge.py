@@ -681,7 +681,8 @@ class Handler(socketserver.StreamRequestHandler):
             self.write({"kind": "reply", **node.grid()})
         elif op == "measure":
             # Read-only and quick, and no mutex: see nav_map.measure_pose.
-            self.write({"kind": "reply", "ok": True, **node.measure_pose()})
+            self.write({"kind": "reply", "ok": True, **node.measure_pose(
+                request.get("around_offset"))})
         elif op == "stop":
             self.write({"kind": "reply", "ok": True,
                         **node.halt(bool(request.get("latch")))})

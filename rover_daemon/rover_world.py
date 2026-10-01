@@ -482,7 +482,7 @@ class RoverWorld:
             self._world_inspector_cache = inspector
         return inspector
 
-    def _world_measure(self) -> dict[str, Any]:
+    def _world_measure(self, around_offset=None) -> dict[str, Any]:
         """Where one scan says the rover is: the check a still look's heading
         gets (world_state/headingcheck.py). Read-only on the navigator, and
         `trusted` false whenever there is no navigator able to answer."""
@@ -491,7 +491,7 @@ class RoverWorld:
         if measure is None:
             return {"trusted": False,
                     "why": "this navigator cannot measure the rover against its map"}
-        return measure()
+        return measure(around_offset)
 
     def _world_ranger(self):
         """The depth camera, opened once and kept, or None on a rover with none.

@@ -770,7 +770,7 @@ class NavMap:
         finally:
             self.move_mutex.release()
 
-    def measure_pose(self):
+    def measure_pose(self, around_offset=None):
         """Where one scan says the rover is, near where it thinks it is.
 
         **Measured and nothing else: it moves nothing, writes nothing and takes
@@ -787,6 +787,14 @@ class NavMap:
         pose read beside it do not describe the same place. It is never queued
         behind a graph write: it waits `MEASURE_WAIT_S` for the keeper, then
         answers that it could not measure.
+
+        `around_offset` is `(dx, dy, dheading)`, what the caller's last check
+        found, and the search is centred that far from where the rover thinks it
+        is. The heading drifts steadily while the rover turns -- 46 degrees after
+        two circles on 2026-10-01, past this window's edge -- and the last answer
+        is the best guess at the next. If nothing fits there, the search is tried
+        again around the rover's own pose. Either way the answer is measured from
+        where the rover thinks it is.
         """
         with self._lock:
             driving = self.driving
@@ -798,8 +806,17 @@ class NavMap:
             return {"trusted": False,
                     "why": "the map keeper is writing the graph"}
         try:
-            answer, _fit, _where = self.map_measure(MEASURE_WINDOW_M,
-                                                    MEASURE_WINDOW_DEG)
+            answer, fit, where = None, None, None
+            if around_offset is not None:
+                here = self.pose_deg()
+                if here is not None:
+                    dx, dy, dh = (float(v) for v in around_offset)
+                    answer, fit, where = self.map_measure(
+                        MEASURE_WINDOW_M, MEASURE_WINDOW_DEG,
+                        around=(here[0] + dx, here[1] + dy, here[2] + dh))
+            if fit is None or not fit.ok:
+                answer, _fit, _where = self.map_measure(MEASURE_WINDOW_M,
+                                                        MEASURE_WINDOW_DEG)
         finally:
             self.map_lock.release()
         return answer

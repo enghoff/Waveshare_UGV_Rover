@@ -14,11 +14,13 @@ So a still look asks the navigator where one scan says the rover is
 keeps the pose if the scan agrees, corrects it by what the scan found if the scan
 disagrees with confidence, and gives no direction if the scan cannot say. A moving
 look cannot be checked, because a scan and a pose taken in motion do not describe
-the same instant. It keeps its direction only while the last still check found
-the heading right and the rover has turned less than `TURNED_SINCE_CHECK_DEG`
-since. Straight-line driving keeps its bearings, which is what was won on
-2026-09-03 (`inspector.TURNED_WHILE_LOOKING_DEG`), and looks taken during turns
-give none until the rover stands still again.
+the same instant. It keeps its direction only while the last still check is
+fresh -- under `TURNED_SINCE_CHECK_DEG` of turning since, and, when that check had
+to correct the heading, under `TRAVELLED_SINCE_CHECK_M` of travel -- and it takes
+the same correction that check found. A check that found the heading right lets
+straight-line driving keep its bearings, which is what was won on 2026-09-03
+(`inspector.TURNED_WHILE_LOOKING_DEG`). Looks taken during turns give none until
+the rover stands still again.
 
 **Nothing here moves the rover, corrects the navigator or waits on a move.** An
 attempt that did all three was reverted on 2026-10-01: a refit inside every move
@@ -38,6 +40,12 @@ STILL_DEG = 1.0
 #: no direction. At 7% of a turn, fifteen degrees is about one degree of heading.
 TURNED_SINCE_CHECK_DEG = 15.0
 
+#: Travel since a check that had to correct the heading, beyond which a moving
+#: look gets no direction. Driving folds scans into the map and may correct the
+#: heading by itself, which would leave the check's correction stale. Half a metre
+#: covers the shuffle between looks at one standing place.
+TRAVELLED_SINCE_CHECK_M = 0.5
+
 
 def _wrap(angle_deg):
     return (angle_deg + 180.0) % 360.0 - 180.0
@@ -47,13 +55,21 @@ class HeadingCheck(object):
     """The last check, the turning since it, and the verdict on each look."""
 
     def __init__(self, measure):
-        #: `() -> dict | None`: the navigator's narrow scan-to-map measurement,
-        #: shaped like `refit.Fit.as_dict` plus `was`, the pose it measured from.
+        #: `(around_offset) -> dict | None`: the navigator's narrow scan-to-map
+        #: measurement, shaped like `refit.Fit.as_dict` plus `was`, the pose it
+        #: measured from. Handed the last correction found, so the search starts
+        #: where the heading has drifted to rather than where the rover thinks.
         self.measure = measure
-        self.good = False
+        #: The correction the last trusted check found, `(dx, dy, dheading)`, and
+        #: zero when it found the heading right. None when nothing trusted is
+        #: in hand: before any check, or after one that could not say.
+        self.offset = None
         self.turned_deg = 0.0
+        self.travelled_m = 0.0
         self.last = None
+        self._checked = {}
         self._heading = None
+        self._xy = None
 
     def saw(self, pose):
         """A pose the inspector read, so turning between looks is counted."""
@@ -63,6 +79,12 @@ class HeadingCheck(object):
         if self._heading is not None:
             self.turned_deg += abs(_wrap(heading - self._heading))
         self._heading = heading
+        if pose.get("x_m") is not None and pose.get("y_m") is not None:
+            xy = (float(pose["x_m"]), float(pose["y_m"]))
+            if self._xy is not None:
+                self.travelled_m += ((xy[0] - self._xy[0]) ** 2
+                                     + (xy[1] - self._xy[1]) ** 2) ** 0.5
+            self._xy = xy
 
     def judge(self, where, moved, turned):
         """`(pose, note)` for a look: the pose to take its bearings from, or None
@@ -71,43 +93,63 @@ class HeadingCheck(object):
         if where is None:
             return None, None
         if moved > STILL_M or turned > STILL_DEG:
-            if self.good and self.turned_deg < TURNED_SINCE_CHECK_DEG:
-                return where, None
-            return None, ("the rover had turned %.0f deg since its heading was "
-                          "last checked against the map, and a moving look "
-                          "cannot be checked" % (self.turned_deg,))
+            if self._fresh():
+                return self._corrected(where, moving=True), None
+            return None, ("the rover had turned %.0f deg and travelled %.1f m "
+                          "since its heading was last checked against the map, "
+                          "and a moving look cannot be checked"
+                          % (self.turned_deg, self.travelled_m))
         try:
-            fit = self.measure()
+            fit = self.measure(self.offset)
         except Exception as error:             # a look survives a missing check
             fit = {"trusted": False, "why": "%s: %s"
                    % (type(error).__name__, error)}
         fit = fit or {"trusted": False, "why": "nothing answered"}
         self.last = fit
         if not fit.get("trusted"):
-            self.good = False
+            self.offset = None
             return None, ("the heading could not be checked against the map: %s"
                           % (fit.get("why") or "no reason given"))
-        checked = {"off_deg": fit.get("turned_deg"), "off_m": fit.get("moved_m"),
-                   "score": fit.get("score")}
         if fit.get("settled"):
-            self.good, self.turned_deg = True, 0.0
-            return dict(where, checked=checked), None
-        # The scan places the rover somewhere a little different, confidently.
-        # The look takes its bearings from there. The navigator is left to correct
-        # itself, which it does once it drives, so moving looks wait for a check
-        # that finds the heading right.
-        self.good = False
-        was = fit.get("was") or {}
-        try:
-            fixed = dict(
-                where,
-                x_m=round(where["x_m"] + fit["x_m"] - was["x_m"], 3),
-                y_m=round(where["y_m"] + fit["y_m"] - was["y_m"], 3),
-                heading_deg=round(_wrap(where["heading_deg"]
-                                        + fit["heading_deg"]
-                                        - was["heading_deg"]), 1),
-                checked=dict(checked, corrected=True))
-        except (KeyError, TypeError, ValueError):
-            return None, "the map check answered without a pose to correct from"
-        return fixed, ("heading corrected by %.1f deg against the map"
-                       % (fit.get("turned_deg") or 0.0,))
+            offset = (0.0, 0.0, 0.0)
+        else:
+            # The scan places the rover somewhere a little different,
+            # confidently. The look takes its bearings from there, and the
+            # navigator is left to correct itself, which it does once it drives.
+            was = fit.get("was") or {}
+            try:
+                offset = (fit["x_m"] - was["x_m"], fit["y_m"] - was["y_m"],
+                          _wrap(fit["heading_deg"] - was["heading_deg"]))
+            except (KeyError, TypeError, ValueError):
+                self.offset = None
+                return None, ("the map check answered without a pose to "
+                              "correct from")
+        self.offset = offset
+        self.turned_deg = self.travelled_m = 0.0
+        self._checked = {"off_deg": fit.get("turned_deg"),
+                         "off_m": fit.get("moved_m"), "score": fit.get("score")}
+        if offset == (0.0, 0.0, 0.0):
+            return self._corrected(where), None
+        return self._corrected(where), ("heading corrected by %.1f deg against "
+                                        "the map" % (offset[2],))
+
+    def _fresh(self):
+        """Whether the last trusted check still speaks for a look taken now."""
+        if self.offset is None or self.turned_deg >= TURNED_SINCE_CHECK_DEG:
+            return False
+        corrected = self.offset != (0.0, 0.0, 0.0)
+        return not corrected or self.travelled_m < TRAVELLED_SINCE_CHECK_M
+
+    def _corrected(self, where, moving=False):
+        """`where`, moved by the last check's correction, with the check beside it."""
+        dx, dy, dh = self.offset
+        checked = dict(self._checked)
+        if dx or dy or dh:
+            checked["corrected"] = True
+        if moving:
+            checked["from_earlier_check"] = True
+        return dict(where,
+                    x_m=round(where["x_m"] + dx, 3),
+                    y_m=round(where["y_m"] + dy, 3),
+                    heading_deg=round(_wrap(where["heading_deg"] + dh), 1),
+                    checked=checked)

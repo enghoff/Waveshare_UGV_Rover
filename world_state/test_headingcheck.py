@@ -37,7 +37,9 @@ def refused():
 
 def test_a_still_look_is_checked_and_kept_corrected_or_withheld() -> None:
     answers = [agrees(), disagrees(-6.5), refused()]
-    check_ = headingcheck.HeadingCheck(lambda: answers.pop(0))
+    asked = []
+    check_ = headingcheck.HeadingCheck(
+        lambda offset: asked.append(offset) or answers.pop(0))
 
     pose, note = check_.judge(dict(HERE), 0.0, 0.0)
     check("a still look the scan agrees with keeps its pose",
@@ -53,13 +55,15 @@ def test_a_still_look_is_checked_and_kept_corrected_or_withheld() -> None:
           (pose["checked"]["corrected"], "corrected by -6.5" in note), (True, True))
 
     pose, note = check_.judge(dict(HERE), 0.0, 0.0)
+    check("the next search starts from the last correction found",
+          tuple(round(v, 3) for v in asked[-1]), (0.03, 0.0, -6.5))
     check("a still look the scan cannot place gets no direction", pose, None)
     check("...and the reason is the scan's", "fit the map" in note, True)
 
 
 def test_a_moving_look_needs_a_recent_good_check() -> None:
     answers = [agrees(), disagrees(), agrees()]
-    check_ = headingcheck.HeadingCheck(lambda: answers.pop(0))
+    check_ = headingcheck.HeadingCheck(lambda offset: answers.pop(0))
     pose, _ = check_.judge(dict(HERE), 0.5, 0.0)
     check("before any check, a moving look gets no direction", pose, None)
 
@@ -78,15 +82,23 @@ def test_a_moving_look_needs_a_recent_good_check() -> None:
 
     check_.judge(dict(HERE), 0.0, 0.0)            # still, but the scan disagrees
     pose, _ = check_.judge(dict(HERE), 0.5, 0.0)
-    check("a check that had to correct leaves moving looks waiting", pose, None)
+    check("a moving look just after a correcting check takes the same correction",
+          (pose["heading_deg"], pose["checked"]["from_earlier_check"]), (83.5, True))
+    check_.saw({"x_m": 1.0, "y_m": 2.0, "heading_deg": 115.0})
+    check_.saw({"x_m": 1.8, "y_m": 2.0, "heading_deg": 115.0})
+    pose, note = check_.judge(dict(HERE), 0.5, 0.0)
+    check("...but not once the rover has driven on: the map may have caught up",
+          (pose, "travelled 0.8 m" in note), (None, True))
 
     check_.judge(dict(HERE), 0.0, 0.0)            # still, and the scan agrees
+    check_.saw({"x_m": 3.0, "y_m": 2.0, "heading_deg": 115.0})
     pose, _ = check_.judge(dict(HERE), 0.5, 0.0)
-    check("...until a check finds the heading right again", pose is not None, True)
+    check("a check that found the heading right lets straight driving keep its "
+          "bearings however far", pose is not None, True)
 
 
 def test_turning_is_counted_across_the_half_circle() -> None:
-    check_ = headingcheck.HeadingCheck(lambda: None)
+    check_ = headingcheck.HeadingCheck(lambda offset: None)
     check_.saw({"heading_deg": 170.0})
     check_.saw({"heading_deg": -170.0})
     check("20 degrees across the wrap, not 340", check_.turned_deg, 20.0)
@@ -96,14 +108,15 @@ def test_turning_is_counted_across_the_half_circle() -> None:
 
 
 def test_a_check_that_fails_outright_withholds_and_never_raises() -> None:
-    def broken():
+    def broken(offset):
         raise OSError("the bridge is down")
     pose, note = headingcheck.HeadingCheck(broken).judge(dict(HERE), 0.0, 0.0)
     check("a measurement that raised gives no direction", pose, None)
     check("...and names why", "bridge is down" in note, True)
-    pose, _ = headingcheck.HeadingCheck(lambda: None).judge(dict(HERE), 0.0, 0.0)
+    pose, _ = headingcheck.HeadingCheck(lambda o: None).judge(dict(HERE), 0.0, 0.0)
     check("one that answered nothing gives none either", pose, None)
-    pose, _ = headingcheck.HeadingCheck(lambda: {"trusted": True, "settled": False}
+    pose, _ = headingcheck.HeadingCheck(lambda o: {"trusted": True,
+                                                   "settled": False}
                                         ).judge(dict(HERE), 0.0, 0.0)
     check("a disagreement with no pose to correct from gives none", pose, None)
 
@@ -121,7 +134,7 @@ def test_the_inspector_takes_bearings_from_the_checked_pose() -> None:
                                 measure=measure)
 
     with tempfile.TemporaryDirectory() as directory:
-        store, inspector = inspector_with(directory, lambda: agrees())
+        store, inspector = inspector_with(directory, lambda o: agrees())
         inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
         check("a look the scan agrees with keeps the bearing it always had",
@@ -131,7 +144,7 @@ def test_the_inspector_takes_bearings_from_the_checked_pose() -> None:
         store.close()
 
     with tempfile.TemporaryDirectory() as directory:
-        store, inspector = inspector_with(directory, lambda: disagrees(-6.5))
+        store, inspector = inspector_with(directory, lambda o: disagrees(-6.5))
         answer = inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
         check("a corrected heading moves the stored bearing by the same amount",
@@ -144,7 +157,7 @@ def test_the_inspector_takes_bearings_from_the_checked_pose() -> None:
         store.close()
 
     with tempfile.TemporaryDirectory() as directory:
-        store, inspector = inspector_with(directory, refused)
+        store, inspector = inspector_with(directory, lambda o: refused())
         answer = inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
         check("a refused check keeps the picture", row["frame_id"] is not None, True)
@@ -158,7 +171,7 @@ def test_the_inspector_takes_bearings_from_the_checked_pose() -> None:
 
     with tempfile.TemporaryDirectory() as directory:
         store, inspector = inspector_with(
-            directory, lambda: agrees(),
+            directory, lambda o: agrees(),
             pose=a_turning_pose([90.0, 110.0]))
         inspector.inspect()
         row = dict(store.db.execute("SELECT * FROM observations").fetchone())
