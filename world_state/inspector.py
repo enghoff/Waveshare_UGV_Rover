@@ -453,7 +453,8 @@ class Inspector(InspectionRanges):
             if got:
                 self._lock.release()
 
-    def inspect(self, settle: bool = True) -> dict[str, Any]:
+    def inspect(self, settle: bool = True, fresh: bool = False,
+                keep_depth: bool = False) -> dict[str, Any]:
         """Look once, and answer with what happened rather than with what was found.
 
         A second request while one is running is refused rather than queued. An
@@ -470,6 +471,12 @@ class Inspector(InspectionRanges):
         therefore makes a rover that looks often slower and slower at looking,
         until the looking stops. Whoever is driving the looks decides how often it
         is worth asking, and `settle` is that call.
+
+        `fresh` and `keep_depth` are for a look taken to test a hypothesis
+        (`hypothesis_check.py`): it is recorded even if the picture matches the
+        last one, because the question is about this moment and not about the
+        room, and its depth map is kept even if nothing in it was ranged,
+        because depth measured past an empty place is the evidence of absence.
         """
         if not self._lock.acquire(blocking=False):
             return {"ok": False, "status": "busy", "busy": True,
@@ -478,7 +485,8 @@ class Inspector(InspectionRanges):
                              f"this one was not started"}
         self.started_at = time.monotonic()
         try:
-            return self._inspect(settle=settle)
+            return self._inspect(settle=settle, fresh=fresh,
+                                 keep_depth=keep_depth)
         except Exception as error:            # never past here: the daemon owns STOP
             return self._failed("error", f"{type(error).__name__}: {error}")
         finally:
@@ -502,7 +510,8 @@ class Inspector(InspectionRanges):
 
     # --- the steps ------------------------------------------------------------
 
-    def _inspect(self, settle: bool = True) -> dict[str, Any]:
+    def _inspect(self, settle: bool = True, fresh: bool = False,
+                 keep_depth: bool = False) -> dict[str, Any]:
         """One inspection: a frame, the encoders, and what they measured.
 
         The failure discipline is the whole of the order here -- the sidecar is
@@ -563,7 +572,7 @@ class Inspector(InspectionRanges):
         # SAME_PICTURE_SHARE.
         seen = picture(jpeg)
         share = picture_changed(self._kept_picture, seen)
-        if share is not None and share < SAME_PICTURE_SHARE:
+        if not fresh and share is not None and share < SAME_PICTURE_SHARE:
             return self._unchanged(share, run, began=began, backend=backend)
 
         frame_id = self.store.save_frame(jpeg, frame.get("width"),
@@ -658,7 +667,7 @@ class Inspector(InspectionRanges):
         # it here; it is what lets a question about a distance be asked again of
         # this look after the room has changed, which the recording of
         # 2026-09-07 could not answer for want of exactly this.
-        self._keep_depth(frame_id, ranges)
+        self._keep_depth(frame_id, ranges, always=keep_depth)
 
         try:
             stored = self.store.record(

@@ -219,7 +219,7 @@ class WorldStore:
     def depth_path(self, frame_id: str) -> str:
         return os.path.join(self.frames_dir, f"{frame_id}.depth.gz")
 
-    def save_depth(self, frame_id: str, depth) -> int:
+    def save_depth(self, frame_id: str, depth, lens: Any = None) -> int:
         """Keep the depth map that went with a frame. Returns bytes written.
 
         **The evidence a recording could not answer a question without.** The
@@ -246,10 +246,16 @@ class WorldStore:
         # The shape and the units go in with the buffer, because a bare block of
         # 16-bit numbers is unreadable in a year without them and the file is the
         # only thing that will still be around.
-        header = json.dumps({"width": depth.width, "height": depth.height,
-                             "dtype": depth.dtype or "uint16", "unit": "mm",
-                             "age_s": round(depth.age_s, 3),
-                             "apart_s": round(depth.apart_s, 3)}).encode()
+        described = {"width": depth.width, "height": depth.height,
+                     "dtype": depth.dtype or "uint16", "unit": "mm",
+                     "age_s": round(depth.age_s, 3),
+                     "apart_s": round(depth.apart_s, 3)}
+        # The optics the map was taken through, when the caller knows them, so a
+        # place can be projected into it later without the camera that took it.
+        if lens is not None and getattr(lens, "fx", 0):
+            described["lens"] = {name: float(getattr(lens, name)) for name in
+                                 ("fx", "fy", "cx", "cy", "width", "height")}
+        header = json.dumps(described).encode()
         body = len(header).to_bytes(4, "little") + header + depth.millimetres
         try:
             with gzip.open(self.depth_path(frame_id), "wb", compresslevel=6) as f:
@@ -403,7 +409,9 @@ class WorldStore:
     def observations(self, entity_id: str | None = None, limit: int = 200,
                      unmatched: bool = False,
                      before: tuple[float, int] | None = None,
-                     ids: list[int] | None = None) -> list[dict[str, Any]]:
+                     ids: list[int] | None = None,
+                     frame_id: str | None = None,
+                     vectors: bool = False) -> list[dict[str, Any]]:
         """Observation history, newest first.
 
         `entity_id` selects one entity's history; `unmatched` selects the
@@ -424,6 +432,10 @@ class WorldStore:
         history. It is what a search needs: the ranking runs over the vector
         columns alone, and the console draws the whole of every look it matched
         whether or not the stream on screen had reached back that far.
+
+        `frame_id` is every region of one look, which is what a hypothesis check
+        reads, and `vectors` keeps the appearance vectors in for a caller that
+        compares them rather than sending the row on.
         """
         query = "SELECT * FROM observations"
         where: list[str] = []
@@ -441,13 +453,16 @@ class WorldStore:
                 return []
             where.append("id IN (" + ",".join("?" * len(ids)) + ")")
             args += [int(one) for one in ids]
+        if frame_id is not None:
+            where.append("frame_id = ?")
+            args.append(str(frame_id))
         if where:
             query += " WHERE " + " AND ".join(where)
         query += " ORDER BY observed_at DESC, id DESC LIMIT ?"
         args.append(int(limit))
         with self._lock:
             rows = self.db.execute(query, args).fetchall()
-        return [_readable(dict(row)) for row in rows]
+        return [_readable(dict(row), vectors=vectors) for row in rows]
 
     def unplaced(self, map_session: int | None = None,
                  limit: int = 500) -> list[dict[str, Any]]:

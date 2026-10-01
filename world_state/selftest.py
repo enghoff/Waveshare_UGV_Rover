@@ -32,8 +32,10 @@ from test_harness import FAIL, PASS, SKIP
 from test_approach import TESTS as APPROACH_TESTS
 from test_cluster import TESTS as CLUSTER_TESTS
 from test_headingcheck import TESTS as HEADINGCHECK_TESTS
+from test_hypothesis_check import TESTS as HYPOTHESIS_CHECK_TESTS
 from test_identity import TESTS as IDENTITY_TESTS
 from test_inspect import TESTS as INSPECT_TESTS
+from test_inspection_look import TESTS as INSPECTION_LOOK_TESTS
 from test_locate import TESTS as LOCATE_TESTS
 from test_oak import TESTS as OAK_TESTS
 from test_perceive import TESTS as PERCEIVE_TESTS
@@ -46,7 +48,8 @@ from test_turning_ranges import TESTS as TURNING_RANGES_TESTS
 
 TESTS = (*STORE_TESTS, *LOCATE_TESTS, *CLUSTER_TESTS, *PERCEIVE_TESTS,
          *INSPECT_TESTS, *HEADINGCHECK_TESTS, *RESOLVE_TESTS, *SEARCH_TESTS, *APPROACH_TESTS,
-         *OAK_TESTS, *REANCHOR_TESTS, *IDENTITY_TESTS, *RELENS_TESTS, *TURNING_RANGES_TESTS)
+         *OAK_TESTS, *REANCHOR_TESTS, *IDENTITY_TESTS, *RELENS_TESTS, *TURNING_RANGES_TESTS,
+         *HYPOTHESIS_CHECK_TESTS, *INSPECTION_LOOK_TESTS)
 
 
 def main() -> int:

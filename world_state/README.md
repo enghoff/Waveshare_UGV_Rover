@@ -248,6 +248,33 @@ ssh orin "curl -s http://127.0.0.1:8776/health"
 The response identifies the selected backend, fallback reason, load time and
 whether inference is busy.
 
+## Checking a hypothesis with one look
+
+`world_state_check` answers whether one stored look shows something where a claim
+says a thing stands, for the executive's M0a inspections
+([R-AUT-12](../docs/requirements/autonomy.md#r-aut-12)); the rule is
+[`hypothesis_check.py`](hypothesis_check.py). **It is a question about a place,
+not about identity.** On the labelled drive of 2026-09-08 a held-out look of a
+real object matched the rest of its looks at 0.70 or better 43% of the time, and
+a different object put in its place matched that well 2.3% of the time, so one
+look cannot say which thing it sees and nothing here claims to.
+
+A look answers `supported` when a region's ranged point lands within the claim's
+uncertainty plus 0.15 m, `contradicted` when depth was measured past the place
+across its whole uncertainty, and `unresolved` otherwise, with the reason: a look
+whose direction was withheld, a place outside the depth camera's view, too little
+depth, something nearer in the way, or a surface with no region on it. A look
+whose own error, at twice its pointing and range errors, is larger than 0.15 m
+cannot confirm anything, because in a furnished room something stands within a
+noisy allowance of almost anywhere. A claim looser than half a metre is not
+tested. Not seeing a region is never a contradiction.
+
+A look taken for a check is recorded even if the picture matches the last one,
+keeps its depth map whether or not anything was ranged, and saves the depth
+camera's lens beside it, so the check can be replayed at a desk.
+`bench_inspection.py` replays it over a recording's real looks; see
+[the replay](../docs/progress/2026-10-01-hypothesis-inspection-replay.md).
+
 ## Control calls
 
 The daemon exposes control calls on TCP 8769 for the console and diagnostics:
@@ -261,6 +288,7 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 - `world_state_viewpoint`
 - `world_state_clear`
 - `world_inspect`
+- `world_state_check`
 
 There was a `world_map_session` here and it has been removed. It read as a
 question and was an instruction: every call minted a new session, which is to say

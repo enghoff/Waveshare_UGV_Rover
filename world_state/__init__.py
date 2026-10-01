@@ -22,6 +22,7 @@ to cross it. Nothing here asks a model anything.
     view.py              an observation's measured provenance as a bearing to draw
     locate.py            two bearings from two places as a point on the map
     approach.py          where the rover would have to stand to look at one
+    hypothesis_check.py  whether one look shows something where a claim says
     oak.py               the second camera: where it is, and what its pixels see
     depth_client.py      asking it how far away the things in a picture are
     replay.py            a recorded run back through the resolver, at a desk
@@ -35,6 +36,7 @@ from __future__ import annotations
 from .inspector import Inspector
 from . import approach
 from . import depth_client
+from . import hypothesis_check
 from . import oak
 from . import resolve
 from . import search
