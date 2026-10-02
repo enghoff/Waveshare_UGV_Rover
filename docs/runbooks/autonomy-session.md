@@ -131,9 +131,9 @@ distance the rover actually travelled after it was told.
 |---|---|
 | `autonomy is not enabled` | no run is open; the enable above is what opens one |
 | a name and a reason, under `latched` | somebody stopped the rover; enabling again clears it |
-| `the run ended: ...` | a budget, the battery, or the watchdog closed it — open a new one |
+| `the run ended: ...` | a budget or the watchdog closed it — open a new one |
 | `a run is already open` | one is running; stop it before opening another |
-| the executive chooses nothing, every turn | read the refusals it prints: an unsettled map, an untrusted pose or a flat battery gate every goal at once |
+| the executive chooses nothing, every turn | read the refusals it prints: an unsettled map or an untrusted pose gates every goal at once |
 
 ## Boundary allowance
 

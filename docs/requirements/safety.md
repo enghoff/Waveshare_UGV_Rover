@@ -146,18 +146,23 @@ action that names neither. What is owed is a supervised session in which real
 movement is traced back that way.
 
 <a id="r-safe-10"></a>
-### R-SAFE-10 — Autonomous runs are bounded by time, travel and battery
+### R-SAFE-10 — Autonomous runs are bounded by time, travel, actions and failures
 
-- **State:** open
-- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3) — the budgets have never been spent by a rover that was driving
+- **State:** settled
+- **Evidence:** [2026-10-02, the stop trials](../progress/2026-10-02-drive-carry-and-stops.md):
+  on hardware a run closing on its failure count stopped a moving leg within 0.08 m,
+  and runs closed on the battery floor while it existed; `python rover_daemon/selftest.py`
 
 Exploration already has the time half of this ([R-SAFE-7](#r-safe-7)). A general
-executive needs all three, because the failure it protects against is not a
-crash but a rover that keeps making locally reasonable decisions until its
-battery is flat somewhere inconvenient.
+executive needs the rest, because the failure it protects against is not a
+crash but a rover that keeps making locally reasonable decisions.
 
-All three are declared when a person opens a run, are enforced by the daemon
+**There is no battery bound.** Until 2026-10-02 a run also ended below 11.2 V; read
+under load, that ended supervised runs within minutes of a charge, and the owner
+[decided](../decisions/autonomous-runs-have-no-battery-floor.md) that autonomous runs are conditioned on the battery as every other
+drive is.
+
+The bounds are declared when a person opens a run, are enforced by the daemon
 rather than by the executive, and end the run when spent; the standing limits
 and the reason for each number are in
 [rover_daemon/permission.py](../../rover_daemon/permission.py). **Travel is
@@ -201,7 +206,7 @@ Permission is a fifteen-second lease the executive renews as it works, and
 nothing renews it on the executive's behalf — no heartbeat thread, deliberately,
 since a heartbeat that outlives the loop it stands for is the failure this
 exists to prevent. A thread in the daemon ticks twice a second while a run is
-open and stops the wheels when the lease, the budget, the battery, the pose or
+open and stops the wheels when the lease, the budget, the pose or
 the map says the run is over. None of that state is written to disk, so a
 restart leaves no run and no permit to restore.
 

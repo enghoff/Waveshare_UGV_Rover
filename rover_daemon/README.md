@@ -290,8 +290,8 @@ cannot come back by restarting something.
 
 **A person opens a run and nothing else can.** `autonomy_enable` says who is
 enabling it and why, and declares the budget: how many minutes, how many metres,
-how many actions, how many failures in a row, and the battery it keeps in
-reserve. Each of those may be made smaller than the standing limit and never
+how many actions and how many failures in a row (there is no battery reserve:
+[the decision](../docs/decisions/autonomous-runs-have-no-battery-floor.md)). Each of those may be made smaller than the standing limit and never
 larger. Opening a run is also the only thing that clears a stop.
 
 **Permission inside a run is a fifteen-second lease.** The executive renews it
@@ -303,7 +303,7 @@ renewing, and the daemon's own watchdog -- a thread here, ticking twice a second
 **Every autonomous action is dispatched through one call, and re-checked at
 dispatch.** `autonomy_act` carries the permit, the episode it belongs to and an
 identifier for the action; the daemon checks the latch, the run, the lease, the
-budgets, the battery, the pose, the map identity and the safe area before
+budgets, the pose, the map identity and the safe area before
 anything turns. A repeat of an action already dispatched is answered with what
 happened the first time rather than driven again. Three operations are admitted
 and no others: `drive_to`, `world_inspect` and `stop`. A look may name a tilt, and

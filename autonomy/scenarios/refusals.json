@@ -27,22 +27,22 @@
       }
     },
     {
-      "name": "a flat battery stops everything, whatever is on offer",
-      "why": "Deciding to drive across the room on the last fifth of the pack is how a rover ends the day somewhere nobody wanted it.",
+      "name": "a low battery is no reason to stop, as for any other drive",
+      "why": "Since 2026-10-02 the owner has autonomous runs conditioned on the battery as every other drive is. The 11.2 V floor, read under load, ended supervised runs within minutes of a charge; the board's own cutoff is what ends a run now.",
       "map": "room",
-      "rover": {"battery_v": 10.9},
+      "rover": {"battery_v": 10.4},
       "entities": [
         {"id": "object:8", "at": [1.6, 1.0], "uncertainty_m": 0.60,
          "major_deg": 90}
       ],
       "expect": {
-        "gate": ["battery low"],
-        "offered": [{"target": "object:8"}]
+        "gate": [],
+        "chose": {"target": "object:8"}
       }
     },
     {
-      "name": "a battery nobody can read is not treated as a full one",
-      "why": "The driver board not answering is not the same as a healthy pack, and the safe reading of silence is that there is no telling.",
+      "name": "a battery nobody can read stops nothing either",
+      "why": "Ordinary drives do not ask the battery, and since 2026-10-02 neither does an autonomous run; a driver board that does not answer is a health fault the navigator reports, not a battery gate.",
       "map": "room",
       "rover": {"battery_v": null},
       "entities": [
@@ -50,7 +50,8 @@
          "major_deg": 90}
       ],
       "expect": {
-        "gate": ["battery unknown"]
+        "gate": [],
+        "chose": {"target": "object:8"}
       }
     },
     {

@@ -61,15 +61,13 @@ def test_a_bigger_gain_never_buys_past_a_veto() -> None:
     check("...and nothing was chosen", got["preferred"], None)
 
 
-def test_a_flat_battery_stops_everything_whatever_is_on_offer() -> None:
-    here = _situation(entities=[_a_thing_worth_looking_at()], battery_v=10.9)
+def test_a_low_battery_shuts_no_gate() -> None:
+    """No battery floor since 2026-10-02: the owner decided an autonomous
+    run is conditioned on the battery as every other drive is."""
+    here = _situation(entities=[_a_thing_worth_looking_at()], battery_v=10.4)
     got = scoring.consider(here, authority=True)
-    check("there was something worth doing", bool(got["considered"]), True)
-    check("...and it may not be done", got["chose"], None)
-    check("...for the reason a person would give",
-          any("battery" in one["gate"] for one in got["gate"]), True)
-    check("...which names the reading",
-          any("10.9" in one["why"] for one in got["gate"]), True)
+    check("a low pack shuts no gate",
+          any("battery" in one["gate"] for one in got["gate"]), False)
 
 
 def test_the_gate_names_each_thing_that_is_wrong() -> None:
@@ -227,7 +225,7 @@ def test_a_purpose_makes_one_kind_of_goal_matter_more() -> None:
 TESTS = (
     test_every_term_of_the_score_is_written_down,
     test_a_bigger_gain_never_buys_past_a_veto,
-    test_a_flat_battery_stops_everything_whatever_is_on_offer,
+    test_a_low_battery_shuts_no_gate,
     test_the_gate_names_each_thing_that_is_wrong,
     test_with_no_authority_it_still_says_what_it_would_do,
     test_being_reachable_is_not_a_reason_to_drive,

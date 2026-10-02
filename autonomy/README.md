@@ -254,8 +254,8 @@ that is written against the record rather than the code: an episode may only say
 a model answered by carrying a `model` event, and a completed autonomous turn
 has none.
 
-**What ends a run.** Its budget — minutes, metres, actions, failures in a row,
-the battery floor — or a person stopping the rover, or the daemon noticing that
+**What ends a run.** Its budget — minutes, metres, actions, failures in a row —
+or a person stopping the rover, or the daemon noticing that
 nothing has renewed the lease. The first two end it from outside this loop
 entirely; the third is what happens if this process is killed mid-drive.
 

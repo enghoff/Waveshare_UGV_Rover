@@ -373,17 +373,18 @@ def test_the_map_changing_under_a_run_ends_it():
     check("...naming both", "map-1" in why and "map-2" in why, True)
 
 
-def test_a_flat_battery_ends_the_run_and_refuses_a_drive():
+def test_a_low_battery_is_no_reason_to_refuse_or_end_a_run():
+    """Since 2026-10-02 an autonomous run is conditioned on the battery as
+    every other drive is: not at all. The 11.2 V floor it had, read under load,
+    ended M0a's runs within minutes of a charge."""
     clock = Clock()
-    rover = a_rover(clock, volts=1100)
+    rover = a_rover(clock, volts=1050)
     permit = permitted(rover, enabled(rover))
-    refused = act(rover, permit, "drive_to", "a#1", x_m=1.0, y_m=0.0)
-    check("a drive is refused under the battery floor", refused["refused"],
-          "battery low")
+    got = act(rover, permit, "drive_to", "a#1", x_m=1.0, y_m=0.0)
+    check("a drive on a low pack is not refused for it",
+          got.get("refused") in (None, ""), True)
     why = rover.autonomy_tick()
-    check("...and the run does not wait to be asked again",
-          rover.permission.run.ended, why)
-    check("...saying what the pack reads", "11.00 V" in why, True)
+    check("...and the run goes on", (why, rover.permission.run.ended), ("", ""))
 
 
 def test_failures_in_a_row_end_the_run():
@@ -531,7 +532,7 @@ TESTS = (
     test_travel_is_spent_by_where_the_rover_actually_gets_to,
     test_a_pose_that_jumps_ends_the_run,
     test_the_map_changing_under_a_run_ends_it,
-    test_a_flat_battery_ends_the_run_and_refuses_a_drive,
+    test_a_low_battery_is_no_reason_to_refuse_or_end_a_run,
     test_failures_in_a_row_end_the_run,
     test_stopping_the_rover_latches_autonomy_off,
     test_driving_by_hand_takes_the_rover_back,

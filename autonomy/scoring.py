@@ -27,8 +27,7 @@ recommend it at all.
 
 Two kinds, and the difference is not a technicality:
 
-**The gate** is about the rover, not the goal -- a flat battery, an unhealthy
-navigator, a stop somebody latched, or the standing fact of Phase 2 that nothing
+**The gate** is about the rover, not the goal -- an unhealthy navigator, a stop somebody latched, or the standing fact of Phase 2 that nothing
 here has any authority to move anything. When the gate is shut nothing is
 chosen, whatever the candidates say.
 
@@ -98,7 +97,7 @@ class Weights:
     __slots__ = ("version", "purpose", "w_time", "w_travel", "w_energy",
                  "switching_cost", "min_gain", "room_m2",
                  "useful_uncertainty_m", "time_scale_s", "travel_scale_m",
-                 "battery_floor_v", "geofence", "m0a_protocol", "source")
+                 "geofence", "m0a_protocol", "source")
 
     def __init__(self, **fields: Any) -> None:
         for name, value in DEFAULTS.items():
@@ -190,11 +189,10 @@ DEFAULTS: dict[str, Any] = {
     "time_scale_s": 60.0,
     "travel_scale_m": 10.0,
 
-    # 11.2 V is 3.73 V per cell on this three-cell pack, which the driver
-    # board's own curve calls about a fifth left and reports as `low`. A rover
-    # deciding to drive somewhere on the last fifth of its battery is a rover
-    # that ends the day somewhere nobody wanted it.
-    "battery_floor_v": 11.2,
+    # No battery floor since 2026-10-02: the owner decided that an autonomous
+    # run is conditioned on the battery as every other drive is, not at all.
+    # It was 11.2 V, read under load, and ended M0a's runs within 20 to 25
+    # minutes of a charge. See rover_daemon/permission.py.
 
     # No safe area is configured, which is a fact about this rover rather than
     # an oversight: nothing here may move, so nothing needs fencing yet. When
@@ -250,16 +248,6 @@ def gate(situation: Situation, weights: Weights = DEFAULT, *,
                                        "by itself")})
     for name, sentence in sorted(situation.health().items()):
         shut.append({"gate": name, "why": sentence})
-    volts = situation.battery_v
-    if volts is None:
-        shut.append({"gate": "battery unknown",
-                     "why": "the driver board did not report a battery "
-                            "voltage, so there is no telling what is left"})
-    elif volts < float(weights.battery_floor_v):
-        shut.append({"gate": "battery low",
-                     "why": f"the pack reads {volts:.2f} V, under the "
-                            f"{weights.battery_floor_v:.1f} V this rover keeps "
-                            f"in reserve"})
     return shut
 
 

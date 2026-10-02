@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [autonomous-runs-have-no-battery-floor.md](autonomous-runs-have-no-battery-floor.md) | agreed 2026-10-02 | why an autonomous run ends on the board's own cutoff rather than an 11.2 V reserve |
 | [p0-measures-the-hardware.md](p0-measures-the-hardware.md) | agreed 2026-10-02 | why P0 measures the hardware instead of holding it to accuracy bars, and what stays a condition: honest uncertainty, abstention, safety boundaries |
 | [identity-is-judged-action-by-action.md](identity-is-judged-action-by-action.md) | agreed 2026-10-01 | why there is no single identity bar, how an action that relies on identity is judged instead, and why P0 does not wait on identity |
 | [bare-patches-are-not-a-p0-gate.md](bare-patches-are-not-a-p0-gate.md) | agreed 2026-10-01 | why P0 does not wait for bare floor and background to be kept out of inspection goals |

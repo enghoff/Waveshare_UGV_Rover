@@ -367,13 +367,13 @@ def test_the_daemon_refusing_an_action_ends_the_turn_without_moving():
     session.close()
 
 
-def test_a_low_battery_refuses_before_the_wheels_turn():
-    session = Session(rover=a_rover(volts=10.9))
+def test_a_low_battery_does_not_stop_the_turn():
+    """No battery floor since 2026-10-02: an autonomous run is conditioned on
+    the battery as every other drive is."""
+    session = Session(rover=a_rover(volts=10.4))
     got = session.executive.once()
-    check("a flat battery stops the turn", got["acted"], False)
-    check("...at the gate, before anything was planned",
-          "11.2 V" in (got["why"] or ""), True)
-    check("...and nothing was sent to the rover", session.rover.moves, [])
+    check("a low pack is no reason to stop",
+          "battery" in (got["why"] or "").lower(), False)
     session.close()
 
 
@@ -512,7 +512,7 @@ TESTS = (
     test_permission_running_out_mid_drive_ends_the_turn,
     test_a_goal_that_never_arrives_times_out,
     test_the_daemon_refusing_an_action_ends_the_turn_without_moving,
-    test_a_low_battery_refuses_before_the_wheels_turn,
+    test_a_low_battery_does_not_stop_the_turn,
     test_losing_the_daemon_ends_the_loop_rather_than_the_rover,
     test_a_look_that_fails_ends_the_turn_after_the_drive,
     test_the_executive_cannot_move_the_rover_except_through_a_permit,

@@ -20,7 +20,7 @@ The rules, in the order they are enforced:
    restore authority that was taken away -- and neither can restarting the
    executive, because the executive cannot open a run at all.
 3. **A run is bounded before it starts.** Wall clock, distance travelled,
-   actions dispatched, consecutive failures and a battery floor, declared when
+   actions dispatched and consecutive failures, declared when
    the run is opened and spent as it goes. The bound the plan cares about most
    is the one nobody remembers to check: travel accumulated during a move
    nobody is waiting for, which is why spending is recorded from the pose the
@@ -84,12 +84,12 @@ RUN_MAX_ACTIONS = 40
 #: is standing rather than that this goal was poor.
 RUN_MAX_FAILURES = 3
 
-#: The pack voltage below which no autonomous action starts. 3.73 V per cell on
-#: this three-cell pack, which the driver board's own curve calls about a fifth
-#: left. The same floor `autonomy/scoring.py` scores against, and for the same
-#: reason: a rover deciding to drive somewhere on the last fifth of its battery
-#: is a rover that ends the day somewhere nobody wanted it.
-BATTERY_FLOOR_V = 11.2
+#: **No battery floor.** Until 2026-10-02 no autonomous action started, and a
+#: run ended, below 11.2 V (3.73 V per cell). The reading is taken under load,
+#: and with the motors pulling a pack resting at 11.3 to 11.5 V read under it, so
+#: M0a's supervised runs ended after 20 to 25 minutes on a charge. The owner
+#: decided that autonomous runs are conditioned on the battery as every other
+#: drive is -- not at all; the board's own cutoff is what ends them.
 
 #: How fast this chassis can possibly be going. `MAX_SPEED_MS` in
 #: lidar_slam/nav2 terms, kept here as a number rather than imported because
@@ -147,7 +147,6 @@ DEFAULT_BUDGET: dict[str, Any] = {
     "travel_m": RUN_MAX_TRAVEL_M,
     "actions": RUN_MAX_ACTIONS,
     "failures": RUN_MAX_FAILURES,
-    "battery_floor_v": BATTERY_FLOOR_V,
     "permit_ttl_s": PERMIT_TTL_S,
     # No safe area unless a person declares one when they enable the run. None
     # means "the map is the boundary", which is not nothing: every goal still
@@ -419,10 +418,6 @@ class Permission:
                 return {"ok": False,
                         "error": f"{name} may be at most "
                                  f"{DEFAULT_BUDGET[name]}"}
-        if float(asked["battery_floor_v"]) < BATTERY_FLOOR_V:
-            return {"ok": False,
-                    "error": f"the battery floor may not go below "
-                             f"{BATTERY_FLOOR_V} V"}
         self.runs += 1
         self.run = Run(f"run/{self.boot}/{self.runs}", by=by, why=why,
                        budget=asked, at=now, wall=self.wall())
@@ -559,17 +554,9 @@ class Permission:
             if refused is not None:
                 return refused
 
-        volts = facts.get("battery_v")
-        floor = float(run.budget["battery_floor_v"])
+        # No battery check: an autonomous drive is conditioned on the battery as
+        # every other drive is. See the note where `BATTERY_FLOOR_V` used to be.
         if action in DRIVING_ACTIONS:
-            if volts is None:
-                return Verdict(False, "battery unknown",
-                               "the driver board did not report a battery "
-                               "voltage, so there is no telling what is left")
-            if float(volts) < floor:
-                return Verdict(False, "battery low",
-                               f"the pack reads {float(volts):.2f} V, under "
-                               f"the {floor:.1f} V this run keeps in reserve")
             if not facts.get("pose_trusted"):
                 return Verdict(False, "pose",
                                "the rover does not know where it is on the map "
@@ -855,11 +842,6 @@ class Permission:
         over = run.over(now)
         if over:
             return over
-        volts = facts.get("battery_v")
-        floor = float(run.budget["battery_floor_v"])
-        if volts is not None and float(volts) < floor:
-            return (f"the pack is down to {float(volts):.2f} V, under the "
-                    f"{floor:.1f} V this run keeps in reserve")
         if self.permit is not None and now >= float(self.permit["expires_at"]):
             return (f"the permission ran out "
                     f"{now - float(self.permit['expires_at']):.0f} s ago and "
