@@ -21,7 +21,19 @@ MAX_RANGE_M = 12.0
 MIN_RANGE_M = 0.75
 # Lidar is below the camera: allow one metre beyond the first mapped obstacle.
 SEE_PAST_M = 1.0
-ELEVATION_SIGMA_DEG = BEARING_SIGMA_DEG
+# **Elevations read 4.9 degrees high at the rest tilt, and are corrected here.**
+# Against the owner's tape on 2026-10-01, 30 looks at a painting and a toolbox
+# in plain view read a median 4.9 degrees above the taped direction, at two
+# heights and several distances alike -- a constant angle, not a lens shape --
+# which put raised things 0.25 to 0.6 m too high. Held out on the two drives of
+# 2026-10-02, removing it left a median 1.4 to 1.8 degrees and nothing past 4.
+# Only the tilt every drive looks at has been measured; a look at any other
+# tilt keeps its elevation as recorded. See `elevation_of`.
+ELEVATION_BIAS_DEG = {20: 4.9}
+# What is left once the bias is gone, measured on those held-out looks: the
+# 90th percentile was 3.6 degrees, so one sigma is 2.2. It used to borrow the
+# bearing's 1.5, which nobody had measured vertically.
+ELEVATION_SIGMA_DEG = 2.2
 MAX_ELEVATION_DEG = 80.0
 MAX_RISE_EXTENT_M = 1.0
 # The gimbal camera's optical centre above the floor, camera level, and the datum
@@ -473,6 +485,27 @@ def along_track(point: dict[str, Any], ray: dict[str, Any]) -> float:
     return math.hypot(float(major) * math.cos(between), minor * math.sin(between))
 
 
+def elevation_of(ray: dict[str, Any]) -> float | None:
+    """A look's elevation in degrees, with the measured tilt bias taken out.
+
+    The tilt is read from `tilt_deg` on a resolver ray or `observer_tilt_deg`
+    on a stored observation. A tilt nobody has measured is left as recorded.
+    """
+    elevation = ray.get("elevation_deg")
+    if elevation is None:
+        return None
+    try:
+        elevation = float(elevation)
+    except (TypeError, ValueError):
+        return None
+    tilt = ray.get("tilt_deg", ray.get("observer_tilt_deg"))
+    try:
+        bias = ELEVATION_BIAS_DEG.get(round(float(tilt)), 0.0)
+    except (TypeError, ValueError):
+        bias = 0.0
+    return elevation - bias
+
+
 def rise_m(point: dict[str, Any], ray: dict[str, Any]) -> float | None:
     """Height above the datum at this horizontal range; None if unmeasured.
 
@@ -484,12 +517,8 @@ def rise_m(point: dict[str, Any], ray: dict[str, Any]) -> float | None:
     from the higher lens reads five centimetres lower. Absent means this ray's
     camera is the datum, which every look this rover has taken so far was.
     """
-    elevation = ray.get("elevation_deg")
+    elevation = elevation_of(ray)
     if elevation is None:
-        return None
-    try:
-        elevation = float(elevation)
-    except (TypeError, ValueError):
         return None
     if abs(elevation) > MAX_ELEVATION_DEG:
         return None
@@ -509,7 +538,7 @@ def rise_noise_m(point: dict[str, Any], ray: dict[str, Any]) -> float:
     range_m = math.hypot(float(point["x_m"]) - float(ray["x_m"]),
                          float(point["y_m"]) - float(ray["y_m"]))
     slope = abs(math.tan(math.radians(
-        min(abs(float(ray.get("elevation_deg") or 0.0)), MAX_ELEVATION_DEG))))
+        min(abs(elevation_of(ray) or 0.0), MAX_ELEVATION_DEG))))
     return (range_m * math.tan(math.radians(ELEVATION_SIGMA_DEG))
             + along_track(point, ray) * slope
             + float(ray.get("origin_sigma_m") or NO_ORIGIN_ERROR_M) * slope)
@@ -538,9 +567,15 @@ def rise_disagreement(point: dict[str, Any], first: dict[str, Any],
 
 def height_over(point: dict[str, Any], rays: list[dict[str, Any]]
                 ) -> tuple[float, float] | None:
-    """Median relative height and best measurement sigma across supporting rays.
+    """Median relative height and its sigma across supporting rays.
 
-    Clipped boxes widen uncertainty; object extent does not average away."""
+    Clipped boxes widen uncertainty; object extent does not average away.
+
+    **The sigma is the best ray's, or how far the rays disagree, whichever is
+    larger.** It used to be the best ray's alone, which claims the precision of
+    the one good look for a median taken over looks that may disagree by half a
+    metre: on 2026-10-01 and 10-02, 4 of 13 taped heights lay inside what was
+    claimed for them."""
     seen = []
     for ray in rays:
         got = rise_m(point, ray)
@@ -556,7 +591,12 @@ def height_over(point: dict[str, Any], rays: list[dict[str, Any]]
     middle = (heights[len(heights) // 2] if len(heights) % 2
               else (heights[len(heights) // 2 - 1]
                     + heights[len(heights) // 2]) / 2.0)
-    return middle, min(noise for _, noise in seen)
+    # The median absolute deviation, scaled to a sigma (1.4826); with two rays
+    # it is half their difference, which is the same thing for a pair.
+    deviations = sorted(abs(one - middle) for one in heights)
+    spread = (1.4826 * deviations[len(deviations) // 2] if len(heights) > 2
+              else (heights[-1] - heights[0]) / 2.0)
+    return middle, max(min(noise for _, noise in seen), spread)
 
 
 def stands_as_high(point: dict[str, Any], ray: dict[str, Any]) -> bool:

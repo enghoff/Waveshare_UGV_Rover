@@ -631,6 +631,42 @@ def test_a_look_through_the_lower_camera_is_put_on_the_same_datum() -> None:
           locate.rise_noise_m(point, level), locate.rise_noise_m(point, lower))
 
 
+def test_the_measured_elevation_bias_is_taken_out_at_the_tilt_it_was_measured() -> None:
+    """Against the tape on 2026-10-01 and 10-02, looks at the rest tilt read
+    elevations a median 4.9 degrees high, which put raised things 0.25 to
+    0.6 m too high. Only that tilt was measured, so only that tilt is
+    corrected."""
+    ray = {"elevation_deg": 30.0, "tilt_deg": 20.0}
+    check("at the rest tilt the bias comes off",
+          round(locate.elevation_of(ray), 2), round(30.0 - locate.ELEVATION_BIAS_DEG[20], 2))
+    check("...read from a stored observation's tilt as well",
+          locate.elevation_of({"elevation_deg": 30.0, "observer_tilt_deg": 20.0}),
+          locate.elevation_of(ray))
+    check("a tilt nobody measured keeps its elevation",
+          locate.elevation_of({"elevation_deg": 30.0, "tilt_deg": 0.0}), 30.0)
+    check("...and so does a look that does not say",
+          locate.elevation_of({"elevation_deg": 30.0}), 30.0)
+    check("no elevation stays no elevation",
+          locate.elevation_of({"tilt_deg": 20.0}), None)
+
+
+def test_a_height_is_no_surer_than_its_looks_agree() -> None:
+    """The height's sigma used to be its best look's, however far the looks
+    disagreed: 4 of 13 taped heights on 2026-10-01 and 10-02 lay inside what
+    was claimed for them."""
+    point = {"x_m": 2.0, "y_m": 0.0, "uncertainty_m": 0.05}
+    low = _high(0.0, 0.0, 0.0, math.degrees(math.atan2(0.5, 2.0)))
+    high = _high(0.0, 0.0, 0.0, math.degrees(math.atan2(1.1, 2.0)))
+    middle, sigma = locate.height_over(point, [low, high])
+    check("two looks 0.6 m apart vertically meet in the middle",
+          round(middle, 2), 0.8)
+    check("...and claim no better than half their disagreement",
+          sigma >= 0.3 - 1e-9, True)
+    middle, sigma = locate.height_over(point, [low, dict(low)])
+    check("two looks that agree keep the measurement's own sigma",
+          sigma < 0.15, True)
+
+
 def test_two_rays_must_agree_about_the_height_as_well_as_the_place() -> None:
     """**The test a plan view cannot make.** A bearing at a picture on the wall
     crosses a bearing at the sideboard beneath it exactly as convincingly as two
@@ -642,8 +678,10 @@ def test_two_rays_must_agree_about_the_height_as_well_as_the_place() -> None:
           together is not None, True)
     check("...and it comes out a metre above the camera",
           round(together["height_m"], 2), 1.0)
-    check("...knowing that to a handspan", together["height_sigma_m"] < 0.2,
-          True)
+    # 4.2 m from each camera at the measured 2.2 degrees of elevation error,
+    # which is 0.16 m before the placement's own error is added.
+    check("...knowing that to about a fifth of a metre at four metres",
+          0.15 <= together["height_sigma_m"] <= 0.25, True)
 
     check("two rays a metre and a half apart vertically place nothing",
           locate.fix(_high(0.0, 0.0, 45.0, UP_1_M),
@@ -767,6 +805,8 @@ TESTS = (
     test_a_refined_thing_says_which_way_its_error_runs,
     test_the_vertical_half_of_the_ray_is_measured_the_same_way,
     test_a_height_needs_a_range_and_a_bearing_has_none,
+    test_the_measured_elevation_bias_is_taken_out_at_the_tilt_it_was_measured,
+    test_a_height_is_no_surer_than_its_looks_agree,
     test_two_rays_must_agree_about_the_height_as_well_as_the_place,
     test_a_look_joins_a_thing_only_at_the_height_it_stands,
     test_a_thing_is_forgiven_its_own_height_once_and_not_twice,

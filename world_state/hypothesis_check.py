@@ -38,7 +38,7 @@ import math
 from types import SimpleNamespace
 from typing import Any
 
-from . import oak
+from . import locate, oak
 
 SUPPORTED = "supported"
 CONTRADICTED = "contradicted"
@@ -220,7 +220,7 @@ def _regions_at_the_place(look, claim, origin, bearing, across, sigma, source):
                 continue
             entry["range_absent"] = one.get("range_absent")
         else:
-            rise = math.radians(float(one.get("elevation_deg") or 0.0))
+            rise = math.radians(locate.elevation_of(one) or 0.0)
             flat = float(range_m) * math.cos(rise)
             theta = math.radians(float(one["bearing_deg"]))
             x = float(origin["x_m"]) + flat * math.cos(theta)

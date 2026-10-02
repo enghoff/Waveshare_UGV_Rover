@@ -143,6 +143,9 @@ def ray_of(observation: dict[str, Any],
                  # `locate.rise_m`.
                  "elevation_deg": observation.get("elevation_deg"),
                  "elevation_span_deg": observation.get("elevation_span_deg"),
+                 # The tilt the look was taken at, because the elevation's
+                 # measured bias belongs to a tilt. See `locate.elevation_of`.
+                 "tilt_deg": observation.get("observer_tilt_deg"),
                  # Which lens this ray was measured from, expressed as how high
                  # that lens sits above the height datum. The OAK rides five
                  # centimetres above the fisheye, so without it a thing
