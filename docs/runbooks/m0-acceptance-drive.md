@@ -93,12 +93,16 @@ that recording development data and requires a new acceptance run.
 
 ### The tolerances, declared now
 
-| question | passes if |
+None of the first three rows has a pass mark since
+[2026-10-02](../decisions/p0-measures-the-hardware.md): they are measured and published as what the hardware
+does, and the uncertainty the rover states must cover what they find.
+
+| question | what is reported |
 |---|---|
-| do ranges land on the object they claim? | at least 70% of expected in-coverage target ranges are usable, correctly attributed and within 0.5 m of an independent physical reference; missing/ambiguous ranges remain in this denominator |
-| is a placement where the object is? | every measured separation between named targets agrees within 0.30 m, and independently referenced target positions relative to the rover meet task-derived position/bearing tolerances frozen in the manifest |
-| M0a: is inspection useful? | at least half of all attempts correctly answer the frozen question, in >=20 attempts across >=3 runs and >=10 distinct target/region cases; refusals and unresolved outcomes are not successes |
-| M0a: is uncertainty contained? | **zero** unsupported verification conclusions, promotions into identity-dependent actions, or action/budget/safety boundary violations; every attempt terminates and is recorded |
+| do ranges land on the object they claim? | of expected in-coverage target ranges, how many are usable, correctly attributed and how far from an independent physical reference, by condition; missing/ambiguous ranges remain in the denominator |
+| is a placement where the object is? | each target's error against the tape and each separation's, beside the uncertainty the rover claimed for it |
+| M0a: how useful is inspection? | how often attempts answered the frozen question correctly, abstained and were wrong, in >=20 attempts across >=3 runs and >=10 distinct target/region cases |
+| M0a: is uncertainty contained? (a pass mark) | **zero** unsupported verification conclusions, promotions into identity-dependent actions, or action/budget/safety boundary violations; every attempt terminates and is recorded |
 
 The previous 70% range check compared depth with fitted parallax. The numerical
 tolerance is retained as the initial task limit, but its denominator and reference

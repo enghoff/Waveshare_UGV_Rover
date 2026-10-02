@@ -270,9 +270,11 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
 
 ### Exit decisions
 
-- **Accept a useful envelope:** held-out geometry, range attribution and identity
-  checks pass, and runtime eligibility checks enforce the documented limits. M0
-  can pass within that scope once every criterion below is met.
+- **Characterise and represent honestly:** held-out geometry and range attribution
+  are measured against independent references and published by condition, the
+  rover's stated uncertainty covers the measured error, and runtime checks abstain
+  where the rover cannot see. There is no accuracy bar
+  ([2026-10-02](../decisions/p0-measures-the-hardware.md)).
 - **Narrow and retest:** adequate performance is limited to fewer angles, larger
   objects or better-separated surfaces. Declare that narrower scope before fresh
   acceptance; report excluded and unresolved cases. Rejecting every useful task
@@ -382,13 +384,17 @@ M0a requires these, and an identity-dependent action's case may rely on them:
 
 1. the normal world-state offline suite passes, together with the affected
    autonomy and daemon checks;
-2. camera-to-rover geometry and residual uncertainty meet predeclared task-derived
-   tolerances on fresh hardware trials within the declared operating envelope.
-   Independent physical references check placement and range attribution;
-   agreement between depth and fitted parallax alone does not establish accuracy;
-3. usable OAK ranges are present where expected and annotated targets confirm
-   that they belong to the intended objects. Unsupported or ambiguous patches
-   are refused and counted separately;
+2. camera-to-rover geometry and residual error are measured on fresh hardware
+   trials against independent physical references, published by condition (distance,
+   height, in front of or behind other things, still or turning), and the
+   uncertainty the rover states for directions, ranges, heights and placements covers
+   that measured error. There is no accuracy bar: worse hardware means wider stated
+   uncertainty, not a failed prerequisite ([2026-10-02](../decisions/p0-measures-the-hardware.md)). Agreement
+   between depth and fitted parallax alone does not establish accuracy;
+3. where usable OAK ranges are present, and whether they belong to the intended
+   objects, is measured against annotated targets and published with the conditions
+   that defeat it. Unsupported or ambiguous patches are refused and counted
+   separately;
 4. map clear/map-session checks keep old coordinates from being treated as current
    placement. Unconfirmed poses cannot give observations usable directions, nor
    can later confirmation restore them retrospectively. Replay and hardware
@@ -421,8 +427,10 @@ required by R-AUT-12. Its identity or location may be incorrect. Pass when:
    generation and budget exhaustion. Dispatch enforces the action class and limits;
    changing an entity ID cannot restart the same inspection budget;
 3. on at least 20 inspection attempts across at least three fresh supervised runs,
-   at least half of all attempts correctly answer their predeclared question,
-   with at least ten distinct physical target/region cases represented. Include
+   with at least ten distinct physical target/region cases represented, independent
+   review reports how often attempts answered their predeclared question correctly,
+   abstained and were wrong. There is no usefulness floor
+   ([2026-10-02](../decisions/p0-measures-the-hardware.md)); a confident wrong answer is criterion 5's. Include
    at least three false/absent-target cases and three occluded/insufficient-view
    cases. Independent review checks answers against retained images and physical
    references. Refusals, unresolved cases and repeated photos are not successful
@@ -675,8 +683,9 @@ Pass when all are true:
 8. normal daemon/Nav2 verification remains healthy after the sessions;
 9. executive kill/hang, connection loss and permission expiry stop physical motion
    while Nav2 remains running; daemon/executive restart cannot restore authority;
-10. stop and takeover trials meet predeclared physical stopping time/distance limits
-    at the permitted speeds; an acknowledged request alone is not a pass;
+10. stop and takeover trials measure stopping time and distance at the permitted
+    speeds, and the geofence's stopping margin is set from those measurements; an
+    acknowledged request alone is not a measurement;
 11. run budgets hold across background and nested actions, duplicate requests cannot
     repeat a move, and stale map/permission requests are refused at dispatch;
 12. concurrent voice/manual requests follow the declared priority, and map changes

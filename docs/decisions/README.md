@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [p0-measures-the-hardware.md](p0-measures-the-hardware.md) | agreed 2026-10-02 | why P0 measures the hardware instead of holding it to accuracy bars, and what stays a condition: honest uncertainty, abstention, safety boundaries |
 | [identity-is-judged-action-by-action.md](identity-is-judged-action-by-action.md) | agreed 2026-10-01 | why there is no single identity bar, how an action that relies on identity is judged instead, and why P0 does not wait on identity |
 | [bare-patches-are-not-a-p0-gate.md](bare-patches-are-not-a-p0-gate.md) | agreed 2026-10-01 | why P0 does not wait for bare floor and background to be kept out of inspection goals |
 | [m0-hypothesis-inspection.md](m0-hypothesis-inspection.md) | agreed 2026-09-10; M0b half replaced 2026-10-01 | why bounded inspection can precede trusted persistent identity, and what evidence permits each |
