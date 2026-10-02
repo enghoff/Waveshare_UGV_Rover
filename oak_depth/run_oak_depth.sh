@@ -25,16 +25,28 @@
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/oak_depth.log"
+# How long to wait before starting again, and which wait applies. A start that
+# failed at once -- no device, a broken wheel -- would fail again at once, so it
+# waits RETRY and the log takes a line every quarter minute rather than several a
+# second. A server that had been RUNNING_S or more lost a camera that was
+# working: on 2026-10-02 that was the OAK dropping off USB mid-stream, five
+# times in an afternoon, and a flat RETRY on top of the 4-6 s firmware upload
+# was twenty seconds without depth each time. That one only waits for the
+# device to come back on the bus, which the kernel log put at about a second.
 RETRY=15
+RUNNING_S=30
 
 # 03e7:2485 is the Myriad X in its ROM bootloader -- idle, waiting for a host,
 # which is where it sits whenever nothing has booted it. f63b means something
 # left it booted; depthai resets it on open, so that is fine too.
-i=0
-while ! lsusb | grep -qi '03e7:\(2485\|f63b\)' && [ $i -lt 40 ]; do
-    sleep 3
-    i=$((i + 1))
-done
+wait_for_camera() {    # $1 polls, $2 seconds apart
+    i=0
+    while ! lsusb | grep -qi '03e7:\(2485\|f63b\)' && [ $i -lt "$1" ]; do
+        sleep "$2"
+        i=$((i + 1))
+    done
+}
+wait_for_camera 40 3
 
 stop() {
     echo "--- run_oak_depth.sh signalled at $(date -Is), stopping ---" >> "$LOG"
@@ -45,10 +57,20 @@ trap stop INT TERM
 
 echo "--- run_oak_depth.sh starting at $(date -Is) ---" >> "$LOG"
 while true; do
+    started=$(date +%s)
     python3 "$DIR/depth_server.py" "$@" >> "$LOG" 2>&1 &
     child=$!
     wait "$child"
     status=$?
-    echo "--- depth_server exited $status at $(date -Is), restarting in ${RETRY}s ---" >> "$LOG"
-    sleep $RETRY
+    ran=$(( $(date +%s) - started ))
+    if [ "$ran" -ge "$RUNNING_S" ]; then
+        echo "--- depth_server exited $status at $(date -Is) after ${ran}s, restarting once the camera is back on USB ---" >> "$LOG"
+        # Off the bus and back is what a drop looks like, so give it the second
+        # it takes to leave before asking whether it has returned.
+        sleep 1
+        wait_for_camera 20 0.5
+    else
+        echo "--- depth_server exited $status at $(date -Is) after ${ran}s, restarting in ${RETRY}s ---" >> "$LOG"
+        sleep $RETRY
+    fi
 done

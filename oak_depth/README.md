@@ -60,6 +60,14 @@ The installer unpacks the pinned wheel beside the component and installs the
 udev rule for the `03e7` device. `run_oak_depth.sh` supervises the process and
 reopens the camera after a fault. Only one process can own the OAK.
 
+A server that had been running for half a minute or more is restarted as soon
+as the camera is back on USB; one that failed straight away waits 15 s, so a
+missing camera does not fill the log. The fast path exists because the OAK drops
+off USB mid-stream: five times on 2026-10-02, driving and parked, with the
+gimbal camera on the same hub unaffected. The fixed 15 s wait made each drop
+about twenty seconds without depth. The cause of the drops is not known yet:
+power and the cable up the gimbal are both open.
+
 To test the hardware directly, stop the service first. There is no stop option;
 stopping the supervisor stops the server with it, and the bracket keeps the
 pattern from matching the ssh command that carries it:
