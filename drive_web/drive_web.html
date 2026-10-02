@@ -134,15 +134,18 @@
     </div>
     <p id="frameNote" class="hint"></p>
     <p id="frameError"></p>
-    <!-- The OAK's depth, drawn only while the rover has it awake: the console
-         never wakes it, so a parked rover shows the camera's state instead.
-         Hidden on a rover with no depth camera. -->
+    <!-- The OAK's depth in millimetres, coloured here and read under the
+         pointer. Fetched only while the rover has the OAK awake -- the console
+         never wakes it -- and the last one stays up once it goes off. Hidden on
+         a rover with no depth camera. -->
     <div id="depthPanel" hidden>
       <h2 style="margin-top:14px">depth</h2>
       <div class="shot" id="depthShot">
-        <img id="depthImg" alt="what the depth camera measures" hidden>
+        <canvas id="depthCanvas" hidden></canvas>
         <span class="empty" id="depthEmpty">-</span>
+        <span id="depthRead" hidden></span>
       </div>
+      <p id="depthTaken" class="hint"></p>
       <p id="depthError"></p>
     </div>
   </section>

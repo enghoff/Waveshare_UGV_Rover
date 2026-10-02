@@ -255,11 +255,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(self.session.frame_jpeg, "image/jpeg",
                        "public, max-age=31536000, immutable")
-        elif path == "/depth.png":
-            if not self.session.depth_png:
-                self._missing("no depth picture now")
+        elif path == "/depth.zlib":
+            # The OAK's depth map in millimetres, little-endian uint16, row by
+            # row, zlib-compressed by the rover. Not a picture: the page colours
+            # it and reads a distance off the pixel under the pointer, which a
+            # shaded image could only have said to within a step.
+            if not self.session.depth_mm:
+                self._missing("no depth map yet")
                 return
-            self._send(self.session.depth_png, "image/png",
+            self._send(self.session.depth_mm, "application/zlib",
                        "public, max-age=31536000, immutable")
         elif path == "/world.json":
             # The semantic world, fetched rather than pushed, for the reason the

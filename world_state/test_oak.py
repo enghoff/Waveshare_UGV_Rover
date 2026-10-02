@@ -647,8 +647,6 @@ def test_a_depth_camera_that_is_not_there_is_an_ordinary_answer() -> None:
           or "refused" in frame.error.lower(), True)
     answers, error = ranger.ranges([[0.1, 0.1, 0.2, 0.2]])
     check("and no ranges", (answers, bool(error)), ([], True))
-    png, error = ranger.picture()
-    check("and no picture, said in words", (png, bool(error)), (b"", True))
 
 
 def test_an_answer_that_is_short_is_padded_rather_than_misaligned() -> None:

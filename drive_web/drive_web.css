@@ -422,10 +422,21 @@
      this stack is alone on a row, a frame stretched across the whole page is a
      wall of carpet, not more information. */
   #cameraShot { aspect-ratio: 4 / 3; max-width: 460px; }
-  /* The OAK's depth is 320x180, so 16:9 under the same cap, and pixelated for
-     the map's reason: each pixel is one measurement, not a photograph. */
-  #depthShot { aspect-ratio: 16 / 9; max-width: 460px; }
-  #depthImg { image-rendering: pixelated; }
+  /* The OAK's depth is 320x180, so 16:9 under the same cap -- which is also
+     what lets the pointer be turned into a pixel with no letterbox to subtract
+     -- and pixelated for the map's reason: each pixel is one measurement. */
+  #depthShot { aspect-ratio: 16 / 9; max-width: 460px; cursor: crosshair; }
+  #depthCanvas { position: absolute; inset: 0; width: 100%; height: 100%;
+                 display: block; image-rendering: pixelated; }
+  #depthCanvas[hidden] { display: none; }
+  /* Beside the pointer and never under it, so the pixel being read stays in
+     view; `pointer-events: none` so it cannot catch the pointer it follows. */
+  #depthRead {
+    position: absolute; pointer-events: none; white-space: nowrap;
+    padding: 1px 5px; border-radius: 4px; font: 12px ui-monospace, Consolas, monospace;
+    background: rgba(0, 0, 0, .72); color: #fff;
+  }
+  #depthRead[hidden] { display: none; }
   /* Taken out of the flow so that the picture's box is exactly the panel's box,
      whatever arithmetic the panel's own size came out of. As a grid item its
      `height: 100%` resolved against the height `aspect-ratio` asked for rather

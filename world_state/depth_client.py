@@ -256,10 +256,6 @@ class Ranger:
         """The depth map as bytes, for keeping. Empty where there is none."""
         return DepthMap(error="this camera keeps no depth map")
 
-    def picture(self) -> tuple[bytes, str]:
-        """(PNG, error): the depth map shaded for a person to look at."""
-        return b"", "this camera draws no depth picture"
-
     def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
         raise NotImplementedError
 
@@ -325,15 +321,6 @@ class FakeRanger(Ranger):
         # Four pixels of nothing: enough to be saved and read back, and small
         # enough that no test has to care what is in it.
         return DepthMap(millimetres=bytes(8), width=2, height=2, dtype="uint16")
-
-    def picture(self) -> tuple[bytes, str]:
-        if self.fail:
-            return b"", self.fail
-        # What the real service says about a camera that is off, because that is
-        # the answer a console polling this has to be shown not to cause.
-        if self.switched != "on":
-            return b"", f"the depth camera is switched {self.switched}"
-        return b"\x89PNGfake", ""
 
     def ranges(self, boxes: list[list[float]]) -> tuple[list[Ranged], str]:
         self.asked.append([list(box) for box in boxes])
@@ -493,31 +480,6 @@ class SidecarRanger(Ranger):
                         dtype=str(headers.get("X-Depth-Dtype") or ""),
                         age_s=_number(headers.get("X-Frame-Age"), 0.0) or 0.0,
                         apart_s=_number(headers.get("X-Depth-Apart"), 0.0) or 0.0)
-
-    def picture(self) -> tuple[bytes, str]:
-        """The newest depth map as the service shades it, near bright, for the
-        console.
-
-        **Asking for it never wakes the camera.** The service answers a camera
-        that is off with a sentence and a 503 rather than by opening the device,
-        so a screen that polls this costs the rover nothing it was not already
-        spending -- the switch stays with the wheels in `rover_depth.py`.
-        """
-        connection = None
-        try:
-            connection = http.client.HTTPConnection(self.host, self.port,
-                                                    timeout=self.timeout_s)
-            connection.request("GET", "/depth.png")
-            reply = connection.getresponse()
-            body, status = reply.read(), reply.status
-        except Exception as error:                     # never past here
-            return b"", f"{type(error).__name__}: {error}"
-        finally:
-            if connection is not None:
-                connection.close()
-        if status != 200 or not body.startswith(b"\x89PNG"):
-            return b"", _why(status, body)
-        return body, ""
 
     def frame(self) -> Frame:
         """The newest colour picture, or a sentence saying why not.

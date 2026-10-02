@@ -42,6 +42,7 @@ from __future__ import annotations
 import base64
 import threading
 import time
+import zlib
 from typing import Any
 
 #: How long the wheels stay still before the camera is switched off.
@@ -203,21 +204,35 @@ class RoverDepth:
         return {"ok": True, "supported": True, "power": power.state,
                 "since_s": round(power.since_s, 1)}
 
-    def _tool_depth_png(self, _arguments: dict[str, Any]) -> dict[str, Any]:
-        """The newest depth map, shaded near-bright, as base64 PNG for the console.
+    def _tool_depth_map(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The newest depth map in millimetres, zlib-compressed, for the console.
+
+        The measurement rather than a picture of it, because the console reads
+        a distance off whatever pixel is under the pointer and colours the rest
+        itself. Compressed because it is 115 kB raw and about 34 kB this way --
+        measured on the rover against a room, where an 8-bit shading of the same
+        map was 22 kB and could only have said each distance to within a step.
 
         **It reads and never switches**, which is the whole of the design: the
-        console draws this only while the wheels have the camera on, and a
-        console that woke the camera to have something to draw would have put
-        the switch back on a screen. A camera that is off answers with the
-        service's own sentence, and the hold `depth_wake` sets is left alone.
+        console asks only while the wheels have the camera on, and a console
+        that woke the camera to have something to draw would have put the switch
+        back on a screen. A camera that is off answers with the service's own
+        sentence, and the hold `depth_wake` sets is left alone.
         """
         ranger = self._depth_ranger()
         if ranger is None:
             return {"ok": False, "supported": False,
                     "error": "this rover has no depth camera component installed"}
-        png, error = ranger.picture()
-        if error:
-            return {"ok": False, "supported": True, "error": error}
-        return {"ok": True, "png_base64": base64.b64encode(png).decode("ascii"),
-                "bytes": len(png)}
+        depth = ranger.depth_map()
+        if not depth.ok:
+            return {"ok": False, "supported": True,
+                    "error": depth.error or "the depth camera sent an empty map"}
+        if depth.dtype != "uint16":
+            return {"ok": False, "supported": True,
+                    "error": f"a depth map of {depth.dtype or 'unknown'} values, "
+                             f"where millimetres come as uint16"}
+        packed = zlib.compress(depth.millimetres, 6)
+        return {"ok": True, "width": depth.width, "height": depth.height,
+                "age_s": round(depth.age_s, 2),
+                "zlib_base64": base64.b64encode(packed).decode("ascii"),
+                "bytes": len(packed)}

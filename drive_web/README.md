@@ -49,11 +49,14 @@ Manual controls send bounded actions through the daemon on TCP 8769. The console
 does not open the driver-board UART or talk directly to ROS. It displays the
 daemon's navigation, battery, link, camera and movement state.
 
-Under the gimbal camera's picture is the OAK's depth map, shaded near-bright,
-fetched at the camera's own pace on the same connection. It is asked for only
-while the depth lamp is on: the rover's wheels decide when the OAK is awake, a
-request never wakes it, and the panel shows `off` or `waking` rather than the
-last depth it saw.
+Under the gimbal camera's picture is the OAK's depth map. It travels as
+millimetres -- zlib-compressed by the daemon, about 34 kB, served at
+`/depth.zlib` and inflated in the browser -- so the page colours it itself
+(Turbo, near red, on a log scale from 0.2 to 6 m) and reads the distance under
+the pointer in metres. It is fetched at the camera's own pace on the same
+connection, and only while the depth lamp is on: the rover's wheels decide when
+the OAK is awake and a request never wakes it. When the OAK goes off the last
+map stays up, with the time it was taken beneath it.
 
 The map image is fetched only when its generation changes. Manual map clicks and
 world-state destinations go through the daemon's existing route planning and

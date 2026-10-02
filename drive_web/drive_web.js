@@ -475,28 +475,125 @@ function drawDepth(depth) {
   $("depthNote").textContent = depth.note || "";
 }
 
-// What the depth camera measures, under the camera's picture. The server
-// empties it whenever the lamp is not on, so an empty generation is drawn as
-// the camera's state -- off, waking -- rather than as the last thing it saw.
+// What the depth camera measures, under the camera's picture: millimetres from
+// the rover, coloured here, and read out in metres under the pointer. The last
+// one stays up once the camera goes off, with the time it was taken beneath it,
+// because the server only fetches while the lamp is on.
+let depthMM = null, depthW = 0, depthH = 0, depthPointer = null;
+let depthFault = "";       // why the newest map would not draw, kept across pushes
+
+// Turbo, near red and far blue, on a log scale from 0.2 to 6 m -- the depth
+// service's working range -- so a room's worth of distances is spread across
+// the colours rather than crowded into the near end. A display choice, not a
+// measurement: the readout is the number.
+const DEPTH_NEAR_MM = 200, DEPTH_FAR_MM = 6000;
+const TURBO = (() => {
+  const table = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255, x2 = x * x, x3 = x2 * x, x4 = x2 * x2, x5 = x4 * x;
+    table[i * 3] = 255 * (0.13572138 + 4.6153926 * x - 42.66032258 * x2
+      + 132.13108234 * x3 - 152.94239396 * x4 + 59.28637943 * x5);
+    table[i * 3 + 1] = 255 * (0.09140261 + 2.19418839 * x + 4.84296658 * x2
+      - 14.18503333 * x3 + 4.27729857 * x4 + 2.82956604 * x5);
+    table[i * 3 + 2] = 255 * (0.1066733 + 12.64194608 * x - 60.58204836 * x2
+      + 110.36276771 * x3 - 89.90310912 * x4 + 27.34824973 * x5);
+  }
+  return table;
+})();
+
 function drawDepthPicture(depth, picture) {
   if (!depth || !picture) return;         // a console older than this panel
   $("depthPanel").hidden = depth.supported !== true;
-  const img = $("depthImg"), empty = $("depthEmpty");
-  if (picture.gen) {
-    if (picture.gen !== depthGen) {
-      depthGen = picture.gen;
-      img.src = `/depth.png?gen=${picture.gen}`;
-    }
-    img.hidden = false;
-    empty.hidden = true;
-  } else {
-    depthGen = "";
-    img.hidden = true;
-    empty.hidden = false;
+  const empty = $("depthEmpty");
+  if (picture.gen && picture.gen !== depthGen) {
+    depthGen = picture.gen;
+    loadDepth(picture.gen, picture.width, picture.height);
+  }
+  empty.hidden = !!depthMM;
+  if (!depthMM) {
     empty.textContent = depth.power === "on" ? "no picture yet"
                                              : depth.power || "-";
   }
-  $("depthError").textContent = picture.error || "";
+  $("depthTaken").textContent = depthMM && depth.power !== "on" && picture.taken
+    ? `${depth.power || "no answer"} -- taken ${picture.taken}` : "";
+  $("depthError").textContent = picture.error || depthFault;
+}
+
+// Fetched, inflated and drawn here rather than sent as a picture, because a
+// picture would have thrown the millimetres away. A newer generation arriving
+// while this one is still on the wire wins.
+async function loadDepth(gen, width, height) {
+  try {
+    const reply = await fetch(`/depth.zlib?gen=${gen}`);
+    if (!reply.ok) throw new Error(await reply.text());
+    const raw = await new Response(
+      reply.body.pipeThrough(new DecompressionStream("deflate"))).arrayBuffer();
+    if (gen !== depthGen) return;
+    if (raw.byteLength !== width * height * 2) {
+      throw new Error(`${raw.byteLength} bytes for a ${width}x${height} map`);
+    }
+    const view = new DataView(raw), mm = new Uint16Array(width * height);
+    for (let i = 0; i < mm.length; i++) mm[i] = view.getUint16(i * 2, true);
+    depthMM = mm; depthW = width; depthH = height;
+    depthFault = "";
+    paintDepth();
+    readDepth();
+    $("depthCanvas").hidden = false;
+    $("depthEmpty").hidden = true;
+  } catch (error) {
+    if (gen !== depthGen) return;
+    depthFault = `depth map: ${error.message}`;
+    $("depthError").textContent = depthFault;
+  }
+}
+
+function paintDepth() {
+  const canvas = $("depthCanvas");
+  canvas.width = depthW;
+  canvas.height = depthH;
+  const context = canvas.getContext("2d");
+  const image = context.createImageData(depthW, depthH), px = image.data;
+  const span = Math.log(DEPTH_FAR_MM / DEPTH_NEAR_MM);
+  for (let i = 0; i < depthMM.length; i++) {
+    const mm = depthMM[i];
+    if (!mm) continue;                    // nothing measured: left clear
+    const far = Math.log(Math.max(mm, DEPTH_NEAR_MM) / DEPTH_NEAR_MM) / span;
+    const c = Math.round(255 * (1 - Math.min(far, 1))) * 3;
+    px[i * 4] = TURBO[c];
+    px[i * 4 + 1] = TURBO[c + 1];
+    px[i * 4 + 2] = TURBO[c + 2];
+    px[i * 4 + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+}
+
+// The distance under the pointer, beside it. Read again when a new map arrives
+// under a pointer that has not moved, so the number is always this picture's.
+function readDepth() {
+  const label = $("depthRead");
+  if (!depthPointer || !depthMM) { label.hidden = true; return; }
+  const { x, y, w, h } = depthPointer;
+  const col = Math.min(depthW - 1, Math.floor(x / w * depthW));
+  const row = Math.min(depthH - 1, Math.floor(y / h * depthH));
+  const mm = depthMM[row * depthW + col];
+  label.textContent = mm ? `${(mm / 1000).toFixed(2)} m` : "no depth";
+  label.hidden = false;
+  // Right of and below the pointer, unless that would put it off the picture.
+  const right = x + 14 + label.offsetWidth > w;
+  const below = y + 14 + label.offsetHeight > h;
+  label.style.left = `${right ? x - 10 - label.offsetWidth : x + 14}px`;
+  label.style.top = `${below ? y - 10 - label.offsetHeight : y + 14}px`;
+}
+
+function wireDepth() {
+  const shot = $("depthShot");
+  shot.addEventListener("pointermove", (event) => {
+    const box = shot.getBoundingClientRect();
+    depthPointer = { x: event.clientX - box.left, y: event.clientY - box.top,
+                     w: box.width, h: box.height };
+    readDepth();
+  });
+  shot.addEventListener("pointerleave", () => { depthPointer = null; readDepth(); });
 }
 
 function drawWifi(wifi) {
@@ -690,6 +787,7 @@ async function start() {
   addEventListener("pagehide", () => { if (voice.wanted()) voice.stop(true); });
   wire();
   wireWorld();
+  wireDepth();
   keys();
   listen();
   setInterval(tick, 1000);

@@ -83,9 +83,9 @@ def test_schemas():
                # is no matching setter -- the wheels work that switch now, and
                # nothing else does. See rover_depth.py.
                "get_depth_power",
-               # And its picture, for the console's camera card: a shaded depth
-               # map a person reads at a glance and a model has `look` for.
-               "depth_png",
+               # And its depth map, for the console's camera card: millimetres a
+               # person reads off with the pointer, which a model cannot use.
+               "depth_map",
                # The semantic world state, every call that writes to it and every
                # call that answers in the console's vocabulary. Handing a model
                # the authority to record, to attach or to throw the world away is
