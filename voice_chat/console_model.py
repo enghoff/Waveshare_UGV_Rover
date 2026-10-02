@@ -173,11 +173,14 @@ DEPTH_POLL_S = 2.0
 # then builds the stereo pipeline, which is four to six seconds, and it is the
 # stretch a person is most likely to be looking at the lamp for.
 DEPTH_WAKING_POLL_S = 1.0
-# And how long to leave it after a refusal before asking again. Same reasoning as
-# WORLD_RETRY_S and the same shape: a depth service that is restarting comes back
-# on its own, and a rover that has none says so in `supported` and is not asked
-# again at all.
-DEPTH_RETRY_S = 30.0
+# And how long to leave it after a refusal before asking again: no longer than
+# usual. **It was thirty seconds**, on WORLD_RETRY_S's reasoning, and that kept
+# "depth service down" on the panel for up to half a minute after the service
+# was back -- which on 2026-10-02 was every time the OAK dropped off USB. What a
+# refusal costs is a loopback connection the rover turns away at once, and a
+# rover that has no depth camera says so in `supported` and is not asked again
+# at all.
+DEPTH_RETRY_S = 2.0
 # Which of the daemon's five words is worth spelling out on screen. Four of them
 # only restate the number above them, which the colour already grades, so they say
 # nothing that a glance at "11.10 V   15%" does not. "absent" is the exception: the

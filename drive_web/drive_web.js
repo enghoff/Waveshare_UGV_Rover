@@ -465,7 +465,8 @@ function drawPicture(img, empty, url, gen, get, set, error) {
 // Off the heading entirely on a rover that has no depth camera or a daemon too
 // old to have the call, and off it as well when the service will not say: a lamp
 // with no state behind it is a colour somebody would read as a state, and the
-// sentence under the battery is where that goes instead.
+// sentence in the depth panel is where that goes instead. It used to sit under
+// the battery, where a crashed depth service read as a battery or a link fault.
 function drawDepth(depth) {
   if (!depth) return;                     // a console older than this panel
   const lamp = $("depthLamp");
@@ -516,7 +517,7 @@ function drawDepthPicture(depth, picture) {
                                              : depth.power || "-";
   }
   $("depthTaken").textContent = depthMM && depth.power !== "on" && picture.taken
-    ? `${depth.power || "no answer"} -- taken ${picture.taken}` : "";
+    ? `${depth.power || "down"} -- taken ${picture.taken}` : "";
   $("depthError").textContent = picture.error || depthFault;
 }
 

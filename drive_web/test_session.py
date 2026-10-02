@@ -905,11 +905,15 @@ def test_the_depth_lamp_is_coloured_from_the_camera() -> None:
     # depth camera is not, and loses the lamp instead.
     session.show_depth({"ok": False, "supported": True,
                         "error": "Connection refused"})
-    check("a service that is down puts the reason on the panel",
-          session.depth["note"], "Connection refused")
+    check("a service that is down says so in words, not as a socket error",
+          session.depth["note"], "depth service down")
     check("...and leaves no state for the lamp to be coloured from",
           session.depth["power"], "")
-    check("...and is asked again, slowly", session.depth_gap(), 30.0)
+    check("...and is asked again at the usual pace, so the panel recovers with it",
+          session.depth_gap(), 2.0)
+    session.show_depth({"ok": False, "supported": True, "error": "timed out"})
+    check("one that answers nothing says what it got",
+          session.depth["note"], "depth service not answering: timed out")
     session.show_depth({"ok": False, "supported": False,
                         "error": "this rover has no depth camera component installed"})
     check("a rover with no depth camera takes the lamp off the heading",

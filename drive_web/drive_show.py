@@ -273,8 +273,14 @@ class SessionShow:
         is written down.
 
         The exception is a service that will not answer, which is not a state of
-        the camera and gets a sentence under the battery instead. A lamp coloured
+        the camera and gets a sentence in the depth panel instead. A lamp coloured
         for that would be this console inventing a reading.
+
+        **A refused connection is the service down, never the camera saving
+        power.** Switched off, the service still runs and answers `off`; only a
+        process that has exited -- after the OAK dropped off USB, and for the
+        quarter-minute its supervisor waits -- refuses. It used to be printed
+        raw under the battery, where it read as a battery or a network fault.
         """
         if not body.get("ok") or body.get("power") != "on":
             # A refusal of the depth map is what a camera that is not on gives,
@@ -289,7 +295,9 @@ class SessionShow:
                 # leaving a colour standing for nothing.
                 self.depth.update({"supported": False, "power": "", "note": ""})
                 return
-            self.depth.update({"supported": True, "power": "", "note": error})
+            note = ("depth service down" if "Connection refused" in error
+                    else f"depth service not answering: {error}")
+            self.depth.update({"supported": True, "power": "", "note": note})
             return
         self.depth.update({"supported": True,
                            "power": str(body.get("power") or ""), "note": ""})
