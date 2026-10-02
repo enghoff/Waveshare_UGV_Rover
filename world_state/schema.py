@@ -95,6 +95,19 @@ ADDED_COLUMNS = {
         # score. See `resolve.collapsed`.
         "dino_alone_blob": "BLOB",
         "mask_share": "REAL",
+        # Which pixels of the box were the region itself, packed by `outline.encode`
+        # at half the frame's resolution: a few hundred bytes. **The range is read
+        # under these**, so a reading can be asked again of this look without the
+        # region finder, which the replay of 2026-10-02 had to run again on every
+        # stored picture to get. Null on every row written before then, and where
+        # the backend returned no masks.
+        "outline_blob": "BLOB",
+        # And which reading the range is: `outline`, or `box` where the outline
+        # left too few depth pixels -- both read here, from the depth map kept
+        # beside the frame -- or `service` where the depth service read the box
+        # itself because no depth map could be fetched. Null on every row written
+        # before 2026-10-02, all of which were the service's box.
+        "range_from": "TEXT",
         # **Which backend produced those two vectors, and it is load-bearing.**
         # The GPU engines and the CPU int8 graphs agree with full precision to
         # 1.000 and 0.86 respectively, which is far too wide a gap to compare

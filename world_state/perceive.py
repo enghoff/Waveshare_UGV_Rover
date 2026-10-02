@@ -46,6 +46,8 @@ import threading
 import time
 from typing import Any
 
+from . import outline
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 VENDOR = os.path.join(HERE, "vendor")
 
@@ -605,6 +607,10 @@ class Perception:
             dino, dino_s = self._appearance(patches)
             siglip, siglip_s = self._semantic(patches)
             alone, shares, alone_s = self._appearance_alone(image, cropped, masks)
+            # Each region's own pixels, cut to its box, for the depth under them to be
+            # read rather than the box's nearest surface. See `outline`.
+            outlines = [None if masks is None else outline.encode(np, masks.of(index), box)
+                        for box, _, _, index in cropped]
 
             regions = []
             for index, (box, score, _, _) in enumerate(cropped):
@@ -620,6 +626,7 @@ class Perception:
                     "dino_alone": (None if alone is None else
                                    alone[index].astype("float32").tobytes()),
                     "mask_share": None if shares is None else shares[index],
+                    "outline": outlines[index],
                 })
             return {
                 "regions": regions,
@@ -926,6 +933,9 @@ class _Masks:
         self._grid = prototypes.shape[1:]
         self._shape = shape
         self._scale, self._left, self._top = scale, left, top
+        #: Each region's mask once decoded, because two things ask for the same one:
+        #: the blanked crop for `dino_alone` and the outline the region is ranged by.
+        self._decoded: dict[int, Any] = {}
 
     def __len__(self) -> int:
         return len(self._coefficients)
@@ -938,6 +948,8 @@ class _Masks:
         square, out of the padding, and down to the frame. Nearest-neighbour on
         the way out, because the value being resized is already a yes or a no.
         """
+        if index in self._decoded:
+            return self._decoded[index]
         np, cv2 = self._np, self._cv2
         weighted = self._coefficients[index] @ self._flat
         mask = 1.0 / (1.0 + np.exp(-weighted))
@@ -953,8 +965,10 @@ class _Masks:
                      self._left:self._left + int(round(width * self._scale))]
         if inner.size == 0:                        # nothing survived the crop
             inner = mask
-        return cv2.resize(inner.astype(np.uint8), (width, height),
-                          interpolation=cv2.INTER_NEAREST) > 0
+        decoded = cv2.resize(inner.astype(np.uint8), (width, height),
+                             interpolation=cv2.INTER_NEAREST) > 0
+        self._decoded[index] = decoded
+        return decoded
 
 
 def _suppress(np, boxes, scores, threshold):

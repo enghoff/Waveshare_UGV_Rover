@@ -27,6 +27,20 @@ from matched features at fifteen gimbal positions, which agreed to a tenth of a
 degree ([the measurement](../docs/progress/2026-09-30-oak-on-the-gimbal.md)).
 The gimbal camera's own position relative to the SLAM pose remains unmeasured.
 
+**A region's range is read from the depth under its own outline**
+([outline.py](outline.py)). The region finder's mask, cut to the region's box, is
+carried into one depth map fetched for the whole look, and the depth service's own
+nearest-surface statistic is taken over those pixels. The box is read the same way only
+where the outline leaves too few depth pixels; the depth service reads the box itself
+only when no depth map can be fetched. Each observation keeps the outline
+(`outline_blob`) and says which reading its range is (`range_from`), and the depth map
+kept beside the frame is the one the ranges were read from. Before 2026-10-02 every range
+was the service's box, which is a chair whenever a chair stands in front of the painting:
+[the replay](../docs/progress/2026-10-02-ranging-from-the-outline.md) put the worst
+placement among the taped objects at 0.38 m instead of 0.87. A store built the old way is
+read again and rebuilt by `world_state_rebuild` ([rebuild.py](rebuild.py),
+[the runbook](../docs/runbooks/world-state-rebuild.md)).
+
 Until 2026-09-30 the OAK was bolted to the chassis, and its lens as published by
 `oak_depth` was 9.6% short in focal length. Depth maps saved before then are read
 through the bracket they were taken on (`oak.CHASSIS_MOUNT`, chosen by
@@ -196,6 +210,11 @@ claim their own figure. Replayed on the three taped drives, every target
 placement then lies within twice its claim, 14 of 14. The hypothesis generator
 reads the claim.
 
+The range rows were measured with the box. Read under the outline, the range through
+something in front came to the painting rather than the chair in front of it on the one
+taped case (2.45 m against a taped 2.54, where the box read 1.22), and placements from
+one viewpoint improved with it; that is replayed, not yet measured on a drive.
+
 The per-look bearing and range figures marked too little are left as recorded.
 Their measured errors depend on the target as much as on the look. They are
 small on the compact toolbox; larger on the cabinet and the painting above it,
@@ -333,6 +352,9 @@ The daemon exposes control calls on TCP 8769 for the console and diagnostics:
 - `world_state_frame`
 - `world_state_viewpoint`
 - `world_state_clear`
+- `world_state_rebuild`: the kept looks read again under their outlines and every
+  thing built again from them; without `apply` it only says what would change
+  ([the runbook](../docs/runbooks/world-state-rebuild.md))
 - `world_inspect`
 - `world_state_check`
 

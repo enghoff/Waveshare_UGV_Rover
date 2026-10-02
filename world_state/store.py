@@ -1003,9 +1003,11 @@ class WorldStore:
                 # goes on recording, and a range is a second measurement that
                 # some looks have and most do not.
                 range_m = range_sigma_m = None
-                range_absent = None
+                range_absent = range_from = None
                 if index < len(ranged) and ranged[index] is not None:
                     range_m = getattr(ranged[index], "range_m", None)
+                    range_from = (getattr(ranged[index], "method", "") or None
+                                  if range_m is not None else None)
                     range_sigma_m = getattr(ranged[index], "sigma_m", None)
                     # And when there is none, why -- because "never measured"
                     # and "can never be measured from anywhere the rover has
@@ -1029,8 +1031,8 @@ class WorldStore:
                     " range_m, range_sigma_m, range_absent, camera,"
                     " region_source, region_score,"
                     " dino_blob, siglip_blob, vectors_from,"
-                    " dino_alone_blob, mask_share)"
-                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " dino_alone_blob, mask_share, outline_blob, range_from)"
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (None, inference_id, now, source, capture.get("frame_id"),
                      capture.get("frame_path"),
                      None if bbox is None else json.dumps(bbox),
@@ -1047,7 +1049,9 @@ class WorldStore:
                      getattr(item, "siglip", b"") or None,
                      vectors_from or None,
                      getattr(item, "dino_alone", b"") or None,
-                     getattr(item, "mask_share", None)))
+                     getattr(item, "mask_share", None),
+                     getattr(item, "outline", b"") or None,
+                     range_from))
                 stored += 1
         # `matched` and `created` are reported as zero rather than dropped, because
         # the console's diagnostics table and the deployed database's older rows
@@ -1227,7 +1231,8 @@ def _readable(row: dict[str, Any], vectors: bool = False) -> dict[str, Any]:
             row[name] = {"unreadable": str(text)[:400]}
     for column, name in (("dino_blob", "dino_bytes"),
                          ("siglip_blob", "siglip_bytes"),
-                         ("dino_alone_blob", "dino_alone_bytes")):
+                         ("dino_alone_blob", "dino_alone_bytes"),
+                         ("outline_blob", "outline_bytes")):
         blob = row.get(column)
         row[name] = 0 if blob is None else len(blob)
         if not vectors:

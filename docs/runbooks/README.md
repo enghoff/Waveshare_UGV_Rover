@@ -13,6 +13,7 @@ disagree, the runbook is a bug.
 | [p0-gimbal-calibration.md](p0-gimbal-calibration.md) | printing and mounting the measured reference for the bounded P0 camera test |
 | [autonomy-session.md](autonomy-session.md) | letting the rover choose where it goes, under supervision, and taking it back |
 | [rover-unresponsive.md](rover-unresponsive.md) | a rover that has dropped off the network |
+| [world-state-rebuild.md](world-state-rebuild.md) | reading the kept looks again and building the things again after a change to how looks are measured |
 
 ## What a runbook owes
 

@@ -143,6 +143,10 @@ class Ranged:
     #: are ordinary: a box the camera could see into and found nothing in, and a
     #: service that was not answering.
     absent: str = ""
+    #: Which reading this is, as the store's `range_from` column keeps it: `outline`
+    #: or `box` when the look read the depth map itself (`outline.read`), `service`
+    #: when the depth service read the box. Empty when there is no range.
+    method: str = ""
 
 
 @dataclass

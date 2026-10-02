@@ -219,13 +219,18 @@ class Server(ThreadingHTTPServer):
         regions = []
         for region in answer["regions"]:
             alone = region.get("dino_alone")
+            drawn = region.get("outline")
             regions.append({**region,
                             "dino": base64.b64encode(region["dino"]).decode(),
                             "siglip": base64.b64encode(region["siglip"]).decode(),
                             # Absent rather than empty when the backend produced
                             # no masks, so the client's own default applies.
                             "dino_alone": (base64.b64encode(alone).decode()
-                                           if alone else None)})
+                                           if alone else None),
+                            # The region's own pixels, a few hundred bytes. See
+                            # world_state/outline.py.
+                            "outline": (base64.b64encode(drawn).decode()
+                                        if drawn else None)})
         return {**answer, "regions": regions}
 
     def embed(self, phrases: list) -> list:

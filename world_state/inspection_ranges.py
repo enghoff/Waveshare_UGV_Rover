@@ -5,9 +5,12 @@ import math
 import time
 from typing import Any
 
-from . import oak, view
+from . import oak, outline
 from .depth_client import (NO_DEPTH_ANSWER, NOTHING_TO_MEASURE, OUTSIDE_VIEW,
                            TURNING, Ranged)
+
+#: What the store's `range_from` calls a range the depth service read from a box.
+SERVICE = "service"
 
 # Redraw projected boxes when the first measured range differs by over 40%.
 REASK_RANGE_FRAC = 0.40
@@ -44,6 +47,9 @@ class InspectionRanges:
         rides the same platform, so the middle of every fisheye picture has depth
         behind it wherever the gimbal points.
         """
+        # The depth map a look's ranges were read from, when it read one itself, so
+        # that the map kept beside the frame is that one rather than the next.
+        self._depth_read = None
         if self.ranger is None or not regions:
             return [], ""
         camera = capture.get("camera") or oak.GIMBAL
@@ -115,6 +121,7 @@ class InspectionRanges:
                 one.absent = one.absent or NOTHING_TO_MEASURE
                 continue
             one.sigma_m = self._aged_sigma(one, speed)
+            one.method = SERVICE
             got += 1
         return answers, (f"{got} of {len(regions)} ranged"
                          if got else "nothing in the frame could be ranged")
@@ -147,8 +154,10 @@ class InspectionRanges:
                 lens = self.ranger.lens()
             except Exception:                      # never past here
                 lens = None
-            return self.store.save_depth(frame_id, self.ranger.depth_map(),
-                                         lens=lens)
+            # The map the ranges were read from, where the look read one; the
+            # newest otherwise, which is the frame after the one the service read.
+            depth = getattr(self, "_depth_read", None) or self.ranger.depth_map()
+            return self.store.save_depth(frame_id, depth, lens=lens)
         except Exception:                          # never past here
             return 0
 
@@ -201,6 +210,9 @@ class InspectionRanges:
         if lens is None or not oak.MEASURED:
             return [], ""
         size = capture.get("frame_size")
+        read = self._ranges_read(capture, regions, lens, size)
+        if read is not None:
+            return read
         corners: list[Any] = []
         boxes: list[Any] = []
         for region in regions:
@@ -235,6 +247,78 @@ class InspectionRanges:
             self._reask(again, corners, found, lens)
         return self._as_gimbal(corners, found, len(regions),
                                capture.get("speed_mps") or 0.0)
+
+    def _ranges_read(self, capture: dict[str, Any], regions: list, lens, size):
+        """Every region's range read here from one depth map, or None to ask the service.
+
+        **Under the region's own outline, and from its box only where the outline
+        cannot say.** The service answers a box with its nearest surface, which is a
+        chair whenever a chair stands in front of the painting the box is drawn
+        round: on 2026-10-02 that read 1.22 m for a painting 2.54 m away. The
+        outline is the region finder's own record of which pixels are the painting.
+        See `outline` for what the replay of four drives measured.
+
+        One depth map for the whole look, fetched once and kept beside the frame by
+        `_keep_depth`, so the evidence kept is the map the ranges came from -- the
+        service's answers came from whatever frame was newest when it was asked,
+        and the map kept was the one after it.
+
+        None when there is no numpy on this host, no frame size, or no depth map to
+        be had; the service's own box reading is asked for then, as before.
+        """
+        if not size:
+            return None
+        try:
+            import numpy as np
+        except ImportError:                        # a bench without numpy
+            return None
+        try:
+            depth = self.ranger.depth_map()
+        except Exception:                          # never past here
+            return None
+        if not depth.ok or (depth.dtype and depth.dtype != "uint16"):
+            return None
+        # A map is projected into as the lens's own picture, scaled, so one of another
+        # shape is not this lens's picture and nothing here can say where in it a
+        # region lands.
+        if abs(depth.width / float(depth.height)
+               - float(lens.width) / float(lens.height)) > 0.05:
+            return None
+        try:
+            answers = outline.read(np, depth.millimetres, depth.width, depth.height,
+                                   lens, [(region.bbox, getattr(region, "outline", b""))
+                                          for region in regions],
+                                   tuple(size))
+        except Exception:                          # never past here
+            return None
+        self._depth_read = depth
+        speed = capture.get("speed_mps") or 0.0
+        found, ranged, outlined, blind = [], 0, 0, 0
+        for answer in answers:
+            if answer.get("range_m") is None:
+                found.append(Ranged(absent=answer.get("absent") or NOTHING_TO_MEASURE,
+                                    age_s=depth.age_s))
+                blind += answer.get("absent") == OUTSIDE_VIEW
+                continue
+            one = Ranged(range_m=answer["range_m"], sigma_m=answer["sigma_m"],
+                         valid=answer["valid"], pixels=answer["pixels"],
+                         age_s=depth.age_s, apart_s=depth.apart_s,
+                         method=answer["method"])
+            one.sigma_m = self._aged_sigma(one, speed)
+            found.append(one)
+            ranged += 1
+            outlined += answer["method"] == outline.OUTLINE
+        if ranged:
+            note = f"{ranged} of {len(regions)} ranged by the depth camera"
+            if outlined < ranged:
+                note += f" ({ranged - outlined} from the box)"
+            if blind:
+                note += f", {blind} outside its view"
+        else:
+            note = "the depth camera saw none of it well enough to range"
+            if blind:
+                note += f" ({blind} of them outside its view)"
+        return found, note
 
     def _reask(self, again, corners, found, lens) -> None:
         """Ask a second time for the boxes whose range was nothing like the guess.
@@ -290,6 +374,7 @@ class InspectionRanges:
                 continue
             one.range_m = round(corrected, 3)
             one.sigma_m = self._aged_sigma(one, speed_mps)
+            one.method = SERVICE
             ranged += 1
         blind = sum(1 for one in found if one.absent == OUTSIDE_VIEW)
         note = (f"{ranged} of {total} ranged by the depth camera"
@@ -318,17 +403,4 @@ class InspectionRanges:
         OAK turns with the gimbal, so where a fisheye pixel lands in its picture
         does not depend on the servos -- and their pointing errors cannot move it.
         """
-        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-            return None
-        try:
-            left, top, right, bottom = (float(value) for value in bbox)
-        except (TypeError, ValueError):
-            return None
-        found = []
-        for x_frac, y_frac in ((left, top), (right, top),
-                               (left, bottom), (right, bottom)):
-            direction = view.chassis_direction(x_frac, y_frac, 0.0, 0.0, size)
-            if direction is None:
-                return None
-            found.append(direction)
-        return found
+        return outline.corners_of(bbox, size)

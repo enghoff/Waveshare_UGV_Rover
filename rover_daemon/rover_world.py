@@ -1135,6 +1135,47 @@ class RoverWorld:
             inspector.forget_picture()
         return cleared
 
+    def _tool_world_state_rebuild(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Read the kept looks' ranges again under their outlines, and build every thing
+        again from the looks, oldest first. A control call, and a person's act.
+
+        **Without `apply` it changes nothing** and answers what re-ranging would change.
+        With it, the store is copied beside itself first (`world.db.before-rebuild-*`),
+        then every look whose depth map was kept is read again as a live look is now
+        read, and every thing of this map session is deleted and built again by the
+        resolver one look at a time -- the passes the rover ran live, with today's way
+        of ranging. New things take fresh numbers. See world_state/rebuild.py.
+
+        The rover's own looks are held off for the whole of it, which is minutes rather
+        than seconds: on 2026-10-02 the 379 looks of the session took 133 s at a desk.
+        """
+        why = self._world_ready()
+        if why:
+            return {"ok": False, "error": why}
+        try:
+            import numpy as np
+        except ImportError:
+            return {"ok": False, "error": "numpy is not available to the daemon, so the "
+                                          "depth maps cannot be read again"}
+        apply = bool(arguments.get("apply"))
+        inspector = self._world_inspector()
+        store = self._world_store()
+        with inspector.not_looking(CLEAR_WAIT_S) as idle:
+            if not idle:
+                return {"ok": False,
+                        "error": f"an inspection has been running for longer than "
+                                 f"{CLEAR_WAIT_S:.0f} s; nothing was changed"}
+            if not apply:
+                return {"ok": True, "applied": False,
+                        "rerange": world_state.rebuild.rerange(np, store,
+                                                               eyes=inspector.eyes)}
+            backup = world_state.rebuild.backup(store)
+            ranged = world_state.rebuild.rerange(np, store, eyes=inspector.eyes,
+                                                 write=True)
+            built = world_state.rebuild.rebuild(store, reach=self._world_reach)
+        return {"ok": True, "applied": True, "backup": backup, "rerange": ranged,
+                "rebuild": built}
+
     # There was a `world_map_session` control call here, and it is gone. It read
     # like a question -- which map session is this? -- and it was an instruction:
     # every call minted a new one, which is to say it told the rover that

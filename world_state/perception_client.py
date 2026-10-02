@@ -71,6 +71,11 @@ class Sighting:
     #: which is silence rather than a low score -- see `resolve.collapsed`.
     dino_alone: bytes = b""
     mask_share: float | None = None
+    #: Which pixels of the box are the region itself, as `outline.encode` packs them.
+    #: What the depth under the region is read from, rather than the box's nearest
+    #: surface, which is a chair whenever a chair stands in front of the painting.
+    #: Empty when the backend returned no masks; the box is ranged then.
+    outline: bytes = b""
     #: Perception has no categories, so everything it finds is an object. The
     #: field exists because the store records a kind and because a later phase may
     #: want openings kept apart from furniture.
@@ -238,7 +243,8 @@ class SidecarEyes(Eyes):
                     siglip=base64.b64decode(region.get("siglip") or ""),
                     dino_alone=base64.b64decode(region.get("dino_alone") or ""),
                     mask_share=(None if region.get("mask_share") is None
-                                else float(region["mask_share"]))))
+                                else float(region["mask_share"])),
+                    outline=base64.b64decode(region.get("outline") or "")))
             except (KeyError, TypeError, ValueError) as bad:
                 # One malformed region does not throw the frame away. The rest of
                 # it is still a measurement, and the count that is short says so.

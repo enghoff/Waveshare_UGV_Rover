@@ -396,6 +396,66 @@ def test_a_clear_waits_for_the_look_in_flight_instead_of_refusing():
                     os.environ[name] = value
 
 
+def test_a_rebuild_asks_first_backs_up_and_waits_for_the_look_in_flight():
+    """The rebuild throws every thing away, so it says what it would change before it
+    changes anything, copies the store before it does, and is held off by a look the
+    way a clear is -- and refused, not half done, by one that will not end."""
+    import tempfile
+    import threading
+
+    import rover_daemon
+    import rover_world
+    import world_state
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            store = rover._world_store()
+            inspector = rover._world_inspector()
+            for _ in range(2):
+                store.record([world_state.Sighting(bbox=[0.2, 0.2, 0.4, 0.4],
+                                                   dino=b"", siglip=b"")],
+                             capture={"frame_id": "f"})
+            asked = rover.call("world_state_rebuild", {})
+            check("without apply it answers and changes nothing",
+                  (asked["ok"], asked["applied"], "backup" in asked), (True, False, False))
+            done = rover.call("world_state_rebuild", {"apply": True})
+            check("with apply it rebuilds", (done["ok"], done["applied"]), (True, True))
+            check("...having copied the store first", os.path.exists(done["backup"]), True)
+            check("...and let every look back in",
+                  rover.call("world_state_summary", {})["summary"]["observations"], 2)
+
+            stuck, held = threading.Event(), threading.Event()
+
+            def wedged():
+                with inspector.not_looking(5.0) as idle:
+                    assert idle
+                    held.set()
+                    stuck.wait(10.0)
+
+            threading.Thread(target=wedged, daemon=True).start()
+            held.wait(5.0)
+            waiting = rover_world.CLEAR_WAIT_S
+            rover_world.CLEAR_WAIT_S = 0.2
+            try:
+                refused = rover.call("world_state_rebuild", {"apply": True})
+                check("a look that will not end refuses the rebuild",
+                      (refused["ok"], "inspection" in refused["error"]), (False, True))
+            finally:
+                rover_world.CLEAR_WAIT_S = waiting
+                stuck.set()
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_clearing_the_map_takes_the_world_state_with_it():
     """One button, and both ends of it answered for inside the rover.
 
@@ -1284,6 +1344,7 @@ TESTS = (
     test_a_rover_without_a_camera_refuses_to_inspect,
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,
     test_a_clear_waits_for_the_look_in_flight_instead_of_refusing,
+    test_a_rebuild_asks_first_backs_up_and_waits_for_the_look_in_flight,
     test_clearing_the_map_takes_the_world_state_with_it,
     test_a_world_observation_takes_the_live_pose_and_no_other,
     test_how_far_the_rover_could_see_comes_off_its_own_map,

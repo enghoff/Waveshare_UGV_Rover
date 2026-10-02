@@ -25,6 +25,8 @@ to cross it. Nothing here asks a model anything.
     hypothesis_check.py  whether one look shows something where a claim says
     oak.py               the second camera: where it is, and what its pixels see
     depth_client.py      asking it how far away the things in a picture are
+    outline.py           a region's own pixels, and the depth read under them
+    rebuild.py           the kept looks read again, and the things built again
     replay.py            a recorded run back through the resolver, at a desk
 
 The rover deploys this to ``~/ugv/world_state`` and the daemon imports it from
@@ -38,6 +40,8 @@ from . import approach
 from . import depth_client
 from . import hypothesis_check
 from . import oak
+from . import outline
+from . import rebuild
 from . import resolve
 from . import search
 from .locate import agrees, best_fix, fix
