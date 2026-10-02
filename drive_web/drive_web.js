@@ -482,10 +482,11 @@ function drawDepth(depth) {
 let depthMM = null, depthW = 0, depthH = 0, depthPointer = null;
 let depthFault = "";       // why the newest map would not draw, kept across pushes
 
-// Turbo, near red and far blue, on a log scale from 0.2 to 6 m -- the depth
-// service's working range -- so a room's worth of distances is spread across
-// the colours rather than crowded into the near end. A display choice, not a
-// measurement: the readout is the number.
+// Turbo, near red and far blue, straight across the depth service's working
+// range of 0.2 to 6 m. Not a log scale, which was tried: it spends half the
+// colours on the first metre, and a room seen from the charger -- 3 to 7 m of
+// it -- came out as one blue. A display choice, not a measurement: the readout
+// is the number.
 const DEPTH_NEAR_MM = 200, DEPTH_FAR_MM = 6000;
 const TURBO = (() => {
   const table = new Uint8ClampedArray(256 * 3);
@@ -553,12 +554,12 @@ function paintDepth() {
   canvas.height = depthH;
   const context = canvas.getContext("2d");
   const image = context.createImageData(depthW, depthH), px = image.data;
-  const span = Math.log(DEPTH_FAR_MM / DEPTH_NEAR_MM);
+  const span = DEPTH_FAR_MM - DEPTH_NEAR_MM;
   for (let i = 0; i < depthMM.length; i++) {
     const mm = depthMM[i];
     if (!mm) continue;                    // nothing measured: left clear
-    const far = Math.log(Math.max(mm, DEPTH_NEAR_MM) / DEPTH_NEAR_MM) / span;
-    const c = Math.round(255 * (1 - Math.min(far, 1))) * 3;
+    const far = Math.min(Math.max(mm - DEPTH_NEAR_MM, 0) / span, 1);
+    const c = Math.round(255 * (1 - far)) * 3;
     px[i * 4] = TURBO[c];
     px[i * 4 + 1] = TURBO[c + 1];
     px[i * 4 + 2] = TURBO[c + 2];

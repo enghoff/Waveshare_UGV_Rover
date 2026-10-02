@@ -52,7 +52,7 @@ daemon's navigation, battery, link, camera and movement state.
 Under the gimbal camera's picture is the OAK's depth map. It travels as
 millimetres -- zlib-compressed by the daemon, about 34 kB, served at
 `/depth.zlib` and inflated in the browser -- so the page colours it itself
-(Turbo, near red, on a log scale from 0.2 to 6 m) and reads the distance under
+(Turbo, near red and far blue, linear from 0.2 to 6 m) and reads the distance under
 the pointer in metres. It is fetched at the camera's own pace on the same
 connection, and only while the depth lamp is on: the rover's wheels decide when
 the OAK is awake and a request never wakes it. When the OAK goes off the last
