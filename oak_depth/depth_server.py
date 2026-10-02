@@ -134,6 +134,13 @@ class Depth:
         self.focal_px = None         # CAM_C's, which is what the depth is made of
         self.started_at = time.monotonic()
         self.last_error = ""
+        #: The VPU's own temperature, averaged over its four sensors, from the
+        #: device's system logger once a second. Kept after the camera stops,
+        #: because what it read just before a drop is the point: on 2026-10-02
+        #: the OAK fell off USB mid-stream nine times in ten minutes parked on a
+        #: steady supply, and heat and power at the camera end were the two
+        #: explanations left. None until a device has said.
+        self.chip_temp_c = None
         self._periods: list[float] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -217,8 +224,14 @@ class Depth:
         left.out.link(stereo.left)
         right.out.link(stereo.right)
 
+        # One reading a second of the chip's temperature, which costs the link
+        # nothing next to the frames. See `chip_temp_c`.
+        logger = pipeline.create(dai.node.SystemLogger)
+        logger.setRate(1)
+
         for name, source in (("depth", stereo.depth),
-                             ("jpeg", encoder.bitstream)):
+                             ("jpeg", encoder.bitstream),
+                             ("sysinfo", logger.out)):
             out = pipeline.create(dai.node.XLinkOut)
             out.setStreamName(name)
             source.link(out.input)
@@ -245,7 +258,7 @@ class Depth:
                 self._describe(device)
                 queues = {name: device.getOutputQueue(name, maxSize=4,
                                                       blocking=False)
-                          for name in ("depth", "jpeg")}
+                          for name in ("depth", "jpeg", "sysinfo")}
                 # **The two streams do not arrive together, and the colour is
                 # the late one.** Both are exposed at the same instant on the
                 # same device, but the colour frame goes through the MJPEG
@@ -284,6 +297,10 @@ class Depth:
                                        bytes(picture.getData())))
                         self.jpegs += 1
                         del recent[:-self.colour_history]
+                    info = queues["sysinfo"].tryGet()
+                    if info is not None:
+                        self.chip_temp_c = round(
+                            float(info.chipTemperature.average), 1)
                     if pending is not None:
                         self._publish(pending, recent, now)
                     pending = (packet.getFrame(), _stamp_of(packet), now)
@@ -523,7 +540,8 @@ class Depth:
             return (f"no depth frame in the {since:.0f} s since the device was "
                     f"opened")
         if age > FRAME_TIMEOUT_S:
-            return f"no depth for {age:.1f} s after {self.frames} frames"
+            return (f"no depth for {age:.1f} s after {self.frames} frames"
+                    f"{self.heat()}")
         return ""
 
     # --- what it has seen ---------------------------------------------------
@@ -628,7 +646,14 @@ class Depth:
             "uptime_s": round(time.monotonic() - self.started_at, 1),
             "errors": self.errors,
             "last_error": self.last_error,
+            "chip_temp_c": self.chip_temp_c,
         }
+
+    def heat(self) -> str:
+        """The chip's last temperature as a clause for a log line, or ''."""
+        if self.chip_temp_c is None:
+            return ""
+        return f" at {self.chip_temp_c:.0f} C"
 
     def ranges(self, boxes: list) -> dict:
         """How far away the thing in each box is, in metres, or null.
@@ -1013,12 +1038,13 @@ def main() -> int:
         try:
             depth.run()
         except DepthError as error:
-            print(f"[oak_depth] the camera stopped: {error}",
+            print(f"[oak_depth] the camera stopped{depth.heat()}: {error}",
                   file=sys.stderr, flush=True)
             return 1
         depth.forget()
-        print(f"[oak_depth] switched off after {depth.frames} frames; the camera "
-              f"is idle and this process is waiting", file=sys.stderr, flush=True)
+        print(f"[oak_depth] switched off after {depth.frames} frames"
+              f"{depth.heat()}; the camera is idle and this process is waiting",
+              file=sys.stderr, flush=True)
 
 
 def _watch(depth: Depth) -> None:
