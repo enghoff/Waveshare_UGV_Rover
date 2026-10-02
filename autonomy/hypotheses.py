@@ -307,15 +307,19 @@ def _fits(claim: dict[str, Any], range_m: float) -> dict[str, Any] | None:
     elevation = math.degrees(math.atan2(float(height or 0.0), max(range_m, 0.05)))
     half_h = DEPTH_HFOV_DEG / 2.0 - EDGE_DEG
     half_v = DEPTH_VFOV_DEG / 2.0 - EDGE_DEG
-    middle = None
     for tilt in TILTS:
         off = abs(elevation - tilt)
         if off + rise <= half_v and across <= half_h:
             return {"tilt_deg": tilt, "patch_fits": True,
                     "elevation_deg": round(elevation, 1)}
-        if middle is None and off <= half_v:
-            middle = tilt
-    if middle is None:
+    # **When neither tilt fits the whole patch, the one nearer the place.** It
+    # used to be the first in the list that had the middle in view, which is
+    # twenty up: on 2026-10-02 that put a chair seat 0.19 m above the camera
+    # 14 degrees below the middle of the picture with its patch off the bottom
+    # edge, where level had it 6 degrees above, and three checks came back
+    # "outside the depth camera's view".
+    nearest = min(TILTS, key=lambda tilt: abs(elevation - tilt))
+    if abs(elevation - nearest) > half_v:
         return None
-    return {"tilt_deg": middle, "patch_fits": False,
+    return {"tilt_deg": nearest, "patch_fits": False,
             "elevation_deg": round(elevation, 1)}

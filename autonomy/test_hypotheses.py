@@ -108,6 +108,17 @@ def test_the_tilt_follows_where_the_place_is():
     check("...one above it from rest, twenty up", high.constraints["tilt_deg"],
           20.0)
 
+    # Found on the rover on 2026-10-02: a dining-chair seat 0.19 m above the
+    # camera, looked at from 1.7 m. Neither tilt fits the whole patch, and the
+    # first tilt in the list was taken -- twenty up, which put the seat 14
+    # degrees below the middle of the picture and its patch off the bottom
+    # edge, where level would have had it 6 degrees above the middle. Three
+    # checks at removed chairs came back "outside the depth camera's view".
+    seat = hypotheses._fits({"uncertainty_m": 0.147, "height_m": 0.19,
+                              "height_sigma_m": 0.079}, 1.7)
+    check("when no tilt fits the whole patch, the one nearer the middle is taken",
+          (seat["tilt_deg"], seat["patch_fits"]), (0.0, False))
+
 
 def test_what_one_look_cannot_test_is_not_proposed():
     check("a claim placed looser than one look can test",
