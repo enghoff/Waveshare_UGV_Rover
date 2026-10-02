@@ -122,12 +122,29 @@ def generate(situation: Situation) -> list[goals_mod.Candidate]:
         gap = math.hypot(claim["x_m"] - where[0], claim["y_m"] - where[1])
         claims.append((round(gap, 3), str(entity.get("id") or ""), entity, claim))
     claims.sort(key=lambda one: (one[0], one[1]))
+    # **A place already answered or out of attempts does not take an open
+    # place's slot.** On 2026-10-02 the twelve claims nearest the rover were all
+    # spent, so an untried place 1.6 m away never came up and every turn ended
+    # "nothing to do". Spent places still come through, as many again, so the
+    # record says why each was refused; the veto in scoring still decides.
+    spent = [one for one in claims if _spent(situation, one[3])]
+    claims = ([one for one in claims if not _spent(situation, one[3])][:CLAIM_LIMIT]
+              + spent[:CLAIM_LIMIT])
+    claims.sort(key=lambda one: (one[0], one[1]))
     out = []
-    for _gap, entity_id, entity, claim in claims[:CLAIM_LIMIT]:
+    for _gap, entity_id, entity, claim in claims:
         found = _candidate(situation, reach, entity_id, entity, claim, generation)
         if found is not None:
             out.append(found)
     return out
+
+
+def _spent(situation: Situation, claim: dict[str, Any]) -> bool:
+    """Whether the record already rules this place out: answered, or tried
+    as often as a place may be."""
+    spent = history(situation, claim)
+    return (len(spent) >= ATTEMPTS
+            or any(one.get("outcome") in ANSWERED for one in spent))
 
 
 def case_of(claim: dict[str, Any], map_session: int | None) -> str:

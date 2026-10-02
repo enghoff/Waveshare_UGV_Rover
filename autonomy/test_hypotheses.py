@@ -169,6 +169,20 @@ def test_a_place_already_spent_or_answered_is_refused_from_the_record():
     check("...while a place a metre away is its own case",
           vetoes([a_claim("object:78", 2.5, 0.5)], ledger("supported")), [])
 
+    # Found on the rover on 2026-10-02: the twelve claims nearest the rover
+    # were all spent, so a fresh place 1.6 m away was never proposed and five
+    # turns came back "nothing to do". Spent places no longer take the slots.
+    spent_near = [a_claim(f"object:{n}", 2.0 + 0.05 * n, 1.5)
+                  for n in range(hypotheses.CLAIM_LIMIT)]
+    spent_record = [entry for n in range(hypotheses.CLAIM_LIMIT)
+                    for entry in ledger("unresolved", "unresolved",
+                                        at=(2.0 + 0.05 * n, 1.5))]
+    fresh = a_claim("object:99", 2.5, 2.6)    # 2.9 m from the rover, behind them all
+    got = inspections_of(hypotheses.generate(a_situation(
+        spent_near + [fresh], inspections=spent_record)))
+    check("a fresh place behind twelve spent ones is still proposed",
+          "object:99" in [one.target for one in got], True)
+
 
 # --- whole attempts, against the fake rover -----------------------------------
 
