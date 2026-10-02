@@ -212,6 +212,51 @@ def test_a_check_look_is_aimed_from_the_measured_heading():
           aimed(0.0, 0.0, {"x_m": 0.0, "y_m": 1.0})["pan_deg"], -20.0)
 
 
+def test_a_check_look_whose_depth_service_was_down_is_taken_once_more():
+    """Found in M0a's runs of 2026-10-02: four check looks in eleven kept no
+    depth because the depth service was restarting after the camera dropped off
+    USB. The look is retaken once the camera answers again; a second failure
+    stands, and an ordinary look is never retaken."""
+    from types import SimpleNamespace
+
+    import rover_world
+
+    def run(results, keep_depth=True, wakes=("", "")):
+        looks, woken = list(results), list(wakes)
+        taken = []
+
+        def inspect(**kwargs):
+            taken.append(kwargs)
+            return dict(looks.pop(0))
+        rover = SimpleNamespace(
+            _world_ready=lambda: "",
+            depth_wake=lambda _wait: woken.pop(0) if woken else "",
+            _world_inspector=lambda: SimpleNamespace(inspect=inspect),
+            _world_store=lambda: SimpleNamespace(
+                depth=lambda frame: "kept" if frame == "f2" else None),
+            centre_gimbal=lambda *a, **k: True,
+            _aim_pan=lambda aim: {"pan_deg": 0.0})
+        got = rover_world.RoverWorld._tool_world_inspect(
+            rover, {"settle": False, "fresh": True, "keep_depth": keep_depth})
+        return got, taken
+
+    down = {"frame_id": "f1", "detail": "no ranges (ConnectionRefusedError: refused)"}
+    fine = {"frame_id": "f2", "detail": "3 regions kept"}
+    got, taken = run([down, fine])
+    check("a check look that found the depth service down is taken again",
+          (got["frame_id"], len(taken)), ("f2", 2))
+    check("...and says which look it replaced",
+          got["depth_retry"]["first_frame_id"], "f1")
+    got, taken = run([down, dict(down, frame_id="f3")])
+    check("...once: a second failure stands", (got["frame_id"], len(taken)), ("f3", 2))
+    got, taken = run([down], wakes=("", "the depth camera was still waking"))
+    check("a camera that does not come back is not looked at again",
+          (got["frame_id"], len(taken), got.get("depth_note")),
+          ("f1", 1, "the depth camera was still waking"))
+    got, taken = run([down], keep_depth=False)
+    check("an ordinary look is never retaken", len(taken), 1)
+
+
 TESTS = (
     test_an_inspection_must_declare_finite_limits_under_the_ceilings,
     test_the_viewpoint_is_never_on_top_of_the_place_under_test,
@@ -222,4 +267,5 @@ TESTS = (
     test_the_watchdog_stops_a_drive_at_the_attempts_limit_and_not_the_run,
     test_a_look_may_be_taken_at_the_two_calibrated_tilts_only,
     test_a_check_look_is_aimed_from_the_measured_heading,
+    test_a_check_look_whose_depth_service_was_down_is_taken_once_more,
 )

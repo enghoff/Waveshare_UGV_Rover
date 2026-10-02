@@ -1188,17 +1188,40 @@ class RoverWorld:
             time.sleep(TILT_SETTLE_S)
 
         moves_gimbal = tilt is not None or isinstance(aim, dict)
-        try:
-            result = self._world_inspector().inspect(
-                settle=True if settle is None else bool(settle),
-                fresh=bool(arguments.get("fresh")), keep_depth=keep_depth,
-                wait_s=CHECK_LOOK_WAIT_S if keep_depth else 0.0,
-                before=tilted if moves_gimbal else None)
-        finally:
-            if moves_gimbal:
-                # Back to rest, so the next ordinary look is taken from where
-                # it always is.
-                self.centre_gimbal()
+
+        def look(fresh: bool) -> dict[str, Any]:
+            try:
+                return self._world_inspector().inspect(
+                    settle=True if settle is None else bool(settle),
+                    fresh=fresh, keep_depth=keep_depth,
+                    wait_s=CHECK_LOOK_WAIT_S if keep_depth else 0.0,
+                    before=tilted if moves_gimbal else None)
+            finally:
+                if moves_gimbal:
+                    # Back to rest, so the next ordinary look is taken from
+                    # where it always is.
+                    self.centre_gimbal()
+
+        result = look(bool(arguments.get("fresh")))
+        # **A check look whose depth service was down is taken once more.** On
+        # 2026-10-02 the depth camera dropped off USB repeatedly during M0a's
+        # runs, and four check looks in eleven came back "no depth map kept"
+        # with the service refusing connections -- answers of "can't tell"
+        # that were about the camera, not the place. The service now comes back
+        # in about two seconds, so the camera is woken and waited for again and
+        # the look retaken, once; a second failure stands.
+        if (keep_depth and not self._world_store().depth(
+                str(result.get("frame_id") or "")) is not None
+                and "no ranges (" in str(result.get("detail") or "")):
+            again = self.depth_wake(DEPTH_WAKE_WAIT_S)
+            if not again:
+                first = result
+                result = look(True)
+                result["depth_retry"] = {
+                    "first_frame_id": first.get("frame_id"),
+                    "first_detail": first.get("detail")}
+            else:
+                woke = woke or again
         if aimed:
             result["aimed"] = aimed
         if woke:
