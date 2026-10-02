@@ -31,7 +31,7 @@ import time
 import uuid
 from typing import Any
 
-from . import view
+from . import locate, view
 from .depth_client import OUTSIDE_VIEW
 from .schema import ADDED_COLUMNS, INFERENCE_COLUMNS, SCHEMA
 
@@ -739,6 +739,11 @@ class WorldStore:
         current opinion and may improve or be withdrawn, while the measurements
         behind it are history and are never touched.
         """
+        if placement is not None:
+            # What the rover claims for it, beside what it matches with. See
+            # `locate.STATED_SINGLE_LOOK_M`.
+            placement = {**placement,
+                         "stated_uncertainty_m": locate.stated_uncertainty(placement)}
         with self._lock, self.db:
             if placement is None:
                 self.db.execute(

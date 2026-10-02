@@ -161,7 +161,12 @@ def _claim_of(entity: dict[str, Any], session: int | None) -> dict[str, Any] | N
     if session is not None and entity.get("placement_map_session") not in (None,
                                                                            session):
         return None
-    uncertainty = placement.get("uncertainty_m")
+    # What the rover claims for the placement, which for a thing placed from a
+    # single look is wider than the tolerance the resolver matches with (see
+    # world_state/locate.py, STATED_SINGLE_LOOK_M). Older placements lack it.
+    uncertainty = placement.get("stated_uncertainty_m")
+    if uncertainty is None:
+        uncertainty = placement.get("uncertainty_m")
     if uncertainty is None:
         uncertainty = entity.get("placement_uncertainty_m")
     claim = {"x_m": round(float(placement["x_m"]), 3),

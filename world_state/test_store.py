@@ -126,6 +126,26 @@ def test_the_world_survives_the_process_that_wrote_it() -> None:
         reopened.close()
 
 
+def test_a_stored_placement_carries_what_it_claims() -> None:
+    """Every placement goes through `place`, so this is where the claim beside
+    the matching tolerance is written. See `locate.stated_uncertainty`."""
+    import json
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        entity_id = store.create_entity()
+        store.place(entity_id, {"x_m": 1.0, "y_m": 3.0, "uncertainty_m": 0.05,
+                                "viewpoints": 1, "from_range_m": 1.0,
+                                "baseline_m": 0.0}, 1)
+        placed = json.loads(store.db.execute(
+            "SELECT placement_json FROM entities WHERE id = ?",
+            (entity_id,)).fetchone()[0])
+        check("a one-look placement keeps the tolerance it matches with",
+              placed["uncertainty_m"], 0.05)
+        check("...and claims what one look has been worth",
+              placed["stated_uncertainty_m"], 1.0)
+        store.close()
+
+
 def test_a_database_from_an_older_build_still_opens() -> None:
     """The rover's database was written before this change and outlives it.
 
@@ -733,6 +753,7 @@ TESTS = (
     test_the_application_owns_the_identifiers,
     test_an_inspection_claims_no_identity_at_all,
     test_the_world_survives_the_process_that_wrote_it,
+    test_a_stored_placement_carries_what_it_claims,
     test_a_database_from_an_older_build_still_opens,
     test_the_frame_is_kept_and_every_observation_points_at_it,
     test_the_history_is_read_a_page_at_a_time,

@@ -667,6 +667,26 @@ def test_a_height_is_no_surer_than_its_looks_agree() -> None:
           sigma < 0.15, True)
 
 
+def test_a_placement_from_one_look_claims_what_one_look_has_been_worth() -> None:
+    """Against the tape, placements from one ranged look were 0.09 to 1.77 m
+    out against claims of 0.05 to 0.24 m. The tolerance the resolver matches
+    with stays as it was; what the placement claims does not."""
+    one_look = {"uncertainty_m": 0.05, "viewpoints": 1, "from_range_m": 1.2,
+                "baseline_m": 0.0}
+    check("one look claims what one look has been measured to be worth",
+          locate.stated_uncertainty(one_look), locate.STATED_SINGLE_LOOK_M)
+    check("...told apart by its missing baseline when the viewpoints are not said",
+          locate.stated_uncertainty({"uncertainty_m": 0.05, "from_range_m": 1.2,
+                                     "baseline_m": 0.0}),
+          locate.STATED_SINGLE_LOOK_M)
+    check("...but never less than its own figure when that is already wider",
+          locate.stated_uncertainty({**one_look, "uncertainty_m": 1.4}), 1.4)
+    check("two viewpoints claim their own figure, which measured honest",
+          locate.stated_uncertainty({"uncertainty_m": 0.18, "viewpoints": 3,
+                                     "baseline_m": 1.1}), 0.18)
+    check("no figure stays no figure", locate.stated_uncertainty({}), None)
+
+
 def test_two_rays_must_agree_about_the_height_as_well_as_the_place() -> None:
     """**The test a plan view cannot make.** A bearing at a picture on the wall
     crosses a bearing at the sideboard beneath it exactly as convincingly as two
@@ -807,6 +827,7 @@ TESTS = (
     test_a_height_needs_a_range_and_a_bearing_has_none,
     test_the_measured_elevation_bias_is_taken_out_at_the_tilt_it_was_measured,
     test_a_height_is_no_surer_than_its_looks_agree,
+    test_a_placement_from_one_look_claims_what_one_look_has_been_worth,
     test_two_rays_must_agree_about_the_height_as_well_as_the_place,
     test_a_look_joins_a_thing_only_at_the_height_it_stands,
     test_a_thing_is_forgiven_its_own_height_once_and_not_twice,

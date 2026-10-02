@@ -46,6 +46,34 @@ CAMERA_HEIGHT_M = 0.235
 HUBER_K = 2.0
 RANGE_SIGMA_M = 0.15
 
+# **What the rover claims for a placement, as against what it matches with.**
+# `uncertainty_m` is also the tolerance the resolver joins looks by, and
+# widening it to the measured error loosens that joining: on the labelled drive
+# of 2026-09-08, redrawn through today's lens, a 0.5 m floor on one-look
+# placements took merges of different objects from 8 to 13. So what a placement
+# *claims* -- to a person, to a hypothesis, to anything deciding whether it is
+# worth acting on -- is `stated_uncertainty_m`, and matching keeps its own.
+#
+# Against the owner's tape on 2026-10-01 and 10-02, placements from one ranged
+# look were 0.09 to 1.77 m out on six, against claims of 0.05 to 0.24 m; the
+# three held out on 10-02 were 0.09, 0.22 and 0.88. A range from one look is
+# as often from whatever else stood in its box. Placements from two or more
+# viewpoints claimed honestly (11 of 15 inside the claim, all 15 inside twice
+# it) and state their own number.
+STATED_SINGLE_LOOK_M = 1.0
+
+
+def stated_uncertainty(placement: dict[str, Any]) -> float | None:
+    """How far out a placement may be, as the rover should claim it."""
+    got = placement.get("uncertainty_m")
+    if got is None:
+        return None
+    single = (placement.get("viewpoints") == 1
+              or (placement.get("from_range_m") is not None
+                  and not placement.get("baseline_m")))
+    return round(max(float(got), STATED_SINGLE_LOOK_M) if single else float(got), 3)
+
+
 def sigma_of(ray: dict[str, object]) -> float:
     """Bearing sigma in degrees, never below the stationary calibration.
 

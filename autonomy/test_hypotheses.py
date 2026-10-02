@@ -119,6 +119,13 @@ def test_what_one_look_cannot_test_is_not_proposed():
     check("a thing never placed",
           inspections_of(hypotheses.generate(
               a_situation([a_claim(placed=False)]))), [])
+    # Placed from one look, it matches to 0.05 m but claims what one look has
+    # been measured to be worth (world_state/locate.py, STATED_SINGLE_LOOK_M).
+    one_look = a_claim(uncertainty_m=0.05)
+    one_look["placement"]["stated_uncertainty_m"] = 1.0
+    check("a thing placed from one look, by what it claims rather than what "
+          "it matches with", inspections_of(hypotheses.generate(
+              a_situation([one_look]))), [])
 
 
 def test_a_place_already_spent_or_answered_is_refused_from_the_record():
