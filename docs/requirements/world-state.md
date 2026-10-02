@@ -462,11 +462,16 @@ marked as belonging to the map that has gone rather than left looking current.
 <a id="r-ws-16"></a>
 ### R-WS-16 — An observation is only given a direction when the rover's place on the map has been confirmed
 
-- **State:** failing
-- **Broken by:** [2026-10-01, a rover carried by hand](../progress/2026-10-01-the-room-as-it-stands.md):
-  it recorded six regions with directions from a position 2.3 m away from where it
-  stood, and the drift check that noticed could not withdraw it
-- **How it was met until then:** `rover_world._world_pose` refuses a direction unless
+- **State:** settled
+- **Evidence:** [2026-10-02, a rover carried by hand again](../progress/2026-10-02-drive-carry-and-stops.md): with
+  navigation still claiming a confirmed position, the look kept its picture and gave
+  none of its eleven regions a direction, because one scan fitted nowhere near the
+  believed pose ([world_state/headingcheck.py](../../world_state/headingcheck.py)); once
+  a wide refit placed the rover, which the owner's tape confirmed, the next look got
+  its directions back. It had failed on
+  [2026-10-01](../progress/2026-10-01-the-room-as-it-stands.md), when six regions got
+  directions from a position 2.3 m away
+- **How it was met before 2026-10-01:** `rover_world._world_pose` refuses a direction unless
   navigation reports both a trusted position and `map_settled`, the offline
   half is covered by `python rover_daemon/selftest.py` — the withholding, and
   that a later confirmation does not give an earlier bearing back — and the

@@ -327,9 +327,9 @@ failed every tolerance. It found the next things to fix, in this order:
   is [deployed](../progress/2026-10-01-photo-heading-check.md), and headings believed
   17 to 43 degrees out are stored within 3.5 degrees of the tape. A driven
   acceptance run is what is left.
-- **A carried rover keeps a confirmed position (R-WS-16, now failing).** The same
-  measure-only check covers it: a look whose pose the scan does not confirm gets no
-  direction.
+- **A carried rover keeps a confirmed position (R-WS-16): settled on 2026-10-02.** A
+  carried rover's look got no direction until a refit placed it
+  ([the carry](../progress/2026-10-02-drive-carry-and-stops.md)).
 - **A range from the background on a small near object.** The tissue box's 2.61 m
   was read off a depth frame the rover had turned 17 degrees away from, and all six
   wrong target ranges that morning came from turning looks. Ranges taken while
@@ -343,6 +343,11 @@ failed every tolerance. It found the next things to fix, in this order:
   [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md) for the
   next experiments, and [the inspection replay](../progress/2026-10-01-hypothesis-inspection-replay.md)
   for what one look can carry.
+- **The drive of 2026-10-02 still fails the geometry tolerances**
+  ([results](../progress/2026-10-02-drive-carry-and-stops.md)): heights 0 of 3, the painting behind the dining chairs
+  0.88 m off, the tissue box never a thing of its own, and bearings 80% within 3 degrees
+  against 90%. Ranges over still looks passed, 5 of 6. The M3 stops met their limits;
+  permission expiry has not yet stopped a moving rover.
 - **M0a's inspections (R-AUT-12) are built and hold in replay**
   ([the replay](../progress/2026-10-01-hypothesis-inspection-replay.md)). The
   question each asks is whether something stands where a thing's looks crossed;
