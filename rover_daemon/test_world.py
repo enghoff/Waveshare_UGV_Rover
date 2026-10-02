@@ -1041,6 +1041,7 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
 
         worth = rover_world.RoverWorld._world_worth_looking
         _world_camera_deg = rover_world.RoverWorld._world_camera_deg
+        _world_stopped_since_look = rover_world.RoverWorld._world_stopped_since_look
 
     here = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 30.0}
     rover = Standing(dict(here))
@@ -1090,6 +1091,84 @@ def test_the_rover_looks_when_there_is_something_new_to_see() -> None:
           rover.worth(1000.0 + rover_world.LOOK_EVERY_S + 0.1), False)
     check("...but it does keep taking pictures, on a slower one",
           rover.worth(1000.0 + rover_world.LOOK_BLIND_S + 0.1), True)
+
+
+def test_the_rover_looks_again_once_it_has_stopped() -> None:
+    """Found on the drive of 2026-10-02: one look in 75 was taken standing still.
+
+    A look is due when the rover has moved 0.15 m or turned 25 degrees since the
+    last one, and a turn to face something is over in a second or two. So the
+    last look of every turn was taken while it was still turning, and the rover
+    then stood facing its target for ten seconds without looking, because
+    nothing had changed enough since that look. A look on the move gets no
+    bearing unless the heading has been checked recently, and the check is made
+    on still looks, so 106 of 653 regions on that drive got a direction.
+
+    A rover that has moved at all since its last look, and has now stood still
+    for REST_S, looks from where it stopped.
+    """
+    import rover_world
+
+    class Standing:
+        def __init__(self, pose):
+            self._world_build_at = 0.0
+            self._world_build_from = None
+            self._pose = pose
+            self.pan = 0.0
+
+        def _world_pose(self):
+            return None if self._pose is None else dict(self._pose)
+
+        worth = rover_world.RoverWorld._world_worth_looking
+        _world_camera_deg = rover_world.RoverWorld._world_camera_deg
+        _world_stopped_since_look = rover_world.RoverWorld._world_stopped_since_look
+
+    def polls(rover, start, seconds):
+        """The loop's own cadence: a question every fifth of a second."""
+        answers, t = [], start
+        while t <= start + seconds + 1e-9:
+            answers.append(rover.worth(t))
+            t += 0.2
+        return answers
+
+    def first_look(rover, start, seconds):
+        t = start
+        while t <= start + seconds + 1e-9:
+            if rover.worth(t):
+                return t
+            t += 0.2
+        return None
+
+    mid_turn = {"x_m": 1.0, "y_m": 2.0, "heading_deg": 30.0}
+    rover = Standing(dict(mid_turn))
+    rover._world_build_from = dict(mid_turn, camera_deg=30.0)
+    rover._world_build_at = 1000.0
+
+    # The turn carries on for another 20 degrees -- under TURNED_ENOUGH_DEG --
+    # and stops.
+    turning = 1000.0 + rover_world.LOOK_EVERY_S
+    for step in range(4):
+        rover._pose = dict(mid_turn, heading_deg=35.0 + 5.0 * step)
+        check("no look while it is still turning", rover.worth(turning + 0.2 * step), False)
+    stopped = turning + 0.6          # where the last step left it
+    looked = first_look(rover, stopped + 0.2, rover_world.REST_S + 0.6)
+    check("having stopped 20 degrees on from its last look, it looks from there",
+          looked is not None, True)
+    check("...once it has been still for REST_S, and not before",
+          looked is not None and rover_world.REST_S - 1e-9 <= looked - stopped
+          <= rover_world.REST_S + 0.2 + 1e-9, True)
+
+    # Having looked from where it stopped, it has nothing new to see.
+    rover._world_build_from = dict(rover._pose, camera_deg=50.0)
+    rover._world_build_at = stopped + 2.0
+    check("...and then does not look again from the same place",
+          True in polls(rover, stopped + 2.0 + rover_world.LOOK_EVERY_S, 20.0), False)
+
+    # The pose a parked rover reports wobbles by a centimetre and a fraction of
+    # a degree as scans arrive; that is not a move.
+    rover._pose = dict(rover._pose, x_m=rover._pose["x_m"] + 0.01, heading_deg=50.5)
+    check("a centimetre of jitter is not a stop to look from",
+          True in polls(rover, stopped + 30.0, 3.0), False)
 
 
 def test_the_camera_the_world_is_built_through_is_chosen_in_code() -> None:
@@ -1210,6 +1289,7 @@ TESTS = (
     test_how_far_the_rover_could_see_comes_off_its_own_map,
     test_where_to_stand_to_look_at_a_thing_is_a_place_on_this_map,
     test_the_rover_looks_when_there_is_something_new_to_see,
+    test_the_rover_looks_again_once_it_has_stopped,
     test_the_camera_the_world_is_built_through_is_chosen_in_code,
     test_a_look_through_the_oak_needs_the_mount_measured,
 )

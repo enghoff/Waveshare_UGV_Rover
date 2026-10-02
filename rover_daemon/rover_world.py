@@ -56,6 +56,14 @@ MOVED_ENOUGH_M = 0.15
 TURNED_ENOUGH_DEG = 25.0
 LOOK_ANYWAY_S = 300.0
 LOOK_BLIND_S = 5.0
+# A rover that has moved at all since its last look, and has then stood still
+# this long, looks from where it stopped: the last look of a turn is taken
+# while it is still turning (2026-10-02). A pose that moves less than the two
+# below is standing still, because a parked rover's pose wobbles by about a
+# centimetre and half a degree as scans arrive.
+REST_S = 0.6
+REST_MOVED_M = 0.03
+REST_TURNED_DEG = 3.0
 # Cache one map per short interval rather than refetch it for every pending ray.
 MAP_CACHE_S = 5.0
 REACH_LIMIT_M = 12.0
@@ -248,6 +256,7 @@ class RoverWorld:
         self._world_settle_at = 0.0
         self._world_settled: dict[str, Any] = {}
         self._world_build_from = None
+        self._world_rest = None
         self._world_build_looks = 0
         self._world_build_error = ""
         #: The map the store has been told about, and what happened when it was.
@@ -300,11 +309,40 @@ class RoverWorld:
         pose = self._world_pose()
         if pose is None:
             return since >= LOOK_BLIND_S
+        camera = self._world_camera_deg(pose)
         moved = math.hypot(pose["x_m"] - before["x_m"],
                            pose["y_m"] - before["y_m"])
-        turned = abs((self._world_camera_deg(pose)
-                      - before["camera_deg"] + 180.0) % 360.0 - 180.0)
-        return moved >= MOVED_ENOUGH_M or turned >= TURNED_ENOUGH_DEG
+        turned = abs((camera - before["camera_deg"] + 180.0) % 360.0 - 180.0)
+        if moved >= MOVED_ENOUGH_M or turned >= TURNED_ENOUGH_DEG:
+            return True
+        return self._world_stopped_since_look(now, pose, camera, moved, turned)
+
+    def _world_stopped_since_look(self, now: float, pose: dict[str, Any],
+                                  camera: float, moved: float,
+                                  turned: float) -> bool:
+        """Whether the rover has come to rest somewhere its last look was not.
+
+        **The look that matters most is the one taken standing still.** A turn
+        to face something is over in a second or two, so the last look of it is
+        taken while the rover is still turning, and the rule above then has
+        nothing new to see when the turn stops a few degrees on. On the drive of
+        2026-10-02 that left one look in 75 taken still, and it matters twice
+        over: a look on the move keeps its bearings only while a recent heading
+        check vouches for them, and the check is made on still looks -- so 106
+        of 653 regions got a direction. The rover now looks once from wherever
+        it stops, and nothing more until it moves again.
+        """
+        rest = getattr(self, "_world_rest", None)
+        if (rest is None
+                or math.hypot(pose["x_m"] - rest["x_m"],
+                              pose["y_m"] - rest["y_m"]) >= REST_MOVED_M
+                or abs((camera - rest["camera_deg"] + 180.0) % 360.0
+                       - 180.0) >= REST_TURNED_DEG):
+            self._world_rest = {"x_m": pose["x_m"], "y_m": pose["y_m"],
+                                "camera_deg": camera, "since": now}
+            return False
+        return ((moved >= REST_MOVED_M or turned >= REST_TURNED_DEG)
+                and now - rest["since"] >= REST_S)
 
     def _world_camera_deg(self, pose: dict[str, Any]) -> float:
         """Where the camera is looking: the chassis, less the camera's own pan.
