@@ -75,7 +75,9 @@ def test_a_still_look_is_checked_and_kept_corrected_or_withheld() -> None:
 
 
 def test_a_moving_look_takes_a_fresh_correction_or_the_navigators_heading() -> None:
-    answers = [agrees(), disagrees(), agrees()]
+    """When its own check is refused -- a sweep turned too fast, a busy keeper."""
+    answers = [refused(), agrees(), refused(), refused(), disagrees(), refused(),
+               refused(), agrees(), refused()]
     check_ = headingcheck.HeadingCheck(lambda offset: answers.pop(0))
     pose, note = check_.judge(dict(HERE), 0.5, 0.0)
     check("before any check, a moving look takes the heading the navigator "
@@ -110,6 +112,22 @@ def test_a_moving_look_takes_a_fresh_correction_or_the_navigators_heading() -> N
           "bearings however far", "checked" in pose, True)
 
 
+def test_a_moving_look_is_checked_on_its_own() -> None:
+    """Since the navigator measures a moving scan from its own moment, a moving look
+    gets a check of its own -- and one that fits nowhere is blamed on the motion."""
+    answers = [dict(disagrees(-6.5), moving=True), misfit(), misfit()]
+    check_ = headingcheck.HeadingCheck(lambda offset: answers.pop(0))
+    pose, note = check_.judge(dict(HERE), 0.5, 3.0)
+    check("a moving look the scan confidently disagrees with takes the scan's heading",
+          (pose["heading_deg"], pose["checked"].get("moving")), (83.5, True))
+    check("...and says so", "corrected by -6.5" in note, True)
+    pose, _ = check_.judge(dict(HERE), 0.5, 3.0)
+    check("a moving search that fits nowhere withholds nothing",
+          (pose is not None, check_.misplaced), (True, None))
+    pose, _ = check_.judge(dict(HERE), 0.0, 0.0)
+    check("...where a still one still does: the carried rover of R-WS-16", pose, None)
+
+
 def test_a_driven_run_keeps_its_directions() -> None:
     """The run of 2026-10-02, in miniature: the rover is partway through a move
     for all of it, so every check is refused and it turns 90 degrees between
@@ -134,7 +152,7 @@ def test_a_driven_run_keeps_its_directions() -> None:
 def test_a_rover_the_scan_cannot_place_stays_withheld() -> None:
     """R-WS-16: once a search has fitted nowhere, nothing gets a direction,
     moving or still, refused or not, until a search fits again."""
-    answers = [misfit(), refused(), agrees()]
+    answers = [misfit(), refused(), refused(), agrees(), refused()]
     check_ = headingcheck.HeadingCheck(lambda offset: answers.pop(0))
     pose, _ = check_.judge(dict(HERE), 0.0, 0.0)
     check("a still look the scan fits nowhere gets no direction", pose, None)
@@ -264,6 +282,7 @@ def test_the_inspector_takes_bearings_from_the_checked_pose() -> None:
 
 TESTS = (test_a_still_look_is_checked_and_kept_corrected_or_withheld,
          test_a_moving_look_takes_a_fresh_correction_or_the_navigators_heading,
+         test_a_moving_look_is_checked_on_its_own,
          test_a_driven_run_keeps_its_directions,
          test_a_rover_the_scan_cannot_place_stays_withheld,
          test_turning_is_counted_across_the_half_circle,

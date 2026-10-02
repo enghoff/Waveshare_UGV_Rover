@@ -329,6 +329,27 @@ class NavBridge(NavMoves, NavExplore, NavMap, Node):
         t = at.transform.translation
         return t.x, t.y, yaw_of(at.transform.rotation)
 
+    def pose_at(self, stamp, after_s=0.0):
+        """`(x, y, yaw)` in the map frame at a message's `stamp` plus `after_s`
+        seconds, or None if the transform tree does not reach that moment.
+
+        What a scan taken on the move is measured from. `pose` answers where the
+        rover is now; the tree keeps its last seconds, so where the rover was while
+        the lidar swept is a question it can answer as well -- and a scan matched
+        against the pose read beside it rather than at it is a scan from one place
+        matched as though it were from another.
+        """
+        try:
+            when = (rclpy.time.Time.from_msg(stamp)
+                    + rclpy.duration.Duration(seconds=float(after_s)))
+            at = self.tf_buffer.lookup_transform(
+                self.args.map_frame, self.args.base_frame, when,
+                rclpy.duration.Duration(seconds=0.05))
+        except Exception:
+            return None
+        t = at.transform.translation
+        return t.x, t.y, yaw_of(at.transform.rotation)
+
     def correction(self):
         """`map -> odom` as `(x, y, yaw)`: the pose graph's opinion, on its own.
 

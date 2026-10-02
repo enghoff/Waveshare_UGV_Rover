@@ -98,9 +98,13 @@ fault from "the rover drifts".
 The same search is offered read-only, as the bridge's `measure` op
 (`nav_map.measure_pose`): half a metre and 45 degrees around where the rover
 thinks it is, about a tenth of a second, with no move mutex, refusing a moving
-rover and never waiting behind a graph write. The world state uses it to check a
-still look's heading (world_state/headingcheck.py). Nothing on the navigation side
-acts on the answer. An attempt to correct the rover with it inside every move held
+rover and never waiting behind a graph write. On the move it matches the newest
+scan from where the rover was half way through that scan's sweep, read out of the
+transform tree at the scan's own timestamp (`nav_bridge.pose_at`,
+`nav_map.scan_moment`), and refuses a sweep turned faster than
+`MEASURE_MAX_TURN_DPS` (30 degrees a second). The world state uses it to check
+each look's heading, still or moving (world_state/headingcheck.py). Nothing on the
+navigation side acts on the answer. An attempt to correct the rover with it inside every move held
 the wheels for fifteen seconds and was reverted on 2026-10-01.
 
 Use the daemon's `clear_map` call to start a new map. That also advances the

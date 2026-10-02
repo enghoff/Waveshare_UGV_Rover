@@ -14,8 +14,13 @@ So a still look asks the navigator where one scan says the rover is
 keeps the pose if the scan agrees, corrects it by what the scan found if the scan
 disagrees with confidence, and gives no direction if the scan fits nowhere near
 where the rover believes it is -- which is what a carried rover looks like
-(R-WS-16). A moving look cannot be checked, because a scan and a pose taken in
-motion do not describe the same instant. While the last still check is fresh --
+(R-WS-16). **A moving look is checked too, since 2026-10-02**: the navigator matches
+the scan from where the rover was half way through its sweep rather than from the
+pose read beside it, which is what used to make a moving scan meaningless
+(`nav_map.scan_moment`). A sweep turned faster than 30 degrees a second is still
+refused, and a moving search that fits nowhere is taken as the motion's fault rather
+than evidence of a carried rover. Where a moving look gets no check of its own and
+the last check is fresh --
 under `TURNED_SINCE_CHECK_DEG` of turning since, and, when that check had to
 correct the heading, under `TRAVELLED_SINCE_CHECK_M` of travel -- it takes the
 same correction that check found.
@@ -111,8 +116,7 @@ class HeadingCheck(object):
         """
         if where is None:
             return None, None
-        if moved > STILL_M or turned > STILL_DEG:
-            return self._unchecked(where)
+        moving = moved > STILL_M or turned > STILL_DEG
         try:
             fit = self.measure(self.offset)
         except Exception as error:             # a look survives a missing check
@@ -121,10 +125,12 @@ class HeadingCheck(object):
         fit = fit or {"trusted": False, "why": "nothing answered"}
         self.last = fit
         if not fit.get("trusted"):
-            if "score" not in fit:
-                # Nothing was searched, so nothing was found wrong: the rover
-                # was partway through a move, the keeper was writing, or the
-                # bridge did not answer. A search that ran always scores.
+            if moving or "score" not in fit:
+                # Nothing was searched, so nothing was found wrong -- a sweep
+                # turned too fast, the keeper writing, a bridge that did not
+                # answer; a search that ran always scores. Or the search ran on
+                # the move, where a scan that fits nowhere says more about the
+                # motion than about where the rover is.
                 return self._unchecked(where)
             self.offset = None
             self.misplaced = fit.get("why") or "no reason given"
@@ -149,6 +155,8 @@ class HeadingCheck(object):
         self.turned_deg = self.travelled_m = 0.0
         self._checked = {"off_deg": fit.get("turned_deg"),
                          "off_m": fit.get("moved_m"), "score": fit.get("score")}
+        if moving:
+            self._checked["moving"] = True
         if offset == (0.0, 0.0, 0.0):
             return self._corrected(where), None
         return self._corrected(where), ("heading corrected by %.1f deg against "

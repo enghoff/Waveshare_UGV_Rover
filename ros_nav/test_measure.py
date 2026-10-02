@@ -1,10 +1,12 @@
 """The read-only measurement a look's heading is checked with.
 
 `nav_map.measure_pose` must never hold up a move or the stop that ends one: it
-takes no move mutex, refuses a moving rover, and gives up on a busy keeper rather
-than waiting behind a graph write. An in-move refit that did none of these held
-the wheels for fifteen seconds on 2026-10-01 and was reverted.
+takes no move mutex and gives up on a busy keeper rather than waiting behind a
+graph write. An in-move refit that did neither held the wheels for fifteen seconds
+on 2026-10-01 and was reverted. On the move it measures from where the rover was
+half way through the scan's sweep, and refuses a sweep turned too fast to match.
 """
+import math
 import threading
 import time
 
@@ -19,18 +21,40 @@ class Fit(object):
         self.ok = ok
 
 
+class Scan(object):
+    """A sweep stamped at 100 s that took a tenth of a second."""
+    def __init__(self):
+        self.header = type("Header", (), {"stamp": 100.0})()
+        self.scan_time = 0.1
+        self.time_increment = 0.0
+        self.ranges = [1.0] * 360
+
+
 class Node(object):
-    def __init__(self, driving=False):
+    scan_moment = nav_map.NavMap.scan_moment
+
+    def __init__(self, driving=False, turning_dps=10.0, reaches=True):
         self._lock = threading.Lock()
         self.map_lock = threading.RLock()
         self.move_mutex = threading.Lock()
         self.driving = driving
+        self.scan_msg = Scan()
+        self.turning_dps = turning_dps
+        self.reaches = reaches
         self.asked = []
         self.fits = []
 
+    def pose_at(self, stamp, after_s=0.0):
+        if not self.reaches:
+            return None
+        # Driving forward at half a metre a second from (3, 4) facing east, turning.
+        return (3.0 + 0.5 * after_s, 4.0,
+                math.radians(self.turning_dps * after_s))
+
     def map_measure(self, window_m=None, window_deg=None, min_score=None,
-                    around=None):
+                    around=None, where=None, scan=None):
         self.asked.append((window_m, window_deg, around))
+        self.measured_from = where
         fit = Fit(self.fits.pop(0) if self.fits else True)
         return ({"trusted": fit.ok, "settled": False, "turned_deg": -6.5},
                 fit, None)
@@ -66,8 +90,24 @@ def test_measure_pose_is_read_only_and_never_waits():
 
     node = Node(driving=True)
     answer = nav_map.NavMap.measure_pose(node)
-    check("a moving rover is not measured",
-          (answer["trusted"], node.asked), (False, []))
+    check("a moving rover is measured",
+          (answer["trusted"], answer["moving"], len(node.asked)), (True, True, 1))
+    check("...from where it was half way through the scan's sweep",
+          tuple(round(v, 3) for v in node.measured_from), (3.025, 4.0, 0.5))
+    check("...and says how fast it was turning", answer["turn_dps"], 10.0)
+    node = Node(driving=True)
+    nav_map.NavMap.measure_pose(node, (0.1, 0.0, -40.0))
+    check("handed the last correction on the move, it searches around that moment",
+          tuple(round(v, 3) for v in node.asked[0][2]), (3.125, 4.0, -39.5))
+
+    node = Node(driving=True, turning_dps=nav_map.MEASURE_MAX_TURN_DPS * 2)
+    answer = nav_map.NavMap.measure_pose(node)
+    check("a sweep turned faster than it can be matched is refused, unsearched",
+          (answer["trusted"], node.asked, "score" in answer), (False, [], False))
+    node = Node(driving=True, reaches=False)
+    answer = nav_map.NavMap.measure_pose(node)
+    check("so is one whose moment the transform tree no longer reaches",
+          (answer["trusted"], "transform tree" in answer["why"]), (False, True))
 
     node = Node()
     held = threading.Event()

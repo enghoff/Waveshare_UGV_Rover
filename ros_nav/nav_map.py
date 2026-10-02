@@ -143,6 +143,13 @@ TICK_S = 1.0
 MEASURE_WINDOW_M = 0.5
 MEASURE_WINDOW_DEG = 45.0
 
+#: The fastest turn a scan taken on the move is measured at, in degrees a second.
+#: A sweep takes a tenth of a second, so at this rate the rover turns three degrees
+#: during one, smeared evenly either side of the pose it is measured from -- the
+#: middle of the sweep's. Faster, the smear is past what the fit's half-degree steps
+#: can make sense of, and the look falls back to the navigator's heading.
+MEASURE_MAX_TURN_DPS = 30.0
+
 #: How long that measurement waits for the keeper, which holds the map lock for
 #: the seconds a graph write takes. The answer is "not now" rather than a look
 #: held up behind a save.
@@ -783,10 +790,15 @@ class NavMap:
         drives. An attempt to correct it inside every move held the wheels for
         fifteen seconds and was reverted the same day.
 
-        Refused while a move is running, because a scan taken on the move and the
-        pose read beside it do not describe the same place. It is never queued
-        behind a graph write: it waits `MEASURE_WAIT_S` for the keeper, then
-        answers that it could not measure.
+        **On the move, the pose is the one at the scan's own moment** -- half way
+        through its sweep, out of the transform tree (`scan_moment`) -- because a
+        scan taken on the move and the pose read beside it do not describe the same
+        place. Until 2026-10-02 a moving rover was refused outright, and on a driven
+        run that left 171 looks in 216 unchecked. A turn faster than
+        `MEASURE_MAX_TURN_DPS` across the sweep is still refused, and so is a scan
+        whose moment the tree does not reach. It is never queued behind a graph
+        write: it waits `MEASURE_WAIT_S` for the keeper, then answers that it could
+        not measure.
 
         `around_offset` is `(dx, dy, dheading)`, what the caller's last check
         found, and the search is centred that far from where the rover thinks it
@@ -798,28 +810,66 @@ class NavMap:
         """
         with self._lock:
             driving = self.driving
+            scan = getattr(self, "scan_msg", None)
+        moment, turn = {}, 0.0
         if driving:
-            return {"trusted": False,
-                    "why": "the rover is moving, and a scan taken on the move "
-                           "does not describe one place"}
+            if scan is None:
+                return {"trusted": False, "why": "no scan has arrived"}
+            where, turn = self.scan_moment(scan)
+            if where is None:
+                return {"trusted": False, "why": turn}
+            if abs(turn) > MEASURE_MAX_TURN_DPS:
+                return {"trusted": False, "turn_dps": round(turn, 1),
+                        "why": "the rover was turning %.0f degrees a second while "
+                               "the scan was swept, which smears it past matching"
+                               % abs(turn)}
+            moment = {"where": where, "scan": scan}
         if not self.map_lock.acquire(timeout=MEASURE_WAIT_S):
             return {"trusted": False,
                     "why": "the map keeper is writing the graph"}
         try:
-            answer, fit, where = None, None, None
+            answer, fit = None, None
             if around_offset is not None:
-                here = self.pose_deg()
+                here = moment.get("where") or self.pose_deg()
                 if here is not None:
                     dx, dy, dh = (float(v) for v in around_offset)
-                    answer, fit, where = self.map_measure(
+                    answer, fit, _where = self.map_measure(
                         MEASURE_WINDOW_M, MEASURE_WINDOW_DEG,
-                        around=(here[0] + dx, here[1] + dy, here[2] + dh))
+                        around=(here[0] + dx, here[1] + dy, here[2] + dh),
+                        **moment)
             if fit is None or not fit.ok:
-                answer, _fit, _where = self.map_measure(MEASURE_WINDOW_M,
-                                                        MEASURE_WINDOW_DEG)
+                answer, _fit, _where = self.map_measure(
+                    MEASURE_WINDOW_M, MEASURE_WINDOW_DEG, **moment)
         finally:
             self.map_lock.release()
+        if driving and isinstance(answer, dict):
+            answer = dict(answer, moving=True, turn_dps=round(turn, 1))
         return answer
+
+    def scan_moment(self, scan):
+        """Where the rover was half way through this scan's sweep, as
+        `((x_m, y_m, heading_deg), turn_dps)`, or `(None, why)`.
+
+        The middle rather than the start, because a sweep on a turning rover is
+        smeared evenly either side of the middle whichever way the lidar's driver
+        orders its points, and matching it from there leaves no bias to the side.
+        `turn_dps` is the turn across the whole sweep, which decides whether it can
+        be matched at all.
+        """
+        pose_at = getattr(self, "pose_at", None)
+        if pose_at is None:
+            return None, "this bridge cannot say where the rover was at a past moment"
+        span = (float(getattr(scan, "scan_time", 0.0) or 0.0)
+                or len(scan.ranges) * float(getattr(scan, "time_increment", 0.0) or 0.0)
+                or 0.1)
+        first, middle, last = (pose_at(scan.header.stamp, at)
+                               for at in (0.0, span / 2.0, span))
+        if first is None or middle is None or last is None:
+            return None, ("the transform tree does not reach back to when the scan "
+                          "was taken")
+        swing = (last[2] - first[2] + math.pi) % (2.0 * math.pi) - math.pi
+        return ((middle[0], middle[1], math.degrees(middle[2])),
+                math.degrees(swing) / span)
 
     def drift_due(self):
         """Whether it is time to ask the lidar again.
@@ -914,7 +964,7 @@ class NavMap:
                 self.get_logger().info(why)
 
     def map_measure(self, window_m=None, window_deg=None, min_score=None,
-                    around=None):
+                    around=None, where=None, scan=None):
         """Where the scan says the rover is. Returns `(answer, fit, where)`.
 
         **The search and nothing else: this changes no state, moves no rover and
@@ -926,8 +976,11 @@ class NavMap:
         `answer["was"]` has already rounded for reporting.
         """
         with self._lock:
-            grid_msg, scan = self.map_msg, self.scan_msg
-        where = self.pose_deg()
+            grid_msg = self.map_msg
+            scan = self.scan_msg if scan is None else scan
+        # `where` and `scan` arrive together from a measurement on the move: the
+        # pose at the scan's own moment rather than the one now.
+        where = self.pose_deg() if where is None else where
         if grid_msg is None:
             return {"fitted": False,
                     "why": "there is no map yet, so there is nothing to fit to"}, None, None

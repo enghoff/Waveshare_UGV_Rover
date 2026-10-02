@@ -140,12 +140,14 @@ measured well enough to keep:
   a second, and never holds a move (`ros_nav` `measure_pose`). The look keeps its
   pose if the scan agrees, takes the scan's pose if the scan confidently
   disagrees, and gets no direction if the search fits nowhere; nor does any look
-  after it until a search fits again. A look taken while moving takes the last
-  still check's correction while that check is fresh: under 15 degrees of turning
-  since, and under half a metre of travel if the check had to correct. **Any
-  other look takes the heading the navigator believes**, as every look did before
-  2026-10-01, and so does a still look whose check never ran because a move was
-  in progress. Withholding those instead left the driven run of 2026-10-02 with
+  after it until a search fits again. **A look taken while moving is checked
+  too**: the navigator matches the scan from where the rover was half way through
+  its sweep, and refuses a sweep turned faster than 30 degrees a second; a moving
+  search that fits nowhere is blamed on the motion and withholds nothing. A
+  moving look whose check was refused takes the last check's correction while
+  that check is fresh: under 15 degrees of turning since, and under half a metre
+  of travel if the check had to correct. **Any other look takes the heading the
+  navigator believes**, as every look did before 2026-10-01. Withholding those instead left the driven run of 2026-10-02 with
   17 of 906 regions given a direction.
   The search starts from the last correction found, because the drift builds
   steadily. The check and any correction are written beside the pose as
