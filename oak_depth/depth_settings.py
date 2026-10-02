@@ -25,6 +25,13 @@ DEPTH_SIZE = (320, 180)
 
 COLOUR_HISTORY_S = 2.0
 
+# How many seconds of depth frames are kept, so that a reader can ask for the one
+# taken nearest a moment of its own -- the gimbal camera's shutter -- rather than
+# whichever is newest when it gets round to asking. A look reads its depth half a
+# second after its picture, so three seconds is room and to spare; at 15 fps it
+# is 45 frames of 115 kB.
+DEPTH_HISTORY_S = 3.0
+
 FRAME_TIMEOUT_S = 5.0
 
 WAKE_TIMEOUT_S = 40.0

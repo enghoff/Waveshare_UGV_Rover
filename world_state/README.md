@@ -41,6 +41,17 @@ placement among the taped objects at 0.38 m instead of 0.87. A store built the o
 read again and rebuilt by `world_state_rebuild` ([rebuild.py](rebuild.py),
 [the runbook](../docs/runbooks/world-state-rebuild.md)).
 
+**The depth map read is the one taken nearest the picture**, not the newest when the
+look gets round to asking: the depth service keeps three seconds of frames and answers
+`/depth.raw?at=<shutter>`. If the rover was turning, each region is first turned by
+how far it turned between the two, from the turn rate across the shutter bracket
+(`outline.turned`). Such a range is dropped for turning only when the turn is too
+fast for the shutter's own unmeasured moment (`inspection_ranges.SHUTTER_UNKNOWN_S`,
+33 degrees a second against the 1-degree limit). A range read off the newest frame,
+from a service without the history, keeps the old rule, which on 2026-10-02 dropped
+347 regions' ranges in a six-minute drive. The depth map kept says when it was taken
+and how far that was from the picture (`taken_at`, `off_s`).
+
 Until 2026-09-30 the OAK was bolted to the chassis, and its lens as published by
 `oak_depth` was 9.6% short in focal length. Depth maps saved before then are read
 through the bracket they were taken on (`oak.CHASSIS_MOUNT`, chosen by

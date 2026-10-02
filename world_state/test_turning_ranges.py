@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from test_harness import check
 from world_state.depth_client import TURNING, Ranged
-from world_state.inspection_ranges import RANGE_TURN_LIMIT_DEG, InspectionRanges
+from world_state.inspection_ranges import (RANGE_TURN_LIMIT_DEG, SHUTTER_UNKNOWN_S,
+                                           InspectionRanges)
 
 
 class Ranges(InspectionRanges):
@@ -63,4 +64,26 @@ def test_a_rover_that_turned_away_from_the_depth_frame_loses_the_range() -> None
           Ranges(None)._drop_turned(found, turning, now=100.5), 0)
 
 
-TESTS = (test_a_rover_that_turned_away_from_the_depth_frame_loses_the_range,)
+def test_a_depth_frame_of_the_pictures_moment_survives_ordinary_turning() -> None:
+    """Asked for at the shutter and turned back by the turn, a range is dropped only
+    when the turn is too fast for the shutter's own unknown moment -- 33 degrees a
+    second -- rather than whenever the rover was turning."""
+    matched = lambda: Ranged(range_m=0.95, sigma_m=0.03, age_s=0.4, off_s=0.02)
+    moderate = {"shutter_heading_deg": 90.0, "turn_dps": 29.0, "taken_at": 100.0}
+    found = [matched()]
+    check("at the median turn rate of a drive, a matched range is kept",
+          (Ranges(110.0)._drop_turned(found, moderate, now=100.5), found[0].range_m),
+          (0, 0.95))
+    found = [Ranged(range_m=0.95, sigma_m=0.03, age_s=0.12)]
+    check("...where the newest frame read half a second later is dropped",
+          Ranges(110.0)._drop_turned(found, moderate, now=100.5), 1)
+    fast = dict(moderate, turn_dps=1.5 * RANGE_TURN_LIMIT_DEG / SHUTTER_UNKNOWN_S)
+    found = [matched()]
+    check("a turn too fast for the shutter's unknown moment drops it all the same",
+          (Ranges(110.0)._drop_turned(found, fast, now=100.5), found[0].absent),
+          (1, TURNING))
+    check("the rule's own number is the shutter's", SHUTTER_UNKNOWN_S, 0.03)
+
+
+TESTS = (test_a_rover_that_turned_away_from_the_depth_frame_loses_the_range,
+         test_a_depth_frame_of_the_pictures_moment_survives_ordinary_turning)

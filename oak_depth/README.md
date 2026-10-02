@@ -41,6 +41,13 @@ unchanged to `/ranges`.
   system logger). The log's stop, drop and switch-off lines carry it too.
 - `GET /depth` returns a coarse depth grid and sector ranges.
 - `GET /depth.png` returns the latest depth image for a person.
+- `GET /depth.raw` returns the latest depth map as raw 16-bit millimetres, with
+  its size, age and colour-pairing gap in headers. `?at=<time.time() seconds>`
+  returns instead the frame taken nearest that moment, from the last
+  `DEPTH_HISTORY_S` (3 s), with `X-Depth-Taken` (when the frame was taken, on the
+  same clock) and `X-Depth-Off` (how far that was from the moment asked for,
+  signed). The world state asks for the gimbal camera's shutter, so that a box
+  drawn on its picture is read off the depth of the same instant.
 - `GET /frame` returns paired JPEG colour plus age and size headers.
 - `GET /power` reports `on`, `off` or `waking`.
 - `POST /power` accepts `{"on": true}` or `{"on": false}`.

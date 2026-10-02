@@ -294,6 +294,18 @@ def _speed(moved_m: float, before_at, after_at) -> float:
     return 0.0 if span <= 0.0 else max(0.0, float(moved_m)) / span
 
 
+def _turn_rate(before, after, before_at, after_at) -> float:
+    """How fast the rover was turning over the shutter bracket, degrees a second, left
+    positive. Zero when the bracket cannot be timed or a reading has no heading."""
+    try:
+        span = float(after_at) - float(before_at)
+        swing = (float(after["heading_deg"]) - float(before["heading_deg"])
+                 + 180.0) % 360.0 - 180.0
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    return 0.0 if span <= 0.0 else swing / span
+
+
 def aimed_where_it_was_calibrated(pan_deg, approach, where, sigma_deg):
     """Whether the gimbal was somewhere its calibration describes, and what the
     bearing is worth if it was not. Answers `(where, sigma_deg, note)`.
@@ -624,6 +636,11 @@ class Inspector(InspectionRanges):
                    # read off a depth frame the rover has turned away from is
                    # dropped. See `InspectionRanges._drop_turned`.
                    "turn_dps": _speed(turned, before_at, after_at),
+                   # And which way, left positive as headings are: a depth frame
+                   # asked for at the shutter is taken a few milliseconds either
+                   # side of it, and the region is turned by the rover's turn
+                   # between the two before the depth under it is read.
+                   "turn_rate_dps": _turn_rate(before, after, before_at, after_at),
                    "taken_at": frame.get("taken_at") or after_at,
                    "shutter_heading_deg": shutter_heading,
                    # The lens to read this picture's pixels through, which is the

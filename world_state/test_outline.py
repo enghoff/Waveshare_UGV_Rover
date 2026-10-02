@@ -121,6 +121,47 @@ def test_an_outline_too_small_to_read_leaves_the_box() -> None:
           outside, {"absent": "outside the depth camera's view"})
 
 
+def test_a_turn_between_the_picture_and_the_depth_is_turned_back() -> None:
+    """A depth frame taken a moment after the picture, on a turning rover, holds the
+    room turned the other way. Read where the picture says, it reads the wall beside
+    the painting; turned by the rover's turn, it reads the painting."""
+    np = _np()
+    ahead = outline.turned(np, 10.0, 0.0, 0.0) @ np.array([1.0, 0.0, 0.0])
+    check("after a left turn a thing that was ahead is to the right",
+          (round(float(ahead[1]), 3), round(float(ahead[0]), 3)),
+          (round(-math.sin(math.radians(10.0)), 3), round(math.cos(math.radians(10.0)), 3)))
+    check("a turn too small to matter is no turn", outline.turned(np, 0.01, 0.0, 0.0), None)
+    # Tilted up 20 degrees and panned 30 right: the turn is about the rover's own
+    # vertical, so in the chassis frame it is a plain rotation about up.
+    d = np.array([0.9, 0.2, 0.3]) / np.linalg.norm([0.9, 0.2, 0.3])
+    moved = outline.turned(np, 8.0, 30.0, 20.0) @ d
+    before = np.array(oak._turn(tuple(d), 30.0, 20.0))
+    after = np.array(oak._turn(tuple(moved), 30.0, 20.0))
+    check("through the gimbal it is a turn about the rover's vertical",
+          (round(float(after[2] - before[2]), 9),
+           round(math.degrees(math.atan2(after[1], after[0])
+                              - math.atan2(before[1], before[0])), 6)), (0.0, -8.0))
+
+    # The painting as the depth frame saw it, 6 degrees of left turn after the
+    # picture: drawn where the turned box lands.
+    turn = outline.turned(np, 6.0, 0.0, 0.0)
+    corners = [tuple(turn @ np.array(one)) for one in outline.corners_of(BOX, SIZE)]
+    left, top, right, bottom = oak.box_for(corners, LENS, 2.5)
+    depth = np.full((180, 320), 4000, dtype=np.uint16)
+    rows = slice(int(top * 180), int(math.ceil(bottom * 180)))
+    # A cabinet nearer than the painting, standing just left of it: where the
+    # picture's own box lands in a frame the rover has turned away from.
+    depth[rows, :int(left * 320)] = 1200
+    depth[rows, int(left * 320):int(math.ceil(right * 320))] = 2500
+    blob = outline.encode(np, the_painting_alone(np, share=0.8), BOX)
+    straight = outline.read(np, depth.tobytes(), 320, 180, LENS, [(BOX, blob)], SIZE)[0]
+    back = outline.read(np, depth.tobytes(), 320, 180, LENS, [(BOX, blob)], SIZE,
+                        turn_deg=6.0)[0]
+    check("read where the picture says, it is not the painting",
+          abs(straight["range_m"] - 2.5) < 0.1, False)
+    check("turned back by the rover's turn, it is", abs(back["range_m"] - 2.5) < 0.1, True)
+
+
 class _DepthOf(FakeRanger):
     """A depth camera with a real-shaped map in it."""
 
@@ -174,4 +215,5 @@ TESTS = (test_an_outline_survives_being_packed,
          test_the_projection_is_the_mounts_own,
          test_a_chair_in_front_of_the_painting_is_not_its_distance,
          test_an_outline_too_small_to_read_leaves_the_box,
+         test_a_turn_between_the_picture_and_the_depth_is_turned_back,
          test_a_look_stores_the_outline_and_what_its_range_came_from)

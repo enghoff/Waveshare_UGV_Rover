@@ -181,6 +181,29 @@ def into_oak(np, mount=None):
     return matrix, np.array([mount.forward_m, mount.left_m, mount.up_m])
 
 
+def turned(np, turn_deg, pan_deg, tilt_deg):
+    """The 3x3 matrix taking a direction in the gimbal camera's frame at the shutter to
+    the same direction in that frame once the rover has turned `turn_deg` (left
+    positive, as headings are), or None for a turn too small to matter.
+
+    **What lets a depth frame taken a little before or after the picture be used rather
+    than thrown away.** The rover turns about its own vertical axis, and the camera is
+    tilted and panned on the gimbal, so the turn is undone in the chassis frame: out
+    through the gimbal's pan and tilt (`oak._turn`), round by the turn, and back. A
+    thing dead ahead at the shutter lies to the right of the axis after a left turn.
+    """
+    if abs(float(turn_deg or 0.0)) < 0.05:
+        return None
+    pan, tilt = float(pan_deg or 0.0), float(tilt_deg or 0.0)
+
+    def through(vector):
+        chassis = oak._turn(vector, pan, tilt)
+        rotated = oak._turn(chassis, float(turn_deg), 0.0)
+        return oak._unturn(rotated, pan, tilt)
+    return np.array([through((1.0, 0.0, 0.0)), through((0.0, 1.0, 0.0)),
+                     through((0.0, 0.0, 1.0))]).T
+
+
 def corners_of(bbox, size):
     """A box on the gimbal camera as four directions in that camera's frame, or None.
 
@@ -255,12 +278,15 @@ def _box_once(image: DepthImage, box):
     return found[0] * secant, found[1], found[2], float(good.mean())
 
 
-def box_range(image: DepthImage, bbox, size, mount=None):
+def box_range(image: DepthImage, bbox, size, mount=None, turn=None):
     """The box read the way the depth service reads it, as a length along the gimbal
-    camera's ray: a dict, or one with `absent` saying which silence it was."""
+    camera's ray: a dict, or one with `absent` saying which silence it was. `turn` is
+    `turned`'s matrix, when the depth frame was taken after the rover turned."""
     corners = corners_of(bbox, size)
     if corners is None:
         return {"absent": NOTHING_TO_MEASURE}
+    if turn is not None:
+        corners = [tuple(turn @ image.np.array(corner)) for corner in corners]
     box = oak.box_for(corners, image.lens, mount=mount)
     if box is None:
         return {"absent": OUTSIDE_VIEW}
@@ -281,7 +307,7 @@ def box_range(image: DepthImage, bbox, size, mount=None):
             "pixels": got[2], "valid": round(got[3], 3), "method": BOX}
 
 
-def outline_range(image: DepthImage, blob, size, guess=None, mount=None):
+def outline_range(image: DepthImage, blob, size, guess=None, mount=None, turn=None):
     """The depth under one region's own outline, as a length along the gimbal camera's
     ray, or None when the outline leaves too few depth pixels to say."""
     np = image.np
@@ -297,6 +323,8 @@ def outline_range(image: DepthImage, blob, size, guess=None, mount=None):
     pointing = pointing[~np.isnan(pointing).any(axis=1)]
     if len(pointing) < RANGE_MIN_PIXELS:
         return None
+    if turn is not None:
+        pointing = pointing @ turn.T
     middle = pointing.mean(axis=0)
     middle = tuple(middle / (np.linalg.norm(middle) or 1.0))
     matrix, offset = into_oak(np, mount)
@@ -328,16 +356,19 @@ def outline_range(image: DepthImage, blob, size, guess=None, mount=None):
     return answer
 
 
-def read(np, millimetres, width, height, lens, regions, size, mount=None):
+def read(np, millimetres, width, height, lens, regions, size, mount=None,
+         turn_deg=0.0, pan_deg=0.0, tilt_deg=0.0):
     """One answer per region: `(bbox, outline)` pairs, read under the outline where it can
     be and as the box otherwise. Each answer is a dict with `range_m`, `sigma_m`, `pixels`,
-    `valid` and `method`, or one with `absent` alone."""
+    `valid` and `method`, or one with `absent` alone. `turn_deg` is how far the rover
+    turned between the picture and the depth frame, left positive; see `turned`."""
     image = DepthImage(np, millimetres, width, height, lens)
+    turn = turned(np, turn_deg, pan_deg, tilt_deg)
     answers = []
     for bbox, blob in regions:
-        boxed = box_range(image, bbox, size, mount)
+        boxed = box_range(image, bbox, size, mount, turn)
         found = None
         if blob and not boxed.get("absent") == OUTSIDE_VIEW:
-            found = outline_range(image, blob, size, boxed.get("range_m"), mount)
+            found = outline_range(image, blob, size, boxed.get("range_m"), mount, turn)
         answers.append(found or boxed)
     return answers

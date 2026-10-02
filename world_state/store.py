@@ -250,6 +250,11 @@ class WorldStore:
                      "dtype": depth.dtype or "uint16", "unit": "mm",
                      "age_s": round(depth.age_s, 3),
                      "apart_s": round(depth.apart_s, 3)}
+        # When the frame was taken, and how far that was from the picture's own
+        # moment, where the look asked for the frame at its shutter.
+        if getattr(depth, "taken_at", None) is not None:
+            described["taken_at"] = round(depth.taken_at, 4)
+            described["off_s"] = round(depth.off_s or 0.0, 4)
         # The optics the map was taken through, when the caller knows them, so a
         # place can be projected into it later without the camera that took it.
         if lens is not None and getattr(lens, "fx", 0):

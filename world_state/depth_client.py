@@ -143,6 +143,11 @@ class Ranged:
     #: are ordinary: a box the camera could see into and found nothing in, and a
     #: service that was not answering.
     absent: str = ""
+    #: How far the depth frame this was read from was taken from the picture, signed
+    #: seconds, when the frame was asked for at the picture's own moment; None when it
+    #: was simply the newest. What decides which turning rule applies to it -- see
+    #: `InspectionRanges._drop_turned`.
+    off_s: float | None = None
     #: Which reading this is, as the store's `range_from` column keeps it: `outline`
     #: or `box` when the look read the depth map itself (`outline.read`), `service`
     #: when the depth service read the box. Empty when there is no range.
@@ -187,6 +192,11 @@ class DepthMap:
     age_s: float = 0.0
     apart_s: float = 0.0
     error: str = ""
+    #: When this frame was taken, on `time.time()`'s clock, and how far that was from
+    #: the moment asked for, signed. None when nothing was asked for or the service
+    #: cannot say -- an older service, or a device that stamps nothing.
+    taken_at: float | None = None
+    off_s: float | None = None
 
     @property
     def ok(self) -> bool:
@@ -256,7 +266,7 @@ class Ranger:
     def frame(self) -> Frame:
         raise NotImplementedError
 
-    def depth_map(self) -> DepthMap:
+    def depth_map(self, at: float | None = None) -> DepthMap:
         """The depth map as bytes, for keeping. Empty where there is none."""
         return DepthMap(error="this camera keeps no depth map")
 
@@ -319,7 +329,7 @@ class FakeRanger(Ranger):
         return Frame(ok=True, jpeg=b"\xff\xd8fake", width=640, height=360,
                      taken_at=time.time())
 
-    def depth_map(self) -> DepthMap:
+    def depth_map(self, at: float | None = None) -> DepthMap:
         if self.fail:
             return DepthMap(error=self.fail)
         # Four pixels of nothing: enough to be saved and read back, and small
@@ -449,8 +459,9 @@ class SidecarRanger(Ranger):
         return Power(state=str(payload.get("power") or ""),
                      since_s=_number(payload.get("since_s"), 0.0) or 0.0)
 
-    def depth_map(self) -> DepthMap:
-        """The newest depth map itself, in millimetres, for keeping.
+    def depth_map(self, at: float | None = None) -> DepthMap:
+        """The newest depth map itself, in millimetres -- or, given `at`, the one taken
+        nearest that `time.time()` moment, which a look asks for at its own shutter.
 
         **Evidence rather than a measurement.** Nothing in a look reads this: the
         ranges come back from the service, which does the sampling next to the
@@ -468,7 +479,8 @@ class SidecarRanger(Ranger):
         try:
             connection = http.client.HTTPConnection(self.host, self.port,
                                                     timeout=self.timeout_s)
-            connection.request("GET", "/depth.raw")
+            connection.request("GET", "/depth.raw" if at is None
+                               else f"/depth.raw?at={float(at):.4f}")
             reply = connection.getresponse()
             body = reply.read()
             headers, status = reply.headers, reply.status
@@ -483,7 +495,9 @@ class SidecarRanger(Ranger):
         return DepthMap(millimetres=body, width=width, height=height,
                         dtype=str(headers.get("X-Depth-Dtype") or ""),
                         age_s=_number(headers.get("X-Frame-Age"), 0.0) or 0.0,
-                        apart_s=_number(headers.get("X-Depth-Apart"), 0.0) or 0.0)
+                        apart_s=_number(headers.get("X-Depth-Apart"), 0.0) or 0.0,
+                        taken_at=_number(headers.get("X-Depth-Taken"), None),
+                        off_s=_number(headers.get("X-Depth-Off"), None))
 
     def frame(self) -> Frame:
         """The newest colour picture, or a sentence saying why not.

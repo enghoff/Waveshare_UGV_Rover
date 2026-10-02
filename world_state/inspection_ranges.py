@@ -24,6 +24,21 @@ REASK_RANGE_FRAC = 0.40
 #: 1.77 m out. A degree is a fifth of the narrowest box that is ever ranged.
 RANGE_TURN_LIMIT_DEG = 1.0
 
+#: How far from the picture a depth frame may have been taken and still count as of
+#: the picture's moment, in seconds: a frame and a half at the 15 fps it runs at.
+#: Further than that the service's history did not reach, and the old rule applies.
+MATCHED_WITHIN_S = 0.10
+
+#: How well the moment of the gimbal camera's picture is known, in seconds -- the
+#: same figure as `inspector.FRAME_TIME_SIGMA_S`, and for the same reason: its bias
+#: is one frame interval at most and nothing on this rover can measure it. **This is
+#: what is left once the depth frame is asked for at the shutter and the region is
+#: turned by the rover's turn between the two**: a range read that way is dropped
+#: only when the turn rate times this exceeds `RANGE_TURN_LIMIT_DEG`, which is 33
+#: degrees a second rather than any turning at all. On 2026-10-02 the old rule
+#: dropped 347 regions' ranges in a six-minute drive.
+SHUTTER_UNKNOWN_S = 0.03
+
 
 class InspectionRanges:
     """Range methods for an inspector with a ranger supplied by its caller."""
@@ -80,6 +95,19 @@ class InspectionRanges:
                   if one is not None and one.range_m is not None]
         if not ranged:
             return 0
+        rate = float(capture.get("turn_dps") or 0.0)
+        # A frame asked for at the shutter, with the region turned by the turn
+        # between the two: what is left is the shutter's own unknown moment.
+        matched = [index for index in ranged
+                   if getattr(found[index], "off_s", None) is not None]
+        ranged = [index for index in ranged if index not in matched]
+        dropped = 0
+        if rate * SHUTTER_UNKNOWN_S > RANGE_TURN_LIMIT_DEG:
+            for index in matched:
+                found[index] = Ranged(absent=TURNING, age_s=found[index].age_s)
+                dropped += 1
+        if not ranged:
+            return dropped
         now = time.time() if now is None else now
         turned = 0.0
         then = capture.get("shutter_heading_deg")
@@ -88,9 +116,7 @@ class InspectionRanges:
             if isinstance(pose, dict) and pose.get("heading_deg") is not None:
                 turned = abs((float(pose["heading_deg"]) - float(then) + 180.0)
                              % 360.0 - 180.0)
-        rate = float(capture.get("turn_dps") or 0.0)
         taken = capture.get("taken_at")
-        dropped = 0
         for index in ranged:
             one = found[index]
             swung = turned
@@ -272,8 +298,15 @@ class InspectionRanges:
             import numpy as np
         except ImportError:                        # a bench without numpy
             return None
+        # The frame taken nearest the picture, where the service keeps a history and
+        # the camera stamped its picture; the newest otherwise.
+        taken = capture.get("taken_at")
         try:
-            depth = self.ranger.depth_map()
+            try:
+                depth = (self.ranger.depth_map(at=float(taken)) if taken
+                         else self.ranger.depth_map())
+            except TypeError:                      # a ranger that takes no moment
+                depth = self.ranger.depth_map()
         except Exception:                          # never past here
             return None
         if not depth.ok or (depth.dtype and depth.dtype != "uint16"):
@@ -284,11 +317,19 @@ class InspectionRanges:
         if abs(depth.width / float(depth.height)
                - float(lens.width) / float(lens.height)) > 0.05:
             return None
+        # How far the rover turned between the picture and that frame, from the turn
+        # rate across the shutter, when the frame is of the picture's moment.
+        off = getattr(depth, "off_s", None)
+        if off is not None and (not taken or abs(off) > MATCHED_WITHIN_S):
+            off = None
+        turn_deg = float(capture.get("turn_rate_dps") or 0.0) * off if off else 0.0
         try:
             answers = outline.read(np, depth.millimetres, depth.width, depth.height,
                                    lens, [(region.bbox, getattr(region, "outline", b""))
                                           for region in regions],
-                                   tuple(size))
+                                   tuple(size), turn_deg=turn_deg,
+                                   pan_deg=capture.get("pan"),
+                                   tilt_deg=capture.get("tilt"))
         except Exception:                          # never past here
             return None
         self._depth_read = depth
@@ -303,7 +344,7 @@ class InspectionRanges:
             one = Ranged(range_m=answer["range_m"], sigma_m=answer["sigma_m"],
                          valid=answer["valid"], pixels=answer["pixels"],
                          age_s=depth.age_s, apart_s=depth.apart_s,
-                         method=answer["method"])
+                         method=answer["method"], off_s=off)
             one.sigma_m = self._aged_sigma(one, speed)
             found.append(one)
             ranged += 1

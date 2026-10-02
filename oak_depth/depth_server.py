@@ -1,6 +1,7 @@
 """The OAK depth service: paired colour and aligned depth on loopback port 8770.
 
-GET /health, /depth, /depth.png, /frame and /power; POST /ranges and /power.
+GET /health, /depth, /depth.png, /depth.raw[?at=], /frame and /power; POST /ranges
+and /power.
 Run with --bind, --port, --fps or --decimation to override pipeline defaults.
 
 The process owns the camera and uploads the pinned DepthAI firmware on open.
@@ -13,6 +14,7 @@ See README.md for endpoint contracts, installation and hardware limitations.
 """
 
 import argparse
+import collections
 import json
 import math
 import os
@@ -20,6 +22,7 @@ import statistics
 import sys
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -31,7 +34,7 @@ VENDOR = HERE / "vendor"
 from depth_settings import (
     DEFAULT_PORT, DEFAULT_BIND, DEFAULT_FPS, DECIMATION,
     COLOUR_SIZE, COLOUR_ISP_SCALE, JPEG_QUALITY, DEPTH_SIZE,
-    COLOUR_HISTORY_S, FRAME_TIMEOUT_S, WAKE_TIMEOUT_S, MIN_MM,
+    COLOUR_HISTORY_S, DEPTH_HISTORY_S, FRAME_TIMEOUT_S, WAKE_TIMEOUT_S, MIN_MM,
     MAX_MM, GRID_COLS, GRID_ROWS, BAND,
     NEAR_PERCENTILE, STAT_WINDOW, RANGE_PERCENTILE, RANGE_BAND_FRAC,
     RANGE_BAND_M, RANGE_MIN_PIXELS, DISPARITY_SIGMA_PX,
@@ -102,6 +105,14 @@ class Depth:
         self.frame = None            # newest depth frame, uint16 millimetres
         self.frame_at = 0.0          # time.monotonic() when it arrived
         self.frame_stamp = 0.0       # the device's own clock, for pairing
+        #: The last few seconds of depth frames as `(stamp, arrived, frame)`, so a
+        #: reader can have the one taken nearest a moment of its own. **The gimbal
+        #: camera's picture and this camera's newest frame are not one instant**:
+        #: a look reads its depth half a second after its shutter, and on
+        #: 2026-10-01 a rover turning 136 degrees a second read a tissue box off a
+        #: frame 17 degrees of turning from its picture, 1.7 m long. See `at`.
+        self.history: collections.deque = collections.deque(
+            maxlen=max(2, math.ceil(DEPTH_HISTORY_S * max(1, fps))))
         self.frames = 0
         self.errors = 0
         self.valid = 0.0             # share of pixels with a depth, last frame
@@ -336,6 +347,7 @@ class Depth:
                     self.rate = 1.0 / statistics.fmean(self._periods)
             self.frame, self.frame_at = depth, arrived
             self.frame_stamp = stamp
+            self.history.append((stamp, arrived, depth))
             self.frames += 1
             self.valid = float((depth != 0).mean())
             if matched is not None:
@@ -498,6 +510,7 @@ class Depth:
         """
         with self._lock:
             self.frame, self.frame_at, self.frame_stamp = None, 0.0, 0.0
+            self.history.clear()
             self.jpeg, self.jpeg_at, self.jpeg_stamp = b"", 0.0, 0.0
             self.rate = 0.0
             self._periods.clear()
@@ -565,6 +578,34 @@ class Depth:
             if self.frame is None:
                 return None, 0.0
             return self.frame, time.monotonic() - self.frame_at
+
+    def at(self, wall_s: float):
+        """The depth frame taken nearest this moment: `(frame, age, taken, off)`.
+
+        `wall_s` is a `time.time()` instant -- the gimbal camera stamps its pictures
+        on that clock -- and the device stamps its frames on this host's monotonic
+        one, so the two are put on one clock here, where both are read. `taken` is
+        the frame's own moment on the caller's clock and `off` how far it was from
+        the one asked for, signed: the caller turns that into how far the rover
+        turned between the two, and can correct a box for it rather than throw the
+        range away.
+
+        `(None, 0, None, None)` when there is nothing, and the newest frame with
+        `taken` and `off` None when the device stamps nothing -- the honest answer
+        for a build that cannot say when anything was taken.
+        """
+        if not self._wanted:               # switched off -- see `newest`
+            return None, 0.0, None, None
+        offset = time.time() - time.monotonic()
+        wanted = float(wall_s) - offset
+        with self._lock:
+            kept = [one for one in self.history if one[0]]
+            if not kept:
+                if self.frame is None:
+                    return None, 0.0, None, None
+                return self.frame, time.monotonic() - self.frame_at, None, None
+            stamp, arrived, frame = min(kept, key=lambda one: abs(one[0] - wanted))
+        return (frame, time.monotonic() - arrived, stamp + offset, stamp - wanted)
 
     def newest_with_gap(self):
         """The newest depth map, how old it is, and how far its colour frame was
@@ -914,7 +955,22 @@ class Handler(BaseHTTPRequestHandler):
             # needing the rover driven round the room a second time. Raw because
             # nothing here can write a 16-bit PNG and inventing a second encoder
             # to store evidence would be the wrong trade -- the caller compresses.
-            frame, age, apart = self.depth.newest_with_gap()
+            # **Or the frame taken nearest a moment the caller names**, as
+            # `?at=<time.time() seconds>`: the gimbal camera's shutter, so that a
+            # box drawn on its picture is read off the depth of the same instant.
+            # `X-Depth-Taken` says when the frame was taken, on the caller's clock,
+            # and `X-Depth-Off` how far that was from the moment asked for.
+            query = urllib.parse.parse_qs(self.path.partition("?")[2])
+            taken = off = None
+            try:
+                asked = float(query["at"][0]) if "at" in query else None
+            except ValueError:
+                asked = None
+            if asked is not None:
+                frame, age, taken, off = self.depth.at(asked)
+                apart = 0.0
+            else:
+                frame, age, apart = self.depth.newest_with_gap()
             if frame is None:
                 return self._reply(503, {"ok": False, "error": self.depth.no_frame()})
             body = frame.tobytes()
@@ -927,6 +983,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Depth-Unit", "mm")
             self.send_header("X-Frame-Age", f"{age:.3f}")
             self.send_header("X-Depth-Apart", f"{apart:.3f}")
+            if taken is not None:
+                self.send_header("X-Depth-Taken", f"{taken:.4f}")
+                self.send_header("X-Depth-Off", f"{off:.4f}")
             self.end_headers()
             return self.wfile.write(body)
         if path == "/power":
