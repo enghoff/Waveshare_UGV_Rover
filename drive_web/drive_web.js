@@ -12,7 +12,7 @@
 const $ = (id) => document.getElementById(id);
 let setup = null;          // the ladders and the colour key, fetched once
 let state = null;          // the last thing the server said
-let mapGen = -1, frameGen = -1, wifiGen = "";
+let mapGen = -1, frameGen = -1, wifiGen = "", depthGen = "";
 let networks = [];         // fetched from /wifi.json when wifiGen moves
 let mapArrivedAt = 0;      // when this browser received the map on screen
 let noticeSeq = -1, noticeTimer = 0;
@@ -123,6 +123,7 @@ function render(next) {
   $("battery").className = "reading " + verdictOf(next.battery.state);
   $("batteryNote").textContent = next.battery.note;
   drawDepth(next.depth);
+  drawDepthPicture(next.depth, next.depth_picture);
 
   drawWifi(next.wifi);
   drawNotice(next.notice);
@@ -472,6 +473,30 @@ function drawDepth(depth) {
   lamp.classList.toggle("on", depth.power === "on");
   lamp.classList.toggle("waking", depth.power === "waking");
   $("depthNote").textContent = depth.note || "";
+}
+
+// What the depth camera measures, under the camera's picture. The server
+// empties it whenever the lamp is not on, so an empty generation is drawn as
+// the camera's state -- off, waking -- rather than as the last thing it saw.
+function drawDepthPicture(depth, picture) {
+  if (!depth || !picture) return;         // a console older than this panel
+  $("depthPanel").hidden = depth.supported !== true;
+  const img = $("depthImg"), empty = $("depthEmpty");
+  if (picture.gen) {
+    if (picture.gen !== depthGen) {
+      depthGen = picture.gen;
+      img.src = `/depth.png?gen=${picture.gen}`;
+    }
+    img.hidden = false;
+    empty.hidden = true;
+  } else {
+    depthGen = "";
+    img.hidden = true;
+    empty.hidden = false;
+    empty.textContent = depth.power === "on" ? "no picture yet"
+                                             : depth.power || "-";
+  }
+  $("depthError").textContent = picture.error || "";
 }
 
 function drawWifi(wifi) {

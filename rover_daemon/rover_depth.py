@@ -39,6 +39,7 @@ answers `supported: false` rather than failing -- see `_tool_get_depth_power`.
 """
 from __future__ import annotations
 
+import base64
 import threading
 import time
 from typing import Any
@@ -201,3 +202,22 @@ class RoverDepth:
             return {"ok": False, "supported": True, "error": power.error}
         return {"ok": True, "supported": True, "power": power.state,
                 "since_s": round(power.since_s, 1)}
+
+    def _tool_depth_png(self, _arguments: dict[str, Any]) -> dict[str, Any]:
+        """The newest depth map, shaded near-bright, as base64 PNG for the console.
+
+        **It reads and never switches**, which is the whole of the design: the
+        console draws this only while the wheels have the camera on, and a
+        console that woke the camera to have something to draw would have put
+        the switch back on a screen. A camera that is off answers with the
+        service's own sentence, and the hold `depth_wake` sets is left alone.
+        """
+        ranger = self._depth_ranger()
+        if ranger is None:
+            return {"ok": False, "supported": False,
+                    "error": "this rover has no depth camera component installed"}
+        png, error = ranger.picture()
+        if error:
+            return {"ok": False, "supported": True, "error": error}
+        return {"ok": True, "png_base64": base64.b64encode(png).decode("ascii"),
+                "bytes": len(png)}

@@ -258,6 +258,15 @@ class SessionActions:
         # twice a picture, and the panel it wrote to already has the picture on it.
         self.camera.submit("camera_jpeg")
 
+    def take_depth_picture(self) -> None:
+        """Behind the frame on its connection: a loopback fetch of a few
+        milliseconds that is drawn under it, so it waits its turn there rather
+        than opening another connection to the daemon."""
+        if self.camera is None or self.depth_png_outstanding:
+            return
+        self.depth_png_outstanding = True
+        self.camera.submit("depth_png")
+
     def reset_lidar(self) -> None:
         """Ask the rover to replug its own lidar.
 

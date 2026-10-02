@@ -210,6 +210,15 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.depth_outstanding = False
         self.depth_at = 0.0
         self.depth: dict[str, Any] = {"supported": None, "power": "", "note": ""}
+        # And what it measures, as a picture under the camera's -- asked for only
+        # while that lamp says `on`, because asking never wakes it and the console
+        # must not be a reason for it to be awake. Emptied whenever it is not on:
+        # the depth from before it went off is a room the rover may have left.
+        self.depth_png: bytes = b""
+        self.depth_png_gen = 0
+        self.depth_png_outstanding = False
+        self.depth_png_done_at = 0.0
+        self.depth_png_error = ""
 
         # None until the rover has been asked once. The network calls are not in
         # `list_tools` -- no model is offered them, since one that switched networks
@@ -328,6 +337,9 @@ class Session(SessionActions, SessionShow, SessionWorld):
             # Beside the battery because that is the question it answers: what
             # this rover is spending.
             "depth": dict(self.depth),
+            "depth_picture": {"gen": self.tag(self.depth_png_gen)
+                                     if self.depth_png else "",
+                              "error": self.depth_png_error},
             # The list of networks is fetched rather than pushed, like the pictures
             # and for the same reason: it is three and a half kilobytes, it changes
             # a few times an hour, and it was riding in every state.
@@ -440,6 +452,12 @@ class Session(SessionActions, SessionShow, SessionWorld):
         if (self.camera is not None and not self.frame_outstanding
                 and now - self.frame_done_at > frame_gap):
             self.take_picture()
+        # The depth picture at the same pace and on the same connection, but only
+        # while the rover already has the depth camera on -- see depth_png.
+        if (self.camera is not None and not self.depth_png_outstanding
+                and self.depth["power"] == "on"
+                and now - self.depth_png_done_at > frame_gap):
+            self.take_depth_picture()
         # And the world popup's own map, which is a different picture of the same
         # room: wide enough to hold bearings taken from all over the flat, where
         # the card above is drawn a few metres around the rover to drive by. Only
@@ -641,6 +659,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
         self.moves = self.halt = self.watch = self.picture = self.camera = None
         self.scanner = self.world_link = None
         self.frame_outstanding = False
+        self.depth_png_outstanding = False
         self.map_outstanding = False
         # The popup's own map, for the same reason and with the same result: left
         # set, the panel would go on drawing over whichever picture it had when
@@ -816,6 +835,11 @@ class Session(SessionActions, SessionShow, SessionWorld):
             self.frame_done_at = time.monotonic()
             self.frame_cost = reply.seconds
             self.show_picture(body)
+            return
+        if name == "depth_png":
+            self.depth_png_outstanding = False
+            self.depth_png_done_at = time.monotonic()
+            self.show_depth_picture(body)
             return
         if name == "battery":
             self.battery_outstanding = False

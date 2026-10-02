@@ -215,8 +215,72 @@ def test_tracking_while_the_rover_drives() -> None:
           "on, sweeping, nobody yet, 0 in view")
 
 
+def test_the_depth_picture_follows_the_lamp() -> None:
+    """The depth picture is asked for while the rover has the OAK on, and only then.
+
+    The rover's wheels decide when that camera is awake, and the console must
+    never be a reason for it to stay so. So a lamp that is off or waking asks for
+    nothing, a lamp that goes off takes the picture down rather than leaving the
+    last room it saw on screen, and a reply still in flight when it went off is
+    not allowed to put that picture back.
+    """
+    try:
+        import drive_web
+        from console_model import PARKED_FRAME_GAP_S, Reply
+    except ImportError as exc:
+        SKIP.append(f"depth picture follows the lamp ({type(exc).__name__})")
+        return
+
+    class Fake:
+        def __init__(self):
+            self.sent = []
+
+        def submit(self, name, arguments=None):
+            self.sent.append(name)
+
+    session = drive_web.Session(None, 3.0, 480)
+    session.picture, session.camera = Fake(), Fake()
+    session.channels = [session.picture]
+    session.answered_at = time.monotonic()
+    depth = lambda: [n for n in session.camera.sent if n == "depth_png"]
+    lamp = lambda power: session.handle(Reply(
+        "get_depth_power", {}, {"ok": True, "supported": True, "power": power}, 0.0))
+
+    for power in ("off", "waking"):
+        lamp(power)
+        session.pump()
+        check(f"a depth camera that is {power} is not asked for a picture",
+              depth(), [])
+
+    lamp("on")
+    session.pump()
+    check("one that is on is", depth(), ["depth_png"])
+    session.pump()
+    check("...one at a time", depth(), ["depth_png"])
+    session.handle(Reply("depth_png", {}, {"ok": True, "png_base64": "iVBORw=="},
+                         0.0))
+    shown = session.snapshot()["depth_picture"]["gen"]
+    check("...and what came back is published", bool(shown), True)
+    session.depth_png_done_at -= PARKED_FRAME_GAP_S + 0.1
+    session.pump()
+    check("...and asked for again at the camera's pace",
+          depth(), ["depth_png", "depth_png"])
+
+    lamp("off")
+    check("a lamp that goes off takes the picture down",
+          session.snapshot()["depth_picture"]["gen"], "")
+    session.handle(Reply("depth_png", {}, {"ok": True, "png_base64": "iVBORw=="},
+                         0.0))
+    check("...and a reply that was in flight does not put it back",
+          session.snapshot()["depth_picture"]["gen"], "")
+    session.depth_png_done_at -= PARKED_FRAME_GAP_S + 0.1
+    session.pump()
+    check("...and nothing more is asked for", len(depth()), 2)
+
+
 TESTS = (
     test_pictures_wait_for_the_last_one,
+    test_the_depth_picture_follows_the_lamp,
     test_pictures_are_not_replayed,
     test_tracking_while_the_rover_drives,
 )

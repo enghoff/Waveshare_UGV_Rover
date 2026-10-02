@@ -134,6 +134,17 @@
     </div>
     <p id="frameNote" class="hint"></p>
     <p id="frameError"></p>
+    <!-- The OAK's depth, drawn only while the rover has it awake: the console
+         never wakes it, so a parked rover shows the camera's state instead.
+         Hidden on a rover with no depth camera. -->
+    <div id="depthPanel" hidden>
+      <h2 style="margin-top:14px">depth</h2>
+      <div class="shot" id="depthShot">
+        <img id="depthImg" alt="what the depth camera measures" hidden>
+        <span class="empty" id="depthEmpty">-</span>
+      </div>
+      <p id="depthError"></p>
+    </div>
   </section>
 
   <!-- The microphone, the face detector, the lamps and the battery are one card:

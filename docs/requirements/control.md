@@ -94,6 +94,10 @@ half a minute after boot and never switch it on again. The cost is four to six
 seconds of firmware upload at the start of every drive, during which a look
 records its regions with no distances.
 
+Nothing that only displays the depth may keep the camera awake: the console's
+depth picture is fetched only while the camera is already on, and fetching it
+never switches it.
+
 <a id="r-ctl-7"></a>
 ### R-CTL-7 — The console is served over HTTPS to a trusted local network, with no login
 

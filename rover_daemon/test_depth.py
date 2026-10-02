@@ -289,8 +289,46 @@ def test_a_check_look_wakes_the_camera_and_holds_it_on():
           "still waking" in why, True)
 
 
+def test_the_console_picture_never_wakes_the_camera():
+    """The console asks for a depth picture and draws it; it never asks for power.
+
+    Asked of a camera that is off, the call answers why and leaves the switch,
+    the rule's record of it and the hold all as they were -- so however often a
+    screen polls, the wheels are still the only thing that wakes the OAK.
+    """
+    try:
+        import rover_daemon                                 # noqa: F401
+        import rover_depth
+    except ImportError as exc:
+        SKIP.append(f"depth picture ({type(exc).__name__})")
+        return
+
+    rover, fake = _parked_rover()
+    shown = rover.call("depth_png", {})
+    check("a camera that is on gives a picture", shown["ok"], True)
+    check("...as the PNG the service drew",
+          shown["png_base64"], "iVBOR2Zha2U=")
+
+    fake.switched = "off"
+    rover._depth_on = False
+    rover.nav.wheels_at -= rover_depth.DEPTH_IDLE_OFF_S + 1
+    for _ in range(5):
+        dark = rover.call("depth_png", {})
+    check("a camera that is off gives no picture", dark["ok"], False)
+    check("...and says it is off", "switched off" in dark["error"], True)
+    check("...without being switched by asking", fake.switches, [])
+    check("...or held on", rover._depth_hold_until, 0.0)
+    rover.depth_tick()
+    check("...and the rule still sees nothing to do", fake.switches, [])
+
+    rover._world_ranger = lambda: None
+    check("a rover with no depth camera says so",
+          rover.call("depth_png", {})["supported"], False)
+
+
 TESTS = (
     test_the_depth_camera_reports_in_every_state,
+    test_the_console_picture_never_wakes_the_camera,
     test_the_camera_follows_the_wheels,
     test_a_rover_that_cannot_drive_keeps_its_camera,
     test_the_rule_never_raises_at_its_own_thread,

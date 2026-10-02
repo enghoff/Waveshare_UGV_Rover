@@ -422,6 +422,10 @@
      this stack is alone on a row, a frame stretched across the whole page is a
      wall of carpet, not more information. */
   #cameraShot { aspect-ratio: 4 / 3; max-width: 460px; }
+  /* The OAK's depth is 320x180, so 16:9 under the same cap, and pixelated for
+     the map's reason: each pixel is one measurement, not a photograph. */
+  #depthShot { aspect-ratio: 16 / 9; max-width: 460px; }
+  #depthImg { image-rendering: pixelated; }
   /* Taken out of the flow so that the picture's box is exactly the panel's box,
      whatever arithmetic the panel's own size came out of. As a grid item its
      `height: 100%` resolved against the height `aspect-ratio` asked for rather
@@ -446,7 +450,7 @@
               border-radius: 2px; display: inline-block; }
   #plan { margin: 8px 0 0; color: var(--accent); }
   #mapNote { margin: 4px 0 0; color: var(--dim); font-size: 12px; }
-  #mapError, #frameError { color: var(--bad); font-size: 13px; }
+  #mapError, #frameError, #depthError { color: var(--bad); font-size: 13px; }
 
   /* The depth camera, as a lamp on the battery heading. Red is off, green is
      on, and amber is the four to six seconds of firmware upload in between --

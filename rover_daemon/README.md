@@ -365,7 +365,9 @@ model choice, for example:
   position" when the position is usually not what is wrong;
 - detector diagnostics such as running YuNet over a supplied known image;
 - the semantic world state -- `world_inspect`, `world_state_summary` and the rest;
-- `get_depth_power`, which reports whether the OAK is awake and cannot set it;
+- `get_depth_power`, which reports whether the OAK is awake and cannot set it,
+  and `depth_png`, its shaded depth map for the console, which cannot wake it
+  either;
 - the five autonomy calls above. Enabling autonomy is a person's act, and a
   model that could ask for it could talk itself into authority it had just been
   refused; asking for a permit or acting under one belongs to the executive,
@@ -396,7 +398,11 @@ Nothing on this rover switches the OAK by hand. `rover_depth.py` runs a thread
 that reads the navigator's move mutex twice a second and posts to the depth
 service on loopback 8770: **on the moment the rover drives, off thirty seconds
 after it stops**. The console's tick box for it is gone; what is there now is a
-lamp beside the battery heading, coloured from `get_depth_power`.
+lamp beside the battery heading, coloured from `get_depth_power`, and the depth
+picture under the camera's, which the console asks `depth_png` for only while
+that lamp is on. Asking a switched-off camera for a picture answers "switched
+off" and leaves it off, so a console left open is never a reason for the OAK to
+be awake.
 
 The move mutex is the signal because it is the fact rather than a flag beside
 one -- every drive, turn, tap on the map and explore run holds it -- so this

@@ -275,7 +275,13 @@ class SessionShow:
         The exception is a service that will not answer, which is not a state of
         the camera and gets a sentence under the battery instead. A lamp coloured
         for that would be this console inventing a reading.
+
+        It also takes down the depth picture whenever the answer is not `on`,
+        which is what stops the panel showing the last thing the camera saw
+        before it went off as if it were still looking.
         """
+        if not body.get("ok") or body.get("power") != "on":
+            self.depth_png, self.depth_png_error = b"", ""
         if not body.get("ok"):
             error = str(body.get("error", "no answer"))
             if body.get("supported") is False or "no such tool" in error:
@@ -289,6 +295,25 @@ class SessionShow:
             return
         self.depth.update({"supported": True,
                            "power": str(body.get("power") or ""), "note": ""})
+
+    def show_depth_picture(self, body: dict[str, Any]) -> None:
+        """The depth map the rover shaded, straight through to an `<img>`.
+
+        Dropped when the lamp has gone off while it was in flight, so that one
+        late reply cannot put back the picture `show_depth` has just taken down.
+        """
+        if self.depth["power"] != "on":
+            return
+        if not body.get("ok"):
+            self.depth_png_error = str(body.get("error", "no depth picture"))
+            return
+        try:
+            self.depth_png = base64.b64decode(body.get("png_base64", ""))
+        except ValueError as error:
+            self.depth_png_error = f"those bytes did not decode: {error}"
+            return
+        self.depth_png_error = ""
+        self.depth_png_gen += 1
 
     def show_wifi(self, body: dict[str, Any]) -> None:
         """The access point, its strength, and what else was last heard.

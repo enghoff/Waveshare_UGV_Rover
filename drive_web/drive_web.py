@@ -255,6 +255,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(self.session.frame_jpeg, "image/jpeg",
                        "public, max-age=31536000, immutable")
+        elif path == "/depth.png":
+            if not self.session.depth_png:
+                self._missing("no depth picture now")
+                return
+            self._send(self.session.depth_png, "image/png",
+                       "public, max-age=31536000, immutable")
         elif path == "/world.json":
             # The semantic world, fetched rather than pushed, for the reason the
             # network list is: it is tens of kilobytes and the state it would
