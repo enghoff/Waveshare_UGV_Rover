@@ -12,15 +12,28 @@ docs/progress/2026-10-01-heading-after-turning.md.
 So a still look asks the navigator where one scan says the rover is
 (`ros_navigator.measure`, a read-only search of about a tenth of a second). It
 keeps the pose if the scan agrees, corrects it by what the scan found if the scan
-disagrees with confidence, and gives no direction if the scan cannot say. A moving
-look cannot be checked, because a scan and a pose taken in motion do not describe
-the same instant. It keeps its direction only while the last still check is
-fresh -- under `TURNED_SINCE_CHECK_DEG` of turning since, and, when that check had
-to correct the heading, under `TRAVELLED_SINCE_CHECK_M` of travel -- and it takes
-the same correction that check found. A check that found the heading right lets
-straight-line driving keep its bearings, which is what was won on 2026-09-03
-(`inspector.TURNED_WHILE_LOOKING_DEG`). Looks taken during turns give none until
-the rover stands still again.
+disagrees with confidence, and gives no direction if the scan fits nowhere near
+where the rover believes it is -- which is what a carried rover looks like
+(R-WS-16). A moving look cannot be checked, because a scan and a pose taken in
+motion do not describe the same instant. While the last still check is fresh --
+under `TURNED_SINCE_CHECK_DEG` of turning since, and, when that check had to
+correct the heading, under `TRAVELLED_SINCE_CHECK_M` of travel -- it takes the
+same correction that check found.
+
+**Otherwise a look takes the heading the navigator believes, as every look did
+before 2026-10-01.** The first version withheld it instead, and on a driven run
+that withheld nearly everything: the check only runs when no move is in progress,
+so on 2026-10-02 171 of 216 looks went without a direction, 17 of 906 regions got
+one and five things were placed. Measured against the walls they stand on, the
+two corrected looks of that run put the painting and the wardrobe within 7 cm of
+their wall, where the navigator's heading would have put them 7 and 18 cm off; so
+a correction is worth taking whenever there is one. But an unchecked heading is
+what every drive before 2026-10-01 was placed from -- a median 3.5 degrees where
+the rover drove to its stop -- and a look without a direction places nothing at
+all. Only a check that searched and fitted nowhere withholds, and it goes on
+withholding until a check fits again. A check that never ran -- a move in
+progress, a busy map keeper, a bridge that did not answer -- has found nothing
+wrong, and changes nothing.
 
 **Nothing here moves the rover, corrects the navigator or waits on a move.** An
 attempt that did all three was reverted on 2026-10-01: a refit inside every move
@@ -36,14 +49,15 @@ and this is that.
 STILL_M = 0.03
 STILL_DEG = 1.0
 
-#: Rotation since a check found the heading right, beyond which a moving look gets
-#: no direction. At 7% of a turn, fifteen degrees is about one degree of heading.
+#: Rotation since a check, beyond which a moving look no longer takes what that
+#: check found and goes back to the navigator's heading. At 7% of a turn, fifteen
+#: degrees is about one degree of heading.
 TURNED_SINCE_CHECK_DEG = 15.0
 
 #: Travel since a check that had to correct the heading, beyond which a moving
-#: look gets no direction. Driving folds scans into the map and may correct the
-#: heading by itself, which would leave the check's correction stale. Half a metre
-#: covers the shuffle between looks at one standing place.
+#: look no longer takes the correction. Driving folds scans into the map and may
+#: correct the heading by itself, which would leave the check's correction stale.
+#: Half a metre covers the shuffle between looks at one standing place.
 TRAVELLED_SINCE_CHECK_M = 0.5
 
 
@@ -64,6 +78,11 @@ class HeadingCheck(object):
         #: zero when it found the heading right. None when nothing trusted is
         #: in hand: before any check, or after one that could not say.
         self.offset = None
+        #: Why the last check that searched found no fit, or None. While it is
+        #: set no look gets a direction, still or moving, until a check fits
+        #: again: the carried rover of R-WS-16. A check that never ran neither
+        #: sets nor clears it.
+        self.misplaced = None
         self.turned_deg = 0.0
         self.travelled_m = 0.0
         self.last = None
@@ -93,12 +112,7 @@ class HeadingCheck(object):
         if where is None:
             return None, None
         if moved > STILL_M or turned > STILL_DEG:
-            if self._fresh():
-                return self._corrected(where, moving=True), None
-            return None, ("the rover had turned %.0f deg and travelled %.1f m "
-                          "since its heading was last checked against the map, "
-                          "and a moving look cannot be checked"
-                          % (self.turned_deg, self.travelled_m))
+            return self._unchecked(where)
         try:
             fit = self.measure(self.offset)
         except Exception as error:             # a look survives a missing check
@@ -107,9 +121,15 @@ class HeadingCheck(object):
         fit = fit or {"trusted": False, "why": "nothing answered"}
         self.last = fit
         if not fit.get("trusted"):
+            if "score" not in fit:
+                # Nothing was searched, so nothing was found wrong: the rover
+                # was partway through a move, the keeper was writing, or the
+                # bridge did not answer. A search that ran always scores.
+                return self._unchecked(where)
             self.offset = None
+            self.misplaced = fit.get("why") or "no reason given"
             return None, ("the heading could not be checked against the map: %s"
-                          % (fit.get("why") or "no reason given"))
+                          % self.misplaced)
         if fit.get("settled"):
             offset = (0.0, 0.0, 0.0)
         else:
@@ -125,6 +145,7 @@ class HeadingCheck(object):
                 return None, ("the map check answered without a pose to "
                               "correct from")
         self.offset = offset
+        self.misplaced = None
         self.turned_deg = self.travelled_m = 0.0
         self._checked = {"off_deg": fit.get("turned_deg"),
                          "off_m": fit.get("moved_m"), "score": fit.get("score")}
@@ -132,6 +153,17 @@ class HeadingCheck(object):
             return self._corrected(where), None
         return self._corrected(where), ("heading corrected by %.1f deg against "
                                         "the map" % (offset[2],))
+
+    def _unchecked(self, where):
+        """`(pose, note)` for a look no check of its own speaks for: none while
+        the rover is misplaced, the last check's correction while that is fresh,
+        and otherwise the heading the navigator believes."""
+        if self.misplaced is not None:
+            return None, ("the last check against the map could not place the "
+                          "rover, and none has since: %s" % self.misplaced)
+        if self._fresh():
+            return self._corrected(where, moving=True), None
+        return where, None
 
     def _fresh(self):
         """Whether the last trusted check still speaks for a look taken now."""

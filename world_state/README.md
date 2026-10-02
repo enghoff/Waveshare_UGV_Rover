@@ -107,23 +107,28 @@ measured well enough to keep:
   the gimbal's pan campaign actually validated. Past it the servo's gain error
   is unmeasured rather than merely larger, and the store holds looks taken at
   pan 145.
-- a heading that could not be checked against the map
-  ([headingcheck.py](headingcheck.py)). Turning on the spot leaves the rover's
-  heading about 7% of each turn out, so a still look asks the navigator where one
-  scan says the rover is. That is read-only, about a tenth of a second, and never
-  holds a move (`ros_nav` `measure_pose`). The look keeps its pose if the scan
-  agrees, takes the scan's pose if the scan confidently disagrees, and gets no
-  direction if the scan cannot say. A look taken while moving takes the last still
-  check's correction, but only while that check is fresh: under 15 degrees of
-  turning since, and under half a metre of travel if the check had to correct.
+- a scan that fits the map nowhere near where the rover believes it is
+  ([headingcheck.py](headingcheck.py)), which is what a carried rover looks like
+  ([R-WS-16](../docs/requirements/world-state.md#r-ws-16)). Turning on the spot
+  leaves the rover's heading about 7% of each turn out, so a still look asks the
+  navigator where one scan says the rover is. That is read-only, about a tenth of
+  a second, and never holds a move (`ros_nav` `measure_pose`). The look keeps its
+  pose if the scan agrees, takes the scan's pose if the scan confidently
+  disagrees, and gets no direction if the search fits nowhere; nor does any look
+  after it until a search fits again. A look taken while moving takes the last
+  still check's correction while that check is fresh: under 15 degrees of turning
+  since, and under half a metre of travel if the check had to correct. **Any
+  other look takes the heading the navigator believes**, as every look did before
+  2026-10-01, and so does a still look whose check never ran because a move was
+  in progress. Withholding those instead left the driven run of 2026-10-02 with
+  17 of 906 regions given a direction.
   The search starts from the last correction found, because the drift builds
   steadily. The check and any correction are written beside the pose as
-  `checked`. Against a tape, a heading believed 43 degrees out was stored within
-  3.5 ([the check on the rover](../docs/progress/2026-10-01-photo-heading-check.md)). See
-  [the measurement](../docs/progress/2026-10-01-heading-after-turning.md),
-  [R-WS-10](../docs/requirements/world-state.md#r-ws-10) and
-  [R-WS-16](../docs/requirements/world-state.md#r-ws-16), since a carried rover's
-  scan fails the check too.
+  `checked`, so a pose without it is the navigator's own. Against a tape, a
+  heading believed 43 degrees out was stored within 3.5
+  ([the check on the rover](../docs/progress/2026-10-01-photo-heading-check.md)). See
+  [the measurement](../docs/progress/2026-10-01-heading-after-turning.md) and
+  [R-WS-10](../docs/requirements/world-state.md#r-ws-10).
 
 **One condition widens the bearing instead of withholding it**: an angle reached
 from the descending side of the servo's backlash, or by a gimbal that has not
