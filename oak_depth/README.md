@@ -36,7 +36,9 @@ unchanged to `/ranges`.
 
 ## HTTP API
 
-- `GET /health` reports device, firmware, USB speed, frame age and power state.
+- `GET /health` reports device, firmware, USB speed, frame age, power state and
+  the chip's temperature (`chip_temp_c`, once a second from the device's own
+  system logger). The log's stop, drop and switch-off lines carry it too.
 - `GET /depth` returns a coarse depth grid and sector ranges.
 - `GET /depth.png` returns the latest depth image for a person.
 - `GET /frame` returns paired JPEG colour plus age and size headers.
