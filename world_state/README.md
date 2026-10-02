@@ -160,6 +160,34 @@ the time. It was re-measured and replaced on 2026-09-07 -- see
 lens was also 9.6% short in focal length until 2026-09-30, which put a box three
 degrees off at the edge of its picture; the ranges on those runs carry that too.
 
+## What to expect from it
+
+Measured against the owner's tape on the drives of 2026-10-01 and 10-02. These
+are descriptions, not pass marks ([the decision](../docs/decisions/p0-measures-the-hardware.md)).
+Where the rover claims less error than this, the claim is the fault; see
+[the measurement](../docs/progress/2026-10-02-what-to-expect-from-the-hardware.md).
+
+| What | Typical error | Worst seen | What the rover claims |
+|---|---|---|---|
+| direction of a still look | 1.2 deg | 3.8 deg | 1.5 deg: too little |
+| direction of a moving look that kept one | 2.6 deg | 11.6 deg | 1.5 deg or more: too little |
+| elevation, with the 4.9 deg bias at the rest tilt taken out (`locate.elevation_of`) | 1.4-1.8 deg | under 4 deg | 2.2 deg |
+| range of a still look, in plain view | 0.07-0.17 m, about a tenth of the distance | 0.36 m | 0.07-0.13 m: too little |
+| range through something in front | the thing in front | 1.3 m short | the same as in plain view |
+| a placement from two or more viewpoints, in plain view | 0.18 m | 0.43 m | about right: 11 of 15 inside the claim, all inside twice it |
+| a placement from one viewpoint | 0.55 m | 1.77 m | 0.05-0.24 m: far too little |
+| a thing behind other things | 0.88 m | 1.12 m | too little in 4 of 5 |
+| a height, from replay | 0.08-0.29 m | 0.29 m | inside the claim 7 of 7 |
+| a small object on the floor | often never becomes a thing of its own | | |
+
+The three claims marked too little are known and not yet fixed. Widening the
+bearing's sigma to the measured 2.2 degrees, or giving a one-look placement a
+0.5 m floor, also loosens how readily the resolver joins two looks, because
+the same numbers decide both. On the labelled drive of 2026-09-08, redrawn
+through today's lens, either change took merges of different objects from 8 to
+13. Making them honest needs the stated uncertainty separated from the
+matching tolerance.
+
 ## Offline experiment: bounded association and revision
 
 `bench_incremental.py` compares the production resolver with an experimental

@@ -345,11 +345,15 @@ failed every tolerance. It found the next things to fix, in this order:
   [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md) for the
   next experiments, and [the inspection replay](../progress/2026-10-01-hypothesis-inspection-replay.md)
   for what one look can carry.
-- **The drive of 2026-10-02 still fails the geometry tolerances**
-  ([results](../progress/2026-10-02-drive-carry-and-stops.md)): heights 0 of 3, the painting behind the dining chairs
-  0.88 m off, the tissue box never a thing of its own, and bearings 80% within 3 degrees
-  against 90%. Ranges over still looks passed, 5 of 6. The M3 stops met their limits;
-  permission expiry has not yet stopped a moving rover.
+- **What the hardware does is measured, and the claims are partly honest**
+  ([the drives](../progress/2026-10-02-drive-carry-and-stops.md),
+  [the measurement](../progress/2026-10-02-what-to-expect-from-the-hardware.md)).
+  Heights are honest in replay since a 4.9 degree elevation bias was corrected
+  (`59c7e43`, to deploy). Claims for bearings, ranges and one-look placements are
+  still smaller than their measured errors, and widening them loosened matching;
+  separating the stated uncertainty from the matching tolerance is what is left of
+  the honesty condition. The M3 stops were measured; permission expiry has not yet
+  stopped a moving rover.
 - **M0a's inspections (R-AUT-12) are built and hold in replay**
   ([the replay](../progress/2026-10-01-hypothesis-inspection-replay.md)). The
   question each asks is whether something stands where a thing's looks crossed;
