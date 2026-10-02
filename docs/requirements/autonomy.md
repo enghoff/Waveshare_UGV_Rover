@@ -214,9 +214,13 @@ owed for `settled` is a hardware session in which it holds.
 <a id="r-aut-12"></a>
 ### R-AUT-12 — Inspecting a hypothesis never treats it as an established identity
 
-- **State:** open
-- **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M0a); [the acceptance procedure](../runbooks/m0-acceptance-drive.md)
+- **State:** settled
+- **Evidence:** [27 supervised attempts on 2026-10-02](../progress/2026-10-02-m0a-runs-reach-twenty.md):
+  three answers, all right, none wrong, every attempt inside its travel, time and
+  attempt limits, and no identity-dependent follow-on;
+  [the replay](../progress/2026-10-01-hypothesis-inspection-replay.md) for the
+  reproduced wrong association; `python autonomy/selftest.py` and
+  `python rover_daemon/selftest.py`
 
 An inspection may be motivated by an uncertain or incorrect identity or location.
 Its request records the source observations, competing explanations, the question

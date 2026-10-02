@@ -1,7 +1,7 @@
 # Development plan: curiosity-driven autonomy
 
-Status: Phase 0 (P0) is in progress. Phases 1 and 2 (P1, P2) passed their
-milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
+Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
+Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
 daemon-enforced permission it works under are built and checked offline, and
 nothing has yet moved the rover under them. Later phases remain proposed. This is the
 implementation and acceptance plan for
@@ -11,9 +11,9 @@ The plan is gated by capability dependencies, not a requirement to finish every
 phase before starting the next. M1 recording and M2 shadow decisions proceeded
 alongside the existing P0 work, with no action authority, and both have now
 passed. The offline control-boundary tests M3 asks for are written and passing,
-which is what allowed P3 to be built alongside P0. **M3 semantic movement requires
-M0a for hypothesis inspection, which has not passed. An action relying on identity
-needs its own case decided first** ([2026-10-01](../decisions/identity-is-judged-action-by-action.md)). Supervised stop/failure trials precede bounded inspection acceptance
+which is what allowed P3 to be built alongside P0. **M3 semantic movement required
+M0a for hypothesis inspection, which passed on 2026-10-02. An action relying on
+identity needs its own case decided first** ([2026-10-01](../decisions/identity-is-judged-action-by-action.md)). Supervised stop/failure trials precede bounded inspection acceptance
 trials and autonomy sessions; geometric-only goals remain subject to the same
 control and physical safety gates. Later capabilities require
 recorded evidence for the primitives, semantics and execution substrate they use;
@@ -375,9 +375,15 @@ replayed by path/manifest.
 
 ### Milestone M0: semantic state is safe enough to influence goal selection
 
-**Status: M0a is open and has not passed. M0b was retired on 2026-10-01**, when
-identity became [a case decided for each action](../decisions/identity-is-judged-action-by-action.md), so M0 now
-means M0a and the shared prerequisites. The
+**Status: passed on 2026-10-02, and P0 is closed** ([the closure](../progress/2026-10-02-p0-closed.md)).
+M0a's 27 supervised attempts gave three answers, all right, and none wrong, inside
+every limit, against criteria that measure the hardware rather than hold it to bars
+([the decision](../decisions/p0-measures-the-hardware.md)). M0b was retired on
+2026-10-01, when identity became
+[a case decided for each action](../decisions/identity-is-judged-action-by-action.md), so M0
+meant M0a and the shared prerequisites. What P0 leaves for later is listed in the
+closure: the check answers rarely, the depth camera drops off USB, and small objects
+are not found. The
 [agreed revision](../decisions/m0-hypothesis-inspection.md) permits investigation
 before persistent identity is trusted. Earlier reports used the original,
 stricter movement-eligibility contract and are not retrospectively rescored as passes.
@@ -1323,7 +1329,7 @@ the problem.
 
 | Milestone | Capability | Proof |
 |---|---|---|
-| M0a (open) | bounded verification of uncertain hypotheses | shared geometry/capture gates + replay refusals + useful outcomes in >=20 attempts across >=3 fresh supervised runs |
+| M0a (passed 2026-10-02) | bounded verification of uncertain hypotheses | shared geometry/capture gates + replay refusals + useful outcomes in >=20 attempts across >=3 fresh supervised runs |
 | M0b (retired 2026-10-01) | actions relying on persistent identity | no single gate: each such action's case is decided under R-WS-13 before an autonomous run may take it |
 | M1 | episodic memory | durable reconstruction across resets/merges, no authority |
 | M2 | curiosity shadow mode | fixed scenarios + one-hour no-action rover shadow |

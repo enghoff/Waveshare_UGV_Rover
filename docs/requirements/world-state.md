@@ -212,10 +212,13 @@ recording.
 <a id="r-ws-11"></a>
 ### R-WS-11 — A thing's height above the floor is known
 
-- **State:** open
-- **Blocked by:** heights against the tape pass for one target in three on
-  [the 2026-10-01 drive](../progress/2026-10-01-the-room-as-it-stands.md), behind
-  the bearing and elevation errors of [R-WS-10](#r-ws-10)
+- **State:** settled
+- **Evidence:** [the elevation bias corrected](../progress/2026-10-02-what-to-expect-from-the-hardware.md):
+  taped heights inside their claimed sigma 7 of 7 in replay, against 1 of 7; on the
+  rover with the correction, the toolbox at +0.06 m and the painting above the
+  cabinet at -0.11 m ([the runs](../progress/2026-10-02-first-m0a-runs.md)). It
+  failed for one target in three on
+  [2026-10-01](../progress/2026-10-01-the-room-as-it-stands.md)
 
 Both the rotation and the translation between the OAK and the gimbal camera are
 measured. Since 2026-09-30 the OAK rides the gimbal's rail, and [the rail
