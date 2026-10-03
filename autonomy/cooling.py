@@ -99,6 +99,47 @@ def update(previous: dict[str, Any] | None, current: dict[str, Any],
     return kept
 
 
+def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
+                  before: dict[str, Any] | None, after: dict[str, Any], *,
+                  now: float) -> list[dict[str, Any]]:
+    """The cooling list once a goal at `target` has been carried out.
+
+    **A goal that went where it was sent, looked, and left the thing no better
+    puts it aside at once.** Counting looks, as `update` does, cannot see this
+    case: a look from a spot the rover has already looked from is the same
+    picture, which the world state does not record at all, so the count never
+    moves however often the goal is repeated. On 2026-10-03 a run chose the same
+    look at object:7 twenty-two times in a row that way, from a viewpoint the
+    rover could not stand at and was moved back off. One attempt is enough here,
+    unlike one look: the goal was a deliberate viewpoint, and the scorer would
+    choose the same one again.
+
+    `before` and `after` are the situations either side of the attempt, read
+    with the same measure `update` lapses an entry by.
+    """
+    now = float(now)
+    was = _by_id(before).get(target)
+    here = _by_id(after).get(target)
+    kept = [dict(one) for one in cooled or []]
+    # Gone, or helped: nothing to add, and `update` decides the rest.
+    if here is None or (was is not None
+                        and _improved(was["uncertainty_m"], here["uncertainty_m"])):
+        return kept
+    kept = [one for one in kept if str(one.get("target") or "") != target]
+    kept.append({
+        "target": target,
+        "since": now,
+        "until": now + COOLDOWN_S,
+        "looks": here["looks"],
+        "uncertainty_m": here["uncertainty_m"],
+        "why": (f"a goal at {target} left it placed to "
+                f"{_metres(here['uncertainty_m'])} -- no better than before, so "
+                f"it is put aside for {int(COOLDOWN_S / 60)} minutes or until "
+                f"something changes")})
+    kept.sort(key=lambda one: str(one.get("target") or ""))
+    return kept
+
+
 def cooling(cooled: list[dict[str, Any]] | None, target: str, *,
             now: float) -> dict[str, Any] | None:
     """The entry cooling this target, if one is in force."""

@@ -87,7 +87,40 @@ def test_it_reads_only_what_is_written_down() -> None:
           cooling.update(None, after, [], now=NOW), [])
 
 
+def test_a_goal_that_left_its_thing_no_better_puts_it_aside_at_once() -> None:
+    """The case counting looks cannot see: a look from where the rover already
+    looked is the same picture, which is not recorded, so the count never moves.
+    On 2026-10-03 one goal was chosen twenty-two times in a row that way."""
+    cooled = cooling.after_attempt([], "object:8", _reading(6), _reading(6),
+                                   now=NOW)
+    check("one fruitless goal puts it aside", [one["target"] for one in cooled],
+          ["object:8"])
+    check("...for the stated while", cooled[0]["until"] - NOW, cooling.COOLDOWN_S)
+    check("...saying why", "no better than before" in cooled[0]["why"], True)
+    check("...and the next deliberation keeps it aside",
+          [one["target"] for one in cooling.update(
+              _reading(6), _reading(6), cooled, now=NOW + 30.0)], ["object:8"])
+    check("...until it does come out better",
+          cooling.update(_reading(6), _reading(7, 0.30), cooled, now=NOW + 60.0),
+          [])
+
+
+def test_a_goal_that_helped_or_lost_its_thing_puts_nothing_aside() -> None:
+    check("a goal that improved the placement cools nothing",
+          cooling.after_attempt([], "object:8", _reading(6), _reading(7, 0.30),
+                                now=NOW), [])
+    empty = a_situation(ROOM, entities=[], at=NOW)
+    check("...nor one whose thing has gone",
+          cooling.after_attempt([], "object:8", _reading(6), empty, now=NOW), [])
+    other = [{"target": "object:3", "until": NOW + 100.0, "uncertainty_m": 0.5}]
+    check("...and what was already aside stays aside",
+          cooling.after_attempt(other, "object:8", _reading(6), _reading(7, 0.30),
+                                now=NOW), other)
+
+
 TESTS = (
+    test_a_goal_that_left_its_thing_no_better_puts_it_aside_at_once,
+    test_a_goal_that_helped_or_lost_its_thing_puts_nothing_aside,
     test_looking_again_and_learning_nothing_puts_a_thing_aside,
     test_one_unhelpful_look_is_not_enough,
     test_a_thing_that_actually_improved_is_left_alone,

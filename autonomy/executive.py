@@ -71,6 +71,7 @@ import time
 from typing import Any, Callable
 
 import client as client_mod
+import cooling
 import decide as decide_mod
 import events
 import hypotheses
@@ -475,6 +476,16 @@ class Executive:
             if was is not None and now is not None:
                 measured["placement_improved_m"] = round(was - now, 3)
             what = _said_geometry(candidate["target"], was, now)
+            # Put aside if it got nowhere, written where the next deliberation
+            # reads its cooling from. See `cooling.after_attempt`.
+            cooled = decide_mod._loads(self.store.marked(decide_mod.COOLED_MARK)) or []
+            now_cooled = cooling.after_attempt(cooled, candidate["target"],
+                                               before.as_dict(), after.as_dict(),
+                                               now=after.at)
+            if now_cooled != cooled:
+                self.store.mark(decide_mod.COOLED_MARK, decide_mod._dumps(now_cooled))
+                measured["put_aside"] = True
+                what += "; put aside for a while"
         else:
             was = _unknown_m2(before)
             now = _unknown_m2(after)

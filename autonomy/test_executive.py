@@ -501,7 +501,34 @@ def test_a_repeat_of_an_action_is_refused_rather_than_done_twice():
     session.close()
 
 
+def _chose(session: Session, episode: str) -> str:
+    decisions = [one["body"] for one in session.events(episode)
+                 if one["kind"] == "decision"]
+    return str(decisions[-1].get("chose") or "") if decisions else ""
+
+
+def test_a_goal_that_got_nowhere_is_not_chosen_again():
+    """The fault of 2026-10-03, run/e3efe1d1/2: the same look at object:7 was
+    chosen twenty-two times in a row, because the look left it no better and
+    the cooling that should have put it aside counted looks the world state
+    never recorded. Here the fake rover's look changes nothing either."""
+    session = Session()
+    _arriving(session)
+    first = session.executive.once()
+    chosen = _chose(session, first["episode"])
+    check("the first turn chose a look at something",
+          chosen.startswith("improve_geometry:"), True)
+    check("...which left it no better and put it aside",
+          first["measured"].get("put_aside"), True)
+    second = session.executive.once()
+    target = chosen.split(":", 1)[1].split("@", 1)[0]
+    check("the next turn does not choose the same thing again",
+          f":{target}@" in _chose(session, second["episode"]), False)
+    session.close()
+
+
 TESTS = (
+    test_a_goal_that_got_nowhere_is_not_chosen_again,
     test_one_turn_drives_looks_and_writes_down_what_changed,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
     test_a_turn_with_nothing_worth_doing_idles_without_acting,
