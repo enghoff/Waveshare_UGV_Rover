@@ -146,8 +146,13 @@ class RoverAutonomy:
             return {"ok": False, "error": "the map has not settled yet"}
         base = (permission_mod.CONSOLE_BUDGET if via == "console"
                 else permission_mod.DEFAULT_BUDGET)
+        where = facts.get("where")
+        start = (None if where is None else
+                 {"x_m": where[0], "y_m": where[1],
+                  "heading_deg": facts.get("heading_deg"),
+                  "map_id": facts.get("map_id")})
         answer = self.permission.enable(via=via, why=purpose, budget=budget,
-                                        base=base)
+                                        base=base, start=start)
         if answer.get("ok"):
             print(f"[autonomy] started via {via}: {answer['run']['id']}, "
                   f"budget {answer['run']['budget']}"
@@ -439,6 +444,8 @@ class RoverAutonomy:
             "stop_seq": status.get("stop_seq"),
             "where": (None if not pose else
                       (float(pose["x_m"]), float(pose["y_m"]))),
+            "heading_deg": (None if not pose or pose.get("heading_deg") is None
+                            else float(pose["heading_deg"])),
         })
         return facts
 

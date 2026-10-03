@@ -97,7 +97,7 @@ def test_it_cannot_reach_the_rover() -> None:
                               source, re.M))
     check("it imports nothing that could talk to the rover",
           sorted(imported - {"__future__", "typing", "math"}),
-          ["mapgrid", "refs", "situation"])
+          ["cooling", "mapgrid", "refs", "situation"])
 
 
 # --- going where the map stops ----------------------------------------------
@@ -252,6 +252,26 @@ def test_a_viewpoint_faces_the_thing_it_is_for() -> None:
               one.constraints.get("look_at"), {"x_m": 1.6, "y_m": 1.0})
 
 
+def test_things_put_aside_do_not_crowd_out_the_rest_of_the_house() -> None:
+    """Found on 2026-10-03: only the twelve worst-placed things were ever
+    considered, so once those were put aside or had nowhere to stand, run 4 had
+    nothing to do while 54 other placed things waited. A thing that is cooling,
+    or that cannot be looked at, no longer takes up one of the twelve places."""
+    at = 1757320800.0
+    worst = [a_thing(f"object:{n}", 1.0 + 0.1 * n, 1.0, uncertainty_m=0.9)
+             for n in range(goals.ENTITY_LIMIT)]
+    shut = a_thing("object:90", 0.55, 0.30, uncertainty_m=0.95)
+    far = a_thing("object:99", 2.8, 1.2, uncertainty_m=0.5)
+    cooled = [{"target": one["id"], "since": at, "until": at + 900.0,
+               "uncertainty_m": 0.9} for one in worst]
+    here = _situation(CLOSET, entities=[*worst, shut, far], cooled=cooled, at=at)
+    found = {one.target for one in goals.improve_geometry(here)}
+    check("a thing outside the twelve worst is still considered",
+          "object:99" in found, True)
+    check("...and the ones put aside are still offered, to be refused aloud",
+          {one["id"] for one in worst} <= found, True)
+
+
 def test_the_height_it_cannot_predict_is_declared_rather_than_assumed() -> None:
     here, _thing = _thing_and_room(90.0, height_sigma_m=1.2)
     found = goals.improve_geometry(here)
@@ -283,6 +303,7 @@ TESTS = (
     test_a_thing_shut_in_a_room_of_its_own_is_refused_out_loud,
     test_two_viewpoints_are_offered_when_they_are_a_real_choice,
     test_a_viewpoint_faces_the_thing_it_is_for,
+    test_things_put_aside_do_not_crowd_out_the_rest_of_the_house,
     test_the_height_it_cannot_predict_is_declared_rather_than_assumed,
     test_the_same_situation_produces_the_same_list_twice,
 )

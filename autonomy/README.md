@@ -192,7 +192,11 @@ Each term is dimensionless against a declared scale: 20 m² of new floor and
 0.30 m off a placement are each worth half a unit, a minute and ten metres are
 the scale of one errand. The gain saturates rather than capping, so two badly
 placed things do not come out identical, and idle is worth zero — a candidate
-that costs more than it gains loses to standing still. The energy term is kept
+that costs more than it gains loses to standing still. A run is the exception
+(`go_further`): when nothing nearer is worth doing it takes the cheapest goal
+whose only fault is the trip, because for a rover that is switched on, standing
+still is not free ([R-AUT-13](../docs/requirements/autonomy.md#r-aut-13)). Vetoes
+and the minimum gain still apply. The energy term is kept
 and weighted at nothing, because this chassis has no current sense and the
 estimate is time in different units.
 
@@ -244,6 +248,15 @@ for one the rover's own looking is already taking, rather than failing the goal.
 **EVALUATE** reads the rover again and records what actually changed rather than
 what was hoped for. **ABORT** is any of that going wrong, and closes the episode
 `interrupted` with the reason.
+
+**A run with nothing left worth doing goes back and ends.** When a turn finds
+nothing worth doing, even further afield, the executive drives back to where the
+daemon recorded the rover standing when the run was opened, on that map, and
+hands the run back. The trip is an episode of its own, with the decision
+`return_to_start`. A turn refused by the rover's own state (a failed camera, an
+untrusted pose) waits instead, in naps that keep the lease, and gives up the same
+way after two minutes. See
+[the decision](../docs/decisions/a-run-with-nothing-to-do-goes-home.md).
 
 **The rover's own frontier `explore` is deliberately not used**, even for a
 frontier goal. Two reasons, and the second is the one that would matter anyway:

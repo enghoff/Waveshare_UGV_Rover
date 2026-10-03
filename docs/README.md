@@ -31,8 +31,8 @@ the rover's behaviour that a plan can aim at and a measurement can move.
 | [Visual memory](requirements/world-state.md) | 13 | -- | 2 | -- | 1 | 16 |
 | [Control surface](requirements/control.md) | 10 | -- | -- | -- | -- | 10 |
 | [Host and deployment](requirements/platform.md) | 11 | -- | -- | -- | -- | 11 |
-| [Autonomy and its record](requirements/autonomy.md) | 11 | -- | 1 | -- | -- | 12 |
-| **All** | **62** | **1** | **9** | **5** | **2** | **79** |
+| [Autonomy and its record](requirements/autonomy.md) | 11 | -- | 2 | -- | -- | 13 |
+| **All** | **62** | **1** | **10** | **5** | **2** | **80** |
 
 Currently failing: [R-NAV-6](requirements/navigation.md#r-nav-6).
 

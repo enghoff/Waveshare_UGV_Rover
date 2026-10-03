@@ -188,6 +188,19 @@ def test_a_run_records_how_it_was_started_and_the_budget_it_was_given():
     check("a run says which way it was started", odd["ok"], False)
 
 
+def test_a_run_records_where_the_rover_stood_when_it_was_started():
+    """So that a run with nothing left worth doing can go back there and end,
+    which the owner asked for on 2026-10-03 rather than a rover standing about
+    draining its battery."""
+    rover = a_rover(Clock(), nav=FakeNav(where=(1.5, -2.25), map_id="map-7"))
+    run = rover.call("autonomy_enable", {})
+    check("a run says where the rover stood, on which map",
+          run["run"]["start"],
+          {"x_m": 1.5, "y_m": -2.25, "heading_deg": 0.0, "map_id": "map-7"})
+    check("...and so does the status the executive reads",
+          rover.call("autonomy_status", {})["run"]["start"]["map_id"], "map-7")
+
+
 def test_the_console_starts_a_run_with_no_limit_but_failures():
     launched = []
     rover = a_rover(Clock())
@@ -601,6 +614,7 @@ def test_a_move_that_ends_is_recorded_against_the_action_that_asked_for_it():
 TESTS = (
     test_a_fresh_daemon_has_no_authority,
     test_a_run_records_how_it_was_started_and_the_budget_it_was_given,
+    test_a_run_records_where_the_rover_stood_when_it_was_started,
     test_the_console_starts_a_run_with_no_limit_but_failures,
     test_an_agent_starts_a_run_after_a_stop_and_can_bound_it,
     test_a_run_is_not_started_where_it_cannot_act,

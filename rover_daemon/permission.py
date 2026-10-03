@@ -320,11 +320,16 @@ class Run:
     """
 
     def __init__(self, run_id: str, *, via: str, why: str,
-                 budget: dict[str, Any], at: float, wall: float) -> None:
+                 budget: dict[str, Any], at: float, wall: float,
+                 start: dict[str, Any] | None = None) -> None:
         self.id = run_id
         self.via = via
         self.why = why
         self.budget = dict(budget)
+        #: Where the rover stood when the run was opened, on which map, or None
+        #: if it did not say. A run with nothing left worth doing drives back
+        #: here and ends, rather than standing about on a draining battery.
+        self.start = dict(start) if start else None
         self.opened_at = at
         self.opened_wall = wall
         self.travel_m = 0.0
@@ -360,7 +365,7 @@ class Run:
 
     def as_dict(self, now: float) -> dict[str, Any]:
         return {"id": self.id, "via": self.via, "why": self.why,
-                "opened_at": self.opened_wall,
+                "opened_at": self.opened_wall, "start": self.start,
                 "budget": dict(self.budget), "spent": self.spent(now),
                 "ended": self.ended}
 
@@ -409,13 +414,15 @@ class Permission:
 
     def enable(self, *, via: str, why: str = "",
                budget: dict[str, Any] | None = None,
-               base: dict[str, Any] | None = None) -> dict[str, Any]:
+               base: dict[str, Any] | None = None,
+               start: dict[str, Any] | None = None) -> dict[str, Any]:
         """Open a run, and with it clear any stop. **The console's button or an
         agent's call, never the executive.**
 
         `via` says which of `STARTED_VIA` it came from. `base` is the budget for
         whatever `budget` leaves out: the standing limits unless the caller says
-        otherwise, which the console does with `CONSOLE_BUDGET`.
+        otherwise, which the console does with `CONSOLE_BUDGET`. `start` is
+        where the rover stands, which the run keeps to go back to.
 
         Refused while a run is already open, rather than extending it: a second
         press of the button must not double the budget of the run already going.
@@ -456,7 +463,7 @@ class Permission:
                     "error": f"permit_ttl_s may be at most {PERMIT_TTL_S}"}
         self.runs += 1
         self.run = Run(f"run/{self.boot}/{self.runs}", via=via, why=why,
-                       budget=asked, at=now, wall=self.wall())
+                       budget=asked, at=now, wall=self.wall(), start=start)
         self.latch = None
         self.permit = None
         self.actions = {}

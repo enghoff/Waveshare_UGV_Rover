@@ -115,6 +115,32 @@ def test_a_candidate_that_costs_more_than_it_is_worth_loses_to_standing_still() 
           "more than it is worth" in got["why_nothing"], True)
 
 
+def test_a_run_goes_further_when_nothing_nearer_is_worth_doing() -> None:
+    """The owner's word on 2026-10-03: a run that has used up where it is goes
+    somewhere else, rather than standing still or going home. A goal refused
+    only for what it costs is taken then; one refused for anything else, or
+    worth too little to disturb the rover for, is still not."""
+    here = _situation(entities=[_a_thing_worth_looking_at()])
+    expensive = scoring.Weights(w_travel=50.0, w_time=50.0)
+    further = scoring.Weights(w_travel=50.0, w_time=50.0, go_further=True)
+    check("a shadow decision still stands still",
+          scoring.consider(here, expensive, authority=True)["preferred"], None)
+    got = scoring.consider(here, further, authority=True)
+    check("...and a run that may go further would go",
+          got["preferred"] is not None, True)
+    check("...saying that it is the trip and not the goal that was weighed",
+          got["further"], True)
+    shut = _situation(CLOSET, entities=[a_thing("object:8", 0.55, 0.30,
+                                                uncertainty_m=0.60)])
+    check("...but never past a veto",
+          scoring.consider(shut, further, authority=True)["preferred"], None)
+    small = _situation(FINISHED, entities=[a_thing("object:8", 1.6, 0.4,
+                                                   uncertainty_m=0.10,
+                                                   ranged=4)])
+    check("...nor for a gain too small to disturb the rover for",
+          scoring.consider(small, further, authority=True)["preferred"], None)
+
+
 def test_changing_its_mind_costs_something_and_sticking_does_not() -> None:
     body = a_situation(ROOM, entities=[_a_thing_worth_looking_at()])
     plain = Situation(body)
@@ -230,6 +256,7 @@ TESTS = (
     test_with_no_authority_it_still_says_what_it_would_do,
     test_being_reachable_is_not_a_reason_to_drive,
     test_a_candidate_that_costs_more_than_it_is_worth_loses_to_standing_still,
+    test_a_run_goes_further_when_nothing_nearer_is_worth_doing,
     test_changing_its_mind_costs_something_and_sticking_does_not,
     test_a_thing_that_has_been_put_aside_is_refused_with_its_reason,
     test_a_safe_area_refuses_what_is_outside_it,

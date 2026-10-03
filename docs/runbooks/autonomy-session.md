@@ -43,7 +43,9 @@ restarting something.
 
 **From the console:** press **run**, next to **world**. Nothing is asked. The run
 has no limit on time, travel or actions, ends after three failures in a row, and
-may go anywhere on the mapped floor. The button reads **end run** while it is
+may go anywhere on the mapped floor. When nothing is left worth doing anywhere, it
+drives back to where it was started and ends by itself, so start it where you want
+the rover to finish, beside the charger. The button reads **end run** while it is
 going, and pressing it is the ordinary stop. A refusal appears on the notice line,
 for example when the rover has not confirmed where it is.
 
@@ -154,7 +156,8 @@ distance the rover actually travelled after it was told.
 | `the rover has not confirmed where it is on the map` | refused before opening; see step 2 above |
 | `the run ended: ...` | a budget or the watchdog closed it — open a new one |
 | `a run is already open` | one is running; stop it before opening another |
-| the executive chooses nothing, every turn | read the refusals it prints: an unsettled map or an untrusted pose gates every goal at once |
+| `there was nothing left worth doing ...; it went back to where the run started` | the run finished its work and handed itself back; nothing is wrong |
+| `the rover could not act for 120 s: ...` | something refused every goal for two minutes, so the run went back and ended; the reason follows, often an unsettled map or an untrusted pose |
 
 ## Boundary allowance
 

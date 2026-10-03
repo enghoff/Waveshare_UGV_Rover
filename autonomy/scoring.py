@@ -97,7 +97,7 @@ class Weights:
     __slots__ = ("version", "purpose", "w_time", "w_travel", "w_energy",
                  "switching_cost", "min_gain", "room_m2",
                  "useful_uncertainty_m", "time_scale_s", "travel_scale_m",
-                 "geofence", "m0a_protocol", "source")
+                 "geofence", "m0a_protocol", "go_further", "source")
 
     def __init__(self, **fields: Any) -> None:
         for name, value in DEFAULTS.items():
@@ -144,7 +144,7 @@ class Weights:
 DEFAULTS: dict[str, Any] = {
     # Bumped whenever anything below changes, so that two decisions scored
     # differently can be told apart in the record without diffing them.
-    "version": "2",
+    "version": "3",
 
     # Per goal type, and 1.0 everywhere until the owner declares a purpose.
     "purpose": {"default": 1.0, "explore_frontier": 1.0,
@@ -207,6 +207,14 @@ DEFAULTS: dict[str, Any] = {
     # be movement nobody asked the protocol for. The plan says only that
     # protocol may exercise this path before M0a passes.
     "m0a_protocol": False,
+
+    # Whether a goal refused only for what it costs is taken when nothing
+    # nearer is worth doing. Off for a shadow decision, where standing still
+    # costs nothing; on for a run, where the owner decided on 2026-10-03 that a
+    # rover which has used up where it is goes somewhere else, and goes home
+    # only when there is nowhere left. Vetoes and `min_gain` still apply, so
+    # it never drives across the house for nothing.
+    "go_further": False,
 }
 
 DEFAULT = Weights()
@@ -548,6 +556,14 @@ def consider(situation: Situation, weights: Weights = DEFAULT, *,
                if not one["vetoes"] and not one["score"]["below_min_gain"]
                and one["score"]["utility"] > 0.0]
     preferred = allowed[0] if allowed else None
+    # **Somewhere further, when there is nothing nearer.** Only what the trip
+    # costs held these back; `ranked` is best first, so the cheapest goes.
+    further = False
+    if preferred is None and weights.go_further:
+        costly = [one for one in ranked
+                  if not one["vetoes"] and not one["score"]["below_min_gain"]]
+        if costly:
+            preferred, further = costly[0], True
 
     refused_above = []
     if preferred is not None:
@@ -566,6 +582,7 @@ def consider(situation: Situation, weights: Weights = DEFAULT, *,
         "authority": bool(authority),
         "considered": ranked,
         "preferred": preferred,
+        "further": further,
         "refused_above_it": refused_above,
         "chose": (preferred["candidate"]["id"]
                   if preferred is not None and authority and not shut else None),

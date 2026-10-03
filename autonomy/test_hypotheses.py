@@ -270,8 +270,10 @@ def test_nothing_after_the_answer_acts_on_which_thing_it_was():
             "world_building")], [])
     check("...and moves nothing", len(attempt.rover.moves), 1)
     got = attempt.turn()
+    # With nothing else to do the run then drives back to where it started,
+    # which is not an inspection: only drives that carry one are counted.
     check("the next turn does not inspect the answered place again",
-          len(attempt.rover.moves), 1)
+          len([one for one in attempt.rover.moves if one.get("inspection")]), 1)
     check("...because it is refused as answered",
           "already answered" in json.dumps(
               attempt.store.episode(got["episode"])["events"]), True)
@@ -361,7 +363,8 @@ def test_regenerating_the_goal_does_not_restart_its_budget():
     attempt.rover.entities = [a_claim("object:77", 2.6, 1.6)]
     attempt.turn()
     got = attempt.turn()
-    check("two attempts were made on the place", len(attempt.rover.moves), 2)
+    check("two attempts were made on the place",
+          len([one for one in attempt.rover.moves if one.get("inspection")]), 2)
     check("...and a third under the new name is refused",
           "attempts spent" in json.dumps(
               attempt.store.episode(got["episode"])["events"]), True)

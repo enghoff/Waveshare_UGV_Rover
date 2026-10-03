@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -76,6 +77,7 @@ import decide as decide_mod
 import events
 import hypotheses
 import mapgrid
+import refs
 import scoring
 import situation as situation_mod
 import store as store_mod
@@ -133,6 +135,27 @@ IDLE_S = 30.0
 #: ended the run. A third of the lease leaves two missed naps of margin.
 IDLE_NAP_S = permission.PERMIT_TTL_S / 3.0
 
+#: The trigger and the goal of the last episode of a run that ran out of things
+#: worth doing, which drives back to where the run started.
+RETURN_TRIGGER = "the run had nothing left worth doing and went back to where it started"
+RETURN_GOAL = "return_to_start"
+
+#: How near where the run started counts as being there already: the
+#: navigator's own arrival tolerance (`xy_goal_tolerance`), inside which a drive
+#: would arrive without moving.
+HOME_NEAR_M = 0.22
+
+#: How long a run waits while something about the rover refuses every goal --
+#: a camera that has failed, a pose it does not trust -- before it goes back
+#: and ends. Such a thing may clear, so it is waited out for a while; not for
+#: ever, because a rover standing about drains its battery for nothing.
+GATED_GIVE_UP_S = 120.0
+
+#: Gates that mean the run itself is over or was never there. The loop ends on
+#: those by itself; they are not a rover that cannot act just now.
+RUN_GATES = frozenset({"stopped", "autonomy not enabled",
+                       "no movement authority"})
+
 
 class Aborted(Exception):
     """Raised inside a turn to end it. Carries the reason the episode closes
@@ -179,6 +202,14 @@ class Executive:
         #: Every action this executive dispatched, so that a summary can say
         #: what a session did without re-reading the whole record.
         self.actions: list[dict[str, Any]] = []
+        #: Where the rover stood when the run was opened, as the daemon
+        #: recorded it, so that a run with nothing left can go back there.
+        self.start: dict[str, Any] | None = None
+        #: Since when every turn has been refused by the rover's own state, or
+        #: None while it is not.
+        self._gated_since: float | None = None
+        #: Set when the run went back and ended itself; the loop is over.
+        self.finished = False
 
     # --- the loop -----------------------------------------------------------
 
@@ -196,6 +227,7 @@ class Executive:
                     "error": status.get("why") or "autonomy is not enabled",
                     "status": status}
         self.run = str(run["id"])
+        self.start = run.get("start") or None
         return {"ok": True, "run": run, "status": status}
 
     def loop(self, turns: int | None = None) -> dict[str, Any]:
@@ -207,6 +239,8 @@ class Executive:
         """
         while turns is None or self.turns < turns:
             if not self._alive():
+                break
+            if self.finished:
                 break
             self.turns += 1
             try:
@@ -253,13 +287,33 @@ class Executive:
         self.episode = episode
         chose = decision.get("chose")
         if not chose:
-            self.store.close_episode(
-                episode, "abandoned",
-                detail=decision.get("why_nothing") or "nothing worth doing")
-            self.log(f"nothing to do: {decision.get('why_nothing')}")
-            self.idle(IDLE_S)
-            return {"episode": episode, "acted": False,
-                    "why": decision.get("why_nothing")}
+            why = decision.get("why_nothing") or "nothing worth doing"
+            self.store.close_episode(episode, "abandoned", detail=why)
+            self.log(f"nothing to do: {why}")
+            gates = [one for one in decision.get("gate") or []
+                     if one.get("gate") not in RUN_GATES]
+            if not decision.get("gate"):
+                # **Nothing worth doing anywhere, so the run is over.** The
+                # scorer has already looked further afield (`go_further`); what
+                # is left is standing about on a draining battery, which the
+                # owner asked on 2026-10-03 not to have.
+                self.go_back(here, got["inputs"],
+                             f"there was nothing left worth doing: {why}")
+            elif gates:
+                since = self._gated_since
+                if since is None:
+                    since = self._gated_since = self.now()
+                if self.now() - since >= GATED_GIVE_UP_S:
+                    self.go_back(here, got["inputs"],
+                                 f"the rover could not act for "
+                                 f"{self.now() - since:.0f} s: "
+                                 + "; ".join(one["why"] for one in gates))
+                else:
+                    self.idle(IDLE_S)
+            else:
+                self.idle(IDLE_S)
+            return {"episode": episode, "acted": False, "why": why}
+        self._gated_since = None
 
         candidate = decision["preferred"]["candidate"]
         inspecting = candidate["type"] == hypotheses.GOAL_TYPE
@@ -626,6 +680,68 @@ class Executive:
         self.store.close_episode(episode, "interrupted", detail=stop.why)
         self.log(f"aborted: {stop.why}")
 
+    def go_back(self, here: situation_mod.Situation, inputs: str,
+                why: str) -> dict[str, Any]:
+        """Drive back to where the run started, and end the run.
+
+        **The last turn of a run with nothing left worth doing.** Its own
+        episode with a decision of its own, so that the drive is attributable
+        like every other; the deliberation that found nothing is closed already.
+        The drive names the map the run started on, so that the daemon refuses
+        it rather than translating it if the map has been replaced since. Getting
+        back is attempted once: a refusal or a failure ends the run where the
+        rover is, and says so.
+        """
+        self.finished = True
+        generation = (here.world_generation
+                      if here.world_generation != refs.UNKNOWN else None)
+        episode = self.store.open_episode(
+            RETURN_TRIGGER, world_generation=generation,
+            map_session=here.map_session,
+            note="the run's last turn: back to where it started, then the run "
+                 "is handed back")
+        self.episode = episode
+        start = self.start or {}
+        where = here.where
+        if start.get("x_m") is None or start.get("y_m") is None:
+            ended = (f"{why}; the run did not record where it started, so the "
+                     f"rover stayed where it was")
+            self.store.append(episode, events.decision(RETURN_GOAL, ended, inputs))
+            self.store.close_episode(episode, "abandoned", detail=ended)
+        elif where is not None and math.hypot(
+                where[0] - float(start["x_m"]),
+                where[1] - float(start["y_m"])) <= HOME_NEAR_M:
+            ended = f"{why}; it was already where the run started"
+            self.store.append(episode, events.decision(RETURN_GOAL, ended, inputs))
+            self.store.close_episode(episode, "succeeded", detail=ended)
+        else:
+            x, y = float(start["x_m"]), float(start["y_m"])
+            say = f"back to ({x:.2f}, {y:.2f}), where the run started"
+            self.store.append(episode, events.decision(
+                RETURN_GOAL, f"{why}; so {say}", inputs))
+            params: dict[str, Any] = {"x_m": x, "y_m": y, "said": say}
+            if start.get("heading_deg") is not None:
+                params["heading_deg"] = float(start["heading_deg"])
+            if start.get("map_id") is not None:
+                params["map_id"] = start["map_id"]
+            try:
+                self.state = "EXECUTE"
+                self.do(episode, {"action": "drive_to", "params": params},
+                        {"id": RETURN_GOAL, "type": RETURN_GOAL})
+            except Aborted as stop:
+                self.state = "ABORT"
+                self.give_up(episode, stop)
+                ended = (f"{why}; it could not get back to where the run "
+                         f"started: {stop.why}")
+            else:
+                ended = f"{why}; it went back to where the run started"
+                self.store.close_episode(episode, "succeeded", detail=ended)
+        self.state = "IDLE"
+        self.ended = ended
+        self.log(ended)
+        self.release(ended)
+        return {"episode": episode, "ended": ended}
+
     # --- talking to the rover -----------------------------------------------
 
     def renew(self, soft: bool = False) -> str:
@@ -818,6 +934,11 @@ def main(argv: list[str] | None = None) -> int:
     weights = scoring.Weights.load(args.dir)
     if args.m0a:
         weights.m0a_protocol = True
+    else:
+        # A run goes further afield when nothing nearer is worth doing, and
+        # goes back and ends only when nothing anywhere is. M0a's protocol is
+        # frozen and keeps the scorer as it was.
+        weights.go_further = True
     rover = client_mod.Acting(args.host, args.port)
     executive = Executive(store, rover, weights)
 

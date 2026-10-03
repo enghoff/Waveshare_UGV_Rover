@@ -7,6 +7,7 @@ the reasoning being redone.
 
 | Record | Status | Question it settles |
 |---|---|---|
+| [a-run-with-nothing-to-do-goes-home.md](a-run-with-nothing-to-do-goes-home.md) | agreed 2026-10-03 | why a run with nothing nearby goes further afield, and with nothing anywhere drives back to where it started and ends, instead of waiting on a draining battery; adds R-AUT-13 |
 | [runs-start-from-the-console-or-an-agent.md](runs-start-from-the-console-or-an-agent.md) | agreed 2026-10-03 | why a run starts from one console press with no time or distance limit, or from an agent's call with its own budget, and may follow a person's stop; retires R-SAFE-10 |
 | [bearings-are-measured-not-required.md](bearings-are-measured-not-required.md) | agreed 2026-10-03 | why bearings are measured and claimed honestly instead of held to the resolver's 1.5 degrees; retires R-WS-10 |
 | [autonomous-runs-have-no-battery-floor.md](autonomous-runs-have-no-battery-floor.md) | agreed 2026-10-02 | why an autonomous run ends on the board's own cutoff rather than an 11.2 V reserve |

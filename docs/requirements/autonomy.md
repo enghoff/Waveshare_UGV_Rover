@@ -252,3 +252,22 @@ does not refill them; every attempt is recorded, and nothing acts on which thing
 it was. See [the replay](../progress/2026-10-01-hypothesis-inspection-replay.md),
 [autonomy/README.md](../../autonomy/README.md) and
 [world_state/README.md](../../world_state/README.md).
+
+<a id="r-aut-13"></a>
+### R-AUT-13 — A run with nothing left worth doing goes further, then back to where it started, and ends
+
+- **State:** open
+- **Blocked by:** a run on the rover that ends this way; see [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
+
+A run never stands still waiting for something to become worth doing. When
+nothing nearby is worth its cost, it takes the goal whose only fault is the trip;
+vetoes and the minimum gain still apply. When nothing anywhere is worth doing, it
+drives back to where the rover stood when the run was started, on that map, and
+ends the run without latching. A rover that cannot act at all waits two minutes,
+then does the same. A run that stood about on a draining battery, or ended
+somewhere nobody chose while it could still get back, would violate this.
+
+**Built and tested on 2026-10-03, not yet shown on the rover.** The daemon keeps
+where each run started; the executive goes back and hands the run in. See
+[the decision](../decisions/a-run-with-nothing-to-do-goes-home.md) and
+[autonomy/README.md](../../autonomy/README.md).

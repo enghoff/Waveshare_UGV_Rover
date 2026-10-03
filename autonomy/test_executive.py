@@ -179,45 +179,97 @@ def test_every_movement_names_the_episode_and_the_action_that_asked_for_it():
     session.close()
 
 
-def test_a_turn_with_nothing_worth_doing_idles_without_acting():
-    # No things to look at and no unmapped floor: nothing to propose.
-    rover = test_fakes.ActingRover(room=["#####",
-                                         "#...#",
-                                         "#.R.#",
-                                         "#####"], entities=[])
+#: A room with nothing in it to look at and no unmapped floor: a run here has
+#: nothing worth doing from the start.
+EMPTY = ["##########",
+         "#........#",
+         "#..R.....#",
+         "#........#",
+         "##########"]
+
+
+def test_a_run_with_nothing_left_worth_doing_goes_back_and_ends():
+    """The owner's word on 2026-10-03: not fifteen minutes of standing about on
+    a draining battery, but back to where the run started, and the run over."""
+    rover = test_fakes.ActingRover(room=EMPTY, entities=[])
     session = Session(rover=rover)
-    got = session.executive.once()
-    check("nothing was acted on", got["acted"], False)
-    check("...and nothing was sent to the rover", rover.moves, [])
-    check("...but the turn is still an episode",
-          session.store.outcome(got["episode"])["outcome"], "abandoned")
-    check("...and it waited rather than spinning",
-          round(sum(session.slept), 1), executive_mod.IDLE_S)
+    start = rover.permission.run.start
+    rover.at = (start["x_m"] + 0.5, start["y_m"])
+    _arriving(session)
+    summary = session.executive.loop()
+    check("it drove back to where the run started",
+          {k: rover.moves[-1].get(k) for k in ("x_m", "y_m", "heading_deg")},
+          {k: start[k] for k in ("x_m", "y_m", "heading_deg")})
+    check("...on the map the run started on", rover.moves[-1]["map_id"],
+          start["map_id"])
+    check("...and the run is over", rover.permission.status()["enabled"], False)
+    check("...for that reason, not a stop",
+          (rover.permission.status()["latched"],
+           "nothing left worth doing" in summary["ended"]), (False, True))
+    check("...without waiting first", sum(session.slept) < executive_mod.IDLE_S,
+          True)
+    home = session.episodes()[0]
+    events = session.events(home["ref"])
+    decision = next(one for one in events if one["kind"] == "decision")
+    check("the trip is an episode with a decision of its own",
+          decision["body"]["chose"], executive_mod.RETURN_GOAL)
+    check("...and the drive in it",
+          [one["call"] for one in session.calls(home["ref"])], ["drive_to"])
+    session.close()
+
+
+def test_a_run_already_where_it_started_ends_without_driving():
+    rover = test_fakes.ActingRover(room=EMPTY, entities=[])
+    session = Session(rover=rover)
+    summary = session.executive.loop()
+    check("nothing was sent to the rover", rover.moves, [])
+    check("...and the run is over", rover.permission.status()["enabled"], False)
+    check("...saying it was already there",
+          "already" in summary["ended"], True)
+    session.close()
+
+
+def test_a_run_that_cannot_act_waits_a_while_then_goes_back():
+    """A camera that has failed is a gate, not nothing to do: it may clear, so
+    the run waits -- but not for ever, which is the battery again."""
+    rover = test_fakes.ActingRover(room=EMPTY, entities=[])
+    session = Session(rover=rover)
+    start = rover.permission.run.start
+    rover.at = (start["x_m"] + 0.5, start["y_m"])
+    rover.world_status = "error"
+    _arriving(session)
+    summary = session.executive.loop()
+    check("it waited before giving up",
+          sum(session.slept) >= executive_mod.GATED_GIVE_UP_S, True)
     check("...in naps short enough to renew through",
           max(session.slept) <= executive_mod.IDLE_NAP_S, True)
-    check("...so the run is still alive at the end of the wait",
-          rover.permission.status()["enabled"], True)
+    check("...then went back", (rover.moves[-1]["x_m"], rover.moves[-1]["y_m"]),
+          (start["x_m"], start["y_m"]))
+    check("...and ended the run saying why",
+          ("could not act" in summary["ended"],
+           rover.permission.status()["enabled"]), (True, False))
     session.close()
 
 
 def test_standing_still_is_not_mistaken_for_a_dead_executive():
     """The fault the rover found on the first turn it was ever asked for.
 
-    A parked rover with nothing worth doing is the ordinary case, and the wait
-    that follows is twice the length of the permission's lease. A loop that
-    slept through it in one go stopped renewing, and the daemon -- correctly, by
-    its own rules -- took the wheels back from an executive that was merely
-    waiting for the room to change.
+    A rover that cannot act just now waits, and the wait is twice the length of
+    the permission's lease. A loop that slept through it in one go stopped
+    renewing, and the daemon -- correctly, by its own rules -- took the wheels
+    back from an executive that was merely waiting for the room to change.
     """
-    rover = test_fakes.ActingRover(room=["#####",
-                                         "#...#",
-                                         "#.R.#",
-                                         "#####"], entities=[])
+    rover = test_fakes.ActingRover(room=EMPTY, entities=[])
+    rover.world_status = "error"
     session = Session(rover=rover)
     check("the wait is longer than the lease",
           executive_mod.IDLE_S > permission.PERMIT_TTL_S, True)
-    session.executive.once()
-    check("and the run survives it", rover.permission.status()["enabled"], True)
+    got = session.executive.once()
+    check("nothing was acted on", got["acted"], False)
+    check("...but the turn is still an episode",
+          session.store.outcome(got["episode"])["outcome"], "abandoned")
+    check("and the run survives the wait",
+          rover.permission.status()["enabled"], True)
     check("...having been renewed several times",
           (rover.permission.permit or {}).get("renewals", 0) >= 2, True)
     session.close()
@@ -546,7 +598,9 @@ TESTS = (
     test_one_turn_drives_looks_and_writes_down_what_changed,
     test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it,
     test_every_movement_names_the_episode_and_the_action_that_asked_for_it,
-    test_a_turn_with_nothing_worth_doing_idles_without_acting,
+    test_a_run_with_nothing_left_worth_doing_goes_back_and_ends,
+    test_a_run_already_where_it_started_ends_without_driving,
+    test_a_run_that_cannot_act_waits_a_while_then_goes_back,
     test_standing_still_is_not_mistaken_for_a_dead_executive,
     test_a_loop_that_did_what_it_was_asked_says_that_rather_than_a_riddle,
     test_a_person_stopping_the_rover_ends_the_turn_and_the_loop,

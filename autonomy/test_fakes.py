@@ -180,6 +180,9 @@ class FakeRover(client.ReadOnly):
         self.entities = list(entities or [])
         self.asked: list[str] = []
         self.down = False
+        #: How the world state's last look went, when a test wants it to have
+        #: failed; None leaves it out, as a store that has never looked does.
+        self.world_status: str | None = None
 
     def _ask(self, name, arguments):
         self.asked.append(name)
@@ -196,6 +199,10 @@ class FakeRover(client.ReadOnly):
                    "world_generation": self.generation}
         if self.generation is None:
             summary.pop("world_generation")
+        if self.world_status is not None:
+            summary.update({"last_status": self.world_status,
+                            "last_detail": "the camera did not answer",
+                            "last_at": self.clock()})
         return {"ok": True, "summary": summary, "backend": "fake"}
 
     def _world_state_entities(self, _arguments):
@@ -280,8 +287,13 @@ class FakeRover(client.ReadOnly):
         """What the console's button or an agent does. Not a call: no client
         here may make it, which is the point of it being a method on the fake
         rover rather than one more entry in the allow-list."""
-        return self.permission.enable(via=via, why="a check",
-                                      budget=budget)["run"]["id"]
+        nav = self._nav_status({})
+        pose = nav["pose"]
+        return self.permission.enable(
+            via=via, why="a check", budget=budget,
+            start={"x_m": pose["x_m"], "y_m": pose["y_m"],
+                   "heading_deg": pose["heading_deg"],
+                   "map_id": nav["map_id"]})["run"]["id"]
 
     def _conditions(self) -> dict:
         nav = self._nav_status({})

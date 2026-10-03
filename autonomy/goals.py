@@ -45,6 +45,7 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable
 
+import cooling
 import mapgrid
 import refs
 from situation import Situation
@@ -54,7 +55,9 @@ from situation import Situation
 #: driving to and the world state holds over a hundred things, and scoring all
 #: of them would cost seconds of a rover that is deciding every minute. The
 #: orderings they cut are `frontier.py`'s own cost and the plainest measure of
-#: how badly a thing is placed, so what is dropped is the tail of both.
+#: how badly a thing is placed, so what is dropped is the tail of both. Only
+#: things that could be acted on count against the second: see
+#: `improve_geometry`.
 FRONTIER_LIMIT = 8
 ENTITY_LIMIT = 12
 
@@ -279,8 +282,21 @@ def improve_geometry(situation: Situation) -> list[Candidate]:
     generation = (situation.world_generation
                   if situation.world_generation != refs.UNKNOWN else None)
     out: list[Candidate] = []
-    for entity in _worth_looking_at(situation)[:ENTITY_LIMIT]:
-        out.extend(_viewpoints(situation, reach, entity, generation))
+    counted = 0
+    for entity in _worth_looking_at(situation):
+        if counted >= ENTITY_LIMIT:
+            break
+        found = _viewpoints(situation, reach, entity, generation)
+        out.extend(found)
+        # **Only a thing that could be acted on takes up one of the places.**
+        # One put aside, or with nowhere to stand, is still offered so that its
+        # refusal is recorded, but on 2026-10-03 twelve of those filled the list
+        # and run 4 had nothing to do while 54 other placed things waited.
+        target = str(entity.get("id") or "")
+        if (cooling.cooling(situation.cooled, target, now=situation.at) is None
+                and any(one.constraints.get("reachable_m") is not None
+                        for one in found)):
+            counted += 1
     return out
 
 

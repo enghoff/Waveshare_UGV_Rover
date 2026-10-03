@@ -225,6 +225,9 @@ def _decision_why(got: dict[str, Any]) -> str:
     if preferred is None:
         return got["why_nothing"]
     why = preferred["candidate"]["why"]
+    if got.get("further"):
+        why += ("; it costs more than it gains, and is taken because nothing "
+                "nearer is worth doing")
     if got["chose"]:
         return why
     # The gate's own words rather than the standalone sentence, which begins by
