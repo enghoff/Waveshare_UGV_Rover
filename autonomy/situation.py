@@ -155,6 +155,13 @@ class Situation:
         return list(self.body.get("cooled") or [])
 
     @property
+    def unreachable(self) -> list[dict[str, Any]]:
+        """Places navigation could not get the rover to, lately. Part of the
+        situation for the same reason the cooling list is -- see
+        `cooling.after_failed_drive`."""
+        return list(self.body.get("unreachable") or [])
+
+    @property
     def previous_goal(self) -> dict[str, Any]:
         """What the last deliberation would have done, if it wanted anything.
 

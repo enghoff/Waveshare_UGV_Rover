@@ -297,6 +297,17 @@ def vetoes(candidate: goals_mod.Candidate, situation: Situation,
     if cool:
         out.append({"veto": "cooling off", "why": str(cool.get("why") or
                                                       "recently got nowhere")})
+    goal = facts.get("goal") or {}
+    if goal.get("x_m") is not None and goal.get("y_m") is not None:
+        failed = cooling.unreachable_near(situation.unreachable,
+                                          float(goal["x_m"]), float(goal["y_m"]),
+                                          now=situation.at)
+        if failed:
+            out.append({"veto": "could not get there",
+                        "why": (f"navigation could not get the rover within "
+                                f"{cooling.UNREACHABLE_M} m of here "
+                                f"{(situation.at - float(failed['since'])) / 60:.0f}"
+                                f" min ago: {failed.get('why')}")})
     out.extend(_inspection_vetoes(candidate, weights))
     return out
 

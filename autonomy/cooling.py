@@ -140,6 +140,53 @@ def after_attempt(cooled: list[dict[str, Any]] | None, target: str,
     return kept
 
 
+#: How near a place navigation could not reach a goal has to be to count as the
+#: same place, and how long it is left alone. Half a metre is `frontier.py`'s
+#: blacklist radius -- the rover's width and a little, so the cell next door to
+#: a doorway it could not get through is the same doorway. Half an hour because
+#: the rover's own exploring writes such a place off for the rest of its run,
+#: and a run from the console can last much longer than one exploration.
+UNREACHABLE_M = 0.5
+UNREACHABLE_S = 1800.0
+
+
+def after_failed_drive(places: list[dict[str, Any]] | None,
+                       goal: dict[str, Any] | None, why: str, *,
+                       now: float) -> list[dict[str, Any]]:
+    """The places not to drive to, once a drive to `goal` has failed.
+
+    **The run's walk over the map is not navigation.** It counts free cells;
+    Nav2 plans with the rover's whole body, so a frontier the walk puts five
+    metres away can have no route the rover fits through. On 2026-10-03 one was
+    driven at four times, forty seconds of recoveries each, until three failures
+    in a row ended the run. The rover's own exploring keeps a blacklist for
+    exactly this (`frontier.py`); this is the run's.
+    """
+    kept = [dict(one) for one in places or []
+            if float(one.get("until") or 0.0) > float(now)]
+    if not goal or goal.get("x_m") is None or goal.get("y_m") is None:
+        return kept
+    kept.append({"x_m": round(float(goal["x_m"]), 3),
+                 "y_m": round(float(goal["y_m"]), 3),
+                 "since": float(now), "until": float(now) + UNREACHABLE_S,
+                 "why": str(why)[:300]})
+    return kept
+
+
+def unreachable_near(places: list[dict[str, Any]] | None, x: float, y: float,
+                     *, now: float) -> dict[str, Any] | None:
+    """The place navigation could not reach that a goal at (x, y) is, if any."""
+    for one in places or []:
+        if float(one.get("until") or 0.0) <= float(now):
+            continue
+        if (abs(float(one["x_m"]) - x) <= UNREACHABLE_M
+                and abs(float(one["y_m"]) - y) <= UNREACHABLE_M
+                and ((float(one["x_m"]) - x) ** 2 + (float(one["y_m"]) - y) ** 2
+                     <= UNREACHABLE_M ** 2)):
+            return one
+    return None
+
+
 def cooling(cooled: list[dict[str, Any]] | None, target: str, *,
             now: float) -> dict[str, Any] | None:
     """The entry cooling this target, if one is in force."""

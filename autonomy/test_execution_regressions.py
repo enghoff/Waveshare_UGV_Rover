@@ -2,11 +2,25 @@ from test_executive import Session
 from test_harness import check
 import client
 import events
+import scenarios
 import summary
+import test_fakes
+
+
+#: A room with three things far enough apart that a drive which fails at one
+#: does not set the others aside: a failed place is not driven at again since
+#: 2026-10-03, so three failures in a row need three places.
+WIDE = ["#" * 100, *(["#" + "." * 98 + "#"] * 3),
+        "#" + "." * 48 + "R" + "." * 49 + "#",
+        *(["#" + "." * 98 + "#"] * 3), "#" * 100]
 
 
 def test_recovery_stop_does_not_forgive_failed_goals():
-    session = Session()
+    x, y = test_fakes.rover_at(WIDE)
+    things = [scenarios.thing(f"object:{n}", x + dx, y + 0.2, uncertainty_m=1.4,
+                              looks=5, ranged=0)
+              for n, dx in ((1, -4.0), (2, 0.0), (3, 4.0))]
+    session = Session(rover=test_fakes.ActingRover(room=WIDE, entities=things))
     original = session.rover._autonomy_status
     def failed(args):
         if session.rover.driving:

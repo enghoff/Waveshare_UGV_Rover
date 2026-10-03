@@ -118,7 +118,28 @@ def test_a_goal_that_helped_or_lost_its_thing_puts_nothing_aside() -> None:
                                 now=NOW), other)
 
 
+def test_a_place_navigation_could_not_reach_is_set_aside_for_a_while() -> None:
+    """Found on 2026-10-03: one frontier the rover could not fit through to was
+    driven at four times, forty seconds of recoveries each, until three
+    failures in a row ended the run."""
+    places = cooling.after_failed_drive([], {"x_m": -18.0, "y_m": -19.36},
+                                        "blocked: no route it fits through",
+                                        now=NOW)
+    check("the place is written down", len(places), 1)
+    check("...a goal within half a metre of it is refused",
+          bool(cooling.unreachable_near(places, -17.8, -19.41, now=NOW + 60.0)),
+          True)
+    check("...one further off is not",
+          cooling.unreachable_near(places, -17.0, -19.36, now=NOW + 60.0), None)
+    check("...and it lapses",
+          cooling.unreachable_near(places, -18.0, -19.36,
+                                   now=NOW + cooling.UNREACHABLE_S + 1.0), None)
+    check("a goal with no place to it writes nothing down",
+          cooling.after_failed_drive(places, {}, "why", now=NOW), places)
+
+
 TESTS = (
+    test_a_place_navigation_could_not_reach_is_set_aside_for_a_while,
     test_a_goal_that_left_its_thing_no_better_puts_it_aside_at_once,
     test_a_goal_that_helped_or_lost_its_thing_puts_nothing_aside,
     test_looking_again_and_learning_nothing_puts_a_thing_aside,

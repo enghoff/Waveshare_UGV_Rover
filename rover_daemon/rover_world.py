@@ -1220,6 +1220,8 @@ class RoverWorld:
 
         aim = arguments.get("aim_at")
         aimed: dict[str, Any] = {}
+        #: Whether this look moved the gimbal, and so owes it a return to rest.
+        moved: list[bool] = []
 
         def tilted() -> None:
             # Set from below like rest is, once the camera is held so that no
@@ -1229,12 +1231,22 @@ class RoverWorld:
             if isinstance(aim, dict) and aim.get("x_m") is not None:
                 aimed.update(self._aim_pan(aim))
                 pan = aimed.get("pan_deg") or 0.0
+            # **Not moved at all when it is already where it would be put.**
+            # Each move is a 30 degree undershoot and back, and an aimed look
+            # used to make two -- there and back to rest -- even when the aim
+            # was straight ahead, which it often is once the drive has turned
+            # the rover to face the thing (seen on 2026-10-03).
+            if tilt is None and round(pan) == 0 and self.gimbal_at_rest():
+                aimed["gimbal"] = "already at rest, straight ahead; not moved"
+                return
+            moved.append(True)
             self.centre_gimbal(None if tilt is None else float(tilt), pan_deg=pan)
             time.sleep(TILT_SETTLE_S)
 
         moves_gimbal = tilt is not None or isinstance(aim, dict)
 
         def look(fresh: bool) -> dict[str, Any]:
+            moved.clear()
             try:
                 return self._world_inspector().inspect(
                     settle=True if settle is None else bool(settle),
@@ -1242,7 +1254,7 @@ class RoverWorld:
                     wait_s=CHECK_LOOK_WAIT_S if wait else 0.0,
                     before=tilted if moves_gimbal else None)
             finally:
-                if moves_gimbal:
+                if moved:
                     # Back to rest, so the next ordinary look is taken from
                     # where it always is.
                     self.centre_gimbal()

@@ -141,6 +141,23 @@ def test_a_run_goes_further_when_nothing_nearer_is_worth_doing() -> None:
           scoring.consider(small, further, authority=True)["preferred"], None)
 
 
+def test_a_place_navigation_could_not_reach_is_refused_with_its_reason() -> None:
+    import cooling
+    here = _situation(entities=[_a_thing_worth_looking_at()])
+    before = scoring.consider(here, authority=True)
+    goal = before["preferred"]["candidate"]["constraints"]["goal"]
+    body = a_situation(ROOM, entities=[_a_thing_worth_looking_at()])
+    body["unreachable"] = cooling.after_failed_drive(
+        [], goal, "blocked: no route it fits through", now=body["at"])
+    got = scoring.consider(Situation(body), authority=True)
+    refused = [one for one in got["considered"]
+               if one["candidate"]["id"] == before["preferred"]["candidate"]["id"]]
+    check("the goal is refused",
+          [one["veto"] for one in refused[0]["vetoes"]], ["could not get there"])
+    check("...saying what navigation said", "no route" in refused[0]["vetoes"][0]["why"],
+          True)
+
+
 def test_changing_its_mind_costs_something_and_sticking_does_not() -> None:
     body = a_situation(ROOM, entities=[_a_thing_worth_looking_at()])
     plain = Situation(body)
@@ -257,6 +274,7 @@ TESTS = (
     test_being_reachable_is_not_a_reason_to_drive,
     test_a_candidate_that_costs_more_than_it_is_worth_loses_to_standing_still,
     test_a_run_goes_further_when_nothing_nearer_is_worth_doing,
+    test_a_place_navigation_could_not_reach_is_refused_with_its_reason,
     test_changing_its_mind_costs_something_and_sticking_does_not,
     test_a_thing_that_has_been_put_aside_is_refused_with_its_reason,
     test_a_safe_area_refuses_what_is_outside_it,

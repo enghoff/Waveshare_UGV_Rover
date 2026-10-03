@@ -68,6 +68,9 @@ RECORD_LIMIT = 64
 SITUATION_MARK = "last_situation"
 GOAL_MARK = "last_goal"
 COOLED_MARK = "cooled"
+#: Places navigation could not get the rover to, written by the executive when
+#: a drive fails. See `cooling.after_failed_drive`.
+UNREACHABLE_MARK = "unreachable"
 #: One row per hypothesis inspection attempt, appended by the executive when the
 #: attempt ends however it ends. Read whole into every situation so that a place
 #: already answered, or already spent, is refused from the record.
@@ -89,6 +92,9 @@ def prepare(store: store_mod.EpisodeStore,
     was_cooled = _loads(store.marked(COOLED_MARK)) or []
     here.body["cooled"] = cooling.update(previous, here.body, was_cooled,
                                          now=here.at)
+    here.body["unreachable"] = [
+        one for one in _loads(store.marked(UNREACHABLE_MARK)) or []
+        if float(one.get("until") or 0.0) > here.at]
     here.body["previous_goal"] = _loads(store.marked(GOAL_MARK)) or {}
     here.body["inspections"] = inspections(store)
     return here

@@ -316,6 +316,15 @@ class Rover(RoverCamera, RoverWifi, RoverNav, RoverWorld, RoverRecall, RoverDept
         self._pan_sent = float(target)
         return True
 
+    def gimbal_at_rest(self) -> bool:
+        """Was the camera last sent to rest -- straight ahead, at the rest tilt,
+        the pan reached from below -- so that a look aimed there need not move
+        it? Read from the commands sent, the only account there is: the servos
+        have no feedback."""
+        with self._lock:
+            return (self._pan_sent == 0.0 and self.pan_approach == 1
+                    and round(self.tilt) == round(REST_TILT_DEG))
+
     def centre_gimbal(self, tilt_deg: float | None = None,
                       pan_deg: float = 0.0) -> bool:
         """Back to rest: straight ahead, and REST_TILT_DEG above level.

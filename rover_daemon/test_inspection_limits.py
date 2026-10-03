@@ -212,6 +212,40 @@ def test_a_check_look_is_aimed_from_the_measured_heading():
           aimed(0.0, 0.0, {"x_m": 0.0, "y_m": 1.0})["pan_deg"], -20.0)
 
 
+def test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there():
+    """Seen on 2026-10-03: every aimed look swung the gimbal to aim and swung it
+    back to rest, each by way of a 30 degree undershoot, even when the aim was
+    straight ahead and the camera was already there."""
+    from types import SimpleNamespace
+
+    import rover_world
+
+    def look(pan, *, at_rest=True, tilt=None):
+        moves = []
+        rover = SimpleNamespace(
+            _world_ready=lambda: "",
+            _world_inspector=lambda: SimpleNamespace(
+                inspect=lambda before=None, **kwargs: (
+                    before() if before else None) or {"ok": True}),
+            centre_gimbal=lambda *a, **k: moves.append((a, k)) or True,
+            gimbal_at_rest=lambda: at_rest,
+            _aim_pan=lambda aim: {"pan_deg": pan})
+        args = {"settle": True, "aim_at": {"x_m": 1.0, "y_m": 0.0}}
+        if tilt is not None:
+            args["tilt_deg"] = tilt
+        got = rover_world.RoverWorld._tool_world_inspect(rover, args)
+        return len(moves), got
+
+    moved, got = look(0.0)
+    check("an aim straight ahead with the camera at rest moves nothing", moved, 0)
+    check("...and says so", "not moved" in got["aimed"].get("gimbal", ""), True)
+    check("an aim ten degrees round moves it there and back",
+          look(-10.0)[0], 2)
+    check("...as does straight ahead when the camera is not known to be at rest",
+          look(0.0, at_rest=False)[0], 2)
+    check("...or a look at the other tilt", look(0.0, tilt=0.0)[0], 2)
+
+
 def test_a_check_look_whose_depth_service_was_down_is_taken_once_more():
     """Found in M0a's runs of 2026-10-02: four check looks in eleven kept no
     depth because the depth service was restarting after the camera dropped off
@@ -294,6 +328,7 @@ TESTS = (
     test_the_watchdog_stops_a_drive_at_the_attempts_limit_and_not_the_run,
     test_a_look_may_be_taken_at_the_two_calibrated_tilts_only,
     test_a_check_look_is_aimed_from_the_measured_heading,
+    test_a_look_aimed_straight_ahead_does_not_move_a_gimbal_already_there,
     test_a_check_look_whose_depth_service_was_down_is_taken_once_more,
     test_an_autonomous_look_waits_for_the_rovers_own_look,
 )

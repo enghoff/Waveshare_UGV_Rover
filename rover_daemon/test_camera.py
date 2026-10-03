@@ -552,6 +552,12 @@ def test_centring_the_gimbal_arrives_from_below_on_purpose() -> None:
               pans, [-rover.APPROACH_UNDERSHOOT_DEG, 0])
         check("...ending where it always did", machine.pan, 0.0)
         check("...and knowing it got there from below", machine.pan_approach, 1)
+        check("...so it is known to be at rest", machine.gimbal_at_rest(), True)
+        machine.call("look_at", {"pan": 10})
+        check("...until anything turns it", machine.gimbal_at_rest(), False)
+        machine.call("look_at", {"pan": 0})
+        check("...and coming back without the undershoot is not rest either",
+              machine.gimbal_at_rest(), False)
 
         # A board that will not take the undershoot must still centre. Losing
         # the claim to know the approach is the cost; not centring would be a

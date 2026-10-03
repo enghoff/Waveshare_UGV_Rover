@@ -249,6 +249,14 @@ for one the rover's own looking is already taking, rather than failing the goal.
 what was hoped for. **ABORT** is any of that going wrong, and closes the episode
 `interrupted` with the reason.
 
+**A place navigation could not get to is not driven at again for half an
+hour.** The run's walk over the map counts free cells, and Nav2 plans with the
+rover's whole body, so a goal the walk calls five metres away can have no route
+the rover fits through. When a drive fails or times out, the executive writes
+the goal's place down (`cooling.after_failed_drive`), and any goal within half
+a metre of it is refused as "could not get there", the way the rover's own
+exploring blacklists a frontier it could not reach.
+
 **A run with nothing left worth doing goes back and ends.** When a turn finds
 nothing worth doing, even further afield, the executive drives back to where the
 daemon recorded the rover standing when the run was opened, on that map, and

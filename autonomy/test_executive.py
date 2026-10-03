@@ -21,7 +21,10 @@ from __future__ import annotations
 import tempfile
 from typing import Any
 
+import math
+
 import client
+import cooling
 import executive as executive_mod
 import permission
 import scoring
@@ -573,6 +576,42 @@ def _chose(session: Session, episode: str) -> str:
     return str(decisions[-1].get("chose") or "") if decisions else ""
 
 
+def _blocked(session: Session) -> None:
+    """Every drive fails the way Nav2 failed on 2026-10-03."""
+    original = session.rover._autonomy_status
+
+    def once(arguments):
+        rover = session.rover
+        if rover.driving:
+            rover.arrive("blocked: there is no route to there that the rover "
+                         "fits through")
+        return original(arguments)
+
+    session.rover._autonomy_status = once
+
+
+def _place(chose: str) -> tuple[float, float]:
+    x, y = chose.rsplit("@", 1)[1].split(",")
+    return float(x), float(y)
+
+
+def test_a_place_navigation_could_not_reach_is_not_driven_to_again():
+    """Found on 2026-10-03: the same frontier, one the rover could not fit
+    through to, was driven at four times, forty seconds of recoveries each,
+    until three failures in a row ended the run."""
+    session = Session()
+    _blocked(session)
+    first = session.executive.once()
+    check("the drive failed", first["outcome"], "interrupted")
+    was = _place(_chose(session, first["episode"]))
+    second = session.executive.once()
+    chose = _chose(session, second["episode"])
+    check("the next turn goes somewhere else, or nowhere",
+          "@" not in chose or math.dist(was, _place(chose)) > cooling.UNREACHABLE_M,
+          True)
+    session.close()
+
+
 def test_a_goal_that_got_nowhere_is_not_chosen_again():
     """The fault of 2026-10-03, run/e3efe1d1/2: the same look at object:7 was
     chosen twenty-two times in a row, because the look left it no better and
@@ -594,6 +633,7 @@ def test_a_goal_that_got_nowhere_is_not_chosen_again():
 
 
 TESTS = (
+    test_a_place_navigation_could_not_reach_is_not_driven_to_again,
     test_a_goal_that_got_nowhere_is_not_chosen_again,
     test_one_turn_drives_looks_and_writes_down_what_changed,
     test_a_geometry_goal_faces_its_thing_and_aims_the_look_at_it,

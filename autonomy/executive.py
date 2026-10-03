@@ -318,6 +318,7 @@ class Executive:
         candidate = decision["preferred"]["candidate"]
         inspecting = candidate["type"] == hypotheses.GOAL_TYPE
         request: dict[str, Any] | None = None
+        step: dict[str, Any] = {}
         try:
             self.state = "PLAN"
             plan = self.plan(candidate)
@@ -337,6 +338,17 @@ class Executive:
                 after["what"] = f"{said['outcome']}: {said.get('why')}"
         except Aborted as stop:
             self.state = "ABORT"
+            if (step.get("action") == "drive_to"
+                    and stop.code in ("failed", "timed out")):
+                # Navigation could not get there: written down where the next
+                # deliberation reads it, so the same place is not driven at
+                # again. See `cooling.after_failed_drive`.
+                places = decide_mod._loads(
+                    self.store.marked(decide_mod.UNREACHABLE_MARK)) or []
+                self.store.mark(decide_mod.UNREACHABLE_MARK, decide_mod._dumps(
+                    cooling.after_failed_drive(
+                        places, candidate["constraints"].get("goal"), stop.why,
+                        now=self.now())))
             if request is not None and "answered" not in request:
                 self.answered(episode, request, {
                     "outcome": "unresolved", "code": stop.code,
