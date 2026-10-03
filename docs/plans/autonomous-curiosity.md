@@ -195,11 +195,11 @@ work rather than this one's.
 
 The six taped targets of 2026-10-01 and their wall frame are in
 `captures/m0-2026-10-01/MANIFEST.txt`. On 2026-10-03 the owner reported the
-temporary ones gone: only the black cabinet and the painting above it are still
-where they were taped, and the landscape painting has not been confirmed. Those two
-stand at the same point along the wall, so from any stop they lie in nearly the same
-direction, and a driven acceptance run needs fresh targets chosen from things that
-stay put, taped from the same two walls. The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
+temporary ones gone: the black cabinet, the painting above it and the landscape
+painting over the dining table are still where they were taped. The cabinet and its
+painting stand at the same point along the wall, so from any stop they lie in nearly
+the same direction, and a driven acceptance run needs more targets chosen from things
+that stay put, taped from the same two walls. The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
 checks the OAK's offset on the rail. A further calibration, such as the third tilt
 the closure suggests, follows the protocol below.
 
