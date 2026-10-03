@@ -205,8 +205,12 @@ cooling off. Both run before the scoring, so a purpose weight of a thousand
 still buys nothing.
 
 **A thing that keeps taking looks and coming out no better is put aside.**
-[`cooling.py`](cooling.py) notices that between two deliberations, and the entry
-lapses either after fifteen minutes or the moment the placement really improves.
+[`cooling.py`](cooling.py) notices that between two deliberations, and so does
+the executive the moment one geometry goal leaves its thing no better: a look
+from where the rover already looked is the same picture, which is not recorded,
+so counting looks alone let one goal be chosen twenty-two times in a row. The
+entry lapses either after fifteen minutes or the moment the placement really
+improves.
 It is decided from the two readings rather than remembered, so it survives the
 recorder being stopped and started, and it is part of the inputs a decision is
 snapshotted with.
@@ -231,10 +235,12 @@ IDLE -> SELECT -> PLAN -> EXECUTE -> EVALUATE -> IDLE
 **IDLE** renews the permission and reads the rover. **SELECT** is the same
 `scoring.consider` a shadow run records, differing only in that the answer can
 now be acted on. **PLAN** turns the goal into a short list of admitted
-operations — a frontier goal is a drive, a geometry goal is a drive and then a
-look — and checks every one of them against the daemon's own list before the
-first is dispatched. **EXECUTE** sends them one at a time and waits for the ones
-that are not over when the call returns, renewing the permission as it polls.
+operations — a frontier goal is a drive, a geometry goal is a drive that ends
+facing the thing and then a look aimed at it — and checks every one of them
+against the daemon's own list before the first is dispatched. **EXECUTE** sends
+them one at a time and waits for the ones that are not over when the call
+returns, renewing the permission as it polls. A look waits up to five seconds
+for one the rover's own looking is already taking, rather than failing the goal.
 **EVALUATE** reads the rover again and records what actually changed rather than
 what was hoped for. **ABORT** is any of that going wrong, and closes the episode
 `interrupted` with the reason.
