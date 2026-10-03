@@ -93,3 +93,25 @@ labels are still the coding agent's own and have not been reviewed.
 | ...below 0.45, or the range misses by over 5 sigma, or the height by over 1.5 tolerances | 22 | 13 |
 
 So a single rule takes off about two in five wrong looks for about one right look in forty.
+
+## Refusing them at attach time instead, replayed
+
+The same test was then made where the resolver attaches a look, so that a wrong look never
+joins in the first place. A look was refused when its masked crop scored below a threshold
+against the thing's masked exemplars, at the point where the resolver already refuses a
+look whose resemblance collapses when masked. Today's session was replayed through the
+deployed resolver, and scored by look against the same labels.
+
+| Threshold | Things | Odd looks still with their object (of 46) | Right looks parted from their object (of 366) | Look-alike pairs within 0.5 m |
+|---|---:|---:|---:|---:|
+| none (deployed) | 182 | 46 | 0 | 23 |
+| 0.40 | 180 | 37 | 54 | 26 |
+| 0.45 | 182 | 23 | 73 | 27 |
+| 0.50 | 185 | 15 | 86 | 34 |
+
+The deployed replay reproduces today's rebuild exactly: 182 things, 2,860 looks attached.
+Each wrong look kept out costs two to six right looks parted from their object, and the
+duplicates rise. The same rule applied afterwards to the finished things cost 8 right looks
+for 17 wrong ones. At attach time a thing holds at most five masked exemplars, the newest,
+and a right look refused there goes on to start another thing. That is the likely
+reason, but it was not separately measured. Nothing was deployed.
