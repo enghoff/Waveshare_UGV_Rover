@@ -76,3 +76,19 @@ is not a given thing before it can be used.
 Three duplicates turned up while labelling: the green landscape painting is `object:246`
 and `object:351`, the cow painting `object:249` and `object:340`, and the blue painting of a
 building by the sea `object:383` and `object:400`.
+
+## Addendum, the same evening: the owner decided the unsure looks
+
+The owner went through the 19 unsure looks. Three belong to their thing: the cabinet
+photographed at night, and the same chair twice. None of the other 16 do. With that, the
+labels hold 46 odd looks and 366 right ones, with none unsure, and the odd ones include
+harder cases than before.
+
+| Taken off when | Odd looks taken off (of 46) | Right looks taken off (of 366) |
+|---|---:|---:|
+| the masked crop scores below 0.40 | 11 | 5 |
+| the masked crop scores below 0.45 | 17 | 8 |
+| ...below 0.45, or the measured range misses by over 5 sigma | 19 | 9 |
+| ...below 0.45, or the range misses by over 5 sigma, or the height by over 1.5 tolerances | 22 | 13 |
+
+So a single rule takes off about two in five wrong looks for about one right look in forty.
