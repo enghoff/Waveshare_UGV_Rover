@@ -189,9 +189,8 @@ accuracy bars ([the decision](../decisions/p0-measures-the-hardware.md)).
 what P0 leaves for later: the inspection check answers rarely, the depth camera
 drops off USB, small objects are never found, and bearing claims on moving looks
 are still smaller than their measured error. R-AUT-12, R-WS-11, R-WS-16 and
-R-SAFE-10 are settled. [R-WS-10](../requirements/world-state.md#r-ws-10) stays
-`failing`, and what is left of it is the [world-state plan](semantic-world-state.md)'s
-work rather than this one's.
+R-SAFE-10 are settled. [R-WS-10](../requirements/world-state.md#r-ws-10) was retired on
+2026-10-03 in favour of measured performance and honest per-look claims.
 
 The six taped targets of 2026-10-01 and their wall frame are in
 `captures/m0-2026-10-01/MANIFEST.txt`. On 2026-10-03 the owner reported the

@@ -8,9 +8,9 @@ these records are in [README.md](README.md); what actually runs is
 [world_state/README.md](../../world_state/README.md).
 
 This is the least settled part of the rover. The rules about evidence are in
-good shape and hold up under review; the geometry underneath them does not, and
-[R-WS-10](#r-ws-10) is currently the most consequential open fault on the
-machine.
+good shape and hold up under review; the geometry underneath them is measured
+rather than required since [R-WS-10](#r-ws-10) retired on 2026-10-03, and what it
+delivers is in the component's README.
 
 <a id="r-ws-1"></a>
 ### R-WS-1 — Every observation keeps the evidence it was made from
@@ -124,8 +124,12 @@ to be wrong.
 <a id="r-ws-10"></a>
 ### R-WS-10 — A recorded bearing is as accurate as the resolver is told to expect
 
-- **State:** failing
-- **Broken by:** [2026-09-07 M0 baseline](../progress/2026-09-07-m0-semantic-world-state.md)
+- **State:** retired
+- **Superseded by:** [../decisions/bearings-are-measured-not-required.md](../decisions/bearings-are-measured-not-required.md)
+
+**Retired on 2026-10-03.** The rover's bearings are measured and documented rather
+than held to the resolver's 1.5 degrees, and each look claims what looks like it have
+been measured to be worth. What follows is the history up to then.
 
 The resolver currently crosses bearings using an uncertainty setting of about
 a degree and a half. This is an assumption to validate, not a mechanical accuracy

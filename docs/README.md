@@ -24,17 +24,17 @@ the rover's behaviour that a plan can aim at and a measurement can move.
 
 <!-- begin: requirement summary (python docs/check_docs.py --write) -->
 
-| Area | `settled` | `failing` | `open` | `proposed` | Total |
-|---|---|---|---|---|---|
-| [Safety and authority](requirements/safety.md) | 7 | -- | 4 | 4 | 15 |
-| [Mapping and movement](requirements/navigation.md) | 10 | 1 | 2 | 1 | 14 |
-| [Visual memory](requirements/world-state.md) | 13 | 1 | 2 | -- | 16 |
-| [Control surface](requirements/control.md) | 10 | -- | -- | -- | 10 |
-| [Host and deployment](requirements/platform.md) | 11 | -- | -- | -- | 11 |
-| [Autonomy and its record](requirements/autonomy.md) | 11 | -- | 1 | -- | 12 |
-| **All** | **62** | **2** | **9** | **5** | **78** |
+| Area | `settled` | `failing` | `open` | `proposed` | `retired` | Total |
+|---|---|---|---|---|---|---|
+| [Safety and authority](requirements/safety.md) | 7 | -- | 4 | 4 | -- | 15 |
+| [Mapping and movement](requirements/navigation.md) | 10 | 1 | 2 | 1 | -- | 14 |
+| [Visual memory](requirements/world-state.md) | 13 | -- | 2 | -- | 1 | 16 |
+| [Control surface](requirements/control.md) | 10 | -- | -- | -- | -- | 10 |
+| [Host and deployment](requirements/platform.md) | 11 | -- | -- | -- | -- | 11 |
+| [Autonomy and its record](requirements/autonomy.md) | 11 | -- | 1 | -- | -- | 12 |
+| **All** | **62** | **1** | **9** | **5** | **1** | **78** |
 
-Currently failing: [R-NAV-6](requirements/navigation.md#r-nav-6), [R-WS-10](requirements/world-state.md#r-ws-10).
+Currently failing: [R-NAV-6](requirements/navigation.md#r-nav-6).
 
 <!-- end: requirement summary -->
 
