@@ -2,7 +2,17 @@
 """Two ways of turning a pool of bearings into things, on the same recording.
 
     python world_state/bench_cluster.py /tmp/run.db --frames /tmp/frames \
-        --map /tmp/map.json
+        --map /tmp/map.json --recompute-bearings
+    python world_state/bench_cluster.py /tmp/world.db --session 67 \
+        --map /tmp/map.json --only hard --budget 1500
+
+The first is how the drive of 2026-09-03 below was measured: that recording's
+bearings predate the lens it is judged through, so they are worked out again.
+A recording taken since keeps the bearings the rover stored, which carry the
+heading check's corrections. The second is how it was re-run on 2026-10-03 (see
+[the progress entry](../docs/progress/2026-10-03-whole-session-em.md)), and the
+budget is there because it did not finish: it stops after the first pass to end
+past that many seconds and says how far it got.
 
 **This is what the choice in `resolve.DISCOVERY` rests on**, and it exists
 because the two passes are not comparable by argument. `_pair_up` searches over
@@ -147,6 +157,14 @@ def main() -> int:
     parser.add_argument("--frame-size", default="640x480")
     parser.add_argument("--only", default="",
                         help="run one pass by name: pairs, soft or hard")
+    parser.add_argument("--session", type=int, default=0,
+                        help="replay only the looks taken under this map session")
+    parser.add_argument("--recompute-bearings", action="store_true",
+                        help="work every bearing out again through today's lens "
+                             "instead of replaying the ones the rover stored")
+    parser.add_argument("--budget", type=float, default=0.0,
+                        help="stop a pass's replay after this many seconds and "
+                             "say how far it got")
     args = parser.parse_args()
 
     if not os.path.exists(args.database):
@@ -156,11 +174,31 @@ def main() -> int:
             if args.frames else set())
     reach = replay_module.reach_from(args.map) if args.map else None
     groups = replay_module.inspections(args.database)
-    width, height = (int(part) for part in args.frame_size.lower().split("x"))
-    count, median = replay_module.remeasure(groups, (width, height))
-    print(f"  {count} bearings worked out again, median move {median:.2f} deg")
+    if args.session:
+        groups = [group for group in groups
+                  if group[0]["map_session"] == args.session]
+        print(f"  map session {args.session} alone: {len(groups)} looks")
+    if args.recompute_bearings:
+        width, height = (int(part) for part in args.frame_size.lower().split("x"))
+        count, median = replay_module.remeasure(groups, (width, height))
+        print(f"  {count} bearings worked out again, median move {median:.2f} deg")
 
     from . import cluster
+
+    class OutOfTime(Exception):
+        pass
+
+    unbudgeted = resolver.resolve
+
+    def budgeted(*a, **k):
+        """One resolve pass, and the clock checked after it."""
+        started = time.time()
+        got = unbudgeted(*a, **k)
+        clock["passes"] += 1
+        clock["slowest"] = max(clock["slowest"], time.time() - started)
+        if time.time() - clock["began"] > args.budget:
+            raise OutOfTime
+        return got
 
     arms = (("pairs", resolver._pair_up, None),
             ("soft", resolver._cluster_up, True),
@@ -174,12 +212,21 @@ def main() -> int:
             cluster.discover = (
                 lambda *a, **k: real(*a, **{**k, "soft": soft}))
         began = time.time()
+        clock = {"began": began, "passes": 0, "slowest": 0.0}
+        if args.budget:
+            resolver.resolve = budgeted
         try:
             entities, observations = replay_module.replay(
                 args.database, skip=skip, reach=reach, groups=groups)
+        except OutOfTime:
+            print(f"\n=== {name}   stopped after {time.time() - began:.0f} s at "
+                  f"look {clock['passes']} of {len(groups)}; slowest pass "
+                  f"{clock['slowest']:.1f} s")
+            continue
         finally:
             cluster.discover = real
             resolver.DISCOVERY = resolver._pair_up
+            resolver.resolve = unbudgeted
         took = time.time() - began
         print(f"\n=== {name}   ({took:.1f} s)")
         replay_module.score(entities, observations)

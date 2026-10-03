@@ -421,6 +421,11 @@ Useful replay and measurement tools remain beside the component:
   found again in the meantime; it writes nothing without `--apply`;
 - `bench_oak.py` measures the relationship between the two cameras;
 - `bench_bearing.py`, `bench_height.py` and `bench_cluster.py` compare geometry;
+- `bench_whole.py` replays one map session and then re-solves all of it at once
+  by `cluster.py`'s expectation-maximisation, seeded with what the resolver
+  ended up holding. It finds the duplicates the resolver leaves and loses too
+  many things to adopt
+  ([2026-10-03](../docs/progress/2026-10-03-whole-session-em.md));
 - `bench_perceive.py` and `bench_still.py` inspect model and capture behavior;
 - `bench_identity.py` scores a candidate identity remedy against
   [labels/m0-2026-09-08.json](labels/m0-2026-09-08.json), which is 76 things
