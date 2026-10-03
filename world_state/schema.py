@@ -231,4 +231,31 @@ SCHEMA = """
         width    INTEGER,
         height   INTEGER
     );
+    -- What a consolidation changed, so that it can be put back: one row per run,
+    -- every thing it started from as it stood, and every look it moved with where
+    -- that look was before. See consolidate.py.
+    CREATE TABLE IF NOT EXISTS consolidations (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        applied_at     REAL NOT NULL,
+        map_session    INTEGER NOT NULL,
+        generation     TEXT NOT NULL,
+        summary_json   TEXT,
+        rolled_back_at REAL
+    );
+    CREATE TABLE IF NOT EXISTS consolidation_entities (
+        run_id          INTEGER NOT NULL,
+        entity_id       TEXT NOT NULL,
+        row_json        TEXT NOT NULL,
+        exemplars       BLOB,
+        exemplars_alone BLOB,
+        PRIMARY KEY (run_id, entity_id)
+    );
+    CREATE TABLE IF NOT EXISTS consolidation_looks (
+        run_id         INTEGER NOT NULL,
+        observation_id INTEGER NOT NULL,
+        entity_before  TEXT,
+        note_before    TEXT,
+        entity_after   TEXT,
+        PRIMARY KEY (run_id, observation_id)
+    );
 """

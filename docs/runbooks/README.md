@@ -14,6 +14,7 @@ disagree, the runbook is a bug.
 | [autonomy-session.md](autonomy-session.md) | letting the rover choose where it goes, under supervision, and taking it back |
 | [rover-unresponsive.md](rover-unresponsive.md) | a rover that has dropped off the network |
 | [world-state-rebuild.md](world-state-rebuild.md) | reading the kept looks again and building the things again after a change to how looks are measured |
+| [world-state-consolidate.md](world-state-consolidate.md) | re-solving the session's things at once by EM, reviewing the result in the console, and rolling it back |
 
 ## What a runbook owes
 

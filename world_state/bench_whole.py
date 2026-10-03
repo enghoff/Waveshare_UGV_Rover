@@ -15,7 +15,8 @@ through the deployed resolver, then hands every ray of that session to
 [cluster.py](cluster.py)'s EM at once, seeded with what the resolver ended up
 holding, and scores both.
 
-**The EM is cluster.py's, with four changes, and each is here for a reason.**
+**The EM is [consolidate.py](consolidate.py)'s**, which is cluster.py's with four
+changes, each here for a reason; this bench is where they were found.
 
 * Seeded from the resolver's things rather than from every pairwise crossing.
   This is a consolidation pass over what the rover holds; 2,400 rays would be
@@ -64,228 +65,15 @@ import os
 import statistics
 import sys
 import time
-from collections import Counter
 
 if __package__ in (None, ""):                       # run as a script
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "world_state"
 
-from . import cluster, locate, resolve             # noqa: E402
+from . import resolve                               # noqa: E402
 from . import replay as replay_module               # noqa: E402
 from .bench_cluster import misses                   # noqa: E402
-from .store import _readable                        # noqa: E402
-
-_ROOT_2PI = math.sqrt(2.0 * math.pi)
-
-
-def _wrap(degrees):
-    return (degrees + 180.0) % 360.0 - 180.0
-
-
-class Session:
-    """Every ray of one map session, held as arrays for the E-step."""
-
-    def __init__(self, rows, reach):
-        import numpy as np
-
-        self.rows = rows
-        self.rays = []
-        for row in rows:
-            ray = resolve.ray_of(_readable(dict(row), vectors=True), reach)
-            if ray is not None:
-                self.rays.append((ray, row))
-        rays = [ray for ray, _row in self.rays]
-        self.index = {ray["observation_id"]: i for i, ray in enumerate(rays)}
-
-        def column(key, missing=np.nan):
-            return np.array([missing if ray.get(key) is None else float(ray[key])
-                             for ray in rays])
-
-        self.x, self.y = column("x_m"), column("y_m")
-        self.bearing = column("bearing_deg")
-        self.sigma = np.array([locate.sigma_of(ray) for ray in rays])
-        self.origin = column("origin_sigma_m", 0.0)
-        self.range = column("range_m")
-        self.ranged = ~np.isnan(self.range)
-        stated = column("range_sigma_m", 0.0)
-        self.range_sigma = np.where(stated > 0.0, stated, locate.RANGE_SIGMA_M)
-        self.reach = column("reach_m", np.inf) + locate.SEE_PAST_M
-        self.look = [ray.get("inference_id") for ray in rays]
-        looks: dict = {}
-        for index, key in enumerate(self.look):
-            looks.setdefault(key, []).append(index)
-        self.looks = list(looks.values())
-        nothing = cluster.CLUTTER_PER_DEG * cluster.CLUTTER_PRIOR
-        self.clutter = np.where(self.ranged, nothing * cluster.CLUTTER_PER_M, nothing)
-
-        vectors = [np.frombuffer(row.get("dino_blob") or b"", dtype="<f4")
-                   for _ray, row in self.rays]
-        width = max((len(v) for v in vectors), default=0)
-        self.has_vector = np.array([len(v) == width and width > 0 for v in vectors])
-        unit = np.zeros((len(vectors), max(width, 1)))
-        for index, vector in enumerate(vectors):
-            if self.has_vector[index]:
-                unit[index] = vector / max(float(np.linalg.norm(vector)), 1e-9)
-        self.similar = unit @ unit.T
-
-    def ray(self, index):
-        return self.rays[index][0]
-
-    def scores(self, places):
-        """`cluster._likelihood` times share, every ray against every place."""
-        import numpy as np
-
-        px = np.array([p["x_m"] for p in places])
-        py = np.array([p["y_m"] for p in places])
-        extent = np.array([max(0.0, p.get("extent_m") or 0.0) for p in places])
-        share = np.array([p.get("share") or 1.0 for p in places])
-        dx = px[None, :] - self.x[:, None]
-        dy = py[None, :] - self.y[:, None]
-        distance = np.hypot(dx, dy)
-        near = np.maximum(distance, locate.MIN_RANGE_M)
-        noise = np.hypot(self.sigma[:, None],
-                         np.degrees(np.arctan2(self.origin[:, None], near)))
-        half = np.degrees(np.arctan2(extent[None, :] / 2.0, near))
-        off = np.abs(_wrap(np.degrees(np.arctan2(dy, dx)) - self.bearing[:, None]))
-        missed = np.maximum(0.0, off - half)
-        got = np.exp(-0.5 * (missed / noise) ** 2) / (noise * _ROOT_2PI)
-        short = np.maximum(0.0, np.abs(distance - np.nan_to_num(self.range)[:, None])
-                           - extent[None, :] / 2.0)
-        sigma_m = self.range_sigma[:, None]
-        along = np.exp(-0.5 * (short / sigma_m) ** 2) / (sigma_m * _ROOT_2PI)
-        got = np.where(self.ranged[:, None], got * along, got) * share[None, :]
-        # Asked of the ray rather than of the thing; see the module docstring.
-        got[(distance > self.reach[:, None]) | (distance < locate.MIN_RANGE_M)
-            | (distance > locate.MAX_RANGE_M)] = 0.0
-        # The appearance veto as cluster.py asks it: refused only where the ray
-        # looks like none of the thing's known crops.
-        for column, place in enumerate(places):
-            known = [i for i in place["exemplars"] if self.has_vector[i]]
-            if known:
-                best = self.similar[:, known].max(axis=1)
-                got[self.has_vector & (best < resolve.DIFFERENT_THING), column] = 0.0
-        return got
-
-    def weigh(self, places):
-        """The E-step: each look's single best arrangement, as 0/1 weights."""
-        import numpy as np
-        from scipy.optimize import linear_sum_assignment
-
-        got = self.scores(places)
-        weights = np.zeros_like(got)
-        for members in self.looks:
-            mine, nothing = got[members], self.clutter[members][:, None]
-            gain = np.where(mine > nothing,
-                            np.log(np.maximum(mine, 1e-300)) - np.log(nothing),
-                            -np.inf)
-            columns = np.where(np.isfinite(gain).any(axis=0))[0]
-            if not len(columns):
-                continue
-            gain = gain[:, columns]
-            top = float(gain[np.isfinite(gain)].max()) + 1.0
-            cost = np.where(np.isfinite(gain), top - gain, top)
-            for row, picked in zip(*linear_sum_assignment(cost)):
-                if cost[row, picked] < top:
-                    weights[members[row], columns[picked]] = 1.0
-        return weights
-
-
-def _share(places, weights):
-    """`cluster._share`, on a weight matrix."""
-    totals = weights.sum(axis=0)
-    average = float(totals.mean()) if len(totals) else 0.0
-    for place, total in zip(places, totals):
-        place["share"] = ((total + cluster.SHARE_PRIOR) / (average + cluster.SHARE_PRIOR)
-                          if average > 0.0 else 1.0)
-
-
-def _stands(session, place, claimed):
-    """`cluster._survives`, less the per-ray checks the E-step now makes."""
-    claiming = [session.ray(i) for i in claimed]
-    if not claiming:
-        return False
-    if locate.standing_places(claiming) < 2:
-        if not any(ray.get("range_m") is not None for ray in claiming):
-            return False
-    elif len(claiming) < cluster.MIN_CLAIMING:
-        return False
-    return place.get("error_major_m", 0.0) <= cluster.MAX_UNCERTAINTY_M
-
-
-def _merge(session, places, lookalike):
-    """`cluster._merge`, or the same refusing two things that do not look alike."""
-    import numpy as np
-
-    kept = []
-    for place in sorted(places, key=lambda one: one["error_major_m"]):
-        twin = None
-        for other in kept:
-            if math.hypot(place["x_m"] - other["x_m"],
-                          place["y_m"] - other["y_m"]) >= cluster.SAME_PLACE_M:
-                continue
-            if lookalike:
-                if ({session.look[i] for i in place["claimers"]}
-                        & {session.look[i] for i in other["claimers"]}):
-                    continue
-                mine = [i for i in place["claimers"] if session.has_vector[i]]
-                theirs = [i for i in other["claimers"] if session.has_vector[i]]
-                if (mine and theirs and float(np.median(
-                        session.similar[np.ix_(mine, theirs)])) < replay_module.JOIN):
-                    continue
-            twin = other
-            break
-        if twin is None:
-            kept.append(place)
-        else:
-            twin["exemplars"] = sorted(set(twin["exemplars"]) | set(place["exemplars"]))
-            twin["absorbed"] = twin.get("absorbed", []) + [place["id"]] + place.get("absorbed", [])
-    return kept
-
-
-def consolidate(session, seeds, *, shares=True, lookalike=False):
-    """cluster.discover's loop, from the resolver's things, over every ray."""
-    import numpy as np
-
-    places = [dict(seed) for seed in seeds]
-    rounds = 0
-    for rounds in range(1, cluster.MAX_ROUNDS + 1):
-        weights = session.weigh(places)
-        if shares:
-            _share(places, weights)
-            places = [p for p in places if p["share"] >= cluster.MIN_SHARE]
-        weights = session.weigh(places)
-        moved, fitted = 0.0, []
-        for column, place in enumerate(places):
-            claimed = np.where(weights[:, column] > 0)[0]
-            if not len(claimed):
-                continue
-            rays = [session.ray(i) for i in claimed]
-            extent = cluster._extent(place, rays, [1.0] * len(rays))
-            got = locate.fit_over(rays, [1.0] * len(rays),
-                                  (place["x_m"], place["y_m"]), extent)
-            if got is None:
-                continue
-            moved = max(moved, math.hypot(got["x_m"] - place["x_m"],
-                                          got["y_m"] - place["y_m"]))
-            got.update(id=place["id"], extent_m=extent, share=place.get("share", 1.0),
-                       exemplars=sorted(set(place["exemplars"]) | set(claimed.tolist())),
-                       claimers=claimed.tolist(), absorbed=place.get("absorbed", []))
-            fitted.append(got)
-        places = _merge(session, fitted, lookalike)
-        if moved < cluster.SETTLED_M:
-            break
-    # Backward selection, as cluster.discover does it.
-    while places:
-        weights = session.weigh(places)
-        if shares:
-            _share(places, weights)
-        failing = [(place.get("share", 1.0), column) for column, place in enumerate(places)
-                   if not _stands(session, place, np.where(weights[:, column] > 0)[0])]
-        if not failing:
-            break
-        places.pop(min(failing)[1])
-    return places, session.weigh(places), rounds
-
+from .consolidate import Session, consolidate       # noqa: E402
 
 def _tables(session, places, weights, map_session):
     """The answer in the shape `replay.score` reads."""

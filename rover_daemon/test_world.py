@@ -456,6 +456,90 @@ def test_a_rebuild_asks_first_backs_up_and_waits_for_the_look_in_flight():
                     os.environ[name] = value
 
 
+def test_a_consolidation_asks_first_and_can_be_put_back():
+    """EM over the session rewrites which thing every look belongs to, so it answers
+    what it would do before doing it, says what it did, and undoes it on request."""
+    import json
+    import math
+    import tempfile
+    import threading
+    import time
+
+    import rover_daemon
+    import rover_world
+
+    with tempfile.TemporaryDirectory() as directory:
+        was = (os.environ.get("UGV_WORLD_DIR"), os.environ.get("UGV_WORLD_FAKE"))
+        os.environ["UGV_WORLD_DIR"] = directory
+        os.environ["UGV_WORLD_FAKE"] = "1"
+        try:
+            rover = rover_daemon.Rover(FakeLink(), "unused", device="/dev/null")
+            store = rover._world_store()
+            inspector = rover._world_inspector()
+            session = store.map_session()
+            store.db.execute(
+                "INSERT INTO entities(id, kind, label, canonical_description, created_at,"
+                " last_seen_at, observation_count, placement_json,"
+                " placement_map_session) VALUES('object:1', 'object', '', '', ?, ?, 2,"
+                " ?, ?)", (time.time(), time.time(),
+                           json.dumps({"x_m": 3.0, "y_m": 0.1, "uncertainty_m": 0.2,
+                                       "error_major_m": 0.2, "extent_m": 0.3}), session))
+            for look, (x_m, y_m) in enumerate(((0.0, 0.0), (0.0, 1.5)), start=1):
+                store.db.execute(
+                    "INSERT INTO observations(entity_id, inference_id, observed_at,"
+                    " source, observer_pose_json, map_session, bearing_deg, span_deg,"
+                    " note) VALUES('object:1', ?, ?, 'test', ?, ?, ?, 5.0, 'was')",
+                    (look, time.time(), json.dumps({"x_m": x_m, "y_m": y_m,
+                                                    "heading_deg": 0.0}), session,
+                     math.degrees(math.atan2(-y_m, 3.0 - x_m))))
+            store.db.commit()
+            placed = store.db.execute("SELECT placement_json FROM entities").fetchone()[0]
+
+            asked = rover.call("world_state_consolidate", {})
+            check("without apply it answers and changes nothing",
+                  (asked["ok"], asked["applied"], asked["things_before"],
+                   store.db.execute("SELECT placement_json FROM entities").fetchone()[0]
+                   == placed), (True, False, 1, True))
+            done = rover.call("world_state_consolidate", {"apply": True})
+            check("with apply it is done and numbered",
+                  (done["ok"], done["applied"], done["run"]), (True, True, 1))
+            check("...and listed",
+                  [run["id"] for run in rover.call("world_state_consolidate",
+                                                   {"runs": True})["runs"]], [1])
+            undone = rover.call("world_state_consolidate", {"rollback": True})
+            check("rolled back, the thing is where it was",
+                  (undone["ok"], store.db.execute(
+                      "SELECT placement_json FROM entities").fetchone()[0] == placed),
+                  (True, True))
+
+            stuck, held = threading.Event(), threading.Event()
+
+            def wedged():
+                with inspector.not_looking(5.0) as idle:
+                    assert idle
+                    held.set()
+                    stuck.wait(10.0)
+
+            threading.Thread(target=wedged, daemon=True).start()
+            held.wait(5.0)
+            waiting = rover_world.CLEAR_WAIT_S
+            rover_world.CLEAR_WAIT_S = 0.2
+            try:
+                refused = rover.call("world_state_consolidate", {"apply": True})
+                check("a look that will not end refuses it",
+                      (refused["ok"], "inspection" in refused["error"]), (False, True))
+            finally:
+                rover_world.CLEAR_WAIT_S = waiting
+                stuck.set()
+            rover.close_world()
+        finally:
+            for name, value in zip(("UGV_WORLD_DIR", "UGV_WORLD_FAKE"), was):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 def test_clearing_the_map_takes_the_world_state_with_it():
     """One button, and both ends of it answered for inside the rover.
 
@@ -1345,6 +1429,7 @@ TESTS = (
     test_the_camera_is_asked_twice_before_an_inspection_is_lost,
     test_a_clear_waits_for_the_look_in_flight_instead_of_refusing,
     test_a_rebuild_asks_first_backs_up_and_waits_for_the_look_in_flight,
+    test_a_consolidation_asks_first_and_can_be_put_back,
     test_clearing_the_map_takes_the_world_state_with_it,
     test_a_world_observation_takes_the_live_pose_and_no_other,
     test_how_far_the_rover_could_see_comes_off_its_own_map,
