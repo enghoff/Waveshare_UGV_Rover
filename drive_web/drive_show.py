@@ -96,6 +96,9 @@ class SessionShow:
         # and the only place that knows it is the rover.
         was_exploring = self.exploring
         self.exploring = bool(body.get("exploring"))
+        # The open autonomous run, by the same reasoning: the console's button
+        # starts one, and so can an agent, so the button shows the rover's answer.
+        self.autonomy_run = body.get("autonomy") or None
         # A click on the map while the rover was exploring stops the run and takes
         # its place, and this is the only announcement there is that the wheels are
         # free: an exploring run is started by a call that answers at once, so

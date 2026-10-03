@@ -622,7 +622,10 @@ class RoverNav:
         return {"ok": True, **self.nav.status(
             since_seq=None if since is None else int(since)),
             "board_reopens": getattr(self.link, "reopens", 0),
-            "board_reopen_note": getattr(self.link, "reopen_note", None)}
+            "board_reopen_note": getattr(self.link, "reopen_note", None),
+            # The open autonomous run, or None: what the console's run button
+            # is drawn from, so that it shows a run an agent started too.
+            "autonomy": self.autonomy_brief()}
 
     def _tool_nav_grid(self, _arguments: dict[str, Any]) -> dict[str, Any]:
         """The occupancy map as numbers. A control call, not a model tool.

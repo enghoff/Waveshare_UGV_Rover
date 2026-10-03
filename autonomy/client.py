@@ -21,10 +21,11 @@ checked against the run's budgets before anything turns -- see
 so that what the executive expects and what the rover enforces are one set of
 rules.
 
-Two calls are missing from `Acting` on purpose. `autonomy_enable` is the human
-act that opens a run and clears a stop, so an executive that could make it could
-give itself back the authority a person had just taken away -- which is the
-whole of what [R-SAFE-11](../docs/requirements/safety.md#r-safe-11) is about.
+Three calls are missing from `Acting` on purpose. `autonomy_start` and
+`autonomy_enable` open a run and clear a stop -- from the console's button or an
+agent's call -- so an executive that could make them could give itself back the
+authority a person had just taken away, which is the whole of what
+[R-SAFE-11](../docs/requirements/safety.md#r-safe-11) is about.
 `autonomy_stop` is the person's stop, which latches; what the executive has
 instead is `autonomy_act(stop)`, which stops the wheels without pretending a
 person asked.
@@ -73,11 +74,11 @@ MOVES = frozenset({
     "world_inspect",
 })
 
-#: The two calls that belong to the person at the rover, named for the same
-#: reason `MOVES` is: so that the refusal says what is wrong rather than "not
-#: allowed". Enabling autonomy is how a stop is cleared, and no client here may
-#: make it however the code above it is written.
-HUMAN = frozenset({"autonomy_enable", "autonomy_stop"})
+#: The calls that open a run or stop one, named for the same reason `MOVES` is:
+#: so that the refusal says what is wrong rather than "not allowed". Opening a
+#: run is how a stop is cleared, and no client here may do it however the code
+#: above it is written.
+HUMAN = frozenset({"autonomy_start", "autonomy_enable", "autonomy_stop"})
 
 
 class Refused(Exception):

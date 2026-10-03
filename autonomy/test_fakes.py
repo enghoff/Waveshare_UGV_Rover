@@ -276,11 +276,11 @@ class FakeRover(client.ReadOnly):
 
     # --- the permission, driven exactly as the daemon drives it --------------
 
-    def enable(self, by: str = "the owner", **budget) -> str:
-        """What a person does at the console. Not a call: no client here may
-        make it, which is the point of it being a method on the fake rover
-        rather than one more entry in the allow-list."""
-        return self.permission.enable(by=by, why="a check",
+    def enable(self, via: str = "api", **budget) -> str:
+        """What the console's button or an agent does. Not a call: no client
+        here may make it, which is the point of it being a method on the fake
+        rover rather than one more entry in the allow-list."""
+        return self.permission.enable(via=via, why="a check",
                                       budget=budget)["run"]["id"]
 
     def _conditions(self) -> dict:

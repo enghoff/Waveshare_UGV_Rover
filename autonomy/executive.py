@@ -806,11 +806,12 @@ def main(argv: list[str] | None = None) -> int:
     attached = executive.attach()
     if not attached.get("ok"):
         print(f"nothing to do: {attached['error']}")
-        print("A person opens a run with autonomy_enable; this program cannot.")
+        print("A run is opened from the console or with autonomy_start; this "
+              "program cannot open one.")
         store.close()
         return 1
     run = attached["run"]
-    print(f"attached to {run['id']}, opened by {run['by']}"
+    print(f"attached to {run['id']}, started via {run.get('via')}"
           + (f" for {run['why']}" if run.get("why") else ""))
     print(f"budget {run['budget']}")
 

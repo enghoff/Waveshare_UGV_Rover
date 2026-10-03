@@ -20,18 +20,29 @@ back on, because enabling is not.
 
 ## Who may make which call
 
-- `autonomy_enable` and `autonomy_stop` are the person's. Enabling opens a
-  bounded run and is the only thing that clears a stop.
+- `autonomy_start` opens a run and starts the executive on it: the console's
+  run button, or an agent over this protocol with a purpose and, if it likes, a
+  budget and a safe area. `autonomy_enable` opens a run without starting
+  anything, for a person who runs the executive by hand (`--m0a`). Either one
+  is the only thing that clears a stop. Each run records which way it was
+  started (`via`), not who started it.
+- `autonomy_stop` is anybody's stop, and latches.
 - `autonomy_permit` and `autonomy_act` are the executive's. Neither can open a
-  run, and `autonomy/client.py` refuses `autonomy_enable` outright so that the
+  run, and `autonomy/client.py` refuses both opening calls outright so that the
   executive cannot re-enable itself after being stopped -- the same structural
   refusal that keeps the recorder off the wheels.
 - `autonomy_status` is anybody's. It is a read.
 """
 from __future__ import annotations
 
+import subprocess
+import sys
+import time
+from pathlib import Path
 from typing import Any
 from functools import wraps
+
+import permission as permission_mod
 
 
 def serialized(method):
@@ -69,35 +80,127 @@ TAKEOVER = {
 }
 
 
+#: Where the executive is: beside this daemon on the rover (`~/ugv/autonomy`
+#: next to `~/ugv`), and a sibling directory in the repository.
+EXECUTIVE_PATHS = (Path(__file__).resolve().parent / "autonomy" / "executive.py",
+                   Path(__file__).resolve().parent.parent / "autonomy" / "executive.py")
+#: Where a started executive writes what it says, which is one line per goal.
+EXECUTIVE_LOG = Path.home() / ".ugv" / "autonomy" / "executive.log"
+
+
+def launch_executive(run_id: str) -> dict[str, Any]:
+    """Start the executive as a process of its own, to attach to `run_id`.
+
+    The same program a person starts by hand, with the same lack of authority:
+    it finds the open run, renews the permit while it works, and exits when the
+    run ends. Its own session, so that a daemon restart does not take it down
+    mid-goal -- the run's lease is what decides how long it may go on.
+    """
+    path = next((one for one in EXECUTIVE_PATHS if one.is_file()), None)
+    if path is None:
+        return {"ok": False,
+                "error": "the executive is not installed beside this daemon"}
+    try:
+        EXECUTIVE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(EXECUTIVE_LOG, "ab") as log:
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+            log.write(f"--- {stamp} starting for {run_id} ---\n".encode())
+            log.flush()
+            process = subprocess.Popen(
+                # Unbuffered, so the log shows each goal as it happens.
+                [sys.executable, "-u", str(path)], cwd=str(path.parent),
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                start_new_session=True)
+    except OSError as error:
+        return {"ok": False, "error": f"the executive could not be started: {error}"}
+    return {"ok": True, "pid": process.pid, "log": str(EXECUTIVE_LOG),
+            "process": process}
+
+
 class RoverAutonomy:
     """Autonomous permission, mixed into Rover."""
 
-    # --- what a person calls ------------------------------------------------
+    #: What starts the executive once a run is open. A test replaces it.
+    executive_launcher = staticmethod(launch_executive)
+
+    # --- what opens a run ---------------------------------------------------
+
+    def _opening(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """The run `autonomy_start` and `autonomy_enable` would open, or why not.
+
+        From the console a run has no limit on time, travel or actions unless a
+        budget is given (`permission.CONSOLE_BUDGET`); through the API what is
+        left out takes the standing limits. Either may narrow the safe area with
+        `budget.geofence`, and without one the mapped floor is the boundary.
+        """
+        via = str(arguments.get("via") or "api").strip()
+        purpose = str(arguments.get("purpose") or arguments.get("why") or "").strip()
+        budget = arguments.get("budget") or {}
+        if not isinstance(budget, dict):
+            return {"ok": False, "error": "budget is an object of limits"}
+        facts = self.autonomy_conditions()
+        if not facts.get("pose_trusted"):
+            return {"ok": False,
+                    "error": "the rover has not confirmed where it is on the map"}
+        if facts.get("map_settled") is False:
+            return {"ok": False, "error": "the map has not settled yet"}
+        base = (permission_mod.CONSOLE_BUDGET if via == "console"
+                else permission_mod.DEFAULT_BUDGET)
+        answer = self.permission.enable(via=via, why=purpose, budget=budget,
+                                        base=base)
+        if answer.get("ok"):
+            print(f"[autonomy] started via {via}: {answer['run']['id']}, "
+                  f"budget {answer['run']['budget']}"
+                  + (f", for {purpose}" if purpose else ""), flush=True)
+        return answer
+
+    @serialized
+    def _tool_autonomy_start(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Open a run and start the executive on it. The console's run button,
+        and an agent's way in.
+
+        `via` is `console` or `api` (the default), `purpose` says what the run
+        is for, and `budget` may set `seconds`, `travel_m` and `actions` (a
+        number, or null for no limit), `failures` (in a row), and `geofence` (a
+        circle `{x_m, y_m, radius_m}` or a box of `min_x_m`/`max_x_m`/`min_y_m`/
+        `max_y_m`, in map coordinates). Clears a stop, as opening any run does.
+        """
+        answer = self._opening(arguments)
+        if not answer.get("ok"):
+            return {**answer, "autonomy": self.permission.status()}
+        run_id = answer["run"]["id"]
+        launched = self.executive_launcher(run_id)
+        if not launched.get("ok"):
+            self.autonomy_end(launched.get("error") or "the executive did not start")
+            return {"ok": False, "error": launched.get("error"),
+                    "autonomy": self.permission.status()}
+        # Held so the finished process is reaped rather than left a zombie.
+        self._executive_process = launched.get("process")
+        return {**answer, "executive": {"pid": launched.get("pid"),
+                                        "log": launched.get("log")},
+                "autonomy": self.permission.status()}
 
     @serialized
     def _tool_autonomy_enable(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Open a bounded autonomous run. A person's act, not the executive's.
-
-        `budget` narrows the standing limits and can never widen them, so the
-        argument for each of those numbers -- which is written where they are
-        declared -- cannot be talked out of by whoever is typing the command.
-
-        Whoever enables says who they are and why, because the first question
-        about a rover found driving itself is who let it.
-        """
-        by = str(arguments.get("by") or "").strip()
-        if not by:
-            return {"ok": False,
-                    "error": "say who is enabling this; a run nobody is named "
-                             "for is a run nobody is watching"}
-        answer = self.permission.enable(
-            by=by, why=str(arguments.get("why") or ""),
-            budget=arguments.get("budget") or {})
-        if answer.get("ok"):
-            print(f"[autonomy] enabled by {by}: "
-                  f"{answer['run']['id']}, budget {answer['run']['budget']}",
-                  flush=True)
+        """Open a run and start nothing: for a person running the executive by
+        hand. The same arguments as `autonomy_start`."""
+        answer = self._opening(arguments)
         return {**answer, "autonomy": self.permission.status()}
+
+    def autonomy_brief(self) -> dict[str, Any] | None:
+        """The open run as the console's run button needs it, or None.
+
+        A read without the lock: `nav_status` asks three times a second, and a
+        stale answer for one poll is all a race can cost.
+        """
+        permission = getattr(self, "permission", None)
+        run = None if permission is None else permission.run
+        if run is None or run.ended or permission.latch is not None:
+            return None
+        return {"id": run.id, "via": run.via, "why": run.why,
+                "spent": run.spent(permission.clock())}
+
+    # --- what a person calls ------------------------------------------------
 
     @serialized
     def _tool_autonomy_stop(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -343,6 +446,9 @@ class RoverAutonomy:
         rover nobody has enabled autonomy on must not be paying for a bridge
         round trip twice a second.
         """
+        process = getattr(self, "_executive_process", None)
+        if process is not None and process.poll() is not None:
+            self._executive_process = None
         run = self.permission.run
         if run is None or run.ended:
             self._autonomy_ticked = None

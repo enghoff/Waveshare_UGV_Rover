@@ -110,9 +110,9 @@ def a_rover(clock: Clock, *, volts: int = 1207, nav: FakeNav | None = None):
 
 
 def enabled(rover, **budget) -> str:
-    """Open a run the way a person does, and hand back its identifier."""
+    """Open a run the way an agent does, and hand back its identifier."""
     answer = rover.call("autonomy_enable",
-                        {"by": "the owner", "why": "a supervised trial",
+                        {"via": "api", "purpose": "a supervised trial",
                          "budget": budget})
     return answer["run"]["id"]
 
@@ -149,39 +149,115 @@ def test_a_fresh_daemon_has_no_authority():
     check("...and nothing was sent to the navigator", rover.nav.sent, [])
 
 
-def test_a_run_is_opened_by_a_person_and_bounded_before_it_starts():
+def test_a_run_records_how_it_was_started_and_the_budget_it_was_given():
     rover = a_rover(Clock())
-    unnamed = rover.call("autonomy_enable", {})
-    check("a run nobody is named for is refused", unnamed["ok"], False)
-
     run = rover.call("autonomy_enable",
-                     {"by": "the owner", "why": "trial 1",
+                     {"purpose": "trial 1",
                       "budget": {"seconds": 120.0, "travel_m": 10.0}})
-    check("a person opens one", run["ok"], True)
-    check("...with the budget they asked for",
+    check("an agent opens one without naming anybody", run["ok"], True)
+    check("...recorded as started through the API", run["run"]["via"], "api")
+    check("...with what it is for", run["run"]["why"], "trial 1")
+    check("...with the budget it asked for",
           (run["run"]["budget"]["seconds"], run["run"]["budget"]["travel_m"]),
           (120.0, 10.0))
-    check("...and the standing limits for what they did not",
+    check("...and the standing limits for what it did not",
           run["run"]["budget"]["actions"], permission_mod.RUN_MAX_ACTIONS)
-    check("...recorded against whoever opened it", run["run"]["by"],
-          "the owner")
 
-    again = rover.call("autonomy_enable", {"by": "the owner"})
-    check("a second press does not open a second run", again["ok"], False)
+    again = rover.call("autonomy_enable", {})
+    check("a second call does not open a second run", again["ok"], False)
 
     rover.call("autonomy_stop", {"by": "the owner"})
     wide = rover.call("autonomy_enable",
-                      {"by": "the owner",
-                       "budget": {"seconds": permission_mod.RUN_MAX_S * 2}})
-    check("and the standing limits cannot be widened by asking",
-          wide["ok"], False)
-    check("...naming the limit", wide["error"],
-          f"seconds may be at most {permission_mod.RUN_MAX_S}")
-    off = rover.call("autonomy_enable",
-                     {"by": "the owner", "budget": {"failures": 0}})
-    check("...nor switched off by asking for none of one", off["ok"], False)
-    check("...which is what zero would otherwise mean", off["error"],
+                      {"budget": {"seconds": permission_mod.RUN_MAX_S * 2,
+                                  "travel_m": None}})
+    check("a budget may be longer than the standing one, or none at all",
+          (wide["ok"], wide["run"]["budget"]["seconds"],
+           wide["run"]["budget"]["travel_m"]),
+          (True, permission_mod.RUN_MAX_S * 2, None))
+    rover.call("autonomy_stop", {"by": "the owner"})
+    off = rover.call("autonomy_enable", {"budget": {"failures": 0}})
+    check("failures in a row cannot be switched off", off["ok"], False)
+    check("...by asking for none of them either", off["error"],
           "failures must be a positive number")
+    none = rover.call("autonomy_enable", {"budget": {"failures": None}})
+    check("...or by asking for no limit", none["ok"], False)
+    lease = rover.call("autonomy_enable", {"budget": {"permit_ttl_s": 60}})
+    check("and the lease is not the caller's to lengthen", lease["error"],
+          f"permit_ttl_s may be at most {permission_mod.PERMIT_TTL_S}")
+    odd = rover.call("autonomy_enable", {"via": "the kitchen"})
+    check("a run says which way it was started", odd["ok"], False)
+
+
+def test_the_console_starts_a_run_with_no_limit_but_failures():
+    launched = []
+    rover = a_rover(Clock())
+    rover.executive_launcher = lambda run_id: (launched.append(run_id)
+                                               or {"ok": True, "pid": 4242,
+                                                   "log": "/tmp/x.log"})
+    run = rover.call("autonomy_start", {"via": "console"})
+    check("the console's button opens a run", run["ok"], True)
+    check("...recorded as started from the console", run["run"]["via"],
+          "console")
+    check("...with no limit on time, travel or actions",
+          [run["run"]["budget"][name] for name in ("seconds", "travel_m",
+                                                   "actions")],
+          [None, None, None])
+    check("...but the failures in a row that still end it",
+          run["run"]["budget"]["failures"], permission_mod.RUN_MAX_FAILURES)
+    check("...and the executive started on it", launched, [run["run"]["id"]])
+    check("...which it says", run["executive"]["pid"], 4242)
+    check("the run is what nav_status reports to the console",
+          rover.call("nav_status", {})["autonomy"]["via"], "console")
+    rover.call("stop_driving", {})
+    check("...and nothing once it is stopped",
+          rover.call("nav_status", {})["autonomy"], None)
+
+
+def test_an_agent_starts_a_run_after_a_stop_and_can_bound_it():
+    launched = []
+    rover = a_rover(Clock())
+    rover.executive_launcher = lambda run_id: (launched.append(run_id)
+                                               or {"ok": True, "pid": 1})
+    first = rover.call("autonomy_start", {"via": "console"})
+    rover.call("stop_driving", {})
+    check("a person's stop latches", rover.call("autonomy_status", {})["latched"],
+          True)
+    agent = rover.call("autonomy_start",
+                       {"purpose": "map the hall",
+                        "budget": {"seconds": 300,
+                                   "geofence": {"x_m": 0, "y_m": 0,
+                                                "radius_m": 3}}})
+    check("an agent may start the next run anyway", agent["ok"], True)
+    check("...as a new run", agent["run"]["id"] != first["run"]["id"], True)
+    check("...with the latch gone", rover.call("autonomy_status", {})["latched"],
+          False)
+    check("...the standing limits for what it left out",
+          agent["run"]["budget"]["travel_m"], permission_mod.RUN_MAX_TRAVEL_M)
+    check("...and the safe area it asked for",
+          agent["run"]["budget"]["geofence"]["radius_m"], 3)
+    check("...and its purpose", agent["run"]["why"], "map the hall")
+    check("both runs started an executive", len(launched), 2)
+
+
+def test_a_run_is_not_started_where_it_cannot_act():
+    rover = a_rover(Clock(), nav=FakeNav(trusted=False))
+    rover.executive_launcher = lambda run_id: {"ok": True}
+    lost = rover.call("autonomy_start", {"via": "console"})
+    check("a rover unsure where it is will not start a run", lost["ok"], False)
+    check("...and says so", lost["error"],
+          "the rover has not confirmed where it is on the map")
+    check("...leaving nothing open", rover.call("autonomy_status", {})["enabled"],
+          False)
+
+    rover = a_rover(Clock())
+    rover.executive_launcher = lambda run_id: {"ok": False,
+                                               "error": "no executive here"}
+    failed = rover.call("autonomy_start", {})
+    check("an executive that will not start is the start failing",
+          (failed["ok"], failed["error"]), (False, "no executive here"))
+    status = rover.call("autonomy_status", {})
+    check("...and the run it opened is closed again", status["enabled"], False)
+    check("...without the latch a person's stop sets", status["latched"], False)
 
 
 def test_only_the_three_admitted_operations_are_dispatched():
@@ -260,9 +336,12 @@ def test_a_goal_chosen_on_another_map_is_refused():
 
 
 def test_a_pose_nobody_trusts_stops_a_drive_and_not_a_look():
-    rover = a_rover(Clock(), nav=FakeNav(trusted=False))
+    nav = FakeNav()
+    rover = a_rover(Clock(), nav=nav)
     rover._tool_world_inspect = lambda arguments: {"ok": True, "regions": 3}
     permit = permitted(rover, enabled(rover))
+    # Lost after the run opened: a run is not started without a trusted pose.
+    nav.trusted = False
 
     refused = act(rover, permit, "drive_to", "a#1", x_m=1.0, y_m=1.0)
     check("an untrusted pose refuses a drive", refused["refused"], "pose")
@@ -424,8 +503,8 @@ def test_stopping_the_rover_latches_autonomy_off():
     moved = act(rover, permit, "drive_to", "a#1", x_m=1.0, y_m=0.0)
     check("...and no action gets through", moved["refused"], "latched")
 
-    back = rover.call("autonomy_enable", {"by": "the owner", "why": "resuming"})
-    check("only a person re-enabling clears it", back["ok"], True)
+    back = rover.call("autonomy_enable", {"via": "api", "purpose": "resuming"})
+    check("only opening a run clears it", back["ok"], True)
     check("...as a new run rather than the old one",
           back["run"]["id"] != run, True)
     check("...with the latch gone",
@@ -521,7 +600,10 @@ def test_a_move_that_ends_is_recorded_against_the_action_that_asked_for_it():
 
 TESTS = (
     test_a_fresh_daemon_has_no_authority,
-    test_a_run_is_opened_by_a_person_and_bounded_before_it_starts,
+    test_a_run_records_how_it_was_started_and_the_budget_it_was_given,
+    test_the_console_starts_a_run_with_no_limit_but_failures,
+    test_an_agent_starts_a_run_after_a_stop_and_can_bound_it,
+    test_a_run_is_not_started_where_it_cannot_act,
     test_only_the_three_admitted_operations_are_dispatched,
     test_a_permit_that_ran_out_refuses_at_dispatch,
     test_an_action_is_dispatched_once_and_repeats_are_answered,

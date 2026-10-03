@@ -149,10 +149,13 @@ movement is traced back that way.
 <a id="r-safe-10"></a>
 ### R-SAFE-10 — Autonomous runs are bounded by time, travel, actions and failures
 
-- **State:** settled
-- **Evidence:** [2026-10-02, the stop trials](../progress/2026-10-02-drive-carry-and-stops.md):
-  on hardware a run closing on its failure count stopped a moving leg within 0.08 m,
-  and runs closed on the battery floor while it existed; `python rover_daemon/selftest.py`
+- **State:** retired
+- **Superseded by:** [../decisions/runs-start-from-the-console-or-an-agent.md](../decisions/runs-start-from-the-console-or-an-agent.md)
+
+**Retired on 2026-10-03.** A run started from the console has no limit on time,
+travel or actions, and one started by an agent has whatever it asks for.
+[R-SAFE-16](#r-safe-16) is what every run is still held to. What follows is the
+history up to then.
 
 Exploration already has the time half of this ([R-SAFE-7](#r-safe-7)). A general
 executive needs the rest, because the failure it protects against is not a
@@ -181,16 +184,19 @@ the rover.
   sessions are owed
 
 Stopping movement today stops the movement. Once something is choosing goals,
-stopping has to also revoke its authority until a person gives it back, or the
-stop becomes a pause and the person has to keep pressing it.
+stopping has to also revoke its authority until it is deliberately given back, or
+the stop becomes a pause and the person has to keep pressing it.
 
 `stop_driving` now ends any autonomous run and latches autonomy off, and so does
 any other sign of a person taking the rover back: driving it by hand, sending it
 somewhere by voice, running a script, clearing the map, refitting the pose. The
-latch is cleared by exactly one call, and **the executive's own client refuses
-that call** — the same structural refusal that keeps the recorder off the
-wheels, so an executive that crashed and restarted cannot give itself back what
-a person removed.
+latch is cleared only by opening a new run: the console's run button, or an agent's
+`autonomy_start` (or `autonomy_enable`). Since 2026-10-03 an agent may do that
+straight after a person's stop
+([the decision](../decisions/runs-start-from-the-console-or-an-agent.md)).
+**The executive's own client refuses both calls**, the same structural refusal
+that keeps the recorder off the wheels, so an executive that crashed and restarted
+cannot give itself back what a person removed.
 
 <a id="r-safe-12"></a>
 ### R-SAFE-12 — The daemon enforces permission expiry and budgets on its own
@@ -244,3 +250,25 @@ than let them proceed on a default. Operations that are fully validated without
 a model stay available, so an outage costs the rover its judgement and not its
 ability to stop safely. Today this is straightforward because the only model in
 the loop is conversational and the rover works without it.
+
+<a id="r-safe-16"></a>
+### R-SAFE-16 — An autonomous run ends on the limits it was started with, and after three failures in a row
+
+- **State:** settled
+- **Evidence:** [2026-10-02, the stop trials](../progress/2026-10-02-drive-carry-and-stops.md):
+  on hardware a run closing on its failure count stopped a moving leg within 0.08 m;
+  `python rover_daemon/selftest.py`
+
+Every run carries a budget of minutes, metres, actions and failures in a row, fixed
+when it is opened and enforced by the daemon rather than the executive. Minutes,
+metres and actions may each be no limit: a run from the console's button has none,
+and an agent's run has the standing limits for whatever it leaves out
+([the decision](../decisions/runs-start-from-the-console-or-an-agent.md)). Failures
+in a row are always a limit, so a rover that is managing nothing from where it
+stands stops rather than trying until the battery dies. The lease is not a budget
+and cannot be lengthened ([R-SAFE-12](#r-safe-12)).
+
+**Travel is spent from where the rover actually gets to**, half a second at a time,
+rather than from what each action said it would cost, so a move nobody is waiting
+for is charged for. The standing limits and the reason for each number are in
+[rover_daemon/permission.py](../../rover_daemon/permission.py).

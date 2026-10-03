@@ -113,6 +113,9 @@ class Session(SessionActions, SessionShow, SessionWorld):
         #: does -- it is a thing the rover is doing, possibly at somebody else's
         #: asking -- so it is read off `nav_status` and never set from a click.
         self.exploring = False
+        #: The autonomous run the rover says is open, or None. Read off
+        #: `nav_status` for the same reason as `exploring`.
+        self.autonomy_run: dict[str, Any] | None = None
         # A click on the map that is waiting for the move it interrupted to let go
         # of the wheels: the `drive_to` arguments, and when to give up on them. The
         # place is held in map coordinates rather than as an offset, so waiting does
@@ -304,6 +307,7 @@ class Session(SessionActions, SessionShow, SessionWorld):
                      "tools": self.tools},
             "busy": busy,
             "exploring": self.exploring,
+            "autonomy": self.autonomy_run,
             "refitting": self.refitting,
             "status": {"rows": self.status_rows, "pose": self.pose_text,
                        "error": self.status_error},
@@ -611,11 +615,18 @@ class Session(SessionActions, SessionShow, SessionWorld):
         if not self.alone_since:
             self.alone_since = now
             return
-        if (self.busy_since is not None and not self.stopped_orphan
+        # A run started from the console's button counts as this console's own
+        # move: it has no limit on time or distance because somebody is at the
+        # console, so the last tab going is that somebody leaving. A run an agent
+        # started does not need a console, and is not stopped for lacking one.
+        console_run = (self.autonomy_run or {}).get("via") == "console"
+        if ((self.busy_since is not None or console_run) and not self.stopped_orphan
                 and now - self.alone_since > ORPHAN_GRACE_S):
             self.stopped_orphan = True
-            self.say("nobody is watching and a move is running, so it is being "
-                     "stopped", "bad")
+            self.say("nobody is watching and "
+                     + ("a run started here is going" if console_run
+                        else "a move is running")
+                     + ", so it is being stopped", "bad")
             self.stop()
 
     def publish_soon(self) -> None:

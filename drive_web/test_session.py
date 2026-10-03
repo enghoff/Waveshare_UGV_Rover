@@ -218,6 +218,18 @@ def test_stopping_an_unwatched_rover() -> None:
     idle.mind_the_watchers(400.0)
     check("an idle rover is not stopped for being alone", idle.halt.sent, [])
 
+    # A run started from the console's button has no limit on time or distance
+    # because somebody is at the console, so it is the console's own move here.
+    for via, stopped in (("console", ["stop_driving"]), ("api", [])):
+        run = drive_web.Session(None, 3.0, 480)
+        run.halt = Fake()
+        run.autonomy_run = {"id": "run/x/1", "via": via, "why": ""}
+        run.mind_the_watchers(300.0)
+        run.mind_the_watchers(300.0 + drive_web.ORPHAN_GRACE_S + 0.1)
+        check(f"a run started via {via} is "
+              + ("stopped" if stopped else "left alone")
+              + " when the last tab goes", run.halt.sent, stopped)
+
 
 def test_idle_console_waits_for_a_browser() -> None:
     """A console hosted on the rover must not be a client overnight.
@@ -987,6 +999,29 @@ def test_the_refit_button_says_what_happened() -> None:
           [n for n, _ in session.picture.sent], ["refit_pose"])
 
 
+def test_the_run_button_starts_a_run_and_shows_the_rovers_answer() -> None:
+    """The console asks nothing of the person: the button starts a run from the
+    console, and what it then shows is the run the rover says is open, which an
+    agent may have started instead."""
+    try:
+        import drive_web
+    except ImportError as exc:
+        SKIP.append(f"run button ({type(exc).__name__})")
+        return
+    session = drive_web.Session(None, 3.0, 480)
+    sent = []
+    session.watch = type("Fake", (), {"submit": lambda _s, name, args=None:
+                                      sent.append((name, args))})()
+    session.act({"do": "run"})
+    check("the run button starts a run from the console",
+          sent, [("autonomy_start", {"via": "console"})])
+    check("...and shows none until the rover says one is open",
+          session.snapshot()["autonomy"], None)
+    session.autonomy_run = {"id": "run/x/1", "via": "api", "why": "map the hall"}
+    check("a run the rover reports is what the page is given",
+          session.snapshot()["autonomy"]["via"], "api")
+
+
 TESTS = (
     test_the_refit_button_says_what_happened,
     test_web_console,
@@ -999,4 +1034,5 @@ TESTS = (
     test_a_second_click_takes_over,
     test_a_click_while_exploring_takes_over,
     test_a_slow_browser_is_shown_the_newest_state,
+    test_the_run_button_starts_a_run_and_shows_the_rovers_answer,
 )

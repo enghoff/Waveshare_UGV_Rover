@@ -36,22 +36,27 @@ restarting something.
    dispatch — see [rover-unresponsive.md](rover-unresponsive.md) and
    `refit_pose`.
 3. **Have the console open** on the drive page, because its stop button is the
-   fastest thing in the room. Closing the last console tab also stops the rover
-   and ends the run.
+   fastest thing in the room. Closing the last console tab ends a run started
+   from the console; it does not end one an agent started.
 
-## Opening a run
+## Starting a run
 
-Enabling is a person's act and no program on the rover can do it. Name yourself
-and say what the session is for; both go into the record.
+**From the console:** press **run**, next to **world**. Nothing is asked. The run
+has no limit on time, travel or actions, ends after three failures in a row, and
+may go anywhere on the mapped floor. The button reads **end run** while it is
+going, and pressing it is the ordinary stop. A refusal appears on the notice line,
+for example when the rover has not confirmed where it is.
+
+**From an agent:** call `autonomy_start` over the daemon's protocol, with what the
+run is for and, if wanted, a budget and a safe area:
 
 ```bash
 ssh orin 'python3 - <<PY
 import json, socket
 s = socket.create_connection(("127.0.0.1", 8769), 5)
 f = s.makefile("rwb")
-f.write(json.dumps({"call": "autonomy_enable", "arguments": {
-    "by": "the owner",
-    "why": "M3 supervised session 1",
+f.write(json.dumps({"call": "autonomy_start", "arguments": {
+    "purpose": "M3 supervised session 1",
     "budget": {"seconds": 600, "travel_m": 30,
                "geofence": {"x_m": 0.0, "y_m": 0.0, "radius_m": 4.0}}}}).encode() + b"\n")
 f.flush()
@@ -59,22 +64,36 @@ print(json.dumps(json.loads(f.readline()), indent=2))
 PY'
 ```
 
-Every budget may be made smaller than the standing limit and never larger; leave
-one out and it takes the standing value. The `geofence` is the area you cleared —
-a circle as above, or a box of `min_x_m`/`max_x_m`/`min_y_m`/`max_y_m` — in the
-map's own coordinates, which the console shows when you hover the map. Leave it
-out and the map is the only boundary, which is honest but wider than a cleared
-room.
+What the agent leaves out of the budget takes the standing limits: 15 minutes, 60 m,
+40 actions and 3 failures in a row. `seconds`, `travel_m` and `actions` may be larger,
+or `null` for no limit. The `geofence` is the area you cleared, a circle as above or a
+box of `min_x_m`/`max_x_m`/`min_y_m`/`max_y_m`, in the map's own coordinates, which the
+console shows when you hover the map. Leave it out and the mapped floor is the
+boundary, which is honest but wider than a cleared room.
 
-## Running it
+Either way the run records whether it came from the console or an agent, and the
+rover starts the executive on it, writing what it says to
+`~/.ugv/autonomy/executive.log`:
+
+```bash
+ssh orin 'tail -f ~/.ugv/autonomy/executive.log'
+```
+
+It narrates one line per goal and exits when the run ends. Opening a run is also what
+clears a stop, whichever way it is opened.
+
+## Running the executive by hand
+
+For the M0a protocol, or to watch a single goal, open the run without starting
+anything (`autonomy_enable`, the same arguments as `autonomy_start`) and run the
+executive yourself:
 
 ```bash
 ssh orin 'cd ~/ugv/autonomy && python3 executive.py'
 ```
 
-It attaches to the run you opened, says so, and then narrates one line per goal.
-It cannot open a run of its own: started with none open it says what is missing
-and exits.
+It attaches to the open run. It cannot open a run of its own: started with none open,
+it says what is missing and exits.
 
 `--turns 1` carries out a single goal and stops, which is the right way to take
 the first session of the day.
@@ -83,12 +102,13 @@ the first session of the day.
 
 Any of these, and the first is the one to reach for:
 
-- **the console's stop button**, or closing the last console tab;
+- **the console's stop button** or its **end run**, or closing the last console
+  tab for a run started from the console;
 - **saying so out loud** to the voice model, which calls the same `stop_driving`;
 - **driving it by hand** from the console, which is a takeover and ends the run;
-- `Ctrl-C` on the executive, which stops the rover and hands the run back.
+- `Ctrl-C` on an executive run by hand, which stops the rover and hands the run back.
 
-All but the last latch autonomy off until somebody enables it again. That is the
+All but the last latch autonomy off until a run is started again. That is the
 point of the latch: a stop that had to be pressed twice because the rover chose
 another goal in between would not be a stop.
 
@@ -129,8 +149,9 @@ distance the rover actually travelled after it was told.
 
 | It says | What it means |
 |---|---|
-| `autonomy is not enabled` | no run is open; the enable above is what opens one |
-| a name and a reason, under `latched` | somebody stopped the rover; enabling again clears it |
+| `autonomy is not enabled` | no run is open; **run** or `autonomy_start` opens one |
+| a reason, under `latched` | somebody stopped the rover; starting a run again clears it |
+| `the rover has not confirmed where it is on the map` | refused before opening; see step 2 above |
 | `the run ended: ...` | a budget or the watchdog closed it — open a new one |
 | `a run is already open` | one is running; stop it before opening another |
 | the executive chooses nothing, every turn | read the refusals it prints: an unsettled map or an untrusted pose gates every goal at once |

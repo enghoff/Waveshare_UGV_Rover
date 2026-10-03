@@ -288,11 +288,33 @@ this state is written to disk, so a crash, a redeploy or a reboot leaves no run,
 no permit and no memory of having had either. Authority that was taken away
 cannot come back by restarting something.
 
-**A person opens a run and nothing else can.** `autonomy_enable` says who is
-enabling it and why, and declares the budget: how many minutes, how many metres,
-how many actions and how many failures in a row (there is no battery reserve:
-[the decision](../docs/decisions/autonomous-runs-have-no-battery-floor.md)). Each of those may be made smaller than the standing limit and never
-larger. Opening a run is also the only thing that clears a stop.
+**A run is started from the console's run button or by an agent's call, never
+by the executive** ([the decision](../docs/decisions/runs-start-from-the-console-or-an-agent.md)).
+`autonomy_start` opens the run and starts the executive on it as a process of its
+own, writing to `~/.ugv/autonomy/executive.log`. The run records which way it was
+started, `via` `console` or `api`, and an agent's `purpose`, not a name. It is
+refused while the rover has not confirmed where it is or the map has not settled.
+
+The budget is how many minutes, metres and actions, each a number or null for no
+limit, and how many failures in a row, which is always a limit. A run from the
+console has no limit on the first three and three failures in a row. Through the
+API, whatever the agent leaves out takes the standing limits in `permission.py`:
+fifteen minutes, sixty metres and forty actions. The safe area is the mapped floor
+unless `budget.geofence` narrows it, to a circle `{x_m, y_m, radius_m}` or a box of
+`min_x_m`/`max_x_m`/`min_y_m`/`max_y_m` in map coordinates. There is no battery
+reserve ([the decision](../docs/decisions/autonomous-runs-have-no-battery-floor.md)).
+
+Opening a run is the only thing that clears a stop, including straight after a
+person's stop. `autonomy_enable` opens a run the same way and starts nothing, for
+a person running the executive by hand, as `--m0a` does.
+
+An agent starts one over this protocol like this:
+
+```json
+{"call": "autonomy_start", "arguments": {"purpose": "map the hall",
+  "budget": {"seconds": 600, "travel_m": null,
+             "geofence": {"x_m": -18.0, "y_m": -14.0, "radius_m": 3.0}}}}
+```
 
 **Permission inside a run is a fifteen-second lease.** The executive renews it
 every couple of seconds as it works; nothing renews it on the executive's
@@ -325,15 +347,17 @@ without ending the run.
 
 **Any person touching the rover takes it back.** Driving by hand, sending it
 somewhere by voice, running a script, stopping it, clearing the map or refitting
-the pose all end the run and latch autonomy off until somebody enables it again.
+the pose all end the run and latch autonomy off until a run is started again.
 That check sits in `Rover.call`, which is the one place every caller passes
 through -- autonomy's own actions are dispatched inside `autonomy_act` and do
 not come that way, which is why the rover stopping itself is not mistaken for a
 person stopping it.
 
-Closing the last drive-console tab ends a run too, and that is not an accident of
-the console's shutdown stop: an autonomous run is supervised, and the console
-going away is the supervisor leaving the room.
+Closing the last drive-console tab ends a run started from the console's button,
+once the console has been unwatched a couple of seconds: such a run has no limit
+on time or distance because somebody is at the console, and the last tab going is
+that somebody leaving. An agent's run does not need a console, and a console
+closing does not end it.
 
 The watchdog also spends the run's travel budget from where the rover actually
 gets to, tick by tick, rather than from what each action said it would cost --
@@ -368,9 +392,10 @@ model choice, for example:
 - `get_depth_power`, which reports whether the OAK is awake and cannot set it,
   and `depth_map`, its depth in millimetres for the console, which cannot wake
   it either;
-- the five autonomy calls above. Enabling autonomy is a person's act, and a
-  model that could ask for it could talk itself into authority it had just been
-  refused; asking for a permit or acting under one belongs to the executive,
+- the autonomy calls above. Starting a run is the console's button or an
+  agent's call over this protocol, and a voice model that could ask for it
+  could talk itself into authority it had just been refused; asking for a
+  permit or acting under one belongs to the executive,
   which is not a model at all. What the model keeps is `stop_driving`, which
   stops the rover and latches autonomy off -- so the voice can end an autonomous
   run and has no way whatever to start one.

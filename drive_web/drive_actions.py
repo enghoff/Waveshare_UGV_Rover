@@ -70,6 +70,12 @@ class SessionActions:
             # it whenever they like. A box to type minutes into would be a
             # setting nobody has a reason to change with the STOP button in view.
             self.watch_call("explore")
+        elif what == "run":
+            # An autonomous run with nothing asked of the person: no limit on
+            # time, travel or actions, which the rover gives a run started from
+            # the console, and the mapped floor as its area. Ending it is the
+            # ordinary stop, as for explore.
+            self.watch_call("autonomy_start", {"via": "console"})
         elif what == "tap":
             self.tap(action)
         elif what == "map":

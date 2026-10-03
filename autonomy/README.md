@@ -13,10 +13,11 @@ daemon for permission, hand it back, and do one admitted thing *under* it.
 `drive_to` is on neither list, so an autonomous drive is not merely unused here
 — it is unavailable, and the test that proves it does so by trying every one.
 
-The authority itself lives in the daemon, as a bounded run a person opens and a
-fifteen-second lease this component keeps renewing. Stop the rover and the lease
-is gone and cannot be got back from here, because the one call that clears a stop
-is a call no client here may make. Kill this process and the daemon takes the
+The authority itself lives in the daemon, as a run the console's run button or an
+agent's `autonomy_start` opens, and a fifteen-second lease this component keeps
+renewing. The daemon starts this executive on the run it opens. Stop the rover and
+the lease is gone and cannot be got back from here, because the calls that open a
+run, which are what clears a stop, are calls no client here may make. Kill this process and the daemon takes the
 wheels back by itself within the lease. See
 [rover_daemon/permission.py](../rover_daemon/permission.py), which is one file
 deployed into both components so that what this expects and what the rover

@@ -582,11 +582,6 @@ Most of M3 is still physical:
   should end in the permit expiry that was measured.
 - **A duplicate request on hardware** ([R-AUT-11](../requirements/autonomy.md#r-aut-11)):
   a session in which an action asked for twice moves the rover once.
-- **A way for the owner to open a run without a shell.** Enabling is a person's
-  act and today it is a call over 8769, which means the supervised sessions
-  start from a terminal. A console control is the obvious home for it, and
-  [drive_web/AGENTS.md](../../drive_web/AGENTS.md) asks for a removal to be
-  proposed alongside any addition.
 - **The hardware limits P0 found.** The depth camera drops off USB, which cost five
   checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
   Both bound how long a session can usefully run.

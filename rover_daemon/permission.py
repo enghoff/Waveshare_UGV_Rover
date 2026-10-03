@@ -154,6 +154,28 @@ DEFAULT_BUDGET: dict[str, Any] = {
     "geofence": None,
 }
 
+#: Where a run may be opened from. Recorded on the run instead of a name: what a
+#: person finding the rover driving itself needs is how it was started -- a
+#: press of the console's button, or an agent's call -- not who typed it.
+STARTED_VIA = ("console", "api")
+
+#: The budget a run opened from the console's button gets. **No limit on time,
+#: travel or actions** (the owner's decision of 2026-10-03,
+#: docs/decisions/runs-start-from-the-console-or-an-agent.md): the person who
+#: pressed it is at the console with its stop button, and the run ends when they
+#: press it, take the wheels, or close the last console tab. Three failures in a
+#: row still end it, so a rover that is managing nothing does not go on trying
+#: until the battery gives out. The lease is unchanged: it is what stops a hung
+#: executive, and a budget is not.
+CONSOLE_BUDGET: dict[str, Any] = {
+    "seconds": None,
+    "travel_m": None,
+    "actions": None,
+    "failures": RUN_MAX_FAILURES,
+    "permit_ttl_s": PERMIT_TTL_S,
+    "geofence": None,
+}
+
 #: What an autonomous run may ask the rover to do. **Three operations, and the
 #: list is short on purpose.**
 #:
@@ -288,17 +310,18 @@ def fence_breach(goal: dict[str, Any] | None,
 class Run:
     """One bounded stretch of autonomy: what it may spend, and what it has.
 
-    Opened by a person and closed by the first of its budgets to run out, a
-    fault, or somebody stopping the rover. It is never reopened -- resuming
+    Opened from the console or by an agent's call, and closed by the first of
+    its budgets to run out, a fault, or somebody stopping the rover. A budget
+    of None is no limit on that quantity. It is never reopened -- resuming
     after a stop is a new run with a new identifier, which is what makes "the
     rover stopped and started again" visible in the record rather than
     something to infer from a gap.
     """
 
-    def __init__(self, run_id: str, *, by: str, why: str,
+    def __init__(self, run_id: str, *, via: str, why: str,
                  budget: dict[str, Any], at: float, wall: float) -> None:
         self.id = run_id
-        self.by = by
+        self.via = via
         self.why = why
         self.budget = dict(budget)
         self.opened_at = at
@@ -335,7 +358,7 @@ class Run:
         return ""
 
     def as_dict(self, now: float) -> dict[str, Any]:
-        return {"id": self.id, "by": self.by, "why": self.why,
+        return {"id": self.id, "via": self.via, "why": self.why,
                 "opened_at": self.opened_wall,
                 "budget": dict(self.budget), "spent": self.spent(now),
                 "ended": self.ended}
@@ -383,43 +406,55 @@ class Permission:
 
     # --- what a person does -------------------------------------------------
 
-    def enable(self, *, by: str, why: str = "",
-               budget: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Open a run. **This is the human act, and the only thing that clears
-        a stop.**
+    def enable(self, *, via: str, why: str = "",
+               budget: dict[str, Any] | None = None,
+               base: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Open a run, and with it clear any stop. **The console's button or an
+        agent's call, never the executive.**
+
+        `via` says which of `STARTED_VIA` it came from. `base` is the budget for
+        whatever `budget` leaves out: the standing limits unless the caller says
+        otherwise, which the console does with `CONSOLE_BUDGET`.
 
         Refused while a run is already open, rather than extending it: a second
-        press of the button must not double the budget of the run already going,
-        because the budget is the whole of what makes the run bounded.
+        press of the button must not double the budget of the run already going.
         """
         now = self.clock()
+        if via not in STARTED_VIA:
+            return {"ok": False,
+                    "error": f"a run is started via one of {', '.join(STARTED_VIA)}"}
         if self.run is not None and not self.run.ended:
             return {"ok": False,
                     "error": "a run is already open; stop it before opening "
                              "another",
                     "run": self.run.as_dict(now)}
-        asked = dict(DEFAULT_BUDGET)
+        asked = dict(base if base is not None else DEFAULT_BUDGET)
         for name, value in (budget or {}).items():
             if name not in DEFAULT_BUDGET:
                 return {"ok": False, "error": f"no such budget: {name}"}
             asked[name] = value
-        # Every budget is a ceiling as well as a default. A person may ask for a
-        # shorter run than the standing limit and not a longer one, so that the
-        # limits argued for above cannot be talked out of by whoever is typing.
+        # Time, travel and actions may be any size, or None for no limit at
+        # all: since 2026-10-03 how long a run goes on is the decision of
+        # whoever starts it. Failures in a row and the lease stay limits. Zero
+        # is refused rather than read as "no limit", which is what `Run.over`
+        # would make of it: a limit is switched off by saying None, not by
+        # asking for none of it.
         for name in ("seconds", "travel_m", "actions", "failures",
                      "permit_ttl_s"):
-            if asked[name] is None or float(asked[name]) <= 0:
-                # Zero is refused rather than read as "no limit", which is what
-                # `Run.over` would make of it: a budget that can be switched off
-                # by asking for none of it is not a limit at all.
+            value = asked[name]
+            if value is None and name in ("seconds", "travel_m", "actions"):
+                continue
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or value != value or value <= 0 or value == float("inf")):
                 return {"ok": False,
                         "error": f"{name} must be a positive number"}
-            if float(asked[name]) > float(DEFAULT_BUDGET[name]):
-                return {"ok": False,
-                        "error": f"{name} may be at most "
-                                 f"{DEFAULT_BUDGET[name]}"}
+        if float(asked["permit_ttl_s"]) > PERMIT_TTL_S:
+            # The lease is not a budget. It is how long a hung executive keeps
+            # the wheels, and that is not the caller's to lengthen.
+            return {"ok": False,
+                    "error": f"permit_ttl_s may be at most {PERMIT_TTL_S}"}
         self.runs += 1
-        self.run = Run(f"run/{self.boot}/{self.runs}", by=by, why=why,
+        self.run = Run(f"run/{self.boot}/{self.runs}", via=via, why=why,
                        budget=asked, at=now, wall=self.wall())
         self.latch = None
         self.permit = None

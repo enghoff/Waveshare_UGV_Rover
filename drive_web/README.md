@@ -63,6 +63,17 @@ world-state destinations go through the daemon's existing route planning and
 drive checks. Browser disconnection does not bypass the daemon's own movement
 timeouts and stop behavior.
 
+**run**, beside **world**, starts an autonomous run with nothing asked: the
+daemon's `autonomy_start` with `via` `console`, which gives the run no limit on time,
+travel or actions, three failures in a row, and the mapped floor as its area (see
+[the daemon](../rover_daemon/README.md) and
+[the runbook](../docs/runbooks/autonomy-session.md)). It reads **end run** while a
+run is open, including one an agent started, because it is drawn from what
+`nav_status` reports and not from the click. Pressing it then is the ordinary stop.
+When the last tab has been gone for the orphan grace, the console stops a run that
+was started from it, as it stops a move of its own; a run an agent started is left
+alone.
+
 ## World-state popup
 
 The popup has entity, map and observation views over one read-only data source.

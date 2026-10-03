@@ -169,6 +169,14 @@ function render(next) {
   explore.disabled = !next.link.can_drive
       || !next.link.tools.includes("explore")
       || (next.busy !== null && !next.exploring);
+
+  // The run toggle, by explore's rules: live while its own run is going, because
+  // pressing it again is how that run ends, and drawn from the rover's answer,
+  // because an agent can start a run too.
+  const run = $("run"), running = !!next.autonomy;
+  run.classList.toggle("on", running);
+  run.textContent = running ? "end run" : "run";
+  run.disabled = !next.link.can_drive || (next.busy !== null && !running);
 }
 
 const verdictOf = (state) =>
@@ -691,6 +699,9 @@ function wire() {
   // would be a second thing that could be wrong about the first.
   $("explore").onclick = () => post(
       {do: $("explore").classList.contains("on") ? "stop" : "explore"});
+  // Ended by the ordinary stop, for the reason explore is: it is the same act.
+  $("run").onclick = () => post(
+      {do: $("run").classList.contains("on") ? "stop" : "run"});
   for (const button of document.querySelectorAll("[data-zoom]")) {
     button.onclick = () => post({do: "map", zoom: +button.dataset.zoom});
   }
