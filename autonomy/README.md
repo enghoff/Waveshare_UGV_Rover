@@ -288,11 +288,14 @@ is not asked again, and a place with two attempts is refused. The ledger, like
 the daemon, matches by place within half a metre, so a renamed or merged thing
 lands on the attempts already spent.
 
-**What is proven is replay, not the rover.** The fake rover holding the real
-permission rules carries attempts through refusal, a stale map, a look that
-cannot be pointed, a drive stopped at its travel limit, and a renamed thing, and
-the check has been replayed over the real looks of two drives. No inspection has
-driven this rover; M0a's supervised runs are owed.
+**It has been proven on the rover as well as in replay.** The fake rover holding
+the real permission rules carries attempts through refusal, a stale map, a look
+that cannot be pointed, a drive stopped at its travel limit, and a renamed thing,
+and the check has been replayed over the real looks of two drives. On 2026-10-02,
+27 supervised attempts over eight runs gave three answers, all right, and none
+wrong, with every limit held; most of the rest were "can't tell", because the place
+fell off the top or bottom of the depth picture. See
+[the runs](../docs/progress/2026-10-02-m0a-runs-reach-twenty.md).
 
 ## How a decision reads
 
@@ -433,11 +436,12 @@ else.
 Named because a plan that quietly absorbs a description of the thing it built
 leaves two accounts of the running system with one of them maintained.
 
-- **Nothing has driven yet.** The executive is built and every way it can go
-  wrong is checked against a fake rover holding the real permission rules, and
-  it has still never moved this rover: M3 asks for twenty supervised sessions in
-  a pre-cleared room and none of them has happened. Until they do, what is
-  proven is the logic and not the rover.
+- **No autonomy session has run.** The executive is built, every way it can go
+  wrong is checked against a fake rover holding the real permission rules, and it
+  has driven the rover under supervision, but only through M0a's inspections. M3
+  asks for twenty supervised sessions in a pre-cleared room and none of them has
+  happened. Until they do, what is proven on the rover is the stops and the
+  inspections, not the loop as a whole.
 - **The executive is not a service either.** A person opens a run and starts it;
   nothing starts it at boot, and a run cannot outlive the person who opened it by
   more than its budget.

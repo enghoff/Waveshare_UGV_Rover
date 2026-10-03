@@ -2,8 +2,9 @@
 
 Status: Phase 0 (P0) closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)).
 Phases 1 and 2 (P1, P2) passed their milestones on 2026-09-08. Phase 3 (P3) is under way: the executive and the
-daemon-enforced permission it works under are built and checked offline, and
-nothing has yet moved the rover under them. Later phases remain proposed. This is the
+daemon-enforced permission it works under are deployed, and on 2026-10-02 they moved
+the rover in supervised stop trials and in M0a's inspection runs. M3's twenty
+supervised sessions have not begun. Later phases remain proposed. This is the
 implementation and acceptance plan for
 [the architecture it implements](autonomous-curiosity-design.md).
 
@@ -19,13 +20,12 @@ control and physical safety gates. Later capabilities require
 recorded evidence for the primitives, semantics and execution substrate they use;
 code existing is not acceptance. Physical criteria must be observed on the rover.
 
-P0 is tracked through the existing
-[`M0 baseline`](../progress/2026-09-07-m0-semantic-world-state.md) and its follow-up work. The
-September 7 recording already exists; do not restart that investigation or count
-this document revision as a pass. The
-[September 10 decision](../decisions/m0-hypothesis-inspection.md) relaxes the identity
-prerequisite only for bounded verification of uncertain hypotheses. Implementation
-and fresh acceptance evidence are still owed.
+P0's record runs from the
+[`M0 baseline`](../progress/2026-09-07-m0-semantic-world-state.md) to
+[the closure](../progress/2026-10-02-p0-closed.md), which lists what it leaves for later. The
+[September 10 decision](../decisions/m0-hypothesis-inspection.md) relaxed the identity
+prerequisite only for bounded verification of uncertain hypotheses, and that is still
+the only semantic movement M0 permits.
 
 The existing repository rule still applies: reproduce failures before fixing them,
 validate on recordings before changing the running rover, and treat hardware as
@@ -180,37 +180,26 @@ Do not let semantic state choose motion while persistent identity/range behaviou
 still unvalidated. This phase is mostly existing work from
 `docs/plans/semantic-world-state.md`, but it is an explicit dependency of autonomy.
 
-### Current approach and progress
+### Where it ended
 
-P0 remains in progress and M0 has not passed. The
-[latest review](../progress/2026-09-07-m0-review.md) separates the recorded evidence
-from the calibration work still to do. The gimbal measurement has passed its
-held-out gate at tilt zero and pan -20 to +20 degrees when every placement finishes
-from the ascending direction, and the envelope now extends to tilt +20. The
-OAK moved from its chassis bracket onto the gimbal's rail on 2026-09-30 and its
-mount was measured again there, rigid to a tenth of a degree across fifteen gimbal
-positions ([the rail entry](../progress/2026-09-30-oak-on-the-gimbal.md)), so the
-clean confirmation the chassis mount still owed no longer matters. What that
-measurement owes is a board check of its offset. What it found -- the
-fisheye's lens model about 7% short off-axis -- was refitted the same day and the
-stored looks redrawn ([the lens entry](../progress/2026-09-30-the-fisheye-lens-refitted.md)). The baseline's historical
-pass counts and "before Phase 1" heading are not the current gate: read-only
-M1/M2 may proceed.
+**The owner closed P0 on 2026-10-02**, against criteria that measure the hardware
+and hold the rover's claims to what was measured, rather than holding it to
+accuracy bars ([the decision](../decisions/p0-measures-the-hardware.md)).
+[The closure](../progress/2026-10-02-p0-closed.md) says what met each condition and
+what P0 leaves for later: the inspection check answers rarely, the depth camera
+drops off USB, small objects are never found, and bearing claims on moving looks
+are still smaller than their measured error. R-AUT-12, R-WS-11, R-WS-16 and
+R-SAFE-10 are settled. [R-WS-10](../requirements/world-state.md#r-ws-10) stays
+`failing`, and what is left of it is the [world-state plan](semantic-world-state.md)'s
+work rather than this one's.
 
-The agreed target is useful, demonstrated accuracy within a declared operating
-envelope. The current 1.5-degree bearing uncertainty is not an accuracy demand on
-the hardware. Finite backlash, flex and settling variation may remain; correcting
-the bias and representing those limits honestly is a valid outcome.
-
-This phase addresses R-WS-10 (bearing uncertainty), R-WS-11 (geometry), R-AUT-12
-(bounded hypothesis inspection) and R-WS-16
-(confirmed capture pose). None is marked settled by this plan revision.
-
-The new [refit report](../progress/2026-09-07-refit-window.md) records observations
-stamped from an unconfirmed pose. Before driven acceptance, reproduce and close
-that capture gate and prevent the affected evidence from entering association as
-valid geometry, preserving its images and provenance. Stationary calibration
-against an independent reference can proceed without trusting that map pose.
+The six taped targets of 2026-10-01 -- the bucket, the cabinet, the painting above
+it, the landscape painting, the tissue box and the toolbox -- and their wall frame
+are in `captures/m0-2026-10-01/MANIFEST.txt`, and remain the reference for a driven
+acceptance run, which needs only fresh parking readings and the owner in the room.
+The board method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
+checks the OAK's offset on the rail. A further calibration, such as the third tilt
+the closure suggests, follows the protocol below.
 
 ### Bounded calibration protocol
 
@@ -283,89 +272,6 @@ bounded protocol, rather than repeating sweeps until a favourable fit appears.
   the useful task. State the remaining error, its evidence and what specific
   reference/hardware change would enable a meaningful next test. M0 remains open;
   read-only M1/M2 continue. No hardware purchase follows automatically.
-
-### Owner preparation and next handoff
-
-**Nothing has to be staged.** On 2026-10-01 the acceptance targets were picked from
-the room as it stood, and the owner's part was a tape measure. There are six
-targets: the bucket, the cabinet, the painting above it, the landscape painting,
-the tissue box and the toolbox. The owner taped each from two walls, and taped the
-lidar's spin centre at a parking spot before the drive and another after it. Claude
-drove. The targets, their taped positions and the wall frame are in
-`captures/m0-2026-10-01/MANIFEST.txt` and can be reused as they stand. The next
-drive needs only fresh parking readings and the owner in the room. The board
-method in the [P0 camera geometry runbook](../runbooks/p0-gimbal-calibration.md)
-remains the way to check the OAK's offset on the rail, and is not an M0 criterion.
-
-### Work
-
-What has landed is recorded where it was measured, not here: the mount
-([the mount measurement](../progress/2026-09-07-p0-oak-mount.md)), the
-demonstrated pointing envelope and its ascending approach
-([tilt +20](../progress/2026-09-07-gimbal-tilt20-passes.md)), the two capture
-gates in the deployed path
-([the capture gates](../progress/2026-09-07-capture-state-gates.md)), and the
-driven evidence for depth attribution and identity
-([the acceptance drive](../progress/2026-09-07-m0-acceptance-drive.md)). Since
-then, these have landed: depth maps saved beside every frame, regions outside the
-depth camera's view counted and carried to each thing as "never ranged", the
-confirmed-pose gate shown across a navigation restart, and the camera's place on
-the rover taped. The masked-crop collapse test is deployed and still owes a
-held-out pass.
-
-[The drive of 2026-10-01](../progress/2026-10-01-the-room-as-it-stands.md) retook
-the acceptance measurement through the refitted lens and the OAK on the rail, and
-failed every tolerance. It found the next things to fix, in this order:
-
-- **The rover's heading after it turns on the spot.** Against the tape, bearings
-  err by a median of 6.7 degrees where the rover only turned, and 3.5 where it drove
-  first. That is now the largest term in R-WS-10. It was
-  [measured the same day](../progress/2026-10-01-heading-after-turning.md): the map
-  over-counts every turn by about 7%, and a refit takes the heading back to within 2
-  degrees of the tape. A refit inside each move held the wheels for 15 s and was
-  [rolled back](../progress/2026-10-01-heading-check-rolled-back.md). Its replacement
-  works on looks only: a still look measures the heading in about a tenth of a
-  second, then corrects or withholds its own direction, never moving the rover. It
-  is [deployed](../progress/2026-10-01-photo-heading-check.md), and headings believed
-  17 to 43 degrees out are stored within 3.5 degrees of the tape. A driven
-  acceptance run is what is left.
-- **A carried rover keeps a confirmed position (R-WS-16): settled on 2026-10-02.** A
-  carried rover's look got no direction until a refit placed it
-  ([the carry](../progress/2026-10-02-drive-carry-and-stops.md)).
-- **A range from the background on a small near object.** The tissue box's 2.61 m
-  was read off a depth frame the rover had turned 17 degrees away from, and all six
-  wrong target ranges that morning came from turning looks. Ranges taken while
-  turning are [now dropped](../progress/2026-10-01-ranges-while-turning.md). The
-  next drive's manifest measures the range tolerance over still looks, and the
-  drive should stop before it looks.
-- **Identity (R-WS-13) is no longer a P0 gate.** The owner
-  [decided on 2026-10-01](../decisions/identity-is-judged-action-by-action.md) that how sure of identity an action
-  must be is judged for that action when it is proposed, not by one bar, and
-  M0b is retired. Identity remains the open research problem; see the
-  [2026-09-10 entry](../progress/2026-09-10-bounded-entity-fitting.md) for the
-  next experiments, and [the inspection replay](../progress/2026-10-01-hypothesis-inspection-replay.md)
-  for what one look can carry.
-- **What the hardware does is measured, and the claims are partly honest**
-  ([the drives](../progress/2026-10-02-drive-carry-and-stops.md),
-  [the measurement](../progress/2026-10-02-what-to-expect-from-the-hardware.md)).
-  Heights are honest in replay since a 4.9 degree elevation bias was corrected
-  (`59c7e43`, to deploy). Claims for bearings, ranges and one-look placements are
-  still smaller than their measured errors, and widening them loosened matching;
-  separating the stated uncertainty from the matching tolerance is what is left of
-  the honesty condition. The M3 stops were measured; permission expiry has not yet
-  stopped a moving rover.
-- **M0a's inspections (R-AUT-12) are built and hold in replay**
-  ([the replay](../progress/2026-10-01-hypothesis-inspection-replay.md)). The
-  question each asks is whether something stands where a thing's looks crossed;
-  the daemon enforces each attempt's travel, time and attempts by place. What is
-  left is the hardware: M3's supervised stop and failure checks, then three
-  supervised M0a runs of at least twenty attempts across ten places, with
-  absent-target cases made above the floor.
-- **Then another driven acceptance run** on the same six targets and wall frame.
-
-Two rules hold throughout: preserve the recordings as before-change evidence, and
-keep ambiguous evidence unresolved rather than lowering a threshold to raise the
-placed count.
 
 ### Verification
 
@@ -633,7 +539,22 @@ strategies.
 ### What has landed, and where it is described
 
 The executive and the permission it works under are built, deployed and checked
-offline; neither has moved this rover. What each of them is belongs to the
+offline, and on 2026-10-02 both moved the rover under supervision:
+
+- **The stop trials** ([the trials](../progress/2026-10-02-drive-carry-and-stops.md)).
+  A stop request, the console's stop button, a manual takeover mid-leg, and a killed
+  executive each ended the run and latched autonomy off, and the executive could not
+  restart it. At 0.31 m/s every moving stop came to rest within the frozen 1.0 s and
+  0.30 m, which fits inside the fence's 0.5 m stopping margin; the margin itself has
+  not been re-derived from them.
+- **Permission expiry** ([the first M0a runs](../progress/2026-10-02-first-m0a-runs.md)).
+  With a 2 s permit and its program killed mid-leg, the daemon stopped the rover on
+  its own: at rest 0.54 s and 0.23 m after expiry, with Nav2 still up.
+- **M0a's runs** ([27 attempts](../progress/2026-10-02-m0a-runs-reach-twenty.md)). The
+  executive itself chose and drove 27 bounded inspections over eight runs, each
+  recorded in an episode, with every limit held.
+
+What each of them is belongs to the
 component that holds it rather than to this plan: the permission the daemon
 issues, spends and takes back is in
 [rover_daemon/README.md](../../rover_daemon/README.md) under *Moving by itself*,
@@ -647,25 +568,30 @@ refused by name.
 
 ### What is still ahead
 
-Everything physical, which is most of M3:
+Most of M3 is still physical:
 
 - **The twenty supervised sessions**, totalling at least two hours of autonomy
-  time in a pre-cleared area, with the owner present. Nothing below criterion 3
-  can be answered without them.
-- **The stop and takeover trials**, against predeclared stopping time and
-  distance limits at the permitted speeds. An acknowledged stop request is not a
-  pass; what has been shown offline is that the request is issued and the
-  authority revoked, not that the wheels stop within any distance.
+  time in a pre-cleared area, with the owner present. None has happened; M0a's
+  runs were its own protocol and do not count towards them. Nothing below
+  criterion 3 can be answered without them.
+- **The stop and takeover trials that did not finish.** The console's stop button
+  was only exercised on a slow turn, and its repeat at speed was cut short by the
+  battery; it sends the same request that was measured at speed. A hung executive
+  and a dropped connection (criterion 9) have not been tried on the rover; both
+  should end in the permit expiry that was measured.
+- **A duplicate request on hardware** ([R-AUT-11](../requirements/autonomy.md#r-aut-11)):
+  a session in which an action asked for twice moves the rover once.
 - **A way for the owner to open a run without a shell.** Enabling is a person's
   act and today it is a call over 8769, which means the supervised sessions
   start from a terminal. A console control is the obvious home for it, and
   [drive_web/AGENTS.md](../../drive_web/AGENTS.md) asks for a removal to be
   proposed alongside any addition.
-- **M0a and identity.** Geometry-only goals remain subject to the control gates.
-  Semantic hypothesis inspection needs R-AUT-12 and M0a; the existing entity goal
-  generator cannot acquire that permission just by being renamed. An action
-  relying on persistent identity needs its own case decided under R-WS-13. M0a
-  has not passed.
+- **The hardware limits P0 found.** The depth camera drops off USB, which cost five
+  checks in M0a's runs, and a charge gives about 20 to 25 minutes of this driving.
+  Both bound how long a session can usefully run.
+- **Identity.** Hypothesis inspection is M0a's and has passed; it leads to no
+  follow-on action. An action relying on persistent identity needs its own case
+  decided under R-WS-13 before any run may take it.
 
 ### Physical test environment
 

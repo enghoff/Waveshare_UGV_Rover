@@ -1,6 +1,6 @@
 # Curiosity-driven autonomy and lifelong learning
 
-Status: design proposal; Phase 0 (P0) validation is already in progress. Nothing in
+Status: design proposal; Phase 0 (P0) closed on 2026-10-02 and Phase 3 is under way. Nothing in
 this document gives the autonomy layer movement authority yet. The staged acceptance
 plan is in
 [the implementation plan](autonomous-curiosity.md).
@@ -56,21 +56,13 @@ This proposal builds on the current boundaries rather than replacing them.
 - The realtime voice model is currently a conversational/tool-using client of the
   rover. It need not become the always-on executive.
 
-P0 already has a fresh driven recording and a
-[`baseline report`](../progress/2026-09-07-m0-semantic-world-state.md). That report does not pass
-M0: camera geometry and range-to-object alignment remain unproven, and the review
-also found lower-confidence association errors and floor patches treated as objects.
-Continue that work under P0; this proposal does not restart it or prescribe a
-calibration fix. The [September 10 decision](../decisions/m0-hypothesis-inspection.md)
-splits M0: bounded hypothesis inspection requires M0a (R-AUT-12). Actions relying
-on persistent identity were held to one gate, M0b, until
-[2026-10-01](../decisions/identity-is-judged-action-by-action.md); each is now judged for itself under R-WS-13. M0a
-has not passed, and it retains geometry, capture and control prerequisites. Read-only episodic
-recording and shadow decisions may be developed while P0 is in progress.
-The [current review](../progress/2026-09-07-m0-review.md) records the bounded
-calibration scope and the additional requirement to withhold usable bearings when
-the rover's map pose is unconfirmed. Calibration accuracy cannot compensate for a
-wrong observer pose.
+P0 closed on 2026-10-02 ([the closure](../progress/2026-10-02-p0-closed.md)). The
+[September 10 decision](../decisions/m0-hypothesis-inspection.md) split M0: bounded
+hypothesis inspection required M0a (R-AUT-12), which passed. Actions relying on
+persistent identity were held to one gate, M0b, until
+[2026-10-01](../decisions/identity-is-judged-action-by-action.md); each is now judged for itself under R-WS-13.
+Bearings are still withheld when the rover's map pose is unconfirmed (R-WS-16), because
+calibration accuracy cannot compensate for a wrong observer pose.
 
 ## Design principles
 

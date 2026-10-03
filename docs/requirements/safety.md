@@ -131,7 +131,8 @@ not the representation for anything the rover writes itself. See
 
 - **State:** open
 - **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3) — no autonomous action has yet moved this rover
+  (M3) — autonomous actions moved the rover in M0a's runs of 2026-10-02, but no M3
+  session has yet been traced back movement by movement
 
 An action nobody can reconstruct afterwards cannot be reviewed, and a failure
 nobody can replay cannot be fixed under this repository's rules. Episodic
@@ -139,7 +140,7 @@ recording is therefore the first piece of autonomy to be built and carries no
 authority of its own.
 
 The decision half is settled ([R-AUT-1](autonomy.md#r-aut-1) and the M1 pass).
-The action half is now built and unproven on hardware: every autonomous action
+The action half is built, and has carried real movement in M0a's runs: every autonomous action
 is dispatched through one call carrying the episode it belongs to and an
 identifier beginning with that episode's reference, and the daemon refuses an
 action that names neither. What is owed is a supervised session in which real
@@ -176,7 +177,8 @@ the rover.
 
 - **State:** open
 - **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3) — shown against a fake rover, not yet against a moving one
+  (M3) — shown against a moving rover in the stop trials of 2026-10-02; M3's
+  sessions are owed
 
 Stopping movement today stops the movement. Once something is choosing goals,
 stopping has to also revoke its authority until a person gives it back, or the
@@ -195,7 +197,8 @@ a person removed.
 
 - **State:** open
 - **Blocked by:** [../plans/autonomous-curiosity.md](../plans/autonomous-curiosity.md)
-  (M3) — the watchdog has never had to stop a rover that was really moving
+  (M3) — it stopped a moving rover on permit expiry on 2026-10-02; a hung
+  executive and a dropped connection have not been tried on the rover
 
 The check has to live below the thing being checked. If the executive is what
 notices that its own permission ran out, then an executive that has hung or is
