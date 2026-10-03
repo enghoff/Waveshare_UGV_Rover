@@ -146,6 +146,31 @@ def test_a_stored_placement_carries_what_it_claims() -> None:
         store.close()
 
 
+def test_a_look_read_back_carries_what_its_bearing_claims() -> None:
+    """Every look the rover hands on is read through the store, so this is where
+    the claim beside the matching width appears. See
+    `locate.stated_bearing_sigma`."""
+    pose = {"x_m": 1.0, "y_m": 0.0, "heading_deg": 0.0}
+    with tempfile.TemporaryDirectory() as directory:
+        store = a_store(directory)
+        store.record([a_sighting()], fov_deg=60.0,
+                     capture={"frame_id": "still", "pan": 0.0, "pose": pose,
+                              "origin_sigma_m": 0.0})
+        store.record([a_sighting()], fov_deg=60.0,
+                     capture={"frame_id": "moving", "pan": 0.0, "pose": pose,
+                              "origin_sigma_m": 0.05})
+        store.record([a_sighting()], fov_deg=60.0,
+                     capture={"frame_id": "lost", "pan": 0.0, "pose": None})
+        claims = {row["frame_id"]: row["stated_bearing_sigma_deg"]
+                  for row in store.observations()}
+        check("a still look claims what still looks have been worth",
+              claims["still"], 3.0)
+        check("a moving look claims what moving looks have been worth",
+              claims["moving"], 5.0)
+        check("a look with no direction claims none", claims["lost"], None)
+        store.close()
+
+
 def test_a_database_from_an_older_build_still_opens() -> None:
     """The rover's database was written before this change and outlives it.
 
@@ -754,6 +779,7 @@ TESTS = (
     test_an_inspection_claims_no_identity_at_all,
     test_the_world_survives_the_process_that_wrote_it,
     test_a_stored_placement_carries_what_it_claims,
+    test_a_look_read_back_carries_what_its_bearing_claims,
     test_a_database_from_an_older_build_still_opens,
     test_the_frame_is_kept_and_every_observation_points_at_it,
     test_the_history_is_read_a_page_at_a_time,

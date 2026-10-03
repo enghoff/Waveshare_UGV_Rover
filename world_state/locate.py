@@ -74,6 +74,41 @@ def stated_uncertainty(placement: dict[str, Any]) -> float | None:
     return round(max(float(got), STATED_SINGLE_LOOK_M) if single else float(got), 3)
 
 
+# **And what a look claims for its bearing, as against what it matches with.**
+# `sigma_of` is the width the resolver crosses and joins bearings by, and it is
+# floored at the stationary calibration. Against the owner's tape on the drive
+# of 2026-10-03, looks the capture bracket says moved or turned pointed a median
+# 3.2 degrees off, 95% within 10.3, and looks from a standstill 1.5, 95% within
+# 5.7 -- nearly all of both claiming 1.5. Widening `sigma_of` to match loosens
+# joining, as `stated_uncertainty` found for placements, so the claim is its
+# own number. On the taped drives of 2026-10-01 and 10-02, which these were not
+# taken from, 80-90% of still looks and 85% of moving ones fall inside twice
+# them, against 38-71% and 35% at 1.5. Where in the picture a thing sits matters
+# too -- 1.6 degrees within 10 of the middle, 3 to 4 further out -- but the
+# sample is too thin to fit by it.
+STATED_STILL_BEARING_DEG = 3.0
+STATED_MOVING_BEARING_DEG = 5.0
+# What the capture bracket must have recorded for a look to count as moving:
+# half its travel, and the turn it was still making times how well the moment
+# of the picture is known. Both are zero or absent for a look from a standstill.
+MOVING_ORIGIN_SIGMA_M = 0.005
+MOVING_BEARING_SIGMA_DEG = 0.05
+
+
+def moving_look(ray: dict[str, Any]) -> bool:
+    """Whether the rover was travelling or turning while this look was taken."""
+    return (float(ray.get("origin_sigma_m") or 0.0) > MOVING_ORIGIN_SIGMA_M
+            or float(ray.get("bearing_sigma_deg") or 0.0) > MOVING_BEARING_SIGMA_DEG)
+
+
+def stated_bearing_sigma(ray: dict[str, Any]) -> float | None:
+    """How far out a look's bearing may be, as the rover should claim it."""
+    if ray.get("bearing_deg") is None:
+        return None
+    floor = STATED_MOVING_BEARING_DEG if moving_look(ray) else STATED_STILL_BEARING_DEG
+    return round(max(sigma_of(ray), floor), 2)
+
+
 def sigma_of(ray: dict[str, object]) -> float:
     """Bearing sigma in degrees, never below the stationary calibration.
 

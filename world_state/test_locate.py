@@ -687,6 +687,27 @@ def test_a_placement_from_one_look_claims_what_one_look_has_been_worth() -> None
     check("no figure stays no figure", locate.stated_uncertainty({}), None)
 
 
+def test_a_look_claims_what_looks_like_it_have_been_worth() -> None:
+    """Against the tape on 2026-10-03, still looks were 1.5 degrees off and moving
+    ones 3.2, 95% within 5.7 and 10.3, nearly all claiming 1.5. The width the
+    resolver matches with stays as it was; what the look claims does not."""
+    still = {"bearing_deg": 10.0, "origin_sigma_m": 0.0, "bearing_sigma_deg": None}
+    check("a look from a standstill claims what still looks have been worth",
+          locate.stated_bearing_sigma(still), locate.STATED_STILL_BEARING_DEG)
+    check("...while the resolver still matches it at the calibration",
+          locate.sigma_of(still), locate.BEARING_SIGMA_DEG)
+    check("a look taken while travelling claims what moving looks have been worth",
+          locate.stated_bearing_sigma({**still, "origin_sigma_m": 0.04}),
+          locate.STATED_MOVING_BEARING_DEG)
+    check("...and so does one taken while turning",
+          locate.stated_bearing_sigma({**still, "bearing_sigma_deg": 0.8}),
+          locate.STATED_MOVING_BEARING_DEG)
+    check("...but never less than its own width when that is already wider",
+          locate.stated_bearing_sigma({**still, "bearing_sigma_deg": 5.6}), 5.6)
+    check("a look with no bearing claims none",
+          locate.stated_bearing_sigma({"bearing_deg": None}), None)
+
+
 def test_two_rays_must_agree_about_the_height_as_well_as_the_place() -> None:
     """**The test a plan view cannot make.** A bearing at a picture on the wall
     crosses a bearing at the sideboard beneath it exactly as convincingly as two
@@ -828,6 +849,7 @@ TESTS = (
     test_the_measured_elevation_bias_is_taken_out_at_the_tilt_it_was_measured,
     test_a_height_is_no_surer_than_its_looks_agree,
     test_a_placement_from_one_look_claims_what_one_look_has_been_worth,
+    test_a_look_claims_what_looks_like_it_have_been_worth,
     test_two_rays_must_agree_about_the_height_as_well_as_the_place,
     test_a_look_joins_a_thing_only_at_the_height_it_stands,
     test_a_thing_is_forgiven_its_own_height_once_and_not_twice,

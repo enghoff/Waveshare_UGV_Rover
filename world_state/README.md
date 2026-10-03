@@ -194,19 +194,22 @@ degrees off at the edge of its picture; the ranges on those runs carry that too.
 
 ## What to expect from it
 
-Measured against the owner's tape on the drives of 2026-10-01 and 10-02. These
-are descriptions, not pass marks ([the decision](../docs/decisions/p0-measures-the-hardware.md)).
+Measured against the owner's tape on the drives of 2026-10-01, 10-02 and 10-03. These
+are descriptions, not pass marks ([the decision](../docs/decisions/p0-measures-the-hardware.md)),
+and since 2026-10-03 there is no accuracy requirement on a bearing either
+([the decision](../docs/decisions/bearings-are-measured-not-required.md)): what is
+required is that the rover claims what it has been measured to deliver.
 Where the rover claims less error than this, the claim is the fault; see
 [the measurement](../docs/progress/2026-10-02-what-to-expect-from-the-hardware.md).
 
 | What | Typical error | Worst seen | What the rover claims |
 |---|---|---|---|
-| direction of a still look | 1.2 deg | 3.8 deg | 1.5 deg: too little |
-| direction of a moving look that kept one | 2.6 deg | 11.6 deg | 1.5 deg or more: too little |
+| direction of a still look | 1.0-1.5 deg | 95% within 5.7 deg | `stated_bearing_sigma_deg` 3.0 since 2026-10-03; 1.5 before, too little |
+| direction of a moving look | 3.2 deg | 95% within 10.3 deg, worst 23 | `stated_bearing_sigma_deg` 5.0 since 2026-10-03; 1.5 before, too little |
 | elevation, with the 4.9 deg bias at the rest tilt taken out (`locate.elevation_of`) | 1.4-1.8 deg | under 4 deg | 2.2 deg |
 | range of a still look, in plain view | 0.07-0.17 m, about a tenth of the distance | 0.36 m | 0.07-0.13 m: too little |
 | range through something in front | the thing in front | 1.3 m short | the same as in plain view |
-| a placement from two or more viewpoints, in plain view | 0.18 m | 0.43 m | about right: 11 of 15 inside the claim, all inside twice it |
+| a placement from two or more viewpoints, in plain view | 0.18 m | 0.55 m | about right: on 2026-10-03, 2 of 6 inside the claim and all 6 inside twice it |
 | a placement from one viewpoint | 0.55 m | 1.77 m | `stated_uncertainty_m` 1.0 m since 2026-10-02 (it used to claim 0.05-0.24 m) |
 | a thing behind other things | 0.88 m | 1.12 m | too little in 4 of 5 |
 | a height, from replay | 0.08-0.29 m | 0.29 m | inside the claim 7 of 7 |
@@ -223,13 +226,28 @@ claim their own figure. Replayed on the three taped drives, every target
 placement then lies within twice its claim, 14 of 14. The hypothesis generator
 reads the claim.
 
+**What a look claims for its bearing is `stated_bearing_sigma_deg`, not the width it
+is matched with.** The resolver crosses and joins bearings at `locate.sigma_of`,
+floored at the 1.5 degree calibration, and widening that to the measured error
+merges different objects for the same reason. So a look read back from the store
+carries its claim beside it (`locate.stated_bearing_sigma`): 3.0 degrees from a
+standstill and 5.0 when the capture bracket says it travelled or turned, or its own
+width where that is wider. On the drive of 2026-10-03, which set those numbers, 93%
+of looks at the targets lie within twice their claim, against 70% at the matching
+width; on the taped drives of 2026-10-01 and 10-02, 80-90% of still looks and 85% of
+moving ones. Where a thing sits in the picture matters as well: 1.6 degrees within
+10 of the middle, 3 to 4 further out, which the claim does not yet use. See
+[the drive](../docs/progress/2026-10-03-moving-looks-against-the-tape.md).
+
 The range rows were measured with the box. Read under the outline, the range through
 something in front came to the painting rather than the chair in front of it on the one
 taped case (2.45 m against a taped 2.54, where the box read 1.22), and placements from
 one viewpoint improved with it; that is replayed, not yet measured on a drive.
 
-The per-look bearing and range figures marked too little are left as recorded.
-Their measured errors depend on the target as much as on the look. They are
+The per-look range figures marked too little are left as recorded. On 2026-10-03
+every range that came back was within 0.5 m, but the cabinet read 0.2 to 0.4 m long
+each time, probably into its open shelves, against claims under 0.1 m. Range errors
+depend on the target as much as on the look. They are
 small on the compact toolbox; larger on the cabinet and the painting above it,
 where the depth sample can land anywhere on a large object; and partly in the
 taped reference points. They are not yet a sound basis for a stricter check.

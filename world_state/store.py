@@ -1242,4 +1242,8 @@ def _readable(row: dict[str, Any], vectors: bool = False) -> dict[str, Any]:
         row[name] = 0 if blob is None else len(blob)
         if not vectors:
             row.pop(column, None)
+    # What the look claims for its bearing, beside the width it is matched with.
+    # Worked out on reading rather than stored, so looks recorded before the
+    # claim existed carry it too. See `locate.stated_bearing_sigma`.
+    row["stated_bearing_sigma_deg"] = locate.stated_bearing_sigma(row)
     return row
